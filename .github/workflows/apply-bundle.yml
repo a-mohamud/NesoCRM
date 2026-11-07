@@ -1,0 +1,33 @@
+# Neso fork: applies a git bundle attached to a release (tag "bundle-…") to the neso/main branch.
+# Changes are prepared elsewhere and uploaded as <name>.bundle; this job only fast-forwards neso/main
+# (it never force-pushes) and uses no third-party actions.
+name: Apply change bundle
+on:
+  release:
+    types: [published]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: startsWith(github.event.release.tag_name, 'bundle-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch the bundle and fast-forward neso/main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git clone --quiet "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" repo
+          mkdir in && gh release download "$TAG" --repo "$REPO" --pattern '*.bundle' --dir in
+          cd repo
+          git config user.name "neso-bundle-bot"
+          git config user.email "neso-bundle-bot@users.noreply.github.com"
+          for b in ../in/*.bundle; do
+            git bundle verify "$b"
+            git fetch --quiet "$b" 'refs/heads/neso/main:refs/remotes/bundle/neso-main'
+          done
+          git push origin 'refs/remotes/bundle/neso-main:refs/heads/neso/main'
+          echo "neso/main is now $(git rev-parse --short refs/remotes/bundle/neso-main)"
