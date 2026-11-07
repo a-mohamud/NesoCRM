@@ -4,6 +4,7 @@ import { Icon } from '../icons';
 import { Empty, Link, PageHead, Spinner, navigate, toast, toastError, useRoute } from '../ui';
 import { PluginIcon, useActivePlugins, type ActivePlugin } from './shared';
 import { SortableGrid } from '../sortable/lazy';
+import { useT } from '../i18n';
 
 /**
  * Shows a plugin's interface: our trusted host page (/plugin-host/<id>) in an iframe, which in turn embeds the
@@ -50,6 +51,7 @@ export function PluginFrame({ pluginId, entry, entity, height, demo, title, fill
 
 /** Route `plugin/<id>`: a plugin's page in the menu. */
 export function PluginPage() {
+  const tt = useT('x_ai');
   const route = useRoute();
   const id = route[1];
   const plugins = useActivePlugins();
@@ -59,12 +61,12 @@ export function PluginPage() {
     return () => clearTimeout(t);
   }, []);
   const p = plugins.find((x) => x.id === id);
-  if (!p) return waited ? <Empty action={<Link to="marktplatz">Zum Marktplatz</Link>}>Dieses Plugin ist hier nicht aktiv.</Empty> : <Spinner />;
+  if (!p) return waited ? <Empty action={<Link to="marktplatz">{tt('Zum Marktplatz')}</Link>}>{tt('Dieses Plugin ist hier nicht aktiv.')}</Empty> : <Spinner />;
   return (
     <>
-      <PageHead title={p.page?.title ?? p.name} sub={<>Plugin „{p.name}“ · Version {p.version}</>}>
+      <PageHead title={p.page?.title ?? p.name} sub={<>{tt('Plugin „{name}“ · Version {version}', { name: p.name, version: p.version })}</>}>
         <Link to={`werkstatt/plugins/${p.id}`} className="btn secondary small">
-          <Icon name="settings" size={14} /> Verwalten
+          <Icon name="settings" size={14} /> {tt('Verwalten')}
         </Link>
       </PageHead>
       <PluginFrame key={p.id} pluginId={p.id} entry="page" title={p.name} fill />

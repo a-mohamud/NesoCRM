@@ -87,6 +87,7 @@ function ToastView({ t: item, onClose, onUndo }: { t: ToastItem; onClose: () => 
 }
 
 function ConflictDialog({ c, onClose }: { c: UndoConflict; onClose: () => void }) {
+  const tt = useT('shell');
   const [busy, setBusy] = useState(false);
   // It can open on top of the Verlauf: Esc closes only this dialog, not the panel under it.
   useEffect(() => {
@@ -100,14 +101,14 @@ function ConflictDialog({ c, onClose }: { c: UndoConflict; onClose: () => void }
   }, [onClose]);
   return (
     <Modal
-      title="Seitdem geändert"
+      title={tt('Seitdem geändert')}
       onClose={onClose}
       wide
       className="undo-modal"
       footer={
         <>
           <button className="btn secondary undo-big" onClick={onClose} data-tour="undo-conflict-cancel">
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button
             className="btn undo-big"
@@ -120,7 +121,7 @@ function ConflictDialog({ c, onClose }: { c: UndoConflict; onClose: () => void }
               if (ok) onClose();
             }}
           >
-            Trotzdem wiederherstellen
+            {tt('Trotzdem wiederherstellen')}
           </button>
         </>
       }
@@ -131,10 +132,10 @@ function ConflictDialog({ c, onClose }: { c: UndoConflict; onClose: () => void }
         <table className="undo-diff">
           <thead>
             <tr>
-              <th>Feld</th>
-              <th>Nach der Änderung</th>
-              <th>Jetzt</th>
-              <th>Nach dem Wiederherstellen</th>
+              <th>{tt('Feld')}</th>
+              <th>{tt('Nach der Änderung')}</th>
+              <th>{tt('Jetzt')}</th>
+              <th>{tt('Nach dem Wiederherstellen')}</th>
             </tr>
           </thead>
           <tbody>
@@ -149,12 +150,13 @@ function ConflictDialog({ c, onClose }: { c: UndoConflict; onClose: () => void }
           </tbody>
         </table>
       </div>
-      <p className="muted small">„Trotzdem wiederherstellen“ überschreibt die neueren Werte mit denen aus der rechten Spalte.</p>
+      <p className="muted small">{tt('„Trotzdem wiederherstellen“ überschreibt die neueren Werte mit denen aus der rechten Spalte.')}</p>
     </Modal>
   );
 }
 
 function Changes({ changes }: { changes: UndoChange[] }) {
+  const tt = useT('shell');
   if (!changes.length) return null;
   return (
     <ul className="undo-changes">
@@ -162,7 +164,7 @@ function Changes({ changes }: { changes: UndoChange[] }) {
         <li key={`${c.k}${i}`}>
           <span className="k">{c.l}</span>
           <span className="from">{c.from}</span>
-          <span className="arrow" aria-label="geändert zu">
+          <span className="arrow" aria-label={tt('geändert zu')}>
             →
           </span>
           <span className="to">{c.to}</span>
@@ -173,6 +175,7 @@ function Changes({ changes }: { changes: UndoChange[] }) {
 }
 
 function Row({ e, onDone }: { e: UndoEntry; onDone: () => void }) {
+  const tt = useT('shell');
   const [busy, setBusy] = useState(false);
   const badge = ACTOR_BADGE[e.actor_kind];
   const verb = e.is_redo ? 'Wiederholen' : 'Wiederherstellen';
@@ -186,8 +189,8 @@ function Row({ e, onDone }: { e: UndoEntry; onDone: () => void }) {
         <div className="undo-row-meta muted small">
           {timeLabel(e.at)} · {e.mine ? 'du' : e.actor}
           {badge && <span className="undo-badge">{badge}</span>}
-          {e.count > 1 && <span className="undo-badge">{e.count} Einträge</span>}
-          {e.undone_at && <span className="undo-badge gray">rückgängig gemacht</span>}
+          {e.count > 1 && <span className="undo-badge">{tt('{count} Einträge', { count: e.count })}</span>}
+          {e.undone_at && <span className="undo-badge gray">{tt('rückgängig gemacht')}</span>}
         </div>
         <Changes changes={e.changes} />
         {e.notice && <p className="undo-notice">{e.notice}</p>}
@@ -211,7 +214,7 @@ function Row({ e, onDone }: { e: UndoEntry; onDone: () => void }) {
               {verb}
             </button>
           ) : (
-            <span className="muted small undo-why">{e.mine ? 'nicht mehr möglich' : `nur ${e.actor} oder ein Admin`}</span>
+            <span className="muted small undo-why">{e.mine ? tt('nicht mehr möglich') : tt('nur {actor} oder ein Admin', { actor: e.actor })}</span>
           )}
         </div>
       )}
@@ -220,6 +223,7 @@ function Row({ e, onDone }: { e: UndoEntry; onDone: () => void }) {
 }
 
 function HistoryPanel({ onClose }: { onClose: () => void }) {
+  const tt = useT('shell');
   const session = useSession();
   const admin = session.user.role === 'admin';
   const [q, setQ] = useState('');
@@ -280,11 +284,11 @@ function HistoryPanel({ onClose }: { onClose: () => void }) {
   }, [items]);
 
   return (
-    <Modal title="Verlauf" onClose={onClose} wide className="undo-modal undo-history" footer={<span className="muted small">Änderungen bleiben {days} Tage im Verlauf. {isMac ? '⌘' : 'Strg'}+Z macht die letzte rückgängig.</span>}>
+    <Modal title={tt('Verlauf')} onClose={onClose} wide className="undo-modal undo-history" footer={<span className="muted small">{tt('Änderungen bleiben {days} Tage im Verlauf.', { days: days })} {isMac ? '⌘' : tt('Strg')}{tt('+Z macht die letzte rückgängig.')}</span>}>
       <div className="undo-filters" data-tour="history-filters">
-        <input type="search" className="undo-search" placeholder="Suchen: Aufgabe, Kontakt, Deal …" aria-label="Im Verlauf suchen" value={q} onChange={(e) => setQ(e.target.value)} autoFocus data-tour="history-search" />
-        <select value={entity} onChange={(e) => setEntity(e.target.value)} aria-label="Nach Art filtern" data-tour="history-type">
-          <option value="">Alle Arten</option>
+        <input type="search" className="undo-search" placeholder={tt('Suchen: Aufgabe, Kontakt, Deal …')} aria-label={tt('Im Verlauf suchen')} value={q} onChange={(e) => setQ(e.target.value)} autoFocus data-tour="history-search" />
+        <select value={entity} onChange={(e) => setEntity(e.target.value)} aria-label={tt('Nach Art filtern')} data-tour="history-type">
+          <option value="">{tt('Alle Arten')}</option>
           {FILTER_TYPES.map(([k, n]) => (
             <option key={k} value={k}>
               {n}
@@ -293,8 +297,8 @@ function HistoryPanel({ onClose }: { onClose: () => void }) {
         </select>
       </div>
       <div className="undo-toggles">
-        {admin && <Check checked={all} onChange={setAll} label="Alle Änderungen im Sub-Account" />}
-        <Check checked={showUndone} onChange={setShowUndone} label="Auch Zurückgenommenes zeigen" />
+        {admin && <Check checked={all} onChange={setAll} label={tt('Alle Änderungen im Sub-Account')} />}
+        <Check checked={showUndone} onChange={setShowUndone} label={tt('Auch Zurückgenommenes zeigen')} />
       </div>
       {loading && !items.length ? (
         <Spinner />
@@ -312,14 +316,14 @@ function HistoryPanel({ onClose }: { onClose: () => void }) {
           ))}
           {more && (
             <button className="btn secondary undo-big" onClick={() => void load(true)} disabled={loading}>
-              Ältere zeigen
+              {tt('Ältere zeigen')}
             </button>
           )}
         </div>
       ) : (
         <div className="undo-empty">
           <Icon name="history" size={28} />
-          <p>{q || entity ? 'Dazu gibt es nichts im Verlauf.' : 'Noch nichts geändert – hier erscheint jede Änderung, die du machst, mit „Wiederherstellen“.'}</p>
+          <p>{q || entity ? tt('Dazu gibt es nichts im Verlauf.') : tt('Noch nichts geändert – hier erscheint jede Änderung, die du machst, mit „Wiederherstellen“.')}</p>
         </div>
       )}
       <p className="undo-link-row">
@@ -331,7 +335,7 @@ function HistoryPanel({ onClose }: { onClose: () => void }) {
             navigate('trash');
           }}
         >
-          <Icon name="trash" size={14} /> Zum Papierkorb (gelöschte Datensätze)
+          <Icon name="trash" size={14} /> {tt('Zum Papierkorb (gelöschte Datensätze)')}
         </a>
       </p>
     </Modal>

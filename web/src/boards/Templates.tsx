@@ -5,6 +5,7 @@ import { Check, Empty, Field, Input, Modal, Spinner, act, confirmAsk, navigate, 
 import { Mini } from './Mini';
 import { ReviewList } from './TemplateSave';
 import type { BoardFull, Catalogue, Starter, TemplateItem } from './types';
+import { useT } from '../i18n';
 
 interface Listing {
   starters: Starter[];
@@ -40,6 +41,7 @@ const save = (name: string, data: unknown) => {
 };
 
 function Tile({ p, catalogue, onOpen, selected, label }: { p: Pick; catalogue: Catalogue | null; onOpen: () => void; selected?: boolean; label?: string }) {
+  const tt = useT('x_misc');
   return (
     <button type="button" className={`bd-tile${selected ? ' on' : ''}`} onClick={onOpen} aria-pressed={selected} data-key={p.key}>
       <Mini cells={p.preview} accent={p.accent} catalogue={catalogue} />
@@ -49,8 +51,8 @@ function Tile({ p, catalogue, onOpen, selected, label }: { p: Pick; catalogue: C
         </b>
         <span>{p.description}</span>
         <span className="bd-tile-meta">
-          {p.widgets} Widgets
-          {p.item && p.item.scope === 'marketplace' && !p.item.mine ? ` · von ${p.item.author} · ${p.item.installs}× installiert` : ''}
+          {tt('{widgets} Widgets', { widgets: p.widgets })}
+          {p.item && p.item.scope === 'marketplace' && !p.item.mine ? tt(' · von {author} · {installs}× installiert', { author: p.item.author, installs: p.item.installs }) : ''}
           {label ? ` · ${label}` : ''}
         </span>
       </span>
@@ -60,14 +62,16 @@ function Tile({ p, catalogue, onOpen, selected, label }: { p: Pick; catalogue: C
 
 /** Install a template (or start from a starter): a foreign Marktplatz template first shows exactly what it reads and shows. */
 export function useInstall() {
+  const tt = useT('x_misc');
   return async (p: Pick, o: { name: string; scope: 'personal' | 'shared'; consent?: string[] }): Promise<BoardFull | undefined> => {
-    if (p.starter) return act(() => api.post<BoardFull>('/api/boards', { name: o.name, scope: o.scope, template: p.key }), 'Board angelegt');
-    return act(() => api.post<BoardFull>(`/api/board-templates/${p.key}/install`, { name: o.name, scope: o.scope, ...(o.consent ? { consent: o.consent } : {}) }), 'Board angelegt');
+    if (p.starter) return act(() => api.post<BoardFull>('/api/boards', { name: o.name, scope: o.scope, template: p.key }), tt('Board angelegt'));
+    return act(() => api.post<BoardFull>(`/api/board-templates/${p.key}/install`, { name: o.name, scope: o.scope, ...(o.consent ? { consent: o.consent } : {}) }), tt('Board angelegt'));
   };
 }
 
 /** "Neues Board": a name, where to start from, who sees it. */
 export function NewBoard({ catalogue, onClose, initial }: { catalogue: Catalogue | null; onClose: () => void; initial?: string }) {
+  const tt = useT('x_misc');
   const { data, error } = useLoad(() => api.get<Listing>('/api/board-templates'), []);
   const [key, setKey] = useState(initial ?? '');
   const [name, setName] = useState('');
@@ -79,13 +83,13 @@ export function NewBoard({ catalogue, onClose, initial }: { catalogue: Catalogue
   const cur = picks.find((p) => p.key === key) ?? blank;
   return (
     <Modal
-      title="Neues Board"
+      title={tt('Neues Board')}
       onClose={onClose}
       wide
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button
             className="btn"
@@ -101,7 +105,7 @@ export function NewBoard({ catalogue, onClose, initial }: { catalogue: Catalogue
             }}
             data-tour="board-create"
           >
-            Board anlegen
+            {tt('Board anlegen')}
           </button>
         </>
       }
@@ -111,32 +115,33 @@ export function NewBoard({ catalogue, onClose, initial }: { catalogue: Catalogue
           <Input value={name} onChange={setName} placeholder={cur.name} maxLength={80} autoFocus />
         </Field>
         <div className="field">
-          <span>Wer sieht es?</span>
-          <div className="chips" role="radiogroup" aria-label="Wer sieht es?">
+          <span>{tt('Wer sieht es?')}</span>
+          <div className="chips" role="radiogroup" aria-label={tt('Wer sieht es?')}>
             <button type="button" role="radio" aria-checked={scope === 'personal'} className={`chip${scope === 'personal' ? ' on' : ''}`} onClick={() => setScope('personal')}>
-              Nur ich
+              {tt('Nur ich')}
             </button>
             <button type="button" role="radio" aria-checked={scope === 'shared'} className={`chip${scope === 'shared' ? ' on' : ''}`} onClick={() => setScope('shared')}>
-              Das Team
+              {tt('Das Team')}
             </button>
           </div>
         </div>
       </div>
-      <h4 className="bd-h4">Womit starten?</h4>
+      <h4 className="bd-h4">{tt('Womit starten?')}</h4>
       {error && <p className="bd-error">{error}</p>}
       {!data && !error && <Spinner />}
       <div className="bd-tiles">
         {picks.map((p) => (
-          <Tile key={p.key || 'blank'} p={p} catalogue={catalogue} selected={p.key === key} onOpen={() => setKey(p.key)} label={p.item ? 'eigene Vorlage' : undefined} />
+          <Tile key={p.key || 'blank'} p={p} catalogue={catalogue} selected={p.key === key} onOpen={() => setKey(p.key)} label={p.item ? tt('eigene Vorlage') : undefined} />
         ))}
       </div>
-      <p className="muted small">Vorlagen aus dem Marktplatz findest du unter „Vorlagen“.</p>
+      <p className="muted small">{tt('Vorlagen aus dem Marktplatz findest du unter „Vorlagen“.')}</p>
     </Modal>
   );
 }
 
 /** One template in detail: what it contains, what it reads, and the buttons that fit the person's rights. */
 function Detail({ p, catalogue, onClose, onChanged }: { p: Pick; catalogue: Catalogue | null; onClose: () => void; onChanged: () => void }) {
+  const tt = useT('x_misc');
   const detail = useLoad(() => (p.starter ? Promise.resolve(null) : api.get<TemplateItem>(`/api/board-templates/${p.key}`)), [p.key]);
   const [name, setName] = useState(p.name);
   const [scope, setScope] = useState<'personal' | 'shared'>('personal');
@@ -159,26 +164,26 @@ function Detail({ p, catalogue, onClose, onChanged }: { p: Pick; catalogue: Cata
               <button
                 className="btn ghost danger-text"
                 onClick={async () => {
-                  if (!confirmAsk(`Vorlage „${p.name}“ löschen?`)) return;
-                  if (await act(() => api.del(`/api/board-templates/${p.key}`), 'Vorlage gelöscht')) {
+                  if (!confirmAsk(tt('Vorlage „{name}“ löschen?', { name: p.name }))) return;
+                  if (await act(() => api.del(`/api/board-templates/${p.key}`), tt('Vorlage gelöscht'))) {
                     onChanged();
                     onClose();
                   }
                 }}
               >
-                <Icon name="trash" size={14} /> Löschen
+                <Icon name="trash" size={14} /> {tt('Löschen')}
               </button>
               {t.scope === 'marketplace' && (
                 <button
                   className="btn secondary"
                   onClick={async () => {
-                    if (await act(() => api.post(`/api/board-templates/${p.key}/unpublish`, {}), 'Aus dem Marktplatz genommen')) {
+                    if (await act(() => api.post(`/api/board-templates/${p.key}/unpublish`, {}), tt('Aus dem Marktplatz genommen'))) {
                       onChanged();
                       onClose();
                     }
                   }}
                 >
-                  Aus dem Marktplatz nehmen
+                  {tt('Aus dem Marktplatz nehmen')}
                 </button>
               )}
             </>
@@ -194,7 +199,7 @@ function Detail({ p, catalogue, onClose, onChanged }: { p: Pick; catalogue: Cata
                 }
               }}
             >
-              <Icon name="download" size={14} /> Exportieren
+              <Icon name="download" size={14} /> {tt('Exportieren')}
             </button>
           )}
           <button
@@ -210,7 +215,7 @@ function Detail({ p, catalogue, onClose, onChanged }: { p: Pick; catalogue: Cata
               }
             }}
           >
-            Board daraus anlegen
+            {tt('Board daraus anlegen')}
           </button>
         </>
       }
@@ -221,8 +226,8 @@ function Detail({ p, catalogue, onClose, onChanged }: { p: Pick; catalogue: Cata
           {p.description && <p>{p.description}</p>}
           {t && (
             <p className="muted small">
-              {t.category_label} · Version {t.version} · von {t.author || 'unbekannt'}
-              {t.scope === 'marketplace' ? ` · ${t.installs}× installiert` : ''}
+              {tt('{category_label} · Version {version} · von', { category_label: t.category_label, version: t.version })} {t.author || 'unbekannt'}
+              {t.scope === 'marketplace' ? tt(' · {installs}× installiert', { installs: t.installs }) : ''}
             </p>
           )}
           {t?.items && (
@@ -235,17 +240,17 @@ function Detail({ p, catalogue, onClose, onChanged }: { p: Pick; catalogue: Cata
         </div>
       </div>
       <div className="grid2">
-        <Field label="Name des neuen Boards">
+        <Field label={tt('Name des neuen Boards')}>
           <Input value={name} onChange={setName} maxLength={80} />
         </Field>
         <div className="field">
-          <span>Wer sieht es?</span>
-          <div className="chips" role="radiogroup" aria-label="Wer sieht es?">
+          <span>{tt('Wer sieht es?')}</span>
+          <div className="chips" role="radiogroup" aria-label={tt('Wer sieht es?')}>
             <button type="button" role="radio" aria-checked={scope === 'personal'} className={`chip${scope === 'personal' ? ' on' : ''}`} onClick={() => setScope('personal')}>
-              Nur ich
+              {tt('Nur ich')}
             </button>
             <button type="button" role="radio" aria-checked={scope === 'shared'} className={`chip${scope === 'shared' ? ' on' : ''}`} onClick={() => setScope('shared')}>
-              Das Team
+              {tt('Das Team')}
             </button>
           </div>
         </div>
@@ -253,7 +258,7 @@ function Detail({ p, catalogue, onClose, onChanged }: { p: Pick; catalogue: Cata
       {detail.loading && !p.starter && <Spinner />}
       {review && (
         <>
-          <h4 className="bd-h4">{foreign ? 'Das macht diese Vorlage' : 'Prüfung'}</h4>
+          <h4 className="bd-h4">{foreign ? tt('Das macht diese Vorlage') : tt('Prüfung')}</h4>
           <ReviewList review={review} />
           {foreign && needs.length > 0 && (
             <div className="bd-consent">
@@ -262,7 +267,7 @@ function Detail({ p, catalogue, onClose, onChanged }: { p: Pick; catalogue: Cata
                   <li key={n.key}>{n.label}</li>
                 ))}
               </ul>
-              <Check checked={agree} onChange={setAgree} label="Ich habe das gelesen und möchte die Vorlage installieren." />
+              <Check checked={agree} onChange={setAgree} label={tt('Ich habe das gelesen und möchte die Vorlage installieren.')} />
             </div>
           )}
         </>
@@ -273,6 +278,7 @@ function Detail({ p, catalogue, onClose, onChanged }: { p: Pick; catalogue: Cata
 
 /** The "Vorlagen" tab: starters, own templates and – for everyone in the installation – the Marktplatz. */
 export function Gallery({ catalogue }: { catalogue: Catalogue | null }) {
+  const tt = useT('x_misc');
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [open, setOpen] = useState<Pick | null>(null);
@@ -301,11 +307,11 @@ export function Gallery({ catalogue }: { catalogue: Catalogue | null }) {
       <div className="bd-picker-bar">
         <label className="bd-search">
           <Icon name="search" size={15} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Vorlagen suchen" aria-label="Vorlagen suchen" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tt('Vorlagen suchen')} aria-label={tt('Vorlagen suchen')} />
         </label>
-        <div className="chips" role="group" aria-label="Kategorie">
+        <div className="chips" role="group" aria-label={tt('Kategorie')}>
           <button type="button" className={`chip${cat === '' ? ' on' : ''}`} onClick={() => setCat('')}>
-            Alle
+            {tt('Alle')}
           </button>
           {data?.categories.map((c) => (
             <button key={c.key} type="button" className={`chip${cat === c.key ? ' on' : ''}`} onClick={() => setCat(cat === c.key ? '' : c.key)}>
@@ -314,7 +320,7 @@ export function Gallery({ catalogue }: { catalogue: Catalogue | null }) {
           ))}
         </div>
         <button type="button" className="btn secondary small" onClick={() => file.current?.click()}>
-          <Icon name="upload" size={14} /> Vorlage importieren
+          <Icon name="upload" size={14} /> {tt('Vorlage importieren')}
         </button>
         <input
           ref={file}
@@ -327,7 +333,7 @@ export function Gallery({ catalogue }: { catalogue: Catalogue | null }) {
             if (!f) return;
             try {
               const t = await api.post<TemplateItem & { integrity_ok?: boolean }>('/api/board-templates/import', { bundle: JSON.parse(await f.text()) });
-              toast(t.integrity_ok === false ? `„${t.name}“ importiert – die Prüfsumme stimmt nicht, die Datei wurde verändert.` : `„${t.name}“ importiert`);
+              toast(t.integrity_ok === false ? tt('„{name}“ importiert – die Prüfsumme stimmt nicht, die Datei wurde verändert.', { name: t.name }) : tt('„{name}“ importiert', { name: t.name }));
               reload();
             } catch (err) {
               toastError(err);
@@ -342,7 +348,7 @@ export function Gallery({ catalogue }: { catalogue: Catalogue | null }) {
           {section('Zum Starten', data.starters.map(fromStarter))}
           {section('Meine Vorlagen', data.mine.map(fromTemplate), 'Nur in diesem Sub-Account sichtbar – oder im Marktplatz veröffentlicht.')}
           {section(`Aus dem ${data.names.marktplatz}`, data.marketplace.map(fromTemplate), 'Von anderen Sub-Accounts dieser Installation veröffentlicht. Vor dem Installieren siehst du, was eine Vorlage liest und zeigt.')}
-          {none && <Empty>Keine Vorlage passt zu deiner Suche.</Empty>}
+          {none && <Empty>{tt('Keine Vorlage passt zu deiner Suche.')}</Empty>}
         </>
       )}
       {open && <Detail p={open} catalogue={catalogue} onClose={() => setOpen(null)} onChanged={reload} />}

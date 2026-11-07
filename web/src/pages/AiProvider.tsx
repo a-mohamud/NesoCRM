@@ -3,6 +3,7 @@ import { api } from '../api';
 import { Icon } from '../icons';
 import { Badge, Field, Input, Select, Spinner, act, confirmAsk, toast, useLoad } from '../ui';
 import { SignupLink } from '../referrals';
+import { useT } from '../i18n';
 
 /**
  * KI-Anbieter for the KI-Assistent: Anthropic (Claude) or OpenAI (GPT), per sub-account with an agency
@@ -12,6 +13,7 @@ import { SignupLink } from '../referrals';
 const CUSTOM = '__custom';
 
 function ModelPicker({ value, onChange, models, fallback }: { value: string; onChange: (v: string) => void; models: { id: string; label: string }[]; fallback: string }) {
+  const tt = useT('x_ai');
   const known = !value || models.some((m) => m.id === value);
   const [forced, setForced] = useState(false);
   const custom = forced || !known;
@@ -25,21 +27,22 @@ function ModelPicker({ value, onChange, models, fallback }: { value: string; onC
         }}
         options={[['', `Standard (${fallback})`], ...models.map((m) => [m.id, m.label] as [string, string]), [CUSTOM, 'Anderes Modell (Freitext) …']]}
       />
-      {custom && <Input value={value} onChange={onChange} placeholder="Modell-ID, z. B. gpt-5" style={{ marginTop: 6 }} />}
+      {custom && <Input value={value} onChange={onChange} placeholder={tt('Modell-ID, z. B. gpt-5')} style={{ marginTop: 6 }} />}
     </>
   );
 }
 
 function OpenAiKeyField({ info, keyValue, setKey, onClear }: { info: any; keyValue: string; setKey: (v: string) => void; onClear: () => void }) {
+  const tt = useT('x_ai');
   const [edit, setEdit] = useState(false);
   const source: Record<string, string> = { agency: 'Schlüssel der Agentur', server: 'Schlüssel des Servers (PGHL_OPENAI_API_KEY)' };
   return (
     <Field
-      label="OpenAI-API-Schlüssel"
+      label={tt('OpenAI-API-Schlüssel')}
       tour="ai-openai-key"
       hint={
         <>
-          Bekommst du unter <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">platform.openai.com → API keys</a>. Er wird verschlüsselt gespeichert und nie wieder angezeigt; die Kosten laufen über dein OpenAI-Konto. <SignupLink id="openai" />
+          {tt('Bekommst du unter')} <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">{tt('platform.openai.com → API keys')}</a>{tt('. Er wird verschlüsselt gespeichert und nie wieder angezeigt; die Kosten laufen über dein OpenAI-Konto.')} <SignupLink id="openai" />
         </>
       }
     >
@@ -47,16 +50,16 @@ function OpenAiKeyField({ info, keyValue, setKey, onClear }: { info: any; keyVal
         <div className="row" style={{ alignItems: 'center' }}>
           <Badge tone="green">hinterlegt {info.key_hint}</Badge>
           <button className="btn small secondary" onClick={() => setEdit(true)}>
-            Ersetzen
+            {tt('Ersetzen')}
           </button>
-          <button className="btn small secondary" onClick={() => confirmAsk('OpenAI-Schlüssel entfernen?') && onClear()}>
-            Entfernen
+          <button className="btn small secondary" onClick={() => confirmAsk(tt('OpenAI-Schlüssel entfernen?')) && onClear()}>
+            {tt('Entfernen')}
           </button>
         </div>
       ) : (
         <>
-          <Input type="password" autoComplete="off" value={keyValue} onChange={setKey} placeholder={info.key_source && info.key_source !== 'account' ? `leer = ${source[info.key_source]}` : 'sk-…'} />
-          {!info.key_set && info.key_source && info.key_source !== 'account' && <small className="muted">Ohne eigenen Schlüssel wird der {source[info.key_source]} genutzt.</small>}
+          <Input type="password" autoComplete="off" value={keyValue} onChange={setKey} placeholder={info.key_source && info.key_source !== 'account' ? tt('leer = {v}', { v: source[info.key_source] }) : 'sk-…'} />
+          {!info.key_set && info.key_source && info.key_source !== 'account' && <small className="muted">{tt('Ohne eigenen Schlüssel wird der {v} genutzt.', { v: source[info.key_source] })}</small>}
         </>
       )}
     </Field>
@@ -65,6 +68,7 @@ function OpenAiKeyField({ info, keyValue, setKey, onClear }: { info: any; keyVal
 
 /** Card at the top of Einstellungen → KI-Assistent → Einrichtung. */
 export function AiProviderCard({ onChange, onPick, onDraft, version = 0 }: { onChange: () => void; onPick?: (provider: 'anthropic' | 'openai') => void; onDraft?: (body: Record<string, string> | null) => void; version?: number }) {
+  const tt = useT('x_ai');
   const p = useLoad(() => api.get<any>('/api/ai/provider'), [version]);
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
@@ -86,30 +90,30 @@ export function AiProviderCard({ onChange, onPick, onDraft, version = 0 }: { onC
   const d = p.data;
   const label = (id: string) => d.providers.find((x: any) => x.id === id)?.label ?? id;
   const save = async (extra: any = {}) => {
-    const r = await act(() => api.put('/api/ai/provider', { provider, openai_model: model, ...(key.trim() ? { openai_key: key.trim() } : {}), ...extra }), 'Gespeichert');
+    const r = await act(() => api.put('/api/ai/provider', { provider, openai_model: model, ...(key.trim() ? { openai_key: key.trim() } : {}), ...extra }), tt('Gespeichert'));
     if (r) (p.setData(r), setKey(''), onChange());
   };
   return (
     <div className="ai-provider" data-tour="ai-provider">
       {d.routed && (
         <p className="card small" style={{ background: 'var(--brand-soft)' }}>
-          Schnelle KI-Texte laufen gerade über <strong>{d.routed.label}{d.routed.model ? ` · ${d.routed.model}` : ''}</strong> (Einstellungen → KI-Anbieter → „Wofür welches Modell?“). Die Wahl hier gilt wieder, sobald die Zuordnung dort entfernt wird.
+          {tt('Schnelle KI-Texte laufen gerade über')} <strong>{d.routed.label}{d.routed.model ? ` · ${d.routed.model}` : ''}</strong> {tt('(Einstellungen → KI-Anbieter → „Wofür welches Modell?“). Die Wahl hier gilt wieder, sobald die Zuordnung dort entfernt wird.')}
         </p>
       )}
-      <Field label="KI-Anbieter" hint={`„Wie die Agentur“ folgt dem Standard der Agentur (gerade: ${label(d.agency_default)}). Vorschläge, Chat-Bot, Workflows, Telefonagent, Video-Recycling und App-Diktat nutzen alle diesen Anbieter.`}>
+      <Field label={tt('KI-Anbieter')} hint={tt('„Wie die Agentur“ folgt dem Standard der Agentur (gerade: {label}). Vorschläge, Chat-Bot, Workflows, Telefonagent, Video-Recycling und App-Diktat nutzen alle diesen Anbieter.', { label: label(d.agency_default) })}>
         <Select value={provider} onChange={setProvider} options={[['', `Wie die Agentur (${label(d.agency_default)})`], ['anthropic', 'Anthropic (Claude)'], ['openai', 'OpenAI (GPT)']]} />
       </Field>
       {effective === 'openai' && (
         <div className="grid2">
           <OpenAiKeyField info={d.openai} keyValue={key} setKey={setKey} onClear={() => save({ openai_key: null })} />
-          <Field label="OpenAI-Modell" tour="ai-openai-model" hint="GPT-5 mini reicht für fast alles; eigene Modell-IDs (auch feinjustierte) gehen als Freitext.">
+          <Field label={tt('OpenAI-Modell')} tour="ai-openai-model" hint={tt('GPT-5 mini reicht für fast alles; eigene Modell-IDs (auch feinjustierte) gehen als Freitext.')}>
             <ModelPicker value={model} onChange={setModel} models={d.openai.models} fallback={d.openai.default_model} />
           </Field>
         </div>
       )}
       <div className="row">
         <button className="btn secondary" onClick={() => save()}>
-          Anbieter speichern
+          {tt('Anbieter speichern')}
         </button>
         {effective === 'openai' && (
           <button
@@ -117,10 +121,10 @@ export function AiProviderCard({ onChange, onPick, onDraft, version = 0 }: { onC
             disabled={!key.trim() && !d.openai.key_source}
             onClick={async () => {
               const r = await act(() => api.post('/api/ai/provider/test', { openai_key: key.trim() || undefined, model: model || undefined }));
-              if (r) toast(`Verbindung ok – ${r.model} erreichbar`);
+              if (r) toast(tt('Verbindung ok – {model} erreichbar', { model: r.model }));
             }}
           >
-            OpenAI testen
+            {tt('OpenAI testen')}
           </button>
         )}
       </div>
@@ -131,6 +135,7 @@ export function AiProviderCard({ onChange, onPick, onDraft, version = 0 }: { onC
 
 /** Agency default (agency → KI-Werkzeuge). */
 export function AgencyAiProvider() {
+  const tt = useT('x_ai');
   const p = useLoad(() => api.get<any>('/api/agency/ai-provider'), []);
   const [provider, setProvider] = useState('anthropic');
   const [model, setModel] = useState('');
@@ -140,29 +145,29 @@ export function AgencyAiProvider() {
   }, [p.data]);
   if (!p.data) return <Spinner />;
   const save = async (extra: any = {}) => {
-    const r = await act(() => api.put('/api/agency/ai-provider', { provider, openai_model: model, ...(key.trim() ? { openai_key: key.trim() } : {}), ...extra }), 'Gespeichert');
+    const r = await act(() => api.put('/api/agency/ai-provider', { provider, openai_model: model, ...(key.trim() ? { openai_key: key.trim() } : {}), ...extra }), tt('Gespeichert'));
     if (r) (p.setData(r), setKey(''));
   };
   return (
     <div className="card" data-tour="ai-provider-agency">
       <h2>
-        <Icon name="ai" size={18} /> KI-Anbieter (Standard für alle Sub-Accounts)
+        <Icon name="ai" size={18} /> {tt('KI-Anbieter (Standard für alle Sub-Accounts)')}
       </h2>
-      <p className="muted small">Gilt für den KI-Assistenten jedes Sub-Accounts, der unter Einstellungen → KI-Assistent nichts Eigenes gewählt hat. Ein Agentur-Schlüssel für OpenAI wird dann von allen genutzt – Limits und Protokoll bleiben je Sub-Account.</p>
-      <Field label="Anbieter">
+      <p className="muted small">{tt('Gilt für den KI-Assistenten jedes Sub-Accounts, der unter Einstellungen → KI-Assistent nichts Eigenes gewählt hat. Ein Agentur-Schlüssel für OpenAI wird dann von allen genutzt – Limits und Protokoll bleiben je Sub-Account.')}</p>
+      <Field label={tt('Anbieter')}>
         <Select value={provider} onChange={setProvider} options={[['anthropic', 'Anthropic (Claude)'], ['openai', 'OpenAI (GPT)']]} />
       </Field>
       {provider === 'openai' && (
         <>
           <OpenAiKeyField info={p.data.openai} keyValue={key} setKey={setKey} onClear={() => save({ openai_key: null })} />
-          <Field label="OpenAI-Modell">
+          <Field label={tt('OpenAI-Modell')}>
             <ModelPicker value={model} onChange={setModel} models={p.data.openai.models} fallback="gpt-5-mini" />
           </Field>
         </>
       )}
       <div className="row">
         <button className="btn" onClick={() => save()}>
-          Speichern
+          {tt('Speichern')}
         </button>
         {provider === 'openai' && (
         <button
@@ -170,10 +175,10 @@ export function AgencyAiProvider() {
           disabled={!key.trim() && !p.data.openai.key_source}
           onClick={async () => {
             const r = await act(() => api.post('/api/agency/ai-provider/test', { openai_key: key.trim() || undefined, model: model || undefined }));
-            if (r) toast(`Verbindung ok – ${r.model} erreichbar`);
+            if (r) toast(tt('Verbindung ok – {model} erreichbar', { model: r.model }));
           }}
         >
-          OpenAI testen
+          {tt('OpenAI testen')}
         </button>
         )}
       </div>

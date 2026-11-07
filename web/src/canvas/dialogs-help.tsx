@@ -1,5 +1,6 @@
 import { Modal } from '../ui';
 import type { DialogProps } from './dialogs';
+import { useT } from '../i18n';
 
 /** Keyboard and mouse reference ("?" on the board). */
 
@@ -52,8 +53,9 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
 ];
 
 export function ShortcutsDialog({ onClose }: DialogProps) {
+  const tt = useT('x_misc');
   return (
-    <Modal title="Tastenkürzel" onClose={onClose} wide>
+    <Modal title={tt('Tastenkürzel')} onClose={onClose} wide>
       <div className="cv-keys">
         {SECTIONS.map((s) => (
           <section key={s.title}>
@@ -71,7 +73,7 @@ export function ShortcutsDialog({ onClose }: DialogProps) {
           </section>
         ))}
       </div>
-      <p className="muted small">Auf Mac gilt ⌘ statt Strg. Mit Maus: Rechtsklick öffnet das Kontextmenü, Doppelklick auf eine freie Stelle legt einen Text an.</p>
+      <p className="muted small">{tt('Auf Mac gilt ⌘ statt Strg. Mit Maus: Rechtsklick öffnet das Kontextmenü, Doppelklick auf eine freie Stelle legt einen Text an.')}</p>
     </Modal>
   );
 }

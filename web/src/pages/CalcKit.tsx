@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { SPEC } from '../../../server/services/calc-spec';
 import type { CalcInput } from '../../../server/services/calc-engine';
 import { Modal } from '../ui';
+import { useT } from '../i18n';
 
 /**
  * Shared pieces of the Gewinnrechner page: the editable input (path-based setters, so one tiny component edits any
@@ -60,8 +61,9 @@ export interface CalcCtx {
 }
 export const CalcContext = createContext<CalcCtx | null>(null);
 export const useCalc = () => {
+  const tt = useT('x_finance');
   const c = useContext(CalcContext);
-  if (!c) throw new Error('CalcContext fehlt');
+  if (!c) throw new Error(tt('CalcContext fehlt'));
   return c;
 };
 

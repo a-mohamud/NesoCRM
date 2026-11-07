@@ -1,4 +1,5 @@
 import { currentLocation } from '../api';
+import { tr } from '../i18n';
 
 /**
  * Server-sent events over fetch (POST with JSON body, our CSRF and sub-account headers) – EventSource
@@ -10,6 +11,7 @@ export interface AgentEvent {
 }
 
 export async function streamPost(path: string, body: unknown, onEvent: (e: AgentEvent) => void, signal?: AbortSignal): Promise<void> {
+  const tt = tr('x_ai');
   const loc = currentLocation();
   const r = await fetch(path, {
     method: 'POST',
@@ -22,7 +24,7 @@ export async function streamPost(path: string, body: unknown, onEvent: (e: Agent
   if (!r.ok || !type.includes('event-stream') || !r.body) {
     const data = type.includes('json') ? await r.json().catch(() => null) : null;
     if (r.status === 401) window.dispatchEvent(new Event('pghl:logout'));
-    throw new Error(data?.error || `Fehler ${r.status}`);
+    throw new Error(data?.error || tt('Fehler {status}', { status: r.status }));
   }
   const reader = r.body.getReader();
   const decoder = new TextDecoder();
@@ -52,10 +54,11 @@ export async function streamPost(path: string, body: unknown, onEvent: (e: Agent
 
 /** File → base64 (without the data: prefix) for /api/agent/files. */
 export function fileToBase64(file: File): Promise<string> {
+  const tt = tr('x_ai');
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
-    r.onerror = () => reject(new Error('Datei konnte nicht gelesen werden'));
+    r.onerror = () => reject(new Error(tt('Datei konnte nicht gelesen werden')));
     r.readAsDataURL(file);
   });
 }

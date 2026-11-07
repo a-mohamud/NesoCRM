@@ -3,6 +3,7 @@ import { api, dt } from '../api';
 import { Icon } from '../icons';
 import { Badge, Check, CodeBox, Field, Input, Modal, Select, Spinner, Textarea, act, confirmAsk, toast, toastError, useLoad } from '../ui';
 import { MoreFields } from '../areas/fields';
+import { useT, tr } from '../i18n';
 
 /**
  * Native mailboxes (Gmail and Outlook / Microsoft 365 over their official APIs):
@@ -31,12 +32,13 @@ function useRestoreFocus() {
 
 /** After the provider sends the browser back (?oauth=ok|error&msg=…): one message, then a clean address. */
 function useMailReturn(onOk: () => void) {
+  const tt = useT('x_comms');
   useEffect(() => {
     const q = new URLSearchParams(location.search);
     const state = q.get('oauth');
     if (!state || (state === 'ok' && !q.get('mailbox'))) return;
     if (state === 'ok') {
-      toast('Postfach verbunden – der Abgleich läuft');
+      toast(tt('Postfach verbunden – der Abgleich läuft'));
       onOk();
     } else toastError(q.get('msg') || 'Verbinden fehlgeschlagen');
     history.replaceState(null, '', location.pathname);
@@ -45,26 +47,31 @@ function useMailReturn(onOk: () => void) {
 }
 
 const fileToBase64 = (f: File) =>
-  new Promise<string>((resolve, reject) => {
+  {
+  const tt = tr('x_comms');
+  return new Promise<string>((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result).split(',')[1] ?? '');
-    r.onerror = () => reject(new Error('Datei konnte nicht gelesen werden'));
+    r.onerror = () => reject(new Error(tt('Datei konnte nicht gelesen werden')));
     r.readAsDataURL(f);
   });
+};
 
 const size = (n: number) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 function StatusBadge({ mb }: { mb: any }) {
+  const tt = useT('x_comms');
   if (!mb.enabled) return <Badge>aus</Badge>;
-  if (mb.status === 'reconnect') return <Badge tone="red">neu verbinden</Badge>;
-  if (mb.status === 'error') return <Badge tone="red">Fehler</Badge>;
-  if (mb.status === 'importing' || mb.status === 'new') return <Badge tone="yellow">wird importiert</Badge>;
+  if (mb.status === 'reconnect') return <Badge tone="red">{tt('neu verbinden')}</Badge>;
+  if (mb.status === 'error') return <Badge tone="red">{tt('Fehler')}</Badge>;
+  if (mb.status === 'importing' || mb.status === 'new') return <Badge tone="yellow">{tt('wird importiert')}</Badge>;
   return <Badge tone="green">verbunden</Badge>;
 }
 
 // --- Einstellungen → E-Mail & SMS -----------------------------------------------------------------------------------
 
 export function MailboxSettings() {
+  const tt = useT('x_comms');
   const s = useLoad(() => api.get<any>('/api/mailboxes'), []);
   const scheduled = useLoad(() => api.get<any[]>('/api/mail/scheduled'), []);
   useMailReturn(() => void s.reload());
@@ -94,90 +101,90 @@ export function MailboxSettings() {
     setBusy('');
     if (r) {
       const x = r.result;
-      toast(x.busy ? 'Der Abgleich läuft schon' : `Abgeglichen: ${x.created} neu, ${x.updated} geändert${x.deleted ? `, ${x.deleted} gelöscht` : ''}${x.more ? ' – weitere folgen im Hintergrund' : ''}`);
+      toast(x.busy ? tt('Der Abgleich läuft schon') : `Abgeglichen: ${x.created} neu, ${x.updated} geändert${x.deleted ? tt(', {deleted} gelöscht', { deleted: x.deleted }) : ''}${x.more ? tt(' – weitere folgen im Hintergrund') : ''}`);
     }
     void s.reload();
   };
   const disconnect = async (m: any) => {
-    if (!confirmAsk(`„${m.name}“ trennen? Der Zugriff wird entzogen. Bereits abgeglichene E-Mails bleiben in den Konversationen.`)) return;
-    if (await act(() => api.del(`/api/mailboxes/${m.id}`), 'Getrennt')) void s.reload();
+    if (!confirmAsk(tt('„{name}“ trennen? Der Zugriff wird entzogen. Bereits abgeglichene E-Mails bleiben in den Konversationen.', { name: m.name }))) return;
+    if (await act(() => api.del(`/api/mailboxes/${m.id}`), tt('Getrennt'))) void s.reload();
   };
   return (
     <div className="card mbx-card" data-tour="mailbox-card" style={{ marginTop: 16 }}>
       <h2>
-        <Icon name="email" size={18} /> Postfach verbinden (Gmail / Outlook)
+        <Icon name="email" size={18} /> {tt('Postfach verbinden (Gmail / Outlook)')}
       </h2>
-      <p className="muted small">Über die offiziellen Schnittstellen von Google und Microsoft – ohne IMAP/SMTP-Passwörter. Antworten, Archivieren und Labels gelten in beide Richtungen.</p>
+      <p className="muted small">{tt('Über die offiziellen Schnittstellen von Google und Microsoft – ohne IMAP/SMTP-Passwörter. Antworten, Archivieren und Labels gelten in beide Richtungen.')}</p>
       {!s.data.providers.google && !s.data.providers.microsoft && (
         <p className="small" style={{ color: 'var(--red)' }}>
-          Die Agentur hat noch keine Google- oder Microsoft-App hinterlegt (<em>Agentur → Integrationen → Google & Microsoft</em>). Anleitung: <code>docs/mailbox-sync.md</code>.
+          {tt('Die Agentur hat noch keine Google- oder Microsoft-App hinterlegt (')}<em>{tt('Agentur → Integrationen → Google & Microsoft')}</em>{tt('). Anleitung:')} <code>docs/mailbox-sync.md</code>.
         </p>
       )}
       <div className="grid2" data-tour="mailbox-connect">
-        <Field label="Anbieter">
+        <Field label={tt('Anbieter')}>
           <div data-tour="mailbox-provider">
             <Select value={f.provider} onChange={(v) => setF({ ...f, provider: v, shared: '' })} options={[['google', 'Gmail / Google Workspace'], ['microsoft', 'Outlook / Microsoft 365']]} />
           </div>
         </Field>
-        <Field label="Für wen?" hint="Sub-Account: fürs ganze Team. Persönlich: nur für dich – Regeln bestimmen, was ins CRM kommt.">
+        <Field label={tt('Für wen?')} hint={tt('Sub-Account: fürs ganze Team. Persönlich: nur für dich – Regeln bestimmen, was ins CRM kommt.')}>
           <Select value={f.scope} onChange={(v) => setF({ ...f, scope: v })} options={[['location', s.data.can_manage_location ? 'Dieser Sub-Account' : 'Dieser Sub-Account (Einstellungs-Recht fehlt)'], ['user', 'Nur für mich (persönlich)']]} />
         </Field>
       </div>
       <MoreFields id="mailbox-connect" values={[f.name, f.shared]}>
         <div className="grid2">
-          <Field label="Zugriff">
+          <Field label={tt('Zugriff')}>
             <Select value={f.access} onChange={(v) => setF({ ...f, access: v })} options={ACCESS} />
           </Field>
-          <Field label="Name (optional)">
-            <Input value={f.name} onChange={(v) => setF({ ...f, name: v })} placeholder="z. B. Info-Postfach" />
+          <Field label={tt('Name (optional)')}>
+            <Input value={f.name} onChange={(v) => setF({ ...f, name: v })} placeholder={tt('z. B. Info-Postfach')} />
           </Field>
           {f.provider === 'microsoft' && (
-            <Field label="Gemeinsames Postfach (optional)" hint="Adresse eines Shared Mailbox; du meldest dich mit deinem Konto an, das Zugriff darauf hat.">
+            <Field label={tt('Gemeinsames Postfach (optional)')} hint={tt('Adresse eines Shared Mailbox; du meldest dich mit deinem Konto an, das Zugriff darauf hat.')}>
               <Input value={f.shared} onChange={(v) => setF({ ...f, shared: v })} placeholder="team@firma.de" />
             </Field>
           )}
         </div>
       </MoreFields>
       <button className="btn" disabled={!usable} onClick={() => connect()}>
-        Mit {PROVIDER[f.provider]} verbinden
+        {tt('Mit {v} verbinden', { v: PROVIDER[f.provider] })}
       </button>
       {f.provider === 'google' && f.access !== 'send' && (
         <p className="muted small" style={{ marginTop: 8 }}>
-          Hinweis: Gmail-Lese-/Änderungsrechte sind bei Google „eingeschränkt“. Eine eigene Agentur-App im Modus „Testen“ (Testnutzer eintragen) oder als interne Workspace-App braucht keine Prüfung – im Testmodus muss alle 7 Tage neu verbunden werden. Details: <code>docs/mailbox-sync.md</code>.
+          {tt('Hinweis: Gmail-Lese-/Änderungsrechte sind bei Google „eingeschränkt“. Eine eigene Agentur-App im Modus „Testen“ (Testnutzer eintragen) oder als interne Workspace-App braucht keine Prüfung – im Testmodus muss alle 7 Tage neu verbunden werden. Details:')} <code>docs/mailbox-sync.md</code>.
         </p>
       )}
 
       <hr />
-      {list.length > 0 && <h3>Verbundene Postfächer</h3>}
+      {list.length > 0 && <h3>{tt('Verbundene Postfächer')}</h3>}
       <div className="mbx-list" data-tour="mailbox-list">
         {list.map((m) => (
           <div key={m.id} className="card oauth-conn mbx-item">
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <strong>{m.name}</strong> <span className="muted">{m.address}</span> <Badge tone="blue">{PROVIDER[m.provider]}</Badge> <Badge>{m.scope === 'user' ? 'persönlich' : 'Sub-Account'}</Badge> <StatusBadge mb={m} />
+                <strong>{m.name}</strong> <span className="muted">{m.address}</span> <Badge tone="blue">{PROVIDER[m.provider]}</Badge> <Badge>{m.scope === 'user' ? tt('persönlich') : tt('Sub-Account')}</Badge> <StatusBadge mb={m} />
                 <div className="muted small">
-                  {m.access === 'send' ? 'Nur Senden – kein Abgleich' : m.last_sync_at ? `Letzter Abgleich ${dt(m.last_sync_at)} · ${m.messages} Nachrichten` : 'Noch nicht abgeglichen'}
-                  {m.access === 'readonly' ? ' · nur lesen' : ''}
-                  {m.access !== 'send' ? (m.push.active ? ' · Push aktiv' : ' · Abruf alle 3 Minuten') : ''}
+                  {m.access === 'send' ? tt('Nur Senden – kein Abgleich') : m.last_sync_at ? tt('Letzter Abgleich {dt} · {messages} Nachrichten', { dt: dt(m.last_sync_at), messages: m.messages }) : tt('Noch nicht abgeglichen')}
+                  {m.access === 'readonly' ? tt(' · nur lesen') : ''}
+                  {m.access !== 'send' ? (m.push.active ? tt(' · Push aktiv') : tt(' · Abruf alle 3 Minuten')) : ''}
                 </div>
                 {m.last_error && <div className="small" style={{ color: 'var(--red)' }}>{m.last_error}</div>}
-                {m.push.error && !m.push.active && m.access !== 'send' && <div className="muted small">Push: {m.push.error}</div>}
+                {m.push.error && !m.push.active && m.access !== 'send' && <div className="muted small">{tt('Push: {error}', { error: m.push.error })}</div>}
               </div>
               {m.can_manage && (
                 <div className="actions">
                   {m.needs_reconnect && (
                     <button className="btn small" onClick={() => connect(m.id)}>
-                      Neu verbinden
+                      {tt('Neu verbinden')}
                     </button>
                   )}
                   <button className="btn small secondary" disabled={busy === m.id || m.needs_reconnect} onClick={() => sync(m)}>
-                    <Icon name="refresh" size={14} /> Jetzt abgleichen
+                    <Icon name="refresh" size={14} /> {tt('Jetzt abgleichen')}
                   </button>
                   <button className="btn small secondary" data-tour="mailbox-edit" onClick={() => setEditing(m)}>
-                    Einstellungen
+                    {tt('Einstellungen')}
                   </button>
                   <button className="btn small danger" onClick={() => disconnect(m)}>
-                    Trennen
+                    {tt('Trennen')}
                   </button>
                 </div>
               )}
@@ -189,14 +196,14 @@ export function MailboxSettings() {
       {!!scheduled.data?.length && (
         <>
           <hr />
-          <h3>Geplante E-Mails</h3>
+          <h3>{tt('Geplante E-Mails')}</h3>
           {scheduled.data.map((x: any) => (
             <div key={x.id} className="row" style={{ justifyContent: 'space-between' }}>
               <span>
-                {dt(x.send_at)} · {(x.to ?? []).map((a: any) => a.email ?? a).join(', ')} · <strong>{x.subject || '(kein Betreff)'}</strong> {x.status === 'failed' && <Badge tone="red">fehlgeschlagen: {x.error}</Badge>}
+                {dt(x.send_at)} · {(x.to ?? []).map((a: any) => a.email ?? a).join(', ')} · <strong>{x.subject || tt('(kein Betreff)')}</strong> {x.status === 'failed' && <Badge tone="red">fehlgeschlagen: {x.error}</Badge>}
               </span>
-              <button className="btn small secondary" onClick={async () => (await act(() => api.del(`/api/mail/scheduled/${x.id}`), 'Abgebrochen')) && scheduled.reload()}>
-                Abbrechen
+              <button className="btn small secondary" onClick={async () => (await act(() => api.del(`/api/mail/scheduled/${x.id}`), tt('Abgebrochen'))) && scheduled.reload()}>
+                {tt('Abbrechen')}
               </button>
             </div>
           ))}
@@ -208,6 +215,7 @@ export function MailboxSettings() {
 }
 
 function MailboxEditor({ mb, locations, push, onClose, onChanged }: { mb: any; locations: { id: string; name: string }[]; push: any; onClose: () => void; onChanged: () => void }) {
+  const tt = useT('x_comms');
   useRestoreFocus();
   const folders = useLoad(() => (mb.can_read ? api.get<any>(`/api/mailboxes/${mb.id}/folders`) : Promise.resolve({ folders: [], labels: [], selected: [] })), [mb.id]);
   const [f, setF] = useState({ name: mb.name, enabled: mb.enabled, signature: mb.signature, window_days: String(mb.window_days), contact_policy: mb.contact_policy, skip_promotions: mb.skip_promotions, trigger_workflows: mb.trigger_workflows, track_engagement: !!mb.track_engagement, default_location_id: mb.default_location_id ?? '' });
@@ -226,7 +234,7 @@ function MailboxEditor({ mb, locations, push, onClose, onChanged }: { mb: any; l
       body.rules = rules.filter((r) => r.value && r.location_id);
       body.default_location_id = f.default_location_id;
     }
-    const r = await act(() => api.patch(`/api/mailboxes/${mb.id}`, body), 'Gespeichert');
+    const r = await act(() => api.patch(`/api/mailboxes/${mb.id}`, body), tt('Gespeichert'));
     setSaving(false);
     if (r) {
       onChanged();
@@ -234,27 +242,27 @@ function MailboxEditor({ mb, locations, push, onClose, onChanged }: { mb: any; l
     }
   };
   const pushNow = async (enable: boolean) => {
-    if (await act(() => api.post(`/api/mailboxes/${mb.id}/push`, { enable }), enable ? 'Push eingerichtet' : 'Push ausgeschaltet')) onChanged();
+    if (await act(() => api.post(`/api/mailboxes/${mb.id}/push`, { enable }), enable ? tt('Push eingerichtet') : tt('Push ausgeschaltet'))) onChanged();
   };
   const resync = async () => {
-    if (!confirmAsk('Alle E-Mails im eingestellten Zeitraum noch einmal einlesen? Bereits bekannte Mails werden erkannt, nichts doppelt angelegt.')) return;
+    if (!confirmAsk(tt('Alle E-Mails im eingestellten Zeitraum noch einmal einlesen? Bereits bekannte Mails werden erkannt, nichts doppelt angelegt.'))) return;
     const r = await act(() => api.post(`/api/mailboxes/${mb.id}/sync`, { full: true }));
-    if (r) toast('Neu eingelesen');
+    if (r) toast(tt('Neu eingelesen'));
     onChanged();
   };
   return (
     <Modal
-      title={`Postfach: ${mb.name}`}
+      title={tt('Postfach: {name}', { name: mb.name })}
       onClose={onClose}
       wide
       footer={
         <>
           <button className="btn" disabled={saving} onClick={save}>
-            Speichern
+            {tt('Speichern')}
           </button>
           {mb.can_read && (
             <button className="btn secondary" onClick={resync}>
-              Alles neu einlesen
+              {tt('Alles neu einlesen')}
             </button>
           )}
         </>
@@ -264,25 +272,25 @@ function MailboxEditor({ mb, locations, push, onClose, onChanged }: { mb: any; l
         <Field label="Name">
           <Input value={f.name} onChange={(v) => setF({ ...f, name: v })} />
         </Field>
-        <Field label="Abgleich-Zeitraum" hint="So weit zurück wird beim ersten Mal gelesen (und nach einer Änderung neu).">
+        <Field label={tt('Abgleich-Zeitraum')} hint={tt('So weit zurück wird beim ersten Mal gelesen (und nach einer Änderung neu).')}>
           <div data-tour="mailbox-window">
             <Select value={f.window_days} onChange={(v) => setF({ ...f, window_days: v })} options={[['30', '30 Tage'], ['90', '90 Tage'], ['180', '180 Tage'], ['365', '1 Jahr']]} />
           </div>
         </Field>
       </div>
-      <Check checked={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label="Postfach aktiv (Abgleich und Senden)" />
-      <Field label="Signatur" hint="Wird unter E-Mails gesetzt, die du aus HyperLevel über dieses Postfach sendest.">
+      <Check checked={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label={tt('Postfach aktiv (Abgleich und Senden)')} />
+      <Field label={tt('Signatur')} hint={tt('Wird unter E-Mails gesetzt, die du aus HyperLevel über dieses Postfach sendest.')}>
         <Textarea value={f.signature} onChange={(v) => setF({ ...f, signature: v })} rows={3} />
       </Field>
       <MoreFields id="mailbox-editor" values={[f.track_engagement, f.contact_policy !== 'all' && f.contact_policy, f.skip_promotions, f.trigger_workflows, picked, mb.folders]}>
       <div data-tour="mailbox-tracking">
-        <Check checked={f.track_engagement} onChange={(v) => setF({ ...f, track_engagement: v })} label="Öffnungen und Klicks verfolgen" />
-        <p className="muted small">Standard: aus. Eingeschaltet bekommen Mails aus HyperLevel ein Zählpixel und umgeleitete Links – das kann eine Einwilligung der Empfänger erfordern (Datenschutzerklärung).</p>
+        <Check checked={f.track_engagement} onChange={(v) => setF({ ...f, track_engagement: v })} label={tt('Öffnungen und Klicks verfolgen')} />
+        <p className="muted small">{tt('Standard: aus. Eingeschaltet bekommen Mails aus HyperLevel ein Zählpixel und umgeleitete Links – das kann eine Einwilligung der Empfänger erfordern (Datenschutzerklärung).')}</p>
       </div>
 
       {mb.can_read && (
         <>
-          <h3>{mb.provider === 'google' ? 'Labels' : 'Ordner'}, die abgeglichen werden</h3>
+          <h3>{mb.provider === 'google' ? tt('Labels') : tt('Ordner')}{tt(', die abgeglichen werden')}</h3>
           <div data-tour="mailbox-folders">
             {folders.loading && !folders.data ? (
               <Spinner />
@@ -296,14 +304,14 @@ function MailboxEditor({ mb, locations, push, onClose, onChanged }: { mb: any; l
               </div>
             )}
           </div>
-          <p className="muted small">Spam und Papierkorb werden nie importiert. Ohne Auswahl: Posteingang, Gesendet und Entwürfe{mb.provider === 'microsoft' ? ' (und Archiv)' : ''}.</p>
+          <p className="muted small">{tt('Spam und Papierkorb werden nie importiert. Ohne Auswahl: Posteingang, Gesendet und Entwürfe')}{mb.provider === 'microsoft' ? tt(' (und Archiv)') : ''}.</p>
           <div className="grid2">
-            <Field label="Absender">
+            <Field label={tt('Absender')}>
               <Select value={f.contact_policy} onChange={(v) => setF({ ...f, contact_policy: v })} options={[['all', 'Alle Absender (neue Kontakte werden angelegt)'], ['known', 'Nur Kontakte, die es schon gibt']]} />
             </Field>
             <div>
-              {mb.provider === 'google' && <Check checked={!!f.skip_promotions} onChange={(v) => setF({ ...f, skip_promotions: v })} label="Werbung und soziale Benachrichtigungen (Gmail-Kategorien) überspringen" />}
-              <Check checked={!!f.trigger_workflows} onChange={(v) => setF({ ...f, trigger_workflows: v })} label="Neue eingehende Mails starten Automationen („Nachricht empfangen“)" />
+              {mb.provider === 'google' && <Check checked={!!f.skip_promotions} onChange={(v) => setF({ ...f, skip_promotions: v })} label={tt('Werbung und soziale Benachrichtigungen (Gmail-Kategorien) überspringen')} />}
+              <Check checked={!!f.trigger_workflows} onChange={(v) => setF({ ...f, trigger_workflows: v })} label={tt('Neue eingehende Mails starten Automationen („Nachricht empfangen“)')} />
             </div>
           </div>
         </>
@@ -312,42 +320,42 @@ function MailboxEditor({ mb, locations, push, onClose, onChanged }: { mb: any; l
 
       {mb.scope === 'user' && (
         <>
-          <h3>Welche Mail in welchen Sub-Account kommt</h3>
-          <p className="muted small">Persönliche Postfächer importieren nur, was eine Regel trifft (die erste passende gewinnt) – oder alles Übrige in den Standard-Sub-Account. So landet nichts Privates im CRM.</p>
+          <h3>{tt('Welche Mail in welchen Sub-Account kommt')}</h3>
+          <p className="muted small">{tt('Persönliche Postfächer importieren nur, was eine Regel trifft (die erste passende gewinnt) – oder alles Übrige in den Standard-Sub-Account. So landet nichts Privates im CRM.')}</p>
           {rules.map((r, i) => (
             <div key={i} className="mbx-rule">
               <Select value={r.field} onChange={(v) => setRules(rules.map((x, j) => (j === i ? { ...x, field: v } : x)))} options={[['address', 'Adresse ist'], ['domain', 'Domain ist'], ['subject', 'Betreff enthält'], ['any', 'Text enthält']]} />
-              <Input value={r.value} onChange={(v) => setRules(rules.map((x, j) => (j === i ? { ...x, value: v } : x)))} placeholder="z. B. kunde.de" />
+              <Input value={r.value} onChange={(v) => setRules(rules.map((x, j) => (j === i ? { ...x, value: v } : x)))} placeholder={tt('z. B. kunde.de')} />
               <Select value={r.location_id} onChange={(v) => setRules(rules.map((x, j) => (j === i ? { ...x, location_id: v } : x)))} options={locations.map((l) => [l.id, l.name] as [string, string])} />
-              <button className="icon-btn" aria-label="Regel entfernen" onClick={() => setRules(rules.filter((_, j) => j !== i))}>
+              <button className="icon-btn" aria-label={tt('Regel entfernen')} onClick={() => setRules(rules.filter((_, j) => j !== i))}>
                 ✕
               </button>
             </div>
           ))}
           <button className="btn small secondary" onClick={() => setRules([...rules, { field: 'domain', value: '', location_id: locations[0]?.id ?? '' }])}>
-            + Regel
+            {tt('+ Regel')}
           </button>
-          <Field label="Alles andere">
-            <Select value={f.default_location_id} onChange={(v) => setF({ ...f, default_location_id: v })} options={locations.map((l) => [l.id, `in „${l.name}“ ablegen`] as [string, string])} placeholder="Nicht importieren" />
+          <Field label={tt('Alles andere')}>
+            <Select value={f.default_location_id} onChange={(v) => setF({ ...f, default_location_id: v })} options={locations.map((l) => [l.id, `in „${l.name}“ ablegen`] as [string, string])} placeholder={tt('Nicht importieren')} />
           </Field>
         </>
       )}
 
       {mb.can_read && (
         <>
-          <h3>Push</h3>
+          <h3>{tt('Push')}</h3>
           <p className="muted small">
-            {mb.push.active ? `Push ist aktiv (${mb.push.kind === 'gmail_watch' ? 'Gmail → Pub/Sub' : 'Microsoft-Benachrichtigungen'}) – neue Mails erscheinen in Sekunden.` : `Kein Push: HyperLevel fragt alle 3 Minuten nach. ${mb.push.error ?? ''}`}
-            {mb.provider === 'google' && !push?.gmail && ' Für Gmail-Push trägt die Agentur ein Pub/Sub-Thema ein (Agentur → Integrationen).'}
-            {mb.provider === 'microsoft' && !push?.graph && ' Microsoft-Push braucht eine öffentliche https-Adresse.'}
+            {mb.push.active ? `Push ist aktiv (${mb.push.kind === 'gmail_watch' ? tt('Gmail → Pub/Sub') : tt('Microsoft-Benachrichtigungen')}) – neue Mails erscheinen in Sekunden.` : tt('Kein Push: HyperLevel fragt alle 3 Minuten nach. {v}', { v: mb.push.error ?? '' })}
+            {mb.provider === 'google' && !push?.gmail && tt(' Für Gmail-Push trägt die Agentur ein Pub/Sub-Thema ein (Agentur → Integrationen).')}
+            {mb.provider === 'microsoft' && !push?.graph && tt(' Microsoft-Push braucht eine öffentliche https-Adresse.')}
           </p>
           <div className="actions">
             <button className="btn small secondary" onClick={() => pushNow(true)}>
-              Push (neu) einrichten
+              {tt('Push (neu) einrichten')}
             </button>
             {mb.push.active && (
               <button className="btn small secondary" onClick={() => pushNow(false)}>
-                Push ausschalten
+                {tt('Push ausschalten')}
               </button>
             )}
           </div>
@@ -359,15 +367,16 @@ function MailboxEditor({ mb, locations, push, onClose, onChanged }: { mb: any; l
 
 /** Provider "Verbundenes Postfach" in E-Mail & SMS: which mailbox sends the sub-account's e-mails (workflows, campaigns, the composer). */
 export function MailboxTransportPanel({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const tt = useT('x_comms');
   const l = useLoad(() => api.get<any[]>('/api/mail/mailboxes'), []);
   const boxes = (l.data ?? []).filter((m) => m.scope === 'location' && m.can_send && m.enabled);
   return (
     <div data-tour="mailbox-transport">
-      <p className="muted small">Alle E-Mails dieses Sub-Accounts (Automationen, Kampagnen, Nachrichten im Posteingang) gehen über das gewählte Postfach – sie erscheinen in dessen „Gesendet“.</p>
-      <Field label="Postfach">
-        <Select value={value} onChange={onChange} options={boxes.map((m) => [m.id, `${m.name} (${m.address})`] as [string, string])} placeholder="Postfach wählen …" />
+      <p className="muted small">{tt('Alle E-Mails dieses Sub-Accounts (Automationen, Kampagnen, Nachrichten im Posteingang) gehen über das gewählte Postfach – sie erscheinen in dessen „Gesendet“.')}</p>
+      <Field label={tt('Postfach')}>
+        <Select value={value} onChange={onChange} options={boxes.map((m) => [m.id, `${m.name} (${m.address})`] as [string, string])} placeholder={tt('Postfach wählen …')} />
       </Field>
-      {l.data && !boxes.length && <p className="small" style={{ color: 'var(--red)' }}>Kein Sub-Account-Postfach mit Senderecht verbunden – unten „Postfach verbinden“.</p>}
+      {l.data && !boxes.length && <p className="small" style={{ color: 'var(--red)' }}>{tt('Kein Sub-Account-Postfach mit Senderecht verbunden – unten „Postfach verbinden“.')}</p>}
     </div>
   );
 }
@@ -375,6 +384,7 @@ export function MailboxTransportPanel({ value, onChange }: { value: string; onCh
 // --- Agentur → Integrationen ---------------------------------------------------------------------------------------------
 
 export function MailboxAgencyCard() {
+  const tt = useT('x_comms');
   const s = useLoad(() => api.get<any>('/api/agency/mailbox-push'), []);
   const [f, setF] = useState({ gmail_topic: '', service_account: '', audience: '' });
   useEffect(() => {
@@ -383,47 +393,47 @@ export function MailboxAgencyCard() {
   if (!s.data) return s.error ? <p style={{ color: 'var(--red)' }}>{s.error}</p> : <Spinner />;
   const d = s.data;
   const save = async (extra: any = {}) => {
-    const r = await act(() => api.put('/api/agency/mailbox-push', { ...f, ...extra }), 'Gespeichert');
+    const r = await act(() => api.put('/api/agency/mailbox-push', { ...f, ...extra }), tt('Gespeichert'));
     if (r) s.setData(r);
   };
   return (
     <div className="card" data-tour="mailbox-agency">
       <h2>
-        <Icon name="email" size={18} /> Postfach-Sync: Push (Gmail & Outlook)
+        <Icon name="email" size={18} /> {tt('Postfach-Sync: Push (Gmail & Outlook)')}
       </h2>
       <p className="muted small">
-        Ohne diese Einstellungen funktioniert der Postfach-Sync trotzdem: HyperLevel fragt dann alle 3 Minuten nach neuen Mails. Mit Push erscheinen sie in Sekunden. Postfächer verbindet jedes Team unter <em>Einstellungen → E-Mail & SMS</em> mit der Google-/Microsoft-App von oben (zusätzliche Berechtigungen: Gmail <code>gmail.modify</code>, <code>gmail.send</code> bzw. Graph <code>Mail.ReadWrite</code>, <code>Mail.Send</code>; dieselben Weiterleitungs-URIs). Anleitung: <code>docs/mailbox-sync.md</code>.
+        {tt('Ohne diese Einstellungen funktioniert der Postfach-Sync trotzdem: HyperLevel fragt dann alle 3 Minuten nach neuen Mails. Mit Push erscheinen sie in Sekunden. Postfächer verbindet jedes Team unter')} <em>{tt('Einstellungen → E-Mail & SMS')}</em> {tt('mit der Google-/Microsoft-App von oben (zusätzliche Berechtigungen: Gmail')} <code>gmail.modify</code>, <code>gmail.send</code> {tt('bzw. Graph')} <code>{tt('Mail.ReadWrite')}</code>, <code>{tt('Mail.Send')}</code>{tt('; dieselben Weiterleitungs-URIs). Anleitung:')} <code>docs/mailbox-sync.md</code>.
       </p>
       <div className="grid2">
         <div>
           <h3>
-            Gmail → Pub/Sub {d.gmail.ready ? <Badge tone="green">Thema eingetragen</Badge> : <Badge>aus</Badge>} {d.active.gmail ? <Badge tone="blue">{d.active.gmail} aktiv</Badge> : null}
+            {tt('Gmail → Pub/Sub')} {d.gmail.ready ? <Badge tone="green">{tt('Thema eingetragen')}</Badge> : <Badge>aus</Badge>} {d.active.gmail ? <Badge tone="blue">{d.active.gmail} aktiv</Badge> : null}
           </h3>
-          <Field label="Pub/Sub-Thema" hint="projects/<projekt>/topics/<name> – Google-Konto gmail-api-push@system.gserviceaccount.com braucht dort die Rolle „Pub/Sub-Publisher“.">
+          <Field label={tt('Pub/Sub-Thema')} hint={tt('projects/<projekt>/topics/<name> – Google-Konto gmail-api-push@system.gserviceaccount.com braucht dort die Rolle „Pub/Sub-Publisher“.')}>
             <Input value={f.gmail_topic} onChange={(v) => setF({ ...f, gmail_topic: v })} placeholder="projects/mein-projekt/topics/gmail-push" />
           </Field>
-          <Field label="Dienstkonto der Push-Subscription" hint="Pub/Sub signiert jeden Aufruf mit einem OpenID-Token dieses Dienstkontos; nur dann wird er per Token akzeptiert.">
+          <Field label={tt('Dienstkonto der Push-Subscription')} hint={tt('Pub/Sub signiert jeden Aufruf mit einem OpenID-Token dieses Dienstkontos; nur dann wird er per Token akzeptiert.')}>
             <Input value={f.service_account} onChange={(v) => setF({ ...f, service_account: v })} placeholder="push@mein-projekt.iam.gserviceaccount.com" />
           </Field>
-          <Field label="Zielgruppe (audience), optional" hint={`Leer = ${d.gmail.endpoint_url}`}>
+          <Field label={tt('Zielgruppe (audience), optional')} hint={tt('Leer = {endpoint_url}', { endpoint_url: d.gmail.endpoint_url })}>
             <Input value={f.audience} onChange={(v) => setF({ ...f, audience: v })} />
           </Field>
-          <Field label="Push-Endpunkt der Subscription (mit geheimem Schlüssel)">
+          <Field label={tt('Push-Endpunkt der Subscription (mit geheimem Schlüssel)')}>
             <CodeBox text={d.gmail.push_url} />
           </Field>
-          <p className="muted small">{d.gmail.jwt_ready ? 'Token-Prüfung aktiv (Zielgruppe + Dienstkonto).' : 'Ohne Dienstkonto gilt nur der geheime Schlüssel in der Adresse.'}</p>
+          <p className="muted small">{d.gmail.jwt_ready ? tt('Token-Prüfung aktiv (Zielgruppe + Dienstkonto).') : tt('Ohne Dienstkonto gilt nur der geheime Schlüssel in der Adresse.')}</p>
         </div>
         <div>
           <h3>
-            Microsoft Graph {d.graph.ready ? <Badge tone="green">bereit</Badge> : <Badge>nicht möglich</Badge>} {d.active.graph ? <Badge tone="blue">{d.active.graph} aktiv</Badge> : null}
+            {tt('Microsoft Graph')} {d.graph.ready ? <Badge tone="green">bereit</Badge> : <Badge>{tt('nicht möglich')}</Badge>} {d.active.graph ? <Badge tone="blue">{d.active.graph} aktiv</Badge> : null}
           </h3>
           {d.graph.ready ? (
             <>
-              <p className="muted small">Wird je Postfach automatisch eingerichtet (Abo mit geheimem clientState, wird vor Ablauf erneuert). Nichts einzutragen.</p>
-              <Field label="Benachrichtigungs-URL">
+              <p className="muted small">{tt('Wird je Postfach automatisch eingerichtet (Abo mit geheimem clientState, wird vor Ablauf erneuert). Nichts einzutragen.')}</p>
+              <Field label={tt('Benachrichtigungs-URL')}>
                 <CodeBox text={d.graph.notification_url} />
               </Field>
-              <Field label="Lifecycle-URL">
+              <Field label={tt('Lifecycle-URL')}>
                 <CodeBox text={d.graph.lifecycle_url} />
               </Field>
             </>
@@ -434,10 +444,10 @@ export function MailboxAgencyCard() {
       </div>
       <div className="actions">
         <button className="btn" onClick={() => save()}>
-          Speichern
+          {tt('Speichern')}
         </button>
-        <button className="btn secondary" onClick={() => confirmAsk('Neuen geheimen Schlüssel erzeugen? Die Push-Adresse der Subscription muss dann neu eingetragen werden.') && save({ rotate_secret: true })}>
-          Schlüssel erneuern
+        <button className="btn secondary" onClick={() => confirmAsk(tt('Neuen geheimen Schlüssel erzeugen? Die Push-Adresse der Subscription muss dann neu eingetragen werden.')) && save({ rotate_secret: true })}>
+          {tt('Schlüssel erneuern')}
         </button>
       </div>
     </div>
@@ -491,6 +501,7 @@ export function MailBadges({ row }: { row: any }) {
 
 /** Attachments, labels and (for drafts in a mailbox) send / edit / discard under a message. */
 export function MailMessageExtras({ m, contact, onChanged }: { m: any; contact: any; onChanged: () => void }) {
+  const tt = useT('x_comms');
   const [edit, setEdit] = useState(false);
   const mail = m.mail;
   if (!mail) return null;
@@ -517,22 +528,22 @@ export function MailMessageExtras({ m, contact, onChanged }: { m: any; contact: 
           <button
             className="btn small"
             onClick={async () => {
-              if (!confirmAsk(`Entwurf jetzt über das Postfach an ${contact?.email || 'den Kontakt'} senden?`)) return;
-              if (await act(() => api.post(`/api/mail/drafts/${m.id}/send`, {}), 'Gesendet')) onChanged();
+              if (!confirmAsk(`Entwurf jetzt über das Postfach an ${contact?.email || tt('den Kontakt')} senden?`)) return;
+              if (await act(() => api.post(`/api/mail/drafts/${m.id}/send`, {}), tt('Gesendet'))) onChanged();
             }}
           >
-            Senden
+            {tt('Senden')}
           </button>
           <button className="btn small secondary" onClick={() => setEdit(true)}>
-            Bearbeiten
+            {tt('Bearbeiten')}
           </button>
           <button
             className="btn small secondary"
             onClick={async () => {
-              if (confirmAsk('Entwurf verwerfen? Er wird auch im Postfach gelöscht.') && (await act(() => api.del(`/api/mail/drafts/${m.id}`), 'Verworfen'))) onChanged();
+              if (confirmAsk(tt('Entwurf verwerfen? Er wird auch im Postfach gelöscht.')) && (await act(() => api.del(`/api/mail/drafts/${m.id}`), tt('Verworfen')))) onChanged();
             }}
           >
-            Verwerfen
+            {tt('Verwerfen')}
           </button>
         </div>
       )}
@@ -542,31 +553,32 @@ export function MailMessageExtras({ m, contact, onChanged }: { m: any; contact: 
 }
 
 function DraftEditor({ m, contact, onClose, onSaved }: { m: any; contact: any; onClose: () => void; onSaved: () => void }) {
+  const tt = useT('x_comms');
   useRestoreFocus();
   const [f, setF] = useState({ to: (m.mail.to ?? []).map((a: any) => a.email).join(', ') || contact?.email || '', cc: (m.mail.cc ?? []).map((a: any) => a.email).join(', '), subject: m.subject ?? '', body: m.body ?? '' });
   return (
     <Modal
-      title="Entwurf bearbeiten"
+      title={tt('Entwurf bearbeiten')}
       onClose={onClose}
       footer={
         <button
           className="btn"
-          onClick={async () => (await act(() => api.put(`/api/mail/drafts/${m.id}`, { ...f, signature: false }), 'Entwurf gespeichert')) && onSaved()}
+          onClick={async () => (await act(() => api.put(`/api/mail/drafts/${m.id}`, { ...f, signature: false }), tt('Entwurf gespeichert'))) && onSaved()}
         >
-          Speichern
+          {tt('Speichern')}
         </button>
       }
     >
-      <Field label="An">
+      <Field label={tt('An')}>
         <Input value={f.to} onChange={(v) => setF({ ...f, to: v })} />
       </Field>
-      <Field label="Cc">
+      <Field label={tt('Cc')}>
         <Input value={f.cc} onChange={(v) => setF({ ...f, cc: v })} />
       </Field>
-      <Field label="Betreff">
+      <Field label={tt('Betreff')}>
         <Input value={f.subject} onChange={(v) => setF({ ...f, subject: v })} />
       </Field>
-      <Field label="Nachricht">
+      <Field label={tt('Nachricht')}>
         <Textarea value={f.body} onChange={(v) => setF({ ...f, body: v })} rows={8} />
       </Field>
     </Modal>
@@ -575,6 +587,7 @@ function DraftEditor({ m, contact, onClose, onSaved }: { m: any; contact: any; o
 
 /** Archive, labels and "answer through the mailbox" for the open conversation. */
 export function MailThreadPanel({ conversationId, contact, messages, onChanged }: { conversationId: string; contact: any; messages: any[]; onChanged: () => void }) {
+  const tt = useT('x_comms');
   const info = useLoad(() => api.get<any>(`/api/mail/conversations/${conversationId}`), [conversationId, messages.length]);
   const [reply, setReply] = useState(false);
   const data = info.data;
@@ -607,11 +620,11 @@ export function MailThreadPanel({ conversationId, contact, messages, onChanged }
             {modifiable.length > 0 && (
               <>
                 <button className="btn small secondary" data-tour="mail-archive" onClick={() => run(() => api.post(`/api/mail/conversations/${conversationId}/archive`, { archive: !data.archived }), data.archived ? 'Zurück im Posteingang' : 'Archiviert')}>
-                  <Icon name="archive" size={14} /> {data.archived ? 'Zurück in den Posteingang' : 'Archivieren'}
+                  <Icon name="archive" size={14} /> {data.archived ? tt('Zurück in den Posteingang') : tt('Archivieren')}
                 </button>
                 <details className="mbx-labels" data-tour="mail-labels">
                   <summary className="btn small secondary">
-                    <Icon name="tag" size={14} /> Labels
+                    <Icon name="tag" size={14} /> {tt('Labels')}
                   </summary>
                   <div className="mbx-pop">
                     <div className="check-list">
@@ -623,7 +636,7 @@ export function MailThreadPanel({ conversationId, contact, messages, onChanged }
                       ))}
                     </div>
                     <div className="row">
-                      <Input value={newLabel} onChange={setNewLabel} placeholder="Neues Label" />
+                      <Input value={newLabel} onChange={setNewLabel} placeholder={tt('Neues Label')} />
                       <button
                         className="btn small"
                         disabled={!newLabel.trim()}
@@ -636,7 +649,7 @@ export function MailThreadPanel({ conversationId, contact, messages, onChanged }
                           }
                         }}
                       >
-                        Anlegen
+                        {tt('Anlegen')}
                       </button>
                     </div>
                   </div>
@@ -647,7 +660,7 @@ export function MailThreadPanel({ conversationId, contact, messages, onChanged }
         )}
         {senders.length > 0 && contact?.email && (
           <button className="btn small" data-tour="mail-reply-toggle" onClick={() => setReply(!reply)}>
-            <Icon name="send" size={14} /> {reply ? 'Antwort schließen' : 'Per Postfach antworten'}
+            <Icon name="send" size={14} /> {reply ? tt('Antwort schließen') : tt('Per Postfach antworten')}
           </button>
         )}
       </div>
@@ -657,6 +670,7 @@ export function MailThreadPanel({ conversationId, contact, messages, onChanged }
 }
 
 function MailReply({ conversationId, info, contact, onDone }: { conversationId: string; info: any; contact: any; onDone: () => void }) {
+  const tt = useT('x_comms');
   const senders = info.mailboxes.filter((m: any) => m.can_send);
   const first = senders.find((m: any) => m.in_thread) ?? senders[0];
   const [f, setF] = useState({ mailbox_id: first?.id ?? '', to: info.reply.to || contact?.email || '', cc: '', bcc: '', subject: '', body: '', signature: true, track: true, send_at: '' });
@@ -672,48 +686,48 @@ function MailReply({ conversationId, info, contact, onDone }: { conversationId: 
     const r = await act(() => api.post<any>(`/api/mail/conversations/${conversationId}/reply`, { ...common(), ...(at ? { send_at: at } : {}) }));
     setBusy(false);
     if (r) {
-      toast(r.status === 'scheduled' ? `Geplant für ${dt(r.send_at)}` : 'Gesendet');
+      toast(r.status === 'scheduled' ? tt('Geplant für {dt}', { dt: dt(r.send_at) }) : tt('Gesendet'));
       onDone();
     }
   };
   const draft = async () => {
     setBusy(true);
-    const r = await act(() => api.post('/api/mail/drafts', { ...common(), reply_to_message_id: info.reply.reply_to_message_id ?? undefined, contact_id: contact?.id }), 'Entwurf im Postfach gespeichert');
+    const r = await act(() => api.post('/api/mail/drafts', { ...common(), reply_to_message_id: info.reply.reply_to_message_id ?? undefined, contact_id: contact?.id }), tt('Entwurf im Postfach gespeichert'));
     setBusy(false);
     if (r) onDone();
   };
   return (
     <div className="mbx-reply" data-tour="inbox-mail-reply">
       <div className="grid2">
-        <Field label="Absender-Postfach">
+        <Field label={tt('Absender-Postfach')}>
           <Select value={f.mailbox_id} onChange={(v) => setF({ ...f, mailbox_id: v })} options={senders.map((m: any) => [m.id, `${m.name} (${m.address})`] as [string, string])} />
         </Field>
-        <Field label="An">
+        <Field label={tt('An')}>
           <Input value={f.to} onChange={(v) => setF({ ...f, to: v })} />
         </Field>
       </div>
       {more && (
         <div className="grid2">
-          <Field label="Cc">
+          <Field label={tt('Cc')}>
             <Input value={f.cc} onChange={(v) => setF({ ...f, cc: v })} />
           </Field>
-          <Field label="Bcc">
+          <Field label={tt('Bcc')}>
             <Input value={f.bcc} onChange={(v) => setF({ ...f, bcc: v })} />
           </Field>
         </div>
       )}
-      <Field label="Betreff" hint="Leer = „Re: …“ der Mail, auf die du antwortest.">
+      <Field label={tt('Betreff')} hint={tt('Leer = „Re: …“ der Mail, auf die du antwortest.')}>
         <Input value={f.subject} onChange={(v) => setF({ ...f, subject: v })} />
       </Field>
-      <Field label="Nachricht">
+      <Field label={tt('Nachricht')}>
         <Textarea value={f.body} onChange={(v) => setF({ ...f, body: v })} rows={5} />
       </Field>
       <div className="row mbx-reply-opts">
         <button className="btn small secondary" onClick={() => setMore(!more)}>
-          {more ? 'Cc/Bcc ausblenden' : 'Cc/Bcc'}
+          {more ? tt('Cc/Bcc ausblenden') : tt('Cc/Bcc')}
         </button>
         <button className="btn small secondary" onClick={() => input.current?.click()}>
-          <Icon name="file" size={14} /> Anhang
+          <Icon name="file" size={14} /> {tt('Anhang')}
         </button>
         <input
           ref={input}
@@ -730,10 +744,10 @@ function MailReply({ conversationId, info, contact, onDone }: { conversationId: 
             e.target.value = '';
           }}
         />
-        <Check checked={f.signature} onChange={(v) => setF({ ...f, signature: v })} label="Signatur" />
-        {tracked && <Check checked={f.track} onChange={(v) => setF({ ...f, track: v })} label="Öffnungen und Klicks verfolgen" />}
+        <Check checked={f.signature} onChange={(v) => setF({ ...f, signature: v })} label={tt('Signatur')} />
+        {tracked && <Check checked={f.track} onChange={(v) => setF({ ...f, track: v })} label={tt('Öffnungen und Klicks verfolgen')} />}
         <label className="mbx-later">
-          Später senden <input type="datetime-local" value={f.send_at} onChange={(e) => setF({ ...f, send_at: e.target.value })} />
+          {tt('Später senden')} <input type="datetime-local" value={f.send_at} onChange={(e) => setF({ ...f, send_at: e.target.value })} />
         </label>
       </div>
       {files.length > 0 && (
@@ -741,7 +755,7 @@ function MailReply({ conversationId, info, contact, onDone }: { conversationId: 
           {files.map((x, i) => (
             <span key={i} className="chip small">
               <Icon name="file" size={12} /> {x.filename} <span className="muted">{size(x.size)}</span>
-              <button type="button" className="icon-btn" aria-label={`${x.filename} entfernen`} onClick={() => setFiles(files.filter((_, j) => j !== i))}>
+              <button type="button" className="icon-btn" aria-label={tt('{filename} entfernen', { filename: x.filename })} onClick={() => setFiles(files.filter((_, j) => j !== i))}>
                 ✕
               </button>
             </span>
@@ -750,10 +764,10 @@ function MailReply({ conversationId, info, contact, onDone }: { conversationId: 
       )}
       <div className="actions">
         <button className="btn" disabled={busy || !f.body.trim() || !f.to.trim()} onClick={send}>
-          {f.send_at ? 'Planen' : 'Senden'}
+          {f.send_at ? tt('Planen') : tt('Senden')}
         </button>
         <button className="btn secondary" disabled={busy || !f.body.trim() || !f.to.trim()} onClick={draft}>
-          Als Entwurf speichern
+          {tt('Als Entwurf speichern')}
         </button>
       </div>
     </div>

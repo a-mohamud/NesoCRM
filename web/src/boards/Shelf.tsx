@@ -4,20 +4,22 @@ import { Link, useLoad } from '../ui';
 import { Mini } from './Mini';
 import type { TemplateItem } from './types';
 import './boards.css';
+import { useT } from '../i18n';
 
 /** A shelf for the Marktplatz page: board templates other sub-accounts published (config only – installing asks what a template reads and shows). */
 export function BoardShelf() {
+  const tt = useT('x_misc');
   const { data } = useLoad(() => api.get<{ marketplace: TemplateItem[] }>('/api/board-templates').catch(() => ({ marketplace: [] as TemplateItem[] })), []);
   const list = data?.marketplace ?? [];
   if (!list.length) return null;
   return (
-    <section className="bd-shelf" aria-label="Board-Vorlagen" data-tour="mk-board-shelf">
+    <section className="bd-shelf" aria-label={tt('Board-Vorlagen')} data-tour="mk-board-shelf">
       <header>
         <h3>
-          <Icon name="boards" size={16} /> Board-Vorlagen <span className="bd-badge">{list.length}</span>
+          <Icon name="boards" size={16} /> {tt('Board-Vorlagen')} <span className="bd-badge">{list.length}</span>
         </h3>
         <Link to="boards/vorlagen" className="btn ghost small">
-          Alle ansehen
+          {tt('Alle ansehen')}
         </Link>
       </header>
       <div className="bd-shelf-row">
@@ -28,7 +30,7 @@ export function BoardShelf() {
               <Icon name={(t.icon || 'boards') as IconName} size={14} /> {t.name}
             </b>
             <span className="muted small">
-              {t.widgets} Widgets · von {t.author || 'unbekannt'} · {t.installs}× installiert
+              {tt('{widgets} Widgets · von', { widgets: t.widgets })} {t.author || 'unbekannt'} {tt('· {installs}× installiert', { installs: t.installs })}
             </span>
           </Link>
         ))}

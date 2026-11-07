@@ -4,6 +4,7 @@ import { Icon } from '../icons';
 import { act, Badge, Check, confirmAsk, Empty, Field, Input, Modal, navigate, PageHead, pressable, Select, Spinner, Stat, Tabs, toast, useLoad } from '../ui';
 import { ContactPick, EuroInput, dlHref, euroText, germanDate, parseEuro, qty, ymdLocal } from './boCommon';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /** Lager & Einkauf: articles (variants, SKU, EAN), places, movements, minimum stock, stock-taking, purchase orders, valuation. */
 
@@ -18,6 +19,7 @@ const TABS: [string, string][] = [
 ];
 
 export function Inventory({ tab }: { tab?: string }) {
+  const tt = useT('x_finance');
   const t = TABS.some(([k]) => k === tab) ? tab! : 'stock';
   const status = useLoad(() => api.get('/api/inventory/status'), []);
   const places = useLoad(() => api.get('/api/inventory/places'), []);
@@ -27,12 +29,12 @@ export function Inventory({ tab }: { tab?: string }) {
   const label = (k: string, l: string) => (k === 'stock' && st?.low ? `${l} (${st.low} knapp)` : k === 'orders' && st?.open_orders ? `${l} (${st.open_orders})` : l);
   return (
     <>
-      <PageHead title="Lager & Einkauf" sub="Artikel, Bestände, Bestellungen und Inventur – verknüpft mit Produkten und Rechnungen." />
+      <PageHead title={tt('Lager & Einkauf')} sub={tt('Artikel, Bestände, Bestellungen und Inventur – verknüpft mit Produkten und Rechnungen.')} />
       <SortableGrid id="inv-stats" className="stats" data-tour="inv-stats">
-        <Stat label="Artikel" value={st?.articles ?? '–'} sub={`${st?.places ?? 0} Lagerorte`} />
-        <Stat label="Unter Mindestbestand" value={<span className={st?.low ? 'bo-neg' : undefined}>{st?.low ?? '–'}</span>} sub="löst Benachrichtigung und Workflow aus" />
-        <Stat label="Lagerwert" value={money(st?.value_cents ?? 0)} sub="gleitender Durchschnittspreis" />
-        <Stat label="Offene Bestellungen" value={st?.open_orders ?? '–'} sub={st?.open_counts ? `${st.open_counts} Inventur läuft` : undefined} />
+        <Stat label={tt('Artikel')} value={st?.articles ?? '–'} sub={tt('{v} Lagerorte', { v: st?.places ?? 0 })} />
+        <Stat label={tt('Unter Mindestbestand')} value={<span className={st?.low ? 'bo-neg' : undefined}>{st?.low ?? '–'}</span>} sub={tt('löst Benachrichtigung und Workflow aus')} />
+        <Stat label={tt('Lagerwert')} value={money(st?.value_cents ?? 0)} sub={tt('gleitender Durchschnittspreis')} />
+        <Stat label={tt('Offene Bestellungen')} value={st?.open_orders ?? '–'} sub={st?.open_counts ? tt('{open_counts} Inventur läuft', { open_counts: st.open_counts }) : undefined} />
       </SortableGrid>
       <Tabs tabs={TABS.map(([k, l]) => [k, label(k, l)])} value={t} onChange={(v) => navigate(`inventory/${v}`)} />
       {t === 'stock' && <Stock articles={articles.data ?? []} places={places.data ?? []} loading={articles.loading && !articles.data} onChange={refresh} />}
@@ -51,6 +53,7 @@ const artLabel = (a: any) => `${a.sku} – ${a.name}${a.variant ? ` (${a.variant
 // --- stock ------------------------------------------------------------------------------------------------------------------
 
 function Stock({ articles, places, loading, onChange }: { articles: any[]; places: any[]; loading: boolean; onChange: () => void }) {
+  const tt = useT('x_finance');
   const [q, setQ] = useState('');
   const [low, setLow] = useState(false);
   const [inactive, setInactive] = useState(false);
@@ -61,20 +64,20 @@ function Stock({ articles, places, loading, onChange }: { articles: any[]; place
     <>
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div style={{ width: 240 }}>
-          <Field label="Suche">
-            <Input value={q} onChange={setQ} placeholder="Nummer, Name, EAN, Lieferant" />
+          <Field label={tt('Suche')}>
+            <Input value={q} onChange={setQ} placeholder={tt('Nummer, Name, EAN, Lieferant')} />
           </Field>
         </div>
         <div style={{ marginBottom: 14 }}>
-          <Check checked={low} onChange={setLow} label="Nur unter Mindestbestand" />
-          <Check checked={inactive} onChange={setInactive} label="Inaktive zeigen" />
+          <Check checked={low} onChange={setLow} label={tt('Nur unter Mindestbestand')} />
+          <Check checked={inactive} onChange={setInactive} label={tt('Inaktive zeigen')} />
         </div>
         <div style={{ marginLeft: 'auto', marginBottom: 12, display: 'flex', gap: 8 }}>
           <button className="btn secondary" onClick={() => setMove({})}>
-            Bewegung buchen
+            {tt('Bewegung buchen')}
           </button>
           <button className="btn" data-tour="inv-new-article" onClick={() => setEdit({})}>
-            Artikel anlegen
+            {tt('Artikel anlegen')}
           </button>
         </div>
       </div>
@@ -85,11 +88,11 @@ function Stock({ articles, places, loading, onChange }: { articles: any[]; place
           <table className="t">
             <thead>
               <tr>
-                <th>Artikel</th>
-                <th className="num">Bestand</th>
-                <th className="num">Minimum</th>
-                <th>Lagerorte</th>
-                <th className="num">Wert</th>
+                <th>{tt('Artikel')}</th>
+                <th className="num">{tt('Bestand')}</th>
+                <th className="num">{tt('Minimum')}</th>
+                <th>{tt('Lagerorte')}</th>
+                <th className="num">{tt('Wert')}</th>
                 <th />
               </tr>
             </thead>
@@ -100,7 +103,7 @@ function Stock({ articles, places, loading, onChange }: { articles: any[]; place
                     <strong>{a.name}</strong> {a.variant && <span className="muted">({a.variant})</span>}
                     <div className="muted small">
                       <span className="mono">{a.sku}</span>
-                      {a.ean ? ` · EAN ${a.ean}` : ''}
+                      {a.ean ? tt(' · EAN {ean}', { ean: a.ean }) : ''}
                       {a.supplier_name ? ` · ${a.supplier_name}` : ''}
                     </div>
                   </td>
@@ -118,7 +121,7 @@ function Stock({ articles, places, loading, onChange }: { articles: any[]; place
                   <td className="num">{money(a.value_cents)}</td>
                   <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right' }}>
                     <button className="btn small secondary" onClick={() => setMove({ article_id: a.id })}>
-                      Buchen
+                      {tt('Buchen')}
                     </button>
                   </td>
                 </tr>
@@ -127,7 +130,7 @@ function Stock({ articles, places, loading, onChange }: { articles: any[]; place
           </table>
         </div>
       ) : (
-        <Empty action={<button className="btn" onClick={() => setEdit({})}>Ersten Artikel anlegen</button>}>{articles.length ? 'Keine Artikel für diese Auswahl.' : 'Noch keine Artikel.'}</Empty>
+        <Empty action={<button className="btn" onClick={() => setEdit({})}>{tt('Ersten Artikel anlegen')}</button>}>{articles.length ? tt('Keine Artikel für diese Auswahl.') : tt('Noch keine Artikel.')}</Empty>
       )}
       {edit && <ArticleModal article={edit.id ? edit : undefined} articles={articles} places={places} onClose={() => setEdit(undefined)} onDone={() => (setEdit(undefined), onChange())} />}
       {move && <MovementModal articles={articles} places={places} initial={move} onClose={() => setMove(undefined)} onDone={() => (setMove(undefined), onChange())} />}
@@ -136,6 +139,7 @@ function Stock({ articles, places, loading, onChange }: { articles: any[]; place
 }
 
 function ArticleModal({ article, articles, places, onClose, onDone }: { article?: any; articles: any[]; places: any[]; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_finance');
   const full = useLoad(() => (article ? api.get(`/api/inventory/articles/${article.id}`) : Promise.resolve(undefined)), [article?.id]);
   const products = useLoad(() => api.get('/api/products'), []);
   const [f, setF] = useState<any>();
@@ -164,7 +168,7 @@ function ArticleModal({ article, articles, places, onClose, onDone }: { article?
     });
   }, [full.data]);
   const x = full.data;
-  if (!f) return <Modal title={article ? 'Artikel' : 'Neuer Artikel'} onClose={onClose}><Spinner /></Modal>;
+  if (!f) return <Modal title={article ? tt('Artikel') : tt('Neuer Artikel')} onClose={onClose}><Spinner /></Modal>;
   const set = (k: string) => (v: any) => setF((s: any) => ({ ...s, [k]: v }));
   const body = () => ({
     sku: f.sku,
@@ -186,105 +190,105 @@ function ArticleModal({ article, articles, places, onClose, onDone }: { article?
   return (
     <Modal
       wide
-      title={article ? artLabel(article) : 'Neuer Artikel'}
+      title={article ? artLabel(article) : tt('Neuer Artikel')}
       onClose={onClose}
       footer={
         <>
           {article && !x?.movements?.length && (
-            <button className="btn ghost danger-text" onClick={async () => confirmAsk('Artikel löschen?') && (await act(() => api.del(`/api/inventory/articles/${article.id}`), 'Gelöscht')) && onDone()}>
-              Löschen
+            <button className="btn ghost danger-text" onClick={async () => confirmAsk(tt('Artikel löschen?')) && (await act(() => api.del(`/api/inventory/articles/${article.id}`), tt('Gelöscht'))) && onDone()}>
+              {tt('Löschen')}
             </button>
           )}
           <span style={{ flex: 1 }} />
-          <button className="btn secondary" onClick={onClose}>Abbrechen</button>
+          <button className="btn secondary" onClick={onClose}>{tt('Abbrechen')}</button>
           <button
             className="btn"
             onClick={async () => {
               const b: any = body();
               if (!article) Object.assign(b, { initial_qty: f.initial_qty ? Number(String(f.initial_qty).replace(',', '.')) : 0, initial_cost_cents: parseEuro(f.initial_cost) ?? undefined });
-              if (await act(() => (article ? api.patch(`/api/inventory/articles/${article.id}`, b) : api.post('/api/inventory/articles', b)), 'Gespeichert')) onDone();
+              if (await act(() => (article ? api.patch(`/api/inventory/articles/${article.id}`, b) : api.post('/api/inventory/articles', b)), tt('Gespeichert'))) onDone();
             }}
           >
-            Speichern
+            {tt('Speichern')}
           </button>
         </>
       }
     >
       <div className="grid3">
-        <Field label="Artikelnummer (SKU)" hint={article ? undefined : 'Leer lassen für eine automatische Nummer'}>
+        <Field label={tt('Artikelnummer (SKU)')} hint={article ? undefined : tt('Leer lassen für eine automatische Nummer')}>
           <Input value={f.sku} onChange={set('sku')} />
         </Field>
-        <Field label="Bezeichnung">
+        <Field label={tt('Bezeichnung')}>
           <Input value={f.name} onChange={set('name')} />
         </Field>
-        <Field label="Einheit">
-          <Input value={f.unit} onChange={set('unit')} placeholder="Stk, kg, m …" />
+        <Field label={tt('Einheit')}>
+          <Input value={f.unit} onChange={set('unit')} placeholder={tt('Stk, kg, m …')} />
         </Field>
       </div>
       <div className="grid3">
-        <Field label="Variante" hint="z. B. Größe L, rot">
+        <Field label={tt('Variante')} hint={tt('z. B. Größe L, rot')}>
           <Input value={f.variant} onChange={set('variant')} />
         </Field>
-        <Field label="Gehört zu Hauptartikel">
-          <Select value={f.parent_id} onChange={set('parent_id')} placeholder="– eigenständig –" options={articles.filter((a) => !a.parent_id && a.id !== article?.id).map((a) => [a.id, artLabel(a)] as [string, string])} />
+        <Field label={tt('Gehört zu Hauptartikel')}>
+          <Select value={f.parent_id} onChange={set('parent_id')} placeholder={tt('– eigenständig –')} options={articles.filter((a) => !a.parent_id && a.id !== article?.id).map((a) => [a.id, artLabel(a)] as [string, string])} />
         </Field>
-        <Field label="EAN / GTIN" hint="Prüfziffer wird kontrolliert">
+        <Field label={tt('EAN / GTIN')} hint={tt('Prüfziffer wird kontrolliert')}>
           <Input value={f.ean} onChange={set('ean')} inputMode="numeric" />
         </Field>
       </div>
       <div className="grid3">
-        <Field label="Mindestbestand" hint="Darunter: Benachrichtigung und Workflow „Mindestbestand unterschritten“">
+        <Field label={tt('Mindestbestand')} hint={tt('Darunter: Benachrichtigung und Workflow „Mindestbestand unterschritten“')}>
           <Input value={f.min_stock} onChange={set('min_stock')} inputMode="decimal" />
         </Field>
-        <Field label="Nachbestellmenge">
+        <Field label={tt('Nachbestellmenge')}>
           <Input value={f.reorder_qty} onChange={set('reorder_qty')} inputMode="decimal" />
         </Field>
-        <Field label="Produkt (für automatischen Warenausgang)">
-          <Select value={f.product_id} onChange={set('product_id')} placeholder="– keins –" options={(products.data ?? []).map((p: any) => [p.id, p.name] as [string, string])} />
+        <Field label={tt('Produkt (für automatischen Warenausgang)')}>
+          <Select value={f.product_id} onChange={set('product_id')} placeholder={tt('– keins –')} options={(products.data ?? []).map((p: any) => [p.id, p.name] as [string, string])} />
         </Field>
       </div>
       <div className="grid3">
-        <Field label="Lieferant (Kontakt)">
-          <ContactPick value={f.supplier} onChange={set('supplier')} placeholder="Kontakt suchen …" />
+        <Field label={tt('Lieferant (Kontakt)')}>
+          <ContactPick value={f.supplier} onChange={set('supplier')} placeholder={tt('Kontakt suchen …')} />
         </Field>
-        <Field label="oder Lieferant (Name)">
+        <Field label={tt('oder Lieferant (Name)')}>
           <Input value={f.supplier_name} onChange={set('supplier_name')} disabled={!!f.supplier} />
         </Field>
-        <Field label="Artikelnummer beim Lieferanten">
+        <Field label={tt('Artikelnummer beim Lieferanten')}>
           <Input value={f.supplier_sku} onChange={set('supplier_sku')} />
         </Field>
       </div>
       {!article && (
         <div className="grid2">
-          <Field label="Anfangsbestand">
+          <Field label={tt('Anfangsbestand')}>
             <Input value={f.initial_qty} onChange={set('initial_qty')} inputMode="decimal" />
           </Field>
-          <Field label="Einkaufspreis je Einheit (€)">
+          <Field label={tt('Einkaufspreis je Einheit (€)')}>
             <EuroInput value={f.initial_cost} onChange={set('initial_cost')} />
           </Field>
         </div>
       )}
       <div className="row">
-        <Check checked={f.track} onChange={set('track')} label="Bestand führen und überwachen" />
-        <Check checked={f.auto_issue} onChange={set('auto_issue')} label="Bei Rechnungen automatisch ausbuchen" />
-        {article && <Check checked={f.active} onChange={set('active')} label="Aktiv" />}
+        <Check checked={f.track} onChange={set('track')} label={tt('Bestand führen und überwachen')} />
+        <Check checked={f.auto_issue} onChange={set('auto_issue')} label={tt('Bei Rechnungen automatisch ausbuchen')} />
+        {article && <Check checked={f.active} onChange={set('active')} label={tt('Aktiv')} />}
       </div>
       {x && (
         <>
           <hr />
           <p>
-            Bestand <strong>{qty(x.qty)} {x.unit}</strong> · Ø Einkaufspreis {money(x.avg_cost_cents)} · Wert {money(x.value_cents)}
-            {x.variants?.length ? ` · Varianten: ${x.variants.map((v: any) => v.variant || v.sku).join(', ')}` : ''}
+            {tt('Bestand')} <strong>{qty(x.qty)} {x.unit}</strong> {tt('· Ø Einkaufspreis {money} · Wert {money2}', { money: money(x.avg_cost_cents), money2: money(x.value_cents) })}
+            {x.variants?.length ? tt(' · Varianten: {n}', { n: x.variants.map((v: any) => v.variant || v.sku).join(', ') }) : ''}
           </p>
           {!!x.movements?.length && (
             <table className="t">
               <thead>
                 <tr>
-                  <th>Datum</th>
-                  <th>Art</th>
-                  <th className="num">Menge</th>
-                  <th>Lagerort</th>
-                  <th>Hinweis</th>
+                  <th>{tt('Datum')}</th>
+                  <th>{tt('Art')}</th>
+                  <th className="num">{tt('Menge')}</th>
+                  <th>{tt('Lagerort')}</th>
+                  <th>{tt('Hinweis')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -311,6 +315,7 @@ function ArticleModal({ article, articles, places, onClose, onDone }: { article?
 const MOVE_LABEL: Record<string, string> = { receipt: 'Wareneingang', issue: 'Warenausgang', transfer_out: 'Umlagerung (ab)', transfer_in: 'Umlagerung (an)', correction: 'Korrektur', count: 'Inventur-Differenz' };
 
 function Movements({ articles, places, onChange }: { articles: any[]; places: any[]; onChange: () => void }) {
+  const tt = useT('x_finance');
   const [article, setArticle] = useState('');
   const [type, setType] = useState('');
   const [from, setFrom] = useState('');
@@ -323,28 +328,28 @@ function Movements({ articles, places, onChange }: { articles: any[]; places: an
     <>
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div style={{ width: 240 }}>
-          <Field label="Artikel">
-            <Select value={article} onChange={setArticle} placeholder="Alle" options={articles.map((a) => [a.id, artLabel(a)] as [string, string])} />
+          <Field label={tt('Artikel')}>
+            <Select value={article} onChange={setArticle} placeholder={tt('Alle')} options={articles.map((a) => [a.id, artLabel(a)] as [string, string])} />
           </Field>
         </div>
         <div style={{ width: 170 }}>
-          <Field label="Art">
-            <Select value={type} onChange={setType} placeholder="Alle" options={Object.entries(MOVE_LABEL)} />
+          <Field label={tt('Art')}>
+            <Select value={type} onChange={setType} placeholder={tt('Alle')} options={Object.entries(MOVE_LABEL)} />
           </Field>
         </div>
         <div style={{ width: 140 }}>
-          <Field label="Von">
+          <Field label={tt('Von')}>
             <Input type="date" value={from} onChange={setFrom} />
           </Field>
         </div>
         <div style={{ width: 140 }}>
-          <Field label="Bis">
+          <Field label={tt('Bis')}>
             <Input type="date" value={to} onChange={setTo} />
           </Field>
         </div>
         <div style={{ marginLeft: 'auto', marginBottom: 12 }}>
           <button className="btn" data-tour="inv-book" onClick={() => setModal(true)}>
-            Bewegung buchen
+            {tt('Bewegung buchen')}
           </button>
         </div>
       </div>
@@ -355,14 +360,14 @@ function Movements({ articles, places, onChange }: { articles: any[]; places: an
           <table className="t">
             <thead>
               <tr>
-                <th>Datum</th>
-                <th>Art</th>
-                <th>Artikel</th>
-                <th>Lagerort</th>
-                <th className="num">Menge</th>
-                <th className="num">Preis</th>
-                <th className="num">Bestand danach</th>
-                <th>Hinweis</th>
+                <th>{tt('Datum')}</th>
+                <th>{tt('Art')}</th>
+                <th>{tt('Artikel')}</th>
+                <th>{tt('Lagerort')}</th>
+                <th className="num">{tt('Menge')}</th>
+                <th className="num">{tt('Preis')}</th>
+                <th className="num">{tt('Bestand danach')}</th>
+                <th>{tt('Hinweis')}</th>
               </tr>
             </thead>
             <tbody>
@@ -386,7 +391,7 @@ function Movements({ articles, places, onChange }: { articles: any[]; places: an
           </table>
         </div>
       ) : (
-        <Empty>Keine Bewegungen.</Empty>
+        <Empty>{tt('Keine Bewegungen.')}</Empty>
       )}
       {modal && <MovementModal articles={articles} places={places} initial={{}} onClose={() => setModal(false)} onDone={() => (setModal(false), void list.reload(), onChange())} />}
     </>
@@ -394,61 +399,62 @@ function Movements({ articles, places, onChange }: { articles: any[]; places: an
 }
 
 function MovementModal({ articles, places, initial, onClose, onDone }: { articles: any[]; places: any[]; initial: { article_id?: string }; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_finance');
   const [f, setF] = useState({ article_id: initial.article_id ?? '', type: 'receipt', place_id: '', to_place_id: '', qty: '', cost: '', note: '' });
   const set = (k: string) => (v: string) => setF((s) => ({ ...s, [k]: v }));
   const art = articles.find((a) => a.id === f.article_id);
   const active = places.filter((p) => p.active);
   return (
     <Modal
-      title="Lagerbewegung buchen"
+      title={tt('Lagerbewegung buchen')}
       onClose={onClose}
       footer={
         <>
-          <button className="btn secondary" onClick={onClose}>Abbrechen</button>
+          <button className="btn secondary" onClick={onClose}>{tt('Abbrechen')}</button>
           <button
             className="btn"
             onClick={async () => {
               const n = Number(f.qty.replace(',', '.'));
               const ok =
                 f.type === 'transfer'
-                  ? await act(() => api.post('/api/inventory/transfers', { article_id: f.article_id, from_place_id: f.place_id, to_place_id: f.to_place_id, qty: n, note: f.note }), 'Umgelagert')
-                  : await act(() => api.post('/api/inventory/movements', { article_id: f.article_id, type: f.type, place_id: f.place_id || undefined, qty: f.type === 'issue' ? Math.abs(n) : n, unit_cost_cents: f.type === 'receipt' && f.cost ? parseEuro(f.cost) : undefined, note: f.note }), 'Gebucht');
+                  ? await act(() => api.post('/api/inventory/transfers', { article_id: f.article_id, from_place_id: f.place_id, to_place_id: f.to_place_id, qty: n, note: f.note }), tt('Umgelagert'))
+                  : await act(() => api.post('/api/inventory/movements', { article_id: f.article_id, type: f.type, place_id: f.place_id || undefined, qty: f.type === 'issue' ? Math.abs(n) : n, unit_cost_cents: f.type === 'receipt' && f.cost ? parseEuro(f.cost) : undefined, note: f.note }), tt('Gebucht'));
               if (ok) onDone();
             }}
           >
-            Buchen
+            {tt('Buchen')}
           </button>
         </>
       }
     >
-      <Field label="Artikel">
-        <Select value={f.article_id} onChange={set('article_id')} placeholder="Artikel wählen" options={articles.filter((a) => a.active).map((a) => [a.id, `${artLabel(a)} · ${qty(a.qty)} ${a.unit}`] as [string, string])} />
+      <Field label={tt('Artikel')}>
+        <Select value={f.article_id} onChange={set('article_id')} placeholder={tt('Artikel wählen')} options={articles.filter((a) => a.active).map((a) => [a.id, `${artLabel(a)} · ${qty(a.qty)} ${a.unit}`] as [string, string])} />
       </Field>
       <div className="grid2">
-        <Field label="Art">
+        <Field label={tt('Art')}>
           <Select value={f.type} onChange={set('type')} options={[['receipt', 'Wareneingang'], ['issue', 'Warenausgang'], ['correction', 'Korrektur (+/−)'], ['transfer', 'Umlagerung']]} />
         </Field>
-        <Field label={`Menge${art ? ` (${art.unit})` : ''}`}>
+        <Field label={tt('Menge{v}', { v: art ? ` (${art.unit})` : '' })}>
           <Input value={f.qty} onChange={set('qty')} inputMode="decimal" />
         </Field>
       </div>
       <div className="grid2">
-        <Field label={f.type === 'transfer' ? 'Von Lagerort' : 'Lagerort'}>
-          <Select value={f.place_id} onChange={set('place_id')} placeholder={f.type === 'transfer' ? 'wählen' : 'Standard-Lagerort'} options={active.map((p) => [p.id, p.name] as [string, string])} />
+        <Field label={f.type === 'transfer' ? tt('Von Lagerort') : tt('Lagerort')}>
+          <Select value={f.place_id} onChange={set('place_id')} placeholder={f.type === 'transfer' ? tt('wählen') : tt('Standard-Lagerort')} options={active.map((p) => [p.id, p.name] as [string, string])} />
         </Field>
         {f.type === 'transfer' ? (
-          <Field label="Nach Lagerort">
-            <Select value={f.to_place_id} onChange={set('to_place_id')} placeholder="wählen" options={active.filter((p) => p.id !== f.place_id).map((p) => [p.id, p.name] as [string, string])} />
+          <Field label={tt('Nach Lagerort')}>
+            <Select value={f.to_place_id} onChange={set('to_place_id')} placeholder={tt('wählen')} options={active.filter((p) => p.id !== f.place_id).map((p) => [p.id, p.name] as [string, string])} />
           </Field>
         ) : f.type === 'receipt' ? (
-          <Field label="Einkaufspreis je Einheit (€)" hint="Leer: letzter Preis. Der Durchschnittspreis wird neu berechnet.">
+          <Field label={tt('Einkaufspreis je Einheit (€)')} hint={tt('Leer: letzter Preis. Der Durchschnittspreis wird neu berechnet.')}>
             <EuroInput value={f.cost} onChange={set('cost')} />
           </Field>
         ) : (
           <div />
         )}
       </div>
-      <Field label="Hinweis">
+      <Field label={tt('Hinweis')}>
         <Input value={f.note} onChange={set('note')} />
       </Field>
     </Modal>
@@ -460,6 +466,7 @@ function MovementModal({ articles, places, initial, onClose, onDone }: { article
 const O_STATUS: Record<string, [string, 'gray' | 'green' | 'red' | 'blue' | 'yellow']> = { draft: ['Entwurf', 'gray'], ordered: ['Bestellt', 'blue'], partial: ['Teilweise geliefert', 'yellow'], received: ['Geliefert', 'green'], cancelled: ['Storniert', 'red'] };
 
 function Orders({ articles, places, onChange }: { articles: any[]; places: any[]; onChange: () => void }) {
+  const tt = useT('x_finance');
   const [filter, setFilter] = useState('open');
   const [edit, setEdit] = useState<any>();
   const [view, setView] = useState<string>();
@@ -470,7 +477,7 @@ function Orders({ articles, places, onChange }: { articles: any[]; places: any[]
     <>
       <div className="row" style={{ alignItems: 'center', marginBottom: 12 }}>
         <button className="btn" data-tour="inv-new-order" onClick={() => setEdit({})}>
-          Neue Bestellung
+          {tt('Neue Bestellung')}
         </button>
         <div className="tabs" style={{ margin: 0, border: 0 }}>
           {[['open', 'Offen'], ['received', 'Geliefert'], ['cancelled', 'Storniert'], ['all', 'Alle']].map(([k, l]) => (
@@ -487,12 +494,12 @@ function Orders({ articles, places, onChange }: { articles: any[]; places: any[]
           <table className="t">
             <thead>
               <tr>
-                <th>Nummer</th>
-                <th>Lieferant</th>
+                <th>{tt('Nummer')}</th>
+                <th>{tt('Lieferant')}</th>
                 <th>Status</th>
-                <th className="num">Positionen</th>
-                <th className="num">Summe</th>
-                <th>Erwartet</th>
+                <th className="num">{tt('Positionen')}</th>
+                <th className="num">{tt('Summe')}</th>
+                <th>{tt('Erwartet')}</th>
               </tr>
             </thead>
             <tbody>
@@ -512,7 +519,7 @@ function Orders({ articles, places, onChange }: { articles: any[]; places: any[]
           </table>
         </div>
       ) : (
-        <Empty>Keine Bestellungen.</Empty>
+        <Empty>{tt('Keine Bestellungen.')}</Empty>
       )}
       {edit && <OrderEditor order={edit.id ? edit : undefined} articles={articles} onClose={() => setEdit(undefined)} onDone={done} />}
       {view && <OrderView id={view} places={places} onClose={() => setView(undefined)} onEdit={(o) => (setView(undefined), setEdit(o))} onDone={done} />}
@@ -521,6 +528,7 @@ function Orders({ articles, places, onChange }: { articles: any[]; places: any[]
 }
 
 function OrderEditor({ order, articles, onClose, onDone }: { order?: any; articles: any[]; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_finance');
   const low = useLoad(() => api.get('/api/inventory/low-stock'), []);
   const [f, setF] = useState({ supplier: order?.contact_id ? { id: order.contact_id, name: order.contact_name || order.supplier_name } : null, supplier_name: order?.supplier_name ?? '', expected_at: order?.expected_at ?? '', notes: order?.notes ?? '' });
   const [lines, setLines] = useState<{ article_id: string; qty: string; cost: string }[]>(order ? order.lines.map((l: any) => ({ article_id: l.article_id, qty: String(l.qty), cost: euroText(l.unit_cost_cents) })) : [{ article_id: '', qty: '', cost: '' }]);
@@ -528,39 +536,39 @@ function OrderEditor({ order, articles, onClose, onDone }: { order?: any; articl
   const suggest = () => {
     const items = (low.data ?? []).map((a: any) => ({ article_id: a.id, qty: String(a.reorder_qty || a.missing || 1), cost: euroText(articles.find((x) => x.id === a.id)?.last_cost_cents || articles.find((x) => x.id === a.id)?.avg_cost_cents || 0) }));
     if (items.length) setLines(items);
-    else toast('Nichts unter Mindestbestand');
+    else toast(tt('Nichts unter Mindestbestand'));
   };
   return (
     <Modal
       wide
-      title={order ? `Bestellung ${order.number}` : 'Neue Bestellung'}
+      title={order ? tt('Bestellung {number}', { number: order.number }) : tt('Neue Bestellung')}
       onClose={onClose}
       footer={
         <>
-          <button className="btn secondary" onClick={onClose}>Abbrechen</button>
+          <button className="btn secondary" onClick={onClose}>{tt('Abbrechen')}</button>
           <button
             className="btn"
             onClick={async () => {
               const body = { contact_id: f.supplier?.id ?? null, supplier_name: f.supplier ? f.supplier.name : f.supplier_name, expected_at: f.expected_at || null, notes: f.notes, lines: lines.filter((l) => l.article_id).map((l) => ({ article_id: l.article_id, qty: Number(l.qty.replace(',', '.')), unit_cost_cents: l.cost ? parseEuro(l.cost) : undefined })) };
-              if (await act(() => (order ? api.patch(`/api/inventory/orders/${order.id}`, body) : api.post('/api/inventory/orders', body)), 'Gespeichert')) onDone();
+              if (await act(() => (order ? api.patch(`/api/inventory/orders/${order.id}`, body) : api.post('/api/inventory/orders', body)), tt('Gespeichert'))) onDone();
             }}
           >
-            Speichern
+            {tt('Speichern')}
           </button>
         </>
       }
     >
       <div className="grid2">
-        <Field label="Lieferant (Kontakt)" hint="Mit E-Mail-Adresse kann die Bestellung direkt gesendet werden">
+        <Field label={tt('Lieferant (Kontakt)')} hint={tt('Mit E-Mail-Adresse kann die Bestellung direkt gesendet werden')}>
           <ContactPick value={f.supplier} onChange={(v) => setF({ ...f, supplier: v })} />
         </Field>
-        <Field label="oder Lieferant (Name)">
+        <Field label={tt('oder Lieferant (Name)')}>
           <Input value={f.supplier_name} onChange={(v) => setF({ ...f, supplier_name: v })} disabled={!!f.supplier} />
         </Field>
-        <Field label="Gewünschter Liefertermin">
+        <Field label={tt('Gewünschter Liefertermin')}>
           <Input type="date" value={f.expected_at} onChange={(v) => setF({ ...f, expected_at: v })} />
         </Field>
-        <Field label="Hinweise für den Lieferanten">
+        <Field label={tt('Hinweise für den Lieferanten')}>
           <Input value={f.notes} onChange={(v) => setF({ ...f, notes: v })} />
         </Field>
       </div>
@@ -568,9 +576,9 @@ function OrderEditor({ order, articles, onClose, onDone }: { order?: any; articl
         <table className="t">
           <thead>
             <tr>
-              <th>Artikel</th>
-              <th style={{ width: 110 }}>Menge</th>
-              <th style={{ width: 130 }}>Preis je Einheit (€)</th>
+              <th>{tt('Artikel')}</th>
+              <th style={{ width: 110 }}>{tt('Menge')}</th>
+              <th style={{ width: 130 }}>{tt('Preis je Einheit (€)')}</th>
               <th />
             </tr>
           </thead>
@@ -578,7 +586,7 @@ function OrderEditor({ order, articles, onClose, onDone }: { order?: any; articl
             {lines.map((l, i) => (
               <tr key={i}>
                 <td>
-                  <Select value={l.article_id} onChange={(v) => upd(i, 'article_id', v)} placeholder="Artikel wählen" options={articles.filter((a) => a.active).map((a) => [a.id, artLabel(a)] as [string, string])} />
+                  <Select value={l.article_id} onChange={(v) => upd(i, 'article_id', v)} placeholder={tt('Artikel wählen')} options={articles.filter((a) => a.active).map((a) => [a.id, artLabel(a)] as [string, string])} />
                 </td>
                 <td>
                   <Input value={l.qty} onChange={(v) => upd(i, 'qty', v)} inputMode="decimal" />
@@ -588,7 +596,7 @@ function OrderEditor({ order, articles, onClose, onDone }: { order?: any; articl
                 </td>
                 <td>
                   {lines.length > 1 && (
-                    <button className="icon-btn" aria-label="Zeile entfernen" onClick={() => setLines((r) => r.filter((_, j) => j !== i))}>
+                    <button className="icon-btn" aria-label={tt('Zeile entfernen')} onClick={() => setLines((r) => r.filter((_, j) => j !== i))}>
                       ✕
                     </button>
                   )}
@@ -599,9 +607,9 @@ function OrderEditor({ order, articles, onClose, onDone }: { order?: any; articl
         </table>
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <button className="btn small secondary" onClick={() => setLines((r) => [...r, { article_id: '', qty: '', cost: '' }])}>+ Position</button>
-        <button className="btn small secondary" onClick={suggest} title="Alle Artikel unter Mindestbestand mit ihrer Nachbestellmenge">
-          Vorschlag aus Mindestbestand
+        <button className="btn small secondary" onClick={() => setLines((r) => [...r, { article_id: '', qty: '', cost: '' }])}>{tt('+ Position')}</button>
+        <button className="btn small secondary" onClick={suggest} title={tt('Alle Artikel unter Mindestbestand mit ihrer Nachbestellmenge')}>
+          {tt('Vorschlag aus Mindestbestand')}
         </button>
       </div>
     </Modal>
@@ -609,34 +617,35 @@ function OrderEditor({ order, articles, onClose, onDone }: { order?: any; articl
 }
 
 function OrderView({ id, places, onClose, onEdit, onDone }: { id: string; places: any[]; onClose: () => void; onEdit: (o: any) => void; onDone: () => void }) {
+  const tt = useT('x_finance');
   const r = useLoad(() => api.get(`/api/inventory/orders/${id}`), [id]);
   const o = r.data;
   const [recv, setRecv] = useState<Record<string, string>>({});
   const [place, setPlace] = useState('');
-  if (!o) return <Modal title="Bestellung" onClose={onClose}><Spinner /></Modal>;
+  if (!o) return <Modal title={tt('Bestellung')} onClose={onClose}><Spinner /></Modal>;
   const can = ['draft', 'ordered', 'partial'].includes(o.status);
   const act2 = async (fn: () => Promise<unknown>, ok: string) => (await act(fn, ok)) && (void r.reload(), onDone());
   return (
     <Modal
       wide
-      title={`Bestellung ${o.number}`}
+      title={tt('Bestellung {number}', { number: o.number })}
       onClose={onClose}
       footer={
         <>
-          {o.status === 'draft' && <button className="btn secondary" onClick={() => onEdit(o)}>Bearbeiten</button>}
+          {o.status === 'draft' && <button className="btn secondary" onClick={() => onEdit(o)}>{tt('Bearbeiten')}</button>}
           {['draft', 'ordered'].includes(o.status) && !o.lines.some((l: any) => l.received > 0) && (
-            <button className="btn ghost danger-text" onClick={async () => confirmAsk('Bestellung stornieren?') && (await act2(() => api.post(`/api/inventory/orders/${id}/cancel`, {}), 'Storniert'))}>
-              Stornieren
+            <button className="btn ghost danger-text" onClick={async () => confirmAsk(tt('Bestellung stornieren?')) && (await act2(() => api.post(`/api/inventory/orders/${id}/cancel`, {}), 'Storniert'))}>
+              {tt('Stornieren')}
             </button>
           )}
           <span style={{ flex: 1 }} />
           {o.status === 'draft' && (
             <>
               <button className="btn secondary" onClick={() => act2(() => api.post(`/api/inventory/orders/${id}/place`, {}), 'Als bestellt markiert')}>
-                Als bestellt markieren
+                {tt('Als bestellt markieren')}
               </button>
-              <button className="btn" disabled={!o.contact_email} title={o.contact_email ? undefined : 'Der Lieferant braucht einen Kontakt mit E-Mail-Adresse'} onClick={() => act2(() => api.post(`/api/inventory/orders/${id}/send`, {}), 'Gesendet')}>
-                <Icon name="send" /> Per E-Mail senden
+              <button className="btn" disabled={!o.contact_email} title={o.contact_email ? undefined : tt('Der Lieferant braucht einen Kontakt mit E-Mail-Adresse')} onClick={() => act2(() => api.post(`/api/inventory/orders/${id}/send`, {}), 'Gesendet')}>
+                <Icon name="send" /> {tt('Per E-Mail senden')}
               </button>
             </>
           )}
@@ -654,7 +663,7 @@ function OrderView({ id, places, onClose, onEdit, onDone }: { id: string; places
                 )
               }
             >
-              Wareneingang buchen
+              {tt('Wareneingang buchen')}
             </button>
           )}
         </>
@@ -662,17 +671,17 @@ function OrderView({ id, places, onClose, onEdit, onDone }: { id: string; places
     >
       <p>
         <Badge tone={O_STATUS[o.status]?.[1]}>{O_STATUS[o.status]?.[0]}</Badge> {o.contact_name || o.supplier_name} {o.contact_email && <span className="muted">· {o.contact_email}</span>}
-        {o.expected_at && <span className="muted"> · erwartet {germanDate(o.expected_at)}</span>}
+        {o.expected_at && <span className="muted"> {tt('· erwartet {germanDate}', { germanDate: germanDate(o.expected_at) })}</span>}
       </p>
       {o.notes && <p className="muted">{o.notes}</p>}
       <table className="t">
         <thead>
           <tr>
-            <th>Artikel</th>
-            <th className="num">Bestellt</th>
-            <th className="num">Geliefert</th>
-            <th className="num">Preis</th>
-            {['ordered', 'partial'].includes(o.status) && <th style={{ width: 120 }}>Jetzt geliefert</th>}
+            <th>{tt('Artikel')}</th>
+            <th className="num">{tt('Bestellt')}</th>
+            <th className="num">{tt('Geliefert')}</th>
+            <th className="num">{tt('Preis')}</th>
+            {['ordered', 'partial'].includes(o.status) && <th style={{ width: 120 }}>{tt('Jetzt geliefert')}</th>}
           </tr>
         </thead>
         <tbody>
@@ -693,7 +702,7 @@ function OrderView({ id, places, onClose, onEdit, onDone }: { id: string; places
           ))}
           <tr className="total">
             <td colSpan={3}>
-              <strong>Summe</strong>
+              <strong>{tt('Summe')}</strong>
             </td>
             <td className="num">
               <strong>{money(o.total_cents)}</strong>
@@ -703,11 +712,11 @@ function OrderView({ id, places, onClose, onEdit, onDone }: { id: string; places
         </tbody>
       </table>
       {['ordered', 'partial'].includes(o.status) && (
-        <Field label="Einlagern in">
-          <Select value={place} onChange={setPlace} placeholder="Standard-Lagerort" options={places.filter((p) => p.active).map((p) => [p.id, p.name] as [string, string])} />
+        <Field label={tt('Einlagern in')}>
+          <Select value={place} onChange={setPlace} placeholder={tt('Standard-Lagerort')} options={places.filter((p) => p.active).map((p) => [p.id, p.name] as [string, string])} />
         </Field>
       )}
-      {can && o.status !== 'draft' && <p className="muted small">Der Wareneingang bucht die Menge ins Lager und aktualisiert den Durchschnittspreis.</p>}
+      {can && o.status !== 'draft' && <p className="muted small">{tt('Der Wareneingang bucht die Menge ins Lager und aktualisiert den Durchschnittspreis.')}</p>}
     </Modal>
   );
 }
@@ -715,6 +724,7 @@ function OrderView({ id, places, onClose, onEdit, onDone }: { id: string; places
 // --- stock-taking --------------------------------------------------------------------------------------------------------------
 
 function Counts({ places, onChange }: { places: any[]; onChange: () => void }) {
+  const tt = useT('x_finance');
   const [open, setOpen] = useState<string>();
   const [create, setCreate] = useState(false);
   const list = useLoad(() => api.get('/api/inventory/counts'), []);
@@ -723,10 +733,10 @@ function Counts({ places, onChange }: { places: any[]; onChange: () => void }) {
     <>
       <div style={{ marginBottom: 12 }}>
         <button className="btn" data-tour="inv-new-count" onClick={() => setCreate(true)}>
-          Neue Inventur
+          {tt('Neue Inventur')}
         </button>
       </div>
-      <p className="muted small">Beim Start wird der Soll-Bestand eingefroren. Du trägst die gezählten Mengen ein; beim Abschließen werden nur die Differenzen als Korrekturbuchungen verbucht.</p>
+      <p className="muted small">{tt('Beim Start wird der Soll-Bestand eingefroren. Du trägst die gezählten Mengen ein; beim Abschließen werden nur die Differenzen als Korrekturbuchungen verbucht.')}</p>
       {list.loading && !list.data ? (
         <Spinner />
       ) : rows.length ? (
@@ -734,11 +744,11 @@ function Counts({ places, onChange }: { places: any[]; onChange: () => void }) {
           <table className="t">
             <thead>
               <tr>
-                <th>Inventur</th>
-                <th>Lagerort</th>
+                <th>{tt('Inventur')}</th>
+                <th>{tt('Lagerort')}</th>
                 <th>Status</th>
-                <th className="num">Gezählt</th>
-                <th>Gestartet</th>
+                <th className="num">{tt('Gezählt')}</th>
+                <th>{tt('Gestartet')}</th>
               </tr>
             </thead>
             <tbody>
@@ -761,7 +771,7 @@ function Counts({ places, onChange }: { places: any[]; onChange: () => void }) {
           </table>
         </div>
       ) : (
-        <Empty>Noch keine Inventur.</Empty>
+        <Empty>{tt('Noch keine Inventur.')}</Empty>
       )}
       {create && <CountCreate places={places} onClose={() => setCreate(false)} onDone={(id) => (setCreate(false), void list.reload(), setOpen(id))} />}
       {open && <CountView id={open} onClose={() => (setOpen(undefined), void list.reload(), onChange())} />}
@@ -770,17 +780,18 @@ function Counts({ places, onChange }: { places: any[]; onChange: () => void }) {
 }
 
 function CountCreate({ places, onClose, onDone }: { places: any[]; onClose: () => void; onDone: (id: string) => void }) {
+  const tt = useT('x_finance');
   const [name, setName] = useState(`Inventur ${ymdLocal()}`);
   const [place, setPlace] = useState('');
   return (
     <Modal
-      title="Neue Inventur"
+      title={tt('Neue Inventur')}
       onClose={onClose}
       footer={
         <>
-          <button className="btn secondary" onClick={onClose}>Abbrechen</button>
+          <button className="btn secondary" onClick={onClose}>{tt('Abbrechen')}</button>
           <button className="btn" onClick={async () => { const c = await act(() => api.post('/api/inventory/counts', { name, place_id: place || undefined })); if (c) onDone(c.id); }}>
-            Starten
+            {tt('Starten')}
           </button>
         </>
       }
@@ -788,18 +799,19 @@ function CountCreate({ places, onClose, onDone }: { places: any[]; onClose: () =
       <Field label="Name">
         <Input value={name} onChange={setName} />
       </Field>
-      <Field label="Lagerort" hint="Leer = alle Lagerorte">
-        <Select value={place} onChange={setPlace} placeholder="Alle" options={places.filter((p) => p.active).map((p) => [p.id, p.name] as [string, string])} />
+      <Field label={tt('Lagerort')} hint={tt('Leer = alle Lagerorte')}>
+        <Select value={place} onChange={setPlace} placeholder={tt('Alle')} options={places.filter((p) => p.active).map((p) => [p.id, p.name] as [string, string])} />
       </Field>
     </Modal>
   );
 }
 
 function CountView({ id, onClose }: { id: string; onClose: () => void }) {
+  const tt = useT('x_finance');
   const r = useLoad(() => api.get(`/api/inventory/counts/${id}`), [id]);
   const [vals, setVals] = useState<Record<string, string>>({});
   const c = r.data;
-  if (!c) return <Modal title="Inventur" onClose={onClose}><Spinner /></Modal>;
+  if (!c) return <Modal title={tt('Inventur')} onClose={onClose}><Spinner /></Modal>;
   const isOpen = c.status === 'open';
   const payload = () => c.lines.filter((l: any) => vals[l.id] !== undefined).map((l: any) => ({ id: l.id, counted: vals[l.id] === '' ? null : Number(vals[l.id].replace(',', '.')) }));
   const save = async () => {
@@ -817,41 +829,41 @@ function CountView({ id, onClose }: { id: string; onClose: () => void }) {
       footer={
         isOpen ? (
           <>
-            <button className="btn ghost danger-text" onClick={async () => confirmAsk('Inventur verwerfen?') && (await act(() => api.post(`/api/inventory/counts/${id}/cancel`, {}), 'Verworfen')) && onClose()}>
-              Verwerfen
+            <button className="btn ghost danger-text" onClick={async () => confirmAsk(tt('Inventur verwerfen?')) && (await act(() => api.post(`/api/inventory/counts/${id}/cancel`, {}), tt('Verworfen'))) && onClose()}>
+              {tt('Verwerfen')}
             </button>
             <span style={{ flex: 1 }} />
-            <button className="btn secondary" onClick={async () => (await save()) && toast('Gespeichert')}>Zählstand speichern</button>
+            <button className="btn secondary" onClick={async () => (await save()) && toast(tt('Gespeichert'))}>{tt('Zählstand speichern')}</button>
             <button
               className="btn"
               onClick={async () => {
                 if (!(await save())) return;
-                if (!confirmAsk('Inventur abschließen? Die Differenzen werden als Korrekturbuchungen verbucht.')) return;
+                if (!confirmAsk(tt('Inventur abschließen? Die Differenzen werden als Korrekturbuchungen verbucht.'))) return;
                 const res = await act(() => api.post(`/api/inventory/counts/${id}/close`, {}));
-                if (res) (toast(`${res.booked} Differenzen gebucht`), onClose());
+                if (res) (toast(tt('{booked} Differenzen gebucht', { booked: res.booked })), onClose());
               }}
             >
-              Abschließen und Differenzen buchen
+              {tt('Abschließen und Differenzen buchen')}
             </button>
           </>
         ) : (
-          <button className="btn secondary" onClick={onClose}>Schließen</button>
+          <button className="btn secondary" onClick={onClose}>{tt('Schließen')}</button>
         )
       }
     >
       <p className="muted">
-        {c.place_id ? 'Ein Lagerort' : 'Alle Lagerorte'} · {c.summary.counted} von {c.summary.lines} gezählt · {c.summary.differences} Differenzen
-        {c.summary.differences ? ` (Überschuss ${money(c.summary.surplus_value_cents)}, Fehlbestand ${money(c.summary.shortage_value_cents)})` : ''}
+        {c.place_id ? tt('Ein Lagerort') : tt('Alle Lagerorte')} {tt('· {counted} von {lines} gezählt · {differences} Differenzen', { counted: c.summary.counted, lines: c.summary.lines, differences: c.summary.differences })}
+        {c.summary.differences ? tt(' (Überschuss {money}, Fehlbestand {money2})', { money: money(c.summary.surplus_value_cents), money2: money(c.summary.shortage_value_cents) }) : ''}
       </p>
       <div className="table-wrap" style={{ maxHeight: 420, overflowY: 'auto' }}>
         <table className="t">
           <thead>
             <tr>
-              <th>Artikel</th>
-              <th>Lagerort</th>
-              <th className="num">Soll</th>
-              <th style={{ width: 120 }}>Gezählt</th>
-              <th className="num">Differenz</th>
+              <th>{tt('Artikel')}</th>
+              <th>{tt('Lagerort')}</th>
+              <th className="num">{tt('Soll')}</th>
+              <th style={{ width: 120 }}>{tt('Gezählt')}</th>
+              <th className="num">{tt('Differenz')}</th>
             </tr>
           </thead>
           <tbody>
@@ -880,6 +892,7 @@ function CountView({ id, onClose }: { id: string; onClose: () => void }) {
 // --- valuation, places, settings -------------------------------------------------------------------------------------------
 
 function Valuation() {
+  const tt = useT('x_finance');
   const [asof, setAsof] = useState('');
   const r = useLoad(() => api.get(`/api/inventory/valuation${asof ? `?asof=${asof}` : ''}`), [asof]);
   const v = r.data;
@@ -887,7 +900,7 @@ function Valuation() {
     <>
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div style={{ width: 170 }}>
-          <Field label="Stichtag" hint="Leer = heute">
+          <Field label={tt('Stichtag')} hint={tt('Leer = heute')}>
             <Input type="date" value={asof} onChange={setAsof} />
           </Field>
         </div>
@@ -904,10 +917,10 @@ function Valuation() {
           <table className="t">
             <thead>
               <tr>
-                <th>Artikel</th>
-                <th className="num">Bestand</th>
-                <th className="num">Ø Einkaufspreis</th>
-                <th className="num">Wert</th>
+                <th>{tt('Artikel')}</th>
+                <th className="num">{tt('Bestand')}</th>
+                <th className="num">{tt('Ø Einkaufspreis')}</th>
+                <th className="num">{tt('Wert')}</th>
               </tr>
             </thead>
             <tbody>
@@ -923,7 +936,7 @@ function Valuation() {
               ))}
               <tr className="total">
                 <td colSpan={3}>
-                  <strong>Lagerwert gesamt</strong>
+                  <strong>{tt('Lagerwert gesamt')}</strong>
                 </td>
                 <td className="num">
                   <strong>{money(v.total_cents)}</strong>
@@ -933,29 +946,30 @@ function Valuation() {
           </table>
         </div>
       ) : (
-        <Empty>Kein Bestand zum Stichtag.</Empty>
+        <Empty>{tt('Kein Bestand zum Stichtag.')}</Empty>
       )}
-      <p className="muted small">Bewertung: {v?.method ?? 'gleitender Durchschnittspreis'}. Zum Stichtag wird aus dem Bewegungsprotokoll zurückgerechnet. Das ist eine Hilfe für die Inventur – die Bilanzbewertung legt dein Steuerberater fest.</p>
+      <p className="muted small">{tt('Bewertung:')} {v?.method ?? tt('gleitender Durchschnittspreis')}{tt('. Zum Stichtag wird aus dem Bewegungsprotokoll zurückgerechnet. Das ist eine Hilfe für die Inventur – die Bilanzbewertung legt dein Steuerberater fest.')}</p>
     </>
   );
 }
 
 function Places({ places, onChange }: { places: any[]; onChange: () => void }) {
+  const tt = useT('x_finance');
   const [edit, setEdit] = useState<any>();
   return (
     <>
       <div style={{ marginBottom: 12 }}>
         <button className="btn" onClick={() => setEdit({})}>
-          Lagerort anlegen
+          {tt('Lagerort anlegen')}
         </button>
       </div>
       <div className="table-wrap" data-tour="inv-places">
         <table className="t">
           <thead>
             <tr>
-              <th>Lagerort</th>
-              <th>Kürzel</th>
-              <th className="num">Artikel</th>
+              <th>{tt('Lagerort')}</th>
+              <th>{tt('Kürzel')}</th>
+              <th className="num">{tt('Artikel')}</th>
               <th />
             </tr>
           </thead>
@@ -963,20 +977,20 @@ function Places({ places, onChange }: { places: any[]; onChange: () => void }) {
             {places.map((p) => (
               <tr key={p.id} style={p.active ? undefined : { opacity: 0.55 }}>
                 <td>
-                  <strong>{p.name}</strong> {p.is_default ? <Badge tone="blue">Standard</Badge> : null}
+                  <strong>{p.name}</strong> {p.is_default ? <Badge tone="blue">{tt('Standard')}</Badge> : null}
                 </td>
                 <td className="mono">{p.code}</td>
                 <td className="num">{p.articles}</td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <button className="btn small secondary" onClick={() => setEdit(p)}>Umbenennen</button>{' '}
+                  <button className="btn small secondary" onClick={() => setEdit(p)}>{tt('Umbenennen')}</button>{' '}
                   {!p.is_default && (
                     <button className="btn small secondary" onClick={async () => (await act(() => api.patch(`/api/inventory/places/${p.id}`, { is_default: true }))) && onChange()}>
-                      Als Standard
+                      {tt('Als Standard')}
                     </button>
                   )}{' '}
                   {!p.is_default && (
                     <button className="btn small ghost" onClick={async () => (await act(() => api.patch(`/api/inventory/places/${p.id}`, { active: !p.active }))) && onChange()}>
-                      {p.active ? 'Deaktivieren' : 'Aktivieren'}
+                      {p.active ? tt('Deaktivieren') : tt('Aktivieren')}
                     </button>
                   )}
                 </td>
@@ -991,26 +1005,27 @@ function Places({ places, onChange }: { places: any[]; onChange: () => void }) {
 }
 
 function PlaceModal({ place, onClose, onDone }: { place?: any; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_finance');
   const [name, setName] = useState(place?.name ?? '');
   const [code, setCode] = useState(place?.code ?? '');
   return (
     <Modal
-      title={place ? 'Lagerort umbenennen' : 'Lagerort anlegen'}
+      title={place ? tt('Lagerort umbenennen') : tt('Lagerort anlegen')}
       onClose={onClose}
       footer={
         <>
-          <button className="btn secondary" onClick={onClose}>Abbrechen</button>
-          <button className="btn" onClick={async () => (await act(() => (place ? api.patch(`/api/inventory/places/${place.id}`, { name, code }) : api.post('/api/inventory/places', { name, code })), 'Gespeichert')) && onDone()}>
-            Speichern
+          <button className="btn secondary" onClick={onClose}>{tt('Abbrechen')}</button>
+          <button className="btn" onClick={async () => (await act(() => (place ? api.patch(`/api/inventory/places/${place.id}`, { name, code }) : api.post('/api/inventory/places', { name, code })), tt('Gespeichert'))) && onDone()}>
+            {tt('Speichern')}
           </button>
         </>
       }
     >
       <div className="grid2">
         <Field label="Name">
-          <Input value={name} onChange={setName} placeholder="z. B. Regal A, Transporter" />
+          <Input value={name} onChange={setName} placeholder={tt('z. B. Regal A, Transporter')} />
         </Field>
-        <Field label="Kürzel">
+        <Field label={tt('Kürzel')}>
           <Input value={code} onChange={setCode} />
         </Field>
       </div>
@@ -1019,6 +1034,7 @@ function PlaceModal({ place, onClose, onDone }: { place?: any; onClose: () => vo
 }
 
 function InvSettings() {
+  const tt = useT('x_finance');
   const s = useLoad(() => api.get('/api/inventory/settings'), []);
   const [f, setF] = useState<any>();
   useEffect(() => {
@@ -1027,17 +1043,17 @@ function InvSettings() {
   if (!f) return <Spinner />;
   return (
     <div className="card" style={{ maxWidth: 680 }} data-tour="inv-settings">
-      <h2>Automatischer Warenausgang</h2>
+      <h2>{tt('Automatischer Warenausgang')}</h2>
       <p className="muted small">
-        Wenn eine Rechnung bezahlt (oder versendet) wird, bucht HyperLevel die Positionen aus dem Lager aus. Eine Position wird einem Artikel zugeordnet über die Artikelnummer im Text (z. B. „[KAFFEE-500]“), das verknüpfte Produkt oder den Artikelnamen. Bei Zweifeln wird nichts geraten – die Position bleibt unberührt. Jede Rechnung wird nur einmal ausgebucht.
+        {tt('Wenn eine Rechnung bezahlt (oder versendet) wird, bucht HyperLevel die Positionen aus dem Lager aus. Eine Position wird einem Artikel zugeordnet über die Artikelnummer im Text (z. B. „[KAFFEE-500]“), das verknüpfte Produkt oder den Artikelnamen. Bei Zweifeln wird nichts geraten – die Position bleibt unberührt. Jede Rechnung wird nur einmal ausgebucht.')}
       </p>
-      <Field label="Ausbuchen, wenn die Rechnung …">
+      <Field label={tt('Ausbuchen, wenn die Rechnung …')}>
         <Select value={f.auto_issue_on} onChange={(v) => setF({ ...f, auto_issue_on: v })} options={[['paid', 'bezahlt ist'], ['sent', 'versendet wird'], ['off', 'nie (nur von Hand)']]} />
       </Field>
-      <Check checked={f.allow_negative} onChange={(v) => setF({ ...f, allow_negative: v })} label="Negativen Bestand erlauben (sonst wird ein zu großer Warenausgang abgelehnt)" />
+      <Check checked={f.allow_negative} onChange={(v) => setF({ ...f, allow_negative: v })} label={tt('Negativen Bestand erlauben (sonst wird ein zu großer Warenausgang abgelehnt)')} />
       <div style={{ marginTop: 12 }}>
-        <button className="btn" onClick={async () => (await act(() => api.put('/api/inventory/settings', f), 'Gespeichert')) && void s.reload()}>
-          Speichern
+        <button className="btn" onClick={async () => (await act(() => api.put('/api/inventory/settings', f), tt('Gespeichert'))) && void s.reload()}>
+          {tt('Speichern')}
         </button>
       </div>
     </div>

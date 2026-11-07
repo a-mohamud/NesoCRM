@@ -1,6 +1,7 @@
 import { api } from '../api';
 import { Field, Input, Link, MergeHint, Select, useLoad } from '../ui';
 import { NAMES } from './shared';
+import { useT } from '../i18n';
 
 interface Action {
   plugin: string;
@@ -12,6 +13,7 @@ interface Action {
 
 /** Workflow step „Plugin-Aktion“: runs an automation step that a plugin (on for the whole sub-account) provides. */
 export function PluginActionStep({ step, set }: { step: any; set: (p: any) => void }) {
+  const tt = useT('x_ai');
   const l = useLoad(() => api.get<Action[]>('/api/plugins/actions').catch(() => [] as Action[]), []);
   const actions = l.data ?? [];
   const cur = actions.find((a) => a.plugin === step.plugin && a.action === step.action);
@@ -21,10 +23,10 @@ export function PluginActionStep({ step, set }: { step: any; set: (p: any) => vo
     <>
       {l.data && !actions.length && (
         <p className="muted small">
-          Noch kein Plugin mit Automations-Schritt ist für den ganzen Sub-Account aktiv. In der <Link to="werkstatt">{NAMES.werkstatt}</Link> oder im <Link to="marktplatz">{NAMES.marktplatz}</Link> findest du welche.
+          {tt('Noch kein Plugin mit Automations-Schritt ist für den ganzen Sub-Account aktiv. In der')} <Link to="werkstatt">{NAMES.werkstatt}</Link> {tt('oder im')} <Link to="marktplatz">{NAMES.marktplatz}</Link> {tt('findest du welche.')}
         </p>
       )}
-      <Field label="Plugin-Aktion" hint="Es laufen nur Plugins, die für den ganzen Sub-Account eingerichtet sind – nie private.">
+      <Field label={tt('Plugin-Aktion')} hint={tt('Es laufen nur Plugins, die für den ganzen Sub-Account eingerichtet sind – nie private.')}>
         <Select
           value={key}
           onChange={(v) => {
@@ -32,7 +34,7 @@ export function PluginActionStep({ step, set }: { step: any; set: (p: any) => vo
             set({ plugin, action, input: {} });
           }}
           options={actions.map((a) => [`${a.plugin}::${a.action}`, `${a.plugin_name}: ${a.label}`] as [string, string])}
-          placeholder="Aktion wählen"
+          placeholder={tt('Aktion wählen')}
         />
       </Field>
       {cur?.fields.map((f) => (

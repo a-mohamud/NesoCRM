@@ -4,6 +4,7 @@ import { Icon } from '../icons';
 import { SignupLink } from '../referrals';
 import { Badge, Check, CodeBox, Empty, Field, Input, Modal, Select, Spinner, act, confirmAsk, navigate, toast, toastError, useLoad } from '../ui';
 import { SchemaForm } from './Composio';
+import { useT } from '../i18n';
 
 /**
  * External MCP servers (docs/mcp-client.md): Agentur → MCP-Server (for every or selected sub-accounts)
@@ -26,11 +27,12 @@ const clip = (s: unknown, n: number) => {
 
 /** After the OAuth redirect back (?mcp=ok|error&server=…): toast once, clean the address, open the server. */
 function useMcpReturn(open: (id: string) => void) {
+  const tt = useT('x_integrations');
   useEffect(() => {
     const q = new URLSearchParams(location.search);
     const st = q.get('mcp');
     if (!st) return;
-    if (st === 'ok') toast('MCP-Server verbunden');
+    if (st === 'ok') toast(tt('MCP-Server verbunden'));
     else toastError(q.get('msg') || 'Verbinden fehlgeschlagen');
     history.replaceState(null, '', location.pathname);
     const sid = q.get('server');
@@ -40,6 +42,7 @@ function useMcpReturn(open: (id: string) => void) {
 }
 
 export function McpServers({ agency = false }: { agency?: boolean }) {
+  const tt = useT('x_integrations');
   const base = agency ? '/api/agency/mcp-servers' : '/api/mcp-servers';
   const list = useLoad(() => api.get<Json>(base), [base]);
   const presets = useLoad(() => api.get<{ presets: Json[]; callback_url: string }>('/api/mcp-presets'), []);
@@ -54,15 +57,15 @@ export function McpServers({ agency = false }: { agency?: boolean }) {
     <div className="cx" data-tour="mcp-servers">
       <div className="card" data-tour="mcp-servers-list">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0 }}>MCP-Server</h2>
+          <h2 style={{ margin: 0 }}>{tt('MCP-Server')}</h2>
           <button className="btn small" data-tour="mcp-add" onClick={() => setForm({ name: '', url: '', auth: 'none', transport: 'auto', expose_agent: true, expose_mcp: false, token_scope: 'server', share: ['*'] })}>
-            + Eigener Server
+            {tt('+ Eigener Server')}
           </button>
         </div>
         <p className="muted small">
           {agency
-            ? 'Externe MCP-Server für alle oder ausgewählte Sub-Accounts: HyperLevel liest ihre Werkzeuge, du gibst einzelne frei – nutzbar in Workflows („MCP-Werkzeug ausführen“), im KI-Agenten und optional über HyperLevels eigenes /mcp für Claude & Codex.'
-            : 'Werkzeuge aus anderen MCP-Servern für diesen Sub-Account – eigene und die von der Agentur freigegebenen. Nur freigegebene Werkzeuge laufen; HyperLevel ruft sie serverseitig auf und behandelt Antworten als Daten.'}
+            ? tt('Externe MCP-Server für alle oder ausgewählte Sub-Accounts: HyperLevel liest ihre Werkzeuge, du gibst einzelne frei – nutzbar in Workflows („MCP-Werkzeug ausführen“), im KI-Agenten und optional über HyperLevels eigenes /mcp für Claude & Codex.')
+            : tt('Werkzeuge aus anderen MCP-Servern für diesen Sub-Account – eigene und die von der Agentur freigegebenen. Nur freigegebene Werkzeuge laufen; HyperLevel ruft sie serverseitig auf und behandelt Antworten als Daten.')}
         </p>
         {servers.length ? (
           <div className="cx-conns">
@@ -73,28 +76,28 @@ export function McpServers({ agency = false }: { agency?: boolean }) {
                 </span>
                 <div className="cx-conn-main">
                   <strong>
-                    {s.name} {s.scope === 'agency' && !agency && <Badge tone="purple">Agentur</Badge>}
+                    {s.name} {s.scope === 'agency' && !agency && <Badge tone="purple">{tt('Agentur')}</Badge>}
                   </strong>
                   <span className="muted small">
-                    {s.url_hint} · {s.enabled_count}/{s.tools_count} Werkzeuge frei{s.expose_mcp ? ' · über /mcp' : ''}
+                    {tt('{url_hint} · {enabled_count}/{tools_count} Werkzeuge frei', { url_hint: s.url_hint, enabled_count: s.enabled_count, tools_count: s.tools_count })}{s.expose_mcp ? tt(' · über /mcp') : ''}
                   </span>
                 </div>
                 <Badge tone={AUTH[s.auth]?.[1] ?? 'gray'}>{AUTH[s.auth]?.[0] ?? s.auth}</Badge>
-                {s.connection.needed && !s.connection.connected ? <Badge tone="yellow">nicht verbunden</Badge> : s.status === 'error' ? <Badge tone="red">Fehler</Badge> : s.changed.length ? <Badge tone="yellow">geändert</Badge> : s.status === 'ok' ? <Badge tone="green">OK</Badge> : <Badge>neu</Badge>}
+                {s.connection.needed && !s.connection.connected ? <Badge tone="yellow">{tt('nicht verbunden')}</Badge> : s.status === 'error' ? <Badge tone="red">{tt('Fehler')}</Badge> : s.changed.length ? <Badge tone="yellow">{tt('geändert')}</Badge> : s.status === 'ok' ? <Badge tone="green">OK</Badge> : <Badge>neu</Badge>}
                 <button className="btn small secondary" onClick={() => setOpenId(s.id)}>
-                  Öffnen
+                  {tt('Öffnen')}
                 </button>
               </div>
             ))}
           </div>
         ) : (
-          <p className="muted">Noch kein MCP-Server – unten eine Vorlage wählen oder einen eigenen hinzufügen.</p>
+          <p className="muted">{tt('Noch kein MCP-Server – unten eine Vorlage wählen oder einen eigenen hinzufügen.')}</p>
         )}
       </div>
       <div className="card" data-tour="mcp-presets">
-        <h2>Vorlagen</h2>
+        <h2>{tt('Vorlagen')}</h2>
         <p className="muted small">
-          Bekannte MCP-Server mit Link zur Anleitung. <Badge tone="purple">OAuth</Badge> = „Verbinden“ mit Anmeldung beim Anbieter (meist mit automatischer Registrierung), <Badge tone="blue">Token</Badge> = Schlüssel des Anbieters eintragen.
+          {tt('Bekannte MCP-Server mit Link zur Anleitung.')} <Badge tone="purple">{tt('OAuth')}</Badge> {tt('= „Verbinden“ mit Anmeldung beim Anbieter (meist mit automatischer Registrierung),')} <Badge tone="blue">{tt('Token')}</Badge> {tt('= Schlüssel des Anbieters eintragen.')}
         </p>
         <div className="cx-grid">
           {presets.data.presets.map((p) => (
@@ -109,12 +112,12 @@ export function McpServers({ agency = false }: { agency?: boolean }) {
               <div className="cx-tk-foot">
                 <span className="small">
                   <a href={p.docs} target="_blank" rel="noopener noreferrer">
-                    Anleitung ↗
+                    {tt('Anleitung ↗')}
                   </a>{' '}
                   {p.signup && <SignupLink id={p.signup} />}
                 </span>
                 <button className="btn small" onClick={() => setForm({ name: p.name.replace(/ \(.*\)$/, ''), url: p.url, auth: p.auth, transport: p.transport, header_name: p.header_name ?? 'Authorization', preset: p.id, token_hint: p.token_hint, expose_agent: true, expose_mcp: false, token_scope: 'server', share: ['*'], allow_private: false, self_hosted: p.self_hosted })}>
-                  Hinzufügen
+                  {tt('Hinzufügen')}
                 </button>
               </div>
             </div>
@@ -151,6 +154,7 @@ export function McpServers({ agency = false }: { agency?: boolean }) {
 }
 
 function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl, onClose, onSaved }: { agency: boolean; base: string; initial: Json; canInternal: boolean; locations: Json[]; callbackUrl: string; onClose: () => void; onSaved: (s: Json) => void }) {
+  const tt = useT('x_integrations');
   const [f, setF] = useState<Json>({ secret: '', oauth_client_secret: '', ...initial });
   const set = (p: Json) => setF({ ...f, ...p });
   const editing = !!f.id;
@@ -169,7 +173,7 @@ function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl
     }
     if (canInternal) body.allow_private = !!f.allow_private;
     if (agency) body.share = f.share?.includes('*') ? '*' : (f.share ?? []);
-    const r = await act(() => (editing ? api.patch<Json>(`${base}/${f.id}`, body) : api.post<Json>(base, body)), 'Gespeichert');
+    const r = await act(() => (editing ? api.patch<Json>(`${base}/${f.id}`, body) : api.post<Json>(base, body)), tt('Gespeichert'));
     if (r) onSaved(r);
   };
   const scopes: [string, string][] = agency
@@ -184,30 +188,30 @@ function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl
       ];
   return (
     <Modal
-      title={editing ? `${f.name} bearbeiten` : 'MCP-Server hinzufügen'}
+      title={editing ? tt('{name} bearbeiten', { name: f.name }) : tt('MCP-Server hinzufügen')}
       onClose={onClose}
       wide
       footer={
         <button className="btn" disabled={!f.name || !(f.url_new ?? f.url)} onClick={save}>
-          Speichern
+          {tt('Speichern')}
         </button>
       }
     >
       <div data-tour="mcp-form">
         <Field label="Name">
-          <Input value={f.name} onChange={(v) => set({ name: v })} placeholder="z. B. Notion" />
+          <Input value={f.name} onChange={(v) => set({ name: v })} placeholder={tt('z. B. Notion')} />
         </Field>
-        <Field label="Server-Adresse" hint={editing ? `Gespeichert: ${f.url_hint} – nur ausfüllen, um sie zu ändern (Verbindungen und Freigaben starten dann neu).` : 'Streamable HTTP (…/mcp) oder älteres SSE (…/sse). Platzhalter wie <zone> ersetzen. Die Adresse wird verschlüsselt gespeichert.'}>
+        <Field label={tt('Server-Adresse')} hint={editing ? tt('Gespeichert: {url_hint} – nur ausfüllen, um sie zu ändern (Verbindungen und Freigaben starten dann neu).', { url_hint: f.url_hint }) : tt('Streamable HTTP (…/mcp) oder älteres SSE (…/sse). Platzhalter wie <zone> ersetzen. Die Adresse wird verschlüsselt gespeichert.')}>
           <Input value={editing ? (f.url_new ?? '') : f.url} onChange={(v) => set(editing ? { url_new: v } : { url: v })} placeholder="https://mcp.example.com/mcp" />
         </Field>
         <div className="row">
           <div className="grow">
-            <Field label="Anmeldung">
+            <Field label={tt('Anmeldung')}>
               <Select value={f.auth} onChange={(v) => set({ auth: v })} options={[['none', 'Ohne Anmeldung'], ['bearer', 'Token / API-Schlüssel'], ['oauth', 'OAuth 2.1 („Verbinden“)']]} />
             </Field>
           </div>
           <div className="grow">
-            <Field label="Transport">
+            <Field label={tt('Transport')}>
               <Select value={f.transport} onChange={(v) => set({ transport: v })} options={[['auto', 'Automatisch (HTTP, sonst SSE)'], ['http', 'Streamable HTTP'], ['sse', 'SSE (alt)']]} />
             </Field>
           </div>
@@ -215,35 +219,35 @@ function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl
         {f.auth === 'bearer' && (
           <div className="row">
             <div style={{ width: 200 }}>
-              <Field label="Header">
+              <Field label={tt('Header')}>
                 <Input value={f.header_name ?? 'Authorization'} onChange={(v) => set({ header_name: v })} />
               </Field>
             </div>
             <div className="grow">
-              <Field label="Token" hint={f.token_hint || 'Bei „Authorization“ setzt HyperLevel „Bearer “ davor. Verschlüsselt gespeichert, nie wieder angezeigt.'}>
-                <Input type="password" value={f.secret} onChange={(v) => set({ secret: v })} autoComplete="off" placeholder={f.secret_set ? `gespeichert ${f.secret_hint}` : ''} />
+              <Field label={tt('Token')} hint={f.token_hint || tt('Bei „Authorization“ setzt HyperLevel „Bearer “ davor. Verschlüsselt gespeichert, nie wieder angezeigt.')}>
+                <Input type="password" value={f.secret} onChange={(v) => set({ secret: v })} autoComplete="off" placeholder={f.secret_set ? tt('gespeichert {secret_hint}', { secret_hint: f.secret_hint }) : ''} />
               </Field>
             </div>
           </div>
         )}
         {f.auth === 'oauth' && (
           <>
-            <Field label="Zugang gilt für">
+            <Field label={tt('Zugang gilt für')}>
               <Select value={f.token_scope ?? 'server'} onChange={(v) => set({ token_scope: v })} options={scopes} />
             </Field>
-            <Field label="Scopes (optional)" hint="Leer = was der Server vorschlägt.">
-              <Input value={f.oauth_scope ?? ''} onChange={(v) => set({ oauth_scope: v })} placeholder="z. B. read write" />
+            <Field label={tt('Scopes (optional)')} hint={tt('Leer = was der Server vorschlägt.')}>
+              <Input value={f.oauth_scope ?? ''} onChange={(v) => set({ oauth_scope: v })} placeholder={tt('z. B. read write')} />
             </Field>
-            <p className="muted small">Die meisten Server registrieren HyperLevel automatisch (Dynamic Client Registration). Sonst eine eigene OAuth-App beim Anbieter anlegen – Rückleitungs-Adresse:</p>
+            <p className="muted small">{tt('Die meisten Server registrieren HyperLevel automatisch (Dynamic Client Registration). Sonst eine eigene OAuth-App beim Anbieter anlegen – Rückleitungs-Adresse:')}</p>
             <CodeBox text={callbackUrl} />
             <div className="row">
               <div className="grow">
-                <Field label="Client-ID (nur ohne automatische Registrierung)">
+                <Field label={tt('Client-ID (nur ohne automatische Registrierung)')}>
                   <Input value={f.oauth_client_id ?? ''} onChange={(v) => set({ oauth_client_id: v })} />
                 </Field>
               </div>
               <div className="grow">
-                <Field label="Client-Secret">
+                <Field label={tt('Client-Secret')}>
                   <Input type="password" value={f.oauth_client_secret} onChange={(v) => set({ oauth_client_secret: v })} autoComplete="off" placeholder={f.oauth?.client?.secret_set ? 'gespeichert' : ''} />
                 </Field>
               </div>
@@ -251,8 +255,8 @@ function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl
           </>
         )}
         {agency && (
-          <Field label="Für welche Sub-Accounts">
-            <Check checked={!!f.share?.includes('*')} onChange={(v) => set({ share: v ? ['*'] : [] })} label="Alle Sub-Accounts" />
+          <Field label={tt('Für welche Sub-Accounts')}>
+            <Check checked={!!f.share?.includes('*')} onChange={(v) => set({ share: v ? ['*'] : [] })} label={tt('Alle Sub-Accounts')} />
             {!f.share?.includes('*') && (
               <div className="grid2">
                 {locations.map((l) => (
@@ -262,15 +266,16 @@ function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl
             )}
           </Field>
         )}
-        <Check checked={!!f.expose_agent} onChange={(v) => set({ expose_agent: v })} label="Freigegebene Werkzeuge im KI-Agenten anbieten" />
-        <Check checked={!!f.expose_mcp} onChange={(v) => set({ expose_mcp: v })} label="Über HyperLevels /mcp an Claude, Codex & Co. weitergeben (als ext_…)" />
-        {canInternal && <Check checked={!!f.allow_private} onChange={(v) => set({ allow_private: v })} label={`Internes Netz erlauben (Server im LAN/Docker-Netz${f.self_hosted ? ' – bei selbst gehosteten Servern üblich' : ''}) – nur die Agentur`} />}
+        <Check checked={!!f.expose_agent} onChange={(v) => set({ expose_agent: v })} label={tt('Freigegebene Werkzeuge im KI-Agenten anbieten')} />
+        <Check checked={!!f.expose_mcp} onChange={(v) => set({ expose_mcp: v })} label={tt('Über HyperLevels /mcp an Claude, Codex & Co. weitergeben (als ext_…)')} />
+        {canInternal && <Check checked={!!f.allow_private} onChange={(v) => set({ allow_private: v })} label={`Internes Netz erlauben (Server im LAN/Docker-Netz${f.self_hosted ? tt(' – bei selbst gehosteten Servern üblich') : ''}) – nur die Agentur`} />}
       </div>
     </Modal>
   );
 }
 
 function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; base: string; id: string; onClose: () => void; onEdit: (s: Json) => void }) {
+  const tt = useT('x_integrations');
   const s = useLoad(() => api.get<Json>(`${base}/${id}`), [id]);
   const [enabled, setEnabled] = useState<string[] | null>(null);
   const [busy, setBusy] = useState('');
@@ -280,7 +285,7 @@ function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; 
   }, [s.data]);
   if (s.error)
     return (
-      <Modal title="MCP-Server" onClose={onClose}>
+      <Modal title={tt('MCP-Server')} onClose={onClose}>
         <Empty>{s.error}</Empty>
       </Modal>
     );
@@ -299,15 +304,15 @@ function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; 
     <Modal title={v.name} onClose={onClose} wide>
       <div data-tour="mcp-detail">
         <p className="small">
-          <code>{v.url_hint}</code> · <Badge tone={AUTH[v.auth]?.[1] ?? 'gray'}>{AUTH[v.auth]?.[0]}</Badge> {v.scope === 'agency' && <Badge tone="purple">Agentur-Server</Badge>} {v.allow_private && <Badge tone="yellow">internes Netz</Badge>}
+          <code>{v.url_hint}</code> · <Badge tone={AUTH[v.auth]?.[1] ?? 'gray'}>{AUTH[v.auth]?.[0]}</Badge> {v.scope === 'agency' && <Badge tone="purple">{tt('Agentur-Server')}</Badge>} {v.allow_private && <Badge tone="yellow">{tt('internes Netz')}</Badge>}
           {v.server_info?.name ? ` · ${v.server_info.name} ${v.server_info.version ?? ''} (${v.server_info.transport ?? ''}${v.server_info.protocol ? `, ${v.server_info.protocol}` : ''})` : ''}
         </p>
         {v.last_error && <p className="small" style={{ color: 'var(--red)' }}>{v.last_error}</p>}
         {v.auth === 'oauth' && (
           <p className="small">
-            {conn.connected ? <Badge tone="green">verbunden</Badge> : <Badge tone="yellow">nicht verbunden</Badge>}{' '}
-            {conn.per === 'location' ? 'Jeder Sub-Account verbindet selbst.' : conn.per === 'user' ? 'Jeder Nutzer verbindet sein eigenes Konto (nicht in Workflows).' : 'Ein Zugang für alle.'}
-            {conn.expires_at ? ` Token bis ${dt(conn.expires_at)} (wird automatisch erneuert).` : ''}
+            {conn.connected ? <Badge tone="green">verbunden</Badge> : <Badge tone="yellow">{tt('nicht verbunden')}</Badge>}{' '}
+            {conn.per === 'location' ? tt('Jeder Sub-Account verbindet selbst.') : conn.per === 'user' ? tt('Jeder Nutzer verbindet sein eigenes Konto (nicht in Workflows).') : tt('Ein Zugang für alle.')}
+            {conn.expires_at ? tt(' Token bis {dt} (wird automatisch erneuert).', { dt: dt(conn.expires_at) }) : ''}
           </p>
         )}
         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
@@ -321,12 +326,12 @@ function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; 
                 if (r?.url) location.href = r.url;
               }}
             >
-              {conn.connected ? 'Neu verbinden' : 'Verbinden'}
+              {conn.connected ? tt('Neu verbinden') : tt('Verbinden')}
             </button>
           )}
           {ownOAuth && conn.connected && (
             <button className="btn small ghost" onClick={async () => (await run('disc', () => api.del(`${base}/${id}/oauth`), 'Getrennt')) && s.reload()}>
-              Trennen
+              {tt('Trennen')}
             </button>
           )}
           <button
@@ -338,32 +343,32 @@ function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; 
               s.reload();
             }}
           >
-            {busy === 'test' ? 'Teste …' : 'Testen'}
+            {busy === 'test' ? tt('Teste …') : tt('Testen')}
           </button>
           {v.editable && (
             <>
               <button className="btn small ghost" onClick={() => onEdit(v)}>
-                Bearbeiten
+                {tt('Bearbeiten')}
               </button>
-              <button className="btn small ghost" onClick={async () => confirmAsk(`${v.name} löschen? Workflows mit seinen Werkzeugen schlagen dann fehl.`) && (await act(() => api.del(`${base}/${id}`), 'Gelöscht')) && onClose()}>
-                Löschen
+              <button className="btn small ghost" onClick={async () => confirmAsk(tt('{name} löschen? Workflows mit seinen Werkzeugen schlagen dann fehl.', { name: v.name })) && (await act(() => api.del(`${base}/${id}`), tt('Gelöscht'))) && onClose()}>
+                {tt('Löschen')}
               </button>
             </>
           )}
         </div>
         {test && (
           <p className="small">
-            <Badge tone="green">OK</Badge> {test.server_info?.name} · {test.tools} Werkzeuge{test.changed?.length ? ` · ${test.changed.length} geändert – bitte prüfen` : ''}
+            <Badge tone="green">OK</Badge> {tt('{name} · {tools} Werkzeuge', { name: test.server_info?.name, tools: test.tools })}{test.changed?.length ? tt(' · {length} geändert – bitte prüfen', { length: test.changed.length }) : ''}
           </p>
         )}
         <h4 className="integ-h">
-          Werkzeuge {v.tools_at ? <span className="muted small">(Stand {dt(v.tools_at)})</span> : null}
+          {tt('Werkzeuge')} {v.tools_at ? <span className="muted small">{tt('(Stand {dt})', { dt: dt(v.tools_at) })}</span> : null}
         </h4>
         {v.changed.length > 0 && (
           <div className="small" style={{ marginBottom: 8 }}>
             {v.changed.map((c: Json) => (
               <div key={c.name}>
-                <Badge tone="yellow">geändert</Badge> <code>{c.name}</code>: {c.why}
+                <Badge tone="yellow">{tt('geändert')}</Badge> <code>{c.name}</code>: {c.why}
               </div>
             ))}
           </div>
@@ -374,35 +379,35 @@ function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; 
               <div key={t.name} className="mcp-tool">
                 <Check checked={enabled.includes(t.name)} onChange={(on) => setEnabled(on ? [...enabled, t.name] : enabled.filter((x) => x !== t.name))} label={<strong>{t.title || t.name}</strong>} />
                 <div className="muted small">
-                  {t.annotations?.readOnlyHint ? <Badge tone="green">liest nur</Badge> : <Badge tone="yellow">kann schreiben</Badge>} <code>{t.exposed_as}</code> · {clip(t.description, 220)}
+                  {t.annotations?.readOnlyHint ? <Badge tone="green">{tt('liest nur')}</Badge> : <Badge tone="yellow">{tt('kann schreiben')}</Badge>} <code>{t.exposed_as}</code> · {clip(t.description, 220)}
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <p className="muted small">Noch keine Werkzeuge geladen – „Testen“ liest sie vom Server.</p>
+          <p className="muted small">{tt('Noch keine Werkzeuge geladen – „Testen“ liest sie vom Server.')}</p>
         )}
         {v.editable && (
           <div className="row" style={{ gap: 6 }}>
-            <button className="btn small" disabled={!v.tools.length} onClick={async () => (await act(() => api.put(`${base}/${id}/tools`, { enabled }), 'Freigaben gespeichert')) && s.reload()}>
-              Freigaben speichern
+            <button className="btn small" disabled={!v.tools.length} onClick={async () => (await act(() => api.put(`${base}/${id}/tools`, { enabled }), tt('Freigaben gespeichert'))) && s.reload()}>
+              {tt('Freigaben speichern')}
             </button>
             <button className="btn small ghost" onClick={async () => (await run('reload', () => api.get(`${base}/${id}/tools?refresh=1`), 'Werkzeuge neu geladen')) && s.reload()}>
-              <Icon name="refresh" size={13} /> Neu laden
+              <Icon name="refresh" size={13} /> {tt('Neu laden')}
             </button>
             <button className="btn small ghost" onClick={() => setEnabled(v.tools.filter((t: Json) => t.annotations?.readOnlyHint).map((t: Json) => t.name))}>
-              Nur lesende wählen
+              {tt('Nur lesende wählen')}
             </button>
           </div>
         )}
         {v.editable && (
           <div className="row" style={{ gap: 16, marginTop: 8 }}>
-            <Check checked={v.expose_agent} onChange={async (x) => (await act(() => api.patch(`${base}/${id}`, { expose_agent: x }))) && s.reload()} label="Im KI-Agenten" />
-            <Check checked={v.expose_mcp} onChange={async (x) => (await act(() => api.patch(`${base}/${id}`, { expose_mcp: x }))) && s.reload()} label="Über HyperLevels /mcp (Claude, Codex)" />
+            <Check checked={v.expose_agent} onChange={async (x) => (await act(() => api.patch(`${base}/${id}`, { expose_agent: x }))) && s.reload()} label={tt('Im KI-Agenten')} />
+            <Check checked={v.expose_mcp} onChange={async (x) => (await act(() => api.patch(`${base}/${id}`, { expose_mcp: x }))) && s.reload()} label={tt('Über HyperLevels /mcp (Claude, Codex)')} />
           </div>
         )}
         {!agency && v.tools.some((t: Json) => t.enabled) && <TryTool server={v} />}
-        <h4 className="integ-h">Letzte Aufrufe</h4>
+        <h4 className="integ-h">{tt('Letzte Aufrufe')}</h4>
         {v.calls.length ? (
           <table className="t" data-tour="mcp-calls">
             <tbody>
@@ -412,7 +417,7 @@ function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; 
                   <td>
                     <code className="small">{c.tool}</code>
                   </td>
-                  <td>{c.ok ? <Badge tone="green">OK</Badge> : <Badge tone="red">Fehler</Badge>}</td>
+                  <td>{c.ok ? <Badge tone="green">OK</Badge> : <Badge tone="red">{tt('Fehler')}</Badge>}</td>
                   <td className="muted small">
                     {c.source}
                     {c.location_name && agency ? ` · ${c.location_name}` : ''} · {c.ms} ms{c.error ? ` · ${clip(c.error, 80)}` : ''}
@@ -423,7 +428,7 @@ function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; 
           </table>
         ) : (
           <p className="muted small" data-tour="mcp-calls">
-            Noch keine Aufrufe.
+            {tt('Noch keine Aufrufe.')}
           </p>
         )}
       </div>
@@ -432,6 +437,7 @@ function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; 
 }
 
 function TryTool({ server }: { server: Json }) {
+  const tt = useT('x_integrations');
   const tools: Json[] = server.tools.filter((t: Json) => t.enabled);
   const [name, setName] = useState(tools[0]?.name ?? '');
   const [args, setArgs] = useState<Json>({});
@@ -439,18 +445,18 @@ function TryTool({ server }: { server: Json }) {
   const tool = tools.find((t) => t.name === name);
   return (
     <div className="mcp-try" data-tour="mcp-try">
-      <h4 className="integ-h">Ausprobieren</h4>
-      <Field label="Werkzeug">
+      <h4 className="integ-h">{tt('Ausprobieren')}</h4>
+      <Field label={tt('Werkzeug')}>
         <Select value={name} onChange={(v) => (setName(v), setArgs({}), setOut(null))} options={tools.map((t) => [t.name, t.title || t.name] as [string, string])} />
       </Field>
       {tool && <SchemaForm schema={tool.input_schema} values={args} onChange={setArgs} merge={false} />}
       <button className="btn small" onClick={async () => setOut((await act(() => api.post<Json>('/api/mcp-servers/call', { server_id: server.id, tool: name, arguments: args }))) ?? null)}>
-        Ausführen
+        {tt('Ausführen')}
       </button>
       {out && (
         <>
           <p className="small">
-            {out.ok ? <Badge tone="green">OK</Badge> : <Badge tone="red">Fehler vom Server</Badge>} {out.ms} ms{out.truncated ? ' · gekürzt' : ''} · Antworten sind Daten des fremden Servers.
+            {out.ok ? <Badge tone="green">OK</Badge> : <Badge tone="red">{tt('Fehler vom Server')}</Badge>} {out.ms} ms{out.truncated ? tt(' · gekürzt') : ''} {tt('· Antworten sind Daten des fremden Servers.')}
           </p>
           <pre className="mcp-out">{clip(typeof out.result === 'string' ? out.result : JSON.stringify(out.result, null, 2), 4000)}</pre>
         </>
@@ -476,6 +482,7 @@ const CONTACT_TARGETS: [string, string][] = [
 
 /** Step „MCP-Werkzeug ausführen“: server → enabled tool → form from its input schema → result mapping. */
 export function McpToolStep({ step, set, customFields }: { step: Json; set: (p: Json) => void; customFields: Json[] }) {
+  const tt = useT('x_integrations');
   const data = useLoad(() => api.get<{ servers: Json[] }>('/api/mcp-servers/tools').catch(() => ({ servers: [] as Json[] })), []);
   const map: { from: string; to: string }[] = step.map ?? [];
   const targets: [string, string][] = [...CONTACT_TARGETS, ...customFields.map((f) => [`custom.${f.key}`, `Feld: ${f.label}`] as [string, string])];
@@ -484,9 +491,9 @@ export function McpToolStep({ step, set, customFields }: { step: Json; set: (p: 
   if (!servers.length && !step.server_id)
     return (
       <p className="muted">
-        Noch kein MCP-Server mit freigegebenen Werkzeugen.{' '}
+        {tt('Noch kein MCP-Server mit freigegebenen Werkzeugen.')}{' '}
         <a href="/app/apps/mcp" onClick={(e) => (e.preventDefault(), navigate('apps/mcp'))}>
-          Apps → MCP-Server
+          {tt('Apps → MCP-Server')}
         </a>
       </p>
     );
@@ -496,40 +503,40 @@ export function McpToolStep({ step, set, customFields }: { step: Json; set: (p: 
     <div data-tour="mcp-step">
       <div className="row">
         <div className="grow">
-          <Field label="MCP-Server">
-            <Select value={step.server_id} onChange={(v) => set({ server_id: v, tool: '', arguments: {} })} placeholder="wählen…" options={servers.map((s) => [s.id, `${s.name}${s.scope === 'agency' ? ' (Agentur)' : ''}`] as [string, string])} />
+          <Field label={tt('MCP-Server')}>
+            <Select value={step.server_id} onChange={(v) => set({ server_id: v, tool: '', arguments: {} })} placeholder={tt('wählen…')} options={servers.map((s) => [s.id, `${s.name}${s.scope === 'agency' ? ' (Agentur)' : ''}`] as [string, string])} />
           </Field>
         </div>
         <div className="grow">
-          <Field label="Werkzeug">
-            <Select value={step.tool} onChange={(v) => set({ tool: v, arguments: {} })} placeholder="wählen…" options={(server?.tools ?? []).map((t: Json) => [t.name, t.title || t.name] as [string, string])} />
+          <Field label={tt('Werkzeug')}>
+            <Select value={step.tool} onChange={(v) => set({ tool: v, arguments: {} })} placeholder={tt('wählen…')} options={(server?.tools ?? []).map((t: Json) => [t.name, t.title || t.name] as [string, string])} />
           </Field>
         </div>
       </div>
-      {step.server_id && !server && <p className="small" style={{ color: 'var(--red)' }}>Der Server ist nicht mehr verfügbar oder hat keine freigegebenen Werkzeuge.</p>}
+      {step.server_id && !server && <p className="small" style={{ color: 'var(--red)' }}>{tt('Der Server ist nicht mehr verfügbar oder hat keine freigegebenen Werkzeuge.')}</p>}
       {tool && (
         <>
           <p className="muted small">{clip(tool.description, 300)}</p>
           <SchemaForm schema={tool.input_schema} values={step.arguments ?? {}} onChange={(v) => set({ arguments: v })} />
-          <h4 className="integ-h">Ergebnis übernehmen (optional)</h4>
+          <h4 className="integ-h">{tt('Ergebnis übernehmen (optional)')}</h4>
           <p className="muted small">
-            Pfad im Ergebnis → Kontaktfeld (strukturierte Antwort oder JSON-Text). Spätere Schritte lesen es als <code>{'{{event.mcp_result.data.<pfad>}}'}</code>.
+            {tt('Pfad im Ergebnis → Kontaktfeld (strukturierte Antwort oder JSON-Text). Spätere Schritte lesen es als')} <code>{'{{event.mcp_result.data.<pfad>}}'}</code>.
           </p>
           {map.map((m, i) => (
             <div key={i} className="row" style={{ marginBottom: 6 }}>
               <div className="grow">
-                <Input value={m.from} onChange={(v) => set({ map: map.map((x, j) => (j === i ? { ...x, from: v } : x)) })} placeholder="z. B. id" />
+                <Input value={m.from} onChange={(v) => set({ map: map.map((x, j) => (j === i ? { ...x, from: v } : x)) })} placeholder={tt('z. B. id')} />
               </div>
               <div className="grow">
-                <Select value={m.to} onChange={(v) => set({ map: map.map((x, j) => (j === i ? { ...x, to: v } : x)) })} placeholder="Kontaktfeld" options={targets} />
+                <Select value={m.to} onChange={(v) => set({ map: map.map((x, j) => (j === i ? { ...x, to: v } : x)) })} placeholder={tt('Kontaktfeld')} options={targets} />
               </div>
-              <button className="icon-btn" aria-label="Entfernen" onClick={() => set({ map: map.filter((_, j) => j !== i) })}>
+              <button className="icon-btn" aria-label={tt('Entfernen')} onClick={() => set({ map: map.filter((_, j) => j !== i) })}>
                 ✕
               </button>
             </div>
           ))}
           <button type="button" className="btn small secondary" onClick={() => set({ map: [...map, { from: '', to: '' }] })}>
-            + Zuordnung
+            {tt('+ Zuordnung')}
           </button>
         </>
       )}

@@ -5,7 +5,7 @@ import { useSession } from '../session';
 import { Badge, Check, Empty, Field, Input, Link, Modal, PageHead, Select, Spinner, Textarea, act, navigate, toastError, useLoad, useRoute } from '../ui';
 import { BuildHint } from '../werkstatt/Build';
 import { collectDiagnostics, installDiagnostics, setAutoCapture, type DiagnosticsBlock } from '../feedback/diagnostics';
-import { useT } from '../i18n';
+import { useT, tr } from '../i18n';
 
 /**
  * „Fehler & Wünsche“ for every login: the button in the top bar (menu with badge, Strg+Umschalt+F),
@@ -61,24 +61,29 @@ export const openReport = (category: 'bug' | 'wish' | 'question' = 'bug') => win
 
 // --- screenshots -----------------------------------------------------------------------------------
 async function loadImage(src: string): Promise<HTMLImageElement> {
+  const tt = tr('shell');
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Bild konnte nicht gelesen werden'));
+    img.onerror = () => reject(new Error(tt('Bild konnte nicht gelesen werden')));
     img.src = src;
   });
 }
 const fileToDataUrl = (f: Blob) =>
-  new Promise<string>((resolve, reject) => {
+  {
+  const tt = tr('shell');
+  return new Promise<string>((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(new Error('Datei konnte nicht gelesen werden'));
+    r.onerror = () => reject(new Error(tt('Datei konnte nicht gelesen werden')));
     r.readAsDataURL(f);
   });
+};
 const sizeOf = (dataUrl: string) => Math.floor(((dataUrl.length - dataUrl.indexOf(',') - 1) * 3) / 4);
 
 /** Downscales big images so they fit the server limit (3 MB) and stay readable. */
 export async function shrink(dataUrl: string, max = 3 * 1024 * 1024): Promise<string> {
+  const tt = tr('shell');
   if (!/^data:image\/(png|jpe?g|webp);/.test(dataUrl)) {
     // e.g. a GIF or HEIC from the clipboard: draw it as JPEG
     const img = await loadImage(dataUrl);
@@ -95,7 +100,7 @@ export async function shrink(dataUrl: string, max = 3 * 1024 * 1024): Promise<st
     const out = drawScaled(img, w, q);
     if (sizeOf(out) <= max) return out;
   }
-  throw new Error('Das Bild ist zu groß');
+  throw new Error(tt('Das Bild ist zu groß'));
 }
 function drawScaled(img: CanvasImageSource & { naturalWidth?: number; naturalHeight?: number; videoWidth?: number; videoHeight?: number }, maxW: number, q: number) {
   const w0 = img.naturalWidth || img.videoWidth || 1;
@@ -129,6 +134,7 @@ export async function captureScreen(): Promise<string> {
 
 /** Paste (Strg+V), file or screen capture → preview with ✕. */
 export function ScreenshotPicker({ value, onChange, compact }: { value: string; onChange: (v: string) => void; compact?: boolean }) {
+  const tt = useT('shell');
   const file = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const take = async (src: Promise<string>) => {
@@ -155,8 +161,8 @@ export function ScreenshotPicker({ value, onChange, compact }: { value: string; 
   if (value)
     return (
       <div className="fb-shot">
-        <img src={value} alt="Screenshot" />
-        <button type="button" className="icon-btn fb-shot-x" onClick={() => onChange('')} aria-label="Screenshot entfernen">
+        <img src={value} alt={tt('Screenshot')} />
+        <button type="button" className="icon-btn fb-shot-x" onClick={() => onChange('')} aria-label={tt('Screenshot entfernen')}>
           ✕
         </button>
       </div>
@@ -165,19 +171,19 @@ export function ScreenshotPicker({ value, onChange, compact }: { value: string; 
     <div className={`fb-drop${compact ? ' compact' : ''}`} data-tour="fb-screenshot">
       {!compact && (
         <span className="muted small">
-          <Icon name="image" size={14} /> Screenshot einfügen (<kbd>Strg</kbd>+<kbd>V</kbd>), Datei wählen{canCaptureScreen() ? ' oder Bildschirm aufnehmen' : ''} – optional
+          <Icon name="image" size={14} /> {tt('Screenshot einfügen (')}<kbd>{tt('Strg')}</kbd>+<kbd>V</kbd>{tt('), Datei wählen')}{canCaptureScreen() ? tt(' oder Bildschirm aufnehmen') : ''} {tt('– optional')}
         </span>
       )}
       <span className="actions">
         <button type="button" className="btn small secondary" disabled={busy} onClick={() => file.current?.click()}>
-          <Icon name="imageUp" size={13} /> Datei wählen
+          <Icon name="imageUp" size={13} /> {tt('Datei wählen')}
         </button>
         {canCaptureScreen() && (
           <button type="button" className="btn small secondary" disabled={busy} onClick={() => take(captureScreen())}>
-            <Icon name="screenCapture" size={13} /> Bildschirm aufnehmen
+            <Icon name="screenCapture" size={13} /> {tt('Bildschirm aufnehmen')}
           </button>
         )}
-        {busy && <span className="muted small">Bild wird vorbereitet…</span>}
+        {busy && <span className="muted small">{tt('Bild wird vorbereitet…')}</span>}
       </span>
       <input
         ref={file}
@@ -219,6 +225,7 @@ function diagPayload(d: DiagnosticsBlock, removed: Set<DiagKey>) {
 }
 
 function DiagnosticsView({ d, removed, setRemoved, accountName, role }: { d: DiagnosticsBlock; removed: Set<DiagKey>; setRemoved: (s: Set<DiagKey>) => void; accountName: string; role: string }) {
+  const tt = useT('shell');
   const [open, setOpen] = useState(false);
   const value: Record<DiagKey, string> = {
     page: d.route,
@@ -234,21 +241,21 @@ function DiagnosticsView({ d, removed, setRemoved, accountName, role }: { d: Dia
     <div className="fb-diag" data-tour="fb-diagnostics">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <strong className="small">
-          <Icon name="shield" size={13} /> Diagnosedaten {keys.length ? 'werden mitgeschickt' : '– alle entfernt'}
+          <Icon name="shield" size={13} /> {tt('Diagnosedaten')} {keys.length ? tt('werden mitgeschickt') : tt('– alle entfernt')}
         </strong>
         <span className="actions">
           {keys.length > 0 && (
             <button type="button" className="btn small ghost" onClick={() => setOpen(!open)} aria-expanded={open}>
-              {open ? 'Ausblenden' : 'Ansehen'}
+              {open ? tt('Ausblenden') : tt('Ansehen')}
             </button>
           )}
           {removed.size > 0 ? (
             <button type="button" className="btn small ghost" onClick={() => setRemoved(new Set())}>
-              Wiederherstellen
+              {tt('Wiederherstellen')}
             </button>
           ) : (
             <button type="button" className="btn small ghost" onClick={() => setRemoved(new Set(Object.keys(DIAG_LABEL) as DiagKey[]))}>
-              Alle entfernen
+              {tt('Alle entfernen')}
             </button>
           )}
         </span>
@@ -258,7 +265,7 @@ function DiagnosticsView({ d, removed, setRemoved, accountName, role }: { d: Dia
           {keys.map((k) => (
             <span key={k} className="fb-chip">
               <span className="muted">{DIAG_LABEL[k]}:</span> {value[k]}
-              <button type="button" onClick={() => setRemoved(new Set([...removed, k]))} aria-label={`${DIAG_LABEL[k]} entfernen`}>
+              <button type="button" onClick={() => setRemoved(new Set([...removed, k]))} aria-label={tt('{v} entfernen', { v: DIAG_LABEL[k] })}>
                 ✕
               </button>
             </span>
@@ -267,7 +274,7 @@ function DiagnosticsView({ d, removed, setRemoved, accountName, role }: { d: Dia
       )}
       {open && keys.length > 0 && <pre className="fb-pre">{JSON.stringify(diagPayload(d, removed), null, 2)}</pre>}
       <p className="muted small" style={{ margin: '6px 0 0' }}>
-        Nur technische Angaben – keine Formularinhalte, Passwörter oder Schlüssel. Hilft uns, den Fehler schnell zu finden.
+        {tt('Nur technische Angaben – keine Formularinhalte, Passwörter oder Schlüssel. Hilft uns, den Fehler schnell zu finden.')}
       </p>
     </div>
   );
@@ -275,6 +282,7 @@ function DiagnosticsView({ d, removed, setRemoved, accountName, role }: { d: Dia
 
 // --- the report modal --------------------------------------------------------------------------------
 export function ReportModal({ initial = 'bug', onClose }: { initial?: 'bug' | 'wish' | 'question'; onClose: () => void }) {
+  const tt = useT('shell');
   const session = useSession();
   const me = useFeedbackMe();
   const [category, setCategory] = useState<'bug' | 'wish' | 'question'>(initial);
@@ -290,7 +298,7 @@ export function ReportModal({ initial = 'bug', onClose }: { initial?: 'bug' | 'w
 
   const send = async () => {
     if (category === 'wish' ? !f.title.trim() : !f.what.trim())
-      return toastError(new Error(category === 'wish' ? 'Bitte gib dem Wunsch einen Titel' : category === 'question' ? 'Bitte schreib deine Frage' : 'Bitte beschreibe kurz, was passiert ist'));
+      return toastError(new Error(category === 'wish' ? tt('Bitte gib dem Wunsch einen Titel') : category === 'question' ? tt('Bitte schreib deine Frage') : tt('Bitte beschreibe kurz, was passiert ist')));
     setBusy(true);
     try {
       const body: Record<string, unknown> = { category, location_id: currentLocation(), screenshot: shot || undefined };
@@ -315,13 +323,13 @@ export function ReportModal({ initial = 'bug', onClose }: { initial?: 'bug' | 'w
 
   if (done)
     return (
-      <Modal title="Danke!" onClose={onClose}>
+      <Modal title={tt('Danke!')} onClose={onClose}>
         <div className="fb-done" data-tour="fb-done">
           <Icon name="ok" size={36} />
-          <h2>{done.kind === 'wish' ? 'Dein Wunsch steht in der Wunschliste' : `Deine ${done.kind === 'question' ? 'Frage' : 'Meldung'} ist angekommen`}</h2>
+          <h2>{done.kind === 'wish' ? tt('Dein Wunsch steht in der Wunschliste') : `Deine ${done.kind === 'question' ? tt('Frage') : tt('Meldung')} ist angekommen`}</h2>
           <p>
-            {done.kind === 'wish' ? 'Andere können jetzt dafür stimmen.' : 'Ticketnummer'} <strong>#{done.number}</strong>
-            {done.kind !== 'wish' && <> – du bekommst Bescheid, sobald das Team antwortet oder sich der Status ändert.</>}
+            {done.kind === 'wish' ? tt('Andere können jetzt dafür stimmen.') : tt('Ticketnummer')} <strong>#{done.number}</strong>
+            {done.kind !== 'wish' && <> {tt('– du bekommst Bescheid, sobald das Team antwortet oder sich der Status ändert.')}</>}
           </p>
           <div className="actions" style={{ justifyContent: 'center' }}>
             <button
@@ -331,11 +339,11 @@ export function ReportModal({ initial = 'bug', onClose }: { initial?: 'bug' | 'w
                 navigate(done.kind === 'wish' ? `wishes/${done.id}` : `feedback/${done.id}`);
               }}
             >
-              {done.kind === 'wish' ? 'Wunsch ansehen' : 'In „Meine Meldungen“ ansehen'}
+              {done.kind === 'wish' ? tt('Wunsch ansehen') : tt('In „Meine Meldungen“ ansehen')}
             </button>
             {done.kind === 'wish' && <BuildHint wishId={done.id} onBefore={onClose} />}
             <button className="btn secondary" onClick={onClose}>
-              Schließen
+              {tt('Schließen')}
             </button>
           </div>
         </div>
@@ -344,20 +352,20 @@ export function ReportModal({ initial = 'bug', onClose }: { initial?: 'bug' | 'w
 
   return (
     <Modal
-      title={category === 'wish' ? 'Wunsch einreichen' : category === 'question' ? 'Frage stellen' : 'Fehler melden'}
+      title={category === 'wish' ? tt('Wunsch einreichen') : category === 'question' ? tt('Frage stellen') : tt('Fehler melden')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" data-tour="fb-send" disabled={busy} onClick={send}>
-            <Icon name="send" size={14} /> {busy ? 'Wird gesendet…' : 'Senden'}
+            <Icon name="send" size={14} /> {busy ? tt('Wird gesendet…') : tt('Senden')}
           </button>
         </>
       }
     >
-      <div className="fb-seg" role="radiogroup" aria-label="Art" data-tour="fb-category">
+      <div className="fb-seg" role="radiogroup" aria-label={tt('Art')} data-tour="fb-category">
         {(
           me?.categories ?? [
             ['bug', 'Fehler'],
@@ -372,48 +380,48 @@ export function ReportModal({ initial = 'bug', onClose }: { initial?: 'bug' | 'w
       </div>
       {category === 'wish' ? (
         <>
-          <Field label="Titel" tour="fb-title">
-            <Input value={f.title} onChange={set('title')} placeholder="z. B. Termine direkt aus der Rechnung buchen" maxLength={200} autoFocus />
+          <Field label={tt('Titel')} tour="fb-title">
+            <Input value={f.title} onChange={set('title')} placeholder={tt('z. B. Termine direkt aus der Rechnung buchen')} maxLength={200} autoFocus />
           </Field>
-          <Field label="Beschreibung" hint="Was möchtest du erreichen? Wie oft brauchst du das?">
+          <Field label={tt('Beschreibung')} hint={tt('Was möchtest du erreichen? Wie oft brauchst du das?')}>
             <Textarea value={f.what} onChange={set('what')} rows={4} />
           </Field>
-          <Field label="Bereich">
+          <Field label={tt('Bereich')}>
             <Select value={f.area} onChange={set('area')} options={me?.areas ?? ['Sonstiges']} />
           </Field>
           <p className="muted small fb-hint">
-            <Icon name="community" size={13} /> Wünsche sind für alle Nutzer sichtbar – ohne deinen Namen und ohne Sub-Account. Andere können dafür stimmen.
+            <Icon name="community" size={13} /> {tt('Wünsche sind für alle Nutzer sichtbar – ohne deinen Namen und ohne Sub-Account. Andere können dafür stimmen.')}
           </p>
         </>
       ) : (
         <>
-          <Field label={category === 'question' ? 'Deine Frage' : 'Was ist passiert?'} tour="fb-what">
+          <Field label={category === 'question' ? tt('Deine Frage') : tt('Was ist passiert?')} tour="fb-what">
             <Textarea
               value={f.what}
               onChange={set('what')}
               rows={3}
               autoFocus
-              placeholder={category === 'question' ? 'Wie kann ich …' : 'z. B. Beim Speichern eines Kontakts dreht sich der Kreis endlos.'}
+              placeholder={category === 'question' ? tt('Wie kann ich …') : tt('z. B. Beim Speichern eines Kontakts dreht sich der Kreis endlos.')}
             />
           </Field>
           {category === 'bug' && (
             <>
               <div className="grid2">
-                <Field label="Was hast du erwartet?">
+                <Field label={tt('Was hast du erwartet?')}>
                   <Textarea value={f.expected} onChange={set('expected')} rows={2} />
                 </Field>
-                <Field label="Schritte zum Nachstellen">
+                <Field label={tt('Schritte zum Nachstellen')}>
                   <Textarea value={f.steps} onChange={set('steps')} rows={2} placeholder={'1. …\n2. …'} />
                 </Field>
               </div>
-              <Field label="Wie schlimm ist es?" tour="fb-severity">
+              <Field label={tt('Wie schlimm ist es?')} tour="fb-severity">
                 <Select value={f.severity} onChange={set('severity')} options={me?.severities ?? [['mittel', 'Stört bei der Arbeit']]} />
               </Field>
             </>
           )}
         </>
       )}
-      <Field label="Screenshot">
+      <Field label={tt('Screenshot')}>
         <ScreenshotPicker value={shot} onChange={setShot} />
       </Field>
       {category !== 'wish' && <DiagnosticsView d={diag} removed={removed} setRemoved={setRemoved} accountName={loc?.name ?? ''} role={role} />}
@@ -548,43 +556,45 @@ export function FeedbackButton() {
 
 // --- „Meine Meldungen“ ------------------------------------------------------------------------------------
 function Prefs() {
+  const tt = useT('shell');
   const me = useFeedbackMe();
   if (!me) return null;
   const save = async (p: Record<string, unknown>) => {
-    if (await act(() => api.put('/api/feedback/prefs', p), 'Gespeichert')) void refreshFeedback();
+    if (await act(() => api.put('/api/feedback/prefs', p), tt('Gespeichert'))) void refreshFeedback();
   };
   return (
     <div className="card" data-tour="fb-prefs">
-      <h2>Einstellungen</h2>
+      <h2>{tt('Einstellungen')}</h2>
       <Check
         checked={me.prefs.auto_capture}
         onChange={(v) => save({ auto_capture: v })}
         label={
           <span>
-            Fehler automatisch melden <span className="muted small">– technische Fehler im Browser gehen ohne Inhalte ans Team{me.auto_capture_default ? ' (für Admins Standard)' : ''}</span>
+            {tt('Fehler automatisch melden')} <span className="muted small">{tt('– technische Fehler im Browser gehen ohne Inhalte ans Team')}{me.auto_capture_default ? tt(' (für Admins Standard)') : ''}</span>
           </span>
         }
       />
-      <Check checked={me.prefs.email} onChange={(v) => save({ email: v })} label="E-Mail, wenn das Team antwortet oder sich der Status ändert" />
+      <Check checked={me.prefs.email} onChange={(v) => save({ email: v })} label={tt('E-Mail, wenn das Team antwortet oder sich der Status ändert')} />
       <p className="muted small" style={{ margin: '6px 0 0' }}>
-        Push-Benachrichtigungen stellst du unter Einstellungen → Mein Konto ein.
+        {tt('Push-Benachrichtigungen stellst du unter Einstellungen → Mein Konto ein.')}
       </p>
     </div>
   );
 }
 
 export function MyReports() {
+  const tt = useT('shell');
   const { data, loading } = useLoad(() => api.get<any[]>('/api/feedback/reports'), []);
   const [filter, setFilter] = useState<'open' | 'done' | 'all'>('all');
   const list = (data ?? []).filter((r) => (filter === 'all' ? true : filter === 'open' ? !r.status.done : r.status.done));
   return (
     <>
-      <PageHead title="Meine Meldungen" sub="Deine Fehlermeldungen, Fragen und Wünsche – mit Status und Antworten des Teams.">
+      <PageHead title={tt('Meine Meldungen')} sub={tt('Deine Fehlermeldungen, Fragen und Wünsche – mit Status und Antworten des Teams.')}>
         <button className="btn secondary" onClick={() => navigate('wishes')}>
-          <Icon name="vote" size={14} /> Wunschliste
+          <Icon name="vote" size={14} /> {tt('Wunschliste')}
         </button>
         <button className="btn" data-tour="fb-new" onClick={() => openReport('bug')}>
-          <Icon name="bug" size={14} /> Fehler melden
+          <Icon name="bug" size={14} /> {tt('Fehler melden')}
         </button>
       </PageHead>
       <div className="chips" style={{ marginBottom: 12 }} data-tour="fb-filter">
@@ -615,12 +625,12 @@ export function MyReports() {
                   {r.title}
                 </strong>
                 <small className="muted">
-                  {KIND[r.kind]?.[0]} · aktualisiert {ago(r.updated_at)}
-                  {r.version ? ` · Version ${r.version}` : ''}
-                  {r.duplicate_of ? ` · zusammengeführt mit #${r.duplicate_of.number}` : ''}
+                  {tt('{v} · aktualisiert {ago}', { v: KIND[r.kind]?.[0], ago: ago(r.updated_at) })}
+                  {r.version ? tt(' · Version {version}', { version: r.version }) : ''}
+                  {r.duplicate_of ? tt(' · zusammengeführt mit #{number}', { number: r.duplicate_of.number }) : ''}
                 </small>
               </span>
-              {r.unread && <span className="fb-dot" aria-label="Neu" />}
+              {r.unread && <span className="fb-dot" aria-label={tt('Neu')} />}
               <StatusPill s={r.status} />
             </a>
           ))}
@@ -630,11 +640,11 @@ export function MyReports() {
           tour="fb-list"
           action={
             <button className="btn" onClick={() => openReport('bug')}>
-              Fehler melden
+              {tt('Fehler melden')}
             </button>
           }
         >
-          {filter === 'all' ? 'Noch keine Meldungen. Fällt dir etwas auf, das nicht klappt? Melde es mit einem Klick – mit Screenshot.' : 'Hier ist gerade nichts.'}
+          {filter === 'all' ? tt('Noch keine Meldungen. Fällt dir etwas auf, das nicht klappt? Melde es mit einem Klick – mit Screenshot.') : tt('Hier ist gerade nichts.')}
         </Empty>
       )}
       <Prefs />
@@ -644,13 +654,14 @@ export function MyReports() {
 
 /** Thread of team replies, own messages and status changes (never internal notes). */
 export function Thread({ items }: { items: any[] }) {
-  if (!items.length) return <p className="muted small">Noch keine Antworten – du bekommst Bescheid.</p>;
+  const tt = useT('shell');
+  if (!items.length) return <p className="muted small">{tt('Noch keine Antworten – du bekommst Bescheid.')}</p>;
   return (
     <div className="fb-thread">
       {items.map((e) =>
         e.type === 'status' ? (
           <div key={e.id} className="tl-sys">
-            <Icon name="flag" size={13} /> Status: {e.label} · {dt(e.at)}
+            <Icon name="flag" size={13} /> {tt('Status: {label} · {dt}', { label: e.label, dt: dt(e.at) })}
           </div>
         ) : (
           <div key={e.id} className={`fb-msg ${e.type === 'team' ? 'team' : e.mine ? 'mine' : 'other'}`}>
@@ -666,12 +677,13 @@ export function Thread({ items }: { items: any[] }) {
 }
 
 export function Shots({ files }: { files: { id: string; url: string }[] }) {
+  const tt = useT('shell');
   if (!files.length) return null;
   return (
     <div className="fb-shots">
       {files.map((f) => (
-        <a key={f.id} href={f.url} target="_blank" rel="noreferrer" title="Screenshot öffnen">
-          <img src={f.url} alt="Screenshot" loading="lazy" />
+        <a key={f.id} href={f.url} target="_blank" rel="noreferrer" title={tt('Screenshot öffnen')}>
+          <img src={f.url} alt={tt('Screenshot')} loading="lazy" />
         </a>
       ))}
     </div>
@@ -679,6 +691,7 @@ export function Shots({ files }: { files: { id: string; url: string }[] }) {
 }
 
 function ReplyBox({ id, onDone, placeholder = 'Weitere Infos für das Team…' }: { id: string; onDone: (d: any) => void; placeholder?: string }) {
+  const tt = useT('shell');
   const [text, setText] = useState('');
   const [shot, setShot] = useState('');
   const [busy, setBusy] = useState(false);
@@ -692,12 +705,12 @@ function ReplyBox({ id, onDone, placeholder = 'Weitere Infos für das Team…' }
           disabled={busy || (!text.trim() && !shot)}
           onClick={async () => {
             setBusy(true);
-            const r = await act(() => api.post(`/api/feedback/reports/${id}/messages`, { body: text, screenshot: shot || undefined }), 'Gesendet');
+            const r = await act(() => api.post(`/api/feedback/reports/${id}/messages`, { body: text, screenshot: shot || undefined }), tt('Gesendet'));
             setBusy(false);
             if (r) (setText(''), setShot(''), onDone(r));
           }}
         >
-          <Icon name="send" size={14} /> Senden
+          <Icon name="send" size={14} /> {tt('Senden')}
         </button>
       </div>
     </div>
@@ -705,27 +718,29 @@ function ReplyBox({ id, onDone, placeholder = 'Weitere Infos für das Team…' }
 }
 
 function DiagnosticsDetails({ d }: { d: any }) {
+  const tt = useT('shell');
   if (!d || !Object.keys(d).length) return null;
   return (
     <details className="card fb-details">
-      <summary>Mitgeschickte Diagnosedaten</summary>
+      <summary>{tt('Mitgeschickte Diagnosedaten')}</summary>
       <pre className="fb-pre">{JSON.stringify(d, null, 2)}</pre>
     </details>
   );
 }
 
 export function ReportDetail({ id }: { id: string }) {
+  const tt = useT('shell');
   const { data, error, setData } = useLoad(() => api.get(`/api/feedback/reports/${id}`), [id]);
   const [reopen, setReopen] = useState(false);
   const [reason, setReason] = useState('');
   useEffect(() => void (data && refreshFeedback()), [data?.report.id]);
-  if (error) return <Empty action={<Link to="feedback">Zu „Meine Meldungen“</Link>}>{error}</Empty>;
+  if (error) return <Empty action={<Link to="feedback">{tt('Zu „Meine Meldungen“')}</Link>}>{error}</Empty>;
   if (!data) return <Spinner />;
   const r = data.report;
   return (
     <>
       <div className="crumb-line">
-        <Link to="feedback">← Meine Meldungen</Link>
+        <Link to="feedback">{tt('← Meine Meldungen')}</Link>
       </div>
       <PageHead
         title={`${r.number ? `#${r.number} ` : ''}${r.title}`}
@@ -733,55 +748,55 @@ export function ReportDetail({ id }: { id: string }) {
           <span className="row" style={{ gap: 8, alignItems: 'center' }}>
             <StatusPill s={r.status} />{' '}
             <span className="muted small">
-              {KIND[r.kind]?.[0]} · gemeldet {dt(r.created_at)}
-              {r.platform === 'android' ? ' · Android-App' : ''}
+              {tt('{v} · gemeldet {dt}', { v: KIND[r.kind]?.[0], dt: dt(r.created_at) })}
+              {r.platform === 'android' ? tt(' · Android-App') : ''}
             </span>
           </span>
         }
       >
         {data.can_reopen && (
           <button className="btn secondary" data-tour="fb-reopen" onClick={() => setReopen(true)}>
-            <Icon name="refresh" size={14} /> Wieder öffnen
+            <Icon name="refresh" size={14} /> {tt('Wieder öffnen')}
           </button>
         )}
       </PageHead>
       {r.duplicate_of && (
         <div className="card notice-card">
-          Diese Meldung wurde mit{' '}
+          {tt('Diese Meldung wurde mit')}{' '}
           <Link to={r.duplicate_of.url.replace('/app/', '')}>
             #{r.duplicate_of.number} {r.duplicate_of.title}
           </Link>{' '}
-          zusammengeführt – du wirst dort informiert.
+          {tt('zusammengeführt – du wirst dort informiert.')}
         </div>
       )}
       {r.version && (
         <div className="card notice-card ok">
-          <Icon name="ok" size={15} /> {r.kind === 'wish' ? 'Umgesetzt' : 'Behoben'} in Version <strong>{r.version}</strong>
+          <Icon name="ok" size={15} /> {r.kind === 'wish' ? tt('Umgesetzt') : tt('Behoben')} {tt('in Version')} <strong>{r.version}</strong>
           {r.note ? ` – ${r.note}` : ''}
         </div>
       )}
-      {r.reason && <div className="card notice-card">Begründung des Teams: {r.reason}</div>}
+      {r.reason && <div className="card notice-card">{tt('Begründung des Teams: {reason}', { reason: r.reason })}</div>}
       <div className="fb-detail">
         <div>
           <div className="card">
-            <h2>{r.kind === 'question' ? 'Deine Frage' : r.kind === 'auto' ? 'Fehler' : 'Deine Meldung'}</h2>
-            {data.body ? <p className="fb-text">{data.body}</p> : <p className="muted">Automatisch erfasst – Details sieht das Team.</p>}
+            <h2>{r.kind === 'question' ? tt('Deine Frage') : r.kind === 'auto' ? tt('Fehler') : tt('Deine Meldung')}</h2>
+            {data.body ? <p className="fb-text">{data.body}</p> : <p className="muted">{tt('Automatisch erfasst – Details sieht das Team.')}</p>}
             {data.expected && (
               <>
-                <h3>Erwartet</h3>
+                <h3>{tt('Erwartet')}</h3>
                 <p className="fb-text">{data.expected}</p>
               </>
             )}
             {data.steps && (
               <>
-                <h3>Schritte</h3>
+                <h3>{tt('Schritte')}</h3>
                 <p className="fb-text">{data.steps}</p>
               </>
             )}
             <Shots files={data.files} />
           </div>
           <div className="card" data-tour="fb-thread">
-            <h2>Verlauf</h2>
+            <h2>{tt('Verlauf')}</h2>
             <Thread items={data.thread} />
           </div>
           {data.can_reply && <ReplyBox id={id} onDone={setData} />}
@@ -792,21 +807,21 @@ export function ReportDetail({ id }: { id: string }) {
       </div>
       {reopen && (
         <Modal
-          title="Meldung wieder öffnen"
+          title={tt('Meldung wieder öffnen')}
           onClose={() => setReopen(false)}
           footer={
             <button
               className="btn"
               onClick={async () => {
-                const d = await act(() => api.post(`/api/feedback/reports/${id}/reopen`, { reason }), 'Wieder geöffnet');
+                const d = await act(() => api.post(`/api/feedback/reports/${id}/reopen`, { reason }), tt('Wieder geöffnet'));
                 if (d) (setData(d), setReopen(false));
               }}
             >
-              Wieder öffnen
+              {tt('Wieder öffnen')}
             </button>
           }
         >
-          <Field label="Was klappt noch nicht?">
+          <Field label={tt('Was klappt noch nicht?')}>
             <Textarea value={reason} onChange={setReason} rows={3} autoFocus />
           </Field>
         </Modal>

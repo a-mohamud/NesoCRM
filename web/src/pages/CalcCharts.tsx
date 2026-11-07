@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { Month, Projection, Step, Tornado } from '../../../server/services/calc-engine';
 import { money } from '../../../server/services/calc-engine';
+import { useT } from '../i18n';
 
 /**
  * Hand-made SVG charts of the Gewinnrechner (no chart library): waterfall, tornado and the projection lines.
@@ -135,6 +136,7 @@ export function Waterfall({ steps, title, caption }: { steps: Step[]; title: str
 
 /** Which input moves the yearly net profit most: every bar spans the profit with the input −x % and +x %. */
 export function TornadoChart({ t, title, caption }: { t: Tornado; title: string; caption?: string }) {
+  const tt = useT('x_finance');
   const [ref, w] = useWidth<HTMLDivElement>();
   const narrow = w < 520;
   const labelW = narrow ? Math.min(130, Math.round(w * 0.36)) : 196;
@@ -150,14 +152,14 @@ export function TornadoChart({ t, title, caption }: { t: Tornado; title: string;
   const x1 = w - pad;
   const x = (v: number) => x0 + ((v - lo) / span) * (x1 - x0);
   const alt = bars.map((b) => `${b.label}: ${eur(Math.min(b.low, b.high))} bis ${eur(Math.max(b.low, b.high))}`).join('; ');
-  if (!bars.length) return <p className="muted small">Keine Hebel mit Wirkung – es gibt nichts zu vergleichen.</p>;
+  if (!bars.length) return <p className="muted small">{tt('Keine Hebel mit Wirkung – es gibt nichts zu vergleichen.')}</p>;
   return (
     <Figure title={title} caption={caption} tour="calc-tornado">
       <div ref={ref} className="calc-chart">
-        <svg width={w} height={H} role="img" aria-label={`${title}. Basis ${eur(t.base)} pro Jahr. ${alt}`}>
+        <svg width={w} height={H} role="img" aria-label={tt('{title}. Basis {eur} pro Jahr. {alt}', { title: title, eur: eur(t.base), alt: alt })}>
           <title>{title}</title>
           <text x={x(t.base)} y={11} textAnchor="middle" fontSize={11} fill="var(--viz-ink2)">
-            Basis {eur(t.base)}
+            {tt('Basis {eur}', { eur: eur(t.base) })}
           </text>
           <line x1={x(t.base)} x2={x(t.base)} y1={16} y2={H - 2} stroke="var(--viz-axis)" strokeWidth={1.5} />
           {spans.map(({ b, lo: l, hi: h, lowIsMinus }, i) => {
@@ -169,10 +171,10 @@ export function TornadoChart({ t, title, caption }: { t: Tornado; title: string;
                   <title>{b.label}</title>
                 </text>
                 <rect x={x(l)} y={y + 2} width={Math.max(1, x(t.base) - x(l))} height={18} fill="var(--red)" opacity={0.9} rx={2}>
-                  <title>{`${b.label} ${lowIsMinus ? '−' : '+'}${Math.round(t.pct)} %: Nettogewinn ${eur(l)} pro Jahr`}</title>
+                  <title>{tt('{label} {v}{round} %: Nettogewinn {eur} pro Jahr', { label: b.label, v: lowIsMinus ? '−' : '+', round: Math.round(t.pct), eur: eur(l) })}</title>
                 </rect>
                 <rect x={x(t.base)} y={y + 2} width={Math.max(1, x(h) - x(t.base))} height={18} fill="var(--viz-3)" rx={2}>
-                  <title>{`${b.label} ${lowIsMinus ? '+' : '−'}${Math.round(t.pct)} %: Nettogewinn ${eur(h)} pro Jahr`}</title>
+                  <title>{tt('{label} {v}{round} %: Nettogewinn {eur} pro Jahr', { label: b.label, v: lowIsMinus ? '+' : '−', round: Math.round(t.pct), eur: eur(h) })}</title>
                 </rect>
                 <text x={x(l) - 4} y={y + 15} textAnchor="end" fontSize={11} fill="var(--viz-ink2)">
                   {axisLabel(l)}
@@ -283,14 +285,15 @@ const de = (v: number, d = 0) => new Intl.NumberFormat('de-DE', { maximumFractio
 
 /** MRR and monthly net profit, and the cumulative result with the break-even month. */
 export function ProjectionCharts({ p }: { p: Projection }) {
+  const tt = useT('x_finance');
   const ms: Month[] = p.months;
   if (!ms.length) return null;
   const t = ms.map((x) => x.t);
   return (
     <>
       <LineChart
-        title="Monatlicher Umsatz und Gewinn"
-        caption="Prognose nach Monaten"
+        title={tt('Monatlicher Umsatz und Gewinn')}
+        caption={tt('Prognose nach Monaten')}
         tour="calc-projection"
         months={t}
         series={[
@@ -300,8 +303,8 @@ export function ProjectionCharts({ p }: { p: Projection }) {
         readout={(i) => `Monat ${ms[i].t}: ${de(ms[i].customers)} Kunden · MRR ${eur(ms[i].mrr)} · Nettogewinn ${eur(ms[i].net_profit)}`}
       />
       <LineChart
-        title="Gewinn kumuliert"
-        caption="inklusive einmaliger Investition"
+        title={tt('Gewinn kumuliert')}
+        caption={tt('inklusive einmaliger Investition')}
         months={t}
         marker={p.breakeven_month ? { x: p.breakeven_month, label: `im Plus ab Monat ${p.breakeven_month}` } : null}
         series={[{ key: 'cum', label: 'Gewinn seit Start', color: 'var(--viz-2)', values: ms.map((x) => x.cum_net) }]}

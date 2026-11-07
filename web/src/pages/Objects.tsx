@@ -29,6 +29,7 @@ import { MoreFields, useSimple } from '../areas/fields';
 import { recordColumns, splitFields } from '../areas/easy-core';
 import '../areas/easy-core.css';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /** Eigene Objekte: overview + builder, record lists, record pages, sidebar entries, workflow parts. */
 
@@ -86,15 +87,16 @@ interface NewProp {
 const blankProp = (): NewProp => ({ label: '', type: 'text', options: '', required: false, unique: false });
 
 function PropRowEditor({ p, onChange, onRemove }: { p: NewProp; onChange: (p: NewProp) => void; onRemove?: () => void }) {
+  const tt = useT('x_integrations');
   return (
     <div className="prop-row-edit">
-      <Input value={p.label} onChange={(v) => onChange({ ...p, label: v })} placeholder="Bezeichnung, z. B. Kennzeichen" />
+      <Input value={p.label} onChange={(v) => onChange({ ...p, label: v })} placeholder={tt('Bezeichnung, z. B. Kennzeichen')} />
       <Select value={p.type} onChange={(v) => onChange({ ...p, type: v })} options={Object.entries(TYPE_LABELS)} />
-      {(p.type === 'select' || p.type === 'multiselect') && <Input value={p.options} onChange={(v) => onChange({ ...p, options: v })} placeholder="Optionen, mit Komma" />}
-      <Check checked={p.required} onChange={(v) => onChange({ ...p, required: v })} label="Pflicht" />
-      {!['checkbox', 'multiselect', 'textarea', 'file'].includes(p.type) && <Check checked={p.unique} onChange={(v) => onChange({ ...p, unique: v })} label="Eindeutig" />}
+      {(p.type === 'select' || p.type === 'multiselect') && <Input value={p.options} onChange={(v) => onChange({ ...p, options: v })} placeholder={tt('Optionen, mit Komma')} />}
+      <Check checked={p.required} onChange={(v) => onChange({ ...p, required: v })} label={tt('Pflicht')} />
+      {!['checkbox', 'multiselect', 'textarea', 'file'].includes(p.type) && <Check checked={p.unique} onChange={(v) => onChange({ ...p, unique: v })} label={tt('Eindeutig')} />}
       {onRemove && (
-        <button type="button" className="icon-btn" onClick={onRemove} aria-label="Eigenschaft entfernen">
+        <button type="button" className="icon-btn" onClick={onRemove} aria-label={tt('Eigenschaft entfernen')}>
           ✕
         </button>
       )}
@@ -105,6 +107,7 @@ function PropRowEditor({ p, onChange, onRemove }: { p: NewProp; onChange: (p: Ne
 const toApi = (p: NewProp) => ({ label: p.label, type: p.type, options: p.options.split(',').map((o) => o.trim()).filter(Boolean), required: p.required, unique: p.unique });
 
 export function ObjectBuilder({ type, onClose, onSaved }: { type?: any; onClose: () => void; onSaved: (t: any) => void }) {
+  const tt = useT('x_integrations');
   const [f, setF] = useState<any>(type ? { singular: type.singular, plural: type.plural, icon: type.icon, description: type.description, primary_property: type.primary_property } : { singular: '', plural: '', icon: 'layers', description: '', primary_label: 'Name', primary_unique: false });
   const [props, setProps] = useState<NewProp[]>(type ? [] : [blankProp()]);
   const [extra, setExtra] = useState<NewProp>(blankProp());
@@ -113,17 +116,17 @@ export function ObjectBuilder({ type, onClose, onSaved }: { type?: any; onClose:
     if (!type) {
       const r = await act(() => api.post('/api/object-types', { ...f, properties: props.filter((p) => p.label.trim()).map(toApi) }));
       if (!r) return;
-      if (r.errors?.length) toast(`Angelegt – nicht übernommen: ${r.errors.join('; ')}`);
-      else toast(`${r.plural} angelegt`);
+      if (r.errors?.length) toast(tt('Angelegt – nicht übernommen: {n}', { n: r.errors.join('; ') }));
+      else toast(tt('{plural} angelegt', { plural: r.plural }));
       refreshAssocTypes();
       onSaved(r);
       return;
     }
-    const r = await act(() => api.patch(`/api/object-types/${type.id}`, f), 'Gespeichert');
+    const r = await act(() => api.patch(`/api/object-types/${type.id}`, f), tt('Gespeichert'));
     if (r) (refreshAssocTypes(), onSaved(r));
   };
   const addExtra = async () => {
-    const r = await act(() => api.post('/api/properties', { object: type.key, ...toApi(extra) }), 'Eigenschaft angelegt');
+    const r = await act(() => api.post('/api/properties', { object: type.key, ...toApi(extra) }), tt('Eigenschaft angelegt'));
     if (r) {
       setExtra(blankProp());
       setCur({ ...cur, properties: [...cur.properties, r] });
@@ -133,7 +136,7 @@ export function ObjectBuilder({ type, onClose, onSaved }: { type?: any; onClose:
   const eligible = (cur?.properties ?? []).filter((p: any) => ['text', 'email', 'phone', 'url', 'number', 'date'].includes(p.type));
   return (
     <Modal
-      title={type ? `${type.plural} bearbeiten` : 'Neues Objekt'}
+      title={type ? tt('{plural} bearbeiten', { plural: type.plural }) : tt('Neues Objekt')}
       onClose={onClose}
       wide
       footer={
@@ -142,15 +145,15 @@ export function ObjectBuilder({ type, onClose, onSaved }: { type?: any; onClose:
             <button
               className="btn danger"
               onClick={async () => {
-                if (!confirmAsk(`Objekt „${type.plural}“ mit allen ${type.records} Datensätzen löschen?`)) return;
-                if (await act(() => api.del(`/api/object-types/${type.id}?force=1`), 'Gelöscht')) (refreshAssocTypes(), onSaved(null));
+                if (!confirmAsk(tt('Objekt „{plural}“ mit allen {records} Datensätzen löschen?', { plural: type.plural, records: type.records }))) return;
+                if (await act(() => api.del(`/api/object-types/${type.id}?force=1`), tt('Gelöscht'))) (refreshAssocTypes(), onSaved(null));
               }}
             >
-              Löschen
+              {tt('Löschen')}
             </button>
           )}
           <button className="btn" disabled={!f.singular?.trim()} onClick={save}>
-            {type ? 'Speichern' : 'Objekt anlegen'}
+            {type ? tt('Speichern') : tt('Objekt anlegen')}
           </button>
         </>
       }
@@ -158,36 +161,36 @@ export function ObjectBuilder({ type, onClose, onSaved }: { type?: any; onClose:
       <div className="builder-grid" data-tour="obj-builder">
         <div>
           <div className="grid2">
-            <Field label="Name (Einzahl) *" tour="obj-singular">
-              <Input value={f.singular} onChange={(v) => setF({ ...f, singular: v })} placeholder="Fahrzeug" autoFocus />
+            <Field label={tt('Name (Einzahl) *')} tour="obj-singular">
+              <Input value={f.singular} onChange={(v) => setF({ ...f, singular: v })} placeholder={tt('Fahrzeug')} autoFocus />
             </Field>
-            <Field label="Name (Mehrzahl)">
-              <Input value={f.plural} onChange={(v) => setF({ ...f, plural: v })} placeholder="Fahrzeuge" />
+            <Field label={tt('Name (Mehrzahl)')}>
+              <Input value={f.plural} onChange={(v) => setF({ ...f, plural: v })} placeholder={tt('Fahrzeuge')} />
             </Field>
           </div>
-          <Field label="Beschreibung">
-            <Textarea value={f.description} onChange={(v) => setF({ ...f, description: v })} rows={2} placeholder="Wofür ist das Objekt da?" />
+          <Field label={tt('Beschreibung')}>
+            <Textarea value={f.description} onChange={(v) => setF({ ...f, description: v })} rows={2} placeholder={tt('Wofür ist das Objekt da?')} />
           </Field>
           {!type ? (
             <div className="grid2">
-              <Field label="Anzeige-Eigenschaft" hint="Name eines Datensatzes in Listen und Verknüpfungen">
+              <Field label={tt('Anzeige-Eigenschaft')} hint={tt('Name eines Datensatzes in Listen und Verknüpfungen')}>
                 <Input value={f.primary_label} onChange={(v) => setF({ ...f, primary_label: v })} placeholder="Name" />
               </Field>
               <Field label=" ">
-                <Check checked={f.primary_unique} onChange={(v) => setF({ ...f, primary_unique: v })} label="Eindeutig (z. B. Kennzeichen)" />
+                <Check checked={f.primary_unique} onChange={(v) => setF({ ...f, primary_unique: v })} label={tt('Eindeutig (z. B. Kennzeichen)')} />
               </Field>
             </div>
           ) : (
-            <Field label="Anzeige-Eigenschaft" hint="Text, E-Mail, Telefon, URL, Zahl oder Datum">
+            <Field label={tt('Anzeige-Eigenschaft')} hint={tt('Text, E-Mail, Telefon, URL, Zahl oder Datum')}>
               <Select value={f.primary_property} onChange={(v) => setF({ ...f, primary_property: v })} options={eligible.map((p: any) => [p.key, p.label] as [string, string])} />
             </Field>
           )}
         </div>
         <div>
-          <Field label="Symbol" tour="obj-icon">
+          <Field label={tt('Symbol')} tour="obj-icon">
             <div className="icon-grid">
               {OBJECT_ICONS.map((n) => (
-                <button type="button" key={n} className={f.icon === n ? 'on' : ''} onClick={() => setF({ ...f, icon: n })} aria-label={`Symbol ${n}`} aria-pressed={f.icon === n}>
+                <button type="button" key={n} className={f.icon === n ? 'on' : ''} onClick={() => setF({ ...f, icon: n })} aria-label={tt('Symbol {n}', { n: n })} aria-pressed={f.icon === n}>
                   <Icon name={n} size={18} />
                 </button>
               ))}
@@ -196,7 +199,7 @@ export function ObjectBuilder({ type, onClose, onSaved }: { type?: any; onClose:
         </div>
       </div>
       <hr />
-      <h3 style={{ marginBottom: 8 }} data-tour="obj-props">Eigenschaften</h3>
+      <h3 style={{ marginBottom: 8 }} data-tour="obj-props">{tt('Eigenschaften')}</h3>
       {type ? (
         <>
           <div className="table-scroll">
@@ -205,12 +208,12 @@ export function ObjectBuilder({ type, onClose, onSaved }: { type?: any; onClose:
               {(cur?.properties ?? []).map((p: any) => (
                 <tr key={p.key}>
                   <td>
-                    <strong>{p.label}</strong> {p.key === cur.primary_property && <Badge tone="blue">Anzeige</Badge>}
+                    <strong>{p.label}</strong> {p.key === cur.primary_property && <Badge tone="blue">{tt('Anzeige')}</Badge>}
                   </td>
                   <td className="mono muted">{p.key}</td>
                   <td>{TYPE_LABELS[p.type] ?? p.type}</td>
                   <td>
-                    {p.required && <Badge tone="yellow">Pflicht</Badge>} {p.unique && <Badge tone="purple">eindeutig</Badge>}
+                    {p.required && <Badge tone="yellow">{tt('Pflicht')}</Badge>} {p.unique && <Badge tone="purple">eindeutig</Badge>}
                   </td>
                 </tr>
               ))}
@@ -220,23 +223,23 @@ export function ObjectBuilder({ type, onClose, onSaved }: { type?: any; onClose:
           <div className="prop-add">
             <PropRowEditor p={extra} onChange={setExtra} />
             <button className="btn small secondary" disabled={!extra.label.trim()} onClick={addExtra}>
-              + Eigenschaft
+              {tt('+ Eigenschaft')}
             </button>
           </div>
           <p className="muted small">
-            Gruppen, Beschreibungen und Änderungen: <Link to={`properties/${type.key}`}>Eigenschaften verwalten →</Link>
+            {tt('Gruppen, Beschreibungen und Änderungen:')} <Link to={`properties/${type.key}`}>{tt('Eigenschaften verwalten →')}</Link>
           </p>
         </>
       ) : (
         <>
           <p className="muted small" style={{ marginTop: 0 }}>
-            Die Anzeige-Eigenschaft ({f.primary_label || 'Name'}) gibt es immer. Weitere jetzt oder später unter Eigenschaften.
+            {tt('Die Anzeige-Eigenschaft (')}{f.primary_label || 'Name'}{tt(') gibt es immer. Weitere jetzt oder später unter Eigenschaften.')}
           </p>
           {props.map((p, i) => (
             <PropRowEditor key={i} p={p} onChange={(x) => setProps(props.map((y, j) => (j === i ? x : y)))} onRemove={() => setProps(props.filter((_, j) => j !== i))} />
           ))}
           <button className="btn small secondary" onClick={() => setProps([...props, blankProp()])}>
-            + Weitere Eigenschaft
+            {tt('+ Weitere Eigenschaft')}
           </button>
         </>
       )}
@@ -247,53 +250,54 @@ export function ObjectBuilder({ type, onClose, onSaved }: { type?: any; onClose:
 // --- overview -----------------------------------------------------------------------------------
 
 export function ObjectsHome() {
+  const tt = useT('x_integrations');
   const { types, reload } = useObjectTypes();
   const [modal, setModal] = useState<any>(null);
   return (
     <>
-      <PageHead title="Objekte" sub="Eigene Datensatz-Typen neben Kontakten, Firmen und Deals – z. B. Fahrzeuge, Verträge, Immobilien">
+      <PageHead title={tt('Objekte')} sub={tt('Eigene Datensatz-Typen neben Kontakten, Firmen und Deals – z. B. Fahrzeuge, Verträge, Immobilien')}>
         <Link to="properties" className="btn secondary">
-          <Icon name="properties" /> Eigenschaften
+          <Icon name="properties" /> {tt('Eigenschaften')}
         </Link>
         <button className="btn" onClick={() => setModal({})}>
-          + Objekt
+          {tt('+ Objekt')}
         </button>
       </PageHead>
       <SortableGrid id="obj-cards" className="obj-cards" data-tour="obj-cards" pinned={['add']}>
         <div className="card obj-card builtin" role="button" {...pressable(() => navigate('contacts'))}>
           <Icon name="contacts" size={22} />
-          <h3>Kontakte</h3>
-          <span className="muted small">Standard-Objekt</span>
+          <h3>{tt('Kontakte')}</h3>
+          <span className="muted small">{tt('Standard-Objekt')}</span>
         </div>
         <div className="card obj-card builtin" role="button" {...pressable(() => navigate('companies'))}>
           <Icon name="company" size={22} />
-          <h3>Firmen</h3>
-          <span className="muted small">Standard-Objekt</span>
+          <h3>{tt('Firmen')}</h3>
+          <span className="muted small">{tt('Standard-Objekt')}</span>
         </div>
         <div className="card obj-card builtin" role="button" {...pressable(() => navigate('opportunities'))}>
           <Icon name="deal" size={22} />
-          <h3>Deals</h3>
-          <span className="muted small">Standard-Objekt</span>
+          <h3>{tt('Deals')}</h3>
+          <span className="muted small">{tt('Standard-Objekt')}</span>
         </div>
         {types.map((t) => (
           <div key={t.key} className="card obj-card" data-tour="obj-custom" {...pressable(() => navigate(`objects/${t.key}`))}>
             <div className="row" style={{ justifyContent: 'space-between', width: '100%' }}>
               <Icon name={objIcon(t.icon)} size={22} />
-              <button className="icon-btn" onClick={(e) => (e.stopPropagation(), setModal(t))} aria-label={`${t.plural} bearbeiten`}>
+              <button className="icon-btn" onClick={(e) => (e.stopPropagation(), setModal(t))} aria-label={tt('{plural} bearbeiten', { plural: t.plural })}>
                 <Icon name="edit" size={15} />
               </button>
             </div>
             <h3>{t.plural}</h3>
             <span className="muted small">
-              {t.records} Datensätze · {t.properties.length} Eigenschaften
+              {tt('{records} Datensätze · {length} Eigenschaften', { records: t.records, length: t.properties.length })}
             </span>
             {t.description && <span className="small">{t.description}</span>}
           </div>
         ))}
         <button key="add" className="card obj-card add" data-tour="obj-add" onClick={() => setModal({})}>
           <Icon name="objects" size={22} />
-          <h3>Neues Objekt</h3>
-          <span className="muted small">Name, Symbol und Eigenschaften festlegen</span>
+          <h3>{tt('Neues Objekt')}</h3>
+          <span className="muted small">{tt('Name, Symbol und Eigenschaften festlegen')}</span>
         </button>
       </SortableGrid>
       {modal && (
@@ -314,6 +318,7 @@ export function ObjectsHome() {
 // --- records ------------------------------------------------------------------------------------
 
 function NewRecord({ type, onClose, onSaved }: { type: any; onClose: () => void; onSaved: (r: any) => void }) {
+  const tt = useT('x_integrations');
   const users = useUsers();
   const fields = typeFields(type);
   const [v, setV] = useState<Record<string, any>>({});
@@ -331,17 +336,17 @@ function NewRecord({ type, onClose, onSaved }: { type: any; onClose: () => void;
     );
   return (
     <Modal
-      title={`${type.singular} anlegen`}
+      title={tt('{singular} anlegen', { singular: type.singular })}
       onClose={onClose}
       footer={
         <button
           className="btn"
           onClick={async () => {
             const r = await act(() => api.post(`/api/objects/${type.key}/records`, { properties: v }));
-            if (r) (toast(r.created ? `${type.singular} angelegt` : 'Gab es schon – aktualisiert'), onSaved(r));
+            if (r) (toast(r.created ? tt('{singular} angelegt', { singular: type.singular }) : tt('Gab es schon – aktualisiert')), onSaved(r));
           }}
         >
-          Speichern
+          {tt('Speichern')}
         </button>
       }
     >
@@ -358,6 +363,7 @@ function NewRecord({ type, onClose, onSaved }: { type: any; onClose: () => void;
 }
 
 export function RecordsList({ objectKey }: { objectKey: string }) {
+  const tt = useT('x_integrations');
   const types = useLoad(() => api.get<any[]>('/api/objects'), [objectKey]);
   const type = types.data?.find((t) => t.key === objectKey);
   const users = useUsers();
@@ -383,13 +389,13 @@ export function RecordsList({ objectKey }: { objectKey: string }) {
   const qs = `q=${encodeURIComponent(debounced)}&sort=${encodeURIComponent(sort)}${active.length ? `&filters=${encodeURIComponent(JSON.stringify(active))}` : ''}`;
   const list = useLoad(() => (type ? api.get<any>(`/api/objects/${objectKey}/records?${qs}&limit=50&offset=${page * 50}`) : Promise.resolve(null)), [qs, page, type?.id]);
   const cols = columns.length ? columns : defaults;
-  if (types.data && !type) return <Empty>Objekt nicht gefunden.</Empty>;
+  if (types.data && !type) return <Empty>{tt('Objekt nicht gefunden.')}</Empty>;
   if (!type) return <Spinner />;
   const current: ViewConfig = { columns: cols, filters: active, sort, q };
   const cell = (r: any, f: FieldDef) => {
     if (f.key === 'owner_id') return r.owner_name ?? <span className="muted">–</span>;
     if (f.key === 'created_at' || f.key === 'updated_at') return <span className="muted">{d(r[f.key])}</span>;
-    if (f.key === type.primary_property) return <strong>{r.display || <span className="muted">ohne Namen</span>}</strong>;
+    if (f.key === type.primary_property) return <strong>{r.display || <span className="muted">{tt('ohne Namen')}</span>}</strong>;
     return <PropValue def={f} value={r.properties?.[f.key]} users={users} />;
   };
   return (
@@ -398,22 +404,22 @@ export function RecordsList({ objectKey }: { objectKey: string }) {
         title={type.plural}
         sub={
           <>
-            <Icon name={objIcon(type.icon)} size={14} /> {list.data ? `${list.data.total} Datensätze` : '…'}
+            <Icon name={objIcon(type.icon)} size={14} /> {list.data ? tt('{total} Datensätze', { total: list.data.total }) : '…'}
             {type.description ? ` · ${type.description}` : ''}
           </>
         }
       >
         <Link to="objects" className="btn secondary">
-          ← Objekte
+          {tt('← Objekte')}
         </Link>
         <button className="btn secondary" onClick={() => setModal('builder')}>
-          <Icon name="edit" /> Objekt
+          <Icon name="edit" /> {tt('Objekt')}
         </button>
         <button className="btn secondary" onClick={() => setModal('import')}>
-          Import
+          {tt('Import')}
         </button>
         <a className="btn secondary" href={`/api/objects/${objectKey}/export.csv?${qs}&locationId=${encodeURIComponent(localStorage.getItem('pghl.location') ?? '')}`}>
-          Export
+          {tt('Export')}
         </a>
         <button className="btn" data-tour="records-new" onClick={() => setModal('new')}>
           + {type.singular}
@@ -435,13 +441,13 @@ export function RecordsList({ objectKey }: { objectKey: string }) {
       />
       <div className="row list-tools" data-tour="records-tools">
         <div className="grow">
-          <Input value={q} onChange={(v) => (setQ(v), setPage(0))} placeholder={`${type.plural} durchsuchen…`} />
+          <Input value={q} onChange={(v) => (setQ(v), setPage(0))} placeholder={tt('{plural} durchsuchen…', { plural: type.plural })} />
         </div>
         <button className="btn secondary" onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters}>
-          <Icon name="filter" /> Filter{active.length ? ` (${active.length})` : ''}
+          <Icon name="filter" /> {tt('Filter')}{active.length ? ` (${active.length})` : ''}
         </button>
         <button className="btn secondary" onClick={() => setModal('columns')}>
-          <Icon name="columns" /> Spalten
+          <Icon name="columns" /> {tt('Spalten')}
         </button>
       </div>
       {showFilters && (
@@ -454,15 +460,15 @@ export function RecordsList({ objectKey }: { objectKey: string }) {
       ) : list.data.records.length ? (
         <RecordTable fields={fields} columns={cols} rows={list.data.records} cell={cell} sort={sort} onSort={(s) => (setSort(s), setPage(0))} onRow={(r) => navigate(`objects/${type.key}/${r.id}`)} />
       ) : (
-        <Empty action={<button className="btn" onClick={() => setModal('new')}>{type.singular} anlegen</button>}>{debounced || active.length ? 'Nichts passt zu Suche und Filter.' : `Noch keine ${type.plural}.`}</Empty>
+        <Empty action={<button className="btn" onClick={() => setModal('new')}>{type.singular} anlegen</button>}>{debounced || active.length ? tt('Nichts passt zu Suche und Filter.') : tt('Noch keine {plural}.', { plural: type.plural })}</Empty>
       )}
       {list.data && <Pager total={list.data.total} page={page} size={50} onPage={setPage} />}
       {modal === 'new' && <NewRecord type={type} onClose={() => setModal('')} onSaved={(r) => navigate(`objects/${type.key}/${r.id}`)} />}
       {modal === 'import' && (
         <CsvImportModal
-          title={`${type.plural} importieren (CSV)`}
+          title={tt('{plural} importieren (CSV)', { plural: type.plural })}
           url={`/api/objects/${type.key}/import`}
-          hint={<>Kopfzeile mit den Namen der Eigenschaften ({typeFields(type).map((f) => f.label).join(', ')}). Gleiche Werte in eindeutigen Eigenschaften aktualisieren statt doppelt anzulegen.</>}
+          hint={<>{tt('Kopfzeile mit den Namen der Eigenschaften (')}{typeFields(type).map((f) => f.label).join(', ')}{tt('). Gleiche Werte in eindeutigen Eigenschaften aktualisieren statt doppelt anzulegen.')}</>}
           placeholder={typeFields(type).map((f) => f.label).join(',')}
           onClose={() => setModal('')}
           onDone={list.reload}
@@ -475,6 +481,7 @@ export function RecordsList({ objectKey }: { objectKey: string }) {
 }
 
 export function RecordPage({ objectKey, id }: { objectKey: string; id: string }) {
+  const tt = useT('x_integrations');
   const r = useLoad(() => api.get<any>(`/api/objects/${objectKey}/records/${id}`), [objectKey, id]);
   const users = useUsers();
   const [edit, setEdit] = useState<Record<string, any> | null>(null);
@@ -486,30 +493,30 @@ export function RecordPage({ objectKey, id }: { objectKey: string; id: string })
   const values = { ...rec.properties, owner_id: rec.owner_id };
   const save = async (v: Record<string, any>) => {
     const { owner_id, ...properties } = v;
-    const out = await act(() => api.patch(`/api/objects/${objectKey}/records/${id}`, { properties, owner_id: owner_id || null }), 'Gespeichert');
+    const out = await act(() => api.patch(`/api/objects/${objectKey}/records/${id}`, { properties, owner_id: owner_id || null }), tt('Gespeichert'));
     if (out) r.reload();
     return out;
   };
   return (
     <>
       <PageHead
-        title={rec.display || `${type.singular} ohne Namen`}
+        title={rec.display || tt('{singular} ohne Namen', { singular: type.singular })}
         sub={
           <>
-            <Icon name={objIcon(type.icon)} size={14} /> {type.singular} · angelegt {dt(rec.created_at)} · geändert {dt(rec.updated_at)}
+            <Icon name={objIcon(type.icon)} size={14} /> {tt('{singular} · angelegt {dt} · geändert {dt2}', { singular: type.singular, dt: dt(rec.created_at), dt2: dt(rec.updated_at) })}
           </>
         }
       >
         <Link to={`objects/${objectKey}`} className="btn secondary">
           ← {type.plural}
         </Link>
-        <button className="btn danger" onClick={async () => confirmAsk(`${type.singular} löschen? Verknüpfungen und Notizen werden mit gelöscht.`) && (await act(() => api.del(`/api/objects/${objectKey}/records/${id}`), 'Gelöscht')) && navigate(`objects/${objectKey}`)}>
-          Löschen
+        <button className="btn danger" onClick={async () => confirmAsk(tt('{singular} löschen? Verknüpfungen und Notizen werden mit gelöscht.', { singular: type.singular })) && (await act(() => api.del(`/api/objects/${objectKey}/records/${id}`), tt('Gelöscht'))) && navigate(`objects/${objectKey}`)}>
+          {tt('Löschen')}
         </button>
       </PageHead>
       <div className="row rec-layout">
         <div className="rec-left">
-          <PropertyCard id={`record-${objectKey}`} title="Eigenschaften" fields={fields} groups={type.groups ?? []} values={values} edit={edit} setEdit={setEdit} users={users} onSave={save} />
+          <PropertyCard id={`record-${objectKey}`} title={tt('Eigenschaften')} fields={fields} groups={type.groups ?? []} values={values} edit={edit} setEdit={setEdit} users={users} onSave={save} />
         </div>
         <div className="rec-main">
           <div className="card" style={{ padding: 0 }}>
@@ -568,6 +575,7 @@ function LabelSelect({ object, value, onChange, label = 'Label der Verknüpfung 
 
 /** Trigger filters for company.* and record.* triggers. */
 export function ObjectTriggerFilter({ type, config, set }: { type: string; config: any; set: (p: any) => void }) {
+  const tt = useT('x_integrations');
   const { types, fieldsOf } = useObjectChoices();
   const isRecord = type.startsWith('record.');
   const object = isRecord ? config.object ?? '' : 'company';
@@ -575,28 +583,29 @@ export function ObjectTriggerFilter({ type, config, set }: { type: string; confi
   return (
     <>
       {isRecord && (
-        <Field label="Objekt">
-          <Select value={config.object} onChange={(v) => set({ object: v, property: '' })} placeholder="jedes eigene Objekt" options={types.map((t) => [t.key, t.plural] as [string, string])} />
+        <Field label={tt('Objekt')}>
+          <Select value={config.object} onChange={(v) => set({ object: v, property: '' })} placeholder={tt('jedes eigene Objekt')} options={types.map((t) => [t.key, t.plural] as [string, string])} />
         </Field>
       )}
       {(type.endsWith('.property_changed') || type.endsWith('.updated')) && object && (
-        <Field label="Eigenschaft">
+        <Field label={tt('Eigenschaft')}>
           <Select value={config.property} onChange={(v) => set({ property: v })} placeholder="jede" options={fields.map((f) => [f.key, f.label] as [string, string])} />
         </Field>
       )}
       {type.endsWith('.property_changed') && config.property && (
-        <Field label="Neuer Wert (leer = jeder)">
-          <Input value={config.value} onChange={(v) => set({ value: v })} placeholder={config.property === 'lifecycle_stage' ? 'z. B. customer' : ''} />
+        <Field label={tt('Neuer Wert (leer = jeder)')}>
+          <Input value={config.value} onChange={(v) => set({ value: v })} placeholder={config.property === 'lifecycle_stage' ? tt('z. B. customer') : ''} />
         </Field>
       )}
-      <LabelSelect object={object} value={config.label} onChange={(v) => set({ label: v })} label="Nur Kontakte mit diesem Label" />
-      {!isRecord && <Check checked={config.enroll === 'primary'} onChange={(v) => set({ enroll: v ? 'primary' : '' })} label="Nur Kontakte, deren primäre Firma es ist" />}
-      <p className="muted small">Der Workflow startet für die mit dem Datensatz verknüpften Kontakte. Platzhalter: {isRecord ? '{{event.record.display}}, {{event.record.properties.<schlüssel>}}' : '{{event.company.name}}, {{event.company.domain}}, {{event.company.custom.<schlüssel>}}'}.</p>
+      <LabelSelect object={object} value={config.label} onChange={(v) => set({ label: v })} label={tt('Nur Kontakte mit diesem Label')} />
+      {!isRecord && <Check checked={config.enroll === 'primary'} onChange={(v) => set({ enroll: v ? 'primary' : '' })} label={tt('Nur Kontakte, deren primäre Firma es ist')} />}
+      <p className="muted small">{tt('Der Workflow startet für die mit dem Datensatz verknüpften Kontakte. Platzhalter:')} {isRecord ? '{{event.record.display}}, {{event.record.properties.<schlüssel>}}' : '{{event.company.name}}, {{event.company.domain}}, {{event.company.custom.<schlüssel>}}'}.</p>
     </>
   );
 }
 
 function ValueMap({ fields, value, onChange }: { fields: FieldDef[]; value: Record<string, string>; onChange: (v: Record<string, string>) => void }) {
+  const tt = useT('x_integrations');
   const entries = Object.entries(value ?? {});
   const free = fields.filter((f) => !(f.key in (value ?? {})));
   return (
@@ -608,15 +617,15 @@ function ValueMap({ fields, value, onChange }: { fields: FieldDef[]; value: Reco
             onChange={(nk) => onChange(Object.fromEntries(entries.map(([a, b]) => (a === k ? [nk, b] : [a, b]))))}
             options={[fields.find((f) => f.key === k) ?? { key: k, label: k }, ...free].map((f) => [f.key, f.label] as [string, string])}
           />
-          <Input value={v} onChange={(nv) => onChange({ ...value, [k]: nv })} placeholder="Wert oder {{contact.…}}" />
-          <button type="button" className="icon-btn" onClick={() => onChange(Object.fromEntries(entries.filter(([a]) => a !== k)))} aria-label="Entfernen">
+          <Input value={v} onChange={(nv) => onChange({ ...value, [k]: nv })} placeholder={tt('Wert oder {{contact.…}}')} />
+          <button type="button" className="icon-btn" onClick={() => onChange(Object.fromEntries(entries.filter(([a]) => a !== k)))} aria-label={tt('Entfernen')}>
             ✕
           </button>
         </div>
       ))}
       {free.length > 0 && (
         <button type="button" className="btn small secondary" onClick={() => onChange({ ...value, [free[0].key]: '' })}>
-          + Eigenschaft
+          {tt('+ Eigenschaft')}
         </button>
       )}
     </div>
@@ -625,16 +634,17 @@ function ValueMap({ fields, value, onChange }: { fields: FieldDef[]; value: Reco
 
 /** Settings of the steps create_record, update_record and associate_records. */
 export function ObjectStep({ step, set }: { step: any; set: (p: any) => void }) {
+  const tt = useT('x_integrations');
   const { objects, fieldsOf } = useObjectChoices();
   const object = step.object ?? '';
   const fields = object ? fieldsOf(object).filter((f) => f.type !== 'file') : [];
   return (
     <>
-      <Field label="Objekt">
-        <Select value={object} onChange={(v) => set({ object: v, properties: {}, property: '' })} placeholder="wählen…" options={objects} />
+      <Field label={tt('Objekt')}>
+        <Select value={object} onChange={(v) => set({ object: v, properties: {}, property: '' })} placeholder={tt('wählen…')} options={objects} />
       </Field>
       {object && step.type === 'update_record' && (
-        <Field label="Welcher Datensatz">
+        <Field label={tt('Welcher Datensatz')}>
           <Select
             value={step.target ?? 'trigger'}
             onChange={(v) => set({ target: v })}
@@ -642,35 +652,35 @@ export function ObjectStep({ step, set }: { step: any; set: (p: any) => void }) 
           />
         </Field>
       )}
-      {object && step.type === 'update_record' && step.target === 'associated' && <LabelSelect object={object} value={step.label} onChange={(v) => set({ label: v })} label="Nur mit Label (optional)" />}
+      {object && step.type === 'update_record' && step.target === 'associated' && <LabelSelect object={object} value={step.label} onChange={(v) => set({ label: v })} label={tt('Nur mit Label (optional)')} />}
       {object && step.type !== 'associate_records' && (
-        <Field label={step.type === 'create_record' ? 'Werte' : 'Neue Werte'} hint={object === 'company' ? 'Gleiche Domain = vorhandene Firma wird aktualisiert' : 'Eindeutige Eigenschaften verhindern Dubletten'}>
+        <Field label={step.type === 'create_record' ? tt('Werte') : tt('Neue Werte')} hint={object === 'company' ? tt('Gleiche Domain = vorhandene Firma wird aktualisiert') : tt('Eindeutige Eigenschaften verhindern Dubletten')}>
           <ValueMap fields={fields} value={step.properties ?? {}} onChange={(v) => set({ properties: v })} />
         </Field>
       )}
       {object && step.type === 'associate_records' && (
         <>
-          <Field label="Datensatz finden">
+          <Field label={tt('Datensatz finden')}>
             <Select value={step.target ?? 'match'} onChange={(v) => set({ target: v })} options={[['match', 'Über eine Eigenschaft'], ['trigger', 'Der Datensatz aus dem Auslöser']]} />
           </Field>
           {(step.target ?? 'match') === 'match' && (
             <div className="grid2">
-              <Field label="Eigenschaft">
+              <Field label={tt('Eigenschaft')}>
                 <Select value={step.property ?? (object === 'company' ? 'domain' : '')} onChange={(v) => set({ property: v })} options={fields.map((f) => [f.key, f.label] as [string, string])} />
               </Field>
-              <Field label="ist gleich" hint={object === 'company' && (step.property ?? 'domain') === 'domain' ? 'E-Mail-Adressen werden zur Domain' : undefined}>
+              <Field label={tt('ist gleich')} hint={object === 'company' && (step.property ?? 'domain') === 'domain' ? tt('E-Mail-Adressen werden zur Domain') : undefined}>
                 <Input value={step.value} onChange={(v) => set({ value: v })} placeholder="{{contact.email}}" />
               </Field>
             </div>
           )}
-          {(step.target ?? 'match') === 'match' && <Check checked={!!step.create_if_missing} onChange={(v) => set({ create_if_missing: v })} label="Anlegen, wenn keiner passt" />}
+          {(step.target ?? 'match') === 'match' && <Check checked={!!step.create_if_missing} onChange={(v) => set({ create_if_missing: v })} label={tt('Anlegen, wenn keiner passt')} />}
         </>
       )}
       {object && step.type !== 'update_record' && (
         <>
-          {step.type === 'create_record' && <Check checked={step.associate !== false} onChange={(v) => set({ associate: v })} label="Mit dem Kontakt verknüpfen" />}
+          {step.type === 'create_record' && <Check checked={step.associate !== false} onChange={(v) => set({ associate: v })} label={tt('Mit dem Kontakt verknüpfen')} />}
           <LabelSelect object={object} value={step.label} onChange={(v) => set({ label: v })} />
-          {object === 'company' && <Check checked={!!step.primary} onChange={(v) => set({ primary: v })} label="Als primäre Firma des Kontakts" />}
+          {object === 'company' && <Check checked={!!step.primary} onChange={(v) => set({ primary: v })} label={tt('Als primäre Firma des Kontakts')} />}
         </>
       )}
     </>

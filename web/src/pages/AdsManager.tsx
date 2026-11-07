@@ -9,6 +9,7 @@ import { AdsModal, PlatformBadge, StatusBadge, fromCents, toCents } from './AdsK
 import { AdsRules } from './AdsRules';
 import { AdsWizard } from './AdsWizard';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /**
  * Anzeigen: create and manage Meta (Facebook/Instagram) and Google Ads campaigns. Everything is created paused;
@@ -25,15 +26,16 @@ const TABS: [string, string][] = [
 ];
 
 export function AdsManager({ path }: { path: string[] }) {
+  const tt = useT('x_integrations');
   const [first, id] = path;
   if (first === 'new' || first === 'edit') return <AdsWizard draftId={first === 'edit' ? id : undefined} />;
   const tab = TABS.some(([k]) => k === first) ? first! : 'campaigns';
   return (
     <div className="ads">
-      <PageHead title="Anzeigen" sub="Kampagnen bei Meta und Google erstellen und steuern – alles wird pausiert angelegt, aktiviert wird mit deiner Bestätigung.">
+      <PageHead title={tt('Anzeigen')} sub={tt('Kampagnen bei Meta und Google erstellen und steuern – alles wird pausiert angelegt, aktiviert wird mit deiner Bestätigung.')}>
         {tab === 'campaigns' && (
           <button className="btn" data-tour="ads-new" onClick={() => navigate('ads/new')}>
-            + Neue Kampagne
+            {tt('+ Neue Kampagne')}
           </button>
         )}
       </PageHead>
@@ -67,6 +69,7 @@ type Row = {
 };
 
 function Campaigns() {
+  const tt = useT('x_integrations');
   const [range, setRange] = useState({ from: ymd(new Date(Date.now() - 29 * 864e5)), to: ymd(new Date()) });
   const [busy, setBusy] = useState(false);
   const qs = `from=${range.from}&to=${range.to}&model=last`;
@@ -80,7 +83,7 @@ function Campaigns() {
     await act(async () => {
       await api.get(`/api/ads/campaigns?${qs}&refresh=1`);
       await api.post('/api/ads/sync', {}).catch(() => null);
-    }, 'Aktualisiert');
+    }, tt('Aktualisiert'));
     setBusy(false);
     void reload();
     void approvals.reload();
@@ -97,22 +100,22 @@ function Campaigns() {
     <>
       {(approvals.data ?? []).length > 0 && (
         <div className="card ads-approvals" data-tour="ads-approvals">
-          <h2>Freigaben ({approvals.data!.length})</h2>
-          <p className="muted small">API-Schlüssel, MCP-Clients und der KI-Agent geben nie selbst Geld aus – sie fragen hier an. Prüfe die Änderung und entscheide.</p>
+          <h2>{tt('Freigaben ({length})', { length: approvals.data!.length })}</h2>
+          <p className="muted small">{tt('API-Schlüssel, MCP-Clients und der KI-Agent geben nie selbst Geld aus – sie fragen hier an. Prüfe die Änderung und entscheide.')}</p>
           {approvals.data!.map((a) => (
             <div key={a.id} className="ads-approval">
               <div>
                 <strong>{a.summary}</strong>
                 <div className="muted small">
-                  Angefragt über {VIA[a.requested_via] ?? a.requested_via ?? 'API'}{a.requested_by_name && a.requested_by_name !== VIA[a.requested_via] ? ` (${a.requested_by_name})` : ''} · {dt(a.created_at)} · gültig bis {dt(a.expires_at)}
+                  {tt('Angefragt über')} {VIA[a.requested_via] ?? a.requested_via ?? 'API'}{a.requested_by_name && a.requested_by_name !== VIA[a.requested_via] ? ` (${a.requested_by_name})` : ''} {tt('· {dt} · gültig bis {dt2}', { dt: dt(a.created_at), dt2: dt(a.expires_at) })}
                 </div>
               </div>
               <div className="actions">
                 <button className="btn small" onClick={() => setDialog({ kind: 'approve', approval: a })}>
-                  Prüfen & freigeben
+                  {tt('Prüfen & freigeben')}
                 </button>
-                <button className="btn small secondary" onClick={() => confirmAsk('Anfrage ablehnen? Es wird nichts geändert.') && run(() => api.post(`/api/ads/approvals/${a.id}/reject`, {}), 'Abgelehnt')}>
-                  Ablehnen
+                <button className="btn small secondary" onClick={() => confirmAsk(tt('Anfrage ablehnen? Es wird nichts geändert.')) && run(() => api.post(`/api/ads/approvals/${a.id}/reject`, {}), 'Abgelehnt')}>
+                  {tt('Ablehnen')}
                 </button>
               </div>
             </div>
@@ -121,8 +124,8 @@ function Campaigns() {
       )}
 
       <RangePicker from={range.from} to={range.to} onChange={(from, to) => setRange({ from, to })}>
-        <button className="btn secondary attr-export" disabled={busy} onClick={refresh} title="Status, Budgets und Zahlen von Meta und Google neu laden">
-          <Icon name="refresh" /> {busy ? 'Lädt …' : 'Aktualisieren'}
+        <button className="btn secondary attr-export" disabled={busy} onClick={refresh} title={tt('Status, Budgets und Zahlen von Meta und Google neu laden')}>
+          <Icon name="refresh" /> {busy ? tt('Lädt …') : tt('Aktualisieren')}
         </button>
       </RangePicker>
 
@@ -131,39 +134,39 @@ function Campaigns() {
       ) : (
         <>
           {data && !anyConnected && (
-            <Empty action={<Link to="ads/connections" className="btn">Werbekonto verbinden</Link>} tour="ads-empty">
-              Verbinde Meta Ads oder Google Ads, um Kampagnen direkt hier zu erstellen und zu steuern.
+            <Empty action={<Link to="ads/connections" className="btn">{tt('Werbekonto verbinden')}</Link>} tour="ads-empty">
+              {tt('Verbinde Meta Ads oder Google Ads, um Kampagnen direkt hier zu erstellen und zu steuern.')}
             </Empty>
           )}
           {data && Object.entries(data.errors ?? {}).map(([p, e]) => (
             <p key={p} style={{ color: 'var(--red)' }}>
-              {p === 'meta' ? 'Meta' : 'Google'}: {String(e)}
+              {p === 'meta' ? tt('Meta') : 'Google'}: {String(e)}
             </p>
           ))}
           {tot && data.campaigns.length > 0 && (
             <SortableGrid id="ads-manager.stats" className="stats">
-              <Stat label="Ausgaben" value={money(tot.spend_cents)} sub={`${int(tot.impressions)} Impressionen · ${int(tot.clicks)} Klicks`} />
-              <Stat label="Leads im CRM" value={tot.crm_leads} sub={`laut Werbeplattform: ${int(tot.platform_leads)}`} />
-              <Stat label="Kosten pro Lead" value={tot.cpl_cents === null ? '–' : money(tot.cpl_cents)} sub="Ausgaben ÷ Leads im CRM" />
-              <Stat label="ROAS" value={tot.roas === null ? '–' : `${tot.roas.toLocaleString('de-DE', { minimumFractionDigits: 2 })}×`} sub="Umsatz ÷ Ausgaben" />
+              <Stat label={tt('Ausgaben')} value={money(tot.spend_cents)} sub={tt('{int} Impressionen · {int2} Klicks', { int: int(tot.impressions), int2: int(tot.clicks) })} />
+              <Stat label={tt('Leads im CRM')} value={tot.crm_leads} sub={tt('laut Werbeplattform: {int}', { int: int(tot.platform_leads) })} />
+              <Stat label={tt('Kosten pro Lead')} value={tot.cpl_cents === null ? '–' : money(tot.cpl_cents)} sub={tt('Ausgaben ÷ Leads im CRM')} />
+              <Stat label={tt('ROAS')} value={tot.roas === null ? '–' : `${tot.roas.toLocaleString('de-DE', { minimumFractionDigits: 2 })}×`} sub={tt('Umsatz ÷ Ausgaben')} />
             </SortableGrid>
           )}
           {data && anyConnected && data.campaigns.length === 0 && (
-            <Empty action={<button className="btn" onClick={() => navigate('ads/new')}>Erste Kampagne anlegen</button>}>Noch keine Kampagnen. Lege eine an – sie startet pausiert, nichts wird ausgegeben.</Empty>
+            <Empty action={<button className="btn" onClick={() => navigate('ads/new')}>{tt('Erste Kampagne anlegen')}</button>}>{tt('Noch keine Kampagnen. Lege eine an – sie startet pausiert, nichts wird ausgegeben.')}</Empty>
           )}
           {data && data.campaigns.length > 0 && (
             <div className="table-wrap" data-tour="ads-table">
               <table className="t ads-table">
                 <thead>
                   <tr>
-                    <th>Kampagne</th>
+                    <th>{tt('Kampagne')}</th>
                     <th>Status</th>
-                    <th className="num">Budget</th>
-                    <th className="num">Ausgaben</th>
-                    <th className="num">Klicks</th>
-                    <th className="num">CTR</th>
-                    <th className="num">Leads (CRM)</th>
-                    <th className="num">CPL</th>
+                    <th className="num">{tt('Budget')}</th>
+                    <th className="num">{tt('Ausgaben')}</th>
+                    <th className="num">{tt('Klicks')}</th>
+                    <th className="num">{tt('CTR')}</th>
+                    <th className="num">{tt('Leads (CRM)')}</th>
+                    <th className="num">{tt('CPL')}</th>
                     <th />
                   </tr>
                 </thead>
@@ -175,13 +178,13 @@ function Campaigns() {
                       <tr key={r.key}>
                         <td>
                           <PlatformBadge platform={r.platform} /> <strong>{r.name}</strong>
-                          {!r.managed && r.status !== 'ended' && <span className="muted small"> · aus dem Werbekonto</span>}
+                          {!r.managed && r.status !== 'ended' && <span className="muted small"> {tt('· aus dem Werbekonto')}</span>}
                           {r.last_error && <div className="small" style={{ color: 'var(--red)' }}>{r.last_error}</div>}
                         </td>
                         <td>
                           <StatusBadge status={r.status} />
                         </td>
-                        <td className="num">{r.budget_cents ? `${money(r.budget_cents, r.currency)}${r.budget_type === 'lifetime' ? ' ges.' : ' / Tag'}` : '–'}</td>
+                        <td className="num">{r.budget_cents ? `${money(r.budget_cents, r.currency)}${r.budget_type === 'lifetime' ? ' ges.' : tt(' / Tag')}` : '–'}</td>
                         <td className="num">{m ? money(m.spend_cents, m.currency) : '–'}</td>
                         <td className="num">{m ? int(m.clicks) : '–'}</td>
                         <td className="num">{m ? pct(m.ctr) : '–'}</td>
@@ -191,29 +194,29 @@ function Campaigns() {
                           {draft ? (
                             <>
                               <button className="btn small secondary" onClick={() => navigate(`ads/edit/${r.id}`)}>
-                                {r.status === 'error' ? 'Korrigieren' : 'Weiter'}
+                                {r.status === 'error' ? tt('Korrigieren') : tt('Weiter')}
                               </button>
-                              <button className="btn small ghost" onClick={() => confirmAsk(`Entwurf „${r.name}“ löschen?`) && run(() => api.del(`/api/ads/campaigns/${r.id}`), 'Gelöscht')}>
-                                Löschen
+                              <button className="btn small ghost" onClick={() => confirmAsk(tt('Entwurf „{name}“ löschen?', { name: r.name })) && run(() => api.del(`/api/ads/campaigns/${r.id}`), 'Gelöscht')}>
+                                {tt('Löschen')}
                               </button>
                             </>
                           ) : r.status === 'ended' ? null : (
                             <>
                               {r.status === 'active' ? (
                                 <button className="btn small secondary" onClick={() => run(() => api.post(`/api/ads/campaigns/${encodeURIComponent(ref(r))}/status`, { status: 'paused' }), 'Pausiert')}>
-                                  Pausieren
+                                  {tt('Pausieren')}
                                 </button>
                               ) : (
                                 <button className="btn small" onClick={() => setDialog({ kind: 'activate', row: r })}>
-                                  Aktivieren
+                                  {tt('Aktivieren')}
                                 </button>
                               )}
                               <button className="btn small secondary" onClick={() => setDialog({ kind: 'budget', row: r })}>
-                                Budget
+                                {tt('Budget')}
                               </button>
                               {r.managed && r.id && (
-                                <button className="btn small ghost" title="Als neuen Entwurf kopieren" onClick={async () => { const c = await run(() => api.post(`/api/ads/campaigns/${r.id}/duplicate`, {}), 'Kopie als Entwurf angelegt'); if (c?.id) navigate(`ads/edit/${c.id}`); }}>
-                                  Duplizieren
+                                <button className="btn small ghost" title={tt('Als neuen Entwurf kopieren')} onClick={async () => { const c = await run(() => api.post(`/api/ads/campaigns/${r.id}/duplicate`, {}), 'Kopie als Entwurf angelegt'); if (c?.id) navigate(`ads/edit/${c.id}`); }}>
+                                  {tt('Duplizieren')}
                                 </button>
                               )}
                             </>
@@ -226,7 +229,7 @@ function Campaigns() {
               </table>
             </div>
           )}
-          {data?.campaigns?.length > 0 && !data.attribution && <p className="muted small">Leads im CRM werden über <code>utm_campaign</code> zugeordnet (Modul Attribution).</p>}
+          {data?.campaigns?.length > 0 && !data.attribution && <p className="muted small">{tt('Leads im CRM werden über')} <code>utm_campaign</code> {tt('zugeordnet (Modul Attribution).')}</p>}
         </>
       )}
 
@@ -254,12 +257,12 @@ function Campaigns() {
       )}
       {dialog?.kind === 'approve' && dialog.approval && (
         <AdsModal
-          title="Freigabe prüfen"
+          title={tt('Freigabe prüfen')}
           onClose={() => setDialog(null)}
           footer={
             <>
               <button className="btn secondary" onClick={() => setDialog(null)}>
-                Abbrechen
+                {tt('Abbrechen')}
               </button>
               <button
                 className="btn"
@@ -270,7 +273,7 @@ function Campaigns() {
                   await run(() => api.post(`/api/ads/approvals/${a.id}/approve`, {}), 'Freigegeben und ausgeführt');
                 }}
               >
-                Freigeben und ausführen
+                {tt('Freigeben und ausführen')}
               </button>
             </>
           }
@@ -279,7 +282,7 @@ function Campaigns() {
             <strong>{dialog.approval.summary}</strong>
           </p>
           <p className="muted">
-            Angefragt über {VIA[dialog.approval.requested_via] ?? 'API'}{dialog.approval.requested_by_name && dialog.approval.requested_by_name !== VIA[dialog.approval.requested_via] ? ` (${dialog.approval.requested_by_name})` : ''}. Mit „Freigeben“ wird es sofort bei {dialog.approval.platform === 'meta' ? 'Meta' : 'Google'} ausgeführt und im Protokoll festgehalten.
+            {tt('Angefragt über')} {VIA[dialog.approval.requested_via] ?? 'API'}{dialog.approval.requested_by_name && dialog.approval.requested_by_name !== VIA[dialog.approval.requested_via] ? ` (${dialog.approval.requested_by_name})` : ''}{tt('. Mit „Freigeben“ wird es sofort bei')} {dialog.approval.platform === 'meta' ? tt('Meta') : 'Google'} {tt('ausgeführt und im Protokoll festgehalten.')}
           </p>
         </AdsModal>
       )}
@@ -288,60 +291,62 @@ function Campaigns() {
 }
 
 function ActivateDialog({ row, onClose, onDone }: { row: Row; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_integrations');
   const budget = row.budget_cents ? `${money(row.budget_cents, row.currency)} ${row.budget_type === 'lifetime' ? 'insgesamt' : 'pro Tag'}` : 'dem eingestellten Budget';
   return (
     <AdsModal
-      title="Kampagne aktivieren?"
+      title={tt('Kampagne aktivieren?')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" data-tour="ads-confirm" onClick={onDone}>
-            Ja, jetzt aktivieren
+            {tt('Ja, jetzt aktivieren')}
           </button>
         </>
       }
     >
       <p>
-        <strong>„{row.name}“</strong> bei {row.platform === 'meta' ? 'Meta (Facebook & Instagram)' : 'Google Ads'} wird aktiviert.
+        <strong>„{row.name}“</strong> bei {row.platform === 'meta' ? tt('Meta (Facebook & Instagram)') : tt('Google Ads')} {tt('wird aktiviert.')}
       </p>
       <p>
-        Ab sofort wird <strong>Geld ausgegeben</strong> – bis zu {budget}. Du kannst die Kampagne jederzeit pausieren.
+        {tt('Ab sofort wird')} <strong>{tt('Geld ausgegeben')}</strong> {tt('– bis zu {budget}. Du kannst die Kampagne jederzeit pausieren.', { budget: budget })}
       </p>
     </AdsModal>
   );
 }
 
 function BudgetDialog({ row, onClose, onDone }: { row: Row; onClose: () => void; onDone: (cents: number) => void }) {
+  const tt = useT('x_integrations');
   const [v, setV] = useState(fromCents(row.budget_cents));
   const cents = toCents(v);
   const unit = row.budget_type === 'lifetime' ? 'insgesamt' : 'pro Tag';
   return (
     <AdsModal
-      title="Budget ändern"
+      title={tt('Budget ändern')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" disabled={!cents || cents === row.budget_cents} onClick={() => onDone(cents)}>
-            Budget ändern
+            {tt('Budget ändern')}
           </button>
         </>
       }
     >
-      <Field label={`Neues Budget (${unit}, €)`} hint={row.budget_cents ? `Bisher: ${money(row.budget_cents, row.currency)} ${unit}` : 'Bisheriges Budget unbekannt – bitte „Aktualisieren“ drücken'}>
+      <Field label={tt('Neues Budget ({unit}, €)', { unit: unit })} hint={row.budget_cents ? tt('Bisher: {money} {unit}', { money: money(row.budget_cents, row.currency), unit: unit }) : tt('Bisheriges Budget unbekannt – bitte „Aktualisieren“ drücken')}>
         <Input inputMode="decimal" value={v} onChange={setV} autoFocus />
       </Field>
       {cents > 0 && row.budget_cents && cents !== row.budget_cents && (
         <p className={cents > row.budget_cents ? '' : 'muted'}>
-          {cents > row.budget_cents ? <Badge tone="yellow">Mehr Ausgaben</Badge> : <Badge tone="green">Weniger Ausgaben</Badge>} „{row.name}“: {money(row.budget_cents, row.currency)} → <strong>{money(cents, row.currency)}</strong> {unit}
+          {cents > row.budget_cents ? <Badge tone="yellow">{tt('Mehr Ausgaben')}</Badge> : <Badge tone="green">{tt('Weniger Ausgaben')}</Badge>} „{row.name}“: {money(row.budget_cents, row.currency)} → <strong>{money(cents, row.currency)}</strong> {unit}
         </p>
       )}
-      <p className="muted small">Das Tageslimit des Sub-Accounts gilt (Verbindungen). Die Änderung wird sofort bei der Plattform wirksam und im Protokoll festgehalten.</p>
+      <p className="muted small">{tt('Das Tageslimit des Sub-Accounts gilt (Verbindungen). Die Änderung wird sofort bei der Plattform wirksam und im Protokoll festgehalten.')}</p>
     </AdsModal>
   );
 }

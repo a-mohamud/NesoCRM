@@ -5,6 +5,7 @@ import { Badge, Empty, Field, Input, Modal, Select, Spinner, Stat, Textarea, act
 import { Callout, Item } from './CreatorKit';
 import { pct, useCanSettings } from './CallsKit';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /**
  * Scorecards: criteria with a weight (yes/no or 1 to 5), pre-scored by the AI from the transcript and checked by a manager. Per
@@ -19,6 +20,7 @@ const SCALE: [string, string][] = [
 // --- the scores of one conversation ---------------------------------------------------------------------------------------------
 
 function ScoreView({ score, onChanged }: { score: any; onChanged: () => void }) {
+  const tt = useT('x_comms');
   const can = useCanSettings();
   const [edit, setEdit] = useState(false);
   const [rev, setRev] = useState<Record<string, { score: number | null; comment: string }>>({});
@@ -34,7 +36,7 @@ function ScoreView({ score, onChanged }: { score: any; onChanged: () => void }) 
       const cur = k.review ? k.review.score : k.ai?.score ?? null;
       return v.score !== cur || v.comment !== (k.review?.comment ?? '') || !!k.review;
     }));
-    const r = await act(() => api.put(`/api/call-intel/${score.intel_id}/scores/${score.id}/review`, { scores, comment }), 'Bewertung gespeichert');
+    const r = await act(() => api.put(`/api/call-intel/${score.intel_id}/scores/${score.id}/review`, { scores, comment }), tt('Bewertung gespeichert'));
     if (r) {
       setEdit(false);
       onChanged();
@@ -47,18 +49,18 @@ function ScoreView({ score, onChanged }: { score: any; onChanged: () => void }) 
         <strong>{score.scorecard_name}</strong>
         <span className="cr-line">
           <span className="tl-big">{score.final_total === null ? '–' : Math.round(score.final_total)}</span>
-          <span className="muted small">von 100{score.status === 'reviewed' ? ` · geprüft von ${score.reviewer_name || 'Team'}` : ' · KI-Vorschlag, noch nicht geprüft'}</span>
+          <span className="muted small">{tt('von 100')}{score.status === 'reviewed' ? tt(' · geprüft von {v}', { v: score.reviewer_name || 'Team' }) : tt(' · KI-Vorschlag, noch nicht geprüft')}</span>
         </span>
       </div>
       {score.ai_error && <p className="cr-err">{score.ai_error}</p>}
-      {score.status === 'reviewed' && score.ai_total !== null && score.ai_total !== score.final_total && <p className="muted small">Die KI hatte {Math.round(score.ai_total)} vergeben.</p>}
+      {score.status === 'reviewed' && score.ai_total !== null && score.ai_total !== score.final_total && <p className="muted small">{tt('Die KI hatte {round} vergeben.', { round: Math.round(score.ai_total) })}</p>}
       {score.criteria.map((k: any) => {
         const ai = k.ai;
         const r = rev[k.id];
         return (
           <div className="tl-crit" key={k.id}>
             <div>
-              <strong>{k.label}</strong> <span className="muted small">Gewicht {k.weight}</span>
+              <strong>{k.label}</strong> <span className="muted small">{tt('Gewicht {weight}', { weight: k.weight })}</span>
               {k.description && <div className="muted small">{k.description}</div>}
             </div>
             <div>
@@ -66,13 +68,13 @@ function ScoreView({ score, onChanged }: { score: any; onChanged: () => void }) 
                 <Select
                   value={r.score === null ? '' : String(r.score)}
                   onChange={(v) => setRev({ ...rev, [k.id]: { ...r, score: v === '' ? null : Number(v) } })}
-                  placeholder="trifft nicht zu"
+                  placeholder={tt('trifft nicht zu')}
                   options={k.scale === 'yesno' ? [['1', 'Ja'], ['0', 'Nein']] : [['5', '5 – sehr gut'], ['4', '4'], ['3', '3'], ['2', '2'], ['1', '1 – schwach']]}
                 />
               ) : (
                 <span>
                   <strong>{label(k, k.final)}</strong>
-                  {k.review && ai && ai.score !== k.review.score && <span className="muted small"> (KI: {label(k, ai.score)})</span>}
+                  {k.review && ai && ai.score !== k.review.score && <span className="muted small"> {tt('(KI: {label})', { label: label(k, ai.score) })}</span>}
                 </span>
               )}
             </div>
@@ -89,37 +91,37 @@ function ScoreView({ score, onChanged }: { score: any; onChanged: () => void }) 
             )}
             {edit && r ? (
               <div style={{ gridColumn: '1 / -1' }}>
-                <Input value={r.comment} onChange={(v) => setRev({ ...rev, [k.id]: { ...r, comment: v } })} placeholder="Kommentar zu diesem Kriterium (optional)" maxLength={400} aria-label={`Kommentar ${k.label}`} />
+                <Input value={r.comment} onChange={(v) => setRev({ ...rev, [k.id]: { ...r, comment: v } })} placeholder={tt('Kommentar zu diesem Kriterium (optional)')} maxLength={400} aria-label={tt('Kommentar {label}', { label: k.label })} />
               </div>
             ) : (
-              k.review?.comment && <div className="why">Manager: {k.review.comment}</div>
+              k.review?.comment && <div className="why">{tt('Manager: {comment}', { comment: k.review.comment })}</div>
             )}
           </div>
         );
       })}
       {edit ? (
         <>
-          <Field label="Gesamtkommentar">
+          <Field label={tt('Gesamtkommentar')}>
             <Textarea value={comment} onChange={setComment} rows={2} maxLength={2000} />
           </Field>
           <div className="actions">
             <button className="btn" onClick={save}>
-              Bewertung speichern
+              {tt('Bewertung speichern')}
             </button>
             <button className="btn secondary" onClick={() => setEdit(false)}>
-              Abbrechen
+              {tt('Abbrechen')}
             </button>
           </div>
         </>
       ) : (
         <>
-          {score.comment && <p className="small">Kommentar: {score.comment}</p>}
+          {score.comment && <p className="small">{tt('Kommentar: {comment}', { comment: score.comment })}</p>}
           {can ? (
             <button className="btn small secondary" onClick={startEdit} data-tour="score-review">
-              <Icon name="edit" size={14} /> {score.status === 'reviewed' ? 'Bewertung ändern' : 'Prüfen und korrigieren'}
+              <Icon name="edit" size={14} /> {score.status === 'reviewed' ? tt('Bewertung ändern') : tt('Prüfen und korrigieren')}
             </button>
           ) : (
-            <p className="muted small">Prüfen dürfen Administratoren und Personen mit Zugriff auf die Einstellungen.</p>
+            <p className="muted small">{tt('Prüfen dürfen Administratoren und Personen mit Zugriff auf die Einstellungen.')}</p>
           )}
         </>
       )}
@@ -129,6 +131,7 @@ function ScoreView({ score, onChanged }: { score: any; onChanged: () => void }) 
 
 /** Scores of one conversation plus the picker to score it with another card. */
 export function Scores({ intelId, ready }: { intelId: string; ready: boolean }) {
+  const tt = useT('x_comms');
   const scores = useLoad(() => api.get<any[]>(`/api/call-intel/${intelId}/scores`), [intelId]);
   const cards = useLoad(() => api.get<any[]>('/api/call-intel/scorecards'), []);
   const [card, setCard] = useState('');
@@ -137,7 +140,7 @@ export function Scores({ intelId, ready }: { intelId: string; ready: boolean }) 
   const free = (cards.data ?? []).filter((c) => !used.has(c.id));
   const run = async () => {
     setBusy(true);
-    const r = await act(() => api.post(`/api/call-intel/${intelId}/scores`, { scorecard_id: card }), 'Von der KI vorbewertet');
+    const r = await act(() => api.post(`/api/call-intel/${intelId}/scores`, { scorecard_id: card }), tt('Von der KI vorbewertet'));
     setBusy(false);
     if (r) {
       setCard('');
@@ -152,15 +155,15 @@ export function Scores({ intelId, ready }: { intelId: string; ready: boolean }) 
       {ready && free.length > 0 && (
         <div className="cr-line">
           <div className="grow">
-            <Select value={card} onChange={setCard} placeholder="Mit einer Scorecard bewerten …" options={free.map((c) => [c.id, c.name])} />
+            <Select value={card} onChange={setCard} placeholder={tt('Mit einer Scorecard bewerten …')} options={free.map((c) => [c.id, c.name])} />
           </div>
           <button className="btn" disabled={!card || busy} onClick={run}>
-            <Icon name="sparkles" size={14} /> KI bewertet vor
+            <Icon name="sparkles" size={14} /> {tt('KI bewertet vor')}
           </button>
         </div>
       )}
-      {!ready && free.length > 0 && <p className="muted small">Die Vorbewertung durch die KI braucht den KI-Assistenten (Einstellungen → KI-Assistent).</p>}
-      {!scores.data?.length && !cards.data?.length && <p className="muted small">Noch keine Scorecard. Lege eine unter „Scorecards“ an.</p>}
+      {!ready && free.length > 0 && <p className="muted small">{tt('Die Vorbewertung durch die KI braucht den KI-Assistenten (Einstellungen → KI-Assistent).')}</p>}
+      {!scores.data?.length && !cards.data?.length && <p className="muted small">{tt('Noch keine Scorecard. Lege eine unter „Scorecards“ an.')}</p>}
     </div>
   );
 }
@@ -168,13 +171,14 @@ export function Scores({ intelId, ready }: { intelId: string; ready: boolean }) 
 // --- managing cards --------------------------------------------------------------------------------------------------------------
 
 function CardDialog({ initial, onClose, onSaved }: { initial: any | null; onClose: () => void; onSaved: () => void }) {
+  const tt = useT('x_comms');
   const tpl = useLoad(() => api.get<any[]>('/api/call-scorecards/templates'), []);
   const [c, setC] = useState<any>(() => (initial ? JSON.parse(JSON.stringify(initial)) : { name: '', description: '', criteria: [{ id: '', label: '', description: '', weight: 1, scale: 'five' }] }));
   const set = (p: any) => setC({ ...c, ...p });
   const setK = (i: number, p: any) => set({ criteria: c.criteria.map((k: any, j: number) => (j === i ? { ...k, ...p } : k)) });
   const save = async () => {
     const body = { name: c.name, description: c.description, criteria: c.criteria.map((k: any) => ({ ...k, id: k.id || undefined })), active: c.active ?? true };
-    const r = await act(() => (initial ? api.put(`/api/call-scorecards/${initial.id}`, body) : api.post('/api/call-scorecards', body)), 'Gespeichert');
+    const r = await act(() => (initial ? api.put(`/api/call-scorecards/${initial.id}`, body) : api.post('/api/call-scorecards', body)), tt('Gespeichert'));
     if (r) {
       onSaved();
       onClose();
@@ -182,12 +186,12 @@ function CardDialog({ initial, onClose, onSaved }: { initial: any | null; onClos
   };
   return (
     <Modal
-      title={initial ? `Scorecard: ${initial.name}` : 'Neue Scorecard'}
+      title={initial ? tt('Scorecard: {name}', { name: initial.name }) : tt('Neue Scorecard')}
       wide
       onClose={onClose}
       footer={
         <button className="btn" disabled={!c.name.trim() || !c.criteria.length} onClick={save}>
-          Speichern
+          {tt('Speichern')}
         </button>
       }
     >
@@ -195,45 +199,45 @@ function CardDialog({ initial, onClose, onSaved }: { initial: any | null; onClos
         <div className="cr-chips">
           {tpl.data!.map((t) => (
             <button key={t.key} type="button" className="cr-chip" onClick={() => setC({ name: t.name, description: t.description, criteria: JSON.parse(JSON.stringify(t.criteria)) })}>
-              Vorlage: {t.name}
+              {tt('Vorlage: {name}', { name: t.name })}
             </button>
           ))}
         </div>
       )}
       <div className="cr-form-row">
         <Field label="Name">
-          <Input value={c.name} onChange={(v) => set({ name: v })} maxLength={80} placeholder="z. B. Vertriebsgespräch" />
+          <Input value={c.name} onChange={(v) => set({ name: v })} maxLength={80} placeholder={tt('z. B. Vertriebsgespräch')} />
         </Field>
-        <Field label="Beschreibung (optional)">
+        <Field label={tt('Beschreibung (optional)')}>
           <Input value={c.description} onChange={(v) => set({ description: v })} maxLength={400} />
         </Field>
       </div>
-      <h4 style={{ margin: '8px 0' }}>Kriterien</h4>
-      <p className="muted small">Das Gewicht bestimmt, wie stark ein Kriterium in die Gesamtnote (0 bis 100) eingeht. Die Beschreibung liest auch die KI: je genauer, desto besser ihre Vorbewertung.</p>
+      <h4 style={{ margin: '8px 0' }}>{tt('Kriterien')}</h4>
+      <p className="muted small">{tt('Das Gewicht bestimmt, wie stark ein Kriterium in die Gesamtnote (0 bis 100) eingeht. Die Beschreibung liest auch die KI: je genauer, desto besser ihre Vorbewertung.')}</p>
       {c.criteria.map((k: any, i: number) => (
         <div key={i} className="tl-score">
           <div className="cr-form-row">
-            <Field label="Kriterium">
-              <Input value={k.label} onChange={(v) => setK(i, { label: v })} maxLength={80} placeholder="z. B. Bedarf erfragt" />
+            <Field label={tt('Kriterium')}>
+              <Input value={k.label} onChange={(v) => setK(i, { label: v })} maxLength={80} placeholder={tt('z. B. Bedarf erfragt')} />
             </Field>
-            <Field label="Bewertung">
+            <Field label={tt('Bewertung')}>
               <Select value={k.scale} onChange={(v) => setK(i, { scale: v })} options={SCALE} />
             </Field>
-            <Field label="Gewicht (1 bis 10)">
+            <Field label={tt('Gewicht (1 bis 10)')}>
               <Input type="number" min={1} max={10} value={k.weight} onChange={(v) => setK(i, { weight: Number(v) })} />
             </Field>
           </div>
-          <Field label="Woran erkennt man es?">
-            <Input value={k.description} onChange={(v) => setK(i, { description: v })} maxLength={400} placeholder="Stellt offene Fragen und hört zu, bevor er anbietet." />
+          <Field label={tt('Woran erkennt man es?')}>
+            <Input value={k.description} onChange={(v) => setK(i, { description: v })} maxLength={400} placeholder={tt('Stellt offene Fragen und hört zu, bevor er anbietet.')} />
           </Field>
           <button className="btn small secondary" onClick={() => set({ criteria: c.criteria.filter((_: any, j: number) => j !== i) })} disabled={c.criteria.length < 2}>
-            <Icon name="trash" size={14} /> Kriterium entfernen
+            <Icon name="trash" size={14} /> {tt('Kriterium entfernen')}
           </button>
         </div>
       ))}
       {c.criteria.length < 20 && (
         <button className="btn secondary" onClick={() => set({ criteria: [...c.criteria, { id: '', label: '', description: '', weight: 1, scale: 'five' }] })}>
-          <Icon name="plus" size={14} /> Kriterium
+          <Icon name="plus" size={14} /> {tt('Kriterium')}
         </button>
       )}
     </Modal>
@@ -241,12 +245,13 @@ function CardDialog({ initial, onClose, onSaved }: { initial: any | null; onClos
 }
 
 function Report({ card, onClose }: { card: any; onClose: () => void }) {
+  const tt = useT('x_comms');
   const [days, setDays] = useState('30');
   const rep = useLoad(() => api.get(`/api/call-scorecards/${card.id}/report?days=${days}`), [card.id, days]);
   const r = rep.data;
   return (
-    <Modal title={`Auswertung: ${card.name}`} wide onClose={onClose}>
-      <Field label="Zeitraum">
+    <Modal title={tt('Auswertung: {name}', { name: card.name })} wide onClose={onClose}>
+      <Field label={tt('Zeitraum')}>
         <Select value={days} onChange={setDays} options={[['7', '7 Tage'], ['30', '30 Tage'], ['90', '90 Tage'], ['365', '1 Jahr']]} />
       </Field>
       {!r ? (
@@ -254,16 +259,16 @@ function Report({ card, onClose }: { card: any; onClose: () => void }) {
       ) : r.scored ? (
         <>
           <SortableGrid id="calls-scorecards.stats" className="stats" style={{ marginBottom: 12 }}>
-            <Stat label="Bewertete Gespräche" value={r.scored} sub={`${r.reviewed} von Managern geprüft`} />
-            <Stat label="Durchschnitt" value={r.avg_total === null ? '–' : Math.round(r.avg_total)} sub="von 100" />
+            <Stat label={tt('Bewertete Gespräche')} value={r.scored} sub={tt('{reviewed} von Managern geprüft', { reviewed: r.reviewed })} />
+            <Stat label={tt('Durchschnitt')} value={r.avg_total === null ? '–' : Math.round(r.avg_total)} sub={tt('von 100')} />
           </SortableGrid>
-          <h4 style={{ margin: '4px 0 6px' }}>Je Kriterium</h4>
+          <h4 style={{ margin: '4px 0 6px' }}>{tt('Je Kriterium')}</h4>
           <table className="tl-report">
             <thead>
               <tr>
-                <th>Kriterium</th>
-                <th className="n">Erfüllt im Schnitt</th>
-                <th className="n">Gespräche</th>
+                <th>{tt('Kriterium')}</th>
+                <th className="n">{tt('Erfüllt im Schnitt')}</th>
+                <th className="n">{tt('Gespräche')}</th>
               </tr>
             </thead>
             <tbody>
@@ -276,13 +281,13 @@ function Report({ card, onClose }: { card: any; onClose: () => void }) {
               ))}
             </tbody>
           </table>
-          <h4 style={{ margin: '14px 0 6px' }}>Je Person</h4>
+          <h4 style={{ margin: '14px 0 6px' }}>{tt('Je Person')}</h4>
           <table className="tl-report">
             <thead>
               <tr>
-                <th>Person</th>
-                <th className="n">Durchschnitt</th>
-                <th className="n">Gespräche</th>
+                <th>{tt('Person')}</th>
+                <th className="n">{tt('Durchschnitt')}</th>
+                <th className="n">{tt('Gespräche')}</th>
               </tr>
             </thead>
             <tbody>
@@ -297,32 +302,33 @@ function Report({ card, onClose }: { card: any; onClose: () => void }) {
           </table>
         </>
       ) : (
-        <Empty>In diesem Zeitraum wurde noch nichts mit dieser Scorecard bewertet.</Empty>
+        <Empty>{tt('In diesem Zeitraum wurde noch nichts mit dieser Scorecard bewertet.')}</Empty>
       )}
     </Modal>
   );
 }
 
 export function ScorecardsDialog({ onClose }: { onClose: () => void }) {
+  const tt = useT('x_comms');
   const can = useCanSettings();
   const list = useLoad(() => api.get<any[]>('/api/call-scorecards'), []);
   const [edit, setEdit] = useState<any | 'new' | null>(null);
   const [report, setReport] = useState<any>(null);
   return (
     <Modal
-      title="Scorecards"
+      title={tt('Scorecards')}
       wide
       onClose={onClose}
       footer={
         can ? (
           <button className="btn" onClick={() => setEdit('new')}>
-            <Icon name="plus" size={14} /> Neue Scorecard
+            <Icon name="plus" size={14} /> {tt('Neue Scorecard')}
           </button>
         ) : undefined
       }
     >
       <Callout>
-        Eine Scorecard prüft Gespräche nach festen Kriterien. Die KI schlägt je Kriterium eine Note mit Begründung und Zitat vor; eine Führungskraft prüft und korrigiert. Bewertungen von Menschen sind Hilfsmittel für Coaching – wer sie für Personalentscheidungen nutzt, sollte die Mitbestimmungs- und Datenschutzregeln im Betrieb klären.
+        {tt('Eine Scorecard prüft Gespräche nach festen Kriterien. Die KI schlägt je Kriterium eine Note mit Begründung und Zitat vor; eine Führungskraft prüft und korrigiert. Bewertungen von Menschen sind Hilfsmittel für Coaching – wer sie für Personalentscheidungen nutzt, sollte die Mitbestimmungs- und Datenschutzregeln im Betrieb klären.')}
       </Callout>
       {!list.data ? (
         <Spinner />
@@ -337,15 +343,15 @@ export function ScorecardsDialog({ onClose }: { onClose: () => void }) {
                   {!c.active && <Badge>aus</Badge>}
                   <Badge tone="blue">{c.scored} bewertet</Badge>
                   <button className="btn small secondary" onClick={(e) => (e.stopPropagation(), setReport(c))}>
-                    <Icon name="gauge" size={14} /> Auswertung
+                    <Icon name="gauge" size={14} /> {tt('Auswertung')}
                   </button>
                   {can && (
                     <button
                       className="icon-btn"
-                      aria-label={`${c.name} löschen`}
+                      aria-label={tt('{name} löschen', { name: c.name })}
                       onClick={async (e) => {
                         e.stopPropagation();
-                        if (confirmAsk(`Scorecard „${c.name}“ mit allen Bewertungen löschen?`) && (await act(() => api.del(`/api/call-scorecards/${c.id}`), 'Gelöscht'))) void list.reload();
+                        if (confirmAsk(tt('Scorecard „{name}“ mit allen Bewertungen löschen?', { name: c.name })) && (await act(() => api.del(`/api/call-scorecards/${c.id}`), tt('Gelöscht')))) void list.reload();
                       }}
                     >
                       <Icon name="trash" size={16} />
@@ -356,15 +362,15 @@ export function ScorecardsDialog({ onClose }: { onClose: () => void }) {
             >
               <strong>{c.name}</strong>
               <div className="cr-sub">
-                {c.criteria.length} Kriterien{c.description ? ` · ${c.description}` : ''}
+                {tt('{length} Kriterien', { length: c.criteria.length })}{c.description ? ` · ${c.description}` : ''}
               </div>
             </Item>
           ))}
         </div>
       ) : (
-        <Empty>Noch keine Scorecard. Starte mit einer Vorlage für Vertrieb oder Kundenservice.</Empty>
+        <Empty>{tt('Noch keine Scorecard. Starte mit einer Vorlage für Vertrieb oder Kundenservice.')}</Empty>
       )}
-      {edit && <CardDialog initial={edit === 'new' ? null : edit} onClose={() => setEdit(null)} onSaved={() => (void list.reload(), toast('Scorecard gespeichert'))} />}
+      {edit && <CardDialog initial={edit === 'new' ? null : edit} onClose={() => setEdit(null)} onSaved={() => (void list.reload(), toast(tt('Scorecard gespeichert')))} />}
       {report && <Report card={report} onClose={() => setReport(null)} />}
     </Modal>
   );

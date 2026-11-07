@@ -5,6 +5,7 @@ import { setIn } from './WebinarKit';
 import { RemindersTab, RoomTab } from './WebinarRoomTab';
 import { StatsTab } from './WebinarStats';
 import { BasicsTab, RegistrationTab, ScheduleTab } from './WebinarTabs';
+import { useT } from '../i18n';
 
 /** The webinar editor: one form over six tabs, saved as a whole (the server validates everything and says what is wrong). */
 
@@ -22,6 +23,7 @@ const FIELDS = ['title', 'slug', 'description', 'presenter_name', 'presenter_pho
 const pick = (w: any) => Object.fromEntries(FIELDS.map((k) => [k, w[k]]));
 
 export function WebinarEditor({ id, tab = 'basics' }: { id: string; tab?: string }) {
+  const tt = useT('x_community');
   const { data, error, loading } = useLoad(() => api.get(`/api/webinars/${id}`), [id]);
   const [w, setW] = useState<any>(null);
   const [form, setForm] = useState<any>(null);
@@ -75,38 +77,38 @@ export function WebinarEditor({ id, tab = 'basics' }: { id: string; tab?: string
   return (
     <>
       <PageHead
-        title={form.title || 'Webinar'}
+        title={form.title || tt('Webinar')}
         sub={
           <>
-            <Badge tone={published ? 'green' : 'gray'}>{published ? 'Veröffentlicht' : 'Entwurf'}</Badge> <a href={w.urls.page} target="_blank" rel="noreferrer">{w.urls.page}</a>
+            <Badge tone={published ? 'green' : 'gray'}>{published ? tt('Veröffentlicht') : tt('Entwurf')}</Badge> <a href={w.urls.page} target="_blank" rel="noreferrer">{w.urls.page}</a>
           </>
         }
       >
         <button className="btn secondary" onClick={() => navigate('webinars')}>
-          ← Alle Webinare
+          {tt('← Alle Webinare')}
         </button>
         <button className="btn secondary" data-tour="webinar-save" disabled={!dirty || busy} onClick={() => save()}>
-          {dirty ? 'Speichern' : 'Gespeichert ✓'}
+          {dirty ? tt('Speichern') : tt('Gespeichert ✓')}
         </button>
         {published ? (
           <button className="btn secondary" disabled={busy} onClick={() => save({ status: 'draft' }, 'Zurück im Entwurf – die Seite ist nicht mehr erreichbar')}>
-            Zurück zum Entwurf
+            {tt('Zurück zum Entwurf')}
           </button>
         ) : (
           <button className="btn" data-tour="webinar-publish" disabled={busy} onClick={() => save({ status: 'published' }, 'Veröffentlicht')}>
-            Veröffentlichen
+            {tt('Veröffentlichen')}
           </button>
         )}
       </PageHead>
       {!published && w.problems?.length > 0 && (
         <div className="wb-callout" role="note">
-          <b>Zum Veröffentlichen fehlt noch:</b>
+          <b>{tt('Zum Veröffentlichen fehlt noch:')}</b>
           <ul>
             {w.problems.map((p: string) => (
               <li key={p}>{p}</li>
             ))}
           </ul>
-          <span className="muted small">Das Video und die Termine speicherst du in den Tabs „Grunddaten“ und „Termine“.</span>
+          <span className="muted small">{tt('Das Video und die Termine speicherst du in den Tabs „Grunddaten“ und „Termine“.')}</span>
         </div>
       )}
       <Tabs tabs={TABS} value={tab} onChange={(t) => navigate(`webinars/${id}/${t}`)} />
@@ -117,13 +119,13 @@ export function WebinarEditor({ id, tab = 'basics' }: { id: string; tab?: string
         {tab === 'room' && <RoomTab {...props} />}
         {tab === 'reminders' && <RemindersTab {...props} />}
         {tab === 'stats' && <StatsTab {...props} />}
-        {!TABS.some(([k]) => k === tab) && <Empty>Diesen Reiter gibt es nicht.</Empty>}
+        {!TABS.some(([k]) => k === tab) && <Empty>{tt('Diesen Reiter gibt es nicht.')}</Empty>}
       </div>
       {dirty && tab !== 'stats' && (
         <div className="wb-savebar" role="status">
-          <span>Ungespeicherte Änderungen</span>
+          <span>{tt('Ungespeicherte Änderungen')}</span>
           <button className="btn" disabled={busy} onClick={() => save()}>
-            Speichern
+            {tt('Speichern')}
           </button>
         </div>
       )}

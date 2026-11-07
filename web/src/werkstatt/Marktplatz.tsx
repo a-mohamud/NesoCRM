@@ -8,6 +8,7 @@ import { NAMES, PluginIcon, refreshPlugins } from './shared';
 import { ConsentModal, RISK, ScopeList, type ScopeInfo } from './scopes';
 import { ProMark } from './badges';
 import { BoardShelf } from '../boards/Shelf';
+import { useT } from '../i18n';
 
 /** The Marktplatz: discover plugins (categories, search), look at them live with sample data, install per sub-account with a consent screen. */
 
@@ -68,9 +69,10 @@ interface Review {
 }
 
 export function Stars({ value, count }: { value: number | null; count?: number }) {
-  if (value === null) return <span className="muted small">noch keine Bewertung</span>;
+  const tt = useT('x_ai');
+  if (value === null) return <span className="muted small">{tt('noch keine Bewertung')}</span>;
   return (
-    <span className="wk-stars" aria-label={`${value} von 5 Sternen`}>
+    <span className="wk-stars" aria-label={tt('{value} von 5 Sternen', { value: value })}>
       <span aria-hidden>{'★'.repeat(Math.round(value))}{'☆'.repeat(5 - Math.round(value))}</span> <span className="muted small">{value.toLocaleString('de-DE')}{count !== undefined ? ` (${count})` : ''}</span>
     </span>
   );
@@ -82,6 +84,7 @@ export function MarktplatzPage() {
 }
 
 function MarktList() {
+  const tt = useT('x_ai');
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [sort, setSort] = useState('popular');
@@ -94,13 +97,13 @@ function MarktList() {
   const d = l.data;
   return (
     <>
-      <PageHead title={NAMES.marktplatz} sub="Plugins aus der Agentur und der Community – prüfe sie live mit Beispieldaten und installiere sie für deinen Sub-Account.">
+      <PageHead title={NAMES.marktplatz} sub={tt('Plugins aus der Agentur und der Community – prüfe sie live mit Beispieldaten und installiere sie für deinen Sub-Account.')}>
         <Link to="werkstatt" className="btn secondary">
           <Icon name="hammer" size={14} /> {NAMES.werkstatt}
         </Link>
       </PageHead>
       <div className="mk-bar" data-tour="mk-search">
-        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Plugins suchen …" aria-label="Plugins suchen" />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={tt('Plugins suchen …')} aria-label={tt('Plugins suchen')} />
         <Select
           value={sort}
           onChange={setSort}
@@ -113,7 +116,7 @@ function MarktList() {
       </div>
       <div className="chips" data-tour="mk-categories" style={{ marginBottom: 14 }}>
         <button className={`chip${cat === '' ? ' on' : ''}`} onClick={() => setCat('')}>
-          Alle
+          {tt('Alle')}
         </button>
         {(d?.categories ?? []).map((c) => (
           <button key={c.key} className={`chip${cat === c.key ? ' on' : ''}`} onClick={() => setCat(c.key)} disabled={!c.count && cat !== c.key}>
@@ -125,7 +128,7 @@ function MarktList() {
       {l.loading && !d ? (
         <Spinner />
       ) : !d?.plugins.length ? (
-        <Empty tour="mk-empty">{query || cat ? 'Nichts gefunden.' : `Im ${NAMES.marktplatz} ist noch nichts veröffentlicht. Admins veröffentlichen Plugins aus der ${NAMES.werkstatt}, sobald sie geprüft sind.`}</Empty>
+        <Empty tour="mk-empty">{query || cat ? tt('Nichts gefunden.') : tt('Im {marktplatz} ist noch nichts veröffentlicht. Admins veröffentlichen Plugins aus der {werkstatt}, sobald sie geprüft sind.', { marktplatz: NAMES.marktplatz, werkstatt: NAMES.werkstatt })}</Empty>
       ) : (
         <div className="mk-grid" data-tour="mk-grid">
           {d.plugins.map((p) => (
@@ -138,6 +141,7 @@ function MarktList() {
 }
 
 function MarktCard({ p }: { p: Card }) {
+  const tt = useT('x_ai');
   return (
     <Link to={`marktplatz/${p.id}`} className="card mk-card" tour="mk-card">
       {p.screenshots[0] && <img className="mk-shot" src={p.screenshots[0]} alt="" loading="lazy" />}
@@ -153,14 +157,14 @@ function MarktCard({ p }: { p: Card }) {
       <p className="mk-desc">{p.description}</p>
       <div className="mk-meta">
         <Stars value={p.rating} count={p.reviews} />
-        <span className="muted small">{p.installs} Installation{p.installs === 1 ? '' : 'en'}</span>
+        <span className="muted small">{tt('{installs} Installation', { installs: p.installs })}{p.installs === 1 ? '' : 'en'}</span>
       </div>
       <div className="wk-badges">
         {p.installed && <Badge tone="green">installiert</Badge>}
-        {p.update_available && <Badge tone="yellow">Update</Badge>}
+        {p.update_available && <Badge tone="yellow">{tt('Update')}</Badge>}
         {p.in_core && <Badge tone="purple">{NAMES.inCore}</Badge>}
         {p.killed && <Badge tone="red">abgeschaltet</Badge>}
-        <Badge tone={RISK[p.risk]?.tone ?? 'gray'}>Risiko {RISK[p.risk]?.label ?? p.risk}</Badge>
+        <Badge tone={RISK[p.risk]?.tone ?? 'gray'}>{tt('Risiko {v}', { v: RISK[p.risk]?.label ?? p.risk })}</Badge>
       </div>
     </Link>
   );
@@ -169,6 +173,7 @@ function MarktCard({ p }: { p: Card }) {
 // --- detail -----------------------------------------------------------------------------------------------------------------
 
 function MarktDetail({ id }: { id: string }) {
+  const tt = useT('x_ai');
   const r = useLoad(() => api.get<Detail>(`/api/marktplatz/${id}`), [id]);
   const reviews = useLoad(() => api.get<Review[]>(`/api/marktplatz/${id}/reviews`).catch(() => [] as Review[]), [id]);
   const mgmt = useLoad(() => api.get<{ can_manage: boolean }>(`/api/plugins/${id}`).catch(() => null), [id]);
@@ -178,7 +183,7 @@ function MarktDetail({ id }: { id: string }) {
   const [tab, setTab] = useState('');
   const p = r.data;
   if (r.loading && !p) return <Spinner />;
-  if (!p) return <Empty action={<Link to="marktplatz">Zum {NAMES.marktplatz}</Link>}>{r.error || 'Plugin nicht gefunden.'}</Empty>;
+  if (!p) return <Empty action={<Link to="marktplatz">{tt('Zum {marktplatz}', { marktplatz: NAMES.marktplatz })}</Link>}>{r.error || tt('Plugin nicht gefunden.')}</Empty>;
   const admin = !!me.data?.admin;
   const manage = !!mgmt.data?.can_manage || admin;
   const entries = [
@@ -204,49 +209,49 @@ function MarktDetail({ id }: { id: string }) {
         <div className="grow">
           <h1 style={{ margin: 0 }}>{p.name}</h1>
           <div className="muted">
-            {p.category_label} · Version {p.version}
-            {p.published_at ? ` · veröffentlicht ${dateOnly(p.published_at)}` : ''}
+            {tt('{category_label} · Version {version}', { category_label: p.category_label, version: p.version })}
+            {p.published_at ? tt(' · veröffentlicht {dateOnly}', { dateOnly: dateOnly(p.published_at) }) : ''}
           </div>
           <div className="mk-meta">
             <Stars value={p.rating} count={p.reviews} />
-            <span className="muted small">{p.installs} Installation{p.installs === 1 ? '' : 'en'}</span>
-            {p.votes > 0 && <span className="muted small">{p.votes} Stimmen aus der Wunschliste</span>}
+            <span className="muted small">{tt('{installs} Installation', { installs: p.installs })}{p.installs === 1 ? '' : 'en'}</span>
+            {p.votes > 0 && <span className="muted small">{tt('{votes} Stimmen aus der Wunschliste', { votes: p.votes })}</span>}
           </div>
         </div>
         <div className="actions" data-tour="mk-install">
           {p.in_core ? (
-            <Badge tone="purple">{NAMES.inCore} (ab {p.core_version})</Badge>
+            <Badge tone="purple">{tt('{inCore} (ab {core_version})', { inCore: NAMES.inCore, core_version: p.core_version })}</Badge>
           ) : p.installed ? (
             <>
-              <Badge tone="green">{p.installed_scope === 'private' ? 'nur für dich installiert' : 'im Sub-Account installiert'}</Badge>
+              <Badge tone="green">{p.installed_scope === 'private' ? tt('nur für dich installiert') : tt('im Sub-Account installiert')}</Badge>
               {p.update_available && (
                 <button className="btn" onClick={() => setModal('update')}>
-                  Update auf {p.update?.to}
+                  {tt('Update auf {to}', { to: (p.update?.to) ?? '' })}
                 </button>
               )}
               <Link to={`werkstatt/plugins/${p.id}`} className="btn secondary">
-                Verwalten
+                {tt('Verwalten')}
               </Link>
             </>
           ) : (
             !p.killed && (
               <button className="btn" onClick={() => setModal('install')}>
-                <Icon name="download" size={14} /> Installieren
+                <Icon name="download" size={14} /> {tt('Installieren')}
               </button>
             )
           )}
         </div>
       </div>
-      {p.killed && <div className="card notice-card">Dieses Plugin wurde wegen vieler Fehler abgeschaltet und lässt sich nicht installieren.</div>}
+      {p.killed && <div className="card notice-card">{tt('Dieses Plugin wurde wegen vieler Fehler abgeschaltet und lässt sich nicht installieren.')}</div>}
       <p style={{ whiteSpace: 'pre-wrap' }}>{p.description}</p>
 
       {(p.screenshots.length > 0 || manage) && (
         <div className="mk-shots" data-tour="mk-shots">
           {p.screenshots.map((s) => (
             <figure key={s}>
-              <img src={s} alt={`Bildschirmfoto von ${p.name}`} loading="lazy" />
+              <img src={s} alt={tt('Bildschirmfoto von {name}', { name: p.name })} loading="lazy" />
               {manage && (
-                <button className="icon-btn" aria-label="Bild entfernen" onClick={() => confirmAsk('Bild entfernen?') && act(() => api.del(s)).then((x) => x && reload())}>
+                <button className="icon-btn" aria-label={tt('Bild entfernen')} onClick={() => confirmAsk(tt('Bild entfernen?')) && act(() => api.del(s)).then((x) => x && reload())}>
                   ✕
                 </button>
               )}
@@ -255,11 +260,11 @@ function MarktDetail({ id }: { id: string }) {
           {manage && (
             <div className="mk-shot-add">
               <button className="btn secondary small" onClick={() => setModal('shot')}>
-                <Icon name="imageUp" size={13} /> Bild hinzufügen
+                <Icon name="imageUp" size={13} /> {tt('Bild hinzufügen')}
               </button>
               {admin && (
-                <button className="btn secondary small" onClick={() => act(() => api.post(`/api/marktplatz/${p.id}/screenshots/auto`), 'Bild aufgenommen').then((x) => x && reload())}>
-                  Automatisch aufnehmen
+                <button className="btn secondary small" onClick={() => act(() => api.post(`/api/marktplatz/${p.id}/screenshots/auto`), tt('Bild aufgenommen')).then((x) => x && reload())}>
+                  {tt('Automatisch aufnehmen')}
                 </button>
               )}
             </div>
@@ -271,42 +276,42 @@ function MarktDetail({ id }: { id: string }) {
         <div className="card" data-tour="mk-preview">
           <div className="row" style={{ alignItems: 'center' }}>
             <h3 style={{ margin: 0 }} className="grow">
-              Live-Vorschau mit Beispieldaten
+              {tt('Live-Vorschau mit Beispieldaten')}
             </h3>
             {entries.length > 1 && <Select value={entry} onChange={setTab} options={entries.map((e) => [e.key, e.label] as [string, string])} />}
           </div>
-          <p className="muted small">Das Plugin läuft hier in seiner Sandbox, hat aber keinen Zugriff auf deine Daten – alles unten sind erfundene Beispiele.</p>
+          <p className="muted small">{tt('Das Plugin läuft hier in seiner Sandbox, hat aber keinen Zugriff auf deine Daten – alles unten sind erfundene Beispiele.')}</p>
           <PluginFrame key={`${p.id}:${entry}`} pluginId={p.id} entry={entry} demo height={entry === 'page' ? 340 : undefined} title={p.name} />
         </div>
       )}
 
       <div className="grid2">
         <div className="card">
-          <h3>Berechtigungen</h3>
+          <h3>{tt('Berechtigungen')}</h3>
           <ScopeList scopes={p.scopes} />
         </div>
         <div className="card">
-          <h3>Was ist drin</h3>
+          <h3>{tt('Was ist drin')}</h3>
           <ul className="wk-entries">
-            {p.entries.page && <li>Seite im Menü: {p.entries.page.title}</li>}
+            {p.entries.page && <li>{tt('Seite im Menü: {title}', { title: p.entries.page.title })}</li>}
             {p.entries.panels.map((x) => (
               <li key={x.id}>
-                Panel auf der {x.on === 'contact' ? 'Kontakt' : 'Deal'}-Seite: {x.title}
+                {tt('Panel auf der')} {x.on === 'contact' ? tt('Kontakt') : tt('Deal')}{tt('-Seite: {title}', { title: x.title })}
               </li>
             ))}
             {p.entries.widgets.map((x) => (
-              <li key={x.id}>Dashboard-Widget: {x.title}</li>
+              <li key={x.id}>{tt('Dashboard-Widget: {title}', { title: x.title })}</li>
             ))}
             {p.entries.actions.map((x) => (
-              <li key={x.id}>Automations-Schritt: {x.label}</li>
+              <li key={x.id}>{tt('Automations-Schritt: {label}', { label: x.label })}</li>
             ))}
             {p.entries.jobs.map((x) => (
-              <li key={x.id}>Geplanter Job: {x.label}</li>
+              <li key={x.id}>{tt('Geplanter Job: {label}', { label: x.label })}</li>
             ))}
           </ul>
           {p.changelog.length > 0 && (
             <>
-              <h4>Änderungen</h4>
+              <h4>{tt('Änderungen')}</h4>
               <ul className="wk-entries" data-tour="mk-changelog">
                 {p.changelog.map((c) => (
                   <li key={c.version}>
@@ -330,17 +335,18 @@ function MarktDetail({ id }: { id: string }) {
 }
 
 function InstallModal({ p, canLocation, onClose, onDone }: { p: Detail; canLocation: boolean; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_ai');
   const [scope, setScope] = useState(canLocation ? 'location' : 'private');
   const [busy, setBusy] = useState(false);
   const go = async () => {
     setBusy(true);
-    const r = await act(() => api.post(`/api/marktplatz/${p.id}/install`, { scope, consent: p.scopes.map((s) => s.key) }), `„${p.name}“ ist installiert`);
+    const r = await act(() => api.post(`/api/marktplatz/${p.id}/install`, { scope, consent: p.scopes.map((s) => s.key) }), tt('„{name}“ ist installiert', { name: p.name }));
     setBusy(false);
     if (r) onDone();
   };
   return (
-    <ConsentModal title={`„${p.name}“ installieren`} scopes={p.scopes} confirm="Installieren" busy={busy} onConfirm={go} onClose={onClose}>
-      <Field label="Installieren für" tour="mk-install-scope">
+    <ConsentModal title={tt('„{name}“ installieren', { name: p.name })} scopes={p.scopes} confirm={tt('Installieren')} busy={busy} onConfirm={go} onClose={onClose}>
+      <Field label={tt('Installieren für')} tour="mk-install-scope">
         <Select
           value={scope}
           onChange={setScope}
@@ -350,25 +356,26 @@ function InstallModal({ p, canLocation, onClose, onDone }: { p: Detail; canLocat
           ]}
         />
       </Field>
-      {!canLocation && <p className="muted small">Für den ganzen Sub-Account brauchst du das Recht „Einstellungen“.</p>}
+      {!canLocation && <p className="muted small">{tt('Für den ganzen Sub-Account brauchst du das Recht „Einstellungen“.')}</p>}
     </ConsentModal>
   );
 }
 
 function UpdateModal({ p, onClose, onDone }: { p: Detail; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_ai');
   const u = p.update!;
   const added = u.new_scopes.length > 0;
   const [busy, setBusy] = useState(false);
   const go = async () => {
     setBusy(true);
-    const r = await act(() => api.post(`/api/marktplatz/${p.id}/update`, { consent: p.scopes.map((s) => s.key) }), `Auf Version ${u.to} aktualisiert`);
+    const r = await act(() => api.post(`/api/marktplatz/${p.id}/update`, { consent: p.scopes.map((s) => s.key) }), tt('Auf Version {to} aktualisiert', { to: u.to }));
     setBusy(false);
     if (r) onDone();
   };
   const changes = (
     <>
       <h4>
-        Neu in {u.to} (bisher {u.from})
+        {tt('Neu in {to} (bisher {from})', { to: u.to, from: u.from })}
       </h4>
       <ul className="wk-entries">
         {u.changelog.map((c) => (
@@ -381,49 +388,50 @@ function UpdateModal({ p, onClose, onDone }: { p: Detail; onClose: () => void; o
   );
   if (added)
     return (
-      <ConsentModal title={`Update auf ${u.to}`} intro="Die neue Version fragt zusätzliche Berechtigungen an:" scopes={p.scopes.filter((s) => u.new_scopes.some((n) => n.key === s.key))} confirm="Aktualisieren" busy={busy} onConfirm={go} onClose={onClose}>
+      <ConsentModal title={tt('Update auf {to}', { to: u.to })} intro={tt('Die neue Version fragt zusätzliche Berechtigungen an:')} scopes={p.scopes.filter((s) => u.new_scopes.some((n) => n.key === s.key))} confirm={tt('Aktualisieren')} busy={busy} onConfirm={go} onClose={onClose}>
         {changes}
       </ConsentModal>
     );
   return (
     <Modal
-      title={`Update auf ${u.to}`}
+      title={tt('Update auf {to}', { to: u.to })}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" disabled={busy} onClick={go}>
-            Aktualisieren
+            {tt('Aktualisieren')}
           </button>
         </>
       }
     >
-      <p className="muted">Keine neuen Berechtigungen – es gilt, was du schon bestätigt hast.</p>
+      <p className="muted">{tt('Keine neuen Berechtigungen – es gilt, was du schon bestätigt hast.')}</p>
       {changes}
     </Modal>
   );
 }
 
 function ShotModal({ id, onClose, onDone }: { id: string; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_ai');
   const [img, setImg] = useState('');
   return (
     <Modal
-      title="Bild hinzufügen"
+      title={tt('Bild hinzufügen')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
-          <button className="btn" disabled={!img} onClick={async () => (await act(() => api.post(`/api/marktplatz/${id}/screenshots`, { image: img }), 'Bild gespeichert')) && onDone()}>
-            Speichern
+          <button className="btn" disabled={!img} onClick={async () => (await act(() => api.post(`/api/marktplatz/${id}/screenshots`, { image: img }), tt('Bild gespeichert'))) && onDone()}>
+            {tt('Speichern')}
           </button>
         </>
       }
     >
-      <p className="muted small">Ein Bildschirmfoto des Plugins in Aktion – höchstens vier eigene Bilder. Keine echten Kundendaten zeigen.</p>
+      <p className="muted small">{tt('Ein Bildschirmfoto des Plugins in Aktion – höchstens vier eigene Bilder. Keine echten Kundendaten zeigen.')}</p>
       <ScreenshotPicker value={img} onChange={setImg} />
     </Modal>
   );
@@ -431,6 +439,7 @@ function ShotModal({ id, onClose, onDone }: { id: string; onClose: () => void; o
 
 /** „Testen und bewerten“ on the plugin's own page: the rating (and the note) is what the admin sees before publishing. */
 export function RatingCard({ pluginId }: { pluginId: string }) {
+  const tt = useT('x_ai');
   const l = useLoad(() => api.get<Review[]>(`/api/marktplatz/${pluginId}/reviews`).catch(() => [] as Review[]), [pluginId]);
   const mine = (l.data ?? []).find((r) => r.mine);
   const [rating, setRating] = useState(0);
@@ -441,20 +450,20 @@ export function RatingCard({ pluginId }: { pluginId: string }) {
   }, [mine?.id, mine?.rating, mine?.body]);
   return (
     <div className="card" data-tour="wk-rating">
-      <h3>Testen und bewerten</h3>
-      <p className="muted small">Probiere das Plugin aus und sag, wie nützlich es ist. Die Bewertung hilft dir bei der Entscheidung, ob es für mehr Menschen freigegeben wird.</p>
+      <h3>{tt('Testen und bewerten')}</h3>
+      <p className="muted small">{tt('Probiere das Plugin aus und sag, wie nützlich es ist. Die Bewertung hilft dir bei der Entscheidung, ob es für mehr Menschen freigegeben wird.')}</p>
       <div className="mk-review-form">
         <PickStars value={rating} onChange={setRating} />
-        <Textarea value={text} onChange={setText} rows={2} placeholder="Was funktioniert, was fehlt? (optional)" />
+        <Textarea value={text} onChange={setText} rows={2} placeholder={tt('Was funktioniert, was fehlt? (optional)')} />
         <div className="actions">
-          <button className="btn small" disabled={!rating} onClick={async () => (await act(() => api.put(`/api/marktplatz/${pluginId}/reviews`, { rating, body: text }), 'Bewertung gespeichert')) && void l.reload()}>
-            {mine ? 'Bewertung ändern' : 'Bewerten'}
+          <button className="btn small" disabled={!rating} onClick={async () => (await act(() => api.put(`/api/marktplatz/${pluginId}/reviews`, { rating, body: text }), tt('Bewertung gespeichert'))) && void l.reload()}>
+            {mine ? tt('Bewertung ändern') : tt('Bewerten')}
           </button>
         </div>
       </div>
       {(l.data ?? []).length > 0 && (
         <p className="muted small">
-          {(l.data ?? []).length} Bewertung{(l.data ?? []).length === 1 ? '' : 'en'}, Durchschnitt <Stars value={Math.round(((l.data ?? []).reduce((a, r) => a + r.rating, 0) / (l.data ?? []).length) * 10) / 10} />
+          {tt('{length} Bewertung', { length: (l.data ?? []).length })}{(l.data ?? []).length === 1 ? '' : 'en'}{tt(', Durchschnitt')} <Stars value={Math.round(((l.data ?? []).reduce((a, r) => a + r.rating, 0) / (l.data ?? []).length) * 10) / 10} />
         </p>
       )}
     </div>
@@ -462,10 +471,11 @@ export function RatingCard({ pluginId }: { pluginId: string }) {
 }
 
 function PickStars({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const tt = useT('x_ai');
   return (
-    <span className="wk-stars pick" role="radiogroup" aria-label="Bewertung">
+    <span className="wk-stars pick" role="radiogroup" aria-label={tt('Bewertung')}>
       {[1, 2, 3, 4, 5].map((n) => (
-        <button key={n} type="button" role="radio" aria-checked={value === n} className={n <= value ? 'on' : ''} onClick={() => onChange(n)} aria-label={`${n} Stern${n === 1 ? '' : 'e'}`}>
+        <button key={n} type="button" role="radio" aria-checked={value === n} className={n <= value ? 'on' : ''} onClick={() => onChange(n)} aria-label={tt('{n} Stern{v}', { n: n, v: n === 1 ? '' : 'e' })}>
           ★
         </button>
       ))}
@@ -474,39 +484,40 @@ function PickStars({ value, onChange }: { value: number; onChange: (n: number) =
 }
 
 function ReviewsCard({ p, reviews, admin, onChange }: { p: Detail; reviews: Review[]; admin: boolean; onChange: () => void }) {
+  const tt = useT('x_ai');
   const [rating, setRating] = useState(p.my_review?.rating ?? 0);
   const [text, setText] = useState(p.my_review?.body ?? '');
   return (
     <div className="card" data-tour="mk-reviews">
-      <h3>Bewertungen</h3>
+      <h3>{tt('Bewertungen')}</h3>
       {p.can_review ? (
         <div className="mk-review-form">
           <PickStars value={rating} onChange={setRating} />
-          <Textarea value={text} onChange={setText} rows={2} placeholder="Wie nützlich ist das Plugin für dich? (optional)" />
+          <Textarea value={text} onChange={setText} rows={2} placeholder={tt('Wie nützlich ist das Plugin für dich? (optional)')} />
           <div className="actions">
-            <button className="btn small" disabled={!rating} onClick={async () => (await act(() => api.put(`/api/marktplatz/${p.id}/reviews`, { rating, body: text }), 'Bewertung gespeichert')) && onChange()}>
-              {p.my_review ? 'Bewertung ändern' : 'Bewerten'}
+            <button className="btn small" disabled={!rating} onClick={async () => (await act(() => api.put(`/api/marktplatz/${p.id}/reviews`, { rating, body: text }), tt('Bewertung gespeichert'))) && onChange()}>
+              {p.my_review ? tt('Bewertung ändern') : tt('Bewerten')}
             </button>
             {p.my_review && (
-              <button className="btn ghost small" onClick={async () => (await act(() => api.del(`/api/marktplatz/${p.id}/reviews`), 'Bewertung gelöscht')) && (setRating(0), setText(''), onChange())}>
-                Löschen
+              <button className="btn ghost small" onClick={async () => (await act(() => api.del(`/api/marktplatz/${p.id}/reviews`), tt('Bewertung gelöscht'))) && (setRating(0), setText(''), onChange())}>
+                {tt('Löschen')}
               </button>
             )}
           </div>
         </div>
       ) : (
-        <p className="muted small">Bewerten kann, wer das Plugin installiert hat.</p>
+        <p className="muted small">{tt('Bewerten kann, wer das Plugin installiert hat.')}</p>
       )}
       {reviews.length === 0 ? (
-        <p className="muted">Noch keine Bewertungen.</p>
+        <p className="muted">{tt('Noch keine Bewertungen.')}</p>
       ) : (
         <ul className="mk-reviews">
           {reviews.map((x) => (
             <li key={x.id}>
-              <Stars value={x.rating} /> <span className="muted small">{x.author || 'Jemand'} · {ago(x.updated_at)}</span>
+              <Stars value={x.rating} /> <span className="muted small">{x.author || tt('Jemand')} · {ago(x.updated_at)}</span>
               {admin && !x.mine && (
-                <button className="btn ghost small" onClick={() => confirmAsk('Bewertung löschen?') && act(() => api.del(`/api/marktplatz/${p.id}/reviews?review=${x.id}`)).then((r) => r && onChange())}>
-                  Löschen
+                <button className="btn ghost small" onClick={() => confirmAsk(tt('Bewertung löschen?')) && act(() => api.del(`/api/marktplatz/${p.id}/reviews?review=${x.id}`)).then((r) => r && onChange())}>
+                  {tt('Löschen')}
                 </button>
               )}
               {x.body && <p>{x.body}</p>}
@@ -536,6 +547,7 @@ export interface ReviewRow {
 const VERDICT = { pass: { label: 'Bestanden', tone: 'green' as const }, warn: { label: 'Mit Hinweisen', tone: 'yellow' as const }, fail: { label: 'Durchgefallen', tone: 'red' as const } };
 
 export function ReviewView({ r, compact }: { r: ReviewRow; compact?: boolean }) {
+  const tt = useT('x_ai');
   const list = (cs: ReviewRow['checks']) => (
     <ul className="mk-checks">
       {cs.map((c) => (
@@ -544,7 +556,7 @@ export function ReviewView({ r, compact }: { r: ReviewRow; compact?: boolean }) 
           <span>
             <strong>{c.label}</strong>
             <br />
-            <span className="muted small">{c.note}{c.source === 'auto' ? ' (automatisch geprüft)' : ''}</span>
+            <span className="muted small">{c.note}{c.source === 'auto' ? tt(' (automatisch geprüft)') : ''}</span>
           </span>
         </li>
       ))}
@@ -554,12 +566,12 @@ export function ReviewView({ r, compact }: { r: ReviewRow; compact?: boolean }) 
     return (
       <div className="mk-secreview" data-tour="mk-checklist">
         <p>
-          <Badge tone={VERDICT[r.verdict].tone}>{VERDICT[r.verdict].label}</Badge> <span className="muted small">{r.model}{r.effort?.label ? ` · Denkstufe ${r.effort.label}` : ''}</span>
+          <Badge tone={VERDICT[r.verdict].tone}>{VERDICT[r.verdict].label}</Badge> <span className="muted small">{r.model}{r.effort?.label ? tt(' · Denkstufe {label}', { label: r.effort.label }) : ''}</span>
         </p>
         <p className="small">{r.summary}</p>
         {r.checks.some((c) => !c.ok) && list(r.checks.filter((c) => !c.ok))}
         <details>
-          <summary className="small">Alle {r.checks.length} Punkte der Checkliste</summary>
+          <summary className="small">{tt('Alle {length} Punkte der Checkliste', { length: r.checks.length })}</summary>
           {list(r.checks)}
         </details>
       </div>
@@ -567,7 +579,7 @@ export function ReviewView({ r, compact }: { r: ReviewRow; compact?: boolean }) 
   return (
     <div className="mk-secreview" data-tour="mk-checklist">
       <p>
-        <Badge tone={VERDICT[r.verdict].tone}>{VERDICT[r.verdict].label}</Badge> <span className="muted small">Version {r.version} · {ago(r.created_at)}{r.model ? ` · ${r.model}` : ''}{r.effort?.label ? ` · Denkstufe ${r.effort.label}` : ''}</span>
+        <Badge tone={VERDICT[r.verdict].tone}>{VERDICT[r.verdict].label}</Badge> <span className="muted small">{tt('Version {version} · {ago}', { version: r.version, ago: ago(r.created_at) })}{r.model ? ` · ${r.model}` : ''}{r.effort?.label ? tt(' · Denkstufe {label}', { label: r.effort.label }) : ''}</span>
       </p>
       <p>{r.summary}</p>
       <ul className="mk-checks">
@@ -577,7 +589,7 @@ export function ReviewView({ r, compact }: { r: ReviewRow; compact?: boolean }) 
             <span>
               <strong>{c.label}</strong>
               <br />
-              <span className="muted small">{c.note}{c.source === 'auto' ? ' (automatisch geprüft)' : ''}</span>
+              <span className="muted small">{c.note}{c.source === 'auto' ? tt(' (automatisch geprüft)') : ''}</span>
             </span>
           </li>
         ))}
@@ -587,19 +599,20 @@ export function ReviewView({ r, compact }: { r: ReviewRow; compact?: boolean }) 
 }
 
 function AdminCard({ p, onChange }: { p: Detail; onChange: () => void }) {
+  const tt = useT('x_ai');
   const l = useLoad(() => api.get<ReviewRow[]>(`/api/marktplatz/${p.id}/security-reviews`), [p.id]);
   return (
     <div className="card">
-      <h3>Für Admins</h3>
+      <h3>{tt('Für Admins')}</h3>
       {p.owner && (
         <p className="muted small">
-          Gebaut von {p.owner.user} ({p.owner.location}).
+          {tt('Gebaut von {user} ({location}).', { user: p.owner.user, location: p.owner.location })}
         </p>
       )}
-      {l.data?.[0] ? <ReviewView r={l.data[0]} /> : <p className="muted">Keine Sicherheitsprüfung gespeichert.</p>}
+      {l.data?.[0] ? <ReviewView r={l.data[0]} /> : <p className="muted">{tt('Keine Sicherheitsprüfung gespeichert.')}</p>}
       <div className="actions">
-        <button className="btn danger small" onClick={() => confirmAsk(`„${p.name}“ aus dem ${NAMES.marktplatz} nehmen? Bestehende Installationen laufen weiter.`) && act(() => api.post(`/api/marktplatz/${p.id}/unpublish`), 'Aus dem Marktplatz genommen').then((x) => x && (onChange(), navigate('marktplatz')))}>
-          Aus dem {NAMES.marktplatz} nehmen
+        <button className="btn danger small" onClick={() => confirmAsk(tt('„{name}“ aus dem {marktplatz} nehmen? Bestehende Installationen laufen weiter.', { name: p.name, marktplatz: NAMES.marktplatz })) && act(() => api.post(`/api/marktplatz/${p.id}/unpublish`), tt('Aus dem Marktplatz genommen')).then((x) => x && (onChange(), navigate('marktplatz')))}>
+          {tt('Aus dem {marktplatz} nehmen', { marktplatz: NAMES.marktplatz })}
         </button>
       </div>
     </div>
@@ -621,6 +634,7 @@ interface PublishCheck {
  * show side by side, with what differs.
  */
 export function PublishModal({ plugin, onClose, onDone }: { plugin: { id: string; name: string; version: string }; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_ai');
   const [review, setReview] = useState<ReviewRow>();
   const [check, setCheck] = useState<PublishCheck>();
   const [busy, setBusy] = useState(false);
@@ -655,32 +669,32 @@ export function PublishModal({ plugin, onClose, onDone }: { plugin: { id: string
   const publish = async () => {
     if (!review) return;
     setBusy(true);
-    const r = await act(() => api.post(`/api/marktplatz/${plugin.id}/publish`, { review_id: review.id, approve: true, accept_warnings: worst === 'warn' ? warned : undefined }), `„${plugin.name}“ ist im ${NAMES.marktplatz}`);
+    const r = await act(() => api.post(`/api/marktplatz/${plugin.id}/publish`, { review_id: review.id, approve: true, accept_warnings: worst === 'warn' ? warned : undefined }), tt('„{name}“ ist im {marktplatz}', { name: plugin.name, marktplatz: NAMES.marktplatz }));
     setBusy(false);
     if (r) onDone();
   };
   return (
     <Modal
-      title={`„${plugin.name}“ im ${NAMES.marktplatz} veröffentlichen`}
+      title={tt('„{name}“ im {marktplatz} veröffentlichen', { name: plugin.name, marktplatz: NAMES.marktplatz })}
       wide
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           {review && (
             <button className="btn secondary" disabled={busy} onClick={run}>
-              Prüfung wiederholen
+              {tt('Prüfung wiederholen')}
             </button>
           )}
           {review ? (
             <button className="btn" data-tour="mk-publish-ok" disabled={busy || worst === 'fail' || !approve || (worst === 'warn' && !warned) || missingSecond} onClick={publish}>
-              <Icon name="store" size={14} /> Veröffentlichen
+              <Icon name="store" size={14} /> {tt('Veröffentlichen')}
             </button>
           ) : (
             <button className="btn" disabled={busy} onClick={run}>
-              <Icon name="shieldOk" size={14} /> {busy ? 'Die KI prüft …' : 'Sicherheitsprüfung starten'}
+              <Icon name="shieldOk" size={14} /> {busy ? tt('Die KI prüft …') : tt('Sicherheitsprüfung starten')}
             </button>
           )}
         </>
@@ -689,51 +703,51 @@ export function PublishModal({ plugin, onClose, onDone }: { plugin: { id: string
       {!review ? (
         <>
           <p>
-            Bevor ein Plugin für alle sichtbar wird, prüft eine KI es anhand einer Checkliste (Datenabfluss, verbotene Zugriffe, zu viele Berechtigungen, Robustheit). Dazu kommen automatische Prüfungen des Programms – die können das Urteil nur verschlechtern. Danach entscheidest du.
+            {tt('Bevor ein Plugin für alle sichtbar wird, prüft eine KI es anhand einer Checkliste (Datenabfluss, verbotene Zugriffe, zu viele Berechtigungen, Robustheit). Dazu kommen automatische Prüfungen des Programms – die können das Urteil nur verschlechtern. Danach entscheidest du.')}
           </p>
-          <p className="muted small">Geprüft wird Version {plugin.version}. Die Prüfung kostet etwas KI-Budget und läuft nur mit einem Spitzenmodell.</p>
+          <p className="muted small">{tt('Geprüft wird Version {version}. Die Prüfung kostet etwas KI-Budget und läuft nur mit einem Spitzenmodell.', { version: plugin.version })}</p>
           <p className="muted small">
-            Zweitmeinung eines anderen Spitzenmodells <ProMark />: {st?.pro === false ? 'dafür fehlt die Pro-Lizenz.' : st?.available ? `bereit (${st.model}) – du holst sie nach der ersten Prüfung ein.` : st?.reason || 'wird nach der ersten Prüfung angeboten.'}
+            {tt('Zweitmeinung eines anderen Spitzenmodells')} <ProMark />: {st?.pro === false ? tt('dafür fehlt die Pro-Lizenz.') : st?.available ? tt('bereit ({model}) – du holst sie nach der ersten Prüfung ein.', { model: st.model }) : st?.reason || tt('wird nach der ersten Prüfung angeboten.')}
           </p>
         </>
       ) : (
         <>
           <div className={so ? 'wk-review-cmp' : ''}>
             <div>
-              {so && <h4>Sicherheitsprüfung</h4>}
+              {so && <h4>{tt('Sicherheitsprüfung')}</h4>}
               <ReviewView r={review} compact={!!so} />
             </div>
             {so && (
               <div>
                 <h4>
-                  Zweitmeinung <ProMark />
+                  {tt('Zweitmeinung')} <ProMark />
                 </h4>
                 <ReviewView r={so} compact />
               </div>
             )}
           </div>
-          {check?.comparison && <p className={check.comparison.agree ? 'muted small' : 'small'}>{check.comparison.agree ? 'Beide Prüfungen kommen zum selben Ergebnis.' : `Die Prüfungen sehen etwas unterschiedlich: ${check.comparison.differing.length ? `abweichend bei ${check.comparison.differing.join(', ')}.` : 'unterschiedliches Urteil.'}`}</p>}
+          {check?.comparison && <p className={check.comparison.agree ? 'muted small' : 'small'}>{check.comparison.agree ? tt('Beide Prüfungen kommen zum selben Ergebnis.') : `Die Prüfungen sehen etwas unterschiedlich: ${check.comparison.differing.length ? tt('abweichend bei {n}.', { n: check.comparison.differing.join(', ') }) : tt('unterschiedliches Urteil.')}`}</p>}
           {st && !so && (
             <div className="card wk-gate ok" data-tour="mk-second-opinion">
               <strong>
-                Zweitmeinung <ProMark /> {st.required && st.available ? '– vor dem Veröffentlichen nötig' : ''}
+                {tt('Zweitmeinung')} <ProMark /> {st.required && st.available ? tt('– vor dem Veröffentlichen nötig') : ''}
               </strong>
-              <span className="small">{st.available ? `Dieselbe Checkliste, unabhängig beantwortet von ${st.model} – einem anderen Modell als dem, das das Plugin geschrieben und zuerst geprüft hat.` : st.reason}</span>
+              <span className="small">{st.available ? tt('Dieselbe Checkliste, unabhängig beantwortet von {model} – einem anderen Modell als dem, das das Plugin geschrieben und zuerst geprüft hat.', { model: st.model }) : st.reason}</span>
               {st.available && (
                 <div className="actions">
                   <button className="btn secondary small" disabled={busy} onClick={second}>
-                    {busy ? 'Das zweite Modell prüft …' : 'Zweitmeinung einholen'}
+                    {busy ? tt('Das zweite Modell prüft …') : tt('Zweitmeinung einholen')}
                   </button>
                 </div>
               )}
             </div>
           )}
           {worst === 'fail' ? (
-            <div className="card notice-card">Durchgefallen – so wird nichts veröffentlicht. Lass das Plugin ändern und prüfe erneut.</div>
+            <div className="card notice-card">{tt('Durchgefallen – so wird nichts veröffentlicht. Lass das Plugin ändern und prüfe erneut.')}</div>
           ) : (
             <>
-              {worst === 'warn' && <Check checked={warned} onChange={setWarned} label="Ich habe die Hinweise gelesen und nehme sie in Kauf." />}
-              <Check checked={approve} onChange={setApprove} label={`Ich gebe das Plugin für den ${NAMES.marktplatz} frei. Es ist danach für alle Sub-Accounts sichtbar und installierbar.`} />
+              {worst === 'warn' && <Check checked={warned} onChange={setWarned} label={tt('Ich habe die Hinweise gelesen und nehme sie in Kauf.')} />}
+              <Check checked={approve} onChange={setApprove} label={tt('Ich gebe das Plugin für den {marktplatz} frei. Es ist danach für alle Sub-Accounts sichtbar und installierbar.', { marktplatz: NAMES.marktplatz })} />
             </>
           )}
         </>

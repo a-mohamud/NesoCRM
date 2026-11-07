@@ -5,6 +5,7 @@ import { useSession } from '../session';
 import { Badge, CodeBox, Empty, Modal, PageHead, Spinner, Tabs, navigate, useLoad, useRoute } from '../ui';
 import { SignupLink } from '../referrals';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /** Integrations catalogue: Agentur → Integrationen → Katalog and the sub-account's "Apps" page. */
 
@@ -35,6 +36,7 @@ const STATUS: Record<Status, [string, 'green' | 'yellow' | 'gray' | 'blue']> = {
 const iconOf = (name: string): IconName => (name in ICONS ? (name as IconName) : 'channels');
 
 function Guide({ item, agency, onClose }: { item: Item; agency: boolean; onClose: () => void }) {
+  const tt = useT('x_integrations');
   const target = setupTarget(item, agency);
   const origin = location.origin;
   const isApi = ['zapier', 'make', 'n8n', 'rest_hooks', 'mcp', 'norman', 'inbound_webhooks'].includes(item.key);
@@ -45,7 +47,7 @@ function Guide({ item, agency, onClose }: { item: Item; agency: boolean; onClose
       footer={
         target ? (
           <button className="btn" onClick={() => (onClose(), navigate(target))}>
-            Zur Einrichtung
+            {tt('Zur Einrichtung')}
           </button>
         ) : undefined
       }
@@ -54,11 +56,11 @@ function Guide({ item, agency, onClose }: { item: Item; agency: boolean; onClose
       <p>
         <Badge tone={STATUS[item.status][1]}>{STATUS[item.status][0]}</Badge> <span className="muted small">{item.detail}</span>
       </p>
-      <h3 className="integ-h">Zugangsdaten</h3>
+      <h3 className="integ-h">{tt('Zugangsdaten')}</h3>
       <p className="muted">{item.credentials} <SignupLink id={item.key} /></p>
       {item.guide?.length ? (
         <>
-          <h3 className="integ-h">So geht’s</h3>
+          <h3 className="integ-h">{tt('So geht’s')}</h3>
           <ol className="integ-steps">
             {item.guide.map((g, i) => (
               <li key={i}>{g.replace(/<deine-domain>/g, location.host)}</li>
@@ -68,21 +70,21 @@ function Guide({ item, agency, onClose }: { item: Item; agency: boolean; onClose
       ) : null}
       {isApi && (
         <>
-          <h3 className="integ-h">Adressen</h3>
+          <h3 className="integ-h">{tt('Adressen')}</h3>
           <div className="integ-codes">
             <CodeBox text={origin} />
             {item.key === 'mcp' || item.key === 'norman' ? <CodeBox text={`${origin}/mcp`} /> : <CodeBox text={`${origin}/api/openapi.json`} />}
           </div>
           <p className="small">
             <a href="/api/docs.html" target="_blank" rel="noopener">
-              API-Referenz öffnen <Icon name="external" size={13} />
+              {tt('API-Referenz öffnen')} <Icon name="external" size={13} />
             </a>
           </p>
         </>
       )}
       {item.docs && (
         <p className="muted small">
-          Ausführlich im Repo: <code>{item.docs}</code>
+          {tt('Ausführlich im Repo:')} <code>{item.docs}</code>
         </p>
       )}
     </Modal>
@@ -96,6 +98,7 @@ function setupTarget(item: Item, agency: boolean): string | undefined {
 }
 
 export function IntegrationsCatalog({ agency, after }: { agency: boolean; after?: (query: string) => ReactNode }) {
+  const tt = useT('x_integrations');
   const session = useSession();
   const data = useLoad(() => api.get<{ items: Item[]; categories: string[]; locations?: number }>(agency ? '/api/agency/integrations/catalog' : '/api/integrations/catalog'), [agency, session.locationId]);
   const [q, setQ] = useState('');
@@ -118,21 +121,21 @@ export function IntegrationsCatalog({ agency, after }: { agency: boolean; after?
           <b>{n('ok')}</b> eingerichtet
         </span>
         <span>
-          <b>{n('partial')}</b> unvollständig
+          <b>{n('partial')}</b> {tt('unvollständig')}
         </span>
         <span>
           <b>{n('missing')}</b> offen
         </span>
         <span>
-          <b>{n('info')}</b> sofort nutzbar
+          <b>{n('info')}</b> {tt('sofort nutzbar')}
         </span>
-        {agency && <span className="muted">Status je Sub-Account zusammengefasst ({data.data.locations} {data.data.locations === 1 ? 'Sub-Account' : 'Sub-Accounts'})</span>}
+        {agency && <span className="muted">{tt('Status je Sub-Account zusammengefasst ({locations}', { locations: (data.data.locations) ?? '' })} {data.data.locations === 1 ? tt('Sub-Account') : tt('Sub-Accounts')})</span>}
       </div>
       <div className="integ-toolbar" data-tour="integ-toolbar">
-        <input type="search" placeholder="Suchen: Stripe, WhatsApp, Zapier …" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Integrationen durchsuchen" />
+        <input type="search" placeholder={tt('Suchen: Stripe, WhatsApp, Zapier …')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={tt('Integrationen durchsuchen')} />
         <div className="chips">
           <button className={`chip${cat === '' ? ' on' : ''}`} onClick={() => setCat('')}>
-            Alle
+            {tt('Alle')}
           </button>
           {cats.map((c) => (
             <button key={c} className={`chip${cat === c ? ' on' : ''}`} onClick={() => setCat(cat === c ? '' : c)}>
@@ -162,11 +165,11 @@ export function IntegrationsCatalog({ agency, after }: { agency: boolean; after?
               <div className="integ-actions">
                 {canSetup(i) && (
                   <button className="btn small" onClick={() => navigate(setupTarget(i, agency)!)}>
-                    {i.status === 'ok' ? 'Verwalten' : 'Einrichten'}
+                    {i.status === 'ok' ? tt('Verwalten') : tt('Einrichten')}
                   </button>
                 )}
                 <button className="btn small secondary" onClick={() => setOpen(i)}>
-                  {i.guide?.length ? 'Anleitung' : 'Details'}
+                  {i.guide?.length ? tt('Anleitung') : tt('Details')}
                 </button>
                 <SignupLink id={i.key} />
               </div>
@@ -174,7 +177,7 @@ export function IntegrationsCatalog({ agency, after }: { agency: boolean; after?
           ))}
         </SortableGrid>
       ) : (
-        <Empty>Keine Integration passt zur Suche.</Empty>
+        <Empty>{tt('Keine Integration passt zur Suche.')}</Empty>
       )}
       {after?.(q)}
       {open && <Guide item={open} agency={agency} onClose={() => setOpen(null)} />}
@@ -203,9 +206,10 @@ export function AgencyIntegrationsHub({ children }: { children: ReactNode }) {
 
 /** Sub-account → Apps. */
 export function AppsPage() {
+  const tt = useT('x_integrations');
   return (
     <>
-      <PageHead title="Apps & Integrationen" sub="Was in diesem Sub-Account verbunden ist – und wie du Zapier, Make, n8n, Webhooks oder den HubSpot-Umzug einrichtest." />
+      <PageHead title={tt('Apps & Integrationen')} sub={tt('Was in diesem Sub-Account verbunden ist – und wie du Zapier, Make, n8n, Webhooks oder den HubSpot-Umzug einrichtest.')} />
       <IntegrationsCatalog agency={false} />
     </>
   );

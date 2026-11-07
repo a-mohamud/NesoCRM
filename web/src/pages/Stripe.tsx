@@ -42,6 +42,7 @@ const CodeList = ({ list, last = ', ' }: { list: string[]; last?: string }) => (
 
 /** Einstellungen → Stripe: secret key, webhook signing secret, test, disconnect. */
 export function StripeSettings() {
+  const tt = useT('invoices');
   const st = useLoad(() => stripeStatus(true), []);
   const [f, setF] = useState({ secret_key: '', webhook_secret: '' });
   const [check, setCheck] = useState<any>(null);
@@ -55,7 +56,7 @@ export function StripeSettings() {
   };
   const save = async () => {
     setBusy(true);
-    const r = await act(() => api.put('/api/stripe', f), 'Gespeichert');
+    const r = await act(() => api.put('/api/stripe', f), tt('Gespeichert'));
     setBusy(false);
     if (r) {
       done(r);
@@ -70,61 +71,61 @@ export function StripeSettings() {
   return (
     <div className="card stripe-card" style={{ maxWidth: 760 }} data-tour="stripe-settings">
       <h2>
-        <Icon name="card" /> Stripe {s.connected ? <Badge tone="green">verbunden</Badge> : <Badge>nicht verbunden</Badge>}{' '}
-        {s.connected && <Badge tone={s.live ? 'blue' : 'yellow'}>{s.live ? 'Live' : 'Testmodus'}</Badge>}
+        <Icon name="card" /> Stripe {s.connected ? <Badge tone="green">verbunden</Badge> : <Badge>{tt('nicht verbunden')}</Badge>}{' '}
+        {s.connected && <Badge tone={s.live ? 'blue' : 'yellow'}>{s.live ? tt('Live') : tt('Testmodus')}</Badge>}
       </h2>
       <p className="muted" style={{ marginTop: 0 }}>
-        Kunden bezahlen Rechnungen per Karte, SEPA, Apple Pay oder Google Pay mit „Jetzt bezahlen“; Produkte bekommen einen Kauf-Link.
+        {tt('Kunden bezahlen Rechnungen per Karte, SEPA, Apple Pay oder Google Pay mit „Jetzt bezahlen“; Produkte bekommen einen Kauf-Link.')}
       </p>
       {s.account && (
         <p>
-          Konto: <strong>{s.account.name}</strong>{' '}
+          {tt('Konto:')} <strong>{s.account.name}</strong>{' '}
           <span className="muted small">
             {s.account.id} · {s.key_hint}
-            {s.checked_at ? ` · geprüft ${d(s.checked_at)}` : ''}
+            {s.checked_at ? tt(' · geprüft {d}', { d: d(s.checked_at) }) : ''}
           </span>
         </p>
       )}
-      <Field tour="stripe-key" label="Secret Key" hint={<>Stripe-Dashboard → Entwickler → API-Schlüssel. Zum Ausprobieren erst den Testschlüssel (sk_test_…) nehmen. <SignupLink id="stripe" /></>}>
-        <Input type="password" value={f.secret_key} onChange={(v) => setF({ ...f, secret_key: v.trim() })} placeholder={s.key_set ? `gespeichert (${s.key_hint}) – leer lassen zum Behalten` : 'sk_live_… oder sk_test_…'} autoComplete="off" />
+      <Field tour="stripe-key" label={tt('Secret Key')} hint={<>{tt('Stripe-Dashboard → Entwickler → API-Schlüssel. Zum Ausprobieren erst den Testschlüssel (sk_test_…) nehmen.')} <SignupLink id="stripe" /></>}>
+        <Input type="password" value={f.secret_key} onChange={(v) => setF({ ...f, secret_key: v.trim() })} placeholder={s.key_set ? tt('gespeichert ({key_hint}) – leer lassen zum Behalten', { key_hint: s.key_hint }) : tt('sk_live_… oder sk_test_…')} autoComplete="off" />
       </Field>
 
       <h3 style={{ marginTop: 18 }} data-tour="stripe-webhook">Webhook {s.webhook_set ? <Badge tone="green">eingerichtet</Badge> : <Badge tone="yellow">fehlt</Badge>}</h3>
-      <MoreFields id="stripe-webhook" label="Webhook einrichten" values={[s.key_set && !s.webhook_set]}>
+      <MoreFields id="stripe-webhook" label={tt('Webhook einrichten')} values={[s.key_set && !s.webhook_set]}>
       <ol className="steps small">
-        <li>Stripe-Dashboard → Entwickler → Webhooks → „Endpunkt hinzufügen“.</li>
+        <li>{tt('Stripe-Dashboard → Entwickler → Webhooks → „Endpunkt hinzufügen“.')}</li>
         <li>
-          Endpunkt-URL: <CodeBox text={s.webhook_url} />
+          {tt('Endpunkt-URL:')} <CodeBox text={s.webhook_url} />
         </li>
         <li>
-          Ereignisse: <CodeList list={EVENTS} />. Für Abo-Produkte zusätzlich <CodeList list={SUB_EVENTS} last=" und " />. Optional <code>charge.refunded</code>: Erstattungen stornieren Affiliate-Provisionen.
+          {tt('Ereignisse:')} <CodeList list={EVENTS} />{tt('. Für Abo-Produkte zusätzlich')} <CodeList list={SUB_EVENTS} last=" und " />{tt('. Optional')} <code>charge.refunded</code>{tt(': Erstattungen stornieren Affiliate-Provisionen.')}
         </li>
-        <li>Das „Signing Secret“ (whsec_…) des Endpunkts unten eintragen.</li>
+        <li>{tt('Das „Signing Secret“ (whsec_…) des Endpunkts unten eintragen.')}</li>
       </ol>
-      <Field label="Webhook Signing Secret">
-        <Input type="password" value={f.webhook_secret} onChange={(v) => setF({ ...f, webhook_secret: v.trim() })} placeholder={s.webhook_set ? 'gespeichert – leer lassen zum Behalten' : 'whsec_…'} autoComplete="off" />
+      <Field label={tt('Webhook Signing Secret')}>
+        <Input type="password" value={f.webhook_secret} onChange={(v) => setF({ ...f, webhook_secret: v.trim() })} placeholder={s.webhook_set ? tt('gespeichert – leer lassen zum Behalten') : 'whsec_…'} autoComplete="off" />
       </Field>
       </MoreFields>
       {s.connected && (
-        <Check checked={s.options.auto_send_receipt} onChange={(v) => act(() => api.put('/api/stripe', { options: { auto_send_receipt: v } })).then(done)} label="Nach einem Produktkauf die (bezahlte) Rechnung automatisch per E-Mail senden" />
+        <Check checked={s.options.auto_send_receipt} onChange={(v) => act(() => api.put('/api/stripe', { options: { auto_send_receipt: v } })).then(done)} label={tt('Nach einem Produktkauf die (bezahlte) Rechnung automatisch per E-Mail senden')} />
       )}
       <div className="actions" style={{ marginTop: 12 }}>
         <button className="btn" disabled={busy || (!f.secret_key && !f.webhook_secret)} onClick={save}>
-          Speichern
+          {tt('Speichern')}
         </button>
         <button className="btn secondary" disabled={busy || (!s.key_set && !f.secret_key)} onClick={test}>
-          Verbindung testen
+          {tt('Verbindung testen')}
         </button>
         {s.connected && (
-          <button className="btn ghost" onClick={() => confirmAsk('Stripe trennen? „Jetzt bezahlen“ und Kauf-Links sind dann aus.') && act(() => api.del('/api/stripe'), 'Getrennt').then(done)}>
-            Trennen
+          <button className="btn ghost" onClick={() => confirmAsk(tt('Stripe trennen? „Jetzt bezahlen“ und Kauf-Links sind dann aus.')) && act(() => api.del('/api/stripe'), tt('Getrennt')).then(done)}>
+            {tt('Trennen')}
           </button>
         )}
       </div>
       {check && (
         <p className="small" style={{ marginBottom: 0 }}>
-          <Badge tone="green">✓ Verbindung klappt</Badge> {check.account.name} ({check.account.country || '–'}, {check.live ? 'Live' : 'Testmodus'})
-          {!check.account.charges_enabled && <span style={{ color: 'var(--red)' }}> – Zahlungen sind bei Stripe noch nicht freigeschaltet</span>}
+          <Badge tone="green">{tt('✓ Verbindung klappt')}</Badge> {check.account.name} ({check.account.country || '–'}, {check.live ? tt('Live') : tt('Testmodus')})
+          {!check.account.charges_enabled && <span style={{ color: 'var(--red)' }}> {tt('– Zahlungen sind bei Stripe noch nicht freigeschaltet')}</span>}
         </p>
       )}
     </div>
@@ -166,6 +167,7 @@ export function StripePaidBadge({ p }: { p?: any }) {
 
 /** Invoice editor sidebar: Stripe payment status of this invoice. */
 export function StripeInvoiceBox({ inv }: { inv: any }) {
+  const tt = useT('invoices');
   const s = useStripe();
   const pays = useLoad(() => api.get<any[]>(`/api/stripe/payments?invoice_id=${inv.id}`).catch(() => []), [inv.id, inv.status]);
   if (!s || inv.kind !== 'invoice') return null;
@@ -174,23 +176,23 @@ export function StripeInvoiceBox({ inv }: { inv: any }) {
   return (
     <div className="stripe-box" data-tour="invoice-stripe">
       <strong>
-        <Icon name="card" /> Online-Zahlung
+        <Icon name="card" /> {tt('Online-Zahlung')}
       </strong>
       {paid ? (
         <p>
-          Bezahlt via Stripe am {d(paid.paid_at)} ({money(paid.amount_cents, paid.currency)}).
+          {tt('Bezahlt via Stripe am {d} ({money}).', { d: d(paid.paid_at), money: money(paid.amount_cents, paid.currency) })}
           <br />
           <a href={paid.dashboard_url} target="_blank" rel="noreferrer">
-            Referenz {paid.payment_intent || paid.id} ↗
+            {tt('Referenz {v} ↗', { v: paid.payment_intent || paid.id })}
           </a>
         </p>
       ) : pending ? (
-        <p>SEPA-Lastschrift eingeleitet – wird bezahlt, sobald Stripe das Geld bestätigt.</p>
+        <p>{tt('SEPA-Lastschrift eingeleitet – wird bezahlt, sobald Stripe das Geld bestätigt.')}</p>
       ) : s.connected ? (
-        <p className="muted">{inv.status === 'draft' ? 'Nach dem Senden sieht der Kunde auf dem Kunden-Link „Jetzt bezahlen“ (Karte, SEPA, Apple Pay …).' : inv.status === 'paid' || inv.status === 'void' ? 'Keine Stripe-Zahlung.' : 'Der Kunde kann auf dem Kunden-Link mit „Jetzt bezahlen“ sofort zahlen.'}</p>
+        <p className="muted">{inv.status === 'draft' ? tt('Nach dem Senden sieht der Kunde auf dem Kunden-Link „Jetzt bezahlen“ (Karte, SEPA, Apple Pay …).') : inv.status === 'paid' || inv.status === 'void' ? tt('Keine Stripe-Zahlung.') : tt('Der Kunde kann auf dem Kunden-Link mit „Jetzt bezahlen“ sofort zahlen.')}</p>
       ) : (
         <p className="muted">
-          Mit Stripe zahlen Kunden direkt online. <Link to="settings/stripe">Einrichten</Link>
+          {tt('Mit Stripe zahlen Kunden direkt online.')} <Link to="settings/stripe">{tt('Einrichten')}</Link>
         </p>
       )}
     </div>
@@ -206,13 +208,14 @@ export function useProductLinks() {
 }
 
 export function ProductBuyLink({ product, links }: { product: any; links: ReturnType<typeof useProductLinks> }) {
+  const tt = useT('invoices');
   const [edit, setEdit] = useState<any>(null);
   const offers = useBuyOffers(product, !!edit);
   const l = links.byId[product.id];
   if (!links.connected || !l) return null;
   const save = async () => {
     if (!(await offers.save())) return;
-    const r = await act(() => api.put(`/api/stripe/products/${product.id}`, edit), 'Gespeichert');
+    const r = await act(() => api.put(`/api/stripe/products/${product.id}`, edit), tt('Gespeichert'));
     if (r) {
       setEdit(null);
       links.reload();
@@ -222,34 +225,34 @@ export function ProductBuyLink({ product, links }: { product: any; links: Return
     <>
       {l.enabled && product.active !== 0 ? (
         <>
-          <Copy text={l.url} label="Kauf-Link" />
-          <QrButton url={l.url} title={`Kauf-Link ${product.name}`} />
+          <Copy text={l.url} label={tt('Kauf-Link')} />
+          <QrButton url={l.url} title={tt('Kauf-Link {name}', { name: product.name })} />
         </>
       ) : (
-        <Badge>Kauf-Link aus</Badge>
+        <Badge>{tt('Kauf-Link aus')}</Badge>
       )}
-      <button className="btn small ghost" data-tour="buy-link" onClick={() => setEdit({ slug: l.slug, tag: l.custom_tag, redirect_url: l.redirect_url, enabled: l.enabled })} title="Kauf-Link einstellen" aria-label="Kauf-Link einstellen">
+      <button className="btn small ghost" data-tour="buy-link" onClick={() => setEdit({ slug: l.slug, tag: l.custom_tag, redirect_url: l.redirect_url, enabled: l.enabled })} title={tt('Kauf-Link einstellen')} aria-label={tt('Kauf-Link einstellen')}>
         <Icon name="settings" size={14} />
       </button>
       {edit && (
-        <Modal title={`Kauf-Link: ${product.name}`} wide onClose={() => setEdit(null)} footer={<button className="btn" onClick={save}>Speichern</button>}>
+        <Modal title={tt('Kauf-Link: {name}', { name: product.name })} wide onClose={() => setEdit(null)} footer={<button className="btn" onClick={save}>{tt('Speichern')}</button>}>
           <p className="muted small" style={{ marginTop: 0 }}>
-            Öffentliche Seite mit „Jetzt kaufen“ → Stripe Checkout. Nach der Zahlung: Kontakt (per E-Mail erkannt), bezahlte Rechnung, Tag und der Workflow-Auslöser „Produkt gekauft“.
+            {tt('Öffentliche Seite mit „Jetzt kaufen“ → Stripe Checkout. Nach der Zahlung: Kontakt (per E-Mail erkannt), bezahlte Rechnung, Tag und der Workflow-Auslöser „Produkt gekauft“.')}
           </p>
-          <Field label="Link">
-            <ShareLink url={l.url} title={`Kauf-Link ${product.name}`} />
+          <Field label={tt('Link')}>
+            <ShareLink url={l.url} title={tt('Kauf-Link {name}', { name: product.name })} />
           </Field>
-          <Field label="Kurzname im Link (optional)" hint="z. B. „online-kurs“ → /buy/online-kurs">
+          <Field label={tt('Kurzname im Link (optional)')} hint={tt('z. B. „online-kurs“ → /buy/online-kurs')}>
             <Input value={edit.slug} onChange={(v) => setEdit({ ...edit, slug: v })} placeholder={product.id} />
           </Field>
-          <Field label="Tag für Käufer" hint={`leer = ${l.tag.startsWith('kauf:') && !l.custom_tag ? l.tag : 'kauf:<kurzname>'} – damit schaltest du z. B. Kurse frei`}>
+          <Field label={tt('Tag für Käufer')} hint={`leer = ${l.tag.startsWith('kauf:') && !l.custom_tag ? l.tag : tt('kauf:<kurzname>')} – damit schaltest du z. B. Kurse frei`}>
             <Input value={edit.tag} onChange={(v) => setEdit({ ...edit, tag: v })} placeholder={l.custom_tag ? '' : l.tag} />
           </Field>
-          <Field label="Weiterleitung nach dem Kauf (optional)" hint="z. B. Kurs- oder Danke-Seite; sonst zeigen wir eine Danke-Seite">
+          <Field label={tt('Weiterleitung nach dem Kauf (optional)')} hint={tt('z. B. Kurs- oder Danke-Seite; sonst zeigen wir eine Danke-Seite')}>
             <Input value={edit.redirect_url} onChange={(v) => setEdit({ ...edit, redirect_url: v })} placeholder="https://…" />
           </Field>
-          <Check checked={edit.enabled !== false} onChange={(v) => setEdit({ ...edit, enabled: v })} label="Kauf-Link aktiv" />
-          {product.recurring && <p className="small muted">Abo-Produkt: Stripe bucht {product.recurring === 'month' ? 'monatlich' : 'jährlich'} ab; jede Verlängerung erzeugt eine bezahlte Rechnung, bei Kündigung wird der Tag wieder entfernt.</p>}
+          <Check checked={edit.enabled !== false} onChange={(v) => setEdit({ ...edit, enabled: v })} label={tt('Kauf-Link aktiv')} />
+          {product.recurring && <p className="small muted">{tt('Abo-Produkt: Stripe bucht')} {product.recurring === 'month' ? 'monatlich' : tt('jährlich')} {tt('ab; jede Verlängerung erzeugt eine bezahlte Rechnung, bei Kündigung wird der Tag wieder entfernt.')}</p>}
           {offers.ui}
         </Modal>
       )}
@@ -259,10 +262,11 @@ export function ProductBuyLink({ product, links }: { product: any; links: Return
 
 /** Workflow trigger "Produkt gekauft": optional product filter. */
 export function ProductTriggerField({ value, onChange }: { value?: string; onChange: (v: string) => void }) {
+  const tt = useT('invoices');
   const products = useLoad(() => api.get<any[]>('/api/products').catch(() => []), []);
   return (
-    <Field label="Produkt">
-      <Select value={value} onChange={onChange} placeholder="jedes Produkt" options={(products.data ?? []).map((p) => [p.id, p.name])} />
+    <Field label={tt('Produkt')}>
+      <Select value={value} onChange={onChange} placeholder={tt('jedes Produkt')} options={(products.data ?? []).map((p) => [p.id, p.name])} />
     </Field>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { api, dt } from '../api';
 import { Badge, Empty, Spinner, useLoad } from '../ui';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /**
  * Agentur → System: how the server is doing (event-loop lag, slow requests and queries, background jobs,
@@ -53,6 +54,7 @@ function Stat({ label, value, sub, badge }: { label: string; value: string; sub?
 }
 
 export function SystemHealth() {
+  const tt = useT('x_agency');
   const m = useLoad(() => api.get<Metrics>('/api/admin/metrics'));
   useEffect(() => {
     const t = setInterval(() => void m.reload(), 15_000);
@@ -67,16 +69,16 @@ export function SystemHealth() {
   return (
     <div data-tour="system-health">
       <p className="muted" style={{ marginTop: 0 }}>
-        Wie gut der Server gerade läuft. Langsame Anfragen (über {d.requests.slow_ms} ms) werden gezählt – nur mit der Route, nie mit Inhalten.
+        {tt('Wie gut der Server gerade läuft. Langsame Anfragen (über {slow_ms} ms) werden gezählt – nur mit der Route, nie mit Inhalten.', { slow_ms: d.requests.slow_ms })}
       </p>
       <SortableGrid id="system-stats" className="grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12, marginBottom: 18 }} data-tour="system-stats">
-        <Stat label="Event-Loop-Verzögerung p99" value={`${loop.p99_ms} ms`} sub={`Maximal ${loop.max_ms} ms · Auslastung ${Math.round(loop.utilization * 100)} %`} badge={tone(loop.p99_ms, 50, 200)} />
-        <Stat label="Speicher (RSS)" value={`${d.memory_mb.rss} MB`} sub={`Heap ${d.memory_mb.heap_used} / ${d.memory_mb.heap_total} MB`} />
-        <Stat label="Datenbank" value={`${d.database.file_mb} MB`} sub={`WAL ${d.database.wal_mb} MB`} />
-        <Stat label="Anfragen seit Start" value={n(d.requests.total)} sub={`Laufzeit ${uptime(d.uptime_s)} · Node ${d.node}`} />
+        <Stat label={tt('Event-Loop-Verzögerung p99')} value={`${loop.p99_ms} ms`} sub={tt('Maximal {max_ms} ms · Auslastung {round} %', { max_ms: loop.max_ms, round: Math.round(loop.utilization * 100) })} badge={tone(loop.p99_ms, 50, 200)} />
+        <Stat label={tt('Speicher (RSS)')} value={`${d.memory_mb.rss} MB`} sub={tt('Heap {heap_used} / {heap_total} MB', { heap_used: d.memory_mb.heap_used, heap_total: d.memory_mb.heap_total })} />
+        <Stat label={tt('Datenbank')} value={`${d.database.file_mb} MB`} sub={tt('WAL {wal_mb} MB', { wal_mb: d.database.wal_mb })} />
+        <Stat label={tt('Anfragen seit Start')} value={n(d.requests.total)} sub={tt('Laufzeit {uptime} · Node {node}', { uptime: uptime(d.uptime_s), node: d.node })} />
       </SortableGrid>
 
-      <h3>Datenmenge</h3>
+      <h3>{tt('Datenmenge')}</h3>
       <div className="row" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 18 }} data-tour="system-rows">
         {Object.entries(d.database.rows).map(([k, v]) => (
           <Badge key={k}>
@@ -85,19 +87,19 @@ export function SystemHealth() {
         ))}
       </div>
 
-      <h3>Langsamste Routen</h3>
+      <h3>{tt('Langsamste Routen')}</h3>
       {!d.requests.top_routes.length ? (
-        <Empty>Noch keine Anfragen.</Empty>
+        <Empty>{tt('Noch keine Anfragen.')}</Empty>
       ) : (
         <div className="table-wrap" data-tour="system-routes">
           <table className="t">
             <thead>
               <tr>
-                <th>Route</th>
-                <th>Anfragen</th>
-                <th>Ø ms</th>
-                <th>Max ms</th>
-                <th>Langsam</th>
+                <th>{tt('Route')}</th>
+                <th>{tt('Anfragen')}</th>
+                <th>{tt('Ø ms')}</th>
+                <th>{tt('Max ms')}</th>
+                <th>{tt('Langsam')}</th>
               </tr>
             </thead>
             <tbody>
@@ -121,7 +123,7 @@ export function SystemHealth() {
 
       {!!d.requests.slow.length && (
         <>
-          <h3>Letzte langsame Anfragen</h3>
+          <h3>{tt('Letzte langsame Anfragen')}</h3>
           <div className="table-wrap">
             <table className="t">
               <tbody>
@@ -145,19 +147,19 @@ export function SystemHealth() {
         </>
       )}
 
-      <h3>Hintergrund-Jobs</h3>
+      <h3>{tt('Hintergrund-Jobs')}</h3>
       {!d.jobs.length ? (
-        <Empty>Der Scheduler hat noch nicht gelaufen.</Empty>
+        <Empty>{tt('Der Scheduler hat noch nicht gelaufen.')}</Empty>
       ) : (
         <div className="table-wrap" data-tour="system-jobs">
           <table className="t">
             <thead>
               <tr>
-                <th>Modul</th>
-                <th>Läufe</th>
-                <th>Ø ms</th>
-                <th>Max ms</th>
-                <th>Zuletzt ms</th>
+                <th>{tt('Modul')}</th>
+                <th>{tt('Läufe')}</th>
+                <th>{tt('Ø ms')}</th>
+                <th>{tt('Max ms')}</th>
+                <th>{tt('Zuletzt ms')}</th>
               </tr>
             </thead>
             <tbody>
@@ -179,22 +181,22 @@ export function SystemHealth() {
         </div>
       )}
 
-      <h3>Datenbank-Abfragen</h3>
+      <h3>{tt('Datenbank-Abfragen')}</h3>
       {!d.queries.enabled ? (
         <p className="muted small">
-          Die Abfrage-Messung ist aus. Mit <code>PGHL_SLOW_QUERY_MS=50</code> in der Umgebung werden Abfragen über 50 ms protokolliert (als Muster, ohne Werte).
+          {tt('Die Abfrage-Messung ist aus. Mit')} <code>{tt('PGHL_SLOW_QUERY_MS=50')}</code> {tt('in der Umgebung werden Abfragen über 50 ms protokolliert (als Muster, ohne Werte).')}
         </p>
       ) : !d.queries.top.length ? (
-        <Empty>Keine langsamen Abfragen (über {d.queries.slow_ms} ms).</Empty>
+        <Empty>{tt('Keine langsamen Abfragen (über {slow_ms} ms).', { slow_ms: d.queries.slow_ms })}</Empty>
       ) : (
         <div className="table-wrap" data-tour="system-queries">
           <table className="t">
             <thead>
               <tr>
-                <th>Abfrage</th>
-                <th>Anzahl</th>
-                <th>Ø ms</th>
-                <th>Max ms</th>
+                <th>{tt('Abfrage')}</th>
+                <th>{tt('Anzahl')}</th>
+                <th>{tt('Ø ms')}</th>
+                <th>{tt('Max ms')}</th>
               </tr>
             </thead>
             <tbody>
@@ -213,7 +215,7 @@ export function SystemHealth() {
         </div>
       )}
 
-      <h3>SQLite</h3>
+      <h3>{tt('SQLite')}</h3>
       <p className="muted small" style={{ marginTop: 0 }}>
         {Object.entries(p)
           .filter(([k]) => ['journal_mode', 'synchronous', 'cache_size', 'temp_store', 'mmap_size'].includes(k))

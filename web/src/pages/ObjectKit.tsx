@@ -82,6 +82,7 @@ const eur = (v: number) => new Intl.NumberFormat('de-DE', { style: 'currency', c
 
 /** A property value for reading (lists, record pages). */
 export function PropValue({ def, value, users }: { def: FieldDef; value: any; users?: User[] }): ReactNode {
+  const tt = useT('contacts');
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length)) return <span className="muted">–</span>;
   switch (def.type) {
     case 'url':
@@ -121,7 +122,7 @@ export function PropValue({ def, value, users }: { def: FieldDef; value: any; us
     case 'file':
       return (
         <a href={value.url} target="_blank" rel="noreferrer noopener">
-          <Icon name="file" size={13} /> {value.name ?? 'Datei'}
+          <Icon name="file" size={13} /> {value.name ?? tt('Datei')}
         </a>
       );
     default:
@@ -139,6 +140,7 @@ const toLocalInput = (iso: string) => {
 
 /** An input for one property, by type. */
 export function PropInput({ def, value, onChange, users }: { def: FieldDef; value: any; onChange: (v: any) => void; users?: User[] }) {
+  const tt = useT('contacts');
   const [busy, setBusy] = useState(false);
   switch (def.type) {
     case 'textarea':
@@ -179,7 +181,7 @@ export function PropInput({ def, value, onChange, users }: { def: FieldDef; valu
             <span className="muted small">hochgeladen</span>
           ) : null}
           <label className="btn small secondary" style={{ cursor: 'pointer' }}>
-            <Icon name="upload" size={13} /> {busy ? 'Lädt…' : 'Datei wählen'}
+            <Icon name="upload" size={13} /> {busy ? tt('Lädt…') : tt('Datei wählen')}
             <input
               type="file"
               hidden
@@ -200,7 +202,7 @@ export function PropInput({ def, value, onChange, users }: { def: FieldDef; valu
             />
           </label>
           {value && (
-            <button type="button" className="icon-btn" onClick={() => onChange('')} aria-label="Datei entfernen">
+            <button type="button" className="icon-btn" onClick={() => onChange('')} aria-label={tt('Datei entfernen')}>
               ✕
             </button>
           )}
@@ -232,6 +234,7 @@ export interface ViewConfig {
 
 /** Saved list views of an object (own and shared ones) as chips; "Alle" resets. */
 export function ViewsBar({ object, current, active, onApply }: { object: string; current: ViewConfig; active: string; onApply: (id: string, c?: ViewConfig) => void }) {
+  const tt = useT('contacts');
   const views = useLoad(() => api.get<any[]>(`/api/object-views?object=${encodeURIComponent(object)}`), [object]);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
@@ -244,7 +247,7 @@ export function ViewsBar({ object, current, active, onApply }: { object: string;
       {/* "Alle" only when there is something else to switch to */}
       {!none && (
         <button className={`chip${!active ? ' on' : ''}`} onClick={() => onApply('')}>
-          Alle
+          {tt('Alle')}
         </button>
       )}
       {(views.data ?? []).map((v) => (
@@ -255,10 +258,10 @@ export function ViewsBar({ object, current, active, onApply }: { object: string;
             <button
               type="button"
               className="chip-x"
-              aria-label={`Ansicht ${v.name} löschen`}
+              aria-label={tt('Ansicht {name} löschen', { name: v.name })}
               onClick={async (e) => {
                 e.stopPropagation();
-                if (confirmAsk(`Ansicht „${v.name}“ löschen?`) && (await act(() => api.del(`/api/object-views/${v.id}`)))) {
+                if (confirmAsk(tt('Ansicht „{name}“ löschen?', { name: v.name })) && (await act(() => api.del(`/api/object-views/${v.id}`)))) {
                   if (active === v.id) onApply('');
                   views.reload();
                 }
@@ -270,23 +273,23 @@ export function ViewsBar({ object, current, active, onApply }: { object: string;
         </span>
       ))}
       {dirty && act0.mine && (
-        <button className="btn small secondary" onClick={() => act(() => api.patch(`/api/object-views/${act0.id}`, { config: current }), 'Ansicht gespeichert').then(views.reload)}>
-          Änderungen speichern
+        <button className="btn small secondary" onClick={() => act(() => api.patch(`/api/object-views/${act0.id}`, { config: current }), tt('Ansicht gespeichert')).then(views.reload)}>
+          {tt('Änderungen speichern')}
         </button>
       )}
       <button className="btn small ghost" onClick={() => setSaving(true)}>
-        <Icon name="bookmark" size={14} /> Ansicht speichern
+        <Icon name="bookmark" size={14} /> {tt('Ansicht speichern')}
       </button>
       {saving && (
         <Modal
-          title="Ansicht speichern"
+          title={tt('Ansicht speichern')}
           onClose={() => setSaving(false)}
           footer={
             <button
               className="btn"
               disabled={!name.trim()}
               onClick={async () => {
-                const v = await act(() => api.post('/api/object-views', { object, name, shared, config: current }), 'Ansicht gespeichert');
+                const v = await act(() => api.post('/api/object-views', { object, name, shared, config: current }), tt('Ansicht gespeichert'));
                 if (v) {
                   setSaving(false);
                   setName('');
@@ -295,15 +298,15 @@ export function ViewsBar({ object, current, active, onApply }: { object: string;
                 }
               }}
             >
-              Speichern
+              {tt('Speichern')}
             </button>
           }
         >
           <Field label="Name">
-            <Input value={name} onChange={setName} placeholder="z. B. Kunden in Berlin" autoFocus />
+            <Input value={name} onChange={setName} placeholder={tt('z. B. Kunden in Berlin')} autoFocus />
           </Field>
-          <Check checked={shared} onChange={setShared} label="Für alle im Team sichtbar" />
-          <p className="muted small">Gespeichert werden Suche, Filter, Spalten und Sortierung.</p>
+          <Check checked={shared} onChange={setShared} label={tt('Für alle im Team sichtbar')} />
+          <p className="muted small">{tt('Gespeichert werden Suche, Filter, Spalten und Sortierung.')}</p>
         </Modal>
       )}
     </div>
@@ -347,17 +350,18 @@ export function RecordTable({ fields, columns, rows, cell, sort, onSort, onRow }
 }
 
 export function Pager({ total, page, size, onPage }: { total: number; page: number; size: number; onPage: (p: number) => void }) {
+  const tt = useT('contacts');
   if (total <= size) return null;
   return (
     <div className="row" style={{ marginTop: 12, justifyContent: 'center', alignItems: 'center' }}>
       <button className="btn small secondary" disabled={!page} onClick={() => onPage(page - 1)}>
-        ← Zurück
+        {tt('← Zurück')}
       </button>
       <span className="muted">
-        Seite {page + 1} von {Math.ceil(total / size)}
+        {tt('Seite {v} von {ceil}', { v: page + 1, ceil: Math.ceil(total / size) })}
       </span>
       <button className="btn small secondary" disabled={(page + 1) * size >= total} onClick={() => onPage(page + 1)}>
-        Weiter →
+        {tt('Weiter →')}
       </button>
     </div>
   );
@@ -366,6 +370,7 @@ export function Pager({ total, page, size, onPage }: { total: number; page: numb
 // --- CSV import ---------------------------------------------------------------------------------
 
 export function CsvImportModal({ title, url, hint, placeholder, onClose, onDone }: { title: string; url: string; hint: ReactNode; placeholder: string; onClose: () => void; onDone: () => void }) {
+  const tt = useT('contacts');
   const [csv, setCsv] = useState('');
   const [wf, setWf] = useState(false);
   const [res, setRes] = useState<any>();
@@ -376,11 +381,11 @@ export function CsvImportModal({ title, url, hint, placeholder, onClose, onDone 
       footer={
         res ? (
           <button className="btn" onClick={() => (onDone(), onClose())}>
-            Fertig
+            {tt('Fertig')}
           </button>
         ) : (
           <button className="btn" disabled={!csv} onClick={async () => setRes(await act(() => api.post(url, { csv, triggerWorkflows: wf })))}>
-            Importieren
+            {tt('Importieren')}
           </button>
         )
       }
@@ -388,14 +393,14 @@ export function CsvImportModal({ title, url, hint, placeholder, onClose, onDone 
       {res ? (
         <>
           <p>
-            <strong>{res.created}</strong> neu, <strong>{res.updated}</strong> aktualisiert, <strong>{res.skipped}</strong> übersprungen.
+            <strong>{res.created}</strong> {tt('neu,')} <strong>{res.updated}</strong> {tt('aktualisiert,')} <strong>{res.skipped}</strong> {tt('übersprungen.')}
           </p>
-          <p className="muted small">Erkannte Spalten: {res.mapped.join(', ') || '–'}</p>
+          <p className="muted small">{tt('Erkannte Spalten:')} {res.mapped.join(', ') || '–'}</p>
           {res.errors?.length > 0 && (
             <div className="card" style={{ padding: 10 }}>
               {res.errors.map((e: any) => (
                 <div key={e.row} className="small">
-                  Zeile {e.row}: {e.error}
+                  {tt('Zeile {row}: {error}', { row: e.row, error: e.error })}
                 </div>
               ))}
             </div>
@@ -406,13 +411,13 @@ export function CsvImportModal({ title, url, hint, placeholder, onClose, onDone 
           <p className="muted" style={{ marginTop: 0 }}>
             {hint}
           </p>
-          <Field label="Datei">
+          <Field label={tt('Datei')}>
             <input type="file" accept=".csv,text/csv" onChange={async (e) => { const f = e.target.files?.[0]; setCsv(f ? await readCsvFile(f) : ''); }} />
           </Field>
-          <Field label="…oder einfügen">
+          <Field label={tt('…oder einfügen')}>
             <Textarea value={csv} onChange={setCsv} rows={6} placeholder={placeholder} />
           </Field>
-          <Check checked={wf} onChange={setWf} label="Workflows auslösen" />
+          <Check checked={wf} onChange={setWf} label={tt('Workflows auslösen')} />
         </>
       )}
     </Modal>
@@ -450,6 +455,7 @@ export const refreshAssocTypes = () => void (typesCache = null);
  * flag. Adding and editing happen inline (no second dialog, so it also works inside a modal).
  */
 export function AssociationsPanel({ type, id, exclude = [], title = 'Verknüpfungen', onChange, compact }: { type: string; id: string; exclude?: string[]; title?: string; onChange?: () => void; compact?: boolean }) {
+  const tt = useT('contacts');
   const list = useLoad(() => api.get<Linked[]>(`/api/associations?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`), [type, id]);
   const types = useAssocTypes();
   const [adding, setAdding] = useState(false);
@@ -468,14 +474,14 @@ export function AssociationsPanel({ type, id, exclude = [], title = 'Verknüpfun
           <Icon name="link" /> {title}
         </h2>
         <button className="btn small secondary" data-tour="assoc-add" onClick={() => setAdding(!adding)} aria-expanded={adding}>
-          {adding ? 'Schließen' : '+ Verknüpfen'}
+          {adding ? tt('Schließen') : tt('+ Verknüpfen')}
         </button>
       </div>
       {adding && <AssocAdd from={{ type, id }} types={types.filter((t) => !exclude.includes(t.type))} onDone={() => (setAdding(false), reload())} />}
       {!list.data ? (
         <Spinner />
       ) : !groups.length ? (
-        <p className="muted small">Noch nichts verknüpft.</p>
+        <p className="muted small">{tt('Noch nichts verknüpft.')}</p>
       ) : (
         groups.map(([t, items]) => {
           const meta = types.find((x) => x.type === t);
@@ -489,7 +495,7 @@ export function AssociationsPanel({ type, id, exclude = [], title = 'Verknüpfun
                   <div className="grow">
                     {l.link ? <Link to={l.link}>{l.name}</Link> : <strong>{l.name}</strong>}
                     {l.primary && (l.primary_for === id || l.primary_for === l.record_id) && (
-                      <Badge tone="blue">{l.primary_for === id ? 'Primär' : type === 'company' ? 'Primäre Firma' : 'Primär (dort)'}</Badge>
+                      <Badge tone="blue">{l.primary_for === id ? tt('Primär') : type === 'company' ? tt('Primäre Firma') : tt('Primär (dort)')}</Badge>
                     )}
                     {l.labels.map((x) => (
                       <Badge key={x.id} tone="purple">
@@ -500,10 +506,10 @@ export function AssociationsPanel({ type, id, exclude = [], title = 'Verknüpfun
                     {editing === l.association_id && <AssocEdit from={{ type, id }} item={l} onDone={() => (setEditing(''), reload())} />}
                   </div>
                   <span className="actions">
-                    <button className="icon-btn" data-tour="assoc-edit" title="Labels / primär" aria-label="Verknüpfung bearbeiten" onClick={() => setEditing(editing === l.association_id ? '' : l.association_id)}>
+                    <button className="icon-btn" data-tour="assoc-edit" title={tt('Labels / primär')} aria-label={tt('Verknüpfung bearbeiten')} onClick={() => setEditing(editing === l.association_id ? '' : l.association_id)}>
                       <Icon name="edit" size={14} />
                     </button>
-                    <button className="icon-btn" title="Verknüpfung lösen" aria-label="Verknüpfung lösen" onClick={() => confirmAsk(`Verknüpfung mit „${l.name}“ lösen?`) && act(() => api.del(`/api/associations/${l.association_id}`)).then(reload)}>
+                    <button className="icon-btn" title={tt('Verknüpfung lösen')} aria-label={tt('Verknüpfung lösen')} onClick={() => confirmAsk(tt('Verknüpfung mit „{name}“ lösen?', { name: l.name })) && act(() => api.del(`/api/associations/${l.association_id}`)).then(reload)}>
                       <Icon name="unlink" size={14} />
                     </button>
                   </span>
@@ -522,6 +528,7 @@ function useLabels(a: string, b: string) {
 }
 
 function AssocAdd({ from, types, onDone }: { from: { type: string; id: string }; types: any[]; onDone: () => void }) {
+  const tt = useT('contacts');
   const searchable = types.filter((t) => t.searchable && !(t.type === from.type && false));
   const [to, setTo] = useState<string>(searchable.find((t) => t.type === 'company' && from.type === 'contact')?.type ?? searchable.find((t) => t.type !== from.type)?.type ?? searchable[0]?.type ?? '');
   const [q, setQ] = useState('');
@@ -543,7 +550,7 @@ function AssocAdd({ from, types, onDone }: { from: { type: string; id: string };
           <Select value={to} onChange={(v) => (setTo(v), setPick(undefined), setLabels([]))} options={searchable.map((t) => [t.type, t.label] as [string, string])} />
         </div>
         <div className="grow">
-          <Input value={q} onChange={setQ} placeholder="Suchen…" autoFocus />
+          <Input value={q} onChange={setQ} placeholder={tt('Suchen…')} autoFocus />
         </div>
       </div>
       {!pick ? (
@@ -555,14 +562,14 @@ function AssocAdd({ from, types, onDone }: { from: { type: string; id: string };
                 <strong>{f.name}</strong> <span className="muted small">{f.sub}</span>
               </button>
             ))}
-          {!found.length && <span className="muted small">Nichts gefunden.</span>}
+          {!found.length && <span className="muted small">{tt('Nichts gefunden.')}</span>}
         </div>
       ) : (
         <>
           <p style={{ margin: '8px 0' }}>
             <strong>{pick.name}</strong>{' '}
             <a href="#" onClick={(e) => (e.preventDefault(), setPick(undefined))}>
-              ändern
+              {tt('ändern')}
             </a>
           </p>
           {(avail.data ?? []).length > 0 && (
@@ -574,15 +581,15 @@ function AssocAdd({ from, types, onDone }: { from: { type: string; id: string };
               ))}
             </div>
           )}
-          {canPrimary && <Check checked={primary} onChange={setPrimary} label="Als primäre Firma" />}
+          {canPrimary && <Check checked={primary} onChange={setPrimary} label={tt('Als primäre Firma')} />}
           <button
             className="btn small"
             onClick={async () => {
-              const r = await act(() => api.post('/api/associations', { from_type: from.type, from_id: from.id, to_type: to, to_id: pick.id, labels, primary }), 'Verknüpft');
+              const r = await act(() => api.post('/api/associations', { from_type: from.type, from_id: from.id, to_type: to, to_id: pick.id, labels, primary }), tt('Verknüpft'));
               if (r) onDone();
             }}
           >
-            Verknüpfen
+            {tt('Verknüpfen')}
           </button>
         </>
       )}
@@ -591,6 +598,7 @@ function AssocAdd({ from, types, onDone }: { from: { type: string; id: string };
 }
 
 function AssocEdit({ from, item, onDone }: { from: { type: string; id: string }; item: Linked; onDone: () => void }) {
+  const tt = useT('contacts');
   const avail = useLabels(from.type, item.type);
   const [labels, setLabels] = useState(item.labels.map((l) => l.id));
   const [primary, setPrimary] = useState(item.primary && item.primary_for === from.id);
@@ -609,21 +617,21 @@ function AssocEdit({ from, item, onDone }: { from: { type: string; id: string };
         </div>
       ) : (
         <p className="muted small" style={{ margin: '4px 0' }}>
-          Keine Labels für diese Verknüpfung – unter <Link to="properties">Eigenschaften</Link> anlegen.
+          {tt('Keine Labels für diese Verknüpfung – unter')} <Link to="properties">{tt('Eigenschaften')}</Link> anlegen.
         </p>
       )}
-      {canPrimary && <Check checked={primary} onChange={setPrimary} label="Primäre Firma" />}
-      {reverse && <Check checked={primaryOther} onChange={setPrimaryOther} label="Primäre Firma dieses Datensatzes" />}
+      {canPrimary && <Check checked={primary} onChange={setPrimary} label={tt('Primäre Firma')} />}
+      {reverse && <Check checked={primaryOther} onChange={setPrimaryOther} label={tt('Primäre Firma dieses Datensatzes')} />}
       <button
         className="btn small"
         onClick={async () => {
           const body: any = { labels };
           if (canPrimary) body.primary_for = primary ? from.id : item.primary_for === from.id ? '' : undefined;
           if (reverse) body.primary_for = primaryOther ? item.record_id : item.primary_for === item.record_id ? '' : undefined;
-          if (await act(() => api.patch(`/api/associations/${item.association_id}`, body), 'Gespeichert')) onDone();
+          if (await act(() => api.patch(`/api/associations/${item.association_id}`, body), tt('Gespeichert'))) onDone();
         }}
       >
-        Speichern
+        {tt('Speichern')}
       </button>
     </div>
   );
@@ -632,7 +640,8 @@ function AssocEdit({ from, item, onDone }: { from: { type: string; id: string };
 // --- timeline ---------------------------------------------------------------------------------------
 
 export function Timeline({ items }: { items: { id: string; at: string; summary: string; kind?: string; by?: string | null; contact_id?: string; contact_name?: string }[] }) {
-  if (!items.length) return <p className="muted">Noch keine Aktivität.</p>;
+  const tt = useT('contacts');
+  if (!items.length) return <p className="muted">{tt('Noch keine Aktivität.')}</p>;
   return (
     <ul className="timeline rec-timeline">
       {items.map((a) => (
@@ -656,13 +665,14 @@ export function Timeline({ items }: { items: { id: string; at: string; summary: 
 }
 
 export function Notes({ notes, onAdd, onDelete }: { notes: any[]; onAdd: (body: string) => Promise<unknown>; onDelete: (id: string) => void }) {
+  const tt = useT('contacts');
   const [note, setNote] = useState('');
   return (
     <>
-      <Textarea value={note} onChange={setNote} placeholder="Notiz…" />
+      <Textarea value={note} onChange={setNote} placeholder={tt('Notiz…')} />
       <p>
         <button className="btn small" disabled={!note.trim()} onClick={async () => (await onAdd(note)) && setNote('')}>
-          Notiz speichern
+          {tt('Notiz speichern')}
         </button>
       </p>
       {notes.map((n) => (
@@ -670,10 +680,10 @@ export function Notes({ notes, onAdd, onDelete }: { notes: any[]; onAdd: (body: 
           <div style={{ whiteSpace: 'pre-wrap' }}>{n.body}</div>
           <div className="muted small row" style={{ justifyContent: 'space-between' }}>
             <span>
-              {n.user_name ?? 'Automation'} · {dt(n.created_at)}
+              {n.user_name ?? tt('Automation')} · {dt(n.created_at)}
             </span>
-            <a href="#" onClick={(e) => (e.preventDefault(), confirmAsk('Notiz löschen?') && onDelete(n.id))}>
-              löschen
+            <a href="#" onClick={(e) => (e.preventDefault(), confirmAsk(tt('Notiz löschen?')) && onDelete(n.id))}>
+              {tt('löschen')}
             </a>
           </div>
         </div>
@@ -687,6 +697,7 @@ export function Notes({ notes, onAdd, onDelete }: { notes: any[]; onAdd: (body: 
  * first few at first glance, the rest behind "Weitere Felder" (open by itself when one of them holds a value). Profi: all, as before.
  */
 export function PropertyCard({ id = 'props', title, fields, groups, values, edit, setEdit, users, onSave, extra }: { id?: string; title: string; fields: FieldDef[]; groups: { key: string; label: string }[]; values: Record<string, any>; edit: Record<string, any> | null; setEdit: (v: Record<string, any> | null) => void; users: User[]; onSave: (v: Record<string, any>) => Promise<unknown>; extra?: ReactNode }) {
+  const tt = useT('contacts');
   const simple = useSimple();
   const sections: [string, FieldDef[]][] = [];
   const byGroup = new Map<string, FieldDef[]>();
@@ -733,15 +744,15 @@ export function PropertyCard({ id = 'props', title, fields, groups, values, edit
         {edit ? (
           <div className="actions">
             <button className="btn small secondary" onClick={() => setEdit(null)}>
-              Abbrechen
+              {tt('Abbrechen')}
             </button>
             <button className="btn small" onClick={async () => (await onSave(edit)) && setEdit(null)}>
-              Speichern
+              {tt('Speichern')}
             </button>
           </div>
         ) : (
           <button className="btn small secondary" onClick={() => setEdit(Object.fromEntries(fields.map((f) => [f.key, values[f.key] ?? (f.type === 'multiselect' ? [] : f.type === 'checkbox' ? false : '')])))}>
-            Bearbeiten
+            {tt('Bearbeiten')}
           </button>
         )}
       </div>
@@ -759,7 +770,7 @@ export function PropertyCard({ id = 'props', title, fields, groups, values, edit
       ) : fields.some(filled) ? (
         render(filled)
       ) : (
-        <p className="muted small">Noch keine Angaben – über „Bearbeiten“ ausfüllen.</p>
+        <p className="muted small">{tt('Noch keine Angaben – über „Bearbeiten“ ausfüllen.')}</p>
       )}
       {extra}
     </div>
@@ -811,6 +822,7 @@ export function CompanyFilter({ value, onChange }: { value: CompanyFilterValue; 
 
 /** Deal properties from the properties page, inside the opportunity dialog (nothing when none exist). */
 export function DealProperties({ oppId }: { oppId: string }) {
+  const tt = useT('contacts');
   const data = useLoad(() => api.get<any>(`/api/opportunities/${oppId}/properties`), [oppId]);
   const users = useUsers();
   const [vals, setVals] = useState<Record<string, any> | null>(null);
@@ -821,8 +833,8 @@ export function DealProperties({ oppId }: { oppId: string }) {
   return (
     <div className="deal-props">
       {/* Einfach-Modus: folded under its own name unless a property is set */}
-      <MoreFields id="deal-props" label="Deal-Eigenschaften" values={Object.values(data.data.properties ?? {})}>
-      {!simple && <div className="prop-group">Deal-Eigenschaften</div>}
+      <MoreFields id="deal-props" label={tt('Deal-Eigenschaften')} values={Object.values(data.data.properties ?? {})}>
+      {!simple && <div className="prop-group">{tt('Deal-Eigenschaften')}</div>}
       <div className="grid2">
         {defs.map((f) =>
           f.type === 'checkbox' ? (
@@ -837,8 +849,8 @@ export function DealProperties({ oppId }: { oppId: string }) {
         )}
       </div>
       {vals && (
-        <button className="btn small" onClick={() => act(() => api.put(`/api/opportunities/${oppId}/properties`, { properties: vals }), 'Eigenschaften gespeichert').then((r) => r && (setVals(null), data.reload()))}>
-          Eigenschaften speichern
+        <button className="btn small" onClick={() => act(() => api.put(`/api/opportunities/${oppId}/properties`, { properties: vals }), tt('Eigenschaften gespeichert')).then((r) => r && (setVals(null), data.reload()))}>
+          {tt('Eigenschaften speichern')}
         </button>
       )}
       </MoreFields>

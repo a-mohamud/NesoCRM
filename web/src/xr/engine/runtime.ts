@@ -2,6 +2,7 @@ import { Renderer, type View } from './renderer';
 import { Scene } from './scene';
 import { invert, lookAt, multiply, perspective, rotationY, screenRay, transformDir, transformPoint, translation, vec, type Mat4, type Vec3 } from './math';
 import type { XrTheme } from './textures';
+import { tr } from '../../i18n';
 
 /**
  * Puts the scene on a canvas: the browser preview (a camera you orbit with the mouse – also what runs where there is no WebXR) and
@@ -62,8 +63,9 @@ export class Runtime {
   static MOUSE = 'mouse';
 
   constructor(private o: RuntimeOptions) {
+  const tt = tr('x_misc');
     const gl = o.canvas.getContext('webgl2', { xrCompatible: true, alpha: true, antialias: true, powerPreference: 'high-performance' } as WebGLContextAttributes);
-    if (!gl) throw new Error('WebGL2 ist in diesem Browser nicht verfügbar.');
+    if (!gl) throw new Error(tt('WebGL2 ist in diesem Browser nicht verfügbar.'));
     this.gl = gl as WebGL2RenderingContext;
     this.renderer = new Renderer(this.gl);
     this.scene = new Scene(this.renderer, o.theme);
@@ -183,8 +185,9 @@ export class Runtime {
 
   // --- the immersive session ----------------------------------------------------------------------------------------------
   async start(mode: XrMode): Promise<void> {
+  const tt = tr('x_misc');
     const xr = (navigator as unknown as XrNav).xr;
-    if (!xr) throw new Error('Dieses Gerät bietet kein WebXR.');
+    if (!xr) throw new Error(tt('Dieses Gerät bietet kein WebXR.'));
     const gl = this.gl as WebGL2RenderingContext & { makeXRCompatible?: () => Promise<void> };
     await gl.makeXRCompatible?.();
     const session = await xr.requestSession(mode, { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'] });

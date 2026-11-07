@@ -4,6 +4,7 @@ import { api, d, dt, money } from '../api';
 import { Badge, Check, Copy, Empty, Field, Input, Link, Modal, PageHead, Select, Spinner, Stat, Tabs, Textarea, act, confirmAsk, useLoad } from '../ui';
 import { Callout, Facts, Fold, Item, Panel, StatusBadge, euroText, parseEuro } from './CreatorKit';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /**
  * Mahnwesen: failed subscription and instalment payments (cases, reminders with a link to the billing page, access pause),
@@ -17,10 +18,11 @@ const listText = (a: number[] | undefined) => (a ?? []).join(', ');
 // --- cases of failed subscription payments -------------------------------------------------------------------------------------
 
 function CaseDialog({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
+  const tt = useT('x_finance');
   const { data, reload } = useLoad(() => api.get(`/api/dunning/cases/${id}`), [id]);
   if (!data)
     return (
-      <Modal title="Zahlungsausfall" onClose={onClose}>
+      <Modal title={tt('Zahlungsausfall')} onClose={onClose}>
         <Spinner />
       </Modal>
     );
@@ -34,33 +36,33 @@ function CaseDialog({ id, onClose, onChanged }: { id: string; onClose: () => voi
   const live = c.status === 'open' || c.status === 'failed';
   return (
     <Modal
-      title="Zahlungsausfall"
+      title={tt('Zahlungsausfall')}
       wide
       onClose={onClose}
       footer={
         live ? (
           <>
             <button className="btn secondary" onClick={() => run('remind', 'Erinnerung gesendet')} data-tour="case-remind">
-              Erinnerung senden
+              {tt('Erinnerung senden')}
             </button>
             {c.stripe_invoice && (
               <button className="btn secondary" onClick={() => run('retry', 'Zahlung erneut versucht')}>
-                Jetzt erneut einziehen
+                {tt('Jetzt erneut einziehen')}
               </button>
             )}
             {c.contact?.id && c.product_id && (
               <button className="btn secondary" onClick={() => run('access', c.access_paused ? 'Zugang fortgesetzt' : 'Zugang pausiert', { on: !!c.access_paused })}>
-                {c.access_paused ? 'Zugang fortsetzen' : 'Zugang pausieren'}
+                {c.access_paused ? tt('Zugang fortsetzen') : tt('Zugang pausieren')}
               </button>
             )}
             <button
               className="btn secondary"
               onClick={() => {
-                const reason = window.prompt('Warum schließt du den Fall? (z. B. „hat per Überweisung bezahlt“)', '');
+                const reason = window.prompt(tt('Warum schließt du den Fall? (z. B. „hat per Überweisung bezahlt“)'), '');
                 if (reason !== null) void run('close', 'Fall geschlossen', { reason });
               }}
             >
-              Fall schließen
+              {tt('Fall schließen')}
             </button>
           </>
         ) : undefined
@@ -68,7 +70,7 @@ function CaseDialog({ id, onClose, onChanged }: { id: string; onClose: () => voi
     >
       <Facts
         rows={[
-          ['Kontakt', c.contact?.id ? <Link to={`contacts/${c.contact.id}`}>{c.contact.name || 'Kontakt öffnen'}</Link> : 'nicht zugeordnet'],
+          ['Kontakt', c.contact?.id ? <Link to={`contacts/${c.contact.id}`}>{c.contact.name || tt('Kontakt öffnen')}</Link> : 'nicht zugeordnet'],
           ['Produkt', c.product_name],
           ['Betrag', money(c.amount_cents, c.currency)],
           ['Status', <StatusBadge key="s" status={c.status} />],
@@ -81,7 +83,7 @@ function CaseDialog({ id, onClose, onChanged }: { id: string; onClose: () => voi
           ['Geschlossen', c.closed_reason],
         ]}
       />
-      <h4 style={{ margin: '16px 0 8px' }}>Verlauf</h4>
+      <h4 style={{ margin: '16px 0 8px' }}>{tt('Verlauf')}</h4>
       <div className="cr-list">
         {c.events.map((e: any, i: number) => (
           <Item key={i}>
@@ -89,7 +91,7 @@ function CaseDialog({ id, onClose, onChanged }: { id: string; onClose: () => voi
             {e.detail && <div className="cr-sub">{e.detail}</div>}
           </Item>
         ))}
-        {!c.events.length && <p className="muted">Noch keine Einträge.</p>}
+        {!c.events.length && <p className="muted">{tt('Noch keine Einträge.')}</p>}
       </div>
     </Modal>
   );
@@ -97,6 +99,7 @@ function CaseDialog({ id, onClose, onChanged }: { id: string; onClose: () => voi
 const EVENT_LABEL: Record<string, string> = { opened: 'Fall eröffnet', failed: 'Zahlung fehlgeschlagen', reminder: 'Erinnerung gesendet', retry: 'Erneut versucht', final: 'Endgültig fehlgeschlagen', recovered: 'Wieder bezahlt', closed: 'Geschlossen', access_off: 'Zugang pausiert', access_on: 'Zugang fortgesetzt', card_updated: 'Karte aktualisiert' };
 
 function BillingLinkDialog({ onClose }: { onClose: () => void }) {
+  const tt = useT('x_finance');
   const [q, setQ] = useState('');
   const [found, setFound] = useState<any[]>([]);
   const [pick, setPick] = useState<any>(null);
@@ -107,16 +110,16 @@ function BillingLinkDialog({ onClose }: { onClose: () => void }) {
     return () => clearTimeout(t);
   }, [q]);
   const make = async (send?: 'email' | 'sms') => {
-    const r = await act(() => api.post('/api/dunning/billing-link', { contact_id: pick.id, ...(send ? { send } : {}) }), send ? 'Gesendet' : undefined);
+    const r = await act(() => api.post('/api/dunning/billing-link', { contact_id: pick.id, ...(send ? { send } : {}) }), send ? tt('Gesendet') : undefined);
     if (r) setLink(r);
   };
   return (
-    <Modal title="Link zur Abo-Verwaltung" onClose={onClose}>
-      <p className="cr-hint">Der Link führt zu einer Seite, auf der die Person Zahlungsmethode, Rechnungen und Abo selbst verwaltet – ohne Login. Er gilt nur für diese Person und läuft ab.</p>
+    <Modal title={tt('Link zur Abo-Verwaltung')} onClose={onClose}>
+      <p className="cr-hint">{tt('Der Link führt zu einer Seite, auf der die Person Zahlungsmethode, Rechnungen und Abo selbst verwaltet – ohne Login. Er gilt nur für diese Person und läuft ab.')}</p>
       {!pick ? (
         <>
-          <Field label="Kontakt suchen">
-            <Input value={q} onChange={setQ} placeholder="Name oder E-Mail" autoFocus />
+          <Field label={tt('Kontakt suchen')}>
+            <Input value={q} onChange={setQ} placeholder={tt('Name oder E-Mail')} autoFocus />
           </Field>
           <div className="cr-list">
             {found.map((c: any) => (
@@ -129,19 +132,19 @@ function BillingLinkDialog({ onClose }: { onClose: () => void }) {
         </>
       ) : (
         <>
-          <Item side={<button className="btn small secondary" onClick={() => (setPick(null), setLink(null))}>Ändern</button>}>
+          <Item side={<button className="btn small secondary" onClick={() => (setPick(null), setLink(null))}>{tt('Ändern')}</button>}>
             <strong>{[pick.first_name, pick.last_name].filter(Boolean).join(' ') || pick.email}</strong>
             <div className="cr-sub">{pick.email}</div>
           </Item>
           <div className="actions" style={{ margin: '12px 0' }}>
             <button className="btn" onClick={() => make()}>
-              Link erzeugen
+              {tt('Link erzeugen')}
             </button>
             <button className="btn secondary" onClick={() => make('email')} disabled={!pick.email}>
-              Per E-Mail senden
+              {tt('Per E-Mail senden')}
             </button>
             <button className="btn secondary" onClick={() => make('sms')} disabled={!pick.phone}>
-              Per SMS senden
+              {tt('Per SMS senden')}
             </button>
           </div>
           {link && (
@@ -149,7 +152,7 @@ function BillingLinkDialog({ onClose }: { onClose: () => void }) {
               <p>
                 <span className="cr-code">{link.url}</span> <Copy text={link.url} />
               </p>
-              <p className="small muted">Gültig bis {d(link.expires_at)}.{link.sent ? ` Gesendet per ${link.sent === 'email' ? 'E-Mail' : 'SMS'}.` : ''}</p>
+              <p className="small muted">{tt('Gültig bis {d}.', { d: d(link.expires_at) })}{link.sent ? tt(' Gesendet per {v}.', { v: link.sent === 'email' ? 'E-Mail' : 'SMS' }) : ''}</p>
             </Callout>
           )}
         </>
@@ -159,6 +162,7 @@ function BillingLinkDialog({ onClose }: { onClose: () => void }) {
 }
 
 function CasesTab({ overview, reloadOverview }: { overview: any; reloadOverview: () => void }) {
+  const tt = useT('x_finance');
   const [status, setStatus] = useState('live');
   const cases = useLoad(() => api.get<any[]>('/api/dunning/cases?limit=200'), []);
   const [open, setOpen] = useState('');
@@ -168,27 +172,27 @@ function CasesTab({ overview, reloadOverview }: { overview: any; reloadOverview:
   return (
     <>
       <SortableGrid id="dunning-stats" className="stats" data-tour="dunning-stats">
-        <Stat label="Offene Fälle" value={o?.open ?? '–'} sub="Stripe versucht es noch" />
-        <Stat label="Endgültig gescheitert" value={o?.failed ?? '–'} sub={o?.failed ? 'Zugang laut Einstellung pausiert' : undefined} />
-        <Stat label="Gefährdeter Umsatz" value={o ? money(o.at_risk_cents) : '–'} />
-        <Stat label="In 30 Tagen zurückgeholt" value={o ? `${o.recovered_30d} · ${money(o.recovered_cents)}` : '–'} />
+        <Stat label={tt('Offene Fälle')} value={o?.open ?? '–'} sub={tt('Stripe versucht es noch')} />
+        <Stat label={tt('Endgültig gescheitert')} value={o?.failed ?? '–'} sub={o?.failed ? tt('Zugang laut Einstellung pausiert') : undefined} />
+        <Stat label={tt('Gefährdeter Umsatz')} value={o ? money(o.at_risk_cents) : '–'} />
+        <Stat label={tt('In 30 Tagen zurückgeholt')} value={o ? `${o.recovered_30d} · ${money(o.recovered_cents)}` : '–'} />
       </SortableGrid>
       {overview && !overview.stripe.connected && (
         <Callout tone="warn">
-          <strong>Stripe ist nicht verbunden.</strong> Ohne Stripe-Webhook sieht das Mahnwesen keine Zahlungsausfälle. Verbinde Stripe unter <Link to="settings/stripe">Einstellungen → Stripe</Link>; die nötigen Ereignisse stehen in der Anleitung.
+          <strong>{tt('Stripe ist nicht verbunden.')}</strong> {tt('Ohne Stripe-Webhook sieht das Mahnwesen keine Zahlungsausfälle. Verbinde Stripe unter')} <Link to="settings/stripe">{tt('Einstellungen → Stripe')}</Link>{tt('; die nötigen Ereignisse stehen in der Anleitung.')}
         </Callout>
       )}
-      {overview && overview.stripe.connected && !overview.settings.sub_enabled && <Callout tone="warn">Das Mahnwesen für Abo-Zahlungen ist ausgeschaltet (Reiter Einstellungen).</Callout>}
+      {overview && overview.stripe.connected && !overview.settings.sub_enabled && <Callout tone="warn">{tt('Das Mahnwesen für Abo-Zahlungen ist ausgeschaltet (Reiter Einstellungen).')}</Callout>}
       <Panel
-        title="Zahlungsausfälle bei Abos und Raten"
-        sub="Wer zahlt nicht? Jeder Fall bekommt Erinnerungen mit einem Link, über den die Person ihre Karte selbst aktualisiert."
+        title={tt('Zahlungsausfälle bei Abos und Raten')}
+        sub={tt('Wer zahlt nicht? Jeder Fall bekommt Erinnerungen mit einem Link, über den die Person ihre Karte selbst aktualisiert.')}
         wide
         tour="dunning-cases"
         actions={
           <>
             <Select value={status} onChange={setStatus} options={[['live', 'Offen und gescheitert'], ['recovered', 'Wieder bezahlt'], ['closed', 'Geschlossen'], ['all', 'Alle']]} />
             <button className="btn secondary" data-tour="dunning-link" onClick={() => setLinking(true)}>
-              <Icon name="link" /> Abo-Link erzeugen
+              <Icon name="link" /> {tt('Abo-Link erzeugen')}
             </button>
           </>
         }
@@ -205,21 +209,21 @@ function CasesTab({ overview, reloadOverview }: { overview: any; reloadOverview:
                 side={
                   <>
                     <StatusBadge status={c.status} />
-                    {c.access_paused && <Badge tone="yellow">Zugang pausiert</Badge>}
+                    {c.access_paused && <Badge tone="yellow">{tt('Zugang pausiert')}</Badge>}
                   </>
                 }
               >
-                <strong>{c.contact?.name || 'Kontakt unbekannt'}</strong> · {c.product_name || 'Abo'} · {money(c.amount_cents, c.currency)}
+                <strong>{c.contact?.name || tt('Kontakt unbekannt')}</strong> · {c.product_name || tt('Abo')} · {money(c.amount_cents, c.currency)}
                 <div className="cr-sub">
-                  Seit {d(c.first_failed_at)} · {c.attempts} Versuch{c.attempts === 1 ? '' : 'e'}
-                  {c.next_attempt_at ? ` · nächster ${dt(c.next_attempt_at)}` : ''}
+                  {tt('Seit {d} · {attempts} Versuch', { d: d(c.first_failed_at), attempts: c.attempts })}{c.attempts === 1 ? '' : 'e'}
+                  {c.next_attempt_at ? tt(' · nächster {dt}', { dt: dt(c.next_attempt_at) }) : ''}
                   {c.reason ? ` · ${c.reason}` : ''}
                 </div>
               </Item>
             ))}
           </div>
         ) : (
-          <Empty>{status === 'live' ? 'Keine offenen Zahlungsausfälle – gut so.' : 'Keine Fälle in dieser Ansicht.'}</Empty>
+          <Empty>{status === 'live' ? tt('Keine offenen Zahlungsausfälle – gut so.') : tt('Keine Fälle in dieser Ansicht.')}</Empty>
         )}
       </Panel>
       {open && <CaseDialog id={open} onClose={() => setOpen('')} onChanged={() => (cases.reload(), reloadOverview())} />}
@@ -231,6 +235,7 @@ function CasesTab({ overview, reloadOverview }: { overview: any; reloadOverview:
 // --- overdue invoices ----------------------------------------------------------------------------------------------------------
 
 function NoticeDialog({ notice, onClose, onChanged }: { notice: any; onClose: () => void; onChanged: () => void }) {
+  const tt = useT('x_finance');
   const [subject, setSubject] = useState(notice.subject);
   const [body, setBody] = useState(notice.body);
   const live = notice.status === 'pending' || notice.status === 'failed';
@@ -242,31 +247,31 @@ function NoticeDialog({ notice, onClose, onChanged }: { notice: any; onClose: ()
   };
   const send = async () => {
     if (dirty && !(await act(() => api.patch(`/api/dunning/notices/${notice.id}`, { subject, body })))) return;
-    if (await act(() => api.post(`/api/dunning/notices/${notice.id}/send`), 'Mahnung gesendet')) done('')();
+    if (await act(() => api.post(`/api/dunning/notices/${notice.id}/send`), tt('Mahnung gesendet'))) done('')();
   };
   return (
     <Modal
-      title={`${notice.label} · Rechnung ${notice.invoice_number}`}
+      title={tt('{label} · Rechnung {invoice_number}', { label: notice.label, invoice_number: notice.invoice_number })}
       wide
       onClose={onClose}
       footer={
         <>
           <a className="btn secondary" href={notice.pdf_url} target="_blank" rel="noreferrer">
-            PDF ansehen
+            {tt('PDF ansehen')}
           </a>
           {live && (
             <>
-              <button className="btn secondary" onClick={async () => (await act(() => api.post(`/api/dunning/notices/${notice.id}/dismiss`), 'Verworfen')) && done('')()}>
-                Verwerfen
+              <button className="btn secondary" onClick={async () => (await act(() => api.post(`/api/dunning/notices/${notice.id}/dismiss`), tt('Verworfen'))) && done('')()}>
+                {tt('Verwerfen')}
               </button>
               <button className="btn" data-tour="notice-send" onClick={send}>
-                {dirty ? 'Speichern und senden' : 'Jetzt senden'}
+                {dirty ? tt('Speichern und senden') : tt('Jetzt senden')}
               </button>
             </>
           )}
           {notice.status === 'sent' && (
-            <button className="btn secondary" onClick={async () => confirmAsk('Dieselbe Mahnung noch einmal senden?') && (await act(() => api.post(`/api/dunning/notices/${notice.id}/resend`), 'Erneut gesendet')) && done('')()}>
-              Erneut senden
+            <button className="btn secondary" onClick={async () => confirmAsk(tt('Dieselbe Mahnung noch einmal senden?')) && (await act(() => api.post(`/api/dunning/notices/${notice.id}/resend`), tt('Erneut gesendet'))) && done('')()}>
+              {tt('Erneut senden')}
             </button>
           )}
         </>
@@ -288,10 +293,10 @@ function NoticeDialog({ notice, onClose, onChanged }: { notice: any; onClose: ()
           ['Fehler', notice.error],
         ]}
       />
-      <Field label="Betreff">
+      <Field label={tt('Betreff')}>
         <Input value={subject} onChange={setSubject} disabled={!live} maxLength={300} />
       </Field>
-      <Field label="Text" hint="Beträge und Frist stehen im PDF; der Text darf angepasst werden.">
+      <Field label={tt('Text')} hint={tt('Beträge und Frist stehen im PDF; der Text darf angepasst werden.')}>
         <Textarea value={body} onChange={setBody} disabled={!live} rows={12} />
       </Field>
     </Modal>
@@ -299,6 +304,7 @@ function NoticeDialog({ notice, onClose, onChanged }: { notice: any; onClose: ()
 }
 
 function InvoicesTab({ overview, reloadOverview, goSettings }: { overview: any; reloadOverview: () => void; goSettings: () => void }) {
+  const tt = useT('x_finance');
   const pending = useLoad(() => api.get<any[]>('/api/dunning/notices?status=pending&limit=100'), []);
   const sent = useLoad(() => api.get<any[]>('/api/dunning/notices?status=sent&limit=30'), []);
   const invoices = useLoad(() => api.get<any[]>('/api/dunning/invoices'), []);
@@ -316,57 +322,57 @@ function InvoicesTab({ overview, reloadOverview, goSettings }: { overview: any; 
     if (r) setPreview(r);
   };
   const prepare = async (inv: any, now: boolean) => {
-    if (now && !confirmAsk(`Die nächste Mahnung zu Rechnung ${inv.number} jetzt an ${inv.contact.name} senden?`)) return;
-    if (await act(() => api.post(`/api/dunning/invoices/${inv.id}/notice`, { send: now }), now ? 'Mahnung gesendet' : 'Entwurf liegt zur Freigabe bereit')) refresh();
+    if (now && !confirmAsk(tt('Die nächste Mahnung zu Rechnung {number} jetzt an {name} senden?', { number: inv.number, name: inv.contact.name }))) return;
+    if (await act(() => api.post(`/api/dunning/invoices/${inv.id}/notice`, { send: now }), now ? tt('Mahnung gesendet') : tt('Entwurf liegt zur Freigabe bereit'))) refresh();
   };
   const hold = async (inv: any, on: boolean) => {
-    const reason = on ? window.prompt('Grund für den Mahnstopp (z. B. „Zahlungsvereinbarung“)', '') : '';
+    const reason = on ? window.prompt(tt('Grund für den Mahnstopp (z. B. „Zahlungsvereinbarung“)'), '') : '';
     if (reason === null) return;
-    if (await act(() => api.post(`/api/dunning/invoices/${inv.id}/hold`, { on, reason }), on ? 'Mahnstopp gesetzt' : 'Mahnstopp aufgehoben')) refresh();
+    if (await act(() => api.post(`/api/dunning/invoices/${inv.id}/hold`, { on, reason }), on ? tt('Mahnstopp gesetzt') : tt('Mahnstopp aufgehoben'))) refresh();
   };
   return (
     <>
       <Callout tone={mode === 'off' ? 'warn' : 'info'} tour="dunning-mode">
         {mode === 'off' && (
           <>
-            <strong>Das Rechnungs-Mahnwesen ist aus.</strong> Es verschickt nichts, bis du es einschaltest – zuerst mit Freigabe, später gern automatisch.{' '}
+            <strong>{tt('Das Rechnungs-Mahnwesen ist aus.')}</strong> {tt('Es verschickt nichts, bis du es einschaltest – zuerst mit Freigabe, später gern automatisch.')}{' '}
           </>
         )}
         {mode === 'approval' && (
           <>
-            <strong>Mit Freigabe:</strong> Fällige Mahnungen warten hier, bis du sie prüfst und sendest.{' '}
+            <strong>{tt('Mit Freigabe:')}</strong> {tt('Fällige Mahnungen warten hier, bis du sie prüfst und sendest.')}{' '}
           </>
         )}
         {mode === 'auto' && (
           <>
-            <strong>Automatisch:</strong> Fällige Mahnungen gehen sofort raus. Mahnstopp pro Rechnung ist möglich.{' '}
+            <strong>{tt('Automatisch:')}</strong> {tt('Fällige Mahnungen gehen sofort raus. Mahnstopp pro Rechnung ist möglich.')}{' '}
           </>
         )}
         <button className="btn small secondary" onClick={goSettings}>
-          Einstellungen
+          {tt('Einstellungen')}
         </button>{' '}
         <button className="btn small secondary" onClick={check} data-tour="dunning-check">
-          Jetzt prüfen (Trockenlauf)
+          {tt('Jetzt prüfen (Trockenlauf)')}
         </button>
       </Callout>
       <div className="cr-panels two">
-        <Panel title="Wartet auf Freigabe" sub="Prüfen, Text anpassen, senden oder verwerfen." tour="dunning-approval">
+        <Panel title={tt('Wartet auf Freigabe')} sub={tt('Prüfen, Text anpassen, senden oder verwerfen.')} tour="dunning-approval">
           {pending.data?.length ? (
             <div className="cr-list">
               {pending.data.map((n) => (
                 <Item key={n.id} tone="warn" onClick={() => setOpen(n)} side={<strong>{money(n.total_cents, n.currency)}</strong>}>
-                  <strong>{n.label}</strong> · Rechnung {n.invoice_number}
+                  <strong>{n.label}</strong> {tt('· Rechnung {invoice_number}', { invoice_number: n.invoice_number })}
                   <div className="cr-sub">
-                    {n.contact?.name} · {n.days_overdue} Tage überfällig
+                    {tt('{name} · {days_overdue} Tage überfällig', { name: n.contact?.name, days_overdue: n.days_overdue })}
                   </div>
                 </Item>
               ))}
             </div>
           ) : (
-            <Empty>Nichts zur Freigabe.</Empty>
+            <Empty>{tt('Nichts zur Freigabe.')}</Empty>
           )}
         </Panel>
-        <Panel title="Überfällige Rechnungen" sub="Offene Rechnungen mit abgelaufener Frist." tour="dunning-invoices">
+        <Panel title={tt('Überfällige Rechnungen')} sub={tt('Offene Rechnungen mit abgelaufener Frist.')} tour="dunning-invoices">
           {invoices.data?.length ? (
             <div className="cr-list">
               {invoices.data.map((inv) => (
@@ -377,22 +383,22 @@ function InvoicesTab({ overview, reloadOverview, goSettings }: { overview: any; 
                     <>
                       {inv.held ? (
                         <button className="btn small secondary" onClick={() => hold(inv, false)}>
-                          Mahnstopp aufheben
+                          {tt('Mahnstopp aufheben')}
                         </button>
                       ) : (
                         <>
                           {inv.next_label && inv.last_status !== 'pending' && (
                             <button className="btn small secondary" onClick={() => prepare(inv, false)}>
-                              Entwurf: {inv.next_label}
+                              {tt('Entwurf: {next_label}', { next_label: inv.next_label })}
                             </button>
                           )}
                           {inv.next_label && inv.last_status !== 'pending' && (
                             <button className="btn small" onClick={() => prepare(inv, true)}>
-                              Jetzt senden
+                              {tt('Jetzt senden')}
                             </button>
                           )}
                           <button className="btn small secondary" onClick={() => hold(inv, true)}>
-                            Mahnstopp
+                            {tt('Mahnstopp')}
                           </button>
                         </>
                       )}
@@ -401,25 +407,25 @@ function InvoicesTab({ overview, reloadOverview, goSettings }: { overview: any; 
                 >
                   <strong>{inv.number}</strong> · {inv.contact.name} · {money(inv.total_cents, inv.currency)}
                   <div className="cr-sub">
-                    {inv.days_overdue} Tage überfällig ·{' '}
+                    {tt('{days_overdue} Tage überfällig ·', { days_overdue: inv.days_overdue })}{' '}
                     {inv.last_status === 'pending'
-                      ? `${inv.level_label} wartet auf Freigabe`
-                      : `Stand: ${inv.level_label}${inv.next_label ? ` · als Nächstes ${inv.next_label} (${money(inv.next_total_cents, inv.currency)})` : ' · alle Stufen durch'}`}
-                    {inv.held ? ' · Mahnstopp' : ''}
+                      ? tt('{level_label} wartet auf Freigabe', { level_label: inv.level_label })
+                      : `Stand: ${inv.level_label}${inv.next_label ? tt(' · als Nächstes {next_label} ({money})', { next_label: inv.next_label, money: money(inv.next_total_cents, inv.currency) }) : tt(' · alle Stufen durch')}`}
+                    {inv.held ? tt(' · Mahnstopp') : ''}
                   </div>
                 </Item>
               ))}
             </div>
           ) : (
-            <Empty>Keine überfälligen Rechnungen.</Empty>
+            <Empty>{tt('Keine überfälligen Rechnungen.')}</Empty>
           )}
         </Panel>
-        <Panel title="Zuletzt gesendet" wide>
+        <Panel title={tt('Zuletzt gesendet')} wide>
           {sent.data?.length ? (
             <div className="cr-list">
               {sent.data.map((n) => (
                 <Item key={n.id} onClick={() => setOpen(n)} side={<StatusBadge status={n.status} />}>
-                  <strong>{n.label}</strong> · Rechnung {n.invoice_number} · {n.contact?.name}
+                  <strong>{n.label}</strong> {tt('· Rechnung {invoice_number} · {name}', { invoice_number: n.invoice_number, name: n.contact?.name })}
                   <div className="cr-sub">
                     {dt(n.sent_at)} · {money(n.total_cents, n.currency)}
                   </div>
@@ -427,28 +433,28 @@ function InvoicesTab({ overview, reloadOverview, goSettings }: { overview: any; 
               ))}
             </div>
           ) : (
-            <Empty>Noch keine Mahnung gesendet.</Empty>
+            <Empty>{tt('Noch keine Mahnung gesendet.')}</Empty>
           )}
         </Panel>
       </div>
       {open && <NoticeDialog notice={open} onClose={() => setOpen(null)} onChanged={refresh} />}
       {preview && (
-        <Modal title="Trockenlauf" onClose={() => setPreview(null)}>
-          <p className="cr-hint">So würde das Mahnwesen jetzt arbeiten – es wurde nichts verschickt oder angelegt.</p>
+        <Modal title={tt('Trockenlauf')} onClose={() => setPreview(null)}>
+          <p className="cr-hint">{tt('So würde das Mahnwesen jetzt arbeiten – es wurde nichts verschickt oder angelegt.')}</p>
           {preview.due.length ? (
             <div className="cr-list">
               {preview.due.map((n: any) => (
                 <Item key={n.invoice_id} tone={n.held ? undefined : 'warn'}>
-                  <strong>{n.label}</strong> · Rechnung {n.number}
+                  <strong>{n.label}</strong> {tt('· Rechnung {number}', { number: n.number })}
                   <div className="cr-sub">
-                    {n.days_overdue} Tage überfällig · {money(n.total_cents ?? 0)}
-                    {n.held ? ' · Mahnstopp – wird übersprungen' : ''}
+                    {tt('{days_overdue} Tage überfällig · {money}', { days_overdue: n.days_overdue, money: money(n.total_cents ?? 0) })}
+                    {n.held ? tt(' · Mahnstopp – wird übersprungen') : ''}
                   </div>
                 </Item>
               ))}
             </div>
           ) : (
-            <Empty>Es ist aktuell keine Mahnung fällig.</Empty>
+            <Empty>{tt('Es ist aktuell keine Mahnung fällig.')}</Empty>
           )}
         </Modal>
       )}
@@ -459,36 +465,37 @@ function InvoicesTab({ overview, reloadOverview, goSettings }: { overview: any; 
 // --- the billing page: what customers may do ----------------------------------------------------------------------------------
 
 function BillingTab() {
+  const tt = useT('x_finance');
   const products = useLoad(() => api.get<any[]>('/api/dunning/products'), []);
   const [linking, setLinking] = useState(false);
   const save = async (p: any, patch: any) => {
-    if (await act(() => api.put(`/api/dunning/products/${p.id}`, patch), 'Gespeichert')) products.reload();
+    if (await act(() => api.put(`/api/dunning/products/${p.id}`, patch), tt('Gespeichert'))) products.reload();
   };
   return (
     <>
       <Callout tone="info" tour="billing-intro">
-        Kunden verwalten ihr Abo auf einer eigenen Seite: Zahlungsmethode ändern, Rechnungen ansehen, pausieren, kündigen oder den Tarif wechseln – ohne Login, über einen persönlichen Link. Der Link kommt in den Mahn-E-Mails, im Mitgliederbereich (Abschnitt „Mein Abo“) und von dir per Knopfdruck. Hier legst du pro Abo fest, was erlaubt ist.{' '}
+        {tt('Kunden verwalten ihr Abo auf einer eigenen Seite: Zahlungsmethode ändern, Rechnungen ansehen, pausieren, kündigen oder den Tarif wechseln – ohne Login, über einen persönlichen Link. Der Link kommt in den Mahn-E-Mails, im Mitgliederbereich (Abschnitt „Mein Abo“) und von dir per Knopfdruck. Hier legst du pro Abo fest, was erlaubt ist.')}{' '}
         <button className="btn small secondary" onClick={() => setLinking(true)}>
-          Link erzeugen
+          {tt('Link erzeugen')}
         </button>
       </Callout>
-      <Panel title="Abos und was Kunden tun dürfen" wide tour="billing-products">
+      <Panel title={tt('Abos und was Kunden tun dürfen')} wide tour="billing-products">
         {products.loading && !products.data ? (
           <Spinner />
         ) : products.data?.length ? (
           <div className="cr-list">
             {products.data.map((p) => (
               <Item key={p.id}>
-                <strong>{p.name}</strong> <span className="muted">· {money(p.price_cents, p.currency)} / {p.recurring === 'year' ? 'Jahr' : 'Monat'}</span>
+                <strong>{p.name}</strong> <span className="muted">· {money(p.price_cents, p.currency)} / {p.recurring === 'year' ? tt('Jahr') : tt('Monat')}</span>
                 <div className="cr-form-row" style={{ marginTop: 10 }}>
-                  <Check checked={p.allow_cancel} onChange={(v) => save(p, { allow_cancel: v })} label="Kündigen erlaubt" />
-                  <Check checked={p.allow_pause} onChange={(v) => save(p, { allow_pause: v })} label="Pausieren erlaubt" />
-                  <Field label="Kündigung wirkt">
+                  <Check checked={p.allow_cancel} onChange={(v) => save(p, { allow_cancel: v })} label={tt('Kündigen erlaubt')} />
+                  <Check checked={p.allow_pause} onChange={(v) => save(p, { allow_pause: v })} label={tt('Pausieren erlaubt')} />
+                  <Field label={tt('Kündigung wirkt')}>
                     <Select value={p.cancel_mode} onChange={(v) => save(p, { cancel_mode: v })} options={[['period_end', 'zum Ende der bezahlten Zeit'], ['now', 'sofort']]} />
                   </Field>
                 </div>
                 {products.data!.length > 1 && (
-                  <Field label="Tarifwechsel erlauben zu" hint="Nur andere aktive Abos in derselben Währung.">
+                  <Field label={tt('Tarifwechsel erlauben zu')} hint={tt('Nur andere aktive Abos in derselben Währung.')}>
                     <div className="cr-chips">
                       {products.data!
                         .filter((x) => x.id !== p.id && x.currency === p.currency)
@@ -508,7 +515,7 @@ function BillingTab() {
             ))}
           </div>
         ) : (
-          <Empty action={<Link to="products" className="btn">Zu den Produkten</Link>}>Noch kein Abo-Produkt. Lege ein Produkt mit monatlicher oder jährlicher Zahlung an.</Empty>
+          <Empty action={<Link to="products" className="btn">{tt('Zu den Produkten')}</Link>}>{tt('Noch kein Abo-Produkt. Lege ein Produkt mit monatlicher oder jährlicher Zahlung an.')}</Empty>
         )}
       </Panel>
       {linking && <BillingLinkDialog onClose={() => setLinking(false)} />}
@@ -519,6 +526,7 @@ function BillingTab() {
 // --- settings -----------------------------------------------------------------------------------------------------------------------
 
 function SettingsTab() {
+  const tt = useT('x_finance');
   const { data, reload } = useLoad(() => api.get('/api/dunning/settings'), []);
   const [s, setS] = useState<any>(null);
   useEffect(() => {
@@ -531,49 +539,49 @@ function SettingsTab() {
   const setInv = (p: any) => setS({ ...s, inv: { ...inv, ...p } });
   const setLevel = (i: number, p: any) => setInv({ levels: inv.levels.map((l: any, j: number) => (j === i ? { ...l, ...p } : l)) });
   const save = async () => {
-    const r = await act(() => api.put('/api/dunning/settings', s), 'Einstellungen gespeichert');
+    const r = await act(() => api.put('/api/dunning/settings', s), tt('Einstellungen gespeichert'));
     if (r) {
       setS(r.settings);
       reload();
     }
   };
-  const reset = (part: 'sub' | 'inv') => confirmAsk('Auf die Standardwerte zurücksetzen?') && setS({ ...s, [part]: JSON.parse(JSON.stringify(data.defaults[part])) });
+  const reset = (part: 'sub' | 'inv') => confirmAsk(tt('Auf die Standardwerte zurücksetzen?')) && setS({ ...s, [part]: JSON.parse(JSON.stringify(data.defaults[part])) });
   return (
     <>
       <div className="cr-panels two">
-        <Panel title="Abo- und Raten-Zahlungen" sub="Was passiert, wenn eine Zahlung nicht durchgeht." tour="dunning-settings-sub" actions={<button className="btn small secondary" onClick={() => reset('sub')}>Standard</button>}>
-          <Check checked={sub.enabled} onChange={(v) => setSub({ enabled: v })} label="Mahnwesen für Abo-Zahlungen aktiv" />
-          <Field label="Wiederholte Einzugsversuche" hint={sub.retry_mode === 'stripe' ? 'Stripe wiederholt selbst (Smart Retries). Stelle Anzahl und Zeitraum im Stripe-Dashboard unter Einstellungen → Abos und E-Mails → Fehlgeschlagene Zahlungen ein.' : 'HyperLevel zieht die offene Rechnung an den angegebenen Tagen selbst erneut ein. Schalte dann die Stripe-Wiederholungen aus.'}>
+        <Panel title={tt('Abo- und Raten-Zahlungen')} sub={tt('Was passiert, wenn eine Zahlung nicht durchgeht.')} tour="dunning-settings-sub" actions={<button className="btn small secondary" onClick={() => reset('sub')}>{tt('Standard')}</button>}>
+          <Check checked={sub.enabled} onChange={(v) => setSub({ enabled: v })} label={tt('Mahnwesen für Abo-Zahlungen aktiv')} />
+          <Field label={tt('Wiederholte Einzugsversuche')} hint={sub.retry_mode === 'stripe' ? tt('Stripe wiederholt selbst (Smart Retries). Stelle Anzahl und Zeitraum im Stripe-Dashboard unter Einstellungen → Abos und E-Mails → Fehlgeschlagene Zahlungen ein.') : tt('HyperLevel zieht die offene Rechnung an den angegebenen Tagen selbst erneut ein. Schalte dann die Stripe-Wiederholungen aus.')}>
             <Select value={sub.retry_mode} onChange={(v) => setSub({ retry_mode: v })} options={[['stripe', 'Stripe (Smart Retries)'], ['own', 'HyperLevel (eigene Tage)']]} />
           </Field>
           {sub.retry_mode === 'own' && (
-            <Field label="Versuche an Tag … nach dem Fehlschlag" hint="Zahlen mit Komma, z. B. 1, 3, 5, 7">
+            <Field label={tt('Versuche an Tag … nach dem Fehlschlag')} hint={tt('Zahlen mit Komma, z. B. 1, 3, 5, 7')}>
               <Input value={listText(sub.retry_days)} onChange={(v) => setSub({ retry_days: numList(v) })} />
             </Field>
           )}
-          <Field label="Erinnerungen an Tag … (0 = sofort)" hint="E-Mail mit dem Link zur Abo-Verwaltung. Zahlen mit Komma, z. B. 0, 3, 7">
+          <Field label={tt('Erinnerungen an Tag … (0 = sofort)')} hint={tt('E-Mail mit dem Link zur Abo-Verwaltung. Zahlen mit Komma, z. B. 0, 3, 7')}>
             <Input value={listText(sub.reminder_days)} onChange={(v) => setSub({ reminder_days: numList(v) })} />
           </Field>
-          <Check checked={sub.send_sms} onChange={(v) => setSub({ send_sms: v })} label="Zusätzlich per SMS erinnern" />
+          <Check checked={sub.send_sms} onChange={(v) => setSub({ send_sms: v })} label={tt('Zusätzlich per SMS erinnern')} />
           <div className="cr-form-row">
-            <Field label="Zugang pausieren nach … Tagen" hint="0 = erst wenn Stripe aufgibt">
+            <Field label={tt('Zugang pausieren nach … Tagen')} hint={tt('0 = erst wenn Stripe aufgibt')}>
               <Input type="number" min={0} max={90} value={sub.final_after_days} onChange={(v) => setSub({ final_after_days: Math.max(0, Number(v) || 0) })} />
             </Field>
-            <Field label="Wenn endgültig gescheitert">
+            <Field label={tt('Wenn endgültig gescheitert')}>
               <Select value={sub.access_on_final} onChange={(v) => setSub({ access_on_final: v })} options={[['pause', 'Zugang pausieren'], ['keep', 'Zugang behalten']]} />
             </Field>
           </div>
-          <Check checked={sub.cancel_on_final} onChange={(v) => setSub({ cancel_on_final: v })} label="Abo dann auch bei Stripe kündigen" />
+          <Check checked={sub.cancel_on_final} onChange={(v) => setSub({ cancel_on_final: v })} label={tt('Abo dann auch bei Stripe kündigen')} />
           <div className="cr-form-row">
-            <Field label="Karte aktualisieren über">
+            <Field label={tt('Karte aktualisieren über')}>
               <Select value={sub.billing_method} onChange={(v) => setSub({ billing_method: v })} options={[['setup', 'HyperLevel-Seite + Stripe Checkout'], ['portal', 'Stripe-Kundenportal']]} />
             </Field>
-            <Field label="Link gültig (Tage)">
+            <Field label={tt('Link gültig (Tage)')}>
               <Input type="number" min={1} max={90} value={sub.link_days} onChange={(v) => setSub({ link_days: Math.max(1, Number(v) || 30) })} />
             </Field>
           </div>
-          <Fold title="Texte der E-Mails und SMS">
-            <p className="cr-hint">Platzhalter: {'{{dunning.url}}'}, {'{{dunning.amount}}'}, {'{{dunning.product}}'}, {'{{dunning.days_left}}'}, {'{{contact.first_name|}}'}, {'{{location.name}}'}</p>
+          <Fold title={tt('Texte der E-Mails und SMS')}>
+            <p className="cr-hint">{tt('Platzhalter:')} {'{{dunning.url}}'}, {'{{dunning.amount}}'}, {'{{dunning.product}}'}, {'{{dunning.days_left}}'}, {'{{contact.first_name|}}'}, {'{{location.name}}'}</p>
             {(
               [
                 ['email', 'Erste Nachricht'],
@@ -582,98 +590,98 @@ function SettingsTab() {
               ] as const
             ).map(([k, label]) => (
               <div key={k}>
-                <Field label={`${label}: Betreff`}>
+                <Field label={tt('{label}: Betreff', { label: label })}>
                   <Input value={sub[`${k}_subject`]} onChange={(v) => setSub({ [`${k}_subject`]: v })} maxLength={300} />
                 </Field>
-                <Field label={`${label}: Text`}>
+                <Field label={tt('{label}: Text', { label: label })}>
                   <Textarea value={sub[`${k}_body`]} onChange={(v) => setSub({ [`${k}_body`]: v })} rows={7} />
                 </Field>
               </div>
             ))}
-            <Field label="SMS-Text">
+            <Field label={tt('SMS-Text')}>
               <Textarea value={sub.sms_body} onChange={(v) => setSub({ sms_body: v })} rows={3} />
             </Field>
           </Fold>
         </Panel>
-        <Panel title="Rechnungen: Erinnerung und Mahnungen" sub="Stufen, Gebühren und Verzugszinsen für überfällige Rechnungen." tour="dunning-settings-inv" actions={<button className="btn small secondary" onClick={() => reset('inv')}>Standard</button>}>
-          <Field label="Betrieb" hint="Start mit Freigabe: nichts geht raus, ohne dass du es gesehen hast.">
+        <Panel title={tt('Rechnungen: Erinnerung und Mahnungen')} sub={tt('Stufen, Gebühren und Verzugszinsen für überfällige Rechnungen.')} tour="dunning-settings-inv" actions={<button className="btn small secondary" onClick={() => reset('inv')}>{tt('Standard')}</button>}>
+          <Field label={tt('Betrieb')} hint={tt('Start mit Freigabe: nichts geht raus, ohne dass du es gesehen hast.')}>
             <Select value={inv.mode} onChange={(v) => setInv({ mode: v })} options={[['off', 'Aus'], ['approval', 'Mit Freigabe'], ['auto', 'Automatisch senden']]} />
           </Field>
           <div className="cr-form-row">
-            <Field label="Mindestabstand zwischen zwei Schreiben (Tage)">
+            <Field label={tt('Mindestabstand zwischen zwei Schreiben (Tage)')}>
               <Input type="number" min={1} max={60} value={inv.min_gap_days} onChange={(v) => setInv({ min_gap_days: Math.max(1, Number(v) || 7) })} />
             </Field>
-            <Field label="Nur Rechnungen ab (€)" hint="Kleinbeträge nicht mahnen – zählt der noch offene Betrag">
+            <Field label={tt('Nur Rechnungen ab (€)')} hint={tt('Kleinbeträge nicht mahnen – zählt der noch offene Betrag')}>
               <Input inputMode="decimal" value={euroText(inv.min_amount_cents)} onChange={(v) => setInv({ min_amount_cents: parseEuro(v) ?? 0 })} />
             </Field>
           </div>
-          <Check checked={inv.sms} onChange={(v) => setInv({ sms: v })} label="Zusätzlich per SMS hinweisen" />
-          <h4 style={{ margin: '14px 0 8px' }}>Stufen</h4>
+          <Check checked={inv.sms} onChange={(v) => setInv({ sms: v })} label={tt('Zusätzlich per SMS hinweisen')} />
+          <h4 style={{ margin: '14px 0 8px' }}>{tt('Stufen')}</h4>
           {inv.levels.map((l: any, i: number) => (
-            <Fold key={l.key} title={`${i + 1}. ${l.label} – ${l.days} Tage nach Fälligkeit${l.fee_cents ? `, ${money(l.fee_cents)} Gebühr` : ''}`}>
-              <Field label="Bezeichnung">
+            <Fold key={l.key} title={`${i + 1}. ${l.label} – ${l.days} Tage nach Fälligkeit${l.fee_cents ? tt(', {money} Gebühr', { money: money(l.fee_cents) }) : ''}`}>
+              <Field label={tt('Bezeichnung')}>
                 <Input value={l.label} onChange={(v) => setLevel(i, { label: v })} maxLength={80} />
               </Field>
               <div className="cr-form-row">
-                <Field label="Tage nach Fälligkeit">
+                <Field label={tt('Tage nach Fälligkeit')}>
                   <Input type="number" min={1} max={365} value={l.days} onChange={(v) => setLevel(i, { days: Math.max(1, Number(v) || 1) })} />
                 </Field>
-                <Field label="Mahngebühr (€)">
+                <Field label={tt('Mahngebühr (€)')}>
                   <Input inputMode="decimal" value={euroText(l.fee_cents)} onChange={(v) => setLevel(i, { fee_cents: parseEuro(v) ?? 0 })} />
                 </Field>
-                <Field label="Zahlungsfrist (Tage)">
+                <Field label={tt('Zahlungsfrist (Tage)')}>
                   <Input type="number" min={1} max={60} value={l.deadline_days} onChange={(v) => setLevel(i, { deadline_days: Math.max(1, Number(v) || 7) })} />
                 </Field>
               </div>
-              <Field label="Betreff">
+              <Field label={tt('Betreff')}>
                 <Input value={l.subject} onChange={(v) => setLevel(i, { subject: v })} maxLength={300} />
               </Field>
-              <Field label="Text" hint="Platzhalter: {{invoice.number}}, {{invoice.total}}, {{invoice.due}}, {{invoice.url}}, {{notice.total}}, {{notice.fee}}, {{notice.prior_fees}}, {{notice.fees}}, {{notice.deadline}}, {{notice.pdf_url}}">
+              <Field label={tt('Text')} hint={tt('Platzhalter: {{invoice.number}}, {{invoice.total}}, {{invoice.due}}, {{invoice.url}}, {{notice.total}}, {{notice.fee}}, {{notice.prior_fees}}, {{notice.fees}}, {{notice.deadline}}, {{notice.pdf_url}}')}>
                 <Textarea value={l.body} onChange={(v) => setLevel(i, { body: v })} rows={9} />
               </Field>
             </Fold>
           ))}
-          <Check checked={inv.carry_fees !== false} onChange={(v) => setInv({ carry_fees: v })} label="Mahngebühren früherer Schreiben in späteren Mahnungen mitfordern" />
-          <p className="muted small" style={{ margin: '2px 0 0 24px' }}>Die 2. Mahnung nennt dann die noch offene Gebühr der 1. Mahnung und fordert sie mit. Ausschalten, wenn die Gebühr jeder Stufe schon die Summe bis dahin ist.</p>
-          <h4 style={{ margin: '14px 0 8px' }}>Verzugszinsen (§ 288 BGB)</h4>
-          <Check checked={inv.interest.enabled} onChange={(v) => setInv({ interest: { ...inv.interest, enabled: v } })} label="Verzugszinsen berechnen" />
+          <Check checked={inv.carry_fees !== false} onChange={(v) => setInv({ carry_fees: v })} label={tt('Mahngebühren früherer Schreiben in späteren Mahnungen mitfordern')} />
+          <p className="muted small" style={{ margin: '2px 0 0 24px' }}>{tt('Die 2. Mahnung nennt dann die noch offene Gebühr der 1. Mahnung und fordert sie mit. Ausschalten, wenn die Gebühr jeder Stufe schon die Summe bis dahin ist.')}</p>
+          <h4 style={{ margin: '14px 0 8px' }}>{tt('Verzugszinsen (§ 288 BGB)')}</h4>
+          <Check checked={inv.interest.enabled} onChange={(v) => setInv({ interest: { ...inv.interest, enabled: v } })} label={tt('Verzugszinsen berechnen')} />
           {inv.interest.enabled && (
             <>
               <div className="cr-form-row">
-                <Field label="Basiszinssatz (% p. a.)" hint="Bundesbank – ändert sich am 1. Januar und 1. Juli. Bitte aktuell halten.">
+                <Field label={tt('Basiszinssatz (% p. a.)')} hint={tt('Bundesbank – ändert sich am 1. Januar und 1. Juli. Bitte aktuell halten.')}>
                   <Input inputMode="decimal" value={String(inv.interest.base_rate).replace('.', ',')} onChange={(v) => setInv({ interest: { ...inv.interest, base_rate: Number(v.replace(',', '.')) || 0 } })} />
                 </Field>
-                <Field label="Aufschlag Verbraucher (%)" hint="gesetzlich 5">
+                <Field label={tt('Aufschlag Verbraucher (%)')} hint={tt('gesetzlich 5')}>
                   <Input inputMode="decimal" value={String(inv.interest.b2c_margin).replace('.', ',')} onChange={(v) => setInv({ interest: { ...inv.interest, b2c_margin: Number(v.replace(',', '.')) || 0 } })} />
                 </Field>
-                <Field label="Aufschlag Unternehmen (%)" hint="gesetzlich 9">
+                <Field label={tt('Aufschlag Unternehmen (%)')} hint={tt('gesetzlich 9')}>
                   <Input inputMode="decimal" value={String(inv.interest.b2b_margin).replace('.', ',')} onChange={(v) => setInv({ interest: { ...inv.interest, b2b_margin: Number(v.replace(',', '.')) || 0 } })} />
                 </Field>
               </div>
               <div className="cr-form-row">
-                <Field label="Kunde gilt als">
+                <Field label={tt('Kunde gilt als')}>
                   <Select value={inv.interest.customer_type} onChange={(v) => setInv({ interest: { ...inv.interest, customer_type: v } })} options={[['auto', 'automatisch (Firma am Kontakt = Unternehmen)'], ['b2c', 'immer Verbraucher'], ['b2b', 'immer Unternehmen']]} />
                 </Field>
-                <Field label="Zinsen ab Stufe">
+                <Field label={tt('Zinsen ab Stufe')}>
                   <Select value={String(inv.interest.from_level)} onChange={(v) => setInv({ interest: { ...inv.interest, from_level: Number(v) } })} options={inv.levels.map((l: any, i: number) => [String(i + 1), `${i + 1}. ${l.label}`] as [string, string])} />
                 </Field>
               </div>
               <div className="cr-form-row">
-                <Field label="Pauschale bei Unternehmen (€)" hint="§ 288 Abs. 5 BGB: 40 €, nur gegenüber Unternehmen">
+                <Field label={tt('Pauschale bei Unternehmen (€)')} hint={tt('§ 288 Abs. 5 BGB: 40 €, nur gegenüber Unternehmen')}>
                   <Input inputMode="decimal" value={euroText(inv.b2b_flat_fee_cents)} onChange={(v) => setInv({ b2b_flat_fee_cents: parseEuro(v) ?? 0 })} />
                 </Field>
-                <Field label="Pauschale ab Stufe">
+                <Field label={tt('Pauschale ab Stufe')}>
                   <Select value={String(inv.flat_fee_from_level)} onChange={(v) => setInv({ flat_fee_from_level: Number(v) })} options={inv.levels.map((l: any, i: number) => [String(i + 1), `${i + 1}. ${l.label}`] as [string, string])} />
                 </Field>
               </div>
             </>
           )}
-          <Callout tone="warn">Das ist keine Rechtsberatung. Gebühren und Zinsen müssen zum Vertrag passen; bei Verbrauchern sind Mahngebühren nur in der Höhe der tatsächlichen Kosten zulässig.</Callout>
+          <Callout tone="warn">{tt('Das ist keine Rechtsberatung. Gebühren und Zinsen müssen zum Vertrag passen; bei Verbrauchern sind Mahngebühren nur in der Höhe der tatsächlichen Kosten zulässig.')}</Callout>
         </Panel>
       </div>
       <div className="actions" style={{ marginTop: 14 }}>
         <button className="btn" data-tour="dunning-save" onClick={save}>
-          Einstellungen speichern
+          {tt('Einstellungen speichern')}
         </button>
       </div>
     </>
@@ -681,14 +689,15 @@ function SettingsTab() {
 }
 
 export function Dunning({ tab: tabParam }: { tab?: string }) {
+  const tt = useT('x_finance');
   const [tab, setTab] = useState(['cases', 'invoices', 'billing', 'settings'].includes(tabParam ?? '') ? tabParam! : 'cases');
   const overview = useLoad(() => api.get('/api/dunning/overview'), []);
   const pending = overview.data?.notices.pending ?? 0;
   return (
     <div className="cr cr-dunning">
-      <PageHead title="Mahnwesen" sub="Zahlungsausfälle bei Abos und Raten auffangen, überfällige Rechnungen freundlich und rechtssicher nachfassen – und Kunden ihr Abo selbst verwalten lassen.">
+      <PageHead title={tt('Mahnwesen')} sub={tt('Zahlungsausfälle bei Abos und Raten auffangen, überfällige Rechnungen freundlich und rechtssicher nachfassen – und Kunden ihr Abo selbst verwalten lassen.')}>
         <Link to="payment-plans" className="btn secondary">
-          Ratenzahlung
+          {tt('Ratenzahlung')}
         </Link>
       </PageHead>
       <Tabs

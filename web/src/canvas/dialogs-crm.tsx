@@ -5,6 +5,7 @@ import { Icon, type IconName } from '../icons';
 import { type CardKind, CARD_KINDS, CARD_LABELS, CARD_SIZE, createElement } from '../../../server/services/canvas-model';
 import { newId } from './store';
 import type { DialogProps } from './dialogs';
+import { useT } from '../i18n';
 
 /** CRM on the board: live cards, notes → tasks/deals, workflows as diagrams, flowcharts as workflows, frames as funnel pages. */
 
@@ -69,6 +70,7 @@ async function load(kind: CardKind, q: string): Promise<Row[]> {
 }
 
 export function CrmDialog({ api: ed, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const [kind, setKind] = useState<CardKind>('contact');
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -98,24 +100,24 @@ export function CrmDialog({ api: ed, onClose }: DialogProps) {
     const y0 = cy - (rowsN * (h + 24) - 24) / 2;
     const els = rs.map((r, i) => createElement({ type: 'card', card: { kind, id: r.id }, x: Math.round(x0 + (i % cols) * (w + 24)), y: Math.round(y0 + Math.floor(i / cols) * (h + 24)), name: r.title.slice(0, 200) }, newId));
     ed.insert(els);
-    toast(els.length === 1 ? 'Live-Karte eingefügt' : `${els.length} Live-Karten eingefügt`);
+    toast(els.length === 1 ? tt('Live-Karte eingefügt') : tt('{length} Live-Karten eingefügt', { length: els.length }));
     onClose();
   };
   return (
     <Modal
-      title="Live-CRM-Karte einfügen"
+      title={tt('Live-CRM-Karte einfügen')}
       onClose={onClose}
       wide
       footer={
         <>
           <span className="muted small" style={{ marginRight: 'auto' }}>
-            {picked.length ? `${picked.length} gewählt` : 'Karten zeigen immer den aktuellen Stand des Datensatzes.'}
+            {picked.length ? tt('{length} gewählt', { length: picked.length }) : tt('Karten zeigen immer den aktuellen Stand des Datensatzes.')}
           </span>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" disabled={!picked.length} onClick={() => insert(picked)}>
-            {picked.length > 1 ? `${picked.length} Karten einfügen` : 'Einfügen'}
+            {picked.length > 1 ? tt('{length} Karten einfügen', { length: picked.length }) : tt('Einfügen')}
           </button>
         </>
       }
@@ -135,11 +137,11 @@ export function CrmDialog({ api: ed, onClose }: DialogProps) {
           </button>
         ))}
       </div>
-      {kind !== 'project' && ['contact', 'company', 'deal', 'task', 'ticket', 'appointment', 'report'].includes(kind) && <Input value={q} onChange={setQ} placeholder={`${CARD_LABELS[kind]} suchen …`} autoFocus aria-label="Suchen" />}
+      {kind !== 'project' && ['contact', 'company', 'deal', 'task', 'ticket', 'appointment', 'report'].includes(kind) && <Input value={q} onChange={setQ} placeholder={tt('{v} suchen …', { v: CARD_LABELS[kind] })} autoFocus aria-label={tt('Suchen')} />}
       <div className="cv-pick-list">
-        {rows === null && <p className="muted">Lädt …</p>}
+        {rows === null && <p className="muted">{tt('Lädt …')}</p>}
         {error && <p className="cv-error">{error}</p>}
-        {rows?.length === 0 && !error && <p className="muted">Nichts gefunden.</p>}
+        {rows?.length === 0 && !error && <p className="muted">{tt('Nichts gefunden.')}</p>}
         {rows?.map((r) => (
           <label key={r.id} className={`cv-pick${picked.some((x) => x.id === r.id) ? ' on' : ''}`}>
             <input type="checkbox" checked={picked.some((x) => x.id === r.id)} onChange={() => toggle(r)} />
@@ -154,7 +156,7 @@ export function CrmDialog({ api: ed, onClose }: DialogProps) {
                 insert([r]);
               }}
             >
-              Einfügen
+              {tt('Einfügen')}
             </button>
           </label>
         ))}
@@ -166,6 +168,7 @@ export function CrmDialog({ api: ed, onClose }: DialogProps) {
 // --- notes → task / deal -------------------------------------------------------------------------------------
 
 function ContactPick({ value, onChange }: { value: { id: string; title: string } | null; onChange: (c: { id: string; title: string } | null) => void }) {
+  const tt = useT('x_misc');
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<Row[]>([]);
   useEffect(() => {
@@ -177,14 +180,14 @@ function ContactPick({ value, onChange }: { value: { id: string; title: string }
     return (
       <div className="cv-picked">
         <Icon name="contact" /> {value.title}{' '}
-        <button className="icon-btn" onClick={() => onChange(null)} aria-label="Kontakt entfernen">
+        <button className="icon-btn" onClick={() => onChange(null)} aria-label={tt('Kontakt entfernen')}>
           ✕
         </button>
       </div>
     );
   return (
     <div>
-      <Input value={q} onChange={setQ} placeholder="Kontakt suchen (optional)" />
+      <Input value={q} onChange={setQ} placeholder={tt('Kontakt suchen (optional)')} />
       {rows.length > 0 && (
         <div className="cv-pick-list short">
           {rows.slice(0, 6).map((r) => (
@@ -201,6 +204,7 @@ function ContactPick({ value, onChange }: { value: { id: string; title: string }
 }
 
 export function ConvertTaskDialog({ api: ed, data, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const ids: string[] = data?.ids ?? ed.selection;
   const n = ids.filter((id) => (ed.store.els.get(id)?.text ?? '').trim()).length;
   const [due, setDue] = useState('');
@@ -210,7 +214,7 @@ export function ConvertTaskDialog({ api: ed, data, onClose }: DialogProps) {
   const go = async () => {
     setBusy(true);
     await ed.store.flush();
-    const r = await act(() => api.post(`/api/canvas/${ed.board.id}/convert`, { element_ids: ids, to: 'task', due_at: due ? new Date(`${due}T00:00:00.000Z`).toISOString() : null, contact_id: contact?.id ?? null, keep, clientId: ed.store.clientId }), n === 1 ? 'Aufgabe angelegt' : `${n} Aufgaben angelegt`);
+    const r = await act(() => api.post(`/api/canvas/${ed.board.id}/convert`, { element_ids: ids, to: 'task', due_at: due ? new Date(`${due}T00:00:00.000Z`).toISOString() : null, contact_id: contact?.id ?? null, keep, clientId: ed.store.clientId }), n === 1 ? tt('Aufgabe angelegt') : tt('{n} Aufgaben angelegt', { n: n }));
     setBusy(false);
     if (r) {
       if (!keep) await ed.catchUpCreated();
@@ -219,32 +223,33 @@ export function ConvertTaskDialog({ api: ed, data, onClose }: DialogProps) {
   };
   return (
     <Modal
-      title="Als Aufgabe anlegen"
+      title={tt('Als Aufgabe anlegen')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" onClick={go} disabled={busy || !n}>
-            {n > 1 ? `${n} Aufgaben anlegen` : 'Aufgabe anlegen'}
+            {n > 1 ? tt('{n} Aufgaben anlegen', { n: n }) : tt('Aufgabe anlegen')}
           </button>
         </>
       }
     >
-      <p className="muted">Die erste Zeile jeder Notiz wird der Titel, der Rest die Beschreibung. Die Notiz wird durch eine Live-Karte der Aufgabe ersetzt.</p>
-      <Field label="Fällig am (optional)">
+      <p className="muted">{tt('Die erste Zeile jeder Notiz wird der Titel, der Rest die Beschreibung. Die Notiz wird durch eine Live-Karte der Aufgabe ersetzt.')}</p>
+      <Field label={tt('Fällig am (optional)')}>
         <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
       </Field>
-      <Field label="Kontakt">
+      <Field label={tt('Kontakt')}>
         <ContactPick value={contact} onChange={setContact} />
       </Field>
-      <Check checked={keep} onChange={setKeep} label="Notiz behalten (zusätzlich zur Karte)" />
+      <Check checked={keep} onChange={setKeep} label={tt('Notiz behalten (zusätzlich zur Karte)')} />
     </Modal>
   );
 }
 
 export function DealDialog({ api: ed, data, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const ids: string[] = data?.ids ?? ed.selection;
   const n = ids.filter((id) => (ed.store.els.get(id)?.text ?? '').trim()).length;
   const pipes = useLoad(() => api.get<any[]>('/api/pipelines'), []);
@@ -261,7 +266,7 @@ export function DealDialog({ api: ed, data, onClose }: DialogProps) {
     await ed.store.flush();
     const r = await act(
       () => api.post(`/api/canvas/${ed.board.id}/convert`, { element_ids: ids, to: 'deal', pipeline_id: pl.id, stage_id: stage || pl.stages?.[0]?.id, contact_id: contact?.id, create_contact: !contact && create, keep, clientId: ed.store.clientId }),
-      n === 1 ? 'Deal angelegt' : `${n} Deals angelegt`,
+      n === 1 ? tt('Deal angelegt') : tt('{n} Deals angelegt', { n: n }),
     );
     setBusy(false);
     if (r) {
@@ -271,20 +276,20 @@ export function DealDialog({ api: ed, data, onClose }: DialogProps) {
   };
   return (
     <Modal
-      title="Als Deal anlegen"
+      title={tt('Als Deal anlegen')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" onClick={go} disabled={busy || !n || !pl || (!contact && !create)}>
-            {n > 1 ? `${n} Deals anlegen` : 'Deal anlegen'}
+            {n > 1 ? tt('{n} Deals anlegen', { n: n }) : tt('Deal anlegen')}
           </button>
         </>
       }
     >
-      <p className="muted">Titel = erste Zeile der Notiz. Steht darin ein Betrag wie „5.000 €“, wird er der Dealwert. Die Notiz wird durch eine Live-Karte des Deals ersetzt.</p>
+      <p className="muted">{tt('Titel = erste Zeile der Notiz. Steht darin ein Betrag wie „5.000 €“, wird er der Dealwert. Die Notiz wird durch eine Live-Karte des Deals ersetzt.')}</p>
       <div className="grid2">
         <Field label="Pipeline">
           <Select
@@ -296,15 +301,15 @@ export function DealDialog({ api: ed, data, onClose }: DialogProps) {
             options={(pipes.data ?? []).map((p) => [p.id, p.name] as [string, string])}
           />
         </Field>
-        <Field label="Stufe">
+        <Field label={tt('Stufe')}>
           <Select value={stage || pl?.stages?.[0]?.id || ''} onChange={setStage} options={(pl?.stages ?? []).map((s: any) => [s.id, s.name] as [string, string])} />
         </Field>
       </div>
-      <Field label="Kontakt" hint="Ein Deal gehört immer zu einem Kontakt.">
+      <Field label={tt('Kontakt')} hint={tt('Ein Deal gehört immer zu einem Kontakt.')}>
         <ContactPick value={contact} onChange={setContact} />
       </Field>
-      {!contact && <Check checked={create} onChange={setCreate} label="Neuen Kontakt aus dem Notiz-Titel anlegen" />}
-      <Check checked={keep} onChange={setKeep} label="Notiz behalten (zusätzlich zur Karte)" />
+      {!contact && <Check checked={create} onChange={setCreate} label={tt('Neuen Kontakt aus dem Notiz-Titel anlegen')} />}
+      <Check checked={keep} onChange={setKeep} label={tt('Notiz behalten (zusätzlich zur Karte)')} />
     </Modal>
   );
 }
@@ -312,6 +317,7 @@ export function DealDialog({ api: ed, data, onClose }: DialogProps) {
 // --- workflows ---------------------------------------------------------------------------------------------------
 
 export function WorkflowDialog({ api: ed, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const wfs = useLoad(() => api.get<any[]>('/api/workflows'), []);
   const [id, setId] = useState('');
   const [busy, setBusy] = useState(false);
@@ -327,26 +333,27 @@ export function WorkflowDialog({ api: ed, onClose }: DialogProps) {
   };
   return (
     <Modal
-      title="Workflow als Diagramm"
+      title={tt('Workflow als Diagramm')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" onClick={go} disabled={busy || !wfs.data?.length}>
-            Zeichnen
+            {tt('Zeichnen')}
           </button>
         </>
       }
     >
-      <p className="muted">Zeichnet Auslöser, Schritte und Verzweigungen einer Automation als Flussdiagramm. Der Rahmen verlinkt auf den Workflow.</p>
-      {wfs.loading ? <p className="muted">Lädt …</p> : wfs.data?.length ? <Select value={id || wfs.data[0].id} onChange={setId} options={wfs.data.map((w) => [w.id, `${w.name}${w.status === 'active' ? '' : ' (Entwurf)'}`] as [string, string])} /> : <p className="muted">Noch keine Automationen angelegt.</p>}
+      <p className="muted">{tt('Zeichnet Auslöser, Schritte und Verzweigungen einer Automation als Flussdiagramm. Der Rahmen verlinkt auf den Workflow.')}</p>
+      {wfs.loading ? <p className="muted">{tt('Lädt …')}</p> : wfs.data?.length ? <Select value={id || wfs.data[0].id} onChange={setId} options={wfs.data.map((w) => [w.id, `${w.name}${w.status === 'active' ? '' : ' (Entwurf)'}`] as [string, string])} /> : <p className="muted">{tt('Noch keine Automationen angelegt.')}</p>}
     </Modal>
   );
 }
 
 export function WorkflowDraftDialog({ api: ed, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const frames = ed.store.ordered.filter((e) => e.type === 'frame');
   const hasSel = ed.selection.length > 1;
   const [scope, setScope] = useState<'selection' | 'frame' | 'board'>(hasSel ? 'selection' : frames.length ? 'frame' : 'board');
@@ -366,9 +373,9 @@ export function WorkflowDraftDialog({ api: ed, onClose }: DialogProps) {
   };
   if (res)
     return (
-      <Modal title="Workflow-Entwurf angelegt" onClose={onClose} footer={<button className="btn" onClick={() => (onClose(), navigate(res.url))}>Workflow öffnen</button>}>
+      <Modal title={tt('Workflow-Entwurf angelegt')} onClose={onClose} footer={<button className="btn" onClick={() => (onClose(), navigate(res.url))}>{tt('Workflow öffnen')}</button>}>
         <p>
-          <b>{res.workflow_name}</b> mit {res.steps} Schritt{res.steps === 1 ? '' : 'en'} ist als <b>Entwurf</b> gespeichert – gestartet wird erst, wenn du ihn im Editor prüfst und einschaltest.
+          <b>{res.workflow_name}</b> {tt('mit {steps} Schritt', { steps: res.steps })}{res.steps === 1 ? '' : 'en'} {tt('ist als')} <b>{tt('Entwurf')}</b> {tt('gespeichert – gestartet wird erst, wenn du ihn im Editor prüfst und einschaltest.')}
         </p>
         {res.notes?.length > 0 && (
           <ul className="cv-notes">
@@ -381,24 +388,24 @@ export function WorkflowDraftDialog({ api: ed, onClose }: DialogProps) {
     );
   return (
     <Modal
-      title="Flussdiagramm → Workflow-Entwurf"
+      title={tt('Flussdiagramm → Workflow-Entwurf')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" onClick={go} disabled={busy || !name.trim() || (scope === 'frame' && !frame)}>
-            Entwurf anlegen
+            {tt('Entwurf anlegen')}
           </button>
         </>
       }
     >
-      <p className="muted">Der Start (ohne eingehenden Pfeil) wird der Auslöser, jede Form ein Schritt – „E-Mail …“, „SMS …“, „Warte 2 Tage“, „Tag: …“, sonst eine Aufgabe. Rauten werden Wenn/Sonst-Verzweigungen. Du prüfst alles im Workflow-Editor.</p>
-      <Field label="Name des Workflows">
+      <p className="muted">{tt('Der Start (ohne eingehenden Pfeil) wird der Auslöser, jede Form ein Schritt – „E-Mail …“, „SMS …“, „Warte 2 Tage“, „Tag: …“, sonst eine Aufgabe. Rauten werden Wenn/Sonst-Verzweigungen. Du prüfst alles im Workflow-Editor.')}</p>
+      <Field label={tt('Name des Workflows')}>
         <Input value={name} onChange={setName} />
       </Field>
-      <Field label="Welcher Teil des Boards?">
+      <Field label={tt('Welcher Teil des Boards?')}>
         <Select
           value={scope}
           onChange={(v) => setScope(v as typeof scope)}
@@ -413,6 +420,7 @@ export function WorkflowDraftDialog({ api: ed, onClose }: DialogProps) {
 // --- frames → funnel pages ----------------------------------------------------------------------------------------
 
 export function FunnelDialog({ api: ed, data, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const frames = useMemo(() => ed.store.ordered.filter((e) => e.type === 'frame' && !e.hidden).sort((a, b) => a.x - b.x || a.y - b.y), [ed.store.rev]); // eslint-disable-line react-hooks/exhaustive-deps
   const funnels = useLoad(() => api.get<any[]>('/api/funnels'), []);
   const [picked, setPicked] = useState<string[]>(() => (data?.frameIds?.length ? data.frameIds : frames.map((f) => f.id)));
@@ -431,8 +439,8 @@ export function FunnelDialog({ api: ed, data, onClose }: DialogProps) {
   };
   if (res)
     return (
-      <Modal title="Funnel-Seiten angelegt" onClose={onClose} footer={<button className="btn" onClick={() => (onClose(), navigate(res.url))}>Funnel öffnen</button>}>
-        <p>{res.pages.length} Seite{res.pages.length === 1 ? '' : 'n'} aus den Rahmen erzeugt. Überschriften, Texte, Bilder und Buttons wurden übernommen – Feinschliff im Funnel-Editor.</p>
+      <Modal title={tt('Funnel-Seiten angelegt')} onClose={onClose} footer={<button className="btn" onClick={() => (onClose(), navigate(res.url))}>{tt('Funnel öffnen')}</button>}>
+        <p>{tt('{length} Seite', { length: res.pages.length })}{res.pages.length === 1 ? '' : 'n'} {tt('aus den Rahmen erzeugt. Überschriften, Texte, Bilder und Buttons wurden übernommen – Feinschliff im Funnel-Editor.')}</p>
         <ul className="cv-notes">
           {res.pages.map((p: any) => (
             <li key={p.page_id}>{p.name}</li>
@@ -442,41 +450,41 @@ export function FunnelDialog({ api: ed, data, onClose }: DialogProps) {
     );
   return (
     <Modal
-      title="Rahmen → Funnel-Seiten"
+      title={tt('Rahmen → Funnel-Seiten')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" onClick={go} disabled={busy || !picked.length || (target === 'new' && !name.trim())}>
-            Funnel-Seiten anlegen
+            {tt('Funnel-Seiten anlegen')}
           </button>
         </>
       }
       wide
     >
       {!frames.length ? (
-        <p className="muted">Auf dem Board gibt es noch keine Rahmen. Lege für jede Seite einen Rahmen an (z. B. „Mobile 390“ oder „Desktop 1440“) und gestalte ihn.</p>
+        <p className="muted">{tt('Auf dem Board gibt es noch keine Rahmen. Lege für jede Seite einen Rahmen an (z. B. „Mobile 390“ oder „Desktop 1440“) und gestalte ihn.')}</p>
       ) : (
         <>
-          <p className="muted">Jeder gewählte Rahmen wird eine Seite – von links nach rechts. Texte werden Überschriften und Absätze, farbige Formen mit Text Buttons, Bilder bleiben Bilder.</p>
+          <p className="muted">{tt('Jeder gewählte Rahmen wird eine Seite – von links nach rechts. Texte werden Überschriften und Absätze, farbige Formen mit Text Buttons, Bilder bleiben Bilder.')}</p>
           <div className="cv-pick-list short">
             {frames.map((f) => (
               <label key={f.id} className={`cv-pick${picked.includes(f.id) ? ' on' : ''}`}>
                 <input type="checkbox" checked={picked.includes(f.id)} onChange={() => setPicked((p) => (p.includes(f.id) ? p.filter((x) => x !== f.id) : [...p, f.id]))} />
                 <span>
-                  <b>{f.name ?? 'Rahmen'}</b> <small className="muted">{Math.round(f.w)}×{Math.round(f.h)}</small>
+                  <b>{f.name ?? tt('Rahmen')}</b> <small className="muted">{Math.round(f.w)}×{Math.round(f.h)}</small>
                 </span>
               </label>
             ))}
           </div>
           <div className="grid2">
-            <Field label="Ziel">
+            <Field label={tt('Ziel')}>
               <Select value={target} onChange={setTarget} options={[['new', 'Neuer Funnel'], ...(funnels.data ?? []).map((f) => [f.id, `In „${f.name}“ ergänzen`] as [string, string])]} />
             </Field>
             {target === 'new' && (
-              <Field label="Name des Funnels">
+              <Field label={tt('Name des Funnels')}>
                 <Input value={name} onChange={setName} />
               </Field>
             )}

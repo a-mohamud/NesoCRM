@@ -3,6 +3,7 @@ import { api, d, dt } from '../api';
 import { Badge, Check, Empty, Field, Input, Modal, Select, Spinner, Textarea, act, confirmAsk, useLoad } from '../ui';
 import { MarkdownEditor } from './ContentKit';
 import { MemberPick, NumberField, Sec, Sub, run } from './CommunityParts';
+import { useT } from '../i18n';
 
 /**
  * Community → Aktivierung: badges (by hand or by rule), perks and channels that open with a level or a tier, challenges with daily
@@ -36,6 +37,7 @@ export function EngageTab({ group, onChange }: { group: any; onChange: () => voi
 
 // --- badges -------------------------------------------------------------------------------------------------------------------
 function Badges({ group }: { group: any }) {
+  const tt = useT('x_community');
   const r = useLoad(() => api.get<any>(`/api/community/groups/${group.id}/badges`), [group.id]);
   const [edit, setEdit] = useState<any>(null);
   const [award, setAward] = useState<any>(null);
@@ -46,28 +48,28 @@ function Badges({ group }: { group: any }) {
         {r.data.badges.map((b: any) => (
           <Sec key={b.id} title={`${b.emoji || '🏅'} ${b.name}`} lead={b.description || undefined}>
             <div className="cma-chips">
-              <Badge tone={b.rule.type === 'manual' ? 'gray' : 'blue'}>{b.rule.type === 'manual' ? 'Von Hand' : `${r.data.rules[b.rule.type]}: ${b.rule.value}`}</Badge>
-              {b.points > 0 && <Badge tone="green">+{b.points} Punkte</Badge>}
+              <Badge tone={b.rule.type === 'manual' ? 'gray' : 'blue'}>{b.rule.type === 'manual' ? tt('Von Hand') : `${r.data.rules[b.rule.type]}: ${b.rule.value}`}</Badge>
+              {b.points > 0 && <Badge tone="green">{tt('+{points} Punkte', { points: b.points })}</Badge>}
               <Badge>{b.awarded} vergeben</Badge>
             </div>
             <div className="cma-actions">
               <button className="btn secondary" onClick={() => setEdit(b)}>
-                Bearbeiten
+                {tt('Bearbeiten')}
               </button>
               <button className="btn" onClick={() => setAward(b)}>
-                Vergeben
+                {tt('Vergeben')}
               </button>
             </div>
           </Sec>
         ))}
-        <Sec title="Neues Abzeichen" lead="Abzeichen erscheinen auf dem Profil. Du vergibst sie von Hand oder lässt sie sich nach einer Regel selbst verdienen (z. B. 10 Beiträge, 30 Tage in Folge aktiv).">
+        <Sec title={tt('Neues Abzeichen')} lead={tt('Abzeichen erscheinen auf dem Profil. Du vergibst sie von Hand oder lässt sie sich nach einer Regel selbst verdienen (z. B. 10 Beiträge, 30 Tage in Folge aktiv).')}>
           <button className="btn" onClick={() => setEdit({ name: '', emoji: '🏅', color: '', description: '', points: 0, rule: { type: 'manual', value: 0 } })}>
-            + Abzeichen anlegen
+            {tt('+ Abzeichen anlegen')}
           </button>
           {r.data.badges.some((b: any) => b.rule.type !== 'manual') && (
             <div className="cma-actions">
               <button className="btn secondary" onClick={() => run(() => api.post(`/api/community/groups/${group.id}/badges/evaluate`), 'Geprüft', () => void r.reload())}>
-                Regeln jetzt für alle prüfen
+                {tt('Regeln jetzt für alle prüfen')}
               </button>
             </div>
           )}
@@ -80,6 +82,7 @@ function Badges({ group }: { group: any }) {
 }
 
 function BadgeEditor({ group, badge, rules, onClose, onDone }: { group: any; badge: any; rules: Record<string, string>; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_community');
   const [f, setF] = useState<any>({ ...badge, rule: { ...badge.rule } });
   const [preview, setPreview] = useState<number | null>(null);
   const set = (patch: any) => setF((x: any) => ({ ...x, ...patch }));
@@ -90,17 +93,17 @@ function BadgeEditor({ group, badge, rules, onClose, onDone }: { group: any; bad
   };
   return (
     <Modal
-      title={badge.id ? `Abzeichen „${badge.name}“` : 'Neues Abzeichen'}
+      title={badge.id ? tt('Abzeichen „{name}“', { name: badge.name }) : tt('Neues Abzeichen')}
       onClose={onClose}
       footer={
         <>
           {badge.id && (
-            <button className="btn danger" onClick={async () => (await confirmAsk(`Abzeichen „${badge.name}“ löschen? Es verschwindet bei allen Mitgliedern.`)) && (await act(() => api.del(`/api/community/badges/${badge.id}`), 'Gelöscht')) && onDone()}>
-              Löschen
+            <button className="btn danger" onClick={async () => (await confirmAsk(tt('Abzeichen „{name}“ löschen? Es verschwindet bei allen Mitgliedern.', { name: badge.name }))) && (await act(() => api.del(`/api/community/badges/${badge.id}`), tt('Gelöscht'))) && onDone()}>
+              {tt('Löschen')}
             </button>
           )}
-          <button className="btn" disabled={!f.name.trim()} onClick={async () => (await act(() => (badge.id ? api.patch(`/api/community/badges/${badge.id}`, body) : api.post(`/api/community/groups/${group.id}/badges`, body)), 'Gespeichert')) && onDone()}>
-            Speichern
+          <button className="btn" disabled={!f.name.trim()} onClick={async () => (await act(() => (badge.id ? api.patch(`/api/community/badges/${badge.id}`, body) : api.post(`/api/community/groups/${group.id}/badges`, body)), tt('Gespeichert'))) && onDone()}>
+            {tt('Speichern')}
           </button>
         </>
       }
@@ -110,30 +113,30 @@ function BadgeEditor({ group, badge, rules, onClose, onDone }: { group: any; bad
           <Field label="Name">
             <Input value={f.name} maxLength={60} onChange={(v) => set({ name: v })} autoFocus />
           </Field>
-          <Field label="Symbol (Emoji)">
+          <Field label={tt('Symbol (Emoji)')}>
             <Input value={f.emoji} maxLength={4} onChange={(v) => set({ emoji: v })} />
           </Field>
         </div>
-        <Field label="Beschreibung">
-          <Input value={f.description} maxLength={300} onChange={(v) => set({ description: v })} placeholder="z. B. Von Anfang an dabei" />
+        <Field label={tt('Beschreibung')}>
+          <Input value={f.description} maxLength={300} onChange={(v) => set({ description: v })} placeholder={tt('z. B. Von Anfang an dabei')} />
         </Field>
         <div className="cma-two">
-          <Field label="Farbe (freiwillig)">
+          <Field label={tt('Farbe (freiwillig)')}>
             <Input type="color" value={f.color || '#2563eb'} onChange={(v) => set({ color: v })} />
           </Field>
-          <NumberField label="Bonuspunkte" min={0} max={1000} value={f.points} onChange={(v) => set({ points: v ?? 0 })} />
+          <NumberField label={tt('Bonuspunkte')} min={0} max={1000} value={f.points} onChange={(v) => set({ points: v ?? 0 })} />
         </div>
-        <Field label="Wie bekommt man es?">
+        <Field label={tt('Wie bekommt man es?')}>
           <Select value={f.rule.type} onChange={(v) => (set({ rule: { type: v, value: v === 'manual' ? 0 : f.rule.value || 1 } }), setPreview(null))} options={Object.entries(rules)} />
         </Field>
         {f.rule.type !== 'manual' && (
           <>
-            <NumberField label="Ab wie viel" min={1} value={f.rule.value} onChange={(v) => (set({ rule: { ...f.rule, value: v ?? 1 } }), setPreview(null))} />
+            <NumberField label={tt('Ab wie viel')} min={1} value={f.rule.value} onChange={(v) => (set({ rule: { ...f.rule, value: v ?? 1 } }), setPreview(null))} />
             <div className="cma-actions" style={{ marginTop: 0 }}>
               <button className="btn secondary" onClick={showPreview}>
-                Wer erfüllt das schon?
+                {tt('Wer erfüllt das schon?')}
               </button>
-              {preview !== null && <span>{preview} Mitglieder</span>}
+              {preview !== null && <span>{tt('{preview} Mitglieder', { preview: preview })}</span>}
             </div>
           </>
         )}
@@ -143,6 +146,7 @@ function BadgeEditor({ group, badge, rules, onClose, onDone }: { group: any; bad
 }
 
 function AwardModal({ group, badge, onClose, onDone }: { group: any; badge: any; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_community');
   const [reason, setReason] = useState('');
   const awards = useLoad(() => api.get<any[]>(`/api/community/badges/${badge.id}/awards`), [badge.id]);
   const give = async (m: any) => {
@@ -153,13 +157,13 @@ function AwardModal({ group, badge, onClose, onDone }: { group: any; badge: any;
     }
   };
   return (
-    <Modal title={`„${badge.name}“ vergeben`} onClose={onClose} wide>
+    <Modal title={tt('„{name}“ vergeben', { name: badge.name })} onClose={onClose} wide>
       <div className="cma">
-        <Field label="Grund (freiwillig, nur für dich)">
+        <Field label={tt('Grund (freiwillig, nur für dich)')}>
           <Input value={reason} onChange={setReason} />
         </Field>
         <MemberPick group={group} onPick={give} />
-        <h4 style={{ margin: '8px 0 0' }}>Haben es schon ({awards.data?.length ?? 0})</h4>
+        <h4 style={{ margin: '8px 0 0' }}>{tt('Haben es schon ({v})', { v: awards.data?.length ?? 0 })}</h4>
         <ul className="cma-list">
           {(awards.data ?? []).map((a) => (
             <li key={a.contact_id}>
@@ -167,12 +171,12 @@ function AwardModal({ group, badge, onClose, onDone }: { group: any; badge: any;
                 <strong>{a.name}</strong>
                 <div className="muted small">
                   {d(a.awarded_at)}
-                  {a.awarded_by ? ` · ${a.awarded_by}` : ' · automatisch'}
+                  {a.awarded_by ? ` · ${a.awarded_by}` : tt(' · automatisch')}
                   {a.reason ? ` · ${a.reason}` : ''}
                 </div>
               </div>
-              <button className="btn small ghost" onClick={async () => (await act(() => api.del(`/api/community/badges/${badge.id}/award/${a.contact_id}`), 'Zurückgenommen')) && (void awards.reload(), onDone())}>
-                Zurücknehmen
+              <button className="btn small ghost" onClick={async () => (await act(() => api.del(`/api/community/badges/${badge.id}/award/${a.contact_id}`), tt('Zurückgenommen'))) && (void awards.reload(), onDone())}>
+                {tt('Zurücknehmen')}
               </button>
             </li>
           ))}
@@ -186,6 +190,7 @@ function AwardModal({ group, badge, onClose, onDone }: { group: any; badge: any;
 const PERK_KINDS: [string, string][] = [['coupon', 'Gutscheincode'], ['file', 'Download'], ['link', 'Link'], ['text', 'Text']];
 
 function Perks({ group }: { group: any }) {
+  const tt = useT('x_community');
   const unlocks = useLoad(() => api.get<any[]>(`/api/community/groups/${group.id}/unlocks`), [group.id]);
   const rules = useLoad(() => api.get<any[]>(`/api/community/groups/${group.id}/channel-rules`), [group.id]);
   const join = useLoad(() => api.get<any>(`/api/community/groups/${group.id}/join`), [group.id]);
@@ -196,23 +201,23 @@ function Perks({ group }: { group: any }) {
   return (
     <>
       <div className="cma-grid">
-        <Sec title="Was sich bei welchem Level öffnet" lead="Kurse stellst du unter Einstellungen → Level ein. Hier kommen Gutscheincodes, Downloads, Links und Texte dazu – und gesperrte Kanäle (rechts).">
+        <Sec title={tt('Was sich bei welchem Level öffnet')} lead={tt('Kurse stellst du unter Einstellungen → Level ein. Hier kommen Gutscheincodes, Downloads, Links und Texte dazu – und gesperrte Kanäle (rechts).')}>
           <ul className="cma-list">
             {unlocks.data.map((l) => (
               <li key={l.level} style={{ alignItems: 'flex-start' }}>
                 <div className="grow">
                   <strong>
-                    Level {l.level}: {l.name}
+                    {tt('Level {level}: {name}', { level: l.level, name: l.name })}
                   </strong>{' '}
-                  <span className="muted small">ab {l.points} Punkten</span>
+                  <span className="muted small">{tt('ab {points} Punkten', { points: l.points })}</span>
                   {l.courses.map((c: string) => (
                     <div key={c} className="small">
-                      🎓 Kurs: {c}
+                      {tt('🎓 Kurs: {c}', { c: c })}
                     </div>
                   ))}
                   {l.channels.map((c: string) => (
                     <div key={c} className="small">
-                      💬 Kanal: {c}
+                      {tt('💬 Kanal: {c}', { c: c })}
                     </div>
                   ))}
                   {l.perks.map((p: any) => (
@@ -224,13 +229,13 @@ function Perks({ group }: { group: any }) {
                   ))}
                 </div>
                 <button className="btn small secondary" onClick={() => setEdit({ kind: 'coupon', level: l.level, title: '', body: '', note: '' })}>
-                  + Vorteil
+                  {tt('+ Vorteil')}
                 </button>
               </li>
             ))}
           </ul>
         </Sec>
-        <Sec title="Kanäle freischalten" lead="Ein Kanal kann ab einem Level oder nur für bestimmte Stufen offen sein. Wer ihn noch nicht öffnen darf, sieht den Grund. Team und Moderatoren sehen alles.">
+        <Sec title={tt('Kanäle freischalten')} lead={tt('Ein Kanal kann ab einem Level oder nur für bestimmte Stufen offen sein. Wer ihn noch nicht öffnen darf, sieht den Grund. Team und Moderatoren sehen alles.')}>
           {rules.data.length ? (
             <ul className="cma-list">
               {rules.data.map((c) => (
@@ -239,7 +244,7 @@ function Perks({ group }: { group: any }) {
                     <strong>
                       {c.emoji} {c.name}
                     </strong>
-                    {c.admin_only && <span className="muted small"> · nur Team</span>}
+                    {c.admin_only && <span className="muted small"> {tt('· nur Team')}</span>}
                     {tiers.length > 1 && (
                       <div className="cma-chips" style={{ marginTop: 6 }}>
                         {tiers.map((t) => (
@@ -257,7 +262,7 @@ function Perks({ group }: { group: any }) {
               ))}
             </ul>
           ) : (
-            <p className="muted">Die Gruppe hat noch keine Kanäle.</p>
+            <p className="muted">{tt('Die Gruppe hat noch keine Kanäle.')}</p>
           )}
         </Sec>
       </div>
@@ -267,13 +272,14 @@ function Perks({ group }: { group: any }) {
 }
 
 function PerkEditor({ group, perk, levels, onClose, onDone }: { group: any; perk: any; levels: any[]; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_community');
   const [f, setF] = useState<any>({ ...perk });
   const [file, setFile] = useState<{ name: string; data: string } | null>(null);
   const set = (patch: any) => setF((x: any) => ({ ...x, ...patch }));
   const pick = (el: HTMLInputElement) => {
     const fl = el.files?.[0];
     if (!fl) return;
-    if (fl.size > 8 * 1024 * 1024) return void alert('Die Datei ist größer als 8 MB.');
+    if (fl.size > 8 * 1024 * 1024) return void alert(tt('Die Datei ist größer als 8 MB.'));
     const rd = new FileReader();
     rd.onload = () => setFile({ name: fl.name, data: String(rd.result) });
     rd.readAsDataURL(fl);
@@ -286,61 +292,61 @@ function PerkEditor({ group, perk, levels, onClose, onDone }: { group: any; perk
       const x = await api.patch(`/api/community/perks/${perk.id}`, body);
       if (f.kind === 'file' && file) await api.put(`/api/community/perks/${perk.id}/file`, file);
       return x;
-    }, 'Gespeichert');
+    }, tt('Gespeichert'));
     if (r) onDone();
   };
   return (
     <Modal
-      title={perk.id ? `Vorteil „${perk.title}“` : 'Neuer Vorteil'}
+      title={perk.id ? tt('Vorteil „{title}“', { title: perk.title }) : tt('Neuer Vorteil')}
       onClose={onClose}
       footer={
         <>
           {perk.id && (
-            <button className="btn danger" onClick={async () => (await confirmAsk('Vorteil löschen?')) && (await act(() => api.del(`/api/community/perks/${perk.id}`), 'Gelöscht')) && onDone()}>
-              Löschen
+            <button className="btn danger" onClick={async () => (await confirmAsk(tt('Vorteil löschen?'))) && (await act(() => api.del(`/api/community/perks/${perk.id}`), tt('Gelöscht'))) && onDone()}>
+              {tt('Löschen')}
             </button>
           )}
           <button className="btn" disabled={!f.title.trim() || (f.kind !== 'file' && !f.body?.trim() && !perk.id)} onClick={save}>
-            Speichern
+            {tt('Speichern')}
           </button>
         </>
       }
     >
       <div className="cma">
         <div className="cma-two">
-          <Field label="Art">
+          <Field label={tt('Art')}>
             <Select value={f.kind} onChange={(v) => set({ kind: v })} options={PERK_KINDS} />
           </Field>
-          <Field label="Freigeschaltet ab">
+          <Field label={tt('Freigeschaltet ab')}>
             <Select value={String(f.level)} onChange={(v) => set({ level: Number(v) })} options={levels.map((l) => [String(l.level), `Level ${l.level}: ${l.name}`])} />
           </Field>
         </div>
-        <Field label="Titel">
-          <Input value={f.title} maxLength={120} onChange={(v) => set({ title: v })} autoFocus placeholder="z. B. 20 % auf alle Kurse" />
+        <Field label={tt('Titel')}>
+          <Input value={f.title} maxLength={120} onChange={(v) => set({ title: v })} autoFocus placeholder={tt('z. B. 20 % auf alle Kurse')} />
         </Field>
         {f.kind === 'coupon' && (
-          <Field label="Gutscheincode" hint="Ohne Leerzeichen. Den passenden Rabattcode legst du bei den Produkten oder unter Beitritt → Rabattcodes an.">
+          <Field label={tt('Gutscheincode')} hint={tt('Ohne Leerzeichen. Den passenden Rabattcode legst du bei den Produkten oder unter Beitritt → Rabattcodes an.')}>
             <Input value={f.body} maxLength={80} onChange={(v) => set({ body: v })} />
           </Field>
         )}
         {f.kind === 'link' && (
-          <Field label="Link (https://)">
+          <Field label={tt('Link (https://)')}>
             <Input value={f.body} onChange={(v) => set({ body: v })} placeholder="https://…" />
           </Field>
         )}
         {f.kind === 'text' && (
-          <Field label="Text">
+          <Field label={tt('Text')}>
             <Textarea rows={5} value={f.body} onChange={(v) => set({ body: v })} />
           </Field>
         )}
         {f.kind === 'file' && (
           <div className="cma-drop">
-            <p style={{ marginTop: 0 }}>{file ? <strong>{file.name}</strong> : perk.filename ? <>Aktuell: <strong>{perk.filename}</strong></> : 'PDF, ZIP, Bilder, Office-Dateien – bis 8 MB'}</p>
-            <input type="file" onChange={(e) => pick(e.target)} aria-label="Datei wählen" />
+            <p style={{ marginTop: 0 }}>{file ? <strong>{file.name}</strong> : perk.filename ? <>{tt('Aktuell:')} <strong>{perk.filename}</strong></> : tt('PDF, ZIP, Bilder, Office-Dateien – bis 8 MB')}</p>
+            <input type="file" onChange={(e) => pick(e.target)} aria-label={tt('Datei wählen')} />
           </div>
         )}
-        <Field label="Hinweis für Mitglieder (freiwillig)">
-          <Input value={f.note ?? ''} maxLength={400} onChange={(v) => set({ note: v })} placeholder="z. B. Gültig bis Jahresende" />
+        <Field label={tt('Hinweis für Mitglieder (freiwillig)')}>
+          <Input value={f.note ?? ''} maxLength={400} onChange={(v) => set({ note: v })} placeholder={tt('z. B. Gültig bis Jahresende')} />
         </Field>
       </div>
     </Modal>
@@ -351,6 +357,7 @@ function PerkEditor({ group, perk, levels, onClose, onDone }: { group: any; perk
 const ymd = (offset = 0) => new Date(Date.now() + offset * 864e5).toISOString().slice(0, 10);
 
 function Challenges({ group }: { group: any }) {
+  const tt = useT('x_community');
   const list = useLoad(() => api.get<any[]>(`/api/community/groups/${group.id}/challenges`), [group.id]);
   const badges = useLoad(() => api.get<any>(`/api/community/groups/${group.id}/badges`), [group.id]);
   const [edit, setEdit] = useState<any>(null);
@@ -363,24 +370,24 @@ function Challenges({ group }: { group: any }) {
         {list.data.map((c) => (
           <Sec key={c.id} title={`${c.emoji || '🔥'} ${c.title}`} lead={`${d(c.starts_on)} – ${d(c.ends_on)} · ${c.days} Tage · Ziel: ${c.goal_days} Check-ins`}>
             <div className="cma-chips">
-              <Badge tone={c.status === 'active' ? 'green' : c.status === 'draft' ? 'gray' : 'blue'}>{c.status === 'active' ? 'Offen' : c.status === 'draft' ? 'Entwurf' : 'Archiviert'}</Badge>
-              <Badge tone={c.phase === 'running' ? 'yellow' : 'gray'}>{c.phase === 'running' ? 'Läuft' : c.phase === 'upcoming' ? 'Startet bald' : 'Vorbei'}</Badge>
-              <Badge>{c.members} Teilnehmer</Badge>
+              <Badge tone={c.status === 'active' ? 'green' : c.status === 'draft' ? 'gray' : 'blue'}>{c.status === 'active' ? tt('Offen') : c.status === 'draft' ? tt('Entwurf') : tt('Archiviert')}</Badge>
+              <Badge tone={c.phase === 'running' ? 'yellow' : 'gray'}>{c.phase === 'running' ? tt('Läuft') : c.phase === 'upcoming' ? tt('Startet bald') : tt('Vorbei')}</Badge>
+              <Badge>{tt('{members} Teilnehmer', { members: c.members })}</Badge>
               <Badge tone="green">{c.done} geschafft</Badge>
             </div>
             <div className="cma-actions">
               <button className="btn secondary" onClick={() => open(c)}>
-                Bearbeiten
+                {tt('Bearbeiten')}
               </button>
               <button className="btn secondary" onClick={() => setView(c)}>
-                Teilnehmer
+                {tt('Teilnehmer')}
               </button>
             </div>
           </Sec>
         ))}
-        <Sec title="Neue Challenge" lead="Eine Aufgabe auf Zeit – z. B. „30 Tage Schreiben“. Mitglieder checken täglich ein, sammeln Punkte und stehen auf einer eigenen Rangliste.">
+        <Sec title={tt('Neue Challenge')} lead={tt('Eine Aufgabe auf Zeit – z. B. „30 Tage Schreiben“. Mitglieder checken täglich ein, sammeln Punkte und stehen auf einer eigenen Rangliste.')}>
           <button className="btn" onClick={() => setEdit({ title: '', emoji: '🔥', description: '', starts_on: ymd(1), ends_on: ymd(30), goal_days: null, status: 'draft', points_checkin: null, points_complete: null, badge_id: '', require_note: false, reminder_hour: 18, tasks: [] })}>
-            + Challenge anlegen
+            {tt('+ Challenge anlegen')}
           </button>
         </Sec>
       </div>
@@ -391,6 +398,7 @@ function Challenges({ group }: { group: any }) {
 }
 
 function ChallengeEditor({ group, challenge, badges, onClose, onDone }: { group: any; challenge: any; badges: any[]; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_community');
   const [f, setF] = useState<any>({ ...challenge, badge_id: challenge.badge_id ?? '', tasks: challenge.tasks ?? [] });
   const set = (patch: any) => setF((x: any) => ({ ...x, ...patch }));
   const days = Math.max(1, Math.round((Date.parse(f.ends_on) - Date.parse(f.starts_on)) / 864e5) + 1) || 1;
@@ -415,61 +423,61 @@ function ChallengeEditor({ group, challenge, badges, onClose, onDone }: { group:
     reminder_hour: f.reminder_hour,
     tasks: f.tasks.filter((t: any) => t.title.trim() && t.day <= days),
   });
-  const save = async () => (await act(() => (challenge.id ? api.patch(`/api/community/challenges/${challenge.id}`, body()) : api.post(`/api/community/groups/${group.id}/challenges`, body())), 'Gespeichert')) && onDone();
+  const save = async () => (await act(() => (challenge.id ? api.patch(`/api/community/challenges/${challenge.id}`, body()) : api.post(`/api/community/groups/${group.id}/challenges`, body())), tt('Gespeichert'))) && onDone();
   return (
     <Modal
-      title={challenge.id ? `Challenge „${challenge.title}“` : 'Neue Challenge'}
+      title={challenge.id ? tt('Challenge „{title}“', { title: challenge.title }) : tt('Neue Challenge')}
       onClose={onClose}
       wide
       footer={
         <>
           {challenge.id && (
-            <button className="btn danger" onClick={async () => (await confirmAsk(`Challenge „${challenge.title}“ mit allen Check-ins löschen?`)) && (await act(() => api.del(`/api/community/challenges/${challenge.id}`), 'Gelöscht')) && onDone()}>
-              Löschen
+            <button className="btn danger" onClick={async () => (await confirmAsk(tt('Challenge „{title}“ mit allen Check-ins löschen?', { title: challenge.title }))) && (await act(() => api.del(`/api/community/challenges/${challenge.id}`), tt('Gelöscht'))) && onDone()}>
+              {tt('Löschen')}
             </button>
           )}
           <button className="btn" disabled={!f.title.trim()} onClick={save}>
-            Speichern
+            {tt('Speichern')}
           </button>
         </>
       }
     >
       <div className="cma">
         <div className="cma-two">
-          <Field label="Titel">
+          <Field label={tt('Titel')}>
             <Input value={f.title} maxLength={120} onChange={(v) => set({ title: v })} autoFocus />
           </Field>
-          <Field label="Symbol">
+          <Field label={tt('Symbol')}>
             <Input value={f.emoji} maxLength={4} onChange={(v) => set({ emoji: v })} />
           </Field>
         </div>
-        <Field label="Beschreibung (Markdown)">
+        <Field label={tt('Beschreibung (Markdown)')}>
           <MarkdownEditor value={f.description} onChange={(v) => set({ description: v })} rows={6} />
         </Field>
         <div className="cma-two">
-          <Field label="Erster Tag">
+          <Field label={tt('Erster Tag')}>
             <Input type="date" value={f.starts_on} onChange={(v) => set({ starts_on: v })} />
           </Field>
-          <Field label="Letzter Tag" hint={`${days} Tage`}>
+          <Field label={tt('Letzter Tag')} hint={tt('{days} Tage', { days: days })}>
             <Input type="date" value={f.ends_on} onChange={(v) => set({ ends_on: v })} />
           </Field>
-          <NumberField label="Ziel: so viele Check-ins" min={1} max={days} value={f.goal_days} onChange={(v) => set({ goal_days: v })} hint="Leer = alle Tage" />
+          <NumberField label={tt('Ziel: so viele Check-ins')} min={1} max={days} value={f.goal_days} onChange={(v) => set({ goal_days: v })} hint={tt('Leer = alle Tage')} />
           <Field label="Status">
             <Select value={f.status} onChange={(v) => set({ status: v })} options={[['draft', 'Entwurf (Mitglieder sehen nichts)'], ['active', 'Offen'], ['archived', 'Archiviert']]} />
           </Field>
         </div>
         <div className="cma-two">
-          <NumberField label="Punkte je Check-in" min={0} max={1000} value={f.points_checkin} onChange={(v) => set({ points_checkin: v })} hint="Leer = Standard der Gruppe" />
-          <NumberField label="Bonus bei Abschluss" min={0} max={1000} value={f.points_complete} onChange={(v) => set({ points_complete: v })} hint="Leer = Standard der Gruppe" />
-          <Field label="Abzeichen bei Abschluss">
+          <NumberField label={tt('Punkte je Check-in')} min={0} max={1000} value={f.points_checkin} onChange={(v) => set({ points_checkin: v })} hint={tt('Leer = Standard der Gruppe')} />
+          <NumberField label={tt('Bonus bei Abschluss')} min={0} max={1000} value={f.points_complete} onChange={(v) => set({ points_complete: v })} hint={tt('Leer = Standard der Gruppe')} />
+          <Field label={tt('Abzeichen bei Abschluss')}>
             <Select value={f.badge_id} onChange={(v) => set({ badge_id: v })} placeholder="keins" options={badges.map((b) => [b.id, `${b.emoji} ${b.name}`])} />
           </Field>
-          <NumberField label="Erinnerung um … Uhr" min={0} max={23} value={f.reminder_hour} onChange={(v) => set({ reminder_hour: v })} hint="Leer = keine Erinnerung" />
+          <NumberField label={tt('Erinnerung um … Uhr')} min={0} max={23} value={f.reminder_hour} onChange={(v) => set({ reminder_hour: v })} hint={tt('Leer = keine Erinnerung')} />
         </div>
-        <Check checked={!!f.require_note} onChange={(v) => set({ require_note: v })} label="Beim Check-in einen kurzen Text verlangen" />
-        <h4 style={{ margin: '8px 0 0' }}>Aufgaben je Tag (freiwillig)</h4>
+        <Check checked={!!f.require_note} onChange={(v) => set({ require_note: v })} label={tt('Beim Check-in einen kurzen Text verlangen')} />
+        <h4 style={{ margin: '8px 0 0' }}>{tt('Aufgaben je Tag (freiwillig)')}</h4>
         <p className="muted small" style={{ margin: 0 }}>
-          Mitglieder sehen die Aufgabe des heutigen Tages. Tage ohne Aufgabe bleiben einfach Check-in-Tage.
+          {tt('Mitglieder sehen die Aufgabe des heutigen Tages. Tage ohne Aufgabe bleiben einfach Check-in-Tage.')}
         </p>
         <div className="cma-days">
           {Array.from({ length: Math.min(days, 366) }, (_x, i) => i + 1).map((day) => (
@@ -477,8 +485,8 @@ function ChallengeEditor({ group, challenge, badges, onClose, onDone }: { group:
               <summary style={{ minHeight: 44, display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                 Tag {day} {task(day)?.title ? '✓' : ''}
               </summary>
-              <Input value={task(day)?.title ?? ''} onChange={(v) => setTask(day, { title: v })} placeholder="Aufgabe" aria-label={`Aufgabe Tag ${day}`} />
-              <Textarea rows={2} value={task(day)?.body ?? ''} onChange={(v) => setTask(day, { body: v })} placeholder="Hinweis (freiwillig)" aria-label={`Hinweis Tag ${day}`} />
+              <Input value={task(day)?.title ?? ''} onChange={(v) => setTask(day, { title: v })} placeholder={tt('Aufgabe')} aria-label={tt('Aufgabe Tag {day}', { day: day })} />
+              <Textarea rows={2} value={task(day)?.body ?? ''} onChange={(v) => setTask(day, { body: v })} placeholder={tt('Hinweis (freiwillig)')} aria-label={tt('Hinweis Tag {day}', { day: day })} />
             </details>
           ))}
         </div>
@@ -488,9 +496,10 @@ function ChallengeEditor({ group, challenge, badges, onClose, onDone }: { group:
 }
 
 function Participants({ challenge, onClose }: { challenge: any; onClose: () => void }) {
+  const tt = useT('x_community');
   const r = useLoad(() => api.get<any[]>(`/api/community/challenges/${challenge.id}/participants`), [challenge.id]);
   return (
-    <Modal title={`Teilnehmer: ${challenge.title}`} onClose={onClose} wide>
+    <Modal title={tt('Teilnehmer: {title}', { title: challenge.title })} onClose={onClose} wide>
       {!r.data ? (
         <Spinner />
       ) : r.data.length ? (
@@ -498,11 +507,11 @@ function Participants({ challenge, onClose }: { challenge: any; onClose: () => v
           <table className="t cma-table">
             <thead>
               <tr>
-                <th>Mitglied</th>
-                <th>Check-ins</th>
-                <th>Serie</th>
-                <th>Beste Serie</th>
-                <th>Dabei seit</th>
+                <th>{tt('Mitglied')}</th>
+                <th>{tt('Check-ins')}</th>
+                <th>{tt('Serie')}</th>
+                <th>{tt('Beste Serie')}</th>
+                <th>{tt('Dabei seit')}</th>
                 <th />
               </tr>
             </thead>
@@ -526,7 +535,7 @@ function Participants({ challenge, onClose }: { challenge: any; onClose: () => v
           </table>
         </div>
       ) : (
-        <Empty>Noch niemand dabei.</Empty>
+        <Empty>{tt('Noch niemand dabei.')}</Empty>
       )}
     </Modal>
   );
@@ -534,6 +543,7 @@ function Participants({ challenge, onClose }: { challenge: any; onClose: () => v
 
 // --- live ---------------------------------------------------------------------------------------------------------------------------------
 function Live({ group, onChange }: { group: any; onChange: () => void }) {
+  const tt = useT('x_community');
   const list = useLoad(() => api.get<any[]>(`/api/community/groups/${group.id}/live`), [group.id]);
   const [rec, setRec] = useState<any>(null);
   const [att, setAtt] = useState<any>(null);
@@ -547,29 +557,29 @@ function Live({ group, onChange }: { group: any; onChange: () => void }) {
     <li key={e.event_id}>
       <div className="grow">
         <div>
-          <strong>{e.title}</strong> {e.live && <Badge tone="red">Live-Call</Badge>}
+          <strong>{e.title}</strong> {e.live && <Badge tone="red">{tt('Live-Call')}</Badge>}
         </div>
         <div className="muted small">
           {dt(e.starts_at)} – {dt(e.ends_at)}
-          {e.live ? ` · ${e.attendees} dabei` : ''}
-          {e.recording_post_id ? ' · Aufzeichnung online' : ''}
+          {e.live ? tt(' · {attendees} dabei', { attendees: e.attendees }) : ''}
+          {e.recording_post_id ? tt(' · Aufzeichnung online') : ''}
         </div>
       </div>
       {e.live ? (
         <>
           <button className="btn small secondary" onClick={() => setAtt(e)}>
-            Teilnehmer
+            {tt('Teilnehmer')}
           </button>
           <button className="btn small secondary" onClick={() => setRec(e)}>
-            Aufzeichnung
+            {tt('Aufzeichnung')}
           </button>
           <button className="btn small ghost" onClick={() => toggle(e, false)}>
-            Ausschalten
+            {tt('Ausschalten')}
           </button>
         </>
       ) : (
         <button className="btn small" onClick={() => toggle(e, true)}>
-          Mit Live-Raum
+          {tt('Mit Live-Raum')}
         </button>
       )}
     </li>
@@ -577,18 +587,18 @@ function Live({ group, onChange }: { group: any; onChange: () => void }) {
   return (
     <>
       <div className="cma-grid">
-        <Sec title="Live-Calls" lead="Aus einem Termin wird ein Live-Call mit eigenem Video-Raum (Jitsi) direkt in der Community. Wer beitritt, zählt als anwesend und bekommt Punkte. Danach hängst du die Aufzeichnung als Beitrag an.">
+        <Sec title={tt('Live-Calls')} lead={tt('Aus einem Termin wird ein Live-Call mit eigenem Video-Raum (Jitsi) direkt in der Community. Wer beitritt, zählt als anwesend und bekommt Punkte. Danach hängst du die Aufzeichnung als Beitrag an.')}>
           <p className="muted small" style={{ marginTop: 0 }}>
-            Videoserver: <strong>{server ?? 'https://meet.jit.si'}</strong>. Eigenen Jitsi-Server eintragen: Einstellungen der Gruppe → Live. Der Raum öffnet 15 Minuten vor dem Start; kurz vorher bekommen alle Mitglieder eine Erinnerung.
+            {tt('Videoserver:')} <strong>{server ?? 'https://meet.jit.si'}</strong>{tt('. Eigenen Jitsi-Server eintragen: Einstellungen der Gruppe → Live. Der Raum öffnet 15 Minuten vor dem Start; kurz vorher bekommen alle Mitglieder eine Erinnerung.')}
           </p>
           <button className="btn" onClick={() => setNw({ title: '', starts_at: '', ends_at: '', description: '' })}>
-            + Neuer Live-Call
+            {tt('+ Neuer Live-Call')}
           </button>
         </Sec>
-        <Sec title="Kommende Termine">
-          {upcoming.length ? <ul className="cma-list">{upcoming.map(row)}</ul> : <p className="muted">Keine kommenden Termine.</p>}
+        <Sec title={tt('Kommende Termine')}>
+          {upcoming.length ? <ul className="cma-list">{upcoming.map(row)}</ul> : <p className="muted">{tt('Keine kommenden Termine.')}</p>}
         </Sec>
-        <Sec title="Vergangene Termine">{past.length ? <ul className="cma-list">{past.slice(0, 12).map(row)}</ul> : <p className="muted">Noch keine.</p>}</Sec>
+        <Sec title={tt('Vergangene Termine')}>{past.length ? <ul className="cma-list">{past.slice(0, 12).map(row)}</ul> : <p className="muted">{tt('Noch keine.')}</p>}</Sec>
       </div>
       {nw && <NewLive group={group} f={nw} onClose={() => setNw(null)} onDone={() => (setNw(null), void list.reload(), onChange())} />}
       {rec && <Recording group={group} event={rec} onClose={() => setRec(null)} onDone={() => (setRec(null), void list.reload(), onChange())} />}
@@ -598,10 +608,11 @@ function Live({ group, onChange }: { group: any; onChange: () => void }) {
 }
 
 function NewLive({ group, f: init, onClose, onDone }: { group: any; f: any; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_community');
   const [f, setF] = useState(init);
   return (
     <Modal
-      title="Neuer Live-Call"
+      title={tt('Neuer Live-Call')}
       onClose={onClose}
       footer={
         <button
@@ -609,30 +620,30 @@ function NewLive({ group, f: init, onClose, onDone }: { group: any; f: any; onCl
           disabled={!f.title.trim() || !f.starts_at}
           onClick={async () => {
             const ev = await act(() => api.post<any>(`/api/community/groups/${group.id}/events`, { title: f.title, description: f.description, starts_at: new Date(f.starts_at).toISOString(), ends_at: f.ends_at ? new Date(f.ends_at).toISOString() : undefined, notify: true }));
-            if (ev && (await act(() => api.put(`/api/community/events/${ev.id}/live`, { enabled: true }), 'Live-Call angelegt'))) onDone();
+            if (ev && (await act(() => api.put(`/api/community/events/${ev.id}/live`, { enabled: true }), tt('Live-Call angelegt')))) onDone();
           }}
         >
-          Anlegen
+          {tt('Anlegen')}
         </button>
       }
     >
       <div className="cma">
-        <Field label="Titel">
-          <Input value={f.title} onChange={(v) => setF({ ...f, title: v })} autoFocus placeholder="z. B. Fragerunde" />
+        <Field label={tt('Titel')}>
+          <Input value={f.title} onChange={(v) => setF({ ...f, title: v })} autoFocus placeholder={tt('z. B. Fragerunde')} />
         </Field>
         <div className="cma-two">
-          <Field label="Beginn">
+          <Field label={tt('Beginn')}>
             <Input type="datetime-local" value={f.starts_at} onChange={(v) => setF({ ...f, starts_at: v })} />
           </Field>
-          <Field label="Ende (freiwillig, sonst 1 Stunde)">
+          <Field label={tt('Ende (freiwillig, sonst 1 Stunde)')}>
             <Input type="datetime-local" value={f.ends_at} onChange={(v) => setF({ ...f, ends_at: v })} />
           </Field>
         </div>
-        <Field label="Beschreibung (freiwillig)">
+        <Field label={tt('Beschreibung (freiwillig)')}>
           <Textarea rows={3} value={f.description} onChange={(v) => setF({ ...f, description: v })} />
         </Field>
         <p className="muted small" style={{ margin: 0 }}>
-          Alle Mitglieder werden über den neuen Termin benachrichtigt.
+          {tt('Alle Mitglieder werden über den neuen Termin benachrichtigt.')}
         </p>
       </div>
     </Modal>
@@ -640,47 +651,50 @@ function NewLive({ group, f: init, onClose, onDone }: { group: any; f: any; onCl
 }
 
 function Recording({ group, event, onClose, onDone }: { group: any; event: any; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_community');
   const [f, setF] = useState({ video_url: '', title: `Aufzeichnung: ${event.title}`, notify: true, channel_id: '' });
   return (
     <Modal
-      title={`Aufzeichnung: ${event.title}`}
+      title={tt('Aufzeichnung: {title}', { title: event.title })}
       onClose={onClose}
       footer={
-        <button className="btn" disabled={!f.video_url.trim()} onClick={async () => (await act(() => api.post(`/api/community/events/${event.event_id}/recording`, f), 'Beitrag veröffentlicht')) && onDone()}>
-          Als Beitrag veröffentlichen
+        <button className="btn" disabled={!f.video_url.trim()} onClick={async () => (await act(() => api.post(`/api/community/events/${event.event_id}/recording`, f), tt('Beitrag veröffentlicht'))) && onDone()}>
+          {tt('Als Beitrag veröffentlichen')}
         </button>
       }
     >
       <div className="cma">
         <p className="muted" style={{ marginTop: 0 }}>
-          Lade die Aufzeichnung zu YouTube (nicht gelistet), Vimeo oder Loom hoch und füge den Link ein. Sie erscheint als Beitrag in der Community und auf der Live-Seite des Termins.
+          {tt('Lade die Aufzeichnung zu YouTube (nicht gelistet), Vimeo oder Loom hoch und füge den Link ein. Sie erscheint als Beitrag in der Community und auf der Live-Seite des Termins.')}
         </p>
-        <Field label="Video-Link">
+        <Field label={tt('Video-Link')}>
           <Input value={f.video_url} onChange={(v) => setF({ ...f, video_url: v })} autoFocus placeholder="https://…" />
         </Field>
-        <Field label="Titel des Beitrags">
+        <Field label={tt('Titel des Beitrags')}>
           <Input value={f.title} onChange={(v) => setF({ ...f, title: v })} />
         </Field>
-        <Field label="Kanal">
-          <Select value={f.channel_id} onChange={(v) => setF({ ...f, channel_id: v })} placeholder="Erster freier Kanal" options={(group.channels ?? []).map((c: any) => [c.id, c.name])} />
+        <Field label={tt('Kanal')}>
+          <Select value={f.channel_id} onChange={(v) => setF({ ...f, channel_id: v })} placeholder={tt('Erster freier Kanal')} options={(group.channels ?? []).map((c: any) => [c.id, c.name])} />
         </Field>
-        <Check checked={f.notify} onChange={(v) => setF({ ...f, notify: v })} label="Alle Mitglieder benachrichtigen" />
+        <Check checked={f.notify} onChange={(v) => setF({ ...f, notify: v })} label={tt('Alle Mitglieder benachrichtigen')} />
       </div>
     </Modal>
   );
 }
 
 function Attendance({ event, onClose }: { event: any; onClose: () => void }) {
+  const tt = useT('x_community');
   const r = useLoad(() => api.get<any[]>(`/api/community/events/${event.event_id}/attendance`), [event.event_id]);
   return (
-    <Modal title={`Dabei: ${event.title}`} onClose={onClose}>
-      {!r.data ? <Spinner /> : r.data.length ? <ul className="cma-list">{r.data.map((a) => <li key={a.contact_id}><div className="grow"><strong>{a.name}</strong><div className="muted small">{a.email} · {dt(a.joined_at)}</div></div></li>)}</ul> : <Empty>Noch niemand.</Empty>}
+    <Modal title={tt('Dabei: {title}', { title: event.title })} onClose={onClose}>
+      {!r.data ? <Spinner /> : r.data.length ? <ul className="cma-list">{r.data.map((a) => <li key={a.contact_id}><div className="grow"><strong>{a.name}</strong><div className="muted small">{a.email} · {dt(a.joined_at)}</div></div></li>)}</ul> : <Empty>{tt('Noch niemand.')}</Empty>}
     </Modal>
   );
 }
 
 // --- points ----------------------------------------------------------------------------------------------------------------------------------------
 function Points({ group }: { group: any }) {
+  const tt = useT('x_community');
   const ext = useLoad(() => api.get<any>(`/api/community/groups/${group.id}/ext`), [group.id]);
   const arch = useLoad(() => api.get<any[]>(`/api/community/groups/${group.id}/leaderboard/archive`), [group.id]);
   const [f, setF] = useState<any>(null);
@@ -691,39 +705,39 @@ function Points({ group }: { group: any }) {
   return (
     <>
       <div className="cma-grid">
-        <Sec title="Wofür es Punkte gibt" lead="Beiträge, Kommentare und Likes stellst du unter Einstellungen ein. Hier die Punkte für Kurse, Live-Calls und Challenges (0 = keine).">
+        <Sec title={tt('Wofür es Punkte gibt')} lead={tt('Beiträge, Kommentare und Likes stellst du unter Einstellungen ein. Hier die Punkte für Kurse, Live-Calls und Challenges (0 = keine).')}>
           <div className="cma-two">
-            <NumberField label="Kurs abgeschlossen" min={0} max={1000} value={f.points.course} onChange={(v) => set('course', v)} />
-            <NumberField label="Live-Call besucht" min={0} max={1000} value={f.points.event} onChange={(v) => set('event', v)} />
-            <NumberField label="Challenge-Check-in" min={0} max={1000} value={f.points.challenge_checkin} onChange={(v) => set('challenge_checkin', v)} />
-            <NumberField label="Challenge geschafft" min={0} max={1000} value={f.points.challenge_complete} onChange={(v) => set('challenge_complete', v)} />
+            <NumberField label={tt('Kurs abgeschlossen')} min={0} max={1000} value={f.points.course} onChange={(v) => set('course', v)} />
+            <NumberField label={tt('Live-Call besucht')} min={0} max={1000} value={f.points.event} onChange={(v) => set('event', v)} />
+            <NumberField label={tt('Challenge-Check-in')} min={0} max={1000} value={f.points.challenge_checkin} onChange={(v) => set('challenge_checkin', v)} />
+            <NumberField label={tt('Challenge geschafft')} min={0} max={1000} value={f.points.challenge_complete} onChange={(v) => set('challenge_complete', v)} />
           </div>
           <div className="cma-actions">
             <button className="btn" onClick={() => run(() => api.put(`/api/community/groups/${group.id}/ext`, f), 'Gespeichert')}>
-              Speichern
+              {tt('Speichern')}
             </button>
             <button className="btn secondary" onClick={() => setGive({})}>
-              Punkte von Hand vergeben
+              {tt('Punkte von Hand vergeben')}
             </button>
           </div>
         </Sec>
-        <Sec title="Rangliste jeden Monat neu" lead="Mit dem Monats-Reset zählt „Dieser Monat“ ab dem 1. – so haben auch Neue eine Chance. Die Gesamtpunkte und Level bleiben. Die Top 3 des Vormonats werden benachrichtigt und stehen hier im Archiv.">
-          <Check checked={f.leaderboard.reset === 'monthly'} onChange={(v) => setF({ ...f, leaderboard: { reset: v ? 'monthly' : 'none' } })} label="Monatliche Rangliste (Kalendermonat)" />
+        <Sec title={tt('Rangliste jeden Monat neu')} lead={tt('Mit dem Monats-Reset zählt „Dieser Monat“ ab dem 1. – so haben auch Neue eine Chance. Die Gesamtpunkte und Level bleiben. Die Top 3 des Vormonats werden benachrichtigt und stehen hier im Archiv.')}>
+          <Check checked={f.leaderboard.reset === 'monthly'} onChange={(v) => setF({ ...f, leaderboard: { reset: v ? 'monthly' : 'none' } })} label={tt('Monatliche Rangliste (Kalendermonat)')} />
           <div className="cma-actions">
             <button className="btn" onClick={() => run(() => api.put(`/api/community/groups/${group.id}/ext`, f), 'Gespeichert', () => void arch.reload())}>
-              Speichern
+              {tt('Speichern')}
             </button>
           </div>
           {arch.data?.length ? (
             <>
-              <h4 style={{ margin: '14px 0 4px' }}>Archiv</h4>
+              <h4 style={{ margin: '14px 0 4px' }}>{tt('Archiv')}</h4>
               {arch.data.map((m) => (
                 <details key={m.month}>
                   <summary style={{ minHeight: 44, display: 'flex', alignItems: 'center', cursor: 'pointer' }}>{m.month}</summary>
                   <ol>
                     {m.rows.map((r: any) => (
                       <li key={r.contact_id}>
-                        {r.name || 'Mitglied'} – {r.points} Punkte
+                        {r.name || tt('Mitglied')} {tt('– {points} Punkte', { points: r.points })}
                       </li>
                     ))}
                   </ol>
@@ -739,17 +753,18 @@ function Points({ group }: { group: any }) {
 }
 
 function GivePoints({ group, onClose }: { group: any; onClose: () => void }) {
+  const tt = useT('x_community');
   const [m, setM] = useState<any>(null);
   const [pts, setPts] = useState<number | null>(10);
   const [reason, setReason] = useState('');
   return (
     <Modal
-      title="Punkte von Hand vergeben"
+      title={tt('Punkte von Hand vergeben')}
       onClose={onClose}
       footer={
         m && (
-          <button className="btn" disabled={!pts} onClick={async () => (await act(() => api.post(`/api/community/groups/${group.id}/points`, { contact_id: m.contact_id, points: pts, reason }), `${pts! > 0 ? '+' : ''}${pts} Punkte`)) && onClose()}>
-            Vergeben
+          <button className="btn" disabled={!pts} onClick={async () => (await act(() => api.post(`/api/community/groups/${group.id}/points`, { contact_id: m.contact_id, points: pts, reason }), tt('{v}{pts} Punkte', { v: pts! > 0 ? '+' : '', pts: (pts) ?? '' }))) && onClose()}>
+            {tt('Vergeben')}
           </button>
         )
       }
@@ -759,10 +774,10 @@ function GivePoints({ group, onClose }: { group: any; onClose: () => void }) {
       ) : (
         <div className="cma">
           <p style={{ marginTop: 0 }}>
-            An <strong>{m.display_name || m.email}</strong> (aktuell {m.points} Punkte)
+            {tt('An')} <strong>{m.display_name || m.email}</strong> {tt('(aktuell {points} Punkte)', { points: m.points })}
           </p>
-          <NumberField label="Punkte (negativ zieht ab)" min={-10000} max={10000} value={pts} onChange={setPts} />
-          <Field label="Grund (freiwillig)">
+          <NumberField label={tt('Punkte (negativ zieht ab)')} min={-10000} max={10000} value={pts} onChange={setPts} />
+          <Field label={tt('Grund (freiwillig)')}>
             <Input value={reason} onChange={setReason} />
           </Field>
         </div>

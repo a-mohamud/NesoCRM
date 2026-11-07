@@ -8,6 +8,7 @@ import { Link, toastError } from '../ui';
 import { PluginFrame } from '../werkstatt/PluginFrame';
 import { ActionButtons } from './Actions';
 import type { ListRow, NumberFormat, Tone, View } from './types';
+import { useT } from '../i18n';
 
 /**
  * Draws the standard views a widget returns (server/services/boards-widgets.ts). A widget written by a module author
@@ -38,6 +39,7 @@ const show = (v: string | number | null | undefined, format?: NumberFormat) => (
 const tone = (t?: Tone) => (t ? ` tone-${t}` : '');
 
 function NumberView({ v }: { v: Extract<View, { kind: 'number' }> }) {
+  const tt = useT('x_misc');
   const d = v.delta;
   return (
     <Go url={v.url} className="bd-num-wrap">
@@ -45,7 +47,7 @@ function NumberView({ v }: { v: Extract<View, { kind: 'number' }> }) {
         <b>{show(v.value, v.format)}</b>
         {v.label && <span className="bd-num-label">{v.label}</span>}
         {d !== null && d !== undefined && (
-          <span className={`bd-delta ${d > 0 ? 'up' : d < 0 ? 'down' : ''}`} title="Veränderung zur Vorperiode">
+          <span className={`bd-delta ${d > 0 ? 'up' : d < 0 ? 'down' : ''}`} title={tt('Veränderung zur Vorperiode')}>
             {d > 0 ? '▲' : d < 0 ? '▼' : '='} {Math.abs(d).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %
           </span>
         )}
@@ -72,6 +74,7 @@ function NumbersView({ v }: { v: Extract<View, { kind: 'numbers' }> }) {
 }
 
 function Check({ row }: { row: ListRow }) {
+  const tt = useT('x_misc');
   const [done, setDone] = useState(!!row.check?.done);
   const [busy, setBusy] = useState(false);
   return (
@@ -80,7 +83,7 @@ function Check({ row }: { row: ListRow }) {
       className="bd-check"
       checked={done}
       disabled={busy}
-      aria-label={`„${row.title}“ erledigt`}
+      aria-label={tt('„{title}“ erledigt', { title: row.title })}
       onChange={async (e) => {
         const next = e.target.checked;
         setDone(next);
@@ -99,7 +102,8 @@ function Check({ row }: { row: ListRow }) {
 }
 
 function ListView({ v }: { v: Extract<View, { kind: 'list' }> }) {
-  if (!v.rows.length) return <Quiet text={v.empty ?? 'Nichts zu zeigen.'} />;
+  const tt = useT('x_misc');
+  if (!v.rows.length) return <Quiet text={v.empty ?? tt('Nichts zu zeigen.')} />;
   return (
     <div className="bd-list">
       <ul>
@@ -121,7 +125,7 @@ function ListView({ v }: { v: Extract<View, { kind: 'list' }> }) {
       </ul>
       {v.total !== undefined && v.total > v.rows.length && (
         <Go url={v.url} className="bd-more">
-          Alle {v.total.toLocaleString('de-DE')} ansehen
+          {tt('Alle')} {v.total.toLocaleString('de-DE')} ansehen
         </Go>
       )}
     </div>
@@ -129,7 +133,8 @@ function ListView({ v }: { v: Extract<View, { kind: 'list' }> }) {
 }
 
 function TableView({ v }: { v: Extract<View, { kind: 'table' }> }) {
-  if (!v.rows.length) return <Quiet text={v.empty ?? 'Nichts zu zeigen.'} />;
+  const tt = useT('x_misc');
+  if (!v.rows.length) return <Quiet text={v.empty ?? tt('Nichts zu zeigen.')} />;
   return (
     <div className="bd-table-wrap">
       <table className="bd-table">
@@ -156,7 +161,7 @@ function TableView({ v }: { v: Extract<View, { kind: 'table' }> }) {
       </table>
       {v.total !== undefined && v.total > v.rows.length && (
         <Go url={v.url} className="bd-more">
-          Alle {v.total.toLocaleString('de-DE')} ansehen
+          {tt('Alle')} {v.total.toLocaleString('de-DE')} ansehen
         </Go>
       )}
     </div>
@@ -164,7 +169,8 @@ function TableView({ v }: { v: Extract<View, { kind: 'table' }> }) {
 }
 
 function KanbanView({ v }: { v: Extract<View, { kind: 'kanban' }> }) {
-  if (!v.columns.length) return <Quiet text={v.empty ?? 'Keine Phasen.'} />;
+  const tt = useT('x_misc');
+  if (!v.columns.length) return <Quiet text={v.empty ?? tt('Keine Phasen.')} />;
   return (
     <div className="bd-kanban">
       {v.columns.map((c) => (
@@ -191,7 +197,8 @@ function KanbanView({ v }: { v: Extract<View, { kind: 'kanban' }> }) {
 }
 
 function AgendaView({ v }: { v: Extract<View, { kind: 'agenda' }> }) {
-  if (!v.days.length) return <Quiet text={v.empty ?? 'Keine Termine.'} />;
+  const tt = useT('x_misc');
+  if (!v.days.length) return <Quiet text={v.empty ?? tt('Keine Termine.')} />;
   return (
     <div className="bd-agenda">
       {v.days.map((d) => (
@@ -239,6 +246,7 @@ export function Quiet({ text, icon = 'sparkles' }: { text: string; icon?: 'spark
 
 /** One widget's content. `height` is the card's body height in pixels (charts need it). */
 export function ViewBody({ view, title, height, onChanged }: { view: View; title: string; height: number; onChanged?: () => void }) {
+  const tt = useT('x_misc');
   switch (view.kind) {
     case 'number':
       return <NumberView v={view} />;
@@ -264,7 +272,7 @@ export function ViewBody({ view, title, height, onChanged }: { view: View; title
           <AgentMarkdown text={view.text} />
         </div>
       ) : (
-        <Quiet text="Die Notiz ist noch leer. Öffne die Einstellungen, um Text zu schreiben." />
+        <Quiet text={tt('Die Notiz ist noch leer. Öffne die Einstellungen, um Text zu schreiben.')} />
       );
     case 'embed':
       return <Embed url={view.url} title={title} />;
@@ -286,7 +294,7 @@ export function ViewBody({ view, title, height, onChanged }: { view: View; title
     case 'locked':
       return <Quiet text={view.reason} icon="lock" />;
     default:
-      return <Quiet text="Dieses Widget lässt sich hier nicht darstellen." />;
+      return <Quiet text={tt('Dieses Widget lässt sich hier nicht darstellen.')} />;
   }
 }
 

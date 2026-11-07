@@ -3,6 +3,7 @@ import { Icon, ICONS, type IconName } from '../icons';
 import type { CardPart } from './Grid';
 import type { Widget, WidgetData, WidgetType } from './types';
 import { Go, Quiet, Skeleton, ViewBody } from './views';
+import { useT } from '../i18n';
 
 /** The content only redraws when its own data or size changes – not on every pointer move of a drag. */
 const Body = memo(ViewBody, (a, b) => a.view === b.view && a.title === b.title && a.height === b.height);
@@ -13,6 +14,7 @@ export const widgetIcon = (t?: WidgetType): IconName => (t && t.icon in ICONS ? 
 
 /** The card around one widget: title, the handle and buttons while editing, the widget's view below. */
 export function WidgetCard({ w, type, data, loading, part, edit, selected, fresh, onSettings, onRemove, onRefresh, moveMenu }: { w: Widget; type?: WidgetType; data?: WidgetData; loading: boolean; part: CardPart; edit: boolean; selected: boolean; fresh?: boolean; onSettings: () => void; onRemove: () => void; onRefresh: () => void; moveMenu?: ReactNode }) {
+  const tt = useT('x_misc');
   const view = data?.view;
   const title = w.title || view?.title || type?.label || 'Widget';
   const url = view && 'url' in view ? view.url : undefined;
@@ -24,17 +26,17 @@ export function WidgetCard({ w, type, data, loading, part, edit, selected, fresh
         <h3 title={title}>{title}</h3>
         <span className="bd-card-tools">
           {!edit && url && (
-            <Go url={url} className="bd-iconbtn" label={`${title} öffnen`}>
+            <Go url={url} className="bd-iconbtn" label={tt('{title} öffnen', { title: title })}>
               <Icon name="external" size={14} />
             </Go>
           )}
           {edit && (
             <>
               {moveMenu}
-              <button type="button" className="bd-iconbtn" onClick={onSettings} aria-label={`${title}: Einstellungen`} title="Einstellungen" data-tour="board-widget-settings">
+              <button type="button" className="bd-iconbtn" onClick={onSettings} aria-label={tt('{title}: Einstellungen', { title: title })} title={tt('Einstellungen')} data-tour="board-widget-settings">
                 <Icon name="properties" size={15} />
               </button>
-              <button type="button" className="bd-iconbtn danger" onClick={onRemove} aria-label={`${title} entfernen`} title="Entfernen">
+              <button type="button" className="bd-iconbtn danger" onClick={onRemove} aria-label={tt('{title} entfernen', { title: title })} title={tt('Entfernen')}>
                 <Icon name="trash" size={15} />
               </button>
             </>
@@ -42,7 +44,7 @@ export function WidgetCard({ w, type, data, loading, part, edit, selected, fresh
         </span>
       </header>
       <div className="bd-body" data-kind={view?.kind ?? 'loading'}>
-        {!view ? loading ? <Skeleton /> : <Quiet text="Keine Daten." /> : <Body view={view} title={title} height={part.height - HEAD - 22} onChanged={onRefresh} />}
+        {!view ? loading ? <Skeleton /> : <Quiet text={tt('Keine Daten.')} /> : <Body view={view} title={title} height={part.height - HEAD - 22} onChanged={onRefresh} />}
       </div>
       {part.resizer}
       <span className="sr-only">{edit ? part.position : ''}</span>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, dt } from '../api';
 import { act, Badge, Empty, Input, Spinner, Stat, useLoad } from '../ui';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /**
  * Agentur → Cloud → Warteliste: whether the waitlist mode is on (and why), where the sign-ups go (the HQ form with Double-Opt-in, or the
@@ -40,49 +41,50 @@ const REASON: Record<string, string> = {
 };
 
 export function CloudWaitlist() {
+  const tt = useT('x_agency');
   const [q, setQ] = useState('');
   const d = useLoad(() => api.get<Data>(`/api/cloud/waitlist${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`), [q]);
   const x = d.data;
   if (!x) return <Spinner />;
   const remove = async (it: Item) => {
-    if (!window.confirm(`${it.email} von der Warteliste löschen? Das lässt sich nicht rückgängig machen.`)) return;
-    if (await act(() => api.del(`/api/cloud/waitlist/${it.id}`), 'Gelöscht')) d.reload();
+    if (!window.confirm(tt('{email} von der Warteliste löschen? Das lässt sich nicht rückgängig machen.', { email: it.email }))) return;
+    if (await act(() => api.del(`/api/cloud/waitlist/${it.id}`), tt('Gelöscht'))) d.reload();
   };
   return (
     <>
       <div className="card">
         <h3 style={{ marginTop: 0 }}>
-          Warteliste {x.enabled ? <Badge tone="green">aktiv</Badge> : <Badge tone="gray">aus</Badge>}
+          {tt('Warteliste')} {x.enabled ? <Badge tone="green">aktiv</Badge> : <Badge tone="gray">aus</Badge>}
         </h3>
         {x.enabled ? (
           <p style={{ margin: 0 }}>
-            Neue Anmeldungen, Zahlungen und Testphasen sind gesperrt; Preis- und Startseite zeigen die geplanten Tarife und das Wartelisten-Formular. Bestehende Kunden arbeiten normal weiter.{' '}
+            {tt('Neue Anmeldungen, Zahlungen und Testphasen sind gesperrt; Preis- und Startseite zeigen die geplanten Tarife und das Wartelisten-Formular. Bestehende Kunden arbeiten normal weiter.')}{' '}
             <span className="muted">{x.reason ? REASON[x.reason] : ''}</span>
           </p>
         ) : (
-          <p style={{ margin: 0 }}>Die Cloud ist offen: Kunden melden sich unter /start an. Das Formular nimmt keine Einträge an; die Liste unten bleibt erhalten.</p>
+          <p style={{ margin: 0 }}>{tt('Die Cloud ist offen: Kunden melden sich unter /start an. Das Formular nimmt keine Einträge an; die Liste unten bleibt erhalten.')}</p>
         )}
         <p className="muted small" style={{ marginBottom: 0 }}>
           {x.forms
-            ? `Einträge gehen in das Formular ${x.forms.form_id} des Sub-Accounts „${x.forms.location_name || x.forms.location_id}“ (PGHL_LANDING_LOCATION)${x.forms.doi ? ' mit Double-Opt-in' : ''} – dort stehen sie als Kontakte mit Einwilligungsnachweis. Hier steht nur, was vorher in der eingebauten Liste gelandet ist.`
-            : 'Einträge landen in der eingebauten Liste unten: E-Mail, optional Name und Tarif, Sprache, Einwilligungstext mit Zeitpunkt, IP nur als Hash. Die Liste verschickt nie selbst E-Mails.'}
-          {x.privacy_url ? ` Datenschutz-Link am Formular: ${x.privacy_url}` : ' Kein Datenschutz-Link gesetzt (PGHL_LANDING_PRIVACY_URL).'}
+            ? `Einträge gehen in das Formular ${x.forms.form_id} des Sub-Accounts „${x.forms.location_name || x.forms.location_id}“ (PGHL_LANDING_LOCATION)${x.forms.doi ? tt(' mit Double-Opt-in') : ''} – dort stehen sie als Kontakte mit Einwilligungsnachweis. Hier steht nur, was vorher in der eingebauten Liste gelandet ist.`
+            : tt('Einträge landen in der eingebauten Liste unten: E-Mail, optional Name und Tarif, Sprache, Einwilligungstext mit Zeitpunkt, IP nur als Hash. Die Liste verschickt nie selbst E-Mails.')}
+          {x.privacy_url ? tt(' Datenschutz-Link am Formular: {privacy_url}', { privacy_url: x.privacy_url }) : tt(' Kein Datenschutz-Link gesetzt (PGHL_LANDING_PRIVACY_URL).')}
         </p>
       </div>
       <SortableGrid id="cloud-waitlist.stats" className="stats" style={{ margin: '12px 0' }}>
-        <Stat label="Einträge" value={x.total} />
+        <Stat label={tt('Einträge')} value={x.total} />
         {Object.entries(PLAN).map(([k, n]) => (
           <Stat key={k} label={n} value={x.by_plan[k] ?? 0} />
         ))}
-        <Stat label="Noch unsicher" value={x.by_plan.none ?? 0} />
+        <Stat label={tt('Noch unsicher')} value={x.by_plan.none ?? 0} />
       </SortableGrid>
       <div className="card">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ flex: '1 1 240px' }}>
-            <Input value={q} onChange={setQ} placeholder="Suchen (E-Mail oder Name)" aria-label="Warteliste durchsuchen" />
+            <Input value={q} onChange={setQ} placeholder={tt('Suchen (E-Mail oder Name)')} aria-label={tt('Warteliste durchsuchen')} />
           </div>
           <a className="btn small secondary" href="/api/cloud/waitlist.csv" download>
-            CSV exportieren
+            {tt('CSV exportieren')}
           </a>
         </div>
         {x.items.length ? (
@@ -90,11 +92,11 @@ export function CloudWaitlist() {
             <table className="t">
               <thead>
                 <tr>
-                  <th>Eingetragen</th>
+                  <th>{tt('Eingetragen')}</th>
                   <th>E-Mail</th>
-                  <th>Tarif</th>
-                  <th>Sprache</th>
-                  <th>Einwilligung</th>
+                  <th>{tt('Tarif')}</th>
+                  <th>{tt('Sprache')}</th>
+                  <th>{tt('Einwilligung')}</th>
                   <th />
                 </tr>
               </thead>
@@ -107,13 +109,13 @@ export function CloudWaitlist() {
                       {it.name && <div className="muted small">{it.name}</div>}
                     </td>
                     <td>{PLAN[it.plan] ?? '–'}</td>
-                    <td>{it.lang === 'en' ? 'Englisch' : 'Deutsch'}</td>
+                    <td>{it.lang === 'en' ? tt('Englisch') : tt('Deutsch')}</td>
                     <td className="nowrap" title={it.consent_text}>
                       {dt(it.consent_at)}
                     </td>
                     <td>
                       <button className="btn small secondary" onClick={() => remove(it)}>
-                        Löschen
+                        {tt('Löschen')}
                       </button>
                     </td>
                   </tr>
@@ -122,10 +124,10 @@ export function CloudWaitlist() {
             </table>
           </div>
         ) : (
-          <Empty>{q ? 'Nichts gefunden.' : 'Noch niemand auf der Warteliste.'}</Empty>
+          <Empty>{q ? tt('Nichts gefunden.') : tt('Noch niemand auf der Warteliste.')}</Empty>
         )}
         <p className="muted small" style={{ marginBottom: 0 }}>
-          Auskunft und Löschung (DSGVO): Einträge einzeln löschen; der Export und jede Löschung stehen im Protokoll. Die eingebaute Liste sammelt ohne Double-Opt-in und sendet nie selbst – die Nachricht zum Start verschickst du einmal selbst, ohne weitere Werbung.
+          {tt('Auskunft und Löschung (DSGVO): Einträge einzeln löschen; der Export und jede Löschung stehen im Protokoll. Die eingebaute Liste sammelt ohne Double-Opt-in und sendet nie selbst – die Nachricht zum Start verschickst du einmal selbst, ohne weitere Werbung.')}
         </p>
       </div>
     </>

@@ -3,6 +3,7 @@ import { METRICS, headline, metricValue, money, waterfall, type CalcInput, type 
 import { Stat, Tabs } from '../ui';
 import { ProjectionCharts, TornadoChart, Waterfall } from './CalcCharts';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /**
  * The results side of the Gewinnrechner: the answer in one sentence with the key figures, the heatmap matrix
@@ -24,6 +25,7 @@ const neg = (v: number | null | undefined) => (typeof v === 'number' && v < 0 ? 
 // --- headline and key figures --------------------------------------------------------------------------------------------------
 
 export function Headline({ input, res }: { input: CalcInput; res: RunResult }) {
+  const tt = useT('x_finance');
   const f = res.focus;
   const c = f.cell;
   const u = f.unit;
@@ -38,14 +40,14 @@ export function Headline({ input, res }: { input: CalcInput; res: RunResult }) {
         </p>
       ))}
       <SortableGrid id="calc-results.stats" className="stats calc-stats">
-        <Stat label="Umsatz netto pro Monat" value={eur(c.m.revenue_net)} sub={`brutto ${eur(c.m.revenue_gross)}`} />
-        <Stat label="Nach variablen Kosten" value={<span className={neg(c.m.contribution)}>{eur(c.m.contribution)}</span>} sub={`${pctS(c.contribution_margin)} vom Umsatz`} />
-        <Stat label="EBIT pro Monat" value={<span className={neg(c.m.ebit)}>{eur(c.m.ebit)}</span>} sub={`nach Fixkosten ${eur(c.m.fixed)}`} />
-        <Stat label="Nettogewinn pro Monat" value={<span className={neg(c.m.net_profit)}>{eur(c.m.net_profit)}</span>} sub={`${eur(c.y.net_profit)} im Jahr · Marge ${pctS(c.margin)}`} tour="calc-net" />
-        <Stat label="Break-even" value={be.customers === null ? 'nie' : be.customers === 0 ? 'sofort' : `ab ${de(be.customers)} Kunden`} sub={be.customers_net !== null && be.customers_net !== be.customers ? `nach Steuern ab ${de(be.customers_net)}` : be.customers === null ? 'bei diesen Preisen' : 'vor Steuern'} />
-        <Stat label="MRR / ARR" value={eur(mrr)} sub={`ARR ${eur(mrr * 12)}`} />
-        <Stat label="Kundenwert / Kosten" value={u.ltv_cac === null ? '–' : `${de(u.ltv_cac, 1)}×`} sub={`LTV ${eur(u.ltv)} · CAC ${eur(u.cac)}`} />
-        <Stat label="Amortisation je Kunde" value={u.payback_months === null ? 'nie' : `${de(u.payback_months, 1)} Monate`} sub={`Ø Laufzeit ${de(u.lifetime_months, 1)} Monate`} />
+        <Stat label={tt('Umsatz netto pro Monat')} value={eur(c.m.revenue_net)} sub={tt('brutto {eur}', { eur: eur(c.m.revenue_gross) })} />
+        <Stat label={tt('Nach variablen Kosten')} value={<span className={neg(c.m.contribution)}>{eur(c.m.contribution)}</span>} sub={tt('{pctS} vom Umsatz', { pctS: pctS(c.contribution_margin) })} />
+        <Stat label={tt('EBIT pro Monat')} value={<span className={neg(c.m.ebit)}>{eur(c.m.ebit)}</span>} sub={tt('nach Fixkosten {eur}', { eur: eur(c.m.fixed) })} />
+        <Stat label={tt('Nettogewinn pro Monat')} value={<span className={neg(c.m.net_profit)}>{eur(c.m.net_profit)}</span>} sub={tt('{eur} im Jahr · Marge {pctS}', { eur: eur(c.y.net_profit), pctS: pctS(c.margin) })} tour="calc-net" />
+        <Stat label={tt('Break-even')} value={be.customers === null ? 'nie' : be.customers === 0 ? 'sofort' : `ab ${de(be.customers)} Kunden`} sub={be.customers_net !== null && be.customers_net !== be.customers ? tt('nach Steuern ab {de}', { de: de(be.customers_net) }) : be.customers === null ? tt('bei diesen Preisen') : tt('vor Steuern')} />
+        <Stat label={tt('MRR / ARR')} value={eur(mrr)} sub={tt('ARR {eur}', { eur: eur(mrr * 12) })} />
+        <Stat label={tt('Kundenwert / Kosten')} value={u.ltv_cac === null ? '–' : `${de(u.ltv_cac, 1)}×`} sub={tt('LTV {eur} · CAC {eur2}', { eur: eur(u.ltv), eur2: eur(u.cac) })} />
+        <Stat label={tt('Amortisation je Kunde')} value={u.payback_months === null ? 'nie' : `${de(u.payback_months, 1)} Monate`} sub={tt('Ø Laufzeit {de} Monate', { de: de(u.lifetime_months, 1) })} />
       </SortableGrid>
     </section>
   );
@@ -61,6 +63,7 @@ function heat(v: number | null, max: number, diverging: boolean): string | undef
 }
 
 export function Matrix({ res, metric, setMetric, period, setPeriod, focus, setFocus }: { res: RunResult; metric: MetricKey; setMetric: (m: MetricKey) => void; period: Period; setPeriod: (p: Period) => void; focus: Focus; setFocus: (f: Focus) => void }) {
+  const tt = useT('x_finance');
   const meta = METRICS.find((m) => m.key === metric)!;
   const values = res.matrix.map((row) => row.map((c) => metricValue(c, metric, period)));
   const flat = values.flat().filter((v): v is number => v !== null && Number.isFinite(v));
@@ -73,14 +76,14 @@ export function Matrix({ res, metric, setMetric, period, setPeriod, focus, setFo
     <section className="card calc-matrix" data-tour="calc-matrix">
       <div className="calc-matrix-head">
         <div>
-          <h3>Was bleibt übrig? <span className="muted small">Kunden × Preis</span></h3>
-          <p className="muted small">Klick auf ein Feld zeigt unten die Rechnung dazu.</p>
+          <h3>{tt('Was bleibt übrig?')} <span className="muted small">{tt('Kunden × Preis')}</span></h3>
+          <p className="muted small">{tt('Klick auf ein Feld zeigt unten die Rechnung dazu.')}</p>
         </div>
         <div className="calc-matrix-tools">
           <label className="calc-f compact" data-tour="calc-metric">
-            <span>Kennzahl</span>
+            <span>{tt('Kennzahl')}</span>
             <span className="calc-in">
-              <select value={metric} onChange={(e) => setMetric(e.target.value as MetricKey)} aria-label="Kennzahl der Tabelle">
+              <select value={metric} onChange={(e) => setMetric(e.target.value as MetricKey)} aria-label={tt('Kennzahl der Tabelle')}>
                 {METRICS.map((m) => (
                   <option key={m.key} value={m.key}>
                     {m.label}
@@ -90,12 +93,12 @@ export function Matrix({ res, metric, setMetric, period, setPeriod, focus, setFo
             </span>
           </label>
           {meta.unit !== 'pct' && (
-            <div className="seg" role="group" aria-label="Zeitraum">
+            <div className="seg" role="group" aria-label={tt('Zeitraum')}>
               <button type="button" className={period === 'month' ? 'on' : ''} onClick={() => setPeriod('month')} aria-pressed={period === 'month'}>
-                Monat
+                {tt('Monat')}
               </button>
               <button type="button" className={period === 'year' ? 'on' : ''} onClick={() => setPeriod('year')} aria-pressed={period === 'year'}>
-                Jahr
+                {tt('Jahr')}
               </button>
             </div>
           )}
@@ -104,12 +107,11 @@ export function Matrix({ res, metric, setMetric, period, setPeriod, focus, setFo
       <div className="table-wrap calc-table-wrap">
         <table className="calc-heat">
           <caption className="sr-only">
-            {meta.label}
-            {unit} je Kundenzahl (Zeilen) und Preisvariante (Spalten)
+            {tt('{label} {unit} je Kundenzahl (Zeilen) und Preisvariante (Spalten)', { label: meta.label, unit: unit })}
           </caption>
           <thead>
             <tr>
-              <th scope="col">Kunden</th>
+              <th scope="col">{tt('Kunden')}</th>
               {res.columns.map((c) => (
                 <th scope="col" key={c.key}>
                   {c.label}
@@ -125,7 +127,7 @@ export function Matrix({ res, metric, setMetric, period, setPeriod, focus, setFo
                   const on = sel?.row === ri && sel?.col === ci;
                   return (
                     <td key={ci} style={{ background: heat(v, max, diverging) }} className={on ? 'sel' : ''}>
-                      <button type="button" className="calc-cell" aria-pressed={on} aria-label={`${de(n)} Kunden zu ${res.columns[ci].label}: ${meta.label}${unit} ${show(v)}`} onClick={() => setFocus({ cell: on ? null : { row: ri, col: ci } })}>
+                      <button type="button" className="calc-cell" aria-pressed={on} aria-label={tt('{de} Kunden zu {label}: {label2}{unit} {show}', { de: de(n), label: res.columns[ci].label, label2: meta.label, unit: unit, show: show(v) })} onClick={() => setFocus({ cell: on ? null : { row: ri, col: ci } })}>
                         {show(v)}
                       </button>
                     </td>
@@ -136,13 +138,13 @@ export function Matrix({ res, metric, setMetric, period, setPeriod, focus, setFo
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row">Break-even</th>
+              <th scope="row">{tt('Break-even')}</th>
               {res.unit.map((u, i) => (
-                <td key={i}>{u.breakeven.customers === null ? 'nie' : `ab ${de(u.breakeven.customers)}`}</td>
+                <td key={i}>{u.breakeven.customers === null ? 'nie' : tt('ab {de}', { de: de(u.breakeven.customers) })}</td>
               ))}
             </tr>
             <tr>
-              <th scope="row">LTV / CAC</th>
+              <th scope="row">{tt('LTV / CAC')}</th>
               {res.unit.map((u, i) => (
                 <td key={i}>{u.ltv_cac === null ? '–' : `${de(u.ltv_cac, 1)}×`}</td>
               ))}
@@ -151,8 +153,7 @@ export function Matrix({ res, metric, setMetric, period, setPeriod, focus, setFo
         </table>
       </div>
       <p className="muted small calc-foot">
-        {meta.label}
-        {unit} · {de(res.rows.length)} Kundenzahlen × {de(res.columns.length)} Preisvarianten
+        {tt('{label} {unit} · {de} Kundenzahlen × {de2} Preisvarianten', { label: meta.label, unit: unit, de: de(res.rows.length), de2: de(res.columns.length) })}
       </p>
     </section>
   );
@@ -195,6 +196,7 @@ const TAX_TEXT: Record<string, string> = {
 };
 
 export function Detail({ input, res, period, focusLabel, onReset, isCell }: { input: CalcInput; res: RunResult; period: Period; focusLabel: string; onReset: () => void; isCell: boolean }) {
+  const tt = useT('x_finance');
   const [tab, setTab] = useState('waterfall');
   const f = res.focus;
   const u = f.unit;
@@ -207,7 +209,7 @@ export function Detail({ input, res, period, focusLabel, onReset, isCell }: { in
         <h3>{focusLabel}</h3>
         {isCell && (
           <button type="button" className="btn secondary small" onClick={onReset}>
-            Zurück zu meiner Rechnung
+            {tt('Zurück zu meiner Rechnung')}
           </button>
         )}
       </div>
@@ -222,8 +224,8 @@ export function Detail({ input, res, period, focusLabel, onReset, isCell }: { in
         value={tab}
         onChange={setTab}
       />
-      {tab === 'waterfall' && <Waterfall steps={steps} title={`Von der Zahlung zum Nettogewinn ${per}`} caption={`${de(f.customers)} Kunden · ${f.column.label}`} />}
-      {tab === 'levers' && f.sensitivity && <TornadoChart t={f.sensitivity} title={`Was den Nettogewinn pro Jahr am meisten bewegt (± ${de(f.sensitivity.pct)} %)`} caption="Jeder Balken: dieser Wert um den Prozentsatz kleiner und größer, alles andere bleibt." />}
+      {tab === 'waterfall' && <Waterfall steps={steps} title={tt('Von der Zahlung zum Nettogewinn {per}', { per: per })} caption={tt('{de} Kunden · {label}', { de: de(f.customers), label: f.column.label })} />}
+      {tab === 'levers' && f.sensitivity && <TornadoChart t={f.sensitivity} title={tt('Was den Nettogewinn pro Jahr am meisten bewegt (± {de} %)', { de: de(f.sensitivity.pct) })} caption={tt('Jeder Balken: dieser Wert um den Prozentsatz kleiner und größer, alles andere bleibt.')} />}
       {tab === 'projection' && (
         <>
           <ProjectionCharts p={f.projection} />
@@ -232,22 +234,22 @@ export function Detail({ input, res, period, focusLabel, onReset, isCell }: { in
             rows={f.projection.horizons.map((h) => [`${h.months} Monaten`, de(h.customers), eur(h.mrr), eur(h.arr), eur(h.revenue_net), eur(h.ebit), eur(h.tax), eur(h.net_profit)])}
           />
           <p className="muted small calc-foot">
-            Summen der ersten 12, 24 und 36 Monate (MRR und Kunden: Stand am Ende). Kunden wachsen mit {de(input.customers.growth.monthly_new)} Neukunden pro Monat{input.customers.growth.monthly_new_growth ? ` (${input.customers.growth.monthly_new_growth > 0 ? '+' : ''}${de(input.customers.growth.monthly_new_growth, 1)} % je Monat)` : ''} abzüglich {de(input.customers.churn, 1)} % Kündigungen.{' '}
-            {f.projection.breakeven_month ? `Insgesamt im Plus ab Monat ${f.projection.breakeven_month}.` : 'Innerhalb der Prognose wird das Geschäft insgesamt nicht ins Plus kommen.'}
+            {tt('Summen der ersten 12, 24 und 36 Monate (MRR und Kunden: Stand am Ende). Kunden wachsen mit {de} Neukunden pro Monat', { de: de(input.customers.growth.monthly_new) })}{input.customers.growth.monthly_new_growth ? tt(' ({v}{de} % je Monat)', { v: input.customers.growth.monthly_new_growth > 0 ? '+' : '', de: de(input.customers.growth.monthly_new_growth, 1) }) : ''} {tt('abzüglich {de} % Kündigungen.', { de: de(input.customers.churn, 1) })}{' '}
+            {f.projection.breakeven_month ? tt('Insgesamt im Plus ab Monat {breakeven_month}.', { breakeven_month: f.projection.breakeven_month }) : tt('Innerhalb der Prognose wird das Geschäft insgesamt nicht ins Plus kommen.')}
           </p>
         </>
       )}
       {tab === 'unit' && (
         <>
           <SortableGrid id="calc-results.stats-2" className="stats calc-stats">
-            <Stat label="Umsatz je Kunde und Monat" value={eur(u.arpu_net, 2)} sub={`brutto ${eur(u.arpu_gross, 2)}`} />
-            <Stat label="Bleibt je Kunde und Monat" value={<span className={neg(u.contribution)}>{eur(u.contribution, 2)}</span>} sub="nach Gebühren und variablen Kosten" />
-            <Stat label="Ø Laufzeit" value={`${de(u.lifetime_months, 1)} Monate`} sub={`Kündigungen ${de(input.customers.churn, 1)} % je Monat`} />
-            <Stat label="Kundenwert (LTV)" value={eur(u.ltv)} sub={`Kosten je Neukunde ${eur(u.cac)}`} />
-            <Stat label="LTV / CAC" value={u.ltv_cac === null ? '–' : `${de(u.ltv_cac, 1)}×`} sub={u.ltv_cac === null ? 'ohne Kundengewinnungskosten' : u.ltv_cac >= 3 ? 'gesund (ab 3×)' : 'unter 3× – knapp'} />
-            <Stat label="Amortisation" value={u.payback_months === null ? 'nie' : `${de(u.payback_months, 1)} Monate`} sub="bis ein Neukunde seine Kosten eingespielt hat" />
-            <Stat label="Ø Einheiten / Nutzer" value={`${de(u.units, 1)} / ${de(u.users, 1)}`} sub="je Kunde, über alle Tarife" />
-            <Stat label="Mindestpreis" value={f.min_price === null ? '–' : eur(f.min_price, 2)} sub={`Grundpreis für EBIT 0 bei ${de(f.customers)} Kunden`} />
+            <Stat label={tt('Umsatz je Kunde und Monat')} value={eur(u.arpu_net, 2)} sub={tt('brutto {eur}', { eur: eur(u.arpu_gross, 2) })} />
+            <Stat label={tt('Bleibt je Kunde und Monat')} value={<span className={neg(u.contribution)}>{eur(u.contribution, 2)}</span>} sub={tt('nach Gebühren und variablen Kosten')} />
+            <Stat label={tt('Ø Laufzeit')} value={`${de(u.lifetime_months, 1)} Monate`} sub={tt('Kündigungen {de} % je Monat', { de: de(input.customers.churn, 1) })} />
+            <Stat label={tt('Kundenwert (LTV)')} value={eur(u.ltv)} sub={tt('Kosten je Neukunde {eur}', { eur: eur(u.cac) })} />
+            <Stat label={tt('LTV / CAC')} value={u.ltv_cac === null ? '–' : `${de(u.ltv_cac, 1)}×`} sub={u.ltv_cac === null ? tt('ohne Kundengewinnungskosten') : u.ltv_cac >= 3 ? tt('gesund (ab 3×)') : tt('unter 3× – knapp')} />
+            <Stat label={tt('Amortisation')} value={u.payback_months === null ? 'nie' : `${de(u.payback_months, 1)} Monate`} sub={tt('bis ein Neukunde seine Kosten eingespielt hat')} />
+            <Stat label={tt('Ø Einheiten / Nutzer')} value={`${de(u.units, 1)} / ${de(u.users, 1)}`} sub={tt('je Kunde, über alle Tarife')} />
+            <Stat label={tt('Mindestpreis')} value={f.min_price === null ? '–' : eur(f.min_price, 2)} sub={tt('Grundpreis für EBIT 0 bei {de} Kunden', { de: de(f.customers) })} />
           </SortableGrid>
           <Table
             head={['Preisvariante', 'Umsatz/Kunde', 'Bleibt/Kunde', 'LTV/CAC', 'Amortisation', 'Break-even']}
@@ -257,7 +259,7 @@ export function Detail({ input, res, period, focusLabel, onReset, isCell }: { in
       )}
       {tab === 'tax' && (
         <>
-          <p className="calc-disclaimer-s">Schätzung, keine Steuerberatung.</p>
+          <p className="calc-disclaimer-s">{tt('Schätzung, keine Steuerberatung.')}</p>
           <p className="small">{TAX_TEXT[input.tax.legal_form]}</p>
           <Table
             head={['Jahr (hochgerechnet aus einem Monat)', 'Betrag']}
@@ -272,8 +274,8 @@ export function Detail({ input, res, period, focusLabel, onReset, isCell }: { in
             ]}
           />
           <p className="muted small calc-foot">
-            Durchschnittliche Steuerlast {pctS(t.rate_pct)} vom Gewinn.
-            {input.tax.legal_form === 'einzelunternehmen' ? ` Tarif ${input.tax.est.year}, Gewerbesteuer-Hebesatz ${de(input.tax.gewerbesteuer.hebesatz)} %.` : ''} Die Tarifwerte stehen im Eingabefeld „Steuern“ und lassen sich ändern; maßgeblich ist immer der Bescheid.
+            {tt('Durchschnittliche Steuerlast {pctS} vom Gewinn.', { pctS: pctS(t.rate_pct) })}
+            {input.tax.legal_form === 'einzelunternehmen' ? tt(' Tarif {year}, Gewerbesteuer-Hebesatz {de} %.', { year: input.tax.est.year, de: de(input.tax.gewerbesteuer.hebesatz) }) : ''} {tt('Die Tarifwerte stehen im Eingabefeld „Steuern“ und lassen sich ändern; maßgeblich ist immer der Bescheid.')}
           </p>
         </>
       )}

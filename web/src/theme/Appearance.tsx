@@ -10,6 +10,7 @@ import { resolveDark, setShowAll, update, useLook } from './store';
 import { THEME_LIST, type ModeTokens } from './themes';
 import { SpatialCard } from '../xr/SpatialCard';
 import { GoalCard } from '../areas/GoalSetup';
+import { useT } from '../i18n';
 
 /**
  * Einstellungen → Darstellung: theme gallery with live mini previews, hell/dunkel/system, accent colour,
@@ -46,9 +47,10 @@ const PACKS: Record<IconPackId, [string, string]> = {
 const SAMPLE_ICONS: IconName[] = ['dashboard', 'contacts', 'calendars', 'invoices', 'settings'];
 
 function Lock({ on }: { on?: boolean }) {
+  const tt = useT('x_misc');
   return on ? (
-    <span className="ap-lock" title="Von deiner Agentur festgelegt">
-      <Icon name="lock" size={13} /> Festgelegt
+    <span className="ap-lock" title={tt('Von deiner Agentur festgelegt')}>
+      <Icon name="lock" size={13} /> {tt('Festgelegt')}
     </span>
   ) : null;
 }
@@ -102,9 +104,10 @@ function Frame({ k, accent }: { k: ModeTokens; accent: string }) {
 }
 
 function Themes({ p, lock }: { p: Prefs; lock: boolean }) {
+  const tt = useT('x_misc');
   const brand = useLook().brandColor;
   return (
-    <div className="ap-themes" role="radiogroup" aria-label="Theme">
+    <div className="ap-themes" role="radiogroup" aria-label={tt('Theme')}>
       {THEME_LIST.map((t) => {
         const accent = (dark: boolean) => resolveAccent({ theme: t.id, accent: p.accent, palette: p.dept_palette, brandColor: brand }, dark);
         return (
@@ -126,6 +129,7 @@ function Themes({ p, lock }: { p: Prefs; lock: boolean }) {
 }
 
 function AccentPicker({ p, lock }: { p: Prefs; lock: boolean }) {
+  const tt = useT('x_misc');
   const look = useLook();
   const dark = resolveDark(p.mode);
   const k = modeTokens(p.theme, dark);
@@ -135,32 +139,32 @@ function AccentPicker({ p, lock }: { p: Prefs; lock: boolean }) {
   useEffect(() => setPicked(accent), [accent]);
   return (
     <>
-      <div className="ap-swatches" role="radiogroup" aria-label="Akzentfarbe">
-        <button className={`ap-swatch${!p.accent ? ' on' : ''}`} style={{ background: `linear-gradient(135deg, ${modeTokens(p.theme, false).accent} 50%, ${modeTokens(p.theme, true).accent} 50%)` }} onClick={() => void update({ accent: null })} disabled={lock} title="Standard des Themes" aria-label="Standard des Themes" role="radio" aria-checked={!p.accent} />
+      <div className="ap-swatches" role="radiogroup" aria-label={tt('Akzentfarbe')}>
+        <button className={`ap-swatch${!p.accent ? ' on' : ''}`} style={{ background: `linear-gradient(135deg, ${modeTokens(p.theme, false).accent} 50%, ${modeTokens(p.theme, true).accent} 50%)` }} onClick={() => void update({ accent: null })} disabled={lock} title={tt('Standard des Themes')} aria-label={tt('Standard des Themes')} role="radio" aria-checked={!p.accent} />
         {ACCENTS.map((c) => (
-          <button key={c} className={`ap-swatch${p.accent === c ? ' on' : ''}`} style={{ background: c, color: contrast('#fff', c) >= contrast('#000', c) ? '#fff' : '#000' }} onClick={() => void update({ accent: c })} disabled={lock} title={c} aria-label={`Akzentfarbe ${c}`} role="radio" aria-checked={p.accent === c}>
+          <button key={c} className={`ap-swatch${p.accent === c ? ' on' : ''}`} style={{ background: c, color: contrast('#fff', c) >= contrast('#000', c) ? '#fff' : '#000' }} onClick={() => void update({ accent: c })} disabled={lock} title={c} aria-label={tt('Akzentfarbe {c}', { c: c })} role="radio" aria-checked={p.accent === c}>
             {p.accent === c && <Icon name="ok" size={15} />}
           </button>
         ))}
         <label className="check small" style={{ margin: '0 0 0 8px' }}>
-          Eigene Farbe
-          <input type="color" value={isHex(picked) ? picked : '#2563eb'} disabled={lock} onChange={(e) => (setPicked(e.target.value), void update({ accent: e.target.value }, 350))} aria-label="Eigene Akzentfarbe" style={{ width: 44, height: 30, padding: 1 }} />
+          {tt('Eigene Farbe')}
+          <input type="color" value={isHex(picked) ? picked : '#2563eb'} disabled={lock} onChange={(e) => (setPicked(e.target.value), void update({ accent: e.target.value }, 350))} aria-label={tt('Eigene Akzentfarbe')} style={{ width: 44, height: 30, padding: 1 }} />
         </label>
       </div>
       <div className="ap-accent-preview" data-tour="appearance-accent-preview">
         <button className="btn" type="button">
-          Speichern
+          {tt('Speichern')}
         </button>
         <button className="btn secondary" type="button">
-          Abbrechen
+          {tt('Abbrechen')}
         </button>
         <a href="#" onClick={(e) => e.preventDefault()}>
-          Ein Link
+          {tt('Ein Link')}
         </a>
         <span className="tag">Tag</span>
-        <input type="text" defaultValue="Fokus-Ring" style={{ width: 150 }} aria-label="Beispiel-Eingabefeld" />
+        <input type="text" defaultValue="Fokus-Ring" style={{ width: 150 }} aria-label={tt('Beispiel-Eingabefeld')} />
         <span className="muted small">
-          Text auf der Farbe: {a.on === '#ffffff' ? 'Weiß' : 'Schwarz'} ({contrast(a.on, a.brand).toFixed(1)}:1) – Links {contrast(a.text, k.panel).toFixed(1)}:1
+          {tt('Text auf der Farbe:')} {a.on === '#ffffff' ? tt('Weiß') : tt('Schwarz')} {tt('({n}:1) – Links {n2}:1', { n: contrast(a.on, a.brand).toFixed(1), n2: contrast(a.text, k.panel).toFixed(1) })}
         </span>
       </div>
     </>
@@ -168,13 +172,14 @@ function AccentPicker({ p, lock }: { p: Prefs; lock: boolean }) {
 }
 
 function DeptSection({ p, lock }: { p: Prefs; lock: boolean }) {
+  const tt = useT('x_misc');
   const look = useLook();
   const dark = resolveDark(p.mode);
   return (
-    <Section title="Bereichsfarben" tour="appearance-dept" lock={lock} hint="Jeder Bereich hat seine eigene Farbe, damit du dich auf einen Blick zurechtfindest.">
-      <Seg label="Intensität" value={p.dept} options={DEPT_LEVELS.map((l) => [l, DEPT_LEVEL_LABEL[l]] as [DeptLevel, string])} onChange={(v) => void update({ dept: v })} disabled={lock} />
+    <Section title={tt('Bereichsfarben')} tour="appearance-dept" lock={lock} hint={tt('Jeder Bereich hat seine eigene Farbe, damit du dich auf einen Blick zurechtfindest.')}>
+      <Seg label={tt('Intensität')} value={p.dept} options={DEPT_LEVELS.map((l) => [l, DEPT_LEVEL_LABEL[l]] as [DeptLevel, string])} onChange={(v) => void update({ dept: v })} disabled={lock} />
       <p className="muted small">{DEPT_LEVEL_HINT[p.dept]}</p>
-      <div className="ap-pal" role="radiogroup" aria-label="Palette">
+      <div className="ap-pal" role="radiogroup" aria-label={tt('Palette')}>
         {DEPT_PALETTES.map((id) => {
           const vars = buildVars({ theme: p.theme, accent: p.accent, palette: id, brandColor: look.brandColor }, dark);
           return (
@@ -190,7 +195,7 @@ function DeptSection({ p, lock }: { p: Prefs; lock: boolean }) {
           );
         })}
       </div>
-      <Check checked={p.dept_tint} onChange={(v) => void update({ dept_tint: v })} label="Auch Buttons, Links und Reiter auf den Seiten eines Bereichs in dessen Farbe" tour="appearance-dept-tint" />
+      <Check checked={p.dept_tint} onChange={(v) => void update({ dept_tint: v })} label={tt('Auch Buttons, Links und Reiter auf den Seiten eines Bereichs in dessen Farbe')} tour="appearance-dept-tint" />
       <div className="ap-dept-row">
         {DEPTS.map((d) => (
           <span key={d.id} className="ap-dept-chip" data-dept={d.id}>
@@ -219,6 +224,7 @@ function PackIcons({ id }: { id: IconPackId }) {
 }
 
 function Modules({ p, lock }: { p: Prefs; lock: boolean }) {
+  const tt = useT('x_misc');
   const look = useLook();
   const [pick, setPick] = useState<Profile | null>(null);
   const hidden = new Set(p.hidden);
@@ -230,31 +236,31 @@ function Modules({ p, lock }: { p: Prefs; lock: boolean }) {
   };
   return (
     <Section
-      title="Sichtbare Bereiche"
+      title={tt('Sichtbare Bereiche')}
       tour="appearance-modules"
       lock={lock}
       hint={
         <>
-          Blende aus, was du nicht brauchst: ausgeblendete Bereiche verschwinden aus Menü, Suche, Strg K und Dashboard. Das ist nur eine Ansicht – <b>keine Berechtigung</b>: nichts wird gelöscht, die Rechte der Agentur bleiben gleich, und über „Alle Bereiche anzeigen“ unten im Menü (oder die Adresse) ist alles erreichbar.
+          {tt('Blende aus, was du nicht brauchst: ausgeblendete Bereiche verschwinden aus Menü, Suche, Strg K und Dashboard. Das ist nur eine Ansicht –')} <b>{tt('keine Berechtigung')}</b>{tt(': nichts wird gelöscht, die Rechte der Agentur bleiben gleich, und über „Alle Bereiche anzeigen“ unten im Menü (oder die Adresse) ist alles erreichbar.')}
         </>
       }
     >
-      <h3 style={{ margin: '4px 0 8px' }}>Starter-Profil</h3>
+      <h3 style={{ margin: '4px 0 8px' }}>{tt('Starter-Profil')}</h3>
       <ProfileGrid value={pick?.id ?? p.profile} onPick={setPick} disabled={lock} />
       {pick && (
         <div style={{ marginTop: 10 }}>
           <ProfilePreview profile={pick} />
           <div className="actions" style={{ marginTop: 8 }}>
             <button className="btn" disabled={lock} onClick={async () => (await update({ hidden: hiddenForProfile(pick.id), profile: pick.id, asked: true }), setPick(null))} data-tour="profile-apply">
-              „{pick.label}“ übernehmen
+              {tt('„{label}“ übernehmen', { label: pick.label })}
             </button>
             <button className="btn secondary" onClick={() => setPick(null)}>
-              Abbrechen
+              {tt('Abbrechen')}
             </button>
           </div>
         </div>
       )}
-      <h3 style={{ margin: '16px 0 4px' }}>Einzeln</h3>
+      <h3 style={{ margin: '16px 0 4px' }}>{tt('Einzeln')}</h3>
       {MODULE_SECTIONS.map((s) => (
         <div key={s.id} className="ap-mod-sec">
           <h3>{s.label}</h3>
@@ -267,10 +273,10 @@ function Modules({ p, lock }: { p: Prefs; lock: boolean }) {
       ))}
       <div className="actions" style={{ marginTop: 10 }}>
         <button className="btn secondary small" disabled={lock || !hidden.size} onClick={() => void update({ hidden: [], profile: 'all' })}>
-          Alle einblenden
+          {tt('Alle einblenden')}
         </button>
         <button className="btn secondary small" onClick={() => setShowAll(!look.showAll)}>
-          {look.showAll ? 'Ausgeblendete im Menü verbergen' : 'Im Menü vorübergehend alles zeigen'}
+          {look.showAll ? tt('Ausgeblendete im Menü verbergen') : tt('Im Menü vorübergehend alles zeigen')}
         </button>
       </div>
     </Section>
@@ -278,31 +284,32 @@ function Modules({ p, lock }: { p: Prefs; lock: boolean }) {
 }
 
 export function Appearance() {
+  const tt = useT('x_misc');
   const look = useLook();
   const p = look.prefs;
   const L = look.locks;
   return (
     <div style={{ maxWidth: 1100 }}>
-      <p className="muted">Deine Darstellung gilt für dein Konto – auf jedem Gerät. Jede Änderung wirkt sofort{Object.values(L).some(Boolean) ? '; was deine Agentur festgelegt hat, ist gesperrt' : ''}.</p>
+      <p className="muted">{tt('Deine Darstellung gilt für dein Konto – auf jedem Gerät. Jede Änderung wirkt sofort')}{Object.values(L).some(Boolean) ? tt('; was deine Agentur festgelegt hat, ist gesperrt') : ''}.</p>
 
       <GoalCard goals={p.goals} locked={!!L.modules} />
 
-      <Section title="Theme" tour="appearance-theme" lock={L.theme} hint="Jedes Theme gibt es hell und dunkel; links die helle, rechts die dunkle Ansicht.">
+      <Section title={tt('Theme')} tour="appearance-theme" lock={L.theme} hint={tt('Jedes Theme gibt es hell und dunkel; links die helle, rechts die dunkle Ansicht.')}>
         <div data-tour="appearance-mode" style={{ marginBottom: 12 }}>
-          <Seg label="Modus" value={p.mode} options={MODE_LABEL} onChange={(v) => void update({ mode: v })} disabled={L.theme} />
+          <Seg label={tt('Modus')} value={p.mode} options={MODE_LABEL} onChange={(v) => void update({ mode: v })} disabled={L.theme} />
         </div>
         <Themes p={p} lock={!!L.theme} />
       </Section>
 
-      <Section title="Akzentfarbe" tour="appearance-accent" lock={L.accent} hint="Für Buttons, Links, Auswahl und Fokus. Hover-Farbe und lesbare Schrift (schwarz oder weiß) werden automatisch abgeleitet.">
+      <Section title={tt('Akzentfarbe')} tour="appearance-accent" lock={L.accent} hint={tt('Für Buttons, Links, Auswahl und Fokus. Hover-Farbe und lesbare Schrift (schwarz oder weiß) werden automatisch abgeleitet.')}>
         <AccentPicker p={p} lock={!!L.accent} />
       </Section>
 
       <DeptSection p={p} lock={!!L.dept} />
 
-      <Section title="Seitenleiste" tour="appearance-sidebar" lock={L.sidebar} hint="„Nur Symbole“ macht die Leiste schmal – Namen erscheinen beim Darüberfahren. Umschalten mit Strg B (⌘ B). Am Handy bleibt das ausklappbare Menü.">
+      <Section title={tt('Seitenleiste')} tour="appearance-sidebar" lock={L.sidebar} hint={tt('„Nur Symbole“ macht die Leiste schmal – Namen erscheinen beim Darüberfahren. Umschalten mit Strg B (⌘ B). Am Handy bleibt das ausklappbare Menü.')}>
         <Seg
-          label="Seitenleiste"
+          label={tt('Seitenleiste')}
           value={p.sidebar}
           options={[
             ['full', 'Voll'],
@@ -313,8 +320,8 @@ export function Appearance() {
         />
       </Section>
 
-      <Section title="Icon-Pack" tour="appearance-icons" lock={L.icons}>
-        <div className="ap-packs" role="radiogroup" aria-label="Icon-Pack">
+      <Section title={tt('Icon-Pack')} tour="appearance-icons" lock={L.icons}>
+        <div className="ap-packs" role="radiogroup" aria-label={tt('Icon-Pack')}>
           {ICON_PACKS.map((id) => (
             <button key={id} className={`ap-pack${p.icons === id ? ' on' : ''}`} onClick={() => void update({ icons: id })} disabled={!!L.icons} role="radio" aria-checked={p.icons === id} data-tour={`pack-${id}`}>
               <b>{PACKS[id][0]}</b>
@@ -325,14 +332,14 @@ export function Appearance() {
         </div>
       </Section>
 
-      <Section title="Dichte und Schrift" tour="appearance-density" lock={L.density}>
+      <Section title={tt('Dichte und Schrift')} tour="appearance-density" lock={L.density}>
         <div className="row">
           <div>
             <div className="small muted" style={{ marginBottom: 4 }}>
-              Dichte
+              {tt('Dichte')}
             </div>
             <Seg
-              label="Dichte"
+              label={tt('Dichte')}
               value={p.density}
               options={[
                 ['compact', 'Kompakt'],
@@ -345,10 +352,10 @@ export function Appearance() {
           </div>
           <div>
             <div className="small muted" style={{ marginBottom: 4 }}>
-              Schriftgröße
+              {tt('Schriftgröße')}
             </div>
             <Seg
-              label="Schriftgröße"
+              label={tt('Schriftgröße')}
               value={p.font}
               options={[
                 ['small', 'Klein'],
@@ -371,9 +378,9 @@ export function Appearance() {
           className="btn secondary"
           onClick={() => void update(Object.fromEntries(PREF_KEYS.filter((k) => k !== 'asked' && k !== 'goal_asked' && k !== 'tile_order').map((k) => [k, null])) as { [K in keyof Prefs]?: null })}
         >
-          <Icon name="reset" size={15} /> Auf Standard zurücksetzen
+          <Icon name="reset" size={15} /> {tt('Auf Standard zurücksetzen')}
         </button>
-        <span className="muted small">Setzt alles zurück, was du selbst gewählt hast (nicht, was die Agentur festgelegt hat).</span>
+        <span className="muted small">{tt('Setzt alles zurück, was du selbst gewählt hast (nicht, was die Agentur festgelegt hat).')}</span>
       </div>
     </div>
   );

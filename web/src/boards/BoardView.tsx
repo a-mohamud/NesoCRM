@@ -17,6 +17,7 @@ import { arrange, cellsOf, sameCells, withCells } from './layout';
 import { MoveMenu } from '../xr/MoveMenu';
 import { XrButton } from '../xr/XrButton';
 import type { Widget, WidgetType } from './types';
+import { useT } from '../i18n';
 
 const BP_NAME = { lg: 'Desktop', md: 'Tablet', sm: 'Handy' } as const;
 const WIDGET_MOVES = [
@@ -59,6 +60,7 @@ const initials = (n: string) =>
 
 /** One board: the grid with its widgets, the editor around it, the prompt bar below. */
 export function BoardView({ id }: { id: string }) {
+  const tt = useT('x_misc');
   const session = useSession();
   const { board, setBoard, error, viewers, live, online, reload, patch, call, undo, redo, restore } = useBoard(id);
   const catalogue = useCatalogue();
@@ -205,7 +207,7 @@ export function BoardView({ id }: { id: string }) {
 
   if (error)
     return (
-      <Empty action={<Link to="boards" className="btn secondary">Zu allen Boards</Link>}>
+      <Empty action={<Link to="boards" className="btn secondary">{tt('Zu allen Boards')}</Link>}>
         {error}
       </Empty>
     );
@@ -233,50 +235,50 @@ export function BoardView({ id }: { id: string }) {
             <Icon name={(board.icon || 'boards') as IconName} size={20} />
           </span>
           <h1>{board.name}</h1>
-          <span className={`bd-badge${board.scope === 'shared' ? ' tone-blue' : ''}`} title={board.scope === 'shared' ? 'Das Team sieht dieses Board' : 'Nur du siehst dieses Board'}>
-            {board.scope === 'shared' ? 'Team' : 'Persönlich'}
+          <span className={`bd-badge${board.scope === 'shared' ? ' tone-blue' : ''}`} title={board.scope === 'shared' ? tt('Das Team sieht dieses Board') : tt('Nur du siehst dieses Board')}>
+            {board.scope === 'shared' ? 'Team' : tt('Persönlich')}
           </span>
           {board.home && (
-            <span className="bd-badge tone-green" title="Deine Startseite">
-              <Icon name="house" size={12} /> Startseite
+            <span className="bd-badge tone-green" title={tt('Deine Startseite')}>
+              <Icon name="house" size={12} /> {tt('Startseite')}
             </span>
           )}
           {!canEdit && (
-            <span className="bd-badge" title="Du darfst dieses Board ansehen, aber nicht ändern">
-              <Icon name="lock" size={12} /> Nur Ansicht
+            <span className="bd-badge" title={tt('Du darfst dieses Board ansehen, aber nicht ändern')}>
+              <Icon name="lock" size={12} /> {tt('Nur Ansicht')}
             </span>
           )}
         </div>
         <div className="bd-tools">
           {others.length > 0 && (
-            <span className="bd-viewers" title={`${others.map((v) => v.name).join(', ')} ${others.length === 1 ? 'sieht' : 'sehen'} gerade zu`}>
+            <span className="bd-viewers" title={tt('{n} {v} gerade zu', { n: others.map((v) => v.name).join(', '), v: others.length === 1 ? 'sieht' : 'sehen' })}>
               {others.slice(0, 4).map((v, i) => (
                 <i key={`${v.user_id}${i}`}>{initials(v.name)}</i>
               ))}
               {others.length > 4 && <i>+{others.length - 4}</i>}
             </span>
           )}
-          {!online && <span className="bd-badge tone-yellow">Verbindung wird neu aufgebaut …</span>}
+          {!online && <span className="bd-badge tone-yellow">{tt('Verbindung wird neu aufgebaut …')}</span>}
           {canEdit && (
             <>
-              <button type="button" className="bd-iconbtn lg" onClick={() => void undo()} disabled={!board.can_undo} aria-label="Rückgängig (Strg+Z)" title="Rückgängig (Strg+Z)">
+              <button type="button" className="bd-iconbtn lg" onClick={() => void undo()} disabled={!board.can_undo} aria-label={tt('Rückgängig (Strg+Z)')} title={tt('Rückgängig (Strg+Z)')}>
                 <Icon name="undo" size={16} />
               </button>
-              <button type="button" className="bd-iconbtn lg" onClick={() => void redo()} disabled={!board.can_redo} aria-label="Wiederholen (Strg+Umschalt+Z)" title="Wiederholen (Strg+Umschalt+Z)">
+              <button type="button" className="bd-iconbtn lg" onClick={() => void redo()} disabled={!board.can_redo} aria-label={tt('Wiederholen (Strg+Umschalt+Z)')} title={tt('Wiederholen (Strg+Umschalt+Z)')}>
                 <Icon name="redo" size={16} />
               </button>
             </>
           )}
           <XrButton kind="board" id={id} name={board.name} />
           <button type="button" className="btn secondary small" onClick={() => setShowHistory(true)} data-tour="board-history-btn">
-            <Icon name="history" size={14} /> Verlauf
+            <Icon name="history" size={14} /> {tt('Verlauf')}
           </button>
-          <button type="button" className="btn secondary small" onClick={() => setCfg(true)} aria-label="Board-Einstellungen" data-tour="board-config">
-            <Icon name="settings" size={14} /> <span className="bd-hide-s">Einstellungen</span>
+          <button type="button" className="btn secondary small" onClick={() => setCfg(true)} aria-label={tt('Board-Einstellungen')} data-tour="board-config">
+            <Icon name="settings" size={14} /> <span className="bd-hide-s">{tt('Einstellungen')}</span>
           </button>
           {canEdit && (
             <button type="button" className={`btn small${edit ? '' : ' secondary'}`} onClick={() => setEdit(!edit)} aria-pressed={edit} data-tour="board-edit">
-              <Icon name={edit ? 'check' : 'edit'} size={14} /> {edit ? 'Fertig' : 'Anpassen'}
+              <Icon name={edit ? 'check' : 'edit'} size={14} /> {edit ? tt('Fertig') : tt('Anpassen')}
             </button>
           )}
         </div>
@@ -286,7 +288,7 @@ export function BoardView({ id }: { id: string }) {
         <p className="bd-live" role="status">
           <Icon name="sparkles" size={14} />
           <span>
-            <b>{live.actor}</b> {live.via === 'agent' ? '(KI) ' : ''}hat das Board geändert: {live.summary}
+            <b>{live.actor}</b> {live.via === 'agent' ? tt('(KI) ') : ''}{tt('hat das Board geändert: {summary}', { summary: live.summary })}
           </span>
         </p>
       )}
@@ -294,10 +296,10 @@ export function BoardView({ id }: { id: string }) {
       {edit && (
         <div className="bd-editbar" data-tour="board-editbar">
           <button type="button" className="btn small" onClick={() => setPicker(true)} data-tour="board-add">
-            <Icon name="plus" size={14} /> Widget hinzufügen
+            <Icon name="plus" size={14} /> {tt('Widget hinzufügen')}
           </button>
           <span className="muted small bd-editbar-tip">
-            {bp === 'sm' ? 'Mit den Pfeilen sortierst du die Widgets.' : 'Am Griff ziehen, an der Ecke unten rechts die Größe ändern. Tastatur: Griff wählen, Leertaste, Pfeile (Umschalt = Größe), Leertaste.'} Du bearbeitest die Ansicht „{BP_NAME[bp]}“.
+            {bp === 'sm' ? tt('Mit den Pfeilen sortierst du die Widgets.') : tt('Am Griff ziehen, an der Ecke unten rechts die Größe ändern. Tastatur: Griff wählen, Leertaste, Pfeile (Umschalt = Größe), Leertaste.')} {tt('Du bearbeitest die Ansicht „{v}“.', { v: BP_NAME[bp] })}
           </span>
           {custom && (
             <button
@@ -310,9 +312,9 @@ export function BoardView({ id }: { id: string }) {
                   toastError(e);
                 }
               }}
-              title="Die Anordnung wieder aus der Desktop-Ansicht ableiten"
+              title={tt('Die Anordnung wieder aus der Desktop-Ansicht ableiten')}
             >
-              <Icon name="reset" size={14} /> {BP_NAME[bp]}-Anordnung zurücksetzen
+              <Icon name="reset" size={14} /> {tt('{v}-Anordnung zurücksetzen', { v: BP_NAME[bp] })}
             </button>
           )}
         </div>
@@ -323,15 +325,15 @@ export function BoardView({ id }: { id: string }) {
         {empty ? (
           <div className="bd-empty" data-tour="board-empty">
             <Icon name="boards" size={30} />
-            <h2>Dieses Board ist noch leer</h2>
-            <p className="muted">Füge Widgets hinzu – oder sag dem Board unten, was du sehen willst.</p>
+            <h2>{tt('Dieses Board ist noch leer')}</h2>
+            <p className="muted">{tt('Füge Widgets hinzu – oder sag dem Board unten, was du sehen willst.')}</p>
             {canEdit && (
               <div className="bd-empty-actions">
                 <button type="button" className="btn" onClick={() => (setEdit(true), setPicker(true))}>
-                  <Icon name="plus" size={15} /> Widget hinzufügen
+                  <Icon name="plus" size={15} /> {tt('Widget hinzufügen')}
                 </button>
                 <Link to="boards/vorlagen" className="btn secondary">
-                  <Icon name="template" size={15} /> Vorlagen ansehen
+                  <Icon name="template" size={15} /> {tt('Vorlagen ansehen')}
                 </Link>
               </div>
             )}
@@ -354,7 +356,7 @@ export function BoardView({ id }: { id: string }) {
             limits={limits}
             titleOf={titleOf}
             onCommit={commit}
-            render={(w, part) => <WidgetCard w={w} type={types.get(w.type)} data={data[w.id]} loading={loading} part={part} edit={edit} selected={settings === w.id} fresh={fresh === w.id} onSettings={() => setSettings(w.id)} onRemove={() => void remove(w)} onRefresh={() => void refresh([w.id])} moveMenu={bp !== 'sm' ? <MoveMenu what={`Widget „${titleOf(w)}“`} title="Widget verschieben oder anpassen" targets={WIDGET_MOVES} onMove={(a) => nudge(w, a)} /> : undefined} />}
+            render={(w, part) => <WidgetCard w={w} type={types.get(w.type)} data={data[w.id]} loading={loading} part={part} edit={edit} selected={settings === w.id} fresh={fresh === w.id} onSettings={() => setSettings(w.id)} onRemove={() => void remove(w)} onRefresh={() => void refresh([w.id])} moveMenu={bp !== 'sm' ? <MoveMenu what={`Widget „${titleOf(w)}“`} title={tt('Widget verschieben oder anpassen')} targets={WIDGET_MOVES} onMove={(a) => nudge(w, a)} /> : undefined} />}
           />
         )}
       </div>
@@ -370,7 +372,7 @@ export function BoardView({ id }: { id: string }) {
               await undo();
             }}
           >
-            <Icon name="undo" size={14} /> Rückgängig
+            <Icon name="undo" size={14} /> {tt('Rückgängig')}
           </button>
         </div>
       )}

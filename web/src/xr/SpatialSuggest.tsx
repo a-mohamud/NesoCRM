@@ -4,6 +4,7 @@ import { Icon } from '../icons';
 import { spatialOf, update, useLook } from '../theme/store';
 import { xrSupport } from './detect';
 import './suggest.css';
+import { useT } from '../i18n';
 
 /**
  * The quiet suggestion for a browser that offers WebXR but is not (yet) recognised as a headset – a PC with a headset, glasses with a
@@ -24,6 +25,7 @@ const readDismissed = () => {
 };
 
 export function SpatialSuggest() {
+  const tt = useT('x_misc');
   const look = useLook();
   const [supported, setSupported] = useState(false);
   const [dismissed, setDismissed] = useState(readDismissed);
@@ -44,19 +46,19 @@ export function SpatialSuggest() {
     setDismissed(true);
   };
   return (
-    <div className="xr-suggest" role="dialog" aria-label="Raum-Modus vorschlagen" data-tour="xr-suggest">
+    <div className="xr-suggest" role="dialog" aria-label={tt('Raum-Modus vorschlagen')} data-tour="xr-suggest">
       <Icon name="glasses" size={22} />
       <div className="xr-suggest-text">
-        <strong>Mit Brille oder Headset?</strong>
-        <span className="muted small">Dein Browser bietet WebXR. Der Raum-Modus macht alles groß genug für Blick und Pinch – du kannst ihn jederzeit unter Einstellungen → Darstellung ändern.</span>
+        <strong>{tt('Mit Brille oder Headset?')}</strong>
+        <span className="muted small">{tt('Dein Browser bietet WebXR. Der Raum-Modus macht alles groß genug für Blick und Pinch – du kannst ihn jederzeit unter Einstellungen → Darstellung ändern.')}</span>
       </div>
       <button type="button" className="btn small" onClick={() => void update({ spatial: 'on' }).then(close)}>
-        Raum-Modus einschalten
+        {tt('Raum-Modus einschalten')}
       </button>
       <button type="button" className="btn secondary small" onClick={close}>
-        Nein danke
+        {tt('Nein danke')}
       </button>
-      <button type="button" className="icon-btn" onClick={close} aria-label="Schließen">
+      <button type="button" className="icon-btn" onClick={close} aria-label={tt('Schließen')}>
         ✕
       </button>
     </div>

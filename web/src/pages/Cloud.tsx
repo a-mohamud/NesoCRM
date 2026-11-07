@@ -6,6 +6,7 @@ import { Badge, Empty, Field, Modal, Select, Spinner, Tabs, Textarea, act, navig
 import { CloudClients, CloudTeam } from './CloudTeam';
 import { MeterBar, PHASE_TONE, REASONS, type CloudMe, type Tenant } from './CloudKit';
 import { CloudData } from './CloudData';
+import { useT } from '../i18n';
 
 /**
  * Einstellungen → Cloud-Konto: the customer's side of the hosted service. Overview with the fair-use meters and the
@@ -21,13 +22,14 @@ const METERS: [keyof Tenant['meters'], string, string][] = [
 ];
 
 function Checklist() {
+  const tt = useT('x_agency');
   const o = useLoad(() => api.get<{ items: { key: string; label: string; hint: string; to: string; done: boolean }[]; done: number; total: number }>('/api/cloud/onboarding'), []);
   const x = o.data;
   if (!x || x.done === x.total) return null;
   return (
     <div className="card cloud-check" data-tour="cloud-checklist">
       <h3 style={{ marginTop: 0 }}>
-        Los geht’s <span className="muted small">{x.done} von {x.total} erledigt</span>
+        {tt('Los geht’s')} <span className="muted small">{x.done} von {x.total} erledigt</span>
       </h3>
       <ul>
         {x.items.map((i) => (
@@ -39,7 +41,7 @@ function Checklist() {
             </div>
             {!i.done && (
               <button className="btn small secondary" onClick={() => navigate(i.to)}>
-                Öffnen
+                {tt('Öffnen')}
               </button>
             )}
           </li>
@@ -50,6 +52,7 @@ function Checklist() {
 }
 
 function Overview({ me, owner, onTab }: { me: CloudMe; owner: boolean; onTab: (t: string) => void }) {
+  const tt = useT('x_agency');
   const t = me.tenant;
   const every = t.plan.interval === 'year' ? 'Jahr' : 'Monat';
   return (
@@ -57,11 +60,11 @@ function Overview({ me, owner, onTab }: { me: CloudMe; owner: boolean; onTab: (t
       <div className="card" data-tour="cloud-plan">
         <div className="saas-plan-head">
           <div>
-            <div className="muted small">Dein Tarif</div>
+            <div className="muted small">{tt('Dein Tarif')}</div>
             <h2>
-              {t.plan.name} <Badge tone={PHASE_TONE[t.phase] ?? 'gray'}>{t.phase_label}</Badge> {t.cancel_at_period_end && <Badge tone="yellow">gekündigt</Badge>}
+              {t.plan.name} <Badge tone={PHASE_TONE[t.phase] ?? 'gray'}>{t.phase_label}</Badge> {t.cancel_at_period_end && <Badge tone="yellow">{tt('gekündigt')}</Badge>}
             </h2>
-            <p className="muted">{t.plan.key === 'solo' ? 'Eine Person, alle Funktionen.' : t.plan.key === 'team' ? 'Unbegrenzt Nutzer, alle Funktionen.' : 'Unbegrenzt Nutzer und Kunden-Accounts, White-Label inklusive.'}</p>
+            <p className="muted">{t.plan.key === 'solo' ? tt('Eine Person, alle Funktionen.') : t.plan.key === 'team' ? tt('Unbegrenzt Nutzer, alle Funktionen.') : tt('Unbegrenzt Nutzer und Kunden-Accounts, White-Label inklusive.')}</p>
           </div>
           <div className="saas-price">
             {t.comped ? 'geschenkt' : money(t.plan.price_cents, t.plan.currency)}
@@ -69,37 +72,37 @@ function Overview({ me, owner, onTab }: { me: CloudMe; owner: boolean; onTab: (t
           </div>
         </div>
         <ul className="saas-facts">
-          {t.phase === 'trial' && t.trial_end && <li>Testphase bis {d(t.trial_end)}{t.billing === 'manual' ? ' – danach schreibgeschützt, solange kein Tarif gewählt ist' : ''}</li>}
-          {t.current_period_end && t.billing === 'stripe' && <li>{t.cancel_at_period_end ? `Endet am ${d(t.current_period_end)}` : `Nächste Verlängerung: ${d(t.current_period_end)}`}</li>}
-          {t.comped && t.comp_until && <li>Geschenkt bis {d(t.comp_until)}</li>}
-          {t.phase === 'past_due' && t.grace_until && <li>Bitte Zahlung bis {d(t.grace_until)} erledigen – danach wird das Konto schreibgeschützt.</li>}
-          {t.read_only && <li>Das Konto ist schreibgeschützt: alles bleibt les- und exportierbar.</li>}
-          {t.deletion && <li>Löschung geplant am {d(t.deletion.at)}.</li>}
-          <li>{t.entitlements.users === null ? 'Unbegrenzt Nutzer' : `${t.counts.users} von ${t.entitlements.users} Nutzer`}{t.entitlements.client_accounts ? ` · ${t.counts.clients} Kunden-Accounts` : ''}</li>
-          {t.subdomain && <li>Deine Adresse: <span className="mono">{t.subdomain}</span></li>}
+          {t.phase === 'trial' && t.trial_end && <li>{tt('Testphase bis {d}', { d: d(t.trial_end) })}{t.billing === 'manual' ? tt(' – danach schreibgeschützt, solange kein Tarif gewählt ist') : ''}</li>}
+          {t.current_period_end && t.billing === 'stripe' && <li>{t.cancel_at_period_end ? tt('Endet am {d}', { d: d(t.current_period_end) }) : tt('Nächste Verlängerung: {d}', { d: d(t.current_period_end) })}</li>}
+          {t.comped && t.comp_until && <li>{tt('Geschenkt bis {d}', { d: d(t.comp_until) })}</li>}
+          {t.phase === 'past_due' && t.grace_until && <li>{tt('Bitte Zahlung bis {d} erledigen – danach wird das Konto schreibgeschützt.', { d: d(t.grace_until) })}</li>}
+          {t.read_only && <li>{tt('Das Konto ist schreibgeschützt: alles bleibt les- und exportierbar.')}</li>}
+          {t.deletion && <li>{tt('Löschung geplant am {d}.', { d: d(t.deletion.at) })}</li>}
+          <li>{t.entitlements.users === null ? tt('Unbegrenzt Nutzer') : tt('{users} von {users2} Nutzer', { users: t.counts.users, users2: t.entitlements.users })}{t.entitlements.client_accounts ? tt(' · {clients} Kunden-Accounts', { clients: t.counts.clients }) : ''}</li>
+          {t.subdomain && <li>{tt('Deine Adresse:')} <span className="mono">{t.subdomain}</span></li>}
         </ul>
         {owner && (
           <div className="actions">
             <button className="btn secondary" onClick={() => onTab('plan')}>
-              <Icon name="card" /> Tarif & Rechnungen
+              <Icon name="card" /> {tt('Tarif & Rechnungen')}
             </button>
           </div>
         )}
       </div>
       <Checklist />
       <div className="card" data-tour="cloud-meters">
-        <h3 style={{ marginTop: 0 }}>Fair Use – dein Verbrauch</h3>
-        <p className="muted small" style={{ marginTop: 0 }}>Alle Funktionen sind in jedem Tarif frei. Nur teure Ressourcen haben Grenzen, pro Sub-Account und Monat.</p>
+        <h3 style={{ marginTop: 0 }}>{tt('Fair Use – dein Verbrauch')}</h3>
+        <p className="muted small" style={{ marginTop: 0 }}>{tt('Alle Funktionen sind in jedem Tarif frei. Nur teure Ressourcen haben Grenzen, pro Sub-Account und Monat.')}</p>
         <div className="saas-meters">
           {METERS.map(([k, l, u]) => (
             <MeterBar key={k} label={l} m={t.meters[k]} unit={u} />
           ))}
         </div>
-        <p className="muted small" style={{ marginBottom: 0 }}>Mit eigenem KI-Schlüssel (Einstellungen → KI-Anbieter) rechnest du KI direkt mit deinem Anbieter ab.</p>
+        <p className="muted small" style={{ marginBottom: 0 }}>{tt('Mit eigenem KI-Schlüssel (Einstellungen → KI-Anbieter) rechnest du KI direkt mit deinem Anbieter ab.')}</p>
       </div>
       {me.support_email && (
         <p className="muted small">
-          Fragen zu Tarif oder Rechnung? <a href={`mailto:${me.support_email}`}>{me.support_email}</a>
+          {tt('Fragen zu Tarif oder Rechnung?')} <a href={`mailto:${me.support_email}`}>{me.support_email}</a>
           {me.status_url && (
             <>
               {' '}
@@ -125,30 +128,31 @@ interface Card {
 }
 
 function CancelModal({ t, onClose, onDone }: { t: Tenant; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_agency');
   const [reason, setReason] = useState('price');
   const [comment, setComment] = useState('');
   return (
     <Modal
-      title="Abo kündigen"
+      title={tt('Abo kündigen')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
-          <button className="btn danger" onClick={async () => (await act(() => api.post('/api/cloud/cancel', { reason, comment }), 'Gekündigt')) && (onDone(), onClose())}>
-            Zum Ende des Zeitraums kündigen
+          <button className="btn danger" onClick={async () => (await act(() => api.post('/api/cloud/cancel', { reason, comment }), tt('Gekündigt'))) && (onDone(), onClose())}>
+            {tt('Zum Ende des Zeitraums kündigen')}
           </button>
         </>
       }
     >
       <p>
-        Dein Abo „{t.plan.name}“ läuft bis {d(t.current_period_end ?? t.trial_end) || 'zum Ende des Zeitraums'} weiter, danach ist das Konto schreibgeschützt. Du kannst die Kündigung bis dahin zurücknehmen und jederzeit alle Daten exportieren.
+        {tt('Dein Abo „{name}“ läuft bis', { name: t.plan.name })} {d(t.current_period_end ?? t.trial_end) || tt('zum Ende des Zeitraums')} {tt('weiter, danach ist das Konto schreibgeschützt. Du kannst die Kündigung bis dahin zurücknehmen und jederzeit alle Daten exportieren.')}
       </p>
-      <Field label="Warum kündigst du? (hilft uns, besser zu werden)">
+      <Field label={tt('Warum kündigst du? (hilft uns, besser zu werden)')}>
         <Select value={reason} onChange={setReason} options={REASONS} />
       </Field>
-      <Field label="Möchtest du etwas ergänzen? (optional)">
+      <Field label={tt('Möchtest du etwas ergänzen? (optional)')}>
         <Textarea value={comment} onChange={setComment} maxLength={1000} />
       </Field>
     </Modal>
@@ -156,6 +160,7 @@ function CancelModal({ t, onClose, onDone }: { t: Tenant; onClose: () => void; o
 }
 
 function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
+  const tt = useT('x_agency');
   const t = me.tenant;
   const plans = useLoad(() => api.get<{ plans: Card[]; yearly_discount_percent: number; price_note: string }>('/api/cloud/plans'), []);
   const invoices = useLoad(() => api.get<{ items: { id: string; number: string; status: string; amount_cents: number; currency: string; created: string; hosted_url: string; pdf_url: string }[]; portal: boolean }>('/api/cloud/invoices'), []);
@@ -166,13 +171,13 @@ function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
   const choose = async (c: Card) => {
     if (t.billing === 'stripe' && !t.read_only) {
       if (c.key === t.plan.key && interval === t.plan.interval) return;
-      if (!window.confirm(`Auf „${c.name}“ (${interval === 'year' ? 'jährlich' : 'monatlich'}) wechseln? Der Preis wird anteilig verrechnet.`)) return;
-      if (await act(() => api.post('/api/cloud/plan', { plan: c.key, interval }), 'Tarif geändert')) reload();
+      if (!window.confirm(`Auf „${c.name}“ (${interval === 'year' ? tt('jährlich') : 'monatlich'}) wechseln? Der Preis wird anteilig verrechnet.`)) return;
+      if (await act(() => api.post('/api/cloud/plan', { plan: c.key, interval }), tt('Tarif geändert'))) reload();
     } else if (t.billing === 'manual' && !t.read_only && t.status !== 'canceled' && t.stripe === false && t.phase !== 'comped') {
       // Trial without payment data: switch the plan first, paying is the next step.
-      if (c.key !== t.plan.key && (await act(() => api.post('/api/cloud/plan', { plan: c.key, interval }), 'Tarif geändert'))) reload();
+      if (c.key !== t.plan.key && (await act(() => api.post('/api/cloud/plan', { plan: c.key, interval }), tt('Tarif geändert')))) reload();
     } else if (t.phase === 'comped') {
-      toast('Dein Tarif ist geschenkt – Änderungen macht der Anbieter.');
+      toast(tt('Dein Tarif ist geschenkt – Änderungen macht der Anbieter.'));
     }
   };
   const subscribe = async (c: Card) => {
@@ -182,12 +187,12 @@ function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
   const needsSubscribe = (t.billing === 'manual' && t.phase !== 'comped') || (t.phase === 'canceled' && !t.deletion);
   return (
     <>
-      <div className="cloud-interval" role="group" aria-label="Abrechnung">
+      <div className="cloud-interval" role="group" aria-label={tt('Abrechnung')}>
         <button className={interval === 'month' ? 'on' : ''} onClick={() => setInterval('month')}>
-          Monatlich
+          {tt('Monatlich')}
         </button>
         <button className={interval === 'year' ? 'on' : ''} onClick={() => setInterval('year')}>
-          Jährlich {plans.data.yearly_discount_percent > 0 && <Badge tone="green">-{plans.data.yearly_discount_percent} %</Badge>}
+          {tt('Jährlich')} {plans.data.yearly_discount_percent > 0 && <Badge tone="green">-{plans.data.yearly_discount_percent} %</Badge>}
         </button>
       </div>
       <div className="cloud-plans" data-tour="cloud-plans">
@@ -202,9 +207,9 @@ function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
               <p className="muted small">{c.tagline}</p>
               <div className="cloud-price">
                 {money(price)}
-                <span className="muted"> / Monat {note}</span>
+                <span className="muted"> {tt('/ Monat {note}', { note: note })}</span>
               </div>
-              {interval === 'year' && <div className="muted small">{money(c.price_year_cents)} pro Jahr</div>}
+              {interval === 'year' && <div className="muted small">{tt('{money} pro Jahr', { money: money(c.price_year_cents) })}</div>}
               <ul>
                 {c.highlights.map((h) => (
                   <li key={h}>{h}</li>
@@ -212,11 +217,11 @@ function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
               </ul>
               {needsSubscribe ? (
                 <button className="btn" onClick={() => subscribe(c)}>
-                  {current ? 'Jetzt abonnieren' : `${c.name} abonnieren`}
+                  {current ? tt('Jetzt abonnieren') : tt('{name} abonnieren', { name: c.name })}
                 </button>
               ) : (
                 <button className={`btn${current && interval === t.plan.interval ? ' secondary' : ''}`} disabled={(current && interval === t.plan.interval) || t.read_only} onClick={() => choose(c)}>
-                  {current && interval === t.plan.interval ? 'Dein Tarif' : current ? 'Intervall ändern' : 'Wechseln'}
+                  {current && interval === t.plan.interval ? tt('Dein Tarif') : current ? tt('Intervall ändern') : tt('Wechseln')}
                 </button>
               )}
             </div>
@@ -232,31 +237,31 @@ function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
               if (r?.url) window.location.href = r.url;
             }}
           >
-            <Icon name="card" /> Zahlungsmethode & Rechnungsadresse
+            <Icon name="card" /> {tt('Zahlungsmethode & Rechnungsadresse')}
           </button>
         )}
         {t.cancel_at_period_end ? (
-          <button className="btn secondary" onClick={async () => (await act(() => api.post('/api/cloud/cancel', { undo: true }), 'Abo läuft weiter')) && reload()}>
-            Kündigung zurücknehmen
+          <button className="btn secondary" onClick={async () => (await act(() => api.post('/api/cloud/cancel', { undo: true }), tt('Abo läuft weiter'))) && reload()}>
+            {tt('Kündigung zurücknehmen')}
           </button>
         ) : (
           t.status !== 'canceled' && (
             <button className="btn ghost" onClick={() => setCancel(true)}>
-              Abo kündigen
+              {tt('Abo kündigen')}
             </button>
           )
         )}
       </div>
       <div className="card" data-tour="cloud-invoices">
-        <h3 style={{ marginTop: 0 }}>Rechnungen</h3>
+        <h3 style={{ marginTop: 0 }}>{tt('Rechnungen')}</h3>
         {invoices.data?.items.length ? (
           <div className="table-wrap">
 <table className="t">
             <thead>
               <tr>
-                <th>Nummer</th>
-                <th>Datum</th>
-                <th>Betrag</th>
+                <th>{tt('Nummer')}</th>
+                <th>{tt('Datum')}</th>
+                <th>{tt('Betrag')}</th>
                 <th>Status</th>
                 <th />
               </tr>
@@ -271,7 +276,7 @@ function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
                   <td className="nowrap">
                     {i.hosted_url && (
                       <a href={i.hosted_url} target="_blank" rel="noopener noreferrer">
-                        Ansehen
+                        {tt('Ansehen')}
                       </a>
                     )}{' '}
                     {i.pdf_url && (
@@ -286,7 +291,7 @@ function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
           </table>
 </div>
         ) : (
-          <Empty>{t.stripe ? 'Noch keine Rechnung – die erste kommt nach der Testphase.' : 'Sobald du ein Abo abschließt, erscheinen deine Rechnungen hier.'}</Empty>
+          <Empty>{t.stripe ? tt('Noch keine Rechnung – die erste kommt nach der Testphase.') : tt('Sobald du ein Abo abschließt, erscheinen deine Rechnungen hier.')}</Empty>
         )}
       </div>
       {cancel && <CancelModal t={t} onClose={() => setCancel(false)} onDone={reload} />}
@@ -298,6 +303,7 @@ function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
 
 /** `fallback`: shown to sub-accounts that are no cloud customer (e.g. the operator's own, or a SaaS customer of an agency). */
 export function CloudAccount({ fallback }: { fallback?: ReactNode }) {
+  const tt = useT('x_agency');
   const session = useSession();
   const me = useLoad(() => api.get<CloudMe>('/api/cloud/me'), [session.locationId]);
   const q = new URLSearchParams(location.search).get('tab');
@@ -314,9 +320,9 @@ export function CloudAccount({ fallback }: { fallback?: ReactNode }) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!m]);
-  if (!m) return me.loading ? <Spinner /> : (fallback ?? <Empty>Dieses Konto gehört zu keinem Cloud-Tarif.</Empty>);
-  if (!m.customer) return <>{fallback ?? <Empty>Dieses Konto gehört zu keinem Cloud-Tarif.</Empty>}</>;
-  if (m.limited) return <Empty>{m.read_only ? 'Dieser Kunden-Account ist schreibgeschützt.' : 'Die Verwaltung deines Kunden-Accounts liegt bei deiner Agentur.'}</Empty>;
+  if (!m) return me.loading ? <Spinner /> : (fallback ?? <Empty>{tt('Dieses Konto gehört zu keinem Cloud-Tarif.')}</Empty>);
+  if (!m.customer) return <>{fallback ?? <Empty>{tt('Dieses Konto gehört zu keinem Cloud-Tarif.')}</Empty>}</>;
+  if (m.limited) return <Empty>{m.read_only ? tt('Dieser Kunden-Account ist schreibgeschützt.') : tt('Die Verwaltung deines Kunden-Accounts liegt bei deiner Agentur.')}</Empty>;
   const t = m.tenant;
   const owner = m.role === 'owner';
   const tabs: [string, string][] = [
@@ -337,17 +343,17 @@ export function CloudAccount({ fallback }: { fallback?: ReactNode }) {
         <div className="saas-banner error" role="alert">
           <Icon name="lock" size={18} />
           <span className="grow">
-            Dein Konto wird am {d(t.deletion.at)} gelöscht.
-            {t.deletion.reason === 'self' ? ' Du hast die Löschung angefordert.' : ' Exportiere vorher deine Daten – oder schließe ein Abo ab.'}
+            {tt('Dein Konto wird am {d} gelöscht.', { d: d(t.deletion.at) })}
+            {t.deletion.reason === 'self' ? tt(' Du hast die Löschung angefordert.') : tt(' Exportiere vorher deine Daten – oder schließe ein Abo ab.')}
           </span>
           {owner && t.deletion.reason === 'self' && (
-            <button className="btn small secondary" onClick={async () => (await act(() => api.post('/api/cloud/delete/undo', {}), 'Löschung zurückgenommen')) && reload()}>
-              Löschung zurücknehmen
+            <button className="btn small secondary" onClick={async () => (await act(() => api.post('/api/cloud/delete/undo', {}), tt('Löschung zurückgenommen'))) && reload()}>
+              {tt('Löschung zurücknehmen')}
             </button>
           )}
           {owner && t.deletion.reason !== 'self' && (
             <button className="btn small secondary" onClick={() => setTab('data')}>
-              Daten exportieren
+              {tt('Daten exportieren')}
             </button>
           )}
         </div>
@@ -355,12 +361,12 @@ export function CloudAccount({ fallback }: { fallback?: ReactNode }) {
       {owner && !!m.legal.pending.length && (
         <div className="saas-banner info" role="status">
           <Icon name="shield" size={18} />
-          <span className="grow">Unsere Bedingungen wurden aktualisiert ({m.legal.pending.map((p) => p.doc.toUpperCase()).join(', ')}). Bitte sieh sie dir an und bestätige.</span>
+          <span className="grow">{tt('Unsere Bedingungen wurden aktualisiert (')}{m.legal.pending.map((p) => p.doc.toUpperCase()).join(', ')}{tt('). Bitte sieh sie dir an und bestätige.')}</span>
           <a href="/cloud/legal/agb" target="_blank" rel="noopener noreferrer">
-            Lesen
+            {tt('Lesen')}
           </a>
-          <button className="btn small" onClick={async () => (await act(() => api.post('/api/cloud/legal/accept', {}), 'Danke')) && reload()}>
-            Bestätigen
+          <button className="btn small" onClick={async () => (await act(() => api.post('/api/cloud/legal/accept', {}), tt('Danke'))) && reload()}>
+            {tt('Bestätigen')}
           </button>
         </div>
       )}

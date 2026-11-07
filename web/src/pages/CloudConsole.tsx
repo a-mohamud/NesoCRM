@@ -7,6 +7,7 @@ import { PHASE_TONE, REASONS } from './CloudKit';
 import { CloudSettingsForm } from './CloudSettings';
 import { Slot } from '../slots';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /**
  * Agentur → Cloud: the operator console of the hosted service. Numbers (MRR, churn, trial conversion), the customer list
@@ -76,6 +77,7 @@ const PHASES: [string, string][] = [
 const pct = (n: number | null | undefined) => (n === null || n === undefined ? '–' : `${String(n).replace('.', ',')} %`);
 
 function Overview({ go }: { go: (t: string) => void }) {
+  const tt = useT('x_agency');
   const o = useLoad(() => api.get('/api/cloud/console/overview'), []);
   const x = o.data;
   if (!x) return <Spinner />;
@@ -94,16 +96,16 @@ function Overview({ go }: { go: (t: string) => void }) {
   return (
     <>
       <SortableGrid id="cloud-stats" className="stats" data-tour="cloud-stats">
-        <Stat label="MRR" value={money(x.mrr_cents, x.currency)} sub={`ARR ${money(x.arr_cents, x.currency)}`} />
-        <Stat label="Zahlende Kunden" value={x.paying} sub={`${x.total} Konten gesamt, ${x.new_30d} neu in 30 Tagen`} />
-        <Stat label="Testphasen" value={x.counts.trial} sub="noch ohne Umsatz" />
-        <Stat label="Testphase → Abo" value={pct(x.trial.conversion_percent)} sub={`${x.trial.converted_90d} umgestiegen, ${x.trial.expired_90d} abgelaufen (90 Tage)`} />
-        <Stat label="Churn (30 Tage)" value={pct(x.churn.rate_percent)} sub={`${x.churn.lost_30d} beendet`} />
-        <Stat label="Zahlung offen" value={x.counts.past_due + x.counts.read_only} sub={`${x.counts.read_only} davon schreibgeschützt`} />
+        <Stat label={tt('MRR')} value={money(x.mrr_cents, x.currency)} sub={tt('ARR {money}', { money: money(x.arr_cents, x.currency) })} />
+        <Stat label={tt('Zahlende Kunden')} value={x.paying} sub={tt('{total} Konten gesamt, {new_30d} neu in 30 Tagen', { total: x.total, new_30d: x.new_30d })} />
+        <Stat label={tt('Testphasen')} value={x.counts.trial} sub={tt('noch ohne Umsatz')} />
+        <Stat label={tt('Testphase → Abo')} value={pct(x.trial.conversion_percent)} sub={tt('{converted_90d} umgestiegen, {expired_90d} abgelaufen (90 Tage)', { converted_90d: x.trial.converted_90d, expired_90d: x.trial.expired_90d })} />
+        <Stat label={tt('Churn (30 Tage)')} value={pct(x.churn.rate_percent)} sub={tt('{lost_30d} beendet', { lost_30d: x.churn.lost_30d })} />
+        <Stat label={tt('Zahlung offen')} value={x.counts.past_due + x.counts.read_only} sub={tt('{read_only} davon schreibgeschützt', { read_only: x.counts.read_only })} />
       </SortableGrid>
       <SortableGrid id="cloud.cards" className="grid2 saas-grid">
         <div className="card" data-tour="cloud-health">
-          <h3 style={{ marginTop: 0 }}>Einrichtung</h3>
+          <h3 style={{ marginTop: 0 }}>{tt('Einrichtung')}</h3>
           <ul className="cloud-checks">
             {checks.map(([ok, label, hint]) => (
               <li key={label} className={ok ? 'ok' : 'todo'}>
@@ -116,18 +118,18 @@ function Overview({ go }: { go: (t: string) => void }) {
             ))}
           </ul>
           <button className="btn secondary small" onClick={() => go('settings')}>
-            Zu den Einstellungen
+            {tt('Zu den Einstellungen')}
           </button>
         </div>
         <div className="card">
-          <h3 style={{ marginTop: 0 }}>Kunden je Tarif</h3>
+          <h3 style={{ marginTop: 0 }}>{tt('Kunden je Tarif')}</h3>
           <div className="table-wrap">
 <table className="t">
             <thead>
               <tr>
-                <th>Tarif</th>
-                <th>Konten</th>
-                <th>MRR</th>
+                <th>{tt('Tarif')}</th>
+                <th>{tt('Konten')}</th>
+                <th>{tt('MRR')}</th>
               </tr>
             </thead>
             <tbody>
@@ -136,7 +138,7 @@ function Overview({ go }: { go: (t: string) => void }) {
                   <td>{p.name}</td>
                   <td>
                     {p.count}
-                    {p.trialing ? <span className="muted small"> ({p.trialing} Test)</span> : null}
+                    {p.trialing ? <span className="muted small"> {tt('({trialing} Test)', { trialing: p.trialing })}</span> : null}
                   </td>
                   <td>{money(p.mrr_cents, x.currency)}</td>
                 </tr>
@@ -146,16 +148,16 @@ function Overview({ go }: { go: (t: string) => void }) {
 </div>
           {x.failed_signups > 0 && (
             <p className="notice-warn" style={{ marginTop: 12 }}>
-              {x.failed_signups} Anmeldung(en) mit Zahlung konnten nicht eingerichtet werden.{' '}
+              {tt('{failed_signups} Anmeldung(en) mit Zahlung konnten nicht eingerichtet werden.', { failed_signups: x.failed_signups })}{' '}
               <a href="#" onClick={(e) => (e.preventDefault(), go('signups'))}>
-                Ansehen
+                {tt('Ansehen')}
               </a>
             </p>
           )}
         </div>
       </SortableGrid>
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>Letzte Ereignisse</h3>
+        <h3 style={{ marginTop: 0 }}>{tt('Letzte Ereignisse')}</h3>
         {x.events.length ? (
           <div className="table-wrap">
 <table className="t">
@@ -163,7 +165,7 @@ function Overview({ go }: { go: (t: string) => void }) {
               {x.events.map((e: any) => (
                 <tr key={e.id}>
                   <td className="nowrap muted">{dt(e.at)}</td>
-                  <td>{e.tenant_name || <span className="muted">gelöschtes Konto</span>}</td>
+                  <td>{e.tenant_name || <span className="muted">{tt('gelöschtes Konto')}</span>}</td>
                   <td>{EVENTS[e.type] ?? e.type}</td>
                   <td className="muted small">{e.detail}</td>
                 </tr>
@@ -172,7 +174,7 @@ function Overview({ go }: { go: (t: string) => void }) {
           </table>
 </div>
         ) : (
-          <Empty>Noch nichts passiert.</Empty>
+          <Empty>{tt('Noch nichts passiert.')}</Empty>
         )}
       </div>
     </>
@@ -180,6 +182,7 @@ function Overview({ go }: { go: (t: string) => void }) {
 }
 
 function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => void; onChange: () => void }) {
+  const tt = useT('x_agency');
   const session = useSession();
   const t = useLoad(() => api.get(`/api/cloud/console/tenants/${id}`), [id]);
   const [days, setDays] = useState('7');
@@ -195,7 +198,7 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
     }
   };
   return (
-    <Modal title={x ? x.name : 'Kunde'} wide onClose={onClose}>
+    <Modal title={x ? x.name : tt('Kunde')} wide onClose={onClose}>
       {!x ? (
         <Spinner />
       ) : (
@@ -203,20 +206,20 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
           <div className="row">
             <div className="grow">
               <p>
-                <Badge tone={PHASE_TONE[x.phase] ?? 'gray'}>{x.phase_label}</Badge> {x.plan.name} · {x.plan.interval === 'year' ? 'jährlich' : 'monatlich'} · {x.billing === 'stripe' ? 'Stripe' : 'ohne Stripe'}
+                <Badge tone={PHASE_TONE[x.phase] ?? 'gray'}>{x.phase_label}</Badge> {x.plan.name} · {x.plan.interval === 'year' ? tt('jährlich') : 'monatlich'} · {x.billing === 'stripe' ? 'Stripe' : tt('ohne Stripe')}
               </p>
               <p className="muted small">
-                {x.email} · angelegt {d(x.created_at)}
-                {x.trial_end && ` · Testphase bis ${d(x.trial_end)}`}
-                {x.current_period_end && ` · Laufzeit bis ${d(x.current_period_end)}`}
-                {x.deletion && ` · Löschung ${d(x.deletion.at)}`}
+                {tt('{email} · angelegt {d}', { email: x.email, d: d(x.created_at) })}
+                {x.trial_end && tt(' · Testphase bis {d}', { d: d(x.trial_end) })}
+                {x.current_period_end && tt(' · Laufzeit bis {d}', { d: d(x.current_period_end) })}
+                {x.deletion && tt(' · Löschung {d}', { d: d(x.deletion.at) })}
               </p>
               <p className="muted small">
-                {x.users} Nutzer{x.entitlements.client_accounts ? `, ${x.clients} Kunden-Accounts` : ''} · E-Mails {x.meters.emails.used.toLocaleString('de-DE')} · Support-Zugriff {x.support.active ? `bis ${d(x.support.until)}` : 'nicht freigegeben'}
+                {tt('{users} Nutzer', { users: x.users })}{x.entitlements.client_accounts ? tt(', {clients} Kunden-Accounts', { clients: x.clients }) : ''} {tt('· E-Mails')} {x.meters.emails.used.toLocaleString('de-DE')} {tt('· Support-Zugriff')} {x.support.active ? tt('bis {d}', { d: d(x.support.until) }) : tt('nicht freigegeben')}
               </p>
               {x.cancel_reason && (
                 <p className="muted small">
-                  Kündigungsgrund: {REASONS.find(([k]) => k === x.cancel_reason)?.[1] ?? x.cancel_reason}
+                  {tt('Kündigungsgrund: {v}', { v: REASONS.find(([k]) => k === x.cancel_reason)?.[1] ?? x.cancel_reason })}
                   {x.cancel_comment ? ` – „${x.cancel_comment}“` : ''}
                 </p>
               )}
@@ -226,7 +229,7 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
             <button
               className="btn"
               disabled={!x.support.active}
-              title={x.support.active ? 'Konto im Support öffnen' : 'Der Kunde hat den Support-Zugriff nicht freigegeben'}
+              title={x.support.active ? tt('Konto im Support öffnen') : tt('Der Kunde hat den Support-Zugriff nicht freigegeben')}
               onClick={async () => {
                 const r = await act(() => api.post<{ location_id: string }>(`/api/cloud/console/tenants/${id}/open`, { reason: 'Support' }));
                 if (r?.location_id) {
@@ -235,44 +238,44 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
                 }
               }}
             >
-              <Icon name="eye" /> Konto öffnen
+              <Icon name="eye" /> {tt('Konto öffnen')}
             </button>
           </div>
           <div className="grid2">
-            <Field label="Testphase verlängern (Tage)">
+            <Field label={tt('Testphase verlängern (Tage)')}>
               <div className="row" style={{ flexWrap: 'nowrap' }}>
                 <Input value={days} onChange={setDays} />
                 <button className="btn secondary" onClick={() => run(() => api.post(`/api/cloud/console/tenants/${id}/extend-trial`, { days: Number(days) }), 'Testphase verlängert')}>
-                  Verlängern
+                  {tt('Verlängern')}
                 </button>
               </div>
             </Field>
-            <Field label="Tarif ändern">
+            <Field label={tt('Tarif ändern')}>
               <div className="row" style={{ flexWrap: 'nowrap' }}>
                 <Select value={plan} onChange={setPlan} options={PLANS} />
                 <button className="btn secondary" onClick={() => run(() => api.post(`/api/cloud/console/tenants/${id}/plan`, { plan }), 'Tarif geändert')}>
-                  Ändern
+                  {tt('Ändern')}
                 </button>
               </div>
             </Field>
-            <Field label="Tarif schenken (Monate, leer = unbefristet)">
+            <Field label={tt('Tarif schenken (Monate, leer = unbefristet)')}>
               <div className="row" style={{ flexWrap: 'nowrap' }}>
-                <Input value={months} onChange={setMonths} placeholder="z. B. 3" />
+                <Input value={months} onChange={setMonths} placeholder={tt('z. B. 3')} />
                 <button className="btn secondary" onClick={() => run(() => api.post(`/api/cloud/console/tenants/${id}/comp`, { plan, ...(months ? { months: Number(months) } : {}) }), 'Tarif geschenkt')}>
-                  Schenken
+                  {tt('Schenken')}
                 </button>
               </div>
             </Field>
-            <Field label="Notiz (nur für dich)">
+            <Field label={tt('Notiz (nur für dich)')}>
               <div className="row" style={{ flexWrap: 'nowrap' }}>
                 <Input value={notes ?? x.notes} onChange={setNotes} />
                 <button className="btn secondary" disabled={notes === null} onClick={() => run(() => api.patch(`/api/cloud/console/tenants/${id}`, { notes }), 'Gespeichert')}>
-                  Speichern
+                  {tt('Speichern')}
                 </button>
               </div>
             </Field>
           </div>
-          <h4>Verlauf</h4>
+          <h4>{tt('Verlauf')}</h4>
           <div className="cloud-events">
             <div className="table-wrap">
 <table className="t">
@@ -289,22 +292,22 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
 </div>
           </div>
           <details style={{ marginTop: 14 }}>
-            <summary>Konto löschen …</summary>
-            <p className="muted small">Löscht alle Daten und Logins sofort und endgültig (der Kunde wird per E-Mail informiert, das Stripe-Abo beendet).</p>
-            <Field label={`Zur Bestätigung „${x.name}“ eintippen`}>
+            <summary>{tt('Konto löschen …')}</summary>
+            <p className="muted small">{tt('Löscht alle Daten und Logins sofort und endgültig (der Kunde wird per E-Mail informiert, das Stripe-Abo beendet).')}</p>
+            <Field label={tt('Zur Bestätigung „{name}“ eintippen', { name: x.name })}>
               <div className="row" style={{ flexWrap: 'nowrap' }}>
                 <Input value={confirm} onChange={setConfirm} />
                 <button
                   className="btn danger"
                   disabled={confirm !== x.name}
                   onClick={async () => {
-                    if (await act(() => api.post(`/api/cloud/console/tenants/${id}/delete`, { confirm }), 'Gelöscht')) {
+                    if (await act(() => api.post(`/api/cloud/console/tenants/${id}/delete`, { confirm }), tt('Gelöscht'))) {
                       onChange();
                       onClose();
                     }
                   }}
                 >
-                  Löschen
+                  {tt('Löschen')}
                 </button>
               </div>
             </Field>
@@ -316,6 +319,7 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
 }
 
 function Customers() {
+  const tt = useT('x_agency');
   const [q, setQ] = useState('');
   const [phase, setPhase] = useState('');
   const [plan, setPlan] = useState('');
@@ -326,8 +330,8 @@ function Customers() {
     <div className="card" data-tour="cloud-customers">
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div className="grow">
-          <Field label="Suchen">
-            <Input value={q} onChange={setQ} placeholder="Firma, E-Mail …" />
+          <Field label={tt('Suchen')}>
+            <Input value={q} onChange={setQ} placeholder={tt('Firma, E-Mail …')} />
           </Field>
         </div>
         <div>
@@ -336,7 +340,7 @@ function Customers() {
           </Field>
         </div>
         <div>
-          <Field label="Tarif">
+          <Field label={tt('Tarif')}>
             <Select value={plan} onChange={setPlan} options={[['', 'Alle Tarife'], ...PLANS]} />
           </Field>
         </div>
@@ -351,12 +355,12 @@ function Customers() {
 <table className="t">
           <thead>
             <tr>
-              <th>Firma</th>
-              <th>Tarif</th>
+              <th>{tt('Firma')}</th>
+              <th>{tt('Tarif')}</th>
               <th>Status</th>
-              <th>MRR</th>
-              <th>Testphase / Laufzeit</th>
-              <th>Angelegt</th>
+              <th>{tt('MRR')}</th>
+              <th>{tt('Testphase / Laufzeit')}</th>
+              <th>{tt('Angelegt')}</th>
             </tr>
           </thead>
           <tbody>
@@ -368,10 +372,10 @@ function Customers() {
                 </td>
                 <td>
                   {r.plan_name}
-                  <div className="muted small">{r.interval === 'year' ? 'jährlich' : 'monatlich'}</div>
+                  <div className="muted small">{r.interval === 'year' ? tt('jährlich') : 'monatlich'}</div>
                 </td>
                 <td>
-                  <Badge tone={PHASE_TONE[r.phase] ?? 'gray'}>{r.phase_label}</Badge> {r.cancel_at_period_end && <Badge tone="yellow">gekündigt</Badge>} {r.support && <Badge tone="purple">Support frei</Badge>}
+                  <Badge tone={PHASE_TONE[r.phase] ?? 'gray'}>{r.phase_label}</Badge> {r.cancel_at_period_end && <Badge tone="yellow">{tt('gekündigt')}</Badge>} {r.support && <Badge tone="purple">{tt('Support frei')}</Badge>}
                 </td>
                 <td className="nowrap">{r.mrr_cents ? money(r.mrr_cents) : '–'}</td>
                 <td className="nowrap">{d(r.status === 'trialing' ? r.trial_end : r.current_period_end)}</td>
@@ -382,7 +386,7 @@ function Customers() {
         </table>
 </div>
       ) : (
-        <Empty>Keine Kunden gefunden.</Empty>
+        <Empty>{tt('Keine Kunden gefunden.')}</Empty>
       )}
       {open && <TenantModal id={open} onClose={() => setOpen(null)} onChange={() => void list.reload()} />}
     </div>
@@ -390,13 +394,14 @@ function Customers() {
 }
 
 function Legal() {
+  const tt = useT('x_agency');
   const l = useLoad(() => api.get<{ docs: { doc: string; title: string; version: number; body: string; open_placeholders: string[]; accepted: number; created_at: string }[] }>('/api/cloud/console/legal'), []);
   const [edit, setEdit] = useState<Record<string, string>>({});
   if (!l.data) return <Spinner />;
   return (
     <div data-tour="cloud-legal">
       <div className="notice-warn">
-        Die Texte sind Vorlagen mit Platzhaltern und <strong>keine Rechtsberatung</strong>. Lass sie prüfen und trage deine Angaben unter Einstellungen → Anbieter ein. Jede Änderung ist eine neue Version; Kunden sehen sie als „bitte bestätigen“. Platzhalter: <code>{'{{operator.name}}'}</code>, <code>{'{{operator.address}}'}</code>, <code>{'{{customer.company}}'}</code>, <code>{'{{service}}'}</code>, <code>{'{{date}}'}</code>, <code>{'{{trial_days}}'}</code> …
+        {tt('Die Texte sind Vorlagen mit Platzhaltern und')} <strong>{tt('keine Rechtsberatung')}</strong>{tt('. Lass sie prüfen und trage deine Angaben unter Einstellungen → Anbieter ein. Jede Änderung ist eine neue Version; Kunden sehen sie als „bitte bestätigen“. Platzhalter:')} <code>{'{{operator.name}}'}</code>, <code>{'{{operator.address}}'}</code>, <code>{'{{customer.company}}'}</code>, <code>{'{{service}}'}</code>, <code>{'{{date}}'}</code>, <code>{'{{trial_days}}'}</code> …
       </div>
       {l.data.docs.map((x) => {
         const body = edit[x.doc] ?? x.body;
@@ -404,28 +409,28 @@ function Legal() {
           <div className="card" key={x.doc}>
             <div className="saas-subtabs">
               <h3 style={{ marginTop: 0 }}>
-                {x.title} <Badge>Version {x.version}</Badge> {x.open_placeholders.length > 0 && <Badge tone="yellow">{x.open_placeholders.length} Platzhalter offen</Badge>}
+                {x.title} <Badge>{tt('Version {version}', { version: x.version })}</Badge> {x.open_placeholders.length > 0 && <Badge tone="yellow">{tt('{length} Platzhalter offen', { length: x.open_placeholders.length })}</Badge>}
               </h3>
               <a href={`/cloud/legal/${x.doc}`} target="_blank" rel="noopener noreferrer">
-                Seite ansehen
+                {tt('Seite ansehen')}
               </a>
             </div>
-            {x.open_placeholders.length > 0 && <p className="muted small">Offen: {x.open_placeholders.map((p) => `{{${p}}}`).join(', ')}</p>}
+            {x.open_placeholders.length > 0 && <p className="muted small">{tt('Offen:')} {x.open_placeholders.map((p) => `{{${p}}}`).join(', ')}</p>}
             <Textarea value={body} onChange={(v) => setEdit({ ...edit, [x.doc]: v })} rows={12} className="mono" />
             <div className="actions" style={{ marginTop: 10 }}>
               <button
                 className="btn"
                 disabled={edit[x.doc] === undefined || edit[x.doc] === x.body}
                 onClick={async () => {
-                  if (await act(() => api.put(`/api/cloud/console/legal/${x.doc}`, { body: edit[x.doc] }), 'Neue Version veröffentlicht')) {
+                  if (await act(() => api.put(`/api/cloud/console/legal/${x.doc}`, { body: edit[x.doc] }), tt('Neue Version veröffentlicht'))) {
                     setEdit({ ...edit, [x.doc]: undefined as any });
                     void l.reload();
                   }
                 }}
               >
-                Als neue Version veröffentlichen
+                {tt('Als neue Version veröffentlichen')}
               </button>
-              <span className="muted small">{x.accepted} Kunden haben diese Version bestätigt</span>
+              <span className="muted small">{tt('{accepted} Kunden haben diese Version bestätigt', { accepted: x.accepted })}</span>
             </div>
           </div>
         );
@@ -435,19 +440,20 @@ function Legal() {
 }
 
 function Signups() {
+  const tt = useT('x_agency');
   const s = useLoad(() => api.get<any[]>('/api/cloud/console/signups'), []);
   if (!s.data) return <Spinner />;
   return (
     <div className="card">
-      <p className="muted small" style={{ marginTop: 0 }}>Offene Anmeldungen löscht das System nach 7 Tage, fehlgeschlagene nach 30 Tagen (Datenschutz).</p>
+      <p className="muted small" style={{ marginTop: 0 }}>{tt('Offene Anmeldungen löscht das System nach 7 Tage, fehlgeschlagene nach 30 Tagen (Datenschutz).')}</p>
       {s.data.length ? (
         <div className="table-wrap">
 <table className="t">
           <thead>
             <tr>
-              <th>Wann</th>
-              <th>Firma</th>
-              <th>Tarif</th>
+              <th>{tt('Wann')}</th>
+              <th>{tt('Firma')}</th>
+              <th>{tt('Tarif')}</th>
               <th>Status</th>
               <th />
             </tr>
@@ -467,8 +473,8 @@ function Signups() {
                 </td>
                 <td>
                   {r.status === 'failed' && (
-                    <button className="btn small secondary" onClick={async () => (await act(() => api.post(`/api/cloud/console/signups/${r.id}/retry`, {}), 'Erneut versucht')) && s.reload()}>
-                      Erneut einrichten
+                    <button className="btn small secondary" onClick={async () => (await act(() => api.post(`/api/cloud/console/signups/${r.id}/retry`, {}), tt('Erneut versucht'))) && s.reload()}>
+                      {tt('Erneut einrichten')}
                     </button>
                   )}
                 </td>
@@ -478,13 +484,14 @@ function Signups() {
         </table>
 </div>
       ) : (
-        <Empty>Keine Anmeldungen.</Empty>
+        <Empty>{tt('Keine Anmeldungen.')}</Empty>
       )}
     </div>
   );
 }
 
 export function CloudConsole() {
+  const tt = useT('x_agency');
   // ?tab=waitlist (the admins' push notification about a new waitlist entry links there)
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'overview');
   return (
@@ -505,10 +512,10 @@ export function CloudConsole() {
         />
         <div className="actions">
           <a className="btn small secondary" href="/cloud" target="_blank" rel="noopener noreferrer">
-            Preisseite
+            {tt('Preisseite')}
           </a>
           <a className="btn small secondary" href="/start" target="_blank" rel="noopener noreferrer">
-            Anmeldeseite
+            {tt('Anmeldeseite')}
           </a>
         </div>
       </div>

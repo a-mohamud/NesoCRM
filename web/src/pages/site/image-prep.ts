@@ -1,3 +1,4 @@
+import { tr } from '../../i18n';
 /**
  * Pictures are scaled in the browser before they are uploaded: a few widths for `srcset` (phones fetch the small one), WebP where the
  * browser can write it (feature-detected on a canvas), the real width and height for the page (no layout shift while loading).
@@ -69,6 +70,7 @@ export interface Prepared {
  * `onStep` reports progress ("2 von 4").
  */
 export async function prepareImage(file: File, upload: (name: string, data: string) => Promise<{ url: string }>, onStep?: (done: number, total: number) => void): Promise<Prepared> {
+  const tt = tr('x_misc');
   const plain = async (): Promise<Prepared> => {
     const up = await upload(file.name, await readDataUrl(file));
     return { url: up.url, w: 0, h: 0, srcset: '' };
@@ -93,7 +95,7 @@ export async function prepareImage(file: File, upload: (name: string, data: stri
       c.width = w;
       c.height = h;
       const ctx = c.getContext('2d');
-      if (!ctx) throw new Error('kein Canvas');
+      if (!ctx) throw new Error(tt('kein Canvas'));
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(bmp, 0, 0, w, h);
       return c.toDataURL(type, 0.82);

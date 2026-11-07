@@ -3,6 +3,7 @@ import { currentLocation } from '../api';
 import { useSession } from '../session';
 import './creator.css';
 import './calls.css';
+import { tr } from '../i18n';
 
 /**
  * Shared parts of the pages behind "Anrufe": the wrapper that gives every control a 44 px hit target (creator.css), a raw upload
@@ -28,9 +29,10 @@ export function dur(sec: number | null | undefined): string {
 
 /** The bytes of a file as the request body (`POST path?query`): audio files and meeting recordings. Throws the server's message. */
 export async function uploadRaw<T = any>(path: string, file: File): Promise<T> {
+  const tt = tr('x_comms');
   const r = await fetch(path, { method: 'POST', headers: { 'x-pghl': '1', 'x-location-id': currentLocation(), 'content-type': file.type || 'application/octet-stream' }, body: file, credentials: 'same-origin' });
   const data = (r.headers.get('content-type') ?? '').includes('json') ? await r.json() : await r.text();
-  if (!r.ok) throw new Error((data && (data as any).error) || `Fehler ${r.status}`);
+  if (!r.ok) throw new Error((data && (data as any).error) || tt('Fehler {status}', { status: r.status }));
   return data as T;
 }
 

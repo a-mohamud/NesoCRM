@@ -5,9 +5,11 @@ import { Icon, type IconName } from '../icons';
 import { Check, Field, Input, Modal, Select, act, confirmAsk, navigate, toast } from '../ui';
 import { TemplateSave } from './TemplateSave';
 import type { BoardFull } from './types';
+import { useT } from '../i18n';
 
 /** Name, look, who may see and change the board, start page, the assistant's behaviour – and duplicate, template, delete. */
 export function BoardSettings({ board, admin, home, autoApply, onPatch, onReload, onHome, onAutoApply, onClose }: { board: BoardFull; admin: boolean; home: boolean; autoApply: string; onPatch: (ops: Record<string, unknown>[]) => Promise<unknown>; onReload: () => Promise<void>; onHome: (on: boolean) => void; onAutoApply: (v: string) => void; onClose: () => void }) {
+  const tt = useT('x_misc');
   const owner = board.access === 'owner';
   const canEdit = board.access !== 'view';
   const [name, setName] = useState(board.name);
@@ -19,7 +21,7 @@ export function BoardSettings({ board, admin, home, autoApply, onPatch, onReload
   return (
     <>
       <Modal
-        title="Board-Einstellungen"
+        title={tt('Board-Einstellungen')}
         onClose={async () => {
           await saveName();
           onClose();
@@ -32,7 +34,7 @@ export function BoardSettings({ board, admin, home, autoApply, onPatch, onReload
               onClose();
             }}
           >
-            Fertig
+            {tt('Fertig')}
           </button>
         }
       >
@@ -40,8 +42,8 @@ export function BoardSettings({ board, admin, home, autoApply, onPatch, onReload
           <Input value={name} onChange={setName} maxLength={80} disabled={!canEdit} onBlur={saveName} />
         </Field>
         <div className="field">
-          <span>Symbol</span>
-          <div className="bd-icons" role="radiogroup" aria-label="Symbol">
+          <span>{tt('Symbol')}</span>
+          <div className="bd-icons" role="radiogroup" aria-label={tt('Symbol')}>
             {BOARD_ICONS.map((i) => (
               <button key={i} type="button" role="radio" aria-checked={board.icon === i} className={board.icon === i ? 'on' : ''} disabled={!canEdit} onClick={() => onPatch([{ op: 'rename', icon: i }])} title={i}>
                 <Icon name={i as IconName} size={18} />
@@ -50,18 +52,18 @@ export function BoardSettings({ board, admin, home, autoApply, onPatch, onReload
           </div>
         </div>
         <div className="field">
-          <span>Akzentfarbe</span>
-          <div className="bd-swatches" role="radiogroup" aria-label="Akzentfarbe">
-            <button type="button" role="radio" aria-checked={!board.accent} className={`bd-swatch default${!board.accent ? ' on' : ''}`} disabled={!canEdit} onClick={() => onPatch([{ op: 'theme', accent: '' }])} title="Standard" />
+          <span>{tt('Akzentfarbe')}</span>
+          <div className="bd-swatches" role="radiogroup" aria-label={tt('Akzentfarbe')}>
+            <button type="button" role="radio" aria-checked={!board.accent} className={`bd-swatch default${!board.accent ? ' on' : ''}`} disabled={!canEdit} onClick={() => onPatch([{ op: 'theme', accent: '' }])} title={tt('Standard')} />
             {Object.entries(ACCENTS).map(([n, hex]) => (
               <button key={n} type="button" role="radio" aria-checked={board.accent === hex} className={`bd-swatch${board.accent === hex ? ' on' : ''}`} style={{ background: hex }} disabled={!canEdit} onClick={() => onPatch([{ op: 'theme', accent: hex }])} title={n} aria-label={n} />
             ))}
           </div>
         </div>
 
-        <h4 className="bd-h4">Wer sieht das Board?</h4>
+        <h4 className="bd-h4">{tt('Wer sieht das Board?')}</h4>
         <div className="field">
-          <div className="chips" role="radiogroup" aria-label="Sichtbarkeit">
+          <div className="chips" role="radiogroup" aria-label={tt('Sichtbarkeit')}>
             {(
               [
                 ['personal', 'Nur ich'],
@@ -77,7 +79,7 @@ export function BoardSettings({ board, admin, home, autoApply, onPatch, onReload
                 disabled={!owner}
                 onClick={async () => {
                   if (board.scope === v) return;
-                  if (v === 'personal' && !confirmAsk('Das Board wird für alle anderen unsichtbar. Fortfahren?')) return;
+                  if (v === 'personal' && !confirmAsk(tt('Das Board wird für alle anderen unsichtbar. Fortfahren?'))) return;
                   if (await act(() => api.patch(`/api/boards/${board.id}`, { scope: v }))) await onReload();
                 }}
               >
@@ -86,7 +88,7 @@ export function BoardSettings({ board, admin, home, autoApply, onPatch, onReload
             ))}
           </div>
           {board.scope === 'shared' && (
-            <Field label="Das Team darf">
+            <Field label={tt('Das Team darf')}>
               <Select
                 value={board.team_access}
                 onChange={async (v) => {
@@ -96,49 +98,49 @@ export function BoardSettings({ board, admin, home, autoApply, onPatch, onReload
               />
             </Field>
           )}
-          {!owner && <small className="muted">Nur {board.owner_name || 'die Besitzerin bzw. der Besitzer'} oder die Agentur ändern das.</small>}
-          <small className="muted">Jede Person sieht in den Widgets nur, was sie auch auf der eigenen Seite sehen dürfte – egal, wer das Board geteilt hat.</small>
+          {!owner && <small className="muted">{tt('Nur')} {board.owner_name || tt('die Besitzerin bzw. der Besitzer')} {tt('oder die Agentur ändern das.')}</small>}
+          <small className="muted">{tt('Jede Person sieht in den Widgets nur, was sie auch auf der eigenen Seite sehen dürfte – egal, wer das Board geteilt hat.')}</small>
         </div>
 
-        <h4 className="bd-h4">Für mich</h4>
-        <Check checked={home} onChange={onHome} label="Als meine Startseite verwenden (nach dem Anmelden)" tour="board-home" />
-        <Check checked={autoApply === 'layout'} onChange={(v) => onAutoApply(v ? 'layout' : 'off')} label="Kleine Layout-Änderungen per Wunsch sofort übernehmen (Verschieben, Größe, Farbe) – alles andere zeige ich dir vorher" />
+        <h4 className="bd-h4">{tt('Für mich')}</h4>
+        <Check checked={home} onChange={onHome} label={tt('Als meine Startseite verwenden (nach dem Anmelden)')} tour="board-home" />
+        <Check checked={autoApply === 'layout'} onChange={(v) => onAutoApply(v ? 'layout' : 'off')} label={tt('Kleine Layout-Änderungen per Wunsch sofort übernehmen (Verschieben, Größe, Farbe) – alles andere zeige ich dir vorher')} />
 
-        <h4 className="bd-h4">Weiteres</h4>
+        <h4 className="bd-h4">{tt('Weiteres')}</h4>
         <div className="bd-actions-row">
           <button
             type="button"
             className="btn secondary"
             onClick={async () => {
-              const r = await act(() => api.post<BoardFull>(`/api/boards/${board.id}/duplicate`, {}), 'Kopie angelegt');
+              const r = await act(() => api.post<BoardFull>(`/api/boards/${board.id}/duplicate`, {}), tt('Kopie angelegt'));
               if (r) {
                 onClose();
                 navigate(`boards/${r.id}`);
               }
             }}
           >
-            <Icon name="copy" size={15} /> Duplizieren
+            <Icon name="copy" size={15} /> {tt('Duplizieren')}
           </button>
           <button type="button" className="btn secondary" onClick={() => setTpl(true)} disabled={!canEdit}>
-            <Icon name="template" size={15} /> Als Vorlage speichern
+            <Icon name="template" size={15} /> {tt('Als Vorlage speichern')}
           </button>
           <button
             type="button"
             className="btn ghost danger-text"
             disabled={!owner}
             onClick={async () => {
-              if (!confirmAsk(`„${board.name}“ endgültig löschen? Der Verlauf geht mit verloren.`)) return;
-              if (await act(() => api.del(`/api/boards/${board.id}`), 'Board gelöscht')) {
+              if (!confirmAsk(tt('„{name}“ endgültig löschen? Der Verlauf geht mit verloren.', { name: board.name }))) return;
+              if (await act(() => api.del(`/api/boards/${board.id}`), tt('Board gelöscht'))) {
                 onClose();
                 navigate('boards');
               }
             }}
           >
-            <Icon name="trash" size={15} /> Löschen
+            <Icon name="trash" size={15} /> {tt('Löschen')}
           </button>
         </div>
       </Modal>
-      {tpl && <TemplateSave board={board} admin={admin} onClose={() => setTpl(false)} onDone={(t) => toast(`„${t.name}“ ist jetzt unter „Vorlagen“ zu finden`)} />}
+      {tpl && <TemplateSave board={board} admin={admin} onClose={() => setTpl(false)} onDone={(t) => toast(tt('„{name}“ ist jetzt unter „Vorlagen“ zu finden', { name: t.name }))} />}
     </>
   );
 }

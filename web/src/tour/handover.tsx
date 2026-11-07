@@ -4,6 +4,7 @@ import { Icon } from '../icons';
 import { useSession } from '../session';
 import { useAcademy } from './progress';
 import { Badge, Link, Spinner } from '../ui';
+import { useT } from '../i18n';
 
 /**
  * „Übergabe-Status“: what is set up and what is still missing, who has access and what needs
@@ -325,6 +326,7 @@ type Result = { state: State; detail: string };
 const ICON: Record<State, string> = { ok: '✓', missing: '!', off: '–', unknown: '?' };
 
 export function Handover() {
+  const tt = useT('x_tours_b');
   const session = useSession();
   const sandbox = useAcademy()?.sandbox?.id;
   const [res, setRes] = useState<Record<string, Result>>({});
@@ -368,10 +370,10 @@ export function Handover() {
         <span className="ho-ico" aria-label={st}>{r ? ICON[st] : '…'}</span>
         <span className="grow">
           {c.label}
-          <small>{r ? r.detail : 'wird geprüft …'}</small>
+          <small>{r ? r.detail : tt('wird geprüft …')}</small>
         </span>
         <Link to={c.to} className="small">
-          {st === 'ok' ? 'Ansehen' : 'Einrichten'}
+          {st === 'ok' ? tt('Ansehen') : tt('Einrichten')}
         </Link>
       </li>
     );
@@ -381,15 +383,15 @@ export function Handover() {
     <div className="card handover" data-tour="academy-handover">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h2>
-          <Icon name="shield" size={18} /> Übergabe-Status
+          <Icon name="shield" size={18} /> {tt('Übergabe-Status')}
         </h2>
         <span className="muted small">
-          {done} von {CHECKS.length} Punkten eingerichtet · Geheimnisse werden nie angezeigt
+          {tt('{done} von {length} Punkten eingerichtet · Geheimnisse werden nie angezeigt', { done: done, length: CHECKS.length })}
         </span>
       </div>
       <div className="ho-grid">
         <div>
-          <h3>Offene Punkte</h3>
+          <h3>{tt('Offene Punkte')}</h3>
           {users === null || projects === null ? (
             <Spinner />
           ) : crit.length ? (
@@ -399,17 +401,17 @@ export function Handover() {
                   <span className="ho-ico">!</span>
                   <span className="grow">{c.text}</span>
                   <Link to={c.to} className="small">
-                    Öffnen
+                    {tt('Öffnen')}
                   </Link>
                 </li>
               ))}
             </ul>
           ) : (
             <p className="tour-ok">
-              <Icon name="ok" size={15} /> Nichts Dringendes offen.
+              <Icon name="ok" size={15} /> {tt('Nichts Dringendes offen.')}
             </p>
           )}
-          <h3 style={{ marginTop: 14 }}>Wer hat Zugang?</h3>
+          <h3 style={{ marginTop: 14 }}>{tt('Wer hat Zugang?')}</h3>
           {users === null ? (
             <Spinner />
           ) : (
@@ -420,20 +422,20 @@ export function Handover() {
                   <span className="grow">
                     {u.name} <span className="muted small">{u.email}</span>
                     <small>
-                      {u.role === 'admin' ? 'Agentur-Admin – sieht alles' : `Mitglied · ${u.locations?.length ?? 0} Sub-Account(s) · ${u.permissions ? `${u.permissions.length} Bereiche` : 'alle Bereiche'}`}
+                      {u.role === 'admin' ? tt('Agentur-Admin – sieht alles') : `Mitglied · ${u.locations?.length ?? 0} Sub-Account(s) · ${u.permissions ? tt('{length} Bereiche', { length: u.permissions.length }) : tt('alle Bereiche')}`}
                     </small>
                   </span>
-                  {u.totp_enabled ? <Badge tone="green">2FA</Badge> : <Badge tone={u.role === 'admin' ? 'red' : 'gray'}>ohne 2FA</Badge>}
+                  {u.totp_enabled ? <Badge tone="green">2FA</Badge> : <Badge tone={u.role === 'admin' ? 'red' : 'gray'}>{tt('ohne 2FA')}</Badge>}
                 </li>
               ))}
             </ul>
           )}
           <p className="muted small">
-            Zugänge verwaltest du unter <Link to="settings/team">Einstellungen → Team</Link>, Kunden-Logins unter <Link to="agency/clients">Agentur → Kunden</Link>.
+            {tt('Zugänge verwaltest du unter')} <Link to="settings/team">{tt('Einstellungen → Team')}</Link>{tt(', Kunden-Logins unter')} <Link to="agency/clients">{tt('Agentur → Kunden')}</Link>.
           </p>
         </div>
         <div>
-          <h3>Dieser Sub-Account{loc ? `: ${loc}` : ''}</h3>
+          <h3>{tt('Dieser Sub-Account')}{loc ? `: ${loc}` : ''}</h3>
           <ul className="ho-list">
             {CHECKS.filter((c) => c.scope === 'location').map((c) => (
               <Row key={c.key} c={c} />
@@ -441,7 +443,7 @@ export function Handover() {
           </ul>
         </div>
         <div>
-          <h3>Agentur & Server</h3>
+          <h3>{tt('Agentur & Server')}</h3>
           <ul className="ho-list">
             {CHECKS.filter((c) => c.scope === 'agency').map((c) => (
               <Row key={c.key} c={c} />

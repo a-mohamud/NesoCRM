@@ -4,6 +4,7 @@ import { Icon } from '../icons';
 import { Check, Field, Input, Select, Textarea, useFocusLayer } from '../ui';
 import { widgetIcon } from './WidgetCard';
 import type { FieldDef, Widget, WidgetType } from './types';
+import { useT } from '../i18n';
 
 /**
  * The settings panel of one widget, drawn from the widget type's declared fields – so a module's widget gets its panel
@@ -39,6 +40,7 @@ function useOptions(source: string | undefined, query: string, enabled: boolean)
 }
 
 function Choice({ f, value, onChange, values }: { f: FieldDef; value: string; onChange: (v: string) => void; values: Values }) {
+  const tt = useT('x_misc');
   const [search, setSearch] = useState('');
   const dep = f.dependsOn ? `pipeline_id=${encodeURIComponent(String(values[f.dependsOn] ?? ''))}` : '';
   const searchable = f.optionsFrom === 'wiki_pages';
@@ -48,9 +50,9 @@ function Choice({ f, value, onChange, values }: { f: FieldDef; value: string; on
   const list = options.some((o) => o.value === value) || !value ? options : [{ value, label: `${value} (aktuell gewählt)` }, ...options];
   return (
     <>
-      {searchable && <Input value={search} onChange={setSearch} placeholder="Seite suchen …" aria-label="Seite suchen" />}
+      {searchable && <Input value={search} onChange={setSearch} placeholder={tt('Seite suchen …')} aria-label={tt('Seite suchen')} />}
       <select value={value} onChange={(e) => onChange(e.target.value)} disabled={!!error} aria-busy={loading}>
-        <option value="">{loading ? 'Lädt …' : error ? 'Nicht verfügbar' : '– nichts gewählt –'}</option>
+        <option value="">{loading ? tt('Lädt …') : error ? tt('Nicht verfügbar') : tt('– nichts gewählt –')}</option>
         {list.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
@@ -153,6 +155,7 @@ function JsonControl({ value, set }: { value: unknown; set: (v: unknown) => void
 
 /** A list of entries (e.g. the buttons of Schnellaktionen): each entry is a small form of its own. */
 function ListControl({ f, rows, set }: { f: FieldDef; rows: Values[]; set: (v: Values[]) => void }) {
+  const tt = useT('x_misc');
   const item = f.item ?? [];
   const blank = (): Values => Object.fromEntries(item.map((i) => [i.key, empty(i)]));
   const put = (n: number, patch: Values) => set(rows.map((r, i) => (i === n ? { ...r, ...patch } : r)));
@@ -164,13 +167,13 @@ function ListControl({ f, rows, set }: { f: FieldDef; rows: Values[]; set: (v: V
             {f.label} {n + 1}
           </legend>
           <span className="bd-entry-tools">
-            <button type="button" className="bd-iconbtn" disabled={n === 0} onClick={() => set(swap(rows, n, n - 1))} aria-label={`Eintrag ${n + 1} nach oben`}>
+            <button type="button" className="bd-iconbtn" disabled={n === 0} onClick={() => set(swap(rows, n, n - 1))} aria-label={tt('Eintrag {v} nach oben', { v: n + 1 })}>
               <Icon name="up" size={14} />
             </button>
-            <button type="button" className="bd-iconbtn" disabled={n === rows.length - 1} onClick={() => set(swap(rows, n, n + 1))} aria-label={`Eintrag ${n + 1} nach unten`}>
+            <button type="button" className="bd-iconbtn" disabled={n === rows.length - 1} onClick={() => set(swap(rows, n, n + 1))} aria-label={tt('Eintrag {v} nach unten', { v: n + 1 })}>
               <Icon name="down" size={14} />
             </button>
-            <button type="button" className="bd-iconbtn danger" onClick={() => set(rows.filter((_, i) => i !== n))} aria-label={`Eintrag ${n + 1} entfernen`}>
+            <button type="button" className="bd-iconbtn danger" onClick={() => set(rows.filter((_, i) => i !== n))} aria-label={tt('Eintrag {v} entfernen', { v: n + 1 })}>
               <Icon name="trash" size={14} />
             </button>
           </span>
@@ -185,7 +188,7 @@ function ListControl({ f, rows, set }: { f: FieldDef; rows: Values[]; set: (v: V
       ))}
       {rows.length < (f.maxItems ?? 20) && (
         <button type="button" className="btn secondary small" onClick={() => set([...rows, blank()])}>
-          <Icon name="plus" size={14} /> {f.label} hinzufügen
+          <Icon name="plus" size={14} /> {tt('{label} hinzufügen', { label: f.label })}
         </button>
       )}
     </div>
@@ -198,6 +201,7 @@ const swap = <T,>(a: T[], i: number, j: number) => {
 };
 
 export function SettingsPanel({ widget, type, canEdit, onSave, onRemove, onClose }: { widget: Widget; type: WidgetType | undefined; canEdit: boolean; onSave: (patch: { config: Values; title: string }) => Promise<boolean>; onRemove: () => void; onClose: () => void }) {
+  const tt = useT('x_misc');
   const fields = type?.fields ?? [];
   const [values, setValues] = useState<Values>(() => initial(fields, widget.config));
   const [title, setTitle] = useState(widget.title);
@@ -224,7 +228,7 @@ export function SettingsPanel({ widget, type, canEdit, onSave, onRemove, onClose
   return (
     <>
       <div className="bd-scrim" onMouseDown={onClose} />
-      <aside ref={box} className="bd-drawer" role="dialog" aria-modal="true" aria-label={`Einstellungen: ${type?.label ?? widget.type}`} data-tour="board-settings">
+      <aside ref={box} className="bd-drawer" role="dialog" aria-modal="true" aria-label={tt('Einstellungen: {v}', { v: type?.label ?? widget.type })} data-tour="board-settings">
         <header>
           <span className="bd-pick-icon">
             <Icon name={widgetIcon(type)} size={18} />
@@ -233,15 +237,15 @@ export function SettingsPanel({ widget, type, canEdit, onSave, onRemove, onClose
             <h3>{type?.label ?? widget.type}</h3>
             <p className="muted small">{type?.description}</p>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Schließen">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label={tt('Schließen')}>
             ✕
           </button>
         </header>
         <div className="bd-drawer-body">
-          {!type && <p className="bd-callout">Dieses Widget ist nicht mehr verfügbar (das Modul ist nicht aktiv). Du kannst es entfernen.</p>}
+          {!type && <p className="bd-callout">{tt('Dieses Widget ist nicht mehr verfügbar (das Modul ist nicht aktiv). Du kannst es entfernen.')}</p>}
           {type && (
             <>
-              <Field label="Titel" hint={`Leer lassen für „${type.label}“`}>
+              <Field label={tt('Titel')} hint={tt('Leer lassen für „{label}“', { label: type.label })}>
                 <Input value={title} onChange={setTitle} maxLength={80} disabled={!canEdit} />
               </Field>
               {fields
@@ -251,21 +255,21 @@ export function SettingsPanel({ widget, type, canEdit, onSave, onRemove, onClose
                     <Control f={f} values={values} set={(v) => setValues((s) => ({ ...s, [f.key]: v }))} />
                   </Row>
                 ))}
-              {!fields.some((f) => !f.hidden) && <p className="muted small">Dieses Widget hat keine weiteren Einstellungen.</p>}
-              {type.access_label && <p className="muted small">Sichtbar nur für Personen mit dem Recht „{type.access_label}“. Jede Person sieht nur, was sie auch auf der eigenen Seite sehen dürfte.</p>}
+              {!fields.some((f) => !f.hidden) && <p className="muted small">{tt('Dieses Widget hat keine weiteren Einstellungen.')}</p>}
+              {type.access_label && <p className="muted small">{tt('Sichtbar nur für Personen mit dem Recht „{access_label}“. Jede Person sieht nur, was sie auch auf der eigenen Seite sehen dürfte.', { access_label: type.access_label })}</p>}
             </>
           )}
         </div>
         <footer>
           <button type="button" className="btn ghost danger-text" onClick={onRemove} disabled={!canEdit}>
-            <Icon name="trash" size={14} /> Entfernen
+            <Icon name="trash" size={14} /> {tt('Entfernen')}
           </button>
           <span className="grow" />
           <button type="button" className="btn secondary bd-cancel" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button type="button" className="btn" onClick={save} disabled={!canEdit || !dirty || busy || !type}>
-            Speichern
+            {tt('Speichern')}
           </button>
         </footer>
       </aside>

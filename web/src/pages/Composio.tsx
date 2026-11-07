@@ -9,6 +9,7 @@ import { SignupLink } from '../referrals';
 import { NangoApps, NangoSuggestions } from './Nango';
 import { McpServers } from './McpServers';
 import { PageSuspense, lazyPages } from '../lazy';
+import { useT } from '../i18n';
 
 const { BooksSync } = lazyPages(() => import('./BooksSync'), 'BooksSync');
 
@@ -86,12 +87,13 @@ function AppLogo({ src, name, size = 32 }: { src?: string; name: string; size?: 
 
 /** After Composio sends the browser back (?composio=ok|pending|error&app=…): toast once, clean the address. */
 function useComposioReturn(onDone?: () => void) {
+  const tt = useT('x_integrations');
   useEffect(() => {
     const q = new URLSearchParams(location.search);
     const st = q.get('composio');
     if (!st) return;
-    if (st === 'ok') toast(`${q.get('app') ?? 'App'} verbunden`);
-    else if (st === 'pending') toast(`${q.get('app') ?? 'App'}: Verbindung wird noch geprüft – gleich „Aktualisieren“`);
+    if (st === 'ok') toast(`${q.get('app') ?? tt('App')} verbunden`);
+    else if (st === 'pending') toast(`${q.get('app') ?? tt('App')}: Verbindung wird noch geprüft – gleich „Aktualisieren“`);
     else toastError(q.get('msg') || 'Verbinden fehlgeschlagen');
     history.replaceState(null, '', location.pathname);
     onDone?.();
@@ -119,12 +121,13 @@ export function schemaType(s: Json | undefined): string {
 
 /** Form for an action's inputs. Values stay text (merge fields allowed); the server converts them. */
 export function SchemaForm({ schema, values, onChange, merge = true }: { schema: Json | undefined; values: Json; onChange: (v: Json) => void; merge?: boolean }) {
+  const tt = useT('x_integrations');
   const [more, setMore] = useState(false);
   const props = Object.entries<Json>(schema?.properties ?? {});
   const req = new Set<string>(schema?.required ?? []);
   const required = props.filter(([k]) => req.has(k));
   const optional = props.filter(([k]) => !req.has(k));
-  if (!props.length) return <p className="muted small">Diese Aktion braucht keine Eingaben.</p>;
+  if (!props.length) return <p className="muted small">{tt('Diese Aktion braucht keine Eingaben.')}</p>;
   const set = (k: string, v: string) => onChange({ ...values, [k]: v });
   const field = ([k, s]: [string, Json]) => {
     const t = schemaType(s);
@@ -147,7 +150,7 @@ export function SchemaForm({ schema, values, onChange, merge = true }: { schema:
       {optional.length > 0 && (
         <>
           <button type="button" className="btn small ghost" onClick={() => setMore(!more)}>
-            {more ? '▾' : '▸'} Weitere Felder ({optional.length})
+            {more ? '▾' : '▸'} {tt('Weitere Felder ({length})', { length: optional.length })}
           </button>
           {(more || optional.some(([k]) => values?.[k] !== undefined && values[k] !== '')) && optional.map(field)}
         </>
@@ -160,10 +163,11 @@ export function SchemaForm({ schema, values, onChange, merge = true }: { schema:
 // --- Apps hub -----------------------------------------------------------------------------------------
 
 export function AppsHub({ tab = 'catalog' }: { tab?: string }) {
+  const tt = useT('x_integrations');
   const value = ['catalog', 'composio', 'events', 'ai', 'direct', 'books', 'nango', 'mcp'].includes(tab) ? tab : 'catalog';
   return (
     <>
-      <PageHead title="Apps & Integrationen" sub="Eingebaute Integrationen, 250+ Apps über Composio und direkte Verbindungen – alles, was dieser Sub-Account verbunden hat." />
+      <PageHead title={tt('Apps & Integrationen')} sub={tt('Eingebaute Integrationen, 250+ Apps über Composio und direkte Verbindungen – alles, was dieser Sub-Account verbunden hat.')} />
       <Tabs
         tabs={[
           ['catalog', 'Katalog'],
@@ -206,6 +210,7 @@ export function AppsHub({ tab = 'catalog' }: { tab?: string }) {
 
 /** Under the native catalogue: matching Composio apps (or the most used ones), with logo and „Verbinden“. */
 function ComposioSuggestions({ q }: { q: string }) {
+  const tt = useT('x_integrations');
   const st = useLoad(() => api.get<Json>('/api/composio'), []);
   const [list, setList] = useState<Toolkit[] | null>(null);
   const [err, setErr] = useState('');
@@ -224,11 +229,11 @@ function ComposioSuggestions({ q }: { q: string }) {
   return (
     <div className="cx-suggest" data-tour="apps-composio-suggest">
       <h3 className="integ-h">
-        <Icon name="apps" size={14} /> {term.length >= 2 ? `„${term}“ über Composio` : 'Über 250 weitere Apps über Composio'}
+        <Icon name="apps" size={14} /> {term.length >= 2 ? tt('„{term}“ über Composio', { term: term }) : tt('Über 250 weitere Apps über Composio')}
       </h3>
       {!st.data.configured ? (
         <p className="muted small">
-          Slack, Notion, HubSpot, Shopify, Google Sheets, Calendly & Co. mit verwalteter Anmeldung: {st.data.is_admin ? 'trag unter Agentur → Integrationen → Einrichtung einen Composio-Schlüssel ein.' : 'die Agentur muss Composio einmal einrichten.'}
+          {tt('Slack, Notion, HubSpot, Shopify, Google Sheets, Calendly & Co. mit verwalteter Anmeldung:')} {st.data.is_admin ? tt('trag unter Agentur → Integrationen → Einrichtung einen Composio-Schlüssel ein.') : tt('die Agentur muss Composio einmal einrichten.')}
         </p>
       ) : err ? (
         <p className="muted small">{err}</p>
@@ -243,18 +248,19 @@ function ComposioSuggestions({ q }: { q: string }) {
           </div>
           <p className="small">
             <a href="/app/apps/composio" onClick={(e) => (e.preventDefault(), navigate('apps/composio'))}>
-              Alle Composio-Apps durchsuchen →
+              {tt('Alle Composio-Apps durchsuchen →')}
             </a>
           </p>
         </>
       ) : (
-        <p className="muted small">Keine Composio-App gefunden.</p>
+        <p className="muted small">{tt('Keine Composio-App gefunden.')}</p>
       )}
     </div>
   );
 }
 
 function ToolkitCard({ t }: { t: Toolkit }) {
+  const tt = useT('x_integrations');
   const st = t.connection ? STATUS[t.connection] : null;
   return (
     <div className="card cx-tk">
@@ -262,21 +268,21 @@ function ToolkitCard({ t }: { t: Toolkit }) {
         <AppLogo src={t.logo} name={t.name} />
         <div className="cx-tk-title">
           <strong>{t.name}</strong>
-          <span className="muted small">{t.categories.slice(0, 2).join(' · ') || 'App'}</span>
+          <span className="muted small">{t.categories.slice(0, 2).join(' · ') || tt('App')}</span>
         </div>
       </div>
       <p className="cx-tk-desc small">{clip(t.description, 120)}</p>
       <div className="cx-tk-foot">
         <span className="muted small">
-          {t.tools_count} Aktionen{t.triggers_count ? ` · ${t.triggers_count} Ereignisse` : ''}
+          {tt('{tools_count} Aktionen', { tools_count: t.tools_count })}{t.triggers_count ? tt(' · {triggers_count} Ereignisse', { triggers_count: t.triggers_count }) : ''}
         </span>
         {t.no_auth ? (
-          <Badge tone="blue">ohne Anmeldung</Badge>
+          <Badge tone="blue">{tt('ohne Anmeldung')}</Badge>
         ) : st && t.connection === 'active' ? (
           <Badge tone={st[1]}>{st[0]}</Badge>
         ) : (
           <button className="btn small" onClick={() => void connectApp(t.slug)}>
-            {t.connection ? 'Neu verbinden' : 'Verbinden'}
+            {t.connection ? tt('Neu verbinden') : tt('Verbinden')}
           </button>
         )}
       </div>
@@ -301,51 +307,52 @@ function ComposioApps() {
 }
 
 function ComposioKeyCard({ v, onChange }: { v: Json; onChange: () => void }) {
+  const tt = useT('x_integrations');
   const [key, setKey] = useState('');
   const [open, setOpen] = useState(false);
   const [test, setTest] = useState<Json | null>(null);
   return (
     <div className="card" data-tour="apps-composio-status">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>Composio</h2>
-        {v.configured ? <Badge tone="green">eingerichtet</Badge> : <Badge>nicht eingerichtet</Badge>}
+        <h2 style={{ margin: 0 }}>{tt('Composio')}</h2>
+        {v.configured ? <Badge tone="green">eingerichtet</Badge> : <Badge>{tt('nicht eingerichtet')}</Badge>}
       </div>
       <p className="muted small">
-        Composio verbindet 250+ Apps mit verwalteter Anmeldung (OAuth, API-Schlüssel). Dieser Sub-Account ist bei Composio der Nutzer <code>{v.user_id}</code> – seine Verbindungen sind von anderen Sub-Accounts getrennt.
+        {tt('Composio verbindet 250+ Apps mit verwalteter Anmeldung (OAuth, API-Schlüssel). Dieser Sub-Account ist bei Composio der Nutzer')} <code>{v.user_id}</code> {tt('– seine Verbindungen sind von anderen Sub-Accounts getrennt.')}
       </p>
       {v.configured ? (
         <p className="small">
-          Verwendet: <strong>{SOURCE[v.source] ?? v.source}</strong> {v.key_hint && <code>{v.key_hint}</code>}
+          {tt('Verwendet:')} <strong>{SOURCE[v.source] ?? v.source}</strong> {v.key_hint && <code>{v.key_hint}</code>}
         </p>
       ) : (
-        <p className="small">{v.is_admin ? 'Trag den Schlüssel einmal für die Agentur ein (Agentur → Integrationen → Einrichtung) oder hier nur für diesen Sub-Account.' : 'Die Agentur hat Composio noch nicht eingerichtet. Optional kannst du hier einen eigenen Schlüssel eintragen.'}</p>
+        <p className="small">{v.is_admin ? tt('Trag den Schlüssel einmal für die Agentur ein (Agentur → Integrationen → Einrichtung) oder hier nur für diesen Sub-Account.') : tt('Die Agentur hat Composio noch nicht eingerichtet. Optional kannst du hier einen eigenen Schlüssel eintragen.')}</p>
       )}
       <div className="row" style={{ gap: 6 }}>
         {v.configured && (
           <button className="btn small secondary" onClick={async () => setTest((await act(() => api.post('/api/composio/test'))) ?? null)}>
-            Verbindung testen
+            {tt('Verbindung testen')}
           </button>
         )}
         <button className="btn small ghost" onClick={() => setOpen(!open)}>
-          {v.override ? 'Eigenen Schlüssel ändern' : 'Eigenen Schlüssel für diesen Sub-Account'}
+          {v.override ? tt('Eigenen Schlüssel ändern') : tt('Eigenen Schlüssel für diesen Sub-Account')}
         </button>
         {v.override && (
-          <button className="btn small ghost" onClick={async () => confirmAsk('Eigenen Composio-Schlüssel entfernen? Apps, die damit verbunden wurden, funktionieren dann nicht mehr.') && (await act(() => api.put('/api/composio/settings', { api_key: null }), 'Entfernt')) && onChange()}>
-            Eigenen Schlüssel entfernen
+          <button className="btn small ghost" onClick={async () => confirmAsk(tt('Eigenen Composio-Schlüssel entfernen? Apps, die damit verbunden wurden, funktionieren dann nicht mehr.')) && (await act(() => api.put('/api/composio/settings', { api_key: null }), tt('Entfernt'))) && onChange()}>
+            {tt('Eigenen Schlüssel entfernen')}
           </button>
         )}
       </div>
       {test && (
         <p className="small">
-          <Badge tone="green">OK</Badge> {test.auth_configs} Auth-Konfiguration{test.auth_configs === 1 ? '' : 'en'} im Composio-Projekt
-          {test.webhook ? (test.webhook.exists ? (test.webhook.ours ? ' · Webhook zeigt auf HyperLevel' : ' · Webhook zeigt woandershin (App-Ereignisse kommen trotzdem an)') : ' · Webhook wird beim ersten App-Ereignis angelegt') : ''}
+          <Badge tone="green">OK</Badge> {tt('{auth_configs} Auth-Konfiguration', { auth_configs: test.auth_configs })}{test.auth_configs === 1 ? '' : 'en'} {tt('im Composio-Projekt')}
+          {test.webhook ? (test.webhook.exists ? (test.webhook.ours ? tt(' · Webhook zeigt auf HyperLevel') : tt(' · Webhook zeigt woandershin (App-Ereignisse kommen trotzdem an)')) : tt(' · Webhook wird beim ersten App-Ereignis angelegt')) : ''}
         </p>
       )}
       {open && (
         <div className="row" style={{ alignItems: 'flex-end' }}>
           <div className="grow">
-            <Field label="Composio-API-Schlüssel" hint={<>Composio → Settings → API Keys. Wird verschlüsselt gespeichert und nie wieder angezeigt. <SignupLink id="composio" /></>}>
-              <Input type="password" value={key} onChange={setKey} autoComplete="off" placeholder={v.override ? `gespeichert ${v.override_hint}` : 'ak_…'} />
+            <Field label={tt('Composio-API-Schlüssel')} hint={<>{tt('Composio → Settings → API Keys. Wird verschlüsselt gespeichert und nie wieder angezeigt.')} <SignupLink id="composio" /></>}>
+              <Input type="password" value={key} onChange={setKey} autoComplete="off" placeholder={v.override ? tt('gespeichert {override_hint}', { override_hint: v.override_hint }) : 'ak_…'} />
             </Field>
           </div>
           <button
@@ -353,10 +360,10 @@ function ComposioKeyCard({ v, onChange }: { v: Json; onChange: () => void }) {
             style={{ marginBottom: 12 }}
             disabled={!key}
             onClick={async () => {
-              if (await act(() => api.put('/api/composio/settings', { api_key: key }), 'Gespeichert')) (setKey(''), setOpen(false), onChange());
+              if (await act(() => api.put('/api/composio/settings', { api_key: key }), tt('Gespeichert'))) (setKey(''), setOpen(false), onChange());
             }}
           >
-            Speichern
+            {tt('Speichern')}
           </button>
         </div>
       )}
@@ -365,21 +372,22 @@ function ComposioKeyCard({ v, onChange }: { v: Json; onChange: () => void }) {
 }
 
 function Connections({ conns, onChange }: { conns: Conn[]; onChange: () => void }) {
+  const tt = useT('x_integrations');
   const [busy, setBusy] = useState(false);
   return (
     <div className="card" data-tour="apps-composio-connected">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>Verbundene Apps</h2>
+        <h2 style={{ margin: 0 }}>{tt('Verbundene Apps')}</h2>
         <button
           className="btn small secondary"
           disabled={busy}
           onClick={async () => {
             setBusy(true);
-            if (await act(() => api.get('/api/composio/connections?refresh=1'), 'Status aktualisiert')) onChange();
+            if (await act(() => api.get('/api/composio/connections?refresh=1'), tt('Status aktualisiert'))) onChange();
             setBusy(false);
           }}
         >
-          <Icon name="refresh" size={13} /> Aktualisieren
+          <Icon name="refresh" size={13} /> {tt('Aktualisieren')}
         </button>
       </div>
       {conns.length ? (
@@ -399,24 +407,25 @@ function Connections({ conns, onChange }: { conns: Conn[]; onChange: () => void 
                 <Badge tone={s[1]}>{s[0]}</Badge>
                 {c.status !== 'active' && c.status !== 'pending' && (
                   <button className="btn small" onClick={() => void connectApp(c.toolkit)}>
-                    Neu verbinden
+                    {tt('Neu verbinden')}
                   </button>
                 )}
-                <button className="btn small ghost" onClick={async () => confirmAsk(`${c.toolkit_name} trennen? Auch bei Composio wird die Verbindung gelöscht; Workflows mit dieser App schlagen dann fehl.`) && (await act(() => api.del(`/api/composio/connections/${c.id}`), 'Getrennt')) && onChange()}>
-                  Trennen
+                <button className="btn small ghost" onClick={async () => confirmAsk(tt('{toolkit_name} trennen? Auch bei Composio wird die Verbindung gelöscht; Workflows mit dieser App schlagen dann fehl.', { toolkit_name: c.toolkit_name })) && (await act(() => api.del(`/api/composio/connections/${c.id}`), tt('Getrennt'))) && onChange()}>
+                  {tt('Trennen')}
                 </button>
               </div>
             );
           })}
         </div>
       ) : (
-        <p className="muted">Noch keine App verbunden – unten suchen und „Verbinden“.</p>
+        <p className="muted">{tt('Noch keine App verbunden – unten suchen und „Verbinden“.')}</p>
       )}
     </div>
   );
 }
 
 function Catalogue() {
+  const tt = useT('x_integrations');
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [items, setItems] = useState<Toolkit[] | null>(null);
@@ -444,13 +453,13 @@ function Catalogue() {
   }, [q, cat]);
   return (
     <div className="card" data-tour="apps-composio-catalog">
-      <h2>App-Katalog</h2>
+      <h2>{tt('App-Katalog')}</h2>
       <div className="integ-toolbar">
-        <input type="search" placeholder="Suchen: Shopify, HubSpot, Typeform, Calendly …" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Composio-Apps durchsuchen" />
+        <input type="search" placeholder={tt('Suchen: Shopify, HubSpot, Typeform, Calendly …')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={tt('Composio-Apps durchsuchen')} />
         {(cats.data ?? []).length > 0 && (
           <div className="chips">
             <button className={`chip${cat === '' ? ' on' : ''}`} onClick={() => setCat('')}>
-              Alle
+              {tt('Alle')}
             </button>
             {(cats.data ?? []).slice(0, 14).map((c) => (
               <button key={c.id} className={`chip${cat === c.id ? ' on' : ''}`} onClick={() => setCat(cat === c.id ? '' : c.id)}>
@@ -474,13 +483,13 @@ function Catalogue() {
           {cursor && (
             <p style={{ textAlign: 'center' }}>
               <button className="btn secondary" onClick={() => void load(true)}>
-                Mehr laden
+                {tt('Mehr laden')}
               </button>
             </p>
           )}
         </>
       ) : (
-        <Empty>Keine App passt zur Suche.</Empty>
+        <Empty>{tt('Keine App passt zur Suche.')}</Empty>
       )}
     </div>
   );
@@ -489,36 +498,37 @@ function Catalogue() {
 // --- App-Ereignisse (triggers) ----------------------------------------------------------------------------
 
 function ComposioEvents() {
+  const tt = useT('x_integrations');
   const st = useLoad(() => api.get<Json>('/api/composio'), []);
   const list = useLoad(() => api.get<{ webhook_url: string | null; items: Json[] }>('/api/composio/triggers'), []);
   const [adding, setAdding] = useState(false);
   const [log, setLog] = useState<Json | null>(null);
   const [mapping, setMapping] = useState<Json | null>(null);
   if (!st.data || !list.data) return <Spinner />;
-  if (!st.data.configured) return <Empty>Erst Composio einrichten (Reiter „Composio-Apps“).</Empty>;
+  if (!st.data.configured) return <Empty>{tt('Erst Composio einrichten (Reiter „Composio-Apps“).')}</Empty>;
   const active = (st.data.connections as Conn[]).filter((c) => c.status === 'active');
   return (
     <div className="cx">
       <div className="card" data-tour="apps-events">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0 }}>App-Ereignisse</h2>
+          <h2 style={{ margin: 0 }}>{tt('App-Ereignisse')}</h2>
           <button className="btn" disabled={!active.length} onClick={() => setAdding(true)} data-tour="apps-events-new">
-            + App-Ereignis
+            {tt('+ App-Ereignis')}
           </button>
         </div>
         <p className="muted small">
-          Eine neue Shopify-Bestellung, eine Typeform-Antwort, eine Calendly-Buchung oder ein GitHub-Issue legt den Kontakt an (per E-Mail/Telefon) und startet Workflows mit dem Auslöser <strong>„App-Ereignis (Composio)“</strong>. Alle Felder stehen dort als{' '}
+          {tt('Eine neue Shopify-Bestellung, eine Typeform-Antwort, eine Calendly-Buchung oder ein GitHub-Issue legt den Kontakt an (per E-Mail/Telefon) und startet Workflows mit dem Auslöser')} <strong>{tt('„App-Ereignis (Composio)“')}</strong>{tt('. Alle Felder stehen dort als')}{' '}
           <code>{'{{event.<feld>}}'}</code> bereit.
         </p>
-        {!active.length && <p className="small">Erst eine App verbinden (Reiter „Composio-Apps“).</p>}
+        {!active.length && <p className="small">{tt('Erst eine App verbinden (Reiter „Composio-Apps“).')}</p>}
         {list.data.items.length ? (
           <div className="cx-table">
             <table className="t">
               <thead>
                 <tr>
-                  <th>Ereignis</th>
+                  <th>{tt('Ereignis')}</th>
                   <th>Status</th>
-                  <th>Empfangen</th>
+                  <th>{tt('Empfangen')}</th>
                   <th />
                 </tr>
               </thead>
@@ -529,26 +539,26 @@ function ComposioEvents() {
                       <strong>{r.name}</strong>
                       <div className="muted small">
                         {r.toolkit_name} · {r.trigger_slug}
-                        {r.tags.length ? ` · Tags: ${r.tags.join(', ')}` : ''}
+                        {r.tags.length ? tt(' · Tags: {n}', { n: r.tags.join(', ') }) : ''}
                       </div>
                       {r.last_error && <div className="small" style={{ color: 'var(--red)' }}>{r.last_error}</div>}
                     </td>
-                    <td>{r.status === 'active' ? <Badge tone="green">aktiv</Badge> : r.status === 'paused' ? <Badge>pausiert</Badge> : <Badge tone="red">Fehler</Badge>}</td>
+                    <td>{r.status === 'active' ? <Badge tone="green">aktiv</Badge> : r.status === 'paused' ? <Badge>pausiert</Badge> : <Badge tone="red">{tt('Fehler')}</Badge>}</td>
                     <td className="small">
-                      {r.events}× {r.last_event_at ? <span className="muted">· zuletzt {dt(r.last_event_at)}</span> : null}
+                      {r.events}× {r.last_event_at ? <span className="muted">{tt('· zuletzt {dt}', { dt: dt(r.last_event_at) })}</span> : null}
                     </td>
                     <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
                       <button className="btn small ghost" onClick={() => setLog(r)}>
-                        Protokoll
+                        {tt('Protokoll')}
                       </button>
                       <button className="btn small ghost" onClick={() => setMapping(r)}>
-                        Felder
+                        {tt('Felder')}
                       </button>
-                      <button className="btn small ghost" onClick={async () => (await act(() => api.patch(`/api/composio/triggers/${r.id}`, { status: r.status === 'active' ? 'paused' : 'active' }), r.status === 'active' ? 'Pausiert' : 'Aktiv')) && list.reload()}>
-                        {r.status === 'active' ? 'Pausieren' : 'Aktivieren'}
+                      <button className="btn small ghost" onClick={async () => (await act(() => api.patch(`/api/composio/triggers/${r.id}`, { status: r.status === 'active' ? 'paused' : 'active' }), r.status === 'active' ? tt('Pausiert') : tt('Aktiv'))) && list.reload()}>
+                        {r.status === 'active' ? tt('Pausieren') : tt('Aktivieren')}
                       </button>
-                      <button className="btn small ghost" onClick={async () => confirmAsk(`„${r.name}“ löschen? Auch bei Composio wird der Auslöser entfernt.`) && (await act(() => api.del(`/api/composio/triggers/${r.id}`), 'Gelöscht')) && list.reload()}>
-                        Löschen
+                      <button className="btn small ghost" onClick={async () => confirmAsk(tt('„{name}“ löschen? Auch bei Composio wird der Auslöser entfernt.', { name: r.name })) && (await act(() => api.del(`/api/composio/triggers/${r.id}`), tt('Gelöscht'))) && list.reload()}>
+                        {tt('Löschen')}
                       </button>
                     </td>
                   </tr>
@@ -557,11 +567,11 @@ function ComposioEvents() {
             </table>
           </div>
         ) : (
-          <p className="muted">Noch kein App-Ereignis abonniert.</p>
+          <p className="muted">{tt('Noch kein App-Ereignis abonniert.')}</p>
         )}
         {list.data.webhook_url && (
           <p className="muted small">
-            Composio liefert an <code>{list.data.webhook_url}</code> (signiert, Wiederholungen werden erkannt).
+            {tt('Composio liefert an')} <code>{list.data.webhook_url}</code> {tt('(signiert, Wiederholungen werden erkannt).')}
           </p>
         )}
       </div>
@@ -573,6 +583,7 @@ function ComposioEvents() {
 }
 
 function NewTrigger({ conns, onClose, onDone }: { conns: Conn[]; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_integrations');
   const [toolkit, setToolkit] = useState(conns[0]?.toolkit ?? '');
   const types = useLoad(() => (toolkit ? api.get<Json[]>(`/api/composio/triggers/types?toolkit=${encodeURIComponent(toolkit)}`) : Promise.resolve([])), [toolkit]);
   const [slug, setSlug] = useState('');
@@ -582,7 +593,7 @@ function NewTrigger({ conns, onClose, onDone }: { conns: Conn[]; onClose: () => 
   const type = (types.data ?? []).find((x) => x.slug === slug);
   return (
     <Modal
-      title="App-Ereignis abonnieren"
+      title={tt('App-Ereignis abonnieren')}
       onClose={onClose}
       footer={
         <button
@@ -590,16 +601,16 @@ function NewTrigger({ conns, onClose, onDone }: { conns: Conn[]; onClose: () => 
           disabled={!slug || busy}
           onClick={async () => {
             setBusy(true);
-            const r = await act(() => api.post('/api/composio/triggers', { toolkit, trigger_slug: slug, config, tags }), 'Abonniert – jetzt im Workflow den Auslöser „App-Ereignis (Composio)“ wählen');
+            const r = await act(() => api.post('/api/composio/triggers', { toolkit, trigger_slug: slug, config, tags }), tt('Abonniert – jetzt im Workflow den Auslöser „App-Ereignis (Composio)“ wählen'));
             setBusy(false);
             if (r) onDone();
           }}
         >
-          Abonnieren
+          {tt('Abonnieren')}
         </button>
       }
     >
-      <Field label="App">
+      <Field label={tt('App')}>
         <Select value={toolkit} onChange={(v) => (setToolkit(v), setSlug(''), setConfig({}))} options={conns.map((c) => [c.toolkit, c.toolkit_name] as [string, string])} />
       </Field>
       {types.error ? (
@@ -607,11 +618,11 @@ function NewTrigger({ conns, onClose, onDone }: { conns: Conn[]; onClose: () => 
       ) : !types.data ? (
         <Spinner />
       ) : types.data.length ? (
-        <Field label="Ereignis">
-          <Select value={slug} onChange={(v) => (setSlug(v), setConfig({}))} placeholder="wählen…" options={types.data.map((x) => [x.slug, x.name] as [string, string])} />
+        <Field label={tt('Ereignis')}>
+          <Select value={slug} onChange={(v) => (setSlug(v), setConfig({}))} placeholder={tt('wählen…')} options={types.data.map((x) => [x.slug, x.name] as [string, string])} />
         </Field>
       ) : (
-        <p className="muted">Diese App hat bei Composio keine Ereignisse.</p>
+        <p className="muted">{tt('Diese App hat bei Composio keine Ereignisse.')}</p>
       )}
       {type && (
         <>
@@ -620,20 +631,21 @@ function NewTrigger({ conns, onClose, onDone }: { conns: Conn[]; onClose: () => 
           {type.instructions && <p className="muted small">{clip(type.instructions, 400)}</p>}
         </>
       )}
-      <Field label="Tags für den Kontakt (optional)">
+      <Field label={tt('Tags für den Kontakt (optional)')}>
         <TagInput value={tags} onChange={setTags} />
       </Field>
-      <p className="muted small">Ohne Feldzuordnung sucht HyperLevel E-Mail, Telefon und Name selbst im Ereignis. Die Zuordnung lässt sich danach unter „Felder“ einstellen.</p>
+      <p className="muted small">{tt('Ohne Feldzuordnung sucht HyperLevel E-Mail, Telefon und Name selbst im Ereignis. Die Zuordnung lässt sich danach unter „Felder“ einstellen.')}</p>
     </Modal>
   );
 }
 
 function TriggerLog({ row, onClose }: { row: Json; onClose: () => void }) {
+  const tt = useT('x_integrations');
   const ev = useLoad(() => api.get<Json[]>(`/api/composio/triggers/${row.id}/events`), [row.id]);
   const [open, setOpen] = useState<string | null>(null);
   const LABEL: Record<string, [string, 'green' | 'yellow' | 'gray' | 'red']> = { ok: ['Kontakt + Workflows', 'green'], no_contact: ['ohne Kontakt', 'yellow'], ignored: ['ignoriert', 'gray'] };
   return (
-    <Modal title={`Protokoll: ${row.name}`} onClose={onClose} wide>
+    <Modal title={tt('Protokoll: {name}', { name: row.name })} onClose={onClose} wide>
       {!ev.data ? (
         <Spinner />
       ) : ev.data.length ? (
@@ -649,11 +661,11 @@ function TriggerLog({ row, onClose }: { row: Json; onClose: () => void }) {
                 <td style={{ textAlign: 'right' }}>
                   {e.contact_id && (
                     <button className="btn small ghost" onClick={() => (onClose(), navigate(`contacts/${e.contact_id}`))}>
-                      Kontakt
+                      {tt('Kontakt')}
                     </button>
                   )}
                   <button className="btn small ghost" onClick={() => setOpen(open === e.id ? null : e.id)}>
-                    Daten
+                    {tt('Daten')}
                   </button>
                 </td>
               </tr>
@@ -661,13 +673,14 @@ function TriggerLog({ row, onClose }: { row: Json; onClose: () => void }) {
           </tbody>
         </table>
       ) : (
-        <Empty>Noch kein Ereignis empfangen.</Empty>
+        <Empty>{tt('Noch kein Ereignis empfangen.')}</Empty>
       )}
     </Modal>
   );
 }
 
 function TriggerMapping({ row, onClose, onDone }: { row: Json; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_integrations');
   const fields = useLoad(() => api.get<Json[]>('/api/custom-fields'), []);
   const [map, setMap] = useState<{ from: string; to: string }[]>(row.mapping ?? []);
   const [tags, setTags] = useState<string[]>(row.tags ?? []);
@@ -688,25 +701,25 @@ function TriggerMapping({ row, onClose, onDone }: { row: Json; onClose: () => vo
   };
   return (
     <Modal
-      title={`Felder: ${row.name}`}
+      title={tt('Felder: {name}', { name: row.name })}
       onClose={onClose}
       wide
       footer={
-        <button className="btn" onClick={async () => (await act(() => api.patch(`/api/composio/triggers/${row.id}`, { mapping: map, tags }), 'Gespeichert')) && onDone()}>
-          Speichern
+        <button className="btn" onClick={async () => (await act(() => api.patch(`/api/composio/triggers/${row.id}`, { mapping: map, tags }), tt('Gespeichert'))) && onDone()}>
+          {tt('Speichern')}
         </button>
       }
     >
-      <p className="muted small">Leer = automatisch (erste E-Mail-Adresse, Telefonnummer und Name im Ereignis). Pfade mit Punkten, z. B. <code>customer.email</code> oder <code>answers.0.email</code>.</p>
+      <p className="muted small">{tt('Leer = automatisch (erste E-Mail-Adresse, Telefonnummer und Name im Ereignis). Pfade mit Punkten, z. B.')} <code>customer.email</code> oder <code>answers.0.email</code>.</p>
       {map.map((m, i) => (
         <div key={i} className="row" style={{ marginBottom: 6 }}>
           <div className="grow">
-            <Input value={m.from} onChange={(v) => setMap(map.map((x, j) => (j === i ? { ...x, from: v } : x)))} placeholder="Pfad im Ereignis" list="cx-paths" />
+            <Input value={m.from} onChange={(v) => setMap(map.map((x, j) => (j === i ? { ...x, from: v } : x)))} placeholder={tt('Pfad im Ereignis')} list="cx-paths" />
           </div>
           <div className="grow">
-            <Select value={m.to} onChange={(v) => setMap(map.map((x, j) => (j === i ? { ...x, to: v } : x)))} placeholder="Kontaktfeld" options={targets} />
+            <Select value={m.to} onChange={(v) => setMap(map.map((x, j) => (j === i ? { ...x, to: v } : x)))} placeholder={tt('Kontaktfeld')} options={targets} />
           </div>
-          <button className="icon-btn" aria-label="Entfernen" onClick={() => setMap(map.filter((_, j) => j !== i))}>
+          <button className="icon-btn" aria-label={tt('Entfernen')} onClick={() => setMap(map.filter((_, j) => j !== i))}>
             ✕
           </button>
         </div>
@@ -719,20 +732,20 @@ function TriggerMapping({ row, onClose, onDone }: { row: Json; onClose: () => vo
         ))}
       </datalist>
       <button className="btn small secondary" onClick={() => setMap([...map, { from: '', to: 'email' }])}>
-        + Zuordnung
+        {tt('+ Zuordnung')}
       </button>
-      <Field label="Tags für den Kontakt">
+      <Field label={tt('Tags für den Kontakt')}>
         <TagInput value={tags} onChange={setTags} />
       </Field>
-      <Field label="Beispiel-Ereignis (optional, JSON)" hint="Leer = das zuletzt empfangene Ereignis.">
+      <Field label={tt('Beispiel-Ereignis (optional, JSON)')} hint={tt('Leer = das zuletzt empfangene Ereignis.')}>
         <Textarea value={sample} onChange={setSample} rows={4} />
       </Field>
       <button className="btn small secondary" onClick={() => void run()}>
-        Vorschau
+        {tt('Vorschau')}
       </button>
       {preview && (
         <p className="small">
-          {preview.ok ? <Badge tone="green">Kontakt</Badge> : <Badge tone="yellow">kein Kontakt</Badge>} <code>{JSON.stringify(preview.contact)}</code>
+          {preview.ok ? <Badge tone="green">{tt('Kontakt')}</Badge> : <Badge tone="yellow">{tt('kein Kontakt')}</Badge>} <code>{JSON.stringify(preview.contact)}</code>
         </p>
       )}
     </Modal>
@@ -742,6 +755,7 @@ function TriggerMapping({ row, onClose, onDone }: { row: Json; onClose: () => vo
 // --- KI & MCP: allow-list, test, calls ----------------------------------------------------------------------
 
 function ComposioAi() {
+  const tt = useT('x_integrations');
   const session = useSession();
   const st = useLoad(() => api.get<Json>('/api/composio'), []);
   const calls = useLoad(() => api.get<Json[]>('/api/composio/calls'), []);
@@ -750,29 +764,29 @@ function ComposioAi() {
     if (st.data && allow === null) setAllow(st.data.allow ?? []);
   }, [st.data]);
   if (!st.data || allow === null) return <Spinner />;
-  if (!st.data.configured) return <Empty>Erst Composio einrichten (Reiter „Composio-Apps“).</Empty>;
+  if (!st.data.configured) return <Empty>{tt('Erst Composio einrichten (Reiter „Composio-Apps“).')}</Empty>;
   const active = (st.data.connections as Conn[]).filter((c) => c.status === 'active');
   const dirty = JSON.stringify(allow) !== JSON.stringify(st.data.allow ?? []);
   const orphan = allow.filter((a) => !a.endsWith(':*') && !active.some((c) => a.toLowerCase().startsWith(`${c.toolkit.replace(/-/g, '_')}_`)));
   return (
     <div className="cx">
       <div className="card" data-tour="apps-ai-allow">
-        <h2>Freigaben für KI & MCP</h2>
+        <h2>{tt('Freigaben für KI & MCP')}</h2>
         <p className="muted small">
-          Nur diese App-Aktionen darf der KI-Assistent (Schritt „KI-Agent mit Apps“) und ein MCP-Client wie Claude oder Codex über <code>ghl_app_action</code> ausführen. Workflows mit „App-Aktion ausführen“ brauchen keine Freigabe.
+          {tt('Nur diese App-Aktionen darf der KI-Assistent (Schritt „KI-Agent mit Apps“) und ein MCP-Client wie Claude oder Codex über')} <code>ghl_app_action</code> {tt('ausführen. Workflows mit „App-Aktion ausführen“ brauchen keine Freigabe.')}
         </p>
         {active.length ? (
           active.map((c) => <AllowApp key={c.id} conn={c} allow={allow} setAllow={setAllow} />)
         ) : (
-          <p className="muted">Erst eine App verbinden.</p>
+          <p className="muted">{tt('Erst eine App verbinden.')}</p>
         )}
         {orphan.length > 0 && (
           <div className="chips" style={{ marginTop: 8 }}>
-            <span className="muted small">Weitere Freigaben:</span>
+            <span className="muted small">{tt('Weitere Freigaben:')}</span>
             {orphan.map((a) => (
               <span key={a} className="chip on">
                 {a}
-                <button className="icon-btn" aria-label={`${a} entfernen`} onClick={() => setAllow(allow.filter((x) => x !== a))}>
+                <button className="icon-btn" aria-label={tt('{a} entfernen', { a: a })} onClick={() => setAllow(allow.filter((x) => x !== a))}>
                   ✕
                 </button>
               </span>
@@ -780,22 +794,21 @@ function ComposioAi() {
           </div>
         )}
         <p>
-          <button className="btn" disabled={!dirty} onClick={async () => (await act(() => api.put('/api/composio/allow', { allow }), 'Freigaben gespeichert')) && st.reload()}>
-            Speichern
+          <button className="btn" disabled={!dirty} onClick={async () => (await act(() => api.put('/api/composio/allow', { allow }), tt('Freigaben gespeichert'))) && st.reload()}>
+            {tt('Speichern')}
           </button>
         </p>
       </div>
       <AiTest />
       <div className="card" data-tour="apps-ai-mcp">
-        <h2>MCP: Claude & Codex in allen Apps</h2>
+        <h2>{tt('MCP: Claude & Codex in allen Apps')}</h2>
         <p className="muted small">
-          Der MCP-Server von HyperLevel (<code>{location.origin}/mcp</code>, Schlüssel unter Einstellungen → API & Webhooks oder Agentur → API & MCP) hat das Werkzeug <code>ghl_app_action</code>: <code>mode: "search"</code> findet freigegebene Aktionen samt Eingaben, <code>mode: "execute"</code> führt eine aus – immer im Sub-Account
-          des Schlüssels bzw. der übergebenen <code>location_id</code>.
+          {tt('Der MCP-Server von HyperLevel (')}<code>{location.origin}/mcp</code>{tt(', Schlüssel unter Einstellungen → API & Webhooks oder Agentur → API & MCP) hat das Werkzeug')} <code>ghl_app_action</code>: <code>{tt('mode: "search"')}</code> {tt('findet freigegebene Aktionen samt Eingaben,')} <code>{tt('mode: "execute"')}</code> {tt('führt eine aus – immer im Sub-Account des Schlüssels bzw. der übergebenen')} <code>location_id</code>.
         </p>
         <CodeBox text={`{"location_id": "${session.locationId}", "mode": "execute", "tool": "SLACK_SEND_MESSAGE", "arguments": {"channel": "#vertrieb", "text": "Neuer Lead!"}}`} />
       </div>
       <div className="card">
-        <h2>Letzte Aufrufe</h2>
+        <h2>{tt('Letzte Aufrufe')}</h2>
         {calls.data?.length ? (
           <div className="cx-table">
             <table className="t">
@@ -804,10 +817,10 @@ function ComposioAi() {
                   <tr key={c.id}>
                     <td className="small" style={{ whiteSpace: 'nowrap' }}>{dt(c.created_at)}</td>
                     <td>
-                      <code>{c.tool}</code> <span className="muted small">über {({ workflow: 'Workflow', ui: 'Oberfläche', api: 'API', mcp: 'MCP', ai: 'KI' } as Json)[c.source] ?? c.source}</span>
+                      <code>{c.tool}</code> <span className="muted small">{tt('über')} {({ workflow: 'Workflow', ui: 'Oberfläche', api: 'API', mcp: 'MCP', ai: 'KI' } as Json)[c.source] ?? c.source}</span>
                       {c.error && <div className="small" style={{ color: 'var(--red)' }}>{clip(c.error, 160)}</div>}
                     </td>
-                    <td>{c.ok ? <Badge tone="green">OK</Badge> : <Badge tone="red">Fehler</Badge>}</td>
+                    <td>{c.ok ? <Badge tone="green">OK</Badge> : <Badge tone="red">{tt('Fehler')}</Badge>}</td>
                     <td className="muted small">{c.ms} ms</td>
                   </tr>
                 ))}
@@ -815,7 +828,7 @@ function ComposioAi() {
             </table>
           </div>
         ) : (
-          <p className="muted">Noch keine App-Aktion ausgeführt.</p>
+          <p className="muted">{tt('Noch keine App-Aktion ausgeführt.')}</p>
         )}
       </div>
     </div>
@@ -823,6 +836,7 @@ function ComposioAi() {
 }
 
 function AllowApp({ conn, allow, setAllow }: { conn: Conn; allow: string[]; setAllow: (v: string[]) => void }) {
+  const tt = useT('x_integrations');
   const all = `${conn.toolkit}:*`;
   const [q, setQ] = useState('');
   const [found, setFound] = useState<Json[] | null>(null);
@@ -836,7 +850,7 @@ function AllowApp({ conn, allow, setAllow }: { conn: Conn; allow: string[]; setA
       <div className="cx-allow-head">
         <AppLogo src={conn.logo} name={conn.toolkit_name} size={24} />
         <strong>{conn.toolkit_name}</strong>
-        <Check checked={allow.includes(all)} onChange={(on) => setAllow(on ? [...allow, all] : allow.filter((a) => a !== all))} label="alle Aktionen" />
+        <Check checked={allow.includes(all)} onChange={(on) => setAllow(on ? [...allow, all] : allow.filter((a) => a !== all))} label={tt('alle Aktionen')} />
       </div>
       {!allow.includes(all) && (
         <>
@@ -846,7 +860,7 @@ function AllowApp({ conn, allow, setAllow }: { conn: Conn; allow: string[]; setA
               .map((a) => (
                 <span key={a} className="chip on">
                   {a}
-                  <button className="icon-btn" aria-label={`${a} entfernen`} onClick={() => setAllow(allow.filter((x) => x !== a))}>
+                  <button className="icon-btn" aria-label={tt('{a} entfernen', { a: a })} onClick={() => setAllow(allow.filter((x) => x !== a))}>
                     ✕
                   </button>
                 </span>
@@ -854,10 +868,10 @@ function AllowApp({ conn, allow, setAllow }: { conn: Conn; allow: string[]; setA
           </div>
           <div className="row" style={{ alignItems: 'center', marginTop: 6 }}>
             <div className="grow">
-              <Input value={q} onChange={setQ} placeholder="Aktion suchen, z. B. „nachricht senden“" onKeyDown={(e) => e.key === 'Enter' && void search()} />
+              <Input value={q} onChange={setQ} placeholder={tt('Aktion suchen, z. B. „nachricht senden“')} onKeyDown={(e) => e.key === 'Enter' && void search()} />
             </div>
             <button className="btn small secondary" onClick={() => void search()}>
-              Suchen
+              {tt('Suchen')}
             </button>
           </div>
           {found && (
@@ -872,13 +886,13 @@ function AllowApp({ conn, allow, setAllow }: { conn: Conn; allow: string[]; setA
                       <Badge tone="green">freigegeben</Badge>
                     ) : (
                       <button className="btn small" onClick={() => setAllow([...allow, t.slug])}>
-                        + Freigeben
+                        {tt('+ Freigeben')}
                       </button>
                     )}
                   </div>
                 ))
               ) : (
-                <p className="muted small">Nichts gefunden.</p>
+                <p className="muted small">{tt('Nichts gefunden.')}</p>
               )}
             </div>
           )}
@@ -889,15 +903,16 @@ function AllowApp({ conn, allow, setAllow }: { conn: Conn; allow: string[]; setA
 }
 
 function AiTest() {
+  const tt = useT('x_integrations');
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<Json | null>(null);
   return (
     <div className="card" data-tour="apps-ai-test">
-      <h2>KI mit Apps ausprobieren</h2>
-      <p className="muted small">Der KI-Assistent plant Schritt für Schritt, sucht freigegebene Aktionen und führt sie aus. Jeder Schritt zählt aufs KI-Monatslimit; Aktionen wirken echt in der App.</p>
-      <Field label="Aufgabe">
-        <Textarea value={prompt} onChange={setPrompt} rows={3} placeholder="z. B. Schick in Slack #vertrieb eine kurze Zusammenfassung der neuen Leads von heute." />
+      <h2>{tt('KI mit Apps ausprobieren')}</h2>
+      <p className="muted small">{tt('Der KI-Assistent plant Schritt für Schritt, sucht freigegebene Aktionen und führt sie aus. Jeder Schritt zählt aufs KI-Monatslimit; Aktionen wirken echt in der App.')}</p>
+      <Field label={tt('Aufgabe')}>
+        <Textarea value={prompt} onChange={setPrompt} rows={3} placeholder={tt('z. B. Schick in Slack #vertrieb eine kurze Zusammenfassung der neuen Leads von heute.')} />
       </Field>
       <button
         className="btn"
@@ -908,14 +923,14 @@ function AiTest() {
           setBusy(false);
         }}
       >
-        {busy ? 'Läuft …' : 'Ausführen'}
+        {busy ? tt('Läuft …') : tt('Ausführen')}
       </button>
       {res && (
         <div className="cx-agent">
           <ol className="small">
             {res.steps.map((s: Json, i: number) => (
               <li key={i}>
-                <strong>{s.action === 'search' ? 'Suche' : s.action === 'execute' ? `Aktion ${s.tool}` : 'Antwort'}</strong> {s.ok === false && <Badge tone="red">Fehler</Badge>} <span className="muted">{clip(s.detail, 240)}</span>
+                <strong>{s.action === 'search' ? tt('Suche') : s.action === 'execute' ? tt('Aktion {tool}', { tool: s.tool }) : tt('Antwort')}</strong> {s.ok === false && <Badge tone="red">{tt('Fehler')}</Badge>} <span className="muted">{clip(s.detail, 240)}</span>
               </li>
             ))}
           </ol>
@@ -929,6 +944,7 @@ function AiTest() {
 // --- Agentur → Integrationen → Einrichtung ----------------------------------------------------------------
 
 export function ComposioAgencySetup() {
+  const tt = useT('x_integrations');
   const s = useLoad(() => api.get<Json>('/api/agency/composio'), []);
   const [key, setKey] = useState('');
   const [test, setTest] = useState<Json | null>(null);
@@ -936,35 +952,35 @@ export function ComposioAgencySetup() {
   const v = s.data;
   return (
     <div className="card" style={{ flex: '1 1 340px' }} data-tour="composio-agency">
-      <h2>Composio (250+ Apps) <SignupLink id="composio" /></h2>
+      <h2>{tt('Composio (250+ Apps)')} <SignupLink id="composio" /></h2>
       <p className="muted small">
-        Ein Projekt-Schlüssel von <a href="https://composio.dev" target="_blank" rel="noopener">composio.dev</a> für alle Sub-Accounts: Slack, Notion, HubSpot, Shopify, Google Sheets & Co. mit verwalteter Anmeldung. Jeder Sub-Account verbindet seine eigenen Konten; ein Sub-Account kann auch einen eigenen Schlüssel nutzen.
+        {tt('Ein Projekt-Schlüssel von')} <a href="https://composio.dev" target="_blank" rel="noopener">composio.dev</a> {tt('für alle Sub-Accounts: Slack, Notion, HubSpot, Shopify, Google Sheets & Co. mit verwalteter Anmeldung. Jeder Sub-Account verbindet seine eigenen Konten; ein Sub-Account kann auch einen eigenen Schlüssel nutzen.')}
       </p>
-      <Field label="API-Schlüssel" hint="Composio → Settings → API Keys (Projekt-Schlüssel). Wird verschlüsselt gespeichert.">
-        <Input type="password" value={key} onChange={setKey} autoComplete="off" placeholder={v.key_set ? `•••••••• ${v.key_hint} (${v.source === 'env' ? 'aus der Umgebung' : 'gespeichert'})` : 'ak_…'} />
+      <Field label={tt('API-Schlüssel')} hint={tt('Composio → Settings → API Keys (Projekt-Schlüssel). Wird verschlüsselt gespeichert.')}>
+        <Input type="password" value={key} onChange={setKey} autoComplete="off" placeholder={v.key_set ? `•••••••• ${v.key_hint} (${v.source === 'env' ? tt('aus der Umgebung') : 'gespeichert'})` : 'ak_…'} />
       </Field>
       <div className="row" style={{ gap: 6 }}>
-        <button className="btn" disabled={!key} onClick={async () => (await act(() => api.put('/api/agency/composio', { api_key: key }), 'Gespeichert')) && (setKey(''), s.reload())}>
-          Speichern
+        <button className="btn" disabled={!key} onClick={async () => (await act(() => api.put('/api/agency/composio', { api_key: key }), tt('Gespeichert'))) && (setKey(''), s.reload())}>
+          {tt('Speichern')}
         </button>
         {v.key_set && (
           <button className="btn secondary" onClick={async () => setTest((await act(() => api.post('/api/agency/composio/test'))) ?? null)}>
-            Verbindung testen
+            {tt('Verbindung testen')}
           </button>
         )}
         {v.key_set && v.source !== 'env' && (
-          <button className="btn ghost" onClick={async () => confirmAsk('Composio-Schlüssel der Agentur entfernen? Verbundene Apps der Sub-Accounts funktionieren dann nicht mehr.') && (await act(() => api.del('/api/agency/composio'), 'Entfernt')) && s.reload()}>
-            Entfernen
+          <button className="btn ghost" onClick={async () => confirmAsk(tt('Composio-Schlüssel der Agentur entfernen? Verbundene Apps der Sub-Accounts funktionieren dann nicht mehr.')) && (await act(() => api.del('/api/agency/composio'), tt('Entfernt'))) && s.reload()}>
+            {tt('Entfernen')}
           </button>
         )}
       </div>
       {test && (
         <p className="small">
-          <Badge tone="green">verbunden</Badge> {test.auth_configs} Auth-Konfigurationen{test.webhook ? (test.webhook.exists ? (test.webhook.ours ? ' · Webhook zeigt auf HyperLevel' : ' · Webhook zeigt auf eine andere Adresse') : ' · noch kein Webhook') : ''}
+          <Badge tone="green">verbunden</Badge> {tt('{auth_configs} Auth-Konfigurationen', { auth_configs: test.auth_configs })}{test.webhook ? (test.webhook.exists ? (test.webhook.ours ? tt(' · Webhook zeigt auf HyperLevel') : tt(' · Webhook zeigt auf eine andere Adresse')) : tt(' · noch kein Webhook')) : ''}
         </p>
       )}
       <p className="muted small">
-        {v.connections} verbundene Apps in {v.locations} Sub-Accounts{v.overrides ? ` · ${v.overrides} Sub-Account(s) mit eigenem Schlüssel` : ''}. App-Ereignisse kommen an <code>{v.webhook_url}</code> – HyperLevel richtet den Webhook beim ersten Abo selbst ein.
+        {tt('{connections} verbundene Apps in {locations} Sub-Accounts', { connections: v.connections, locations: v.locations })}{v.overrides ? tt(' · {overrides} Sub-Account(s) mit eigenem Schlüssel', { overrides: v.overrides }) : ''}{tt('. App-Ereignisse kommen an')} <code>{v.webhook_url}</code> {tt('– HyperLevel richtet den Webhook beim ersten Abo selbst ein.')}
       </p>
     </div>
   );
@@ -974,6 +990,7 @@ export function ComposioAgencySetup() {
 
 /** Step "App-Aktion ausführen (Composio)": app → action (searchable) → form from the action's schema → result mapping. */
 export function ComposioActionStep({ step, set, customFields }: { step: Json; set: (p: Json) => void; customFields: Json[] }) {
+  const tt = useT('x_integrations');
   const conns = useLoad(() => api.get<Conn[]>('/api/composio/connections').catch(() => [] as Conn[]), []);
   const [q, setQ] = useState('');
   const [term, setTerm] = useState('');
@@ -991,57 +1008,57 @@ export function ComposioActionStep({ step, set, customFields }: { step: Json; se
   if (!active.length && !step.tool)
     return (
       <p className="muted">
-        Noch keine App verbunden.{' '}
+        {tt('Noch keine App verbunden.')}{' '}
         <a href="/app/apps/composio" onClick={(e) => (e.preventDefault(), navigate('apps/composio'))}>
-          Apps → Composio-Apps
+          {tt('Apps → Composio-Apps')}
         </a>
       </p>
     );
   return (
     <>
-      <Field label="App">
-        <Select value={toolkit} onChange={(v) => set({ toolkit: v, tool: '', arguments: {} })} placeholder="wählen…" options={active.map((c) => [c.toolkit, c.toolkit_name] as [string, string])} />
+      <Field label={tt('App')}>
+        <Select value={toolkit} onChange={(v) => set({ toolkit: v, tool: '', arguments: {} })} placeholder={tt('wählen…')} options={active.map((c) => [c.toolkit, c.toolkit_name] as [string, string])} />
       </Field>
       {toolkit && (
-        <Field label="Aktion" hint={step.tool ? undefined : 'Suchen, z. B. „send“, „create“, „row“'}>
-          <Input value={q} onChange={setQ} placeholder="Aktion suchen …" />
+        <Field label={tt('Aktion')} hint={step.tool ? undefined : tt('Suchen, z. B. „send“, „create“, „row“')}>
+          <Input value={q} onChange={setQ} placeholder={tt('Aktion suchen …')} />
           <div className="cx-pick">
             {(tools.data?.items ?? []).slice(0, 30).map((t) => (
               <button key={t.slug} type="button" className={`cx-pick-row${t.slug === step.tool ? ' on' : ''}`} onClick={() => set({ tool: t.slug, arguments: {} })}>
                 <strong>{t.name}</strong> <span className="muted small">{clip(t.description, 90)}</span>
               </button>
             ))}
-            {tools.data && !tools.data.items.length && <span className="muted small">Nichts gefunden.</span>}
+            {tools.data && !tools.data.items.length && <span className="muted small">{tt('Nichts gefunden.')}</span>}
           </div>
         </Field>
       )}
       {step.tool && (
         <>
           <p className="small">
-            Gewählt: <code>{step.tool}</code> {tool.data && !tool.data.connected && <Badge tone="yellow">App nicht verbunden</Badge>}
+            {tt('Gewählt:')} <code>{step.tool}</code> {tool.data && !tool.data.connected && <Badge tone="yellow">{tt('App nicht verbunden')}</Badge>}
           </p>
           {tool.error ? <p className="muted small">{tool.error}</p> : !tool.data ? <Spinner /> : <SchemaForm schema={tool.data.input_parameters} values={step.arguments ?? {}} onChange={(v) => set({ arguments: v })} />}
-          <h4 className="integ-h">Ergebnis übernehmen (optional)</h4>
+          <h4 className="integ-h">{tt('Ergebnis übernehmen (optional)')}</h4>
           <p className="muted small">
-            Pfad im Ergebnis → Kontaktfeld, z. B. <code>id</code> → eigenes Feld. Spätere Schritte lesen das Ergebnis als <code>{'{{event.app_result.<pfad>}}'}</code>.
+            {tt('Pfad im Ergebnis → Kontaktfeld, z. B.')} <code>id</code> {tt('→ eigenes Feld. Spätere Schritte lesen das Ergebnis als')} <code>{'{{event.app_result.<pfad>}}'}</code>.
           </p>
           {map.map((m, i) => (
             <div key={i} className="row" style={{ marginBottom: 6 }}>
               <div className="grow">
-                <Input value={m.from} onChange={(v) => set({ map: map.map((x, j) => (j === i ? { ...x, from: v } : x)) })} placeholder="z. B. data.id" />
+                <Input value={m.from} onChange={(v) => set({ map: map.map((x, j) => (j === i ? { ...x, from: v } : x)) })} placeholder={tt('z. B. data.id')} />
               </div>
               <div className="grow">
-                <Select value={m.to} onChange={(v) => set({ map: map.map((x, j) => (j === i ? { ...x, to: v } : x)) })} placeholder="Kontaktfeld" options={targets} />
+                <Select value={m.to} onChange={(v) => set({ map: map.map((x, j) => (j === i ? { ...x, to: v } : x)) })} placeholder={tt('Kontaktfeld')} options={targets} />
               </div>
-              <button className="icon-btn" aria-label="Entfernen" onClick={() => set({ map: map.filter((_, j) => j !== i) })}>
+              <button className="icon-btn" aria-label={tt('Entfernen')} onClick={() => set({ map: map.filter((_, j) => j !== i) })}>
                 ✕
               </button>
             </div>
           ))}
           <button type="button" className="btn small secondary" onClick={() => set({ map: [...map, { from: '', to: '' }] })}>
-            + Zuordnung
+            {tt('+ Zuordnung')}
           </button>
-          <p className="muted small">Fehler (z. B. App abgelehnt) stehen im Verlauf des Kontakts; kurze Ausfälle bei Composio werden automatisch wiederholt. „Bei Fehler stoppen“ in den Workflow-Einstellungen beendet den Workflow dann.</p>
+          <p className="muted small">{tt('Fehler (z. B. App abgelehnt) stehen im Verlauf des Kontakts; kurze Ausfälle bei Composio werden automatisch wiederholt. „Bei Fehler stoppen“ in den Workflow-Einstellungen beendet den Workflow dann.')}</p>
         </>
       )}
     </>
@@ -1050,14 +1067,15 @@ export function ComposioActionStep({ step, set, customFields }: { step: Json; se
 
 /** Step "KI-Agent mit Apps": a task for the AI that may use the allow-listed app actions. */
 export function ComposioAiStep({ step, set, customFields }: { step: Json; set: (p: Json) => void; customFields: Json[] }) {
+  const tt = useT('x_integrations');
   return (
     <>
-      <Field label="Aufgabe für die KI" hint="Die KI darf nur Aktionen nutzen, die unter Apps → KI & MCP freigegeben sind.">
-        <Textarea value={step.prompt} onChange={(v) => set({ prompt: v })} rows={5} placeholder="z. B. Lege für {{contact.name}} ({{contact.email}}) einen Deal in HubSpot an und poste ihn in Slack #vertrieb." />
+      <Field label={tt('Aufgabe für die KI')} hint={tt('Die KI darf nur Aktionen nutzen, die unter Apps → KI & MCP freigegeben sind.')}>
+        <Textarea value={step.prompt} onChange={(v) => set({ prompt: v })} rows={5} placeholder={tt('z. B. Lege für {{contact.name}} ({{contact.email}}) einen Deal in HubSpot an und poste ihn in Slack #vertrieb.')} />
       </Field>
       <MergeHint />
-      <Field label="Antwort speichern in (optional)">
-        <Select value={step.save_field} onChange={(v) => set({ save_field: v })} placeholder="nicht speichern" options={customFields.map((f) => [`custom.${f.key}`, `Feld: ${f.label}`] as [string, string])} />
+      <Field label={tt('Antwort speichern in (optional)')}>
+        <Select value={step.save_field} onChange={(v) => set({ save_field: v })} placeholder={tt('nicht speichern')} options={customFields.map((f) => [`custom.${f.key}`, `Feld: ${f.label}`] as [string, string])} />
       </Field>
     </>
   );
@@ -1065,20 +1083,21 @@ export function ComposioAiStep({ step, set, customFields }: { step: Json; set: (
 
 /** Trigger filter for "App-Ereignis (Composio)". */
 export function ComposioTriggerFilter({ config, set }: { config: Json; set: (p: Json) => void }) {
+  const tt = useT('x_integrations');
   const list = useLoad(() => api.get<{ items: Json[] }>('/api/composio/triggers').catch(() => ({ items: [] as Json[] })), []);
   const items = list.data?.items ?? [];
   const opts = useMemo(() => items.map((r) => [r.id, `${r.toolkit_name}: ${r.name}`] as [string, string]), [items]);
   return (
     <>
-      <Field label="App-Ereignis">
-        <Select value={config.subscription_id} onChange={(v) => set({ subscription_id: v })} placeholder="jedes App-Ereignis" options={opts} />
+      <Field label={tt('App-Ereignis')}>
+        <Select value={config.subscription_id} onChange={(v) => set({ subscription_id: v })} placeholder={tt('jedes App-Ereignis')} options={opts} />
       </Field>
       <p className="muted small">
-        {items.length ? '' : 'Noch kein App-Ereignis abonniert. '}
+        {items.length ? '' : tt('Noch kein App-Ereignis abonniert. ')}
         <a href="/app/apps/events" onClick={(e) => (e.preventDefault(), navigate('apps/events'))}>
-          Apps → App-Ereignisse
+          {tt('Apps → App-Ereignisse')}
         </a>{' '}
-        – Felder des Ereignisses stehen als <code>{'{{event.<feld>}}'}</code> bereit, dazu <code>{'{{event.app}}'}</code> und <code>{'{{event.trigger}}'}</code>.
+        {tt('– Felder des Ereignisses stehen als')} <code>{'{{event.<feld>}}'}</code> {tt('bereit, dazu')} <code>{'{{event.app}}'}</code> und <code>{'{{event.trigger}}'}</code>.
       </p>
     </>
   );

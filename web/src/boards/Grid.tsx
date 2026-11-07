@@ -3,6 +3,7 @@ import { reading, limitsAt, type Bp, type Cell, type Limits, type Placed } from 
 import { Icon } from '../icons';
 import { GAP, ROW_H, arrange, cellPx, cellsOf, colWidth, describeCell, heightPx, rowsPx, stackStep } from './layout';
 import type { Widget } from './types';
+import { useT } from '../i18n';
 
 /**
  * The board's grid: pointer-based drag and resize (no library), the same `settle` as the server so the picture while
@@ -46,6 +47,7 @@ const scrollParent = (el: HTMLElement | null): HTMLElement | null => {
 };
 
 export function Grid({ widgets, bp, width, edit, limits, titleOf, onCommit, render }: { widgets: Widget[]; bp: Bp; width: number; edit: boolean; limits: (type: string) => Limits; titleOf: (w: Widget) => string; onCommit: (ops: Record<string, unknown>[], cells: Placed[]) => void; render: (w: Widget, part: CardPart) => ReactNode }) {
+  const tt = useT('x_misc');
   const rootRef = useRef<HTMLDivElement>(null);
   const base = useMemo(() => cellsOf(widgets, bp), [widgets, bp]);
   const colW = colWidth(width, bp);
@@ -223,10 +225,10 @@ export function Grid({ widgets, bp, width, edit, limits, titleOf, onCommit, rend
       };
       return (
         <span className="bd-stackbtns">
-          <button type="button" className="bd-iconbtn" onClick={() => move(-1)} disabled={i <= 0} aria-label={`${titleOf(w)} nach oben`}>
+          <button type="button" className="bd-iconbtn" onClick={() => move(-1)} disabled={i <= 0} aria-label={tt('{titleOf} nach oben', { titleOf: titleOf(w) })}>
             <Icon name="up" size={15} />
           </button>
-          <button type="button" className="bd-iconbtn" onClick={() => move(1)} disabled={i >= order.length - 1} aria-label={`${titleOf(w)} nach unten`}>
+          <button type="button" className="bd-iconbtn" onClick={() => move(1)} disabled={i >= order.length - 1} aria-label={tt('{titleOf} nach unten', { titleOf: titleOf(w) })}>
             <Icon name="down" size={15} />
           </button>
         </span>
@@ -239,15 +241,15 @@ export function Grid({ widgets, bp, width, edit, limits, titleOf, onCommit, rend
         onPointerDown={(e) => begin(e, w.id, 'move')}
         onKeyDown={(e) => key(e, w.id)}
         onBlur={() => dragRef.current?.kb && dragRef.current.id === w.id && set(null)}
-        aria-label={`${titleOf(w)} verschieben: Leertaste zum Aufnehmen, dann Pfeiltasten (Umschalt = Größe), Leertaste zum Ablegen`}
+        aria-label={tt('{titleOf} verschieben: Leertaste zum Aufnehmen, dann Pfeiltasten (Umschalt = Größe), Leertaste zum Ablegen', { titleOf: titleOf(w) })}
         aria-pressed={lifted}
-        title="Ziehen zum Verschieben"
+        title={tt('Ziehen zum Verschieben')}
       >
         <Icon name="grip" size={16} />
       </button>
     );
   };
-  const resizer = (w: Widget): ReactNode => (edit && !stack ? <span className="bd-resize" onPointerDown={(e) => begin(e, w.id, 'size')} aria-hidden="true" title="Ziehen zum Vergrößern" /> : null);
+  const resizer = (w: Widget): ReactNode => (edit && !stack ? <span className="bd-resize" onPointerDown={(e) => begin(e, w.id, 'size')} aria-hidden="true" title={tt('Ziehen zum Vergrößern')} /> : null);
 
   const ghost = drag && !stack ? cellPx(drag.target, colW) : null;
   const items = stack ? reading(cells) : cells;

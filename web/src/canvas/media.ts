@@ -1,6 +1,7 @@
 import { api, currentLocation } from '../api';
 import { type CanvasElement, createElement } from '../../../server/services/canvas-model';
 import { newId } from './store';
+import { tr } from '../i18n';
 
 /** Images for the board: upload (same checks as the media library), sizes and the element for an image. */
 
@@ -15,12 +16,15 @@ export interface BoardImage {
 }
 
 const readAsDataUrl = (file: Blob) =>
-  new Promise<string>((res, rej) => {
+  {
+  const tt = tr('x_misc');
+  return new Promise<string>((res, rej) => {
     const fr = new FileReader();
     fr.onload = () => res(String(fr.result));
-    fr.onerror = () => rej(fr.error ?? new Error('Datei konnte nicht gelesen werden'));
+    fr.onerror = () => rej(fr.error ?? new Error(tt('Datei konnte nicht gelesen werden')));
     fr.readAsDataURL(file);
   });
+};
 
 /** Natural size of an image URL (falls back to 400 × 300 when it cannot be read). */
 export const imageSize = (src: string) =>
@@ -33,8 +37,9 @@ export const imageSize = (src: string) =>
 
 /** Uploads an image file to the board's sub-account; throws a readable error for unsuitable files. */
 export async function uploadImage(boardId: string, file: File): Promise<BoardImage> {
-  if (!IMAGE_TYPES.test(file.type)) throw new Error('Nur PNG, JPG, GIF oder WebP');
-  if (file.size > MAX_IMAGE_BYTES) throw new Error('Datei größer als 8 MB');
+  const tt = tr('x_misc');
+  if (!IMAGE_TYPES.test(file.type)) throw new Error(tt('Nur PNG, JPG, GIF oder WebP'));
+  if (file.size > MAX_IMAGE_BYTES) throw new Error(tt('Datei größer als 8 MB'));
   const data = await readAsDataUrl(file);
   const up = await api.post(`/api/canvas/${boardId}/media`, { name: file.name || 'Bild', data });
   const size = up.w && up.h ? { w: up.w as number, h: up.h as number } : await imageSize(up.src);

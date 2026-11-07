@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { money } from '../api';
 import { Badge, Check } from '../ui';
 import './sales.css';
+import { useT } from '../i18n';
 
 /** Shared parts of the sales pages: money input (euros on screen, cents on the wire), the positions editor and small status helpers. */
 
@@ -74,6 +75,7 @@ export function rowNet(l: LineDraft): number {
 
 /** Positions with product picker, quantity, price, discount, tax and (for quotes) the "optional" tick. */
 export function LinesEditor({ lines, onChange, products, currency = 'EUR', defaultTax = 19, optional = false, label = 'Position', tour }: { lines: LineDraft[]; onChange: (l: LineDraft[]) => void; products: any[]; currency?: string; defaultTax?: number; optional?: boolean; label?: string; tour?: string }) {
+  const tt = useT('x_finance');
   const set = (i: number, patch: Partial<LineDraft>) => onChange(lines.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const pick = (i: number, pid: string) => {
     const p = products.find((x) => x.id === pid);
@@ -91,8 +93,8 @@ export function LinesEditor({ lines, onChange, products, currency = 'EUR', defau
         <div className={`line${l.optional ? ' opt' : ''}`} key={l.id ?? `n${i}`}>
           <div className="line-main">
             {products.length > 0 && (
-              <select aria-label="Produkt aus dem Katalog" value={l.product_id ?? ''} onChange={(e) => pick(i, e.target.value)} className="line-product">
-                <option value="">Freie {label}</option>
+              <select aria-label={tt('Produkt aus dem Katalog')} value={l.product_id ?? ''} onChange={(e) => pick(i, e.target.value)} className="line-product">
+                <option value="">{tt('Freie {label}', { label: label })}</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} · {eur(p.price_cents, p.currency || currency)}
@@ -100,53 +102,53 @@ export function LinesEditor({ lines, onChange, products, currency = 'EUR', defau
                 ))}
               </select>
             )}
-            <input className="line-name" aria-label={`${label}: Name`} placeholder="Name" value={l.name} onChange={(e) => set(i, { name: e.target.value })} />
+            <input className="line-name" aria-label={tt('{label}: Name', { label: label })} placeholder="Name" value={l.name} onChange={(e) => set(i, { name: e.target.value })} />
           </div>
           <div className="line-nums">
             <label>
-              <span>Menge</span>
+              <span>{tt('Menge')}</span>
               <input inputMode="decimal" value={l.qty} onChange={(e) => set(i, { qty: e.target.value })} />
             </label>
             <label>
-              <span>Preis ({currency})</span>
+              <span>{tt('Preis ({currency})', { currency: currency })}</span>
               <input inputMode="decimal" value={l.price} onChange={(e) => set(i, { price: e.target.value })} />
             </label>
             <label>
-              <span>Rabatt</span>
+              <span>{tt('Rabatt')}</span>
               <span className="line-disc">
-                <select aria-label="Rabattart" value={l.discount_type} onChange={(e) => set(i, { discount_type: e.target.value as LineDraft['discount_type'], discount_value: '0' })}>
+                <select aria-label={tt('Rabattart')} value={l.discount_type} onChange={(e) => set(i, { discount_type: e.target.value as LineDraft['discount_type'], discount_value: '0' })}>
                   <option value="none">–</option>
                   <option value="percent">%</option>
                   <option value="amount">{currency}</option>
                 </select>
-                {l.discount_type !== 'none' && <input aria-label="Rabatt" inputMode="decimal" value={l.discount_value} onChange={(e) => set(i, { discount_value: e.target.value })} />}
+                {l.discount_type !== 'none' && <input aria-label={tt('Rabatt')} inputMode="decimal" value={l.discount_value} onChange={(e) => set(i, { discount_value: e.target.value })} />}
               </span>
             </label>
             <label>
-              <span>USt %</span>
+              <span>{tt('USt %')}</span>
               <input inputMode="decimal" value={l.tax_rate} onChange={(e) => set(i, { tax_rate: e.target.value })} />
             </label>
-            <div className="line-net" title="Netto nach Rabatt">
-              <span>Netto</span>
+            <div className="line-net" title={tt('Netto nach Rabatt')}>
+              <span>{tt('Netto')}</span>
               <b>{eur(rowNet(l), currency)}</b>
             </div>
           </div>
           <div className="line-foot">
             {optional && (
               <>
-                <Check checked={!!l.optional} onChange={(v) => set(i, { optional: v })} label="Optional (der Kunde wählt)" />
-                {l.optional && <Check checked={l.selected !== false} onChange={(v) => set(i, { selected: v })} label="Vorangekreuzt" />}
+                <Check checked={!!l.optional} onChange={(v) => set(i, { optional: v })} label={tt('Optional (der Kunde wählt)')} />
+                {l.optional && <Check checked={l.selected !== false} onChange={(v) => set(i, { selected: v })} label={tt('Vorangekreuzt')} />}
               </>
             )}
-            <input className="line-desc" aria-label="Beschreibung" placeholder="Beschreibung (optional)" value={l.description} onChange={(e) => set(i, { description: e.target.value })} />
+            <input className="line-desc" aria-label={tt('Beschreibung')} placeholder={tt('Beschreibung (optional)')} value={l.description} onChange={(e) => set(i, { description: e.target.value })} />
             <span className="line-tools">
-              <button type="button" className="icon-btn" disabled={!i} onClick={() => move(i, -1)} aria-label="Nach oben">
+              <button type="button" className="icon-btn" disabled={!i} onClick={() => move(i, -1)} aria-label={tt('Nach oben')}>
                 ↑
               </button>
-              <button type="button" className="icon-btn" disabled={i === lines.length - 1} onClick={() => move(i, 1)} aria-label="Nach unten">
+              <button type="button" className="icon-btn" disabled={i === lines.length - 1} onClick={() => move(i, 1)} aria-label={tt('Nach unten')}>
                 ↓
               </button>
-              <button type="button" className="icon-btn" onClick={() => onChange(lines.filter((_, j) => j !== i))} aria-label={`${label} entfernen`}>
+              <button type="button" className="icon-btn" onClick={() => onChange(lines.filter((_, j) => j !== i))} aria-label={tt('{label} entfernen', { label: label })}>
                 ✕
               </button>
             </span>
@@ -168,9 +170,10 @@ export const StatusBadge = ({ status, label }: { status: string; label: string }
 
 /** A share of a whole as a bar. */
 export function Bar({ pct, tone }: { pct: number | null; tone?: string }) {
+  const tt = useT('x_finance');
   const p = Math.max(0, Math.min(100, pct ?? 0));
   return (
-    <span className={`bar ${tone ?? ''}`} role="img" aria-label={pct === null ? 'keine Quote' : `${pct} %`}>
+    <span className={`bar ${tone ?? ''}`} role="img" aria-label={pct === null ? tt('keine Quote') : `${pct} %`}>
       <i style={{ width: `${p}%` }} />
     </span>
   );

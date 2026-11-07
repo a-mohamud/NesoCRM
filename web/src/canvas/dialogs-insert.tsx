@@ -11,6 +11,7 @@ import { MermaidError, mermaidToElements } from '../../../server/services/canvas
 import { newId } from './store';
 import { imageElement, imageSize, uploadImage, IMAGE_TYPES } from './media';
 import type { DialogProps } from './dialogs';
+import { useT } from '../i18n';
 
 /** Dialogs that put things on the board: templates, images, icons, tables, charts and Mermaid text. */
 
@@ -18,6 +19,7 @@ const LIGHT_BG = '#ffffff';
 
 /** Inline SVG preview of some elements (all markup comes from the escaping renderer). */
 export function Preview({ els, max = 360, prefix = 'pv' }: { els: CanvasElement[]; max?: number; prefix?: string }) {
+  const tt = useT('x_misc');
   const svg = useMemo(() => {
     try {
       return renderSvg(els, { background: LIGHT_BG, maxSize: max, padding: 12, idPrefix: prefix }).svg;
@@ -25,7 +27,7 @@ export function Preview({ els, max = 360, prefix = 'pv' }: { els: CanvasElement[
       return '';
     }
   }, [els, max, prefix]);
-  return svg ? <div className="cv-preview" dangerouslySetInnerHTML={{ __html: svg }} /> : <div className="cv-preview empty">Keine Vorschau</div>;
+  return svg ? <div className="cv-preview" dangerouslySetInnerHTML={{ __html: svg }} /> : <div className="cv-preview empty">{tt('Keine Vorschau')}</div>;
 }
 
 // --- templates ----------------------------------------------------------------------------------------
@@ -41,6 +43,7 @@ export function useTemplatePreviews() {
 }
 
 export function TemplatesDialog({ api: ed, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const cats = ['Alle', ...new Set(TEMPLATES.map((t) => t.category))];
   const [cat, setCat] = useState('Alle');
   const previews = useTemplatePreviews();
@@ -53,7 +56,7 @@ export function TemplatesDialog({ api: ed, onClose }: DialogProps) {
     setTimeout(() => ed.zoomTo(ids), 40);
   };
   return (
-    <Modal title="Vorlagen" onClose={onClose} wide>
+    <Modal title={tt('Vorlagen')} onClose={onClose} wide>
       <div className="cv-cats" role="tablist">
         {cats.map((c) => (
           <button key={c} className={`cv-chip${cat === c ? ' on' : ''}`} onClick={() => setCat(c)}>
@@ -70,7 +73,7 @@ export function TemplatesDialog({ api: ed, onClose }: DialogProps) {
           </button>
         ))}
       </div>
-      <p className="muted small">Die Vorlage landet in der Mitte deiner Ansicht und lässt sich danach wie alles andere ändern (Strg Z nimmt sie zurück).</p>
+      <p className="muted small">{tt('Die Vorlage landet in der Mitte deiner Ansicht und lässt sich danach wie alles andere ändern (Strg Z nimmt sie zurück).')}</p>
     </Modal>
   );
 }
@@ -85,6 +88,7 @@ interface MediaItem {
 }
 
 export function MediaDialog({ api: ed, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const [tab, setTab] = useState('upload');
   const [busy, setBusy] = useState(false);
   const [gen, setGen] = useState(false);
@@ -125,7 +129,7 @@ export function MediaDialog({ api: ed, onClose }: DialogProps) {
       />
     );
   return (
-    <Modal title="Bild einfügen" onClose={onClose} wide>
+    <Modal title={tt('Bild einfügen')} onClose={onClose} wide>
       <Tabs
         tabs={[
           ['upload', 'Hochladen'],
@@ -146,23 +150,23 @@ export function MediaDialog({ api: ed, onClose }: DialogProps) {
         >
           <Icon name="imageUp" size={30} />
           <p>
-            Bilder hierher ziehen oder <button className="btn small" onClick={() => file.current?.click()} disabled={busy}>Dateien wählen</button>
+            {tt('Bilder hierher ziehen oder')} <button className="btn small" onClick={() => file.current?.click()} disabled={busy}>{tt('Dateien wählen')}</button>
           </p>
-          <p className="muted small">PNG, JPG, GIF oder WebP bis 8 MB. Du kannst Bilder auch direkt auf das Board ziehen oder mit Strg V einfügen. Sie landen in der Mediathek.</p>
+          <p className="muted small">{tt('PNG, JPG, GIF oder WebP bis 8 MB. Du kannst Bilder auch direkt auf das Board ziehen oder mit Strg V einfügen. Sie landen in der Mediathek.')}</p>
           <input ref={file} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={(e) => void upload([...(e.target.files ?? [])])} />
         </div>
       ) : tab === 'ai' ? (
         <div className="cv-drop">
           <Icon name="sparkles" size={30} />
-          <p>Beschreibe das Bild – es wird mit deinem KI-Anbieter (KI-Studio) erzeugt, in der Mediathek gespeichert und aufs Board gelegt.</p>
+          <p>{tt('Beschreibe das Bild – es wird mit deinem KI-Anbieter (KI-Studio) erzeugt, in der Mediathek gespeichert und aufs Board gelegt.')}</p>
           <button className="btn" onClick={() => setGen(true)} data-tour="canvas-media-ai">
-            <Icon name="sparkles" size={14} /> KI-Bild generieren
+            <Icon name="sparkles" size={14} /> {tt('KI-Bild generieren')}
           </button>
         </div>
       ) : (
         <div className="cv-media-grid">
-          {lib.loading && <p className="muted">Lädt …</p>}
-          {!lib.loading && !lib.data?.length && <p className="muted">Noch keine Bilder in der Mediathek.</p>}
+          {lib.loading && <p className="muted">{tt('Lädt …')}</p>}
+          {!lib.loading && !lib.data?.length && <p className="muted">{tt('Noch keine Bilder in der Mediathek.')}</p>}
           {(lib.data ?? []).map((m) => (
             <button
               key={m.id}
@@ -199,6 +203,7 @@ export function IconGlyph({ name, size = 24 }: { name: string; size?: number }) 
 }
 
 export function IconsDialog({ api: ed, data, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const [q, setQ] = useState('');
   const list = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -213,8 +218,8 @@ export function IconsDialog({ api: ed, data, onClose }: DialogProps) {
     onClose();
   };
   return (
-    <Modal title={data?.id ? 'Icon wechseln' : 'Icon einfügen'} onClose={onClose} wide>
-      <Input value={q} onChange={setQ} placeholder="Suchen: Person, Kalender, Euro …" autoFocus aria-label="Icons suchen" />
+    <Modal title={data?.id ? tt('Icon wechseln') : tt('Icon einfügen')} onClose={onClose} wide>
+      <Input value={q} onChange={setQ} placeholder={tt('Suchen: Person, Kalender, Euro …')} autoFocus aria-label={tt('Icons suchen')} />
       <div className="cv-icon-grid">
         {list.map(([k, [label]]) => (
           <button key={k} className="cv-icon-pick" onClick={() => pick(k)} title={label}>
@@ -222,7 +227,7 @@ export function IconsDialog({ api: ed, data, onClose }: DialogProps) {
             <span>{label}</span>
           </button>
         ))}
-        {!list.length && <p className="muted">Kein Icon gefunden.</p>}
+        {!list.length && <p className="muted">{tt('Kein Icon gefunden.')}</p>}
       </div>
     </Modal>
   );
@@ -238,6 +243,7 @@ export function parseGrid(text: string): string[][] {
 }
 
 export function TableDialog({ api: ed, data, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const el = ed.store.els.get(data?.id);
   const [cells, setCells] = useState<string[][]>(() => (el?.cells?.length ? el.cells.map((r) => [...r]) : [['', ''], ['', '']]));
   const [header, setHeader] = useState(!!el?.header);
@@ -267,15 +273,15 @@ export function TableDialog({ api: ed, data, onClose }: DialogProps) {
   };
   return (
     <Modal
-      title="Tabelle bearbeiten"
+      title={tt('Tabelle bearbeiten')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" onClick={apply}>
-            Übernehmen
+            {tt('Übernehmen')}
           </button>
         </>
       }
@@ -284,30 +290,30 @@ export function TableDialog({ api: ed, data, onClose }: DialogProps) {
         {grid.map((row, r) => (
           <FragmentRow key={r}>
             {row.map((v, c) => (
-              <input key={c} value={v} className={header && r === 0 ? 'head' : ''} onChange={(e) => set(r, c, e.target.value)} onPaste={(e) => paste(r, c, e.clipboardData.getData('text')) && e.preventDefault()} aria-label={`Zeile ${r + 1}, Spalte ${c + 1}`} />
+              <input key={c} value={v} className={header && r === 0 ? 'head' : ''} onChange={(e) => set(r, c, e.target.value)} onPaste={(e) => paste(r, c, e.clipboardData.getData('text')) && e.preventDefault()} aria-label={tt('Zeile {v}, Spalte {v2}', { v: r + 1, v2: c + 1 })} />
             ))}
-            <button className="icon-btn" title="Zeile löschen" disabled={grid.length < 2} onClick={() => setCells(grid.filter((_, i) => i !== r))}>
+            <button className="icon-btn" title={tt('Zeile löschen')} disabled={grid.length < 2} onClick={() => setCells(grid.filter((_, i) => i !== r))}>
               ✕
             </button>
           </FragmentRow>
         ))}
         {cols > 1 &&
           Array.from({ length: cols }, (_, c) => (
-            <button key={`d${c}`} className="icon-btn" title="Spalte löschen" onClick={() => setCells(grid.map((row) => row.filter((_, j) => j !== c)))}>
+            <button key={`d${c}`} className="icon-btn" title={tt('Spalte löschen')} onClick={() => setCells(grid.map((row) => row.filter((_, j) => j !== c)))}>
               ✕
             </button>
           ))}
       </div>
       <div className="cv-actions" style={{ marginTop: 10 }}>
         <button className="btn small secondary" onClick={() => setCells([...grid, Array(cols).fill('')])} disabled={grid.length >= 40}>
-          + Zeile
+          {tt('+ Zeile')}
         </button>
         <button className="btn small secondary" onClick={() => setCells(grid.map((row) => [...row, '']))} disabled={cols >= 20}>
-          + Spalte
+          {tt('+ Spalte')}
         </button>
-        <Check checked={header} onChange={setHeader} label="Erste Zeile ist Kopfzeile" />
+        <Check checked={header} onChange={setHeader} label={tt('Erste Zeile ist Kopfzeile')} />
       </div>
-      <p className="muted small">Tipp: Zellen aus Excel oder Google Sheets kopieren und in eine Zelle einfügen.</p>
+      <p className="muted small">{tt('Tipp: Zellen aus Excel oder Google Sheets kopieren und in eine Zelle einfügen.')}</p>
     </Modal>
   );
 }
@@ -325,6 +331,7 @@ const CHART_KINDS: [ChartKind, string][] = [
 ];
 
 export function ChartDialog({ api: ed, data, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const el = ed.store.els.get(data?.id);
   const start: ChartData = el?.chart ?? { kind: 'bar', labels: ['A', 'B', 'C'], series: [{ name: 'Werte', values: [3, 5, 2] }] };
   const [kind, setKind] = useState<ChartKind>(start.kind);
@@ -361,13 +368,13 @@ export function ChartDialog({ api: ed, data, onClose }: DialogProps) {
   };
   return (
     <Modal
-      title="Diagramm bearbeiten"
+      title={tt('Diagramm bearbeiten')}
       onClose={onClose}
       wide
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button
             className="btn"
@@ -376,7 +383,7 @@ export function ChartDialog({ api: ed, data, onClose }: DialogProps) {
               onClose();
             }}
           >
-            Übernehmen
+            {tt('Übernehmen')}
           </button>
         </>
       }
@@ -390,21 +397,21 @@ export function ChartDialog({ api: ed, data, onClose }: DialogProps) {
               </button>
             ))}
           </div>
-          <Field label="Titel">
-            <Input value={title} onChange={setTitle} placeholder="z. B. Umsatz pro Monat" />
+          <Field label={tt('Titel')}>
+            <Input value={title} onChange={setTitle} placeholder={tt('z. B. Umsatz pro Monat')} />
           </Field>
           <div className="cv-table-wrap" onPaste={(e) => paste(e.clipboardData.getData('text')) && e.preventDefault()}>
             <table className="cv-data">
               <thead>
                 <tr>
-                  <th>Beschriftung</th>
+                  <th>{tt('Beschriftung')}</th>
                   {series.map((s, j) => (
                     <th key={j}>
-                      <input value={s.name} onChange={(e) => setSeries(series.map((x, i) => (i === j ? { ...x, name: e.target.value } : x)))} aria-label={`Reihe ${j + 1}`} />
+                      <input value={s.name} onChange={(e) => setSeries(series.map((x, i) => (i === j ? { ...x, name: e.target.value } : x)))} aria-label={tt('Reihe {v}', { v: j + 1 })} />
                     </th>
                   ))}
                   <th>
-                    <button className="icon-btn" title="Reihe hinzufügen" disabled={series.length >= 8 || kind === 'pie' || kind === 'donut'} onClick={() => setSeries([...series, { name: `Reihe ${series.length + 1}`, values: labels.map(() => '0') }])}>
+                    <button className="icon-btn" title={tt('Reihe hinzufügen')} disabled={series.length >= 8 || kind === 'pie' || kind === 'donut'} onClick={() => setSeries([...series, { name: `Reihe ${series.length + 1}`, values: labels.map(() => '0') }])}>
                       +
                     </button>
                   </th>
@@ -414,7 +421,7 @@ export function ChartDialog({ api: ed, data, onClose }: DialogProps) {
                 {labels.map((l, i) => (
                   <tr key={i}>
                     <td>
-                      <input value={l} onChange={(e) => setLabels(labels.map((x, k) => (k === i ? e.target.value : x)))} aria-label={`Beschriftung ${i + 1}`} />
+                      <input value={l} onChange={(e) => setLabels(labels.map((x, k) => (k === i ? e.target.value : x)))} aria-label={tt('Beschriftung {v}', { v: i + 1 })} />
                     </td>
                     {series.map((s, j) => (
                       <td key={j}>
@@ -424,7 +431,7 @@ export function ChartDialog({ api: ed, data, onClose }: DialogProps) {
                     <td>
                       <button
                         className="icon-btn"
-                        title="Zeile löschen"
+                        title={tt('Zeile löschen')}
                         disabled={labels.length < 2}
                         onClick={() => {
                           setLabels(labels.filter((_, k) => k !== i));
@@ -440,9 +447,9 @@ export function ChartDialog({ api: ed, data, onClose }: DialogProps) {
             </table>
           </div>
           <button className="btn small secondary" onClick={addRow} disabled={labels.length >= 60}>
-            + Zeile
+            {tt('+ Zeile')}
           </button>
-          <p className="muted small">Tipp: Eine Tabelle aus Excel oder Sheets (erste Zeile = Reihen-Namen) kopieren und hier einfügen.</p>
+          <p className="muted small">{tt('Tipp: Eine Tabelle aus Excel oder Sheets (erste Zeile = Reihen-Namen) kopieren und hier einfügen.')}</p>
         </div>
         <div className="cv-preview wide" dangerouslySetInnerHTML={{ __html: `<svg viewBox="-6 -6 ${el.w + 12} ${el.h + 12}" width="100%" style="background:#fff;border-radius:8px">${prev}</svg>` }} />
       </div>
@@ -459,6 +466,7 @@ const MERMAID_EXAMPLES: [string, string][] = [
 ];
 
 export function MermaidDialog({ api: ed, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const [src, setSrc] = useState(MERMAID_EXAMPLES[0][1]);
   const [sketch, setSketch] = useState(!!ed.defaults.sketch);
   const built = useMemo(() => {
@@ -483,16 +491,16 @@ export function MermaidDialog({ api: ed, onClose }: DialogProps) {
   };
   return (
     <Modal
-      title="Mermaid-Diagramm einfügen"
+      title={tt('Mermaid-Diagramm einfügen')}
       onClose={onClose}
       wide
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" onClick={insert} disabled={!built.els.length}>
-            Einfügen
+            {tt('Einfügen')}
           </button>
         </>
       }
@@ -506,9 +514,9 @@ export function MermaidDialog({ api: ed, onClose }: DialogProps) {
               </button>
             ))}
           </div>
-          <textarea className="cv-code" rows={14} value={src} onChange={(e) => setSrc(e.target.value)} spellCheck={false} aria-label="Mermaid-Text" />
-          <Check checked={sketch} onChange={setSketch} label="Handgezeichnet" />
-          <p className="muted small">Unterstützt: flowchart/graph, mindmap und sequenceDiagram. Pfeile bleiben an den Formen haften.</p>
+          <textarea className="cv-code" rows={14} value={src} onChange={(e) => setSrc(e.target.value)} spellCheck={false} aria-label={tt('Mermaid-Text')} />
+          <Check checked={sketch} onChange={setSketch} label={tt('Handgezeichnet')} />
+          <p className="muted small">{tt('Unterstützt: flowchart/graph, mindmap und sequenceDiagram. Pfeile bleiben an den Formen haften.')}</p>
         </div>
         <div>{built.error ? <p className="cv-error">{built.error}</p> : <Preview els={built.els} max={460} prefix="mm" />}</div>
       </div>

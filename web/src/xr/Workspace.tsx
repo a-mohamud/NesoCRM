@@ -29,6 +29,7 @@ import {
 } from './workspace-layout';
 import { XR_LIMITS, cleanWorkspace, type WorkspaceLayout } from '../../../server/services/xr-model';
 import './workspace.css';
+import { useT } from '../i18n';
 
 const { AgentPanel } = lazyPages(() => import('../agent/Panel'), 'AgentPanel');
 
@@ -73,6 +74,7 @@ function useWidth(ref: { current: HTMLElement | null }): number {
 
 /** The HyperLevel Agent inside a panel: the same chat as the drawer, without the drawer. */
 function EmbeddedAgent() {
+  const tt = useT('x_misc');
   const [ready] = useState(() => {
     // The drawer opens from this saved flag; remember the person's own state and give it back when the panel goes.
     let was: string | null = null;
@@ -101,9 +103,9 @@ function EmbeddedAgent() {
         <AgentPanel />
       </div>
       <div className="ws-agent-closed">
-        <p className="muted">Der KI-Agent ist geschlossen.</p>
+        <p className="muted">{tt('Der KI-Agent ist geschlossen.')}</p>
         <button type="button" className="btn" onClick={() => window.dispatchEvent(new CustomEvent('pghl:agent', { detail: {} }))}>
-          <Icon name="bot" size={16} /> KI-Agent öffnen
+          <Icon name="bot" size={16} /> {tt('KI-Agent öffnen')}
         </button>
       </div>
     </>
@@ -111,6 +113,7 @@ function EmbeddedAgent() {
 }
 
 const PanelBody = memo(function PanelBody({ route, render }: { route: string; render: (parts: string[]) => ReactNode }) {
+  const tt = useT('x_misc');
   const parts = useMemo(() => route.split('/'), [route]);
   if (parts[0] === 'agent')
     return (
@@ -119,7 +122,7 @@ const PanelBody = memo(function PanelBody({ route, render }: { route: string; re
       </PageSuspense>
     );
   // A panel cannot hold the Arbeitsfläche itself.
-  if (parts[0] === 'workspace') return <p className="muted">Diese Seite lässt sich nicht in einem Panel zeigen.</p>;
+  if (parts[0] === 'workspace') return <p className="muted">{tt('Diese Seite lässt sich nicht in einem Panel zeigen.')}</p>;
   return (
     <RouteScope.Provider value={parts}>
       <PageSuspense>{render(parts)}</PageSuspense>
@@ -129,9 +132,10 @@ const PanelBody = memo(function PanelBody({ route, render }: { route: string; re
 
 /** The chooser of a panel's page. */
 function PagePicker({ current, onPick, onClose }: { current: string; onPick: (route: string) => void; onClose: () => void }) {
+  const tt = useT('x_misc');
   const head = current.split('/')[0];
   return (
-    <Modal title="Seite für dieses Panel" onClose={onClose}>
+    <Modal title={tt('Seite für dieses Panel')} onClose={onClose}>
       <div className="ws-pages" role="list">
         {PAGES.map(([route, label]) => (
           <button key={route} type="button" role="listitem" className={`ws-page${route === head ? ' on' : ''}`} onClick={() => (onPick(route), onClose())}>
@@ -146,6 +150,7 @@ function PagePicker({ current, onPick, onClose }: { current: string; onPick: (ro
 }
 
 function Splitter({ index, sizes, onSizes, rootRef, labels }: { index: number; sizes: number[]; onSizes: (s: number[]) => void; rootRef: { current: HTMLElement | null }; labels: [string, string] }) {
+  const tt = useT('x_misc');
   const drag = useRef<{ x: number; sizes: number[]; width: number } | null>(null);
   const down = (e: ReactPointerEvent<HTMLDivElement>) => {
     const root = rootRef.current;
@@ -170,13 +175,13 @@ function Splitter({ index, sizes, onSizes, rootRef, labels }: { index: number; s
       className="ws-split"
       role="separator"
       aria-orientation="vertical"
-      aria-label={`Breite: ${labels[0]} und ${labels[1]}`}
+      aria-label={tt('Breite: {v} und {v2}', { v: labels[0], v2: labels[1] })}
       aria-valuenow={pct}
       aria-valuemin={Math.round(XR_LIMITS.minShare * 100)}
       aria-valuemax={Math.round((sizes[index] + sizes[index + 1] - XR_LIMITS.minShare) * 100)}
       tabIndex={0}
       data-tour="ws-splitter"
-      title="Ziehen oder mit den Pfeiltasten verschieben (Umschalt: größere Schritte, Doppelklick: gleich breit)"
+      title={tt('Ziehen oder mit den Pfeiltasten verschieben (Umschalt: größere Schritte, Doppelklick: gleich breit)')}
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
@@ -188,6 +193,7 @@ function Splitter({ index, sizes, onSizes, rootRef, labels }: { index: number; s
 }
 
 export function Workspace({ renderPage }: { renderPage: (route: string[]) => ReactNode }) {
+  const tt = useT('x_misc');
   const root = useRef<HTMLDivElement>(null);
   const panelsRef = useRef<HTMLDivElement>(null);
   const width = useWidth(root);
@@ -286,30 +292,30 @@ export function Workspace({ renderPage }: { renderPage: (route: string[]) => Rea
   const bar = (
     <header className="ws-bar" data-tour="ws-bar">
       <h1>
-        <Icon name="columns3" size={22} /> Arbeitsfläche
+        <Icon name="columns3" size={22} /> {tt('Arbeitsfläche')}
       </h1>
       {!compact && (
-        <div className="ap-seg" role="radiogroup" aria-label="Anzahl Panels" data-tour="ws-count">
+        <div className="ap-seg" role="radiogroup" aria-label={tt('Anzahl Panels')} data-tour="ws-count">
           {[2, 3, 4].map((n) => (
             <button key={n} role="radio" aria-checked={state.panels.length === n} className={state.panels.length === n ? 'on' : ''} disabled={n > max} onClick={() => setState((s) => applyCount(s, n))}>
-              {n} Panels
+              {tt('{n} Panels', { n: n })}
             </button>
           ))}
         </div>
       )}
       {!compact && (
         <button type="button" className="btn secondary small" disabled={state.panels.length >= Math.min(max, XR_LIMITS.workspacePanels)} onClick={() => setPicker(-1)} data-tour="ws-add">
-          <Icon name="plus" size={15} /> Seite hinzufügen
+          <Icon name="plus" size={15} /> {tt('Seite hinzufügen')}
         </button>
       )}
       <span className="ws-bar-gap" />
       {!compact && (
-        <span data-tour="ws-sync" title="Ein Klick im Posteingang oder in der Pipeline zeigt den Kontakt im Kontakt-Panel">
-          <Check checked={state.sync} onChange={(v) => setState((s) => ({ ...s, sync: v }))} label="Auswahl verknüpfen" />
+        <span data-tour="ws-sync" title={tt('Ein Klick im Posteingang oder in der Pipeline zeigt den Kontakt im Kontakt-Panel')}>
+          <Check checked={state.sync} onChange={(v) => setState((s) => ({ ...s, sync: v }))} label={tt('Auswahl verknüpfen')} />
         </span>
       )}
       <button type="button" className="btn ghost small" onClick={() => setState(defaultState(Math.min(max, 4)))}>
-        <Icon name="reset" size={15} /> Zurücksetzen
+        <Icon name="reset" size={15} /> {tt('Zurücksetzen')}
       </button>
     </header>
   );
@@ -321,7 +327,7 @@ export function Workspace({ renderPage }: { renderPage: (route: string[]) => Rea
       <div className="ws ws-compact" ref={root} data-tour="ws-root">
         {bar}
         <p className="ws-note muted small" role="note">
-          Die Arbeitsfläche zeigt mehrere Seiten nebeneinander und braucht mindestens {COMPACT_NOTE} Breite – hier siehst du sie einzeln.
+          {tt('Die Arbeitsfläche zeigt mehrere Seiten nebeneinander und braucht mindestens {COMPACT_NOTE} Breite – hier siehst du sie einzeln.', { COMPACT_NOTE: COMPACT_NOTE })}
         </p>
         <div className="tabs ws-tabs" role="tablist">
           {state.panels.map((q, k) => (
@@ -346,21 +352,21 @@ export function Workspace({ renderPage }: { renderPage: (route: string[]) => Rea
           <div key={p.id} className="ws-slot" style={{ display: 'contents' }}>
             <section className="ws-panel" style={style(p)} data-ws-panel={i} aria-label={labels[i]}>
               <header className="ws-head">
-                <button type="button" className="ws-title" onClick={() => setPicker(i)} aria-label={`${labels[i]}: Seite wählen`} data-tour="ws-title">
+                <button type="button" className="ws-title" onClick={() => setPicker(i)} aria-label={tt('{v}: Seite wählen', { v: labels[i] })} data-tour="ws-title">
                   <span>{labels[i]}</span>
                   <ChevronDown size={15} />
                 </button>
                 <span className="ws-head-gap" />
-                <button type="button" className="icon-btn" disabled={i === 0} onClick={() => setState((s) => movePanel(s, i, -1))} aria-label={`${labels[i]} nach links`} title="Nach links">
+                <button type="button" className="icon-btn" disabled={i === 0} onClick={() => setState((s) => movePanel(s, i, -1))} aria-label={tt('{v} nach links', { v: labels[i] })} title={tt('Nach links')}>
                   <ChevronLeft size={16} />
                 </button>
-                <button type="button" className="icon-btn" disabled={i === state.panels.length - 1} onClick={() => setState((s) => movePanel(s, i, 1))} aria-label={`${labels[i]} nach rechts`} title="Nach rechts">
+                <button type="button" className="icon-btn" disabled={i === state.panels.length - 1} onClick={() => setState((s) => movePanel(s, i, 1))} aria-label={tt('{v} nach rechts', { v: labels[i] })} title={tt('Nach rechts')}>
                   <ChevronRight size={16} />
                 </button>
-                <button type="button" className="icon-btn" onClick={() => p.route !== 'agent' && navigate(p.route)} disabled={p.route === 'agent'} aria-label={`${labels[i]} im Hauptfenster öffnen`} title="Im Hauptfenster öffnen">
+                <button type="button" className="icon-btn" onClick={() => p.route !== 'agent' && navigate(p.route)} disabled={p.route === 'agent'} aria-label={tt('{v} im Hauptfenster öffnen', { v: labels[i] })} title={tt('Im Hauptfenster öffnen')}>
                   <Icon name="external" size={16} />
                 </button>
-                <button type="button" className="icon-btn" disabled={state.panels.length <= 1} onClick={() => setState((s) => removePanel(s, i))} aria-label={`${labels[i]} schließen`} title="Panel schließen">
+                <button type="button" className="icon-btn" disabled={state.panels.length <= 1} onClick={() => setState((s) => removePanel(s, i))} aria-label={tt('{v} schließen', { v: labels[i] })} title={tt('Panel schließen')}>
                   ✕
                 </button>
               </header>

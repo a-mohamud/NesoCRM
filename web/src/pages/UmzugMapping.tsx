@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Field, Input, Modal, Select } from '../ui';
 import { FIELD_TYPE_LABELS, STD_FIELDS, targetLabel } from './umzug-format';
+import { useT } from '../i18n';
 
 /** Feldzuordnung des Umzugs: jedes Feld der Quelle → Kontaktfeld, eigenes Feld (vorhanden oder neu), Tag, Notiz oder überspringen. */
 
@@ -22,31 +23,32 @@ export interface CustomField {
 const NEW = '__new__';
 
 function NewFieldModal({ field, initial, onSave, onClose }: { field: SourceField; initial: { label: string; type: string }; onSave: (v: { label: string; type: string }) => void; onClose: () => void }) {
+  const tt = useT('x_integrations');
   const [label, setLabel] = useState(initial.label);
   const [type, setType] = useState(initial.type);
   const ok = label.trim().length > 0;
   return (
     <Modal
-      title="Neues eigenes Feld anlegen"
+      title={tt('Neues eigenes Feld anlegen')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" disabled={!ok} onClick={() => onSave({ label: label.trim().replace(/:/g, ' ').slice(0, 100), type })} data-tour="um-newfield-save">
-            Übernehmen
+            {tt('Übernehmen')}
           </button>
         </>
       }
     >
       <p className="muted small">
-        Das Feld „{field.label}“ aus der Quelle bekommt ein neues Kontaktfeld. Es wird beim Import angelegt – schon vorhandene Felder mit gleichem Namen werden wiederverwendet.
+        {tt('Das Feld „{label}“ aus der Quelle bekommt ein neues Kontaktfeld. Es wird beim Import angelegt – schon vorhandene Felder mit gleichem Namen werden wiederverwendet.', { label: field.label })}
       </p>
-      <Field label="Bezeichnung in HyperLevel">
+      <Field label={tt('Bezeichnung in HyperLevel')}>
         <Input value={label} onChange={setLabel} maxLength={100} autoFocus />
       </Field>
-      <Field label="Art des Feldes">
+      <Field label={tt('Art des Feldes')}>
         <Select value={type} onChange={setType} options={FIELD_TYPE_LABELS} />
       </Field>
     </Modal>
@@ -54,6 +56,7 @@ function NewFieldModal({ field, initial, onSave, onClose }: { field: SourceField
 }
 
 export function UmzugMapping({ fields, mapping, custom, onChange, disabled }: { fields: SourceField[]; mapping: Record<string, string>; custom: CustomField[]; onChange: (m: Record<string, string>) => void; disabled?: boolean }) {
+  const tt = useT('x_integrations');
   const [editing, setEditing] = useState<SourceField | null>(null);
   const set = (ref: string, v: string) => onChange({ ...mapping, [ref]: v });
   const newCount = Object.values(mapping).filter((t) => t.startsWith('new:')).length;
@@ -62,15 +65,15 @@ export function UmzugMapping({ fields, mapping, custom, onChange, disabled }: { 
   return (
     <div data-tour="um-mapping">
       <p className="muted small">
-        {fields.length} Felder in der Quelle · {newCount} werden als neue eigene Felder angelegt · {skipped} werden übersprungen. Ändere die Zuordnung, wo es nicht passt.
+        {tt('{length} Felder in der Quelle · {newCount} werden als neue eigene Felder angelegt · {skipped} werden übersprungen. Ändere die Zuordnung, wo es nicht passt.', { length: fields.length, newCount: newCount, skipped: skipped })}
       </p>
       <div className="table-wrap">
         <table className="t um-map">
           <thead>
             <tr>
-              <th>Feld in der Quelle</th>
-              {samples && <th>Beispiele</th>}
-              <th>Wird zu</th>
+              <th>{tt('Feld in der Quelle')}</th>
+              {samples && <th>{tt('Beispiele')}</th>}
+              <th>{tt('Wird zu')}</th>
             </tr>
           </thead>
           <tbody>
@@ -81,12 +84,12 @@ export function UmzugMapping({ fields, mapping, custom, onChange, disabled }: { 
                 <tr key={f.ref}>
                   <td>
                     <strong>{f.label}</strong>
-                    {f.group === 'standard' && <span className="muted small"> · Standardfeld</span>}
+                    {f.group === 'standard' && <span className="muted small"> {tt('· Standardfeld')}</span>}
                   </td>
                   {samples && <td className="muted small um-sample">{(f.sample ?? []).slice(0, 3).join(' · ') || '–'}</td>}
                   <td className="um-target-cell">
                     <select
-                      aria-label={`Zuordnung für ${f.label}`}
+                      aria-label={tt('Zuordnung für {label}', { label: f.label })}
                       value={isNew ? cur : cur.startsWith('tag:') ? 'tag' : cur}
                       disabled={disabled}
                       onChange={(e) => {
@@ -94,8 +97,8 @@ export function UmzugMapping({ fields, mapping, custom, onChange, disabled }: { 
                         else set(f.ref, e.target.value);
                       }}
                     >
-                      <option value="">Überspringen</option>
-                      <optgroup label="Standardfelder">
+                      <option value="">{tt('Überspringen')}</option>
+                      <optgroup label={tt('Standardfelder')}>
                         {STD_FIELDS.map(([k, l]) => (
                           <option key={k} value={k}>
                             {l}
@@ -103,7 +106,7 @@ export function UmzugMapping({ fields, mapping, custom, onChange, disabled }: { 
                         ))}
                       </optgroup>
                       {custom.length > 0 && (
-                        <optgroup label="Vorhandene eigene Felder">
+                        <optgroup label={tt('Vorhandene eigene Felder')}>
                           {custom.map((c) => (
                             <option key={c.key} value={`custom:${c.key}`}>
                               {c.label}
@@ -111,16 +114,16 @@ export function UmzugMapping({ fields, mapping, custom, onChange, disabled }: { 
                           ))}
                         </optgroup>
                       )}
-                      <optgroup label="Weitere">
-                        <option value="tag">Als Tag übernehmen</option>
-                        <option value="note">Als Notiz am Kontakt</option>
+                      <optgroup label={tt('Weitere')}>
+                        <option value="tag">{tt('Als Tag übernehmen')}</option>
+                        <option value="note">{tt('Als Notiz am Kontakt')}</option>
                         {isNew && <option value={cur}>{targetLabel(cur, custom)}</option>}
-                        <option value={NEW}>Neues eigenes Feld anlegen …</option>
+                        <option value={NEW}>{tt('Neues eigenes Feld anlegen …')}</option>
                       </optgroup>
                     </select>
                     {isNew && !disabled && (
                       <button className="btn small ghost" onClick={() => setEditing(f)}>
-                        Bearbeiten
+                        {tt('Bearbeiten')}
                       </button>
                     )}
                   </td>
@@ -130,7 +133,7 @@ export function UmzugMapping({ fields, mapping, custom, onChange, disabled }: { 
           </tbody>
         </table>
       </div>
-      {fields.length > 300 && <p className="muted small">Es werden die ersten 300 Felder angezeigt, die übrigen werden nicht übernommen.</p>}
+      {fields.length > 300 && <p className="muted small">{tt('Es werden die ersten 300 Felder angezeigt, die übrigen werden nicht übernommen.')}</p>}
       {editing && (
         <NewFieldModal
           field={editing}

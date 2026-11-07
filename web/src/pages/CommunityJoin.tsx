@@ -4,6 +4,7 @@ import { Badge, Check, Empty, Field, Input, Link, Modal, Select, Spinner, TagInp
 import { ImagePicker, MarkdownEditor } from './ContentKit';
 import { useCourses } from './Courses';
 import { CopyField, NumberField, Sec, StatusBadge, Sub, euro, fromLocalInput, run } from './CommunityParts';
+import { useT } from '../i18n';
 
 /**
  * Community → Beitritt: the public page (/c/<adresse>), tiers (free, monthly/yearly, lifetime, trial), questions, approval, requests,
@@ -14,6 +15,7 @@ const BILL: Record<string, string> = { free: 'kostenlos', month: 'monatlich', ye
 const ACCESS: Record<string, string> = { all: 'alle im Mitgliederbereich', courses: 'Teilnehmer bestimmter Kurse', tags: 'Kontakte mit bestimmten Tags', join: 'Beitritt über die Community-Seite' };
 
 export function JoinTab({ group, onChange }: { group: any; onChange: () => void }) {
+  const tt = useT('x_community');
   const j = useLoad(() => api.get<any>(`/api/community/groups/${group.id}/join`), [group.id]);
   const [sub, setSub] = useState('page');
   if (j.error) return <Empty>{j.error}</Empty>;
@@ -28,16 +30,16 @@ export function JoinTab({ group, onChange }: { group: any; onChange: () => void 
     <div className="cma" data-tour="community-join">
       {data.access_mode !== 'join' && (
         <div className="cma-note" role="note">
-          <strong>Aktuell kommen Mitglieder so herein: {ACCESS[data.access_mode] ?? data.access_mode}.</strong> Die Beitritts-Seite, Stufen, Zahlung und Freigabe wirken erst, wenn du den Zugang auf „Beitritt über die Community-Seite“ stellst. Alle, die jetzt schon drin sind, bleiben als kostenlose Mitglieder.
+          <strong>{tt('Aktuell kommen Mitglieder so herein: {v}.', { v: ACCESS[data.access_mode] ?? data.access_mode })}</strong> {tt('Die Beitritts-Seite, Stufen, Zahlung und Freigabe wirken erst, wenn du den Zugang auf „Beitritt über die Community-Seite“ stellst. Alle, die jetzt schon drin sind, bleiben als kostenlose Mitglieder.')}
           <div className="cma-actions">
             <button
               className="btn"
               onClick={async () => {
-                if (!(await confirmAsk('Zugang auf „Beitritt über die Community-Seite“ umstellen? Wer schon in der Gruppe ist, bleibt als kostenloses Mitglied drin.'))) return;
+                if (!(await confirmAsk(tt('Zugang auf „Beitritt über die Community-Seite“ umstellen? Wer schon in der Gruppe ist, bleibt als kostenloses Mitglied drin.')))) return;
                 await run(() => api.put(`/api/community/groups/${group.id}/join/page`, { enabled: data.page?.enabled ?? false, set_access_join: true }), 'Zugang umgestellt', reload);
               }}
             >
-              Jetzt umstellen
+              {tt('Jetzt umstellen')}
             </button>
           </div>
         </div>
@@ -66,6 +68,7 @@ export function JoinTab({ group, onChange }: { group: any; onChange: () => void 
 
 // --- page ---------------------------------------------------------------------------------------------------------------------
 function PageForm({ group, data, onSaved }: { group: any; data: any; onSaved: () => void }) {
+  const tt = useT('x_community');
   const p = data.page;
   const [f, setF] = useState<any>(() => ({
     enabled: !!p?.enabled,
@@ -95,97 +98,97 @@ function PageForm({ group, data, onSaved }: { group: any; data: any; onSaved: ()
   const url = data.url ?? `${location.origin}/c/${f.slug || '…'}`;
   return (
     <div className="cma-grid">
-      <Sec title="Seite" lead="So sieht die Seite aus, die Interessenten sehen – ohne Anmeldung, mit Titelbild oder Video, Beschreibung, Preisen und Beitritts-Formular.">
-        <Check checked={f.enabled} onChange={(v) => set({ enabled: v })} label="Die öffentliche Seite ist erreichbar" />
-        <Field label="Adresse" hint="Nur Kleinbuchstaben, Ziffern und Bindestriche.">
+      <Sec title={tt('Seite')} lead={tt('So sieht die Seite aus, die Interessenten sehen – ohne Anmeldung, mit Titelbild oder Video, Beschreibung, Preisen und Beitritts-Formular.')}>
+        <Check checked={f.enabled} onChange={(v) => set({ enabled: v })} label={tt('Die öffentliche Seite ist erreichbar')} />
+        <Field label={tt('Adresse')} hint={tt('Nur Kleinbuchstaben, Ziffern und Bindestriche.')}>
           <Input value={f.slug} onChange={(v) => set({ slug: v })} placeholder="mein-club" />
         </Field>
-        {p && f.enabled && <CopyField value={url} label="Link zur Seite" />}
-        <Field label="Kurzbeschreibung (eine Zeile)">
-          <Input value={f.tagline} maxLength={140} onChange={(v) => set({ tagline: v })} placeholder="z. B. Gemeinsam schneller wachsen" />
+        {p && f.enabled && <CopyField value={url} label={tt('Link zur Seite')} />}
+        <Field label={tt('Kurzbeschreibung (eine Zeile)')}>
+          <Input value={f.tagline} maxLength={140} onChange={(v) => set({ tagline: v })} placeholder={tt('z. B. Gemeinsam schneller wachsen')} />
         </Field>
-        <Field label="Titelbild">
+        <Field label={tt('Titelbild')}>
           <ImagePicker value={f.cover_image} onChange={(v) => set({ cover_image: v })} />
         </Field>
-        <Field label="Video (YouTube, Vimeo, Loom oder MP4-Link)">
+        <Field label={tt('Video (YouTube, Vimeo, Loom oder MP4-Link)')}>
           <Input value={f.video_url} onChange={(v) => set({ video_url: v })} placeholder="https://www.youtube.com/watch?v=…" />
         </Field>
-        <Field label="Über uns (Markdown)">
-          <MarkdownEditor value={f.about} onChange={(v) => set({ about: v })} rows={10} label="Über uns (Markdown)" />
+        <Field label={tt('Über uns (Markdown)')}>
+          <MarkdownEditor value={f.about} onChange={(v) => set({ about: v })} rows={10} label={tt('Über uns (Markdown)')} />
         </Field>
         <div className="cma-actions">
           <button className="btn" onClick={save}>
-            Speichern
+            {tt('Speichern')}
           </button>
           {p && f.enabled && (
             <a className="btn secondary" href={url} target="_blank" rel="noreferrer">
-              Seite ansehen ↗
+              {tt('Seite ansehen ↗')}
             </a>
           )}
         </div>
       </Sec>
-      <Sec title="Beitritt" lead="Wer darf rein, was fragst du ab, und wie sicherst du dich ab?">
-        <Check checked={f.approval} onChange={(v) => set({ approval: v })} label="Anfragen erst freigeben (Warteschlange unter „Anfragen“)" />
-        <Check checked={f.show_member_count} onChange={(v) => set({ show_member_count: v })} label="Mitgliederzahl zeigen" />
-        <Check checked={f.show_admins} onChange={(v) => set({ show_admins: v })} label="Admins und Moderatoren zeigen" />
-        <Check checked={f.stripe_promo} onChange={(v) => set({ stripe_promo: v })} label="Rabattcodes auch direkt im Stripe-Checkout erlauben" />
-        <h4 style={{ margin: '14px 0 4px' }}>Fragen beim Beitritt (höchstens 3)</h4>
+      <Sec title={tt('Beitritt')} lead={tt('Wer darf rein, was fragst du ab, und wie sicherst du dich ab?')}>
+        <Check checked={f.approval} onChange={(v) => set({ approval: v })} label={tt('Anfragen erst freigeben (Warteschlange unter „Anfragen“)')} />
+        <Check checked={f.show_member_count} onChange={(v) => set({ show_member_count: v })} label={tt('Mitgliederzahl zeigen')} />
+        <Check checked={f.show_admins} onChange={(v) => set({ show_admins: v })} label={tt('Admins und Moderatoren zeigen')} />
+        <Check checked={f.stripe_promo} onChange={(v) => set({ stripe_promo: v })} label={tt('Rabattcodes auch direkt im Stripe-Checkout erlauben')} />
+        <h4 style={{ margin: '14px 0 4px' }}>{tt('Fragen beim Beitritt (höchstens 3)')}</h4>
         <p className="muted small" style={{ marginTop: 0 }}>
-          Die Antworten stehen am Kontakt (als eigenes Feld) und in der Anfrage.
+          {tt('Die Antworten stehen am Kontakt (als eigenes Feld) und in der Anfrage.')}
         </p>
         {f.questions.map((x: any, i: number) => (
           <div key={x.id ?? i} className="row" style={{ alignItems: 'center', marginBottom: 8 }}>
             <div style={{ flex: 1, minWidth: 200 }}>
-              <Input value={x.label} maxLength={150} onChange={(v) => q(i, { label: v })} placeholder="z. B. Was ist dein Ziel?" aria-label={`Frage ${i + 1}`} />
+              <Input value={x.label} maxLength={150} onChange={(v) => q(i, { label: v })} placeholder={tt('z. B. Was ist dein Ziel?')} aria-label={tt('Frage {v}', { v: i + 1 })} />
             </div>
-            <Check checked={!!x.required} onChange={(v) => q(i, { required: v })} label="Pflicht" />
-            <button className="btn secondary small" onClick={() => set({ questions: f.questions.filter((_: any, n: number) => n !== i) })} aria-label={`Frage ${i + 1} entfernen`}>
+            <Check checked={!!x.required} onChange={(v) => q(i, { required: v })} label={tt('Pflicht')} />
+            <button className="btn secondary small" onClick={() => set({ questions: f.questions.filter((_: any, n: number) => n !== i) })} aria-label={tt('Frage {v} entfernen', { v: i + 1 })}>
               ✕
             </button>
           </div>
         ))}
         {f.questions.length < 3 && (
           <button className="btn secondary" onClick={() => set({ questions: [...f.questions, { id: '', label: '', required: false, field_key: '' }] })}>
-            + Frage hinzufügen
+            {tt('+ Frage hinzufügen')}
           </button>
         )}
-        <Field label="Einwilligungstext (Häkchen beim Beitritt)">
-          <Input value={f.consent_text} onChange={(v) => set({ consent_text: v })} placeholder="z. B. Ich möchte Neuigkeiten per E-Mail erhalten." />
+        <Field label={tt('Einwilligungstext (Häkchen beim Beitritt)')}>
+          <Input value={f.consent_text} onChange={(v) => set({ consent_text: v })} placeholder={tt('z. B. Ich möchte Neuigkeiten per E-Mail erhalten.')} />
         </Field>
         <div className="cma-two">
-          <Field label="Link zu den AGB">
+          <Field label={tt('Link zu den AGB')}>
             <Input value={f.terms_url} onChange={(v) => set({ terms_url: v })} placeholder="https://…" />
           </Field>
-          <Field label="Link zur Datenschutzerklärung">
+          <Field label={tt('Link zur Datenschutzerklärung')}>
             <Input value={f.privacy_url} onChange={(v) => set({ privacy_url: v })} placeholder="https://…" />
           </Field>
         </div>
-        <Field label="Text nach dem Beitritt">
-          <Input value={f.success_text} onChange={(v) => set({ success_text: v })} placeholder="z. B. Willkommen! Schau in dein Postfach." />
+        <Field label={tt('Text nach dem Beitritt')}>
+          <Input value={f.success_text} onChange={(v) => set({ success_text: v })} placeholder={tt('z. B. Willkommen! Schau in dein Postfach.')} />
         </Field>
         <div className="cma-actions">
           <button className="btn" onClick={save}>
-            Speichern
+            {tt('Speichern')}
           </button>
         </div>
       </Sec>
-      <Sec title="Suchmaschinen und Verzeichnis" lead="Die Seite hat Titel, Beschreibung, Vorschaubild und strukturierte Daten für Google und soziale Netzwerke.">
-        <Check checked={f.indexable} onChange={(v) => set({ indexable: v })} label="Suchmaschinen dürfen die Seite aufnehmen" />
-        <Field label="Titel in Suchergebnissen" hint={`${f.seo_title.length}/70`}>
-          <Input value={f.seo_title} maxLength={70} onChange={(v) => set({ seo_title: v })} placeholder={`${group.name} – Community`} />
+      <Sec title={tt('Suchmaschinen und Verzeichnis')} lead={tt('Die Seite hat Titel, Beschreibung, Vorschaubild und strukturierte Daten für Google und soziale Netzwerke.')}>
+        <Check checked={f.indexable} onChange={(v) => set({ indexable: v })} label={tt('Suchmaschinen dürfen die Seite aufnehmen')} />
+        <Field label={tt('Titel in Suchergebnissen')} hint={`${f.seo_title.length}/70`}>
+          <Input value={f.seo_title} maxLength={70} onChange={(v) => set({ seo_title: v })} placeholder={tt('{name} – Community', { name: group.name })} />
         </Field>
-        <Field label="Beschreibung in Suchergebnissen" hint={`${f.seo_description.length}/160`}>
+        <Field label={tt('Beschreibung in Suchergebnissen')} hint={`${f.seo_description.length}/160`}>
           <Textarea rows={3} value={f.seo_description} onChange={(v) => set({ seo_description: v.slice(0, 160) })} />
         </Field>
-        <Check checked={f.discoverable} onChange={(v) => set({ discoverable: v })} label={<>Im öffentlichen Verzeichnis zeigen (<a href={data.discovery_url} target="_blank" rel="noreferrer">/communities</a>)</>} />
+        <Check checked={f.discoverable} onChange={(v) => set({ discoverable: v })} label={<>{tt('Im öffentlichen Verzeichnis zeigen (')}<a href={data.discovery_url} target="_blank" rel="noreferrer">/communities</a>)</>} />
         {f.discoverable && (
-          <Field label="Kategorie im Verzeichnis">
-            <Input value={f.category} maxLength={40} onChange={(v) => set({ category: v })} placeholder="z. B. Business, Fitness, Kunst" />
+          <Field label={tt('Kategorie im Verzeichnis')}>
+            <Input value={f.category} maxLength={40} onChange={(v) => set({ category: v })} placeholder={tt('z. B. Business, Fitness, Kunst')} />
           </Field>
         )}
         <div className="cma-actions">
           <button className="btn" onClick={save}>
-            Speichern
+            {tt('Speichern')}
           </button>
         </div>
       </Sec>
@@ -195,12 +198,13 @@ function PageForm({ group, data, onSaved }: { group: any; data: any; onSaved: ()
 
 // --- tiers --------------------------------------------------------------------------------------------------------------------
 function Tiers({ group, data, onSaved }: { group: any; data: any; onSaved: () => void }) {
+  const tt = useT('x_community');
   const [edit, setEdit] = useState<any>(null);
   return (
     <>
       {!data.stripe.connected && data.tiers.some((t: any) => !t.prices.free) && (
         <div className="cma-note">
-          Stripe ist noch nicht verbunden – bezahlte Stufen können erst gekauft werden, wenn du unter Einstellungen → Zahlung deinen Stripe-Schlüssel hinterlegst.
+          {tt('Stripe ist noch nicht verbunden – bezahlte Stufen können erst gekauft werden, wenn du unter Einstellungen → Zahlung deinen Stripe-Schlüssel hinterlegst.')}
         </div>
       )}
       <div className="cma-grid">
@@ -210,7 +214,7 @@ function Tiers({ group, data, onSaved }: { group: any; data: any; onSaved: () =>
             title={t.name}
             right={
               <>
-                {t.highlight ? <Badge tone="purple">Empfohlen</Badge> : null} {!t.active && <Badge>Aus</Badge>}
+                {t.highlight ? <Badge tone="purple">{tt('Empfohlen')}</Badge> : null} {!t.active && <Badge>{tt('Aus')}</Badge>}
               </>
             }
             lead={t.description || undefined}
@@ -218,25 +222,25 @@ function Tiers({ group, data, onSaved }: { group: any; data: any; onSaved: () =>
             <div className="cma-chips" style={{ marginBottom: 8 }}>
               {t.billings.map((b: string) => (
                 <Badge key={b} tone="blue">
-                  {b === 'free' ? 'Kostenlos' : `${BILL[b]}: ${t.prices[b]?.text ?? ''}`}
+                  {b === 'free' ? tt('Kostenlos') : `${BILL[b]}: ${t.prices[b]?.text ?? ''}`}
                 </Badge>
               ))}
-              {t.trial_days > 0 && <Badge tone="green">{t.trial_days} Tage testen</Badge>}
+              {t.trial_days > 0 && <Badge tone="green">{tt('{trial_days} Tage testen', { trial_days: t.trial_days })}</Badge>}
             </div>
             <div className="muted small">
-              {t.members} Mitglieder{t.course_ids.length ? ` · ${t.course_ids.length} Kurs(e)` : ''}
-              {t.grace_days ? ` · ${t.grace_days} Tage Kulanz bei Zahlungsproblemen` : ''}
+              {tt('{members} Mitglieder', { members: t.members })}{t.course_ids.length ? tt(' · {length} Kurs(e)', { length: t.course_ids.length }) : ''}
+              {t.grace_days ? tt(' · {grace_days} Tage Kulanz bei Zahlungsproblemen', { grace_days: t.grace_days }) : ''}
             </div>
             <div className="cma-actions">
               <button className="btn secondary" onClick={() => setEdit(t)}>
-                Bearbeiten
+                {tt('Bearbeiten')}
               </button>
             </div>
           </Sec>
         ))}
-        <Sec title="Neue Stufe" lead="Eine Stufe ist ein Zugang mit eigenem Preis: kostenlos, monatlich oder jährlich (mit Testphase) oder einmalig (lebenslang). Preise kommen aus deinen Produkten.">
+        <Sec title={tt('Neue Stufe')} lead={tt('Eine Stufe ist ein Zugang mit eigenem Preis: kostenlos, monatlich oder jährlich (mit Testphase) oder einmalig (lebenslang). Preise kommen aus deinen Produkten.')}>
           <button className="btn" onClick={() => setEdit({ name: '', description: '', features: [], course_ids: [], tags: [], active: 1, highlight: 0, grace_days: 0, trial_days: 0, product_id: '', annual_product_id: '' })}>
-            + Stufe anlegen
+            {tt('+ Stufe anlegen')}
           </button>
         </Sec>
       </div>
@@ -246,77 +250,78 @@ function Tiers({ group, data, onSaved }: { group: any; data: any; onSaved: () =>
 }
 
 function TierEditor({ group, data, tier, onClose, onDone }: { group: any; data: any; tier: any; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_community');
   const courses = useCourses();
   const [f, setF] = useState<any>({ ...tier, product_id: tier.product_id ?? '', annual_product_id: tier.annual_product_id ?? '', features: tier.features ?? [], course_ids: tier.course_ids ?? [], tags: tier.tags ?? [] });
   const set = (patch: any) => setF((x: any) => ({ ...x, ...patch }));
   const rec = (kind: string) => data.products.filter((p: any) => p.price_cents > 0 && (kind === 'one' ? !p.recurring : p.recurring === kind));
   const save = async () => {
     const body = { name: f.name, description: f.description, features: f.features, course_ids: f.course_ids, tags: f.tags, active: f.active ? 1 : 0, highlight: f.highlight ? 1 : 0, grace_days: f.grace_days || 0, trial_days: f.trial_days || 0, product_id: f.product_id || null, annual_product_id: f.annual_product_id || null };
-    if (await act(() => (tier.id ? api.patch(`/api/community/tiers/${tier.id}`, body) : api.post(`/api/community/groups/${group.id}/tiers`, body)), 'Gespeichert')) onDone();
+    if (await act(() => (tier.id ? api.patch(`/api/community/tiers/${tier.id}`, body) : api.post(`/api/community/groups/${group.id}/tiers`, body)), tt('Gespeichert'))) onDone();
   };
   const del = async () => {
-    if (await confirmAsk(`Stufe „${tier.name}“ löschen?`)) if (await act(() => api.del(`/api/community/tiers/${tier.id}`), 'Gelöscht')) onDone();
+    if (await confirmAsk(tt('Stufe „{name}“ löschen?', { name: tier.name }))) if (await act(() => api.del(`/api/community/tiers/${tier.id}`), tt('Gelöscht'))) onDone();
   };
   const productLine = (p: any) => `${p.name} – ${euro(p.price_cents, p.currency)}${p.recurring === 'month' ? ' / Monat' : p.recurring === 'year' ? ' / Jahr' : ''}`;
   return (
     <Modal
-      title={tier.id ? `Stufe „${tier.name}“` : 'Neue Stufe'}
+      title={tier.id ? tt('Stufe „{name}“', { name: tier.name }) : tt('Neue Stufe')}
       onClose={onClose}
       wide
       footer={
         <>
           {tier.id && (
             <button className="btn danger" onClick={del}>
-              Löschen
+              {tt('Löschen')}
             </button>
           )}
           <button className="btn" onClick={save} disabled={!f.name.trim()}>
-            Speichern
+            {tt('Speichern')}
           </button>
         </>
       }
     >
       <div className="cma">
         <Field label="Name">
-          <Input value={f.name} onChange={(v) => set({ name: v })} placeholder="z. B. Pro" autoFocus />
+          <Input value={f.name} onChange={(v) => set({ name: v })} placeholder={tt('z. B. Pro')} autoFocus />
         </Field>
-        <Field label="Beschreibung (eine Zeile)">
+        <Field label={tt('Beschreibung (eine Zeile)')}>
           <Input value={f.description} onChange={(v) => set({ description: v })} />
         </Field>
-        <Field label="Vorteile (eine pro Zeile, höchstens 8)">
+        <Field label={tt('Vorteile (eine pro Zeile, höchstens 8)')}>
           <Textarea rows={4} value={(f.features as string[]).join('\n')} onChange={(v) => set({ features: v.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 8) })} />
         </Field>
-        <h4 style={{ margin: '6px 0 0' }}>Preis</h4>
+        <h4 style={{ margin: '6px 0 0' }}>{tt('Preis')}</h4>
         <p className="muted small" style={{ margin: 0 }}>
-          Ohne Produkt ist die Stufe kostenlos. Das Produkt legst du unter Verkaufen → Produkte an (Zahlungsweise monatlich, jährlich oder einmalig).
+          {tt('Ohne Produkt ist die Stufe kostenlos. Das Produkt legst du unter Verkaufen → Produkte an (Zahlungsweise monatlich, jährlich oder einmalig).')}
         </p>
         <div className="cma-two">
-          <Field label="Produkt (monatlich oder einmalig)">
-            <Select value={f.product_id} onChange={(v) => set({ product_id: v })} placeholder="Kostenlos" options={[...rec('month'), ...rec('one')].map((p: any) => [p.id, productLine(p)])} />
+          <Field label={tt('Produkt (monatlich oder einmalig)')}>
+            <Select value={f.product_id} onChange={(v) => set({ product_id: v })} placeholder={tt('Kostenlos')} options={[...rec('month'), ...rec('one')].map((p: any) => [p.id, productLine(p)])} />
           </Field>
-          <Field label="Jahres-Alternative (optional)">
+          <Field label={tt('Jahres-Alternative (optional)')}>
             <Select value={f.annual_product_id} onChange={(v) => set({ annual_product_id: v })} placeholder="keine" options={rec('year').map((p: any) => [p.id, productLine(p)])} />
           </Field>
         </div>
         <div className="cma-two">
-          <NumberField label="Kostenlose Testphase (Tage)" min={0} max={90} value={f.trial_days} onChange={(v) => set({ trial_days: v ?? 0 })} hint="Nur bei monatlicher oder jährlicher Zahlung." />
-          <NumberField label="Kulanz bei Zahlungsproblemen (Tage)" min={0} max={30} value={f.grace_days} onChange={(v) => set({ grace_days: v ?? 0 })} hint="So lange bleibt der Zugang nach einer fehlgeschlagenen Zahlung offen." />
+          <NumberField label={tt('Kostenlose Testphase (Tage)')} min={0} max={90} value={f.trial_days} onChange={(v) => set({ trial_days: v ?? 0 })} hint={tt('Nur bei monatlicher oder jährlicher Zahlung.')} />
+          <NumberField label={tt('Kulanz bei Zahlungsproblemen (Tage)')} min={0} max={30} value={f.grace_days} onChange={(v) => set({ grace_days: v ?? 0 })} hint={tt('So lange bleibt der Zugang nach einer fehlgeschlagenen Zahlung offen.')} />
         </div>
-        <Field label="Gibt Zugang zu diesen Kursen">
+        <Field label={tt('Gibt Zugang zu diesen Kursen')}>
           <div className="cma-chips">
             {(courses.data ?? []).map((c: any) => (
               <label key={c.id} className={`cma-chip${f.course_ids.includes(c.id) ? ' on' : ''}`}>
                 <input type="checkbox" checked={f.course_ids.includes(c.id)} onChange={(e) => set({ course_ids: e.target.checked ? [...f.course_ids, c.id] : f.course_ids.filter((x: string) => x !== c.id) })} /> {c.title}
               </label>
             ))}
-            {!courses.data?.length && <span className="muted small">Noch keine Kurse.</span>}
+            {!courses.data?.length && <span className="muted small">{tt('Noch keine Kurse.')}</span>}
           </div>
         </Field>
-        <Field label="Tags für Mitglieder dieser Stufe">
+        <Field label={tt('Tags für Mitglieder dieser Stufe')}>
           <TagInput value={f.tags} onChange={(v) => set({ tags: v })} />
         </Field>
-        <Check checked={!!f.highlight} onChange={(v) => set({ highlight: v ? 1 : 0 })} label="Als „Empfohlen“ hervorheben" />
-        <Check checked={!!f.active} onChange={(v) => set({ active: v ? 1 : 0 })} label="Auf der Seite anbieten" />
+        <Check checked={!!f.highlight} onChange={(v) => set({ highlight: v ? 1 : 0 })} label={tt('Als „Empfohlen“ hervorheben')} />
+        <Check checked={!!f.active} onChange={(v) => set({ active: v ? 1 : 0 })} label={tt('Auf der Seite anbieten')} />
       </div>
     </Modal>
   );
@@ -324,6 +329,7 @@ function TierEditor({ group, data, tier, onClose, onDone }: { group: any; data: 
 
 // --- requests & memberships ---------------------------------------------------------------------------------------------------------
 function Requests({ group, onDone }: { group: any; onDone: () => void }) {
+  const tt = useT('x_community');
   const list = useLoad(() => api.get<any[]>(`/api/community/groups/${group.id}/memberships?status=pending,awaiting_payment&limit=200`), [group.id]);
   const [reject, setReject] = useState<any>(null);
   const [note, setNote] = useState('');
@@ -341,9 +347,9 @@ function Requests({ group, onDone }: { group: any; onDone: () => void }) {
                     <strong>{m.name || m.email}</strong> <span className="muted small">{m.email}</span> <StatusBadge status={m.status} />
                   </div>
                   <div className="muted small">
-                    Stufe {m.tier_name || '–'} · angefragt {ago(m.requested_at)}
-                    {m.coupon_code ? ` · Code ${m.coupon_code}` : ''}
-                    {m.invite ? ` · Einladung „${m.invite}“` : ''}
+                    {tt('Stufe')} {m.tier_name || '–'} {tt('· angefragt {ago}', { ago: ago(m.requested_at) })}
+                    {m.coupon_code ? tt(' · Code {coupon_code}', { coupon_code: m.coupon_code }) : ''}
+                    {m.invite ? tt(' · Einladung „{invite}“', { invite: m.invite }) : ''}
                   </div>
                   {m.answers?.map((a: any) => (
                     <div key={a.question} className="small">
@@ -354,25 +360,25 @@ function Requests({ group, onDone }: { group: any; onDone: () => void }) {
                 {m.status === 'pending' ? (
                   <>
                     <button className="btn" onClick={() => act1(m, { action: 'approve' }, 'Freigegeben')}>
-                      Freigeben
+                      {tt('Freigeben')}
                     </button>
                     <button className="btn secondary" onClick={() => (setNote(''), setReject(m))}>
-                      Ablehnen
+                      {tt('Ablehnen')}
                     </button>
                   </>
                 ) : (
-                  <span className="muted small">wartet auf Zahlung</span>
+                  <span className="muted small">{tt('wartet auf Zahlung')}</span>
                 )}
               </li>
             ))}
           </ul>
         </div>
       ) : (
-        <Empty>Keine offenen Anfragen. Neue Anfragen erscheinen hier, sobald jemand die Beitritts-Seite ausfüllt (und du „Anfragen erst freigeben“ aktiviert hast).</Empty>
+        <Empty>{tt('Keine offenen Anfragen. Neue Anfragen erscheinen hier, sobald jemand die Beitritts-Seite ausfüllt (und du „Anfragen erst freigeben“ aktiviert hast).')}</Empty>
       )}
       {reject && (
         <Modal
-          title={`Anfrage von ${reject.name || reject.email} ablehnen`}
+          title={tt('Anfrage von {v} ablehnen', { v: reject.name || reject.email })}
           onClose={() => setReject(null)}
           footer={
             <button
@@ -381,11 +387,11 @@ function Requests({ group, onDone }: { group: any; onDone: () => void }) {
                 if (await act1(reject, { action: 'reject', note }, 'Abgelehnt')) setReject(null);
               }}
             >
-              Ablehnen
+              {tt('Ablehnen')}
             </button>
           }
         >
-          <Field label="Hinweis an die Person (wird mitgeschickt, freiwillig)">
+          <Field label={tt('Hinweis an die Person (wird mitgeschickt, freiwillig)')}>
             <Textarea rows={3} value={note} onChange={setNote} autoFocus />
           </Field>
         </Modal>
@@ -395,6 +401,7 @@ function Requests({ group, onDone }: { group: any; onDone: () => void }) {
 }
 
 function Memberships({ group, data, onDone }: { group: any; data: any; onDone: () => void }) {
+  const tt = useT('x_community');
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
   const list = useLoad(() => api.get<any[]>(`/api/community/groups/${group.id}/memberships?limit=300${status ? `&status=${status}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`), [group.id, status, q]);
@@ -405,13 +412,13 @@ function Memberships({ group, data, onDone }: { group: any; data: any; onDone: (
     <>
       <div className="row" style={{ alignItems: 'center', marginBottom: 12 }}>
         <div style={{ width: 240 }}>
-          <Input value={q} onChange={setQ} placeholder="Name oder E-Mail …" />
+          <Input value={q} onChange={setQ} placeholder={tt('Name oder E-Mail …')} />
         </div>
         <div style={{ width: 220 }}>
-          <Select value={status} onChange={setStatus} placeholder="Alle Status" options={Object.entries(data.counts).map(([k, n]) => [k, `${k === 'active' ? 'Aktiv' : k === 'trialing' ? 'Testphase' : k === 'past_due' ? 'Zahlung offen' : k === 'canceled' ? 'Beendet' : k === 'rejected' ? 'Abgelehnt' : k === 'pending' ? 'Wartet auf Freigabe' : 'Wartet auf Zahlung'} (${n})`])} />
+          <Select value={status} onChange={setStatus} placeholder={tt('Alle Status')} options={Object.entries(data.counts).map(([k, n]) => [k, `${k === 'active' ? 'Aktiv' : k === 'trialing' ? 'Testphase' : k === 'past_due' ? 'Zahlung offen' : k === 'canceled' ? 'Beendet' : k === 'rejected' ? 'Abgelehnt' : k === 'pending' ? 'Wartet auf Freigabe' : 'Wartet auf Zahlung'} (${n})`])} />
         </div>
         <button className="btn" onClick={() => setAdding(true)}>
-          + Person hinzufügen
+          {tt('+ Person hinzufügen')}
         </button>
       </div>
       {!list.data ? (
@@ -421,10 +428,10 @@ function Memberships({ group, data, onDone }: { group: any; data: any; onDone: (
           <table className="t cma-table">
             <thead>
               <tr>
-                <th>Person</th>
-                <th>Stufe</th>
+                <th>{tt('Person')}</th>
+                <th>{tt('Stufe')}</th>
                 <th>Status</th>
-                <th>Seit</th>
+                <th>{tt('Seit')}</th>
                 <th />
               </tr>
             </thead>
@@ -446,12 +453,12 @@ function Memberships({ group, data, onDone }: { group: any; data: any; onDone: (
                   <td className="muted">{d(m.joined_at ?? m.requested_at)}</td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     {['active', 'trialing', 'past_due'].includes(m.status) ? (
-                      <button className="btn small ghost" onClick={async () => (await confirmAsk(`${m.name || m.email} aus der Community nehmen?`)) && patch(m, { action: 'end' }, 'Zugang beendet')}>
-                        Beenden
+                      <button className="btn small ghost" onClick={async () => (await confirmAsk(tt('{v} aus der Community nehmen?', { v: m.name || m.email }))) && patch(m, { action: 'end' }, 'Zugang beendet')}>
+                        {tt('Beenden')}
                       </button>
                     ) : m.status === 'canceled' ? (
                       <button className="btn small secondary" onClick={() => patch(m, { action: 'reactivate' }, 'Wieder aktiv')}>
-                        Wieder freischalten
+                        {tt('Wieder freischalten')}
                       </button>
                     ) : null}
                   </td>
@@ -461,39 +468,39 @@ function Memberships({ group, data, onDone }: { group: any; data: any; onDone: (
           </table>
         </div>
       ) : (
-        <Empty>Keine Mitgliedschaften.</Empty>
+        <Empty>{tt('Keine Mitgliedschaften.')}</Empty>
       )}
       {adding && (
         <Modal
-          title="Person hinzufügen"
+          title={tt('Person hinzufügen')}
           onClose={() => setAdding(false)}
           footer={
             <button
               className="btn"
               disabled={!form.email.includes('@')}
               onClick={async () => {
-                if (await act(() => api.post(`/api/community/groups/${group.id}/memberships`, { email: form.email, name: form.name, tier_id: form.tier_id || undefined }), 'Hinzugefügt')) {
+                if (await act(() => api.post(`/api/community/groups/${group.id}/memberships`, { email: form.email, name: form.name, tier_id: form.tier_id || undefined }), tt('Hinzugefügt'))) {
                   setAdding(false);
                   void list.reload();
                   onDone();
                 }
               }}
             >
-              Hinzufügen
+              {tt('Hinzufügen')}
             </button>
           }
         >
           <p className="muted" style={{ marginTop: 0 }}>
-            Die Person wird sofort Mitglied (kostenlos, ohne Freigabe) und bekommt eine Mail mit dem Link zur Community.
+            {tt('Die Person wird sofort Mitglied (kostenlos, ohne Freigabe) und bekommt eine Mail mit dem Link zur Community.')}
           </p>
-          <Field label="E-Mail-Adresse">
+          <Field label={tt('E-Mail-Adresse')}>
             <Input type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} autoFocus />
           </Field>
-          <Field label="Name (freiwillig)">
+          <Field label={tt('Name (freiwillig)')}>
             <Input value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
           </Field>
-          <Field label="Stufe">
-            <Select value={form.tier_id} onChange={(v) => setForm({ ...form, tier_id: v })} placeholder="Erste aktive Stufe" options={data.tiers.map((t: any) => [t.id, t.name])} />
+          <Field label={tt('Stufe')}>
+            <Select value={form.tier_id} onChange={(v) => setForm({ ...form, tier_id: v })} placeholder={tt('Erste aktive Stufe')} options={data.tiers.map((t: any) => [t.id, t.name])} />
           </Field>
         </Modal>
       )}
@@ -503,6 +510,7 @@ function Memberships({ group, data, onDone }: { group: any; data: any; onDone: (
 
 // --- invites ------------------------------------------------------------------------------------------------------------------------
 function Invites({ group, data }: { group: any; data: any }) {
+  const tt = useT('x_community');
   const list = useLoad(() => api.get<any[]>(`/api/community/groups/${group.id}/invites`), [group.id]);
   const [f, setF] = useState<any>({ label: '', tier_id: '', skip_approval: false, trial_days: '', max_uses: '', expires_at: '' });
   const create = () =>
@@ -513,28 +521,28 @@ function Invites({ group, data }: { group: any; data: any }) {
     );
   return (
     <div className="cma-grid">
-      <Sec title="Neuer Einladungs-Link" lead="Jeder Link zeigt dir, wer darüber kam und ob die Person bezahlt hat – ideal für Partner, Newsletter oder Social-Media-Beiträge.">
-        <Field label="Bezeichnung (nur für dich)">
-          <Input value={f.label} onChange={(v) => setF({ ...f, label: v })} placeholder="z. B. Instagram-Bio" />
+      <Sec title={tt('Neuer Einladungs-Link')} lead={tt('Jeder Link zeigt dir, wer darüber kam und ob die Person bezahlt hat – ideal für Partner, Newsletter oder Social-Media-Beiträge.')}>
+        <Field label={tt('Bezeichnung (nur für dich)')}>
+          <Input value={f.label} onChange={(v) => setF({ ...f, label: v })} placeholder={tt('z. B. Instagram-Bio')} />
         </Field>
-        <Field label="Stufe">
-          <Select value={f.tier_id} onChange={(v) => setF({ ...f, tier_id: v })} placeholder="Wie auf der Seite gewählt" options={data.tiers.map((t: any) => [t.id, t.name])} />
+        <Field label={tt('Stufe')}>
+          <Select value={f.tier_id} onChange={(v) => setF({ ...f, tier_id: v })} placeholder={tt('Wie auf der Seite gewählt')} options={data.tiers.map((t: any) => [t.id, t.name])} />
         </Field>
         <div className="cma-two">
-          <NumberField label="Eigene Testphase (Tage)" min={0} max={365} value={f.trial_days === '' ? null : Number(f.trial_days)} onChange={(v) => setF({ ...f, trial_days: v ?? '' })} />
-          <NumberField label="Höchstens so oft nutzbar" min={1} value={f.max_uses === '' ? null : Number(f.max_uses)} onChange={(v) => setF({ ...f, max_uses: v ?? '' })} />
+          <NumberField label={tt('Eigene Testphase (Tage)')} min={0} max={365} value={f.trial_days === '' ? null : Number(f.trial_days)} onChange={(v) => setF({ ...f, trial_days: v ?? '' })} />
+          <NumberField label={tt('Höchstens so oft nutzbar')} min={1} value={f.max_uses === '' ? null : Number(f.max_uses)} onChange={(v) => setF({ ...f, max_uses: v ?? '' })} />
         </div>
-        <Field label="Läuft ab (freiwillig)">
+        <Field label={tt('Läuft ab (freiwillig)')}>
           <Input type="datetime-local" value={f.expires_at} onChange={(v) => setF({ ...f, expires_at: v })} />
         </Field>
-        <Check checked={f.skip_approval} onChange={(v) => setF({ ...f, skip_approval: v })} label="Ohne Freigabe aufnehmen" />
+        <Check checked={f.skip_approval} onChange={(v) => setF({ ...f, skip_approval: v })} label={tt('Ohne Freigabe aufnehmen')} />
         <div className="cma-actions">
           <button className="btn" onClick={create}>
-            Link erstellen
+            {tt('Link erstellen')}
           </button>
         </div>
       </Sec>
-      <Sec title="Deine Links">
+      <Sec title={tt('Deine Links')}>
         {!list.data ? (
           <Spinner />
         ) : list.data.length ? (
@@ -543,26 +551,26 @@ function Invites({ group, data }: { group: any; data: any }) {
               <li key={i.id} style={{ flexDirection: 'column', alignItems: 'stretch' }}>
                 <div className="row" style={{ alignItems: 'center' }}>
                   <div className="grow">
-                    <strong>{i.label || i.code}</strong> {!i.active && <Badge>Aus</Badge>}
+                    <strong>{i.label || i.code}</strong> {!i.active && <Badge>{tt('Aus')}</Badge>}
                     <div className="muted small">
-                      {i.members} Mitglieder{i.pending ? ` · ${i.pending} offen` : ''}
-                      {i.max_uses ? ` · ${i.uses}/${i.max_uses} genutzt` : ''}
-                      {i.expires_at ? ` · bis ${d(i.expires_at)}` : ''}
+                      {tt('{members} Mitglieder', { members: i.members })}{i.pending ? tt(' · {pending} offen', { pending: i.pending }) : ''}
+                      {i.max_uses ? tt(' · {uses}/{max_uses} genutzt', { uses: i.uses, max_uses: i.max_uses }) : ''}
+                      {i.expires_at ? tt(' · bis {d}', { d: d(i.expires_at) }) : ''}
                     </div>
                   </div>
                   <button className="btn small secondary" onClick={() => run(() => api.patch(`/api/community/invites/${i.id}`, { active: !i.active }), i.active ? 'Ausgeschaltet' : 'Eingeschaltet', () => void list.reload())}>
-                    {i.active ? 'Ausschalten' : 'Einschalten'}
+                    {i.active ? tt('Ausschalten') : tt('Einschalten')}
                   </button>
-                  <button className="btn small ghost" aria-label="Link löschen" onClick={async () => (await confirmAsk('Link löschen?')) && run(() => api.del(`/api/community/invites/${i.id}`), 'Gelöscht', () => void list.reload())}>
+                  <button className="btn small ghost" aria-label={tt('Link löschen')} onClick={async () => (await confirmAsk(tt('Link löschen?'))) && run(() => api.del(`/api/community/invites/${i.id}`), 'Gelöscht', () => void list.reload())}>
                     ✕
                   </button>
                 </div>
-                {i.url && <CopyField value={i.url} label="Link" />}
+                {i.url && <CopyField value={i.url} label={tt('Link')} />}
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted">Noch keine Links.</p>
+          <p className="muted">{tt('Noch keine Links.')}</p>
         )}
       </Sec>
     </div>
@@ -571,6 +579,7 @@ function Invites({ group, data }: { group: any; data: any }) {
 
 // --- discount codes --------------------------------------------------------------------------------------------------------------------
 function Coupons({ group, data }: { group: any; data: any }) {
+  const tt = useT('x_community');
   const list = useLoad(() => api.get<any[]>(`/api/community/groups/${group.id}/coupons`), [group.id]);
   const blank = { code: '', label: '', kind: 'percent', value: '20', duration: 'once', months: '3', max_uses: '', expires_at: '', tier_id: '' };
   const [f, setF] = useState<any>(blank);
@@ -593,46 +602,46 @@ function Coupons({ group, data }: { group: any; data: any }) {
     );
   return (
     <div className="cma-grid">
-      <Sec title="Neuer Rabattcode" lead="Gilt für bezahlte Stufen mit monatlicher oder jährlicher Zahlung. Der Rabatt wird im Stripe-Checkout abgezogen.">
-        {!data.stripe.connected && <div className="cma-note">Stripe ist noch nicht verbunden – Rabattcodes wirken erst mit Stripe.</div>}
+      <Sec title={tt('Neuer Rabattcode')} lead={tt('Gilt für bezahlte Stufen mit monatlicher oder jährlicher Zahlung. Der Rabatt wird im Stripe-Checkout abgezogen.')}>
+        {!data.stripe.connected && <div className="cma-note">{tt('Stripe ist noch nicht verbunden – Rabattcodes wirken erst mit Stripe.')}</div>}
         <div className="cma-two">
-          <Field label="Code">
-            <Input value={f.code} onChange={(v) => setF({ ...f, code: v.toUpperCase() })} placeholder="WILLKOMMEN20" />
+          <Field label={tt('Code')}>
+            <Input value={f.code} onChange={(v) => setF({ ...f, code: v.toUpperCase() })} placeholder={tt('WILLKOMMEN20')} />
           </Field>
-          <Field label="Bezeichnung (freiwillig)">
+          <Field label={tt('Bezeichnung (freiwillig)')}>
             <Input value={f.label} onChange={(v) => setF({ ...f, label: v })} />
           </Field>
         </div>
         <div className="cma-two">
-          <Field label="Rabatt">
+          <Field label={tt('Rabatt')}>
             <Select value={f.kind} onChange={(v) => setF({ ...f, kind: v })} options={[['percent', 'Prozent'], ['amount', 'Betrag in Euro']]} />
           </Field>
-          <Field label={f.kind === 'percent' ? 'Prozent' : 'Euro'}>
+          <Field label={f.kind === 'percent' ? tt('Prozent') : tt('Euro')}>
             <Input value={f.value} onChange={(v) => setF({ ...f, value: v })} inputMode="decimal" />
           </Field>
         </div>
         <div className="cma-two">
-          <Field label="Wie lange">
+          <Field label={tt('Wie lange')}>
             <Select value={f.duration} onChange={(v) => setF({ ...f, duration: v })} options={[['once', 'Nur die erste Zahlung'], ['repeating', 'Mehrere Monate'], ['forever', 'Für immer']]} />
           </Field>
-          {f.duration === 'repeating' && <NumberField label="Monate" min={1} max={36} value={Number(f.months)} onChange={(v) => setF({ ...f, months: String(v ?? 3) })} />}
+          {f.duration === 'repeating' && <NumberField label={tt('Monate')} min={1} max={36} value={Number(f.months)} onChange={(v) => setF({ ...f, months: String(v ?? 3) })} />}
         </div>
         <div className="cma-two">
-          <NumberField label="Höchstens so oft nutzbar" min={1} value={f.max_uses === '' ? null : Number(f.max_uses)} onChange={(v) => setF({ ...f, max_uses: v ?? '' })} />
-          <Field label="Läuft ab (freiwillig)">
+          <NumberField label={tt('Höchstens so oft nutzbar')} min={1} value={f.max_uses === '' ? null : Number(f.max_uses)} onChange={(v) => setF({ ...f, max_uses: v ?? '' })} />
+          <Field label={tt('Läuft ab (freiwillig)')}>
             <Input type="datetime-local" value={f.expires_at} onChange={(v) => setF({ ...f, expires_at: v })} />
           </Field>
         </div>
-        <Field label="Nur für diese Stufe">
-          <Select value={f.tier_id} onChange={(v) => setF({ ...f, tier_id: v })} placeholder="Alle bezahlten Stufen" options={data.tiers.filter((t: any) => !t.prices.free).map((t: any) => [t.id, t.name])} />
+        <Field label={tt('Nur für diese Stufe')}>
+          <Select value={f.tier_id} onChange={(v) => setF({ ...f, tier_id: v })} placeholder={tt('Alle bezahlten Stufen')} options={data.tiers.filter((t: any) => !t.prices.free).map((t: any) => [t.id, t.name])} />
         </Field>
         <div className="cma-actions">
           <button className="btn" onClick={create} disabled={!f.code.trim()}>
-            Code erstellen
+            {tt('Code erstellen')}
           </button>
         </div>
       </Sec>
-      <Sec title="Deine Codes">
+      <Sec title={tt('Deine Codes')}>
         {!list.data ? (
           <Spinner />
         ) : list.data.length ? (
@@ -641,24 +650,24 @@ function Coupons({ group, data }: { group: any; data: any }) {
               <li key={c.id}>
                 <div className="grow">
                   <div>
-                    <strong className="cma-mono">{c.code}</strong> {!c.active && <Badge>Aus</Badge>}
+                    <strong className="cma-mono">{c.code}</strong> {!c.active && <Badge>{tt('Aus')}</Badge>}
                   </div>
                   <div className="muted small">
                     {c.text} · {c.uses}
-                    {c.max_uses ? `/${c.max_uses}` : ''} genutzt{c.expires_at ? ` · bis ${d(c.expires_at)}` : ''}
+                    {c.max_uses ? `/${c.max_uses}` : ''} genutzt{c.expires_at ? tt(' · bis {d}', { d: d(c.expires_at) }) : ''}
                   </div>
                 </div>
                 <button className="btn small secondary" onClick={() => run(() => api.patch(`/api/community/coupons/${c.id}`, { active: !c.active }), c.active ? 'Ausgeschaltet' : 'Eingeschaltet', () => void list.reload())}>
-                  {c.active ? 'Ausschalten' : 'Einschalten'}
+                  {c.active ? tt('Ausschalten') : tt('Einschalten')}
                 </button>
-                <button className="btn small ghost" aria-label="Code löschen" onClick={async () => (await confirmAsk(`Code ${c.code} löschen?`)) && run(() => api.del(`/api/community/coupons/${c.id}`), 'Gelöscht', () => void list.reload())}>
+                <button className="btn small ghost" aria-label={tt('Code löschen')} onClick={async () => (await confirmAsk(tt('Code {code} löschen?', { code: c.code }))) && run(() => api.del(`/api/community/coupons/${c.id}`), 'Gelöscht', () => void list.reload())}>
                   ✕
                 </button>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted">Noch keine Codes.</p>
+          <p className="muted">{tt('Noch keine Codes.')}</p>
         )}
       </Sec>
     </div>

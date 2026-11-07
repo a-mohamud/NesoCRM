@@ -4,6 +4,7 @@ import { api } from '../api';
 import { Badge, Field, Input, Modal, Select, Spinner, act, toast, useLoad } from '../ui';
 import { CallNotes } from './CallsNotes';
 import './calls.css';
+import { useT } from '../i18n';
 
 /**
  * In the browser phone during a call: notes (they stay with the call and land in the contact's notes) and handing the call over to a
@@ -13,20 +14,21 @@ import './calls.css';
 
 /** Notes and hand-over buttons under the call controls. */
 export function CallTools({ callId, open, onTransfer }: { callId: string; open: boolean; onTransfer: () => void }) {
+  const tt = useT('x_comms');
   const [notes, setNotes] = useState(false);
   return (
     <div className="phone-tools">
       <div className="phone-controls">
-        <button className={`phone-ctl${notes ? ' on' : ''}`} onClick={() => setNotes(!notes)} aria-pressed={notes} title="Notiz zum Gespräch">
+        <button className={`phone-ctl${notes ? ' on' : ''}`} onClick={() => setNotes(!notes)} aria-pressed={notes} title={tt('Notiz zum Gespräch')}>
           <Icon name="note" size={18} />
-          <span>Notiz</span>
+          <span>{tt('Notiz')}</span>
         </button>
-        <button className="phone-ctl" onClick={onTransfer} disabled={!open || !callId} title={callId ? 'An eine Kollegin, einen Kollegen oder eine Nummer übergeben' : 'Übergeben geht, sobald der Anruf verbunden ist'}>
+        <button className="phone-ctl" onClick={onTransfer} disabled={!open || !callId} title={callId ? tt('An eine Kollegin, einen Kollegen oder eine Nummer übergeben') : tt('Übergeben geht, sobald der Anruf verbunden ist')}>
           <Icon name="callOut" size={18} />
-          <span>Übergeben</span>
+          <span>{tt('Übergeben')}</span>
         </button>
       </div>
-      {notes && (callId ? <CallNotes callId={callId} compact /> : <p className="muted small">Notizen gehen, sobald der Anruf verbunden ist.</p>)}
+      {notes && (callId ? <CallNotes callId={callId} compact /> : <p className="muted small">{tt('Notizen gehen, sobald der Anruf verbunden ist.')}</p>)}
     </div>
   );
 }
@@ -41,6 +43,7 @@ const STATE_TEXT: Record<string, string> = {
 
 /** The hand-over dialog. `held`: the call already waits on hold (needed for the version with announcement). */
 export function TransferModal({ callId, held, name, ensureHold, onAccepted, onClose }: { callId: string; held: boolean; name: string; ensureHold: () => Promise<boolean>; onAccepted: () => void; onClose: () => void }) {
+  const tt = useT('x_comms');
   const people = useLoad(() => api.get<any[]>('/api/phone/colleagues').catch(() => []), []);
   const [to, setTo] = useState('');
   const [number, setNumber] = useState('');
@@ -67,7 +70,7 @@ export function TransferModal({ callId, held, name, ensureHold, onAccepted, onCl
     setBusy(true);
     if (mode === 'warm' && !held && !(await ensureHold())) {
       setBusy(false);
-      return toast('Der Anruf ließ sich nicht halten.');
+      return toast(tt('Der Anruf ließ sich nicht halten.'));
     }
     const r = await act(() => api.post(`/api/phone/calls/${encodeURIComponent(callId)}/transfer`, { to: target, mode, note }));
     setBusy(false);
@@ -79,43 +82,43 @@ export function TransferModal({ callId, held, name, ensureHold, onAccepted, onCl
   const ready = to || number.trim();
   return (
     <Modal
-      title={`Übergeben: ${name}`}
+      title={tt('Übergeben: {name}', { name: name })}
       onClose={onClose}
       footer={
         status ? (
           <button className="btn" onClick={onClose}>
-            Schließen
+            {tt('Schließen')}
           </button>
         ) : (
           <button className="btn" disabled={busy || !ready} onClick={go}>
-            {mode === 'cold' ? 'Jetzt weiterleiten' : 'Übergabe starten'}
+            {mode === 'cold' ? tt('Jetzt weiterleiten') : tt('Übergabe starten')}
           </button>
         )
       }
     >
       {status ? (
         <div className="phone-transfer-state" role="status">
-          <strong>{status.target_label}</strong>: {status.mode === 'cold' && status.status === 'ringing' ? 'Der Anrufer wird weitergeleitet.' : STATE_TEXT[status.status] ?? status.status}
+          <strong>{status.target_label}</strong>: {status.mode === 'cold' && status.status === 'ringing' ? tt('Der Anrufer wird weitergeleitet.') : STATE_TEXT[status.status] ?? status.status}
           {status.error && <div className="muted">{status.error}</div>}
           {status.status === 'ringing' && <Spinner />}
-          {(status.status === 'declined' || status.status === 'failed') && <p className="small">Der Anrufer wartet weiter mit Musik. Unter „Fortsetzen“ kannst du das Gespräch wieder aufnehmen.</p>}
+          {(status.status === 'declined' || status.status === 'failed') && <p className="small">{tt('Der Anrufer wartet weiter mit Musik. Unter „Fortsetzen“ kannst du das Gespräch wieder aufnehmen.')}</p>}
         </div>
       ) : (
         <>
-          <Field label="An wen?">
+          <Field label={tt('An wen?')}>
             <Select
               value={to}
               onChange={(v) => (setTo(v), v && setNumber(''))}
-              placeholder="Eine Nummer eingeben …"
+              placeholder={tt('Eine Nummer eingeben …')}
               options={(people.data ?? []).map((u) => [u.id, `${u.name}${u.online ? '' : ' (nicht erreichbar)'}`])}
             />
           </Field>
           {!to && (
-            <Field label="Nummer" hint="Mit Ländervorwahl, z. B. +49151…">
+            <Field label={tt('Nummer')} hint={tt('Mit Ländervorwahl, z. B. +49151…')}>
               <Input value={number} onChange={setNumber} placeholder="+49…" inputMode="tel" />
             </Field>
           )}
-          <Field label="Wie?">
+          <Field label={tt('Wie?')}>
             <Select
               value={mode}
               onChange={setMode}
@@ -127,13 +130,13 @@ export function TransferModal({ callId, held, name, ensureHold, onAccepted, onCl
           </Field>
           {mode === 'warm' && (
             <>
-              <Field label="Hinweis für die andere Person (wird vorgelesen)">
-                <Input value={note} onChange={setNote} maxLength={300} placeholder="z. B. Frage zur Rechnung" />
+              <Field label={tt('Hinweis für die andere Person (wird vorgelesen)')}>
+                <Input value={note} onChange={setNote} maxLength={300} placeholder={tt('z. B. Frage zur Rechnung')} />
               </Field>
-              {!held && <p className="muted small">Das Gespräch wird dafür gehalten.</p>}
+              {!held && <p className="muted small">{tt('Das Gespräch wird dafür gehalten.')}</p>}
             </>
           )}
-          {people.data?.some((u) => !u.online) && <Badge>Kollegen mit geschlossenem Browser-Telefon sind nicht erreichbar.</Badge>}
+          {people.data?.some((u) => !u.online) && <Badge>{tt('Kollegen mit geschlossenem Browser-Telefon sind nicht erreichbar.')}</Badge>}
         </>
       )}
     </Modal>

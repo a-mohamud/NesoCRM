@@ -7,6 +7,7 @@ import { newId } from './store';
 import { align, distribute, duplicate, group, reorder, ungroup } from './actions';
 import { selectionBox, toWorld } from './geometry';
 import type { EditorApi } from './Editor';
+import { useT } from '../i18n';
 
 export type Tool = 'select' | 'hand' | 'lasso' | 'rect' | 'ellipse' | 'diamond' | 'line' | 'arrow' | 'draw' | 'text' | 'sticky' | 'frame' | 'image' | 'comment' | 'eraser';
 
@@ -32,6 +33,7 @@ function Pop({ children, onClose }: { children: ReactNode; onClose: () => void }
 // --- toolbar --------------------------------------------------------------------------------------------
 
 export function Toolbar({ api }: { api: EditorApi }) {
+  const tt = useT('x_misc');
   const [fly, setFly] = useState<'' | 'shapes' | 'frames' | 'more'>('');
   const [shape, setShape] = useState<'rect' | 'ellipse' | 'diamond'>('rect');
   const T = (t: Tool, icon: IconName | ReactNode, label: string, key?: string, tour?: string) => (
@@ -42,16 +44,16 @@ export function Toolbar({ api }: { api: EditorApi }) {
   const at = () => api.center();
   const shapeIcon = (s: string) => (s === 'ellipse' ? <span className="cv-glyph">◯</span> : s === 'diamond' ? <span className="cv-glyph">◇</span> : <span className="cv-glyph">▭</span>);
   return (
-    <nav className="cv-toolbar cv-panel" aria-label="Werkzeuge" data-tour="canvas-tools">
+    <nav className="cv-toolbar cv-panel" aria-label={tt('Werkzeuge')} data-tour="canvas-tools">
       {T('select', <span className="cv-glyph">➚</span>, 'Auswählen', 'V', 'canvas-tool-select')}
       {T('hand', <span className="cv-glyph">✋</span>, 'Verschieben', 'H / Leertaste')}
       {T('lasso', <span className="cv-glyph">➰</span>, 'Lasso', 'Q / Strg + Ziehen')}
       <span className="cv-sep" />
       <div className="cv-fly">
-        <button className={`cv-tool${['rect', 'ellipse', 'diamond'].includes(api.tool) ? ' on' : ''}`} onClick={() => api.setTool(shape)} onContextMenu={(e) => (e.preventDefault(), setFly('shapes'))} title="Formen (R, O, D) – rechts/lang drücken für mehr" aria-label="Formen" data-tour="canvas-tool-shapes">
+        <button className={`cv-tool${['rect', 'ellipse', 'diamond'].includes(api.tool) ? ' on' : ''}`} onClick={() => api.setTool(shape)} onContextMenu={(e) => (e.preventDefault(), setFly('shapes'))} title={tt('Formen (R, O, D) – rechts/lang drücken für mehr')} aria-label={tt('Formen')} data-tour="canvas-tool-shapes">
           {shapeIcon(shape)}
         </button>
-        <button className="cv-fly-more" onClick={() => setFly(fly === 'shapes' ? '' : 'shapes')} aria-label="Weitere Formen">
+        <button className="cv-fly-more" onClick={() => setFly(fly === 'shapes' ? '' : 'shapes')} aria-label={tt('Weitere Formen')}>
           ▾
         </button>
         {fly === 'shapes' && (
@@ -80,7 +82,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
       {T('sticky', 'note', 'Notiz', 'S', 'canvas-tool-sticky')}
       <div className="cv-fly">
         {T('frame', 'monitor', 'Rahmen / Artboard', 'F', 'canvas-tool-frame')}
-        <button className="cv-fly-more" onClick={() => setFly(fly === 'frames' ? '' : 'frames')} aria-label="Rahmen-Größen">
+        <button className="cv-fly-more" onClick={() => setFly(fly === 'frames' ? '' : 'frames')} aria-label={tt('Rahmen-Größen')}>
           ▾
         </button>
         {fly === 'frames' && (
@@ -104,10 +106,10 @@ export function Toolbar({ api }: { api: EditorApi }) {
           </Pop>
         )}
       </div>
-      <button className="cv-tool" onClick={() => api.open('media')} title="Bild (I) – hochladen, einfügen, Mediathek" aria-label="Bild" data-tour="canvas-tool-image">
+      <button className="cv-tool" onClick={() => api.open('media')} title={tt('Bild (I) – hochladen, einfügen, Mediathek')} aria-label={tt('Bild')} data-tour="canvas-tool-image">
         <Icon name="image" size={18} />
       </button>
-      <button className="cv-tool" onClick={() => api.open('icons')} title="Icon" aria-label="Icon">
+      <button className="cv-tool" onClick={() => api.open('icons')} title={tt('Icon')} aria-label={tt('Icon')}>
         <Icon name="star" size={18} />
       </button>
       <button
@@ -116,8 +118,8 @@ export function Toolbar({ api }: { api: EditorApi }) {
           const [cx, cy] = at();
           api.insert([createElement({ type: 'table', x: cx - 240, y: cy - 80 }, newId)]);
         }}
-        title="Tabelle"
-        aria-label="Tabelle"
+        title={tt('Tabelle')}
+        aria-label={tt('Tabelle')}
       >
         <Icon name="vizTable" size={18} />
       </button>
@@ -128,34 +130,34 @@ export function Toolbar({ api }: { api: EditorApi }) {
           const ids = api.insert([createElement({ type: 'chart', x: cx - 210, y: cy - 130 }, newId)]);
           if (ids[0]) api.open('chart', { id: ids[0] });
         }}
-        title="Diagramm"
-        aria-label="Diagramm"
+        title={tt('Diagramm')}
+        aria-label={tt('Diagramm')}
       >
         <Icon name="vizBar" size={18} />
       </button>
       <span className="cv-sep" />
-      <button className="cv-tool accent" onClick={() => api.open('crm')} title="Live-CRM-Karte: Kontakt, Firma, Deal, Aufgabe, Ticket, Termin, Projekt, Bericht, Pipeline" aria-label="CRM-Karte" data-tour="canvas-tool-crm">
+      <button className="cv-tool accent" onClick={() => api.open('crm')} title={tt('Live-CRM-Karte: Kontakt, Firma, Deal, Aufgabe, Ticket, Termin, Projekt, Bericht, Pipeline')} aria-label={tt('CRM-Karte')} data-tour="canvas-tool-crm">
         <Icon name="contacts" size={18} />
       </button>
-      <button className="cv-tool" onClick={() => api.open('templates')} title="Vorlagen" aria-label="Vorlagen" data-tour="canvas-tool-templates">
+      <button className="cv-tool" onClick={() => api.open('templates')} title={tt('Vorlagen')} aria-label={tt('Vorlagen')} data-tour="canvas-tool-templates">
         <Icon name="template" size={18} />
       </button>
       {T('comment', 'chat', 'Kommentar', 'C')}
       {T('eraser', <span className="cv-glyph">⌫</span>, 'Radierer', 'X')}
       <div className="cv-fly">
-        <button className="cv-tool" onClick={() => setFly(fly === 'more' ? '' : 'more')} title="Mehr: Mermaid, Workflow, Funnel" aria-label="Mehr" data-tour="canvas-tool-more">
+        <button className="cv-tool" onClick={() => setFly(fly === 'more' ? '' : 'more')} title={tt('Mehr: Mermaid, Workflow, Funnel')} aria-label={tt('Mehr')} data-tour="canvas-tool-more">
           <span className="cv-glyph">⋯</span>
         </button>
         {fly === 'more' && (
           <Pop onClose={() => setFly('')}>
             <div className="cv-pop-list">
-              <button onClick={() => (api.open('mermaid'), setFly(''))}>Mermaid-Diagramm einfügen</button>
-              <button onClick={() => (api.open('workflow'), setFly(''))}>Workflow als Diagramm</button>
-              <button onClick={() => (api.open('workflowDraft'), setFly(''))}>Flussdiagramm → Workflow-Entwurf</button>
-              <button onClick={() => (api.open('funnel'), setFly(''))}>Rahmen → Funnel-Seiten</button>
-              <button onClick={() => (api.open('settings'), setFly(''))}>Board-Einstellungen</button>
+              <button onClick={() => (api.open('mermaid'), setFly(''))}>{tt('Mermaid-Diagramm einfügen')}</button>
+              <button onClick={() => (api.open('workflow'), setFly(''))}>{tt('Workflow als Diagramm')}</button>
+              <button onClick={() => (api.open('workflowDraft'), setFly(''))}>{tt('Flussdiagramm → Workflow-Entwurf')}</button>
+              <button onClick={() => (api.open('funnel'), setFly(''))}>{tt('Rahmen → Funnel-Seiten')}</button>
+              <button onClick={() => (api.open('settings'), setFly(''))}>{tt('Board-Einstellungen')}</button>
               <button onClick={() => (api.open('shortcuts'), setFly(''))}>
-                Tastenkürzel <small>?</small>
+                {tt('Tastenkürzel')} <small>?</small>
               </button>
             </div>
           </Pop>
@@ -174,13 +176,14 @@ const common = <K extends keyof CanvasElement>(els: CanvasElement[], k: K, fallb
 };
 
 function Swatches({ colors, value, onPick, label }: { colors: string[]; value: string | undefined; onPick: (c: string) => void; label: string }) {
+  const tt = useT('x_misc');
   return (
     <div className="cv-swatches" role="group" aria-label={label}>
       {colors.map((c) => (
-        <button key={c} className={`cv-swatch${value === c ? ' on' : ''}${c === 'transparent' ? ' none' : ''}`} style={{ background: c === 'transparent' ? undefined : c }} onClick={() => onPick(c)} title={c === 'transparent' ? 'Keine' : c} aria-label={c === 'transparent' ? 'Keine Füllung' : c} />
+        <button key={c} className={`cv-swatch${value === c ? ' on' : ''}${c === 'transparent' ? ' none' : ''}`} style={{ background: c === 'transparent' ? undefined : c }} onClick={() => onPick(c)} title={c === 'transparent' ? tt('Keine') : c} aria-label={c === 'transparent' ? tt('Keine Füllung') : c} />
       ))}
-      <label className="cv-swatch custom" title="Eigene Farbe">
-        <input type="color" value={value && /^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'} onChange={(e) => onPick(e.target.value)} aria-label={`${label}: eigene Farbe`} />
+      <label className="cv-swatch custom" title={tt('Eigene Farbe')}>
+        <input type="color" value={value && /^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'} onChange={(e) => onPick(e.target.value)} aria-label={tt('{label}: eigene Farbe', { label: label })} />
       </label>
     </div>
   );
@@ -206,6 +209,7 @@ const Row = ({ label, children, stack }: { label: string; children: ReactNode; s
 );
 
 export function Inspector({ api }: { api: EditorApi }) {
+  const tt = useT('x_misc');
   const els = api.selected;
   const ids = api.selection;
   const [collapsed, setCollapsed] = useState(window.innerWidth <= 900);
@@ -215,18 +219,18 @@ export function Inspector({ api }: { api: EditorApi }) {
     return (
       <aside className="cv-inspector cv-panel" data-tour="canvas-inspector">
         <div className="cv-insp-head">
-          <b>Stil für neue Elemente</b>
+          <b>{tt('Stil für neue Elemente')}</b>
         </div>
-        <Row label="Stil">
-          <Seg value={api.defaults.sketch ? 'sketch' : 'clean'} options={[['clean', 'Sauber'], ['sketch', 'Handgezeichnet']]} onPick={(v) => api.setDefaults({ sketch: v === 'sketch' || undefined })} label="Stil" />
+        <Row label={tt('Stil')}>
+          <Seg value={api.defaults.sketch ? 'sketch' : 'clean'} options={[['clean', 'Sauber'], ['sketch', 'Handgezeichnet']]} onPick={(v) => api.setDefaults({ sketch: v === 'sketch' || undefined })} label={tt('Stil')} />
         </Row>
-        <Row label="Linie" stack>
-          <Swatches colors={STROKE_COLORS} value={api.defaults.stroke} onPick={(c) => api.setDefaults({ stroke: c })} label="Linienfarbe" />
+        <Row label={tt('Linie')} stack>
+          <Swatches colors={STROKE_COLORS} value={api.defaults.stroke} onPick={(c) => api.setDefaults({ stroke: c })} label={tt('Linienfarbe')} />
         </Row>
-        <Row label="Füllung" stack>
-          <Swatches colors={FILL_COLORS} value={api.defaults.fill} onPick={(c) => api.setDefaults({ fill: c })} label="Füllung" />
+        <Row label={tt('Füllung')} stack>
+          <Swatches colors={FILL_COLORS} value={api.defaults.fill} onPick={(c) => api.setDefaults({ fill: c })} label={tt('Füllung')} />
         </Row>
-        <p className="muted small">Tipp: Doppelklick schreibt Text, Strg + Rad zoomt, Leertaste + Ziehen verschiebt.</p>
+        <p className="muted small">{tt('Tipp: Doppelklick schreibt Text, Strg + Rad zoomt, Leertaste + Ziehen verschiebt.')}</p>
       </aside>
     );
   }
@@ -241,28 +245,28 @@ export function Inspector({ api }: { api: EditorApi }) {
     <aside className={`cv-inspector cv-panel${collapsed ? ' collapsed' : ''}`} data-tour="canvas-inspector">
       <div className="cv-insp-head">
         <b>{title}</b>
-        <button className="icon-btn" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Stil zeigen' : 'Stil einklappen'}>
+        <button className="icon-btn" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? tt('Stil zeigen') : tt('Stil einklappen')}>
           {collapsed ? '▴' : '▾'}
         </button>
       </div>
       {!collapsed && (
         <div className="cv-insp-body">
           {api.readOnly ? (
-            <p className="muted small">Nur Lesezugriff – Kommentare sind möglich.</p>
+            <p className="muted small">{tt('Nur Lesezugriff – Kommentare sind möglich.')}</p>
           ) : locked ? (
             <button className="btn small secondary" onClick={() => set({ locked: undefined })}>
-              <Icon name="lock" /> Entsperren
+              <Icon name="lock" /> {tt('Entsperren')}
             </button>
           ) : (
             <>
               {one?.type === 'card' && <CardSection api={api} el={one} />}
               {one?.type === 'frame' && (
-                <Row label="Größe">
+                <Row label={tt('Größe')}>
                   <select value={one.preset ?? ''} onChange={(e) => {
                     const p = FRAME_PRESETS.find((x) => x.key === e.target.value);
                     if (p) set({ preset: p.key, w: p.w, h: p.h });
                   }}>
-                    <option value="">Eigene ({Math.round(one.w)}×{Math.round(one.h)})</option>
+                    <option value="">{tt('Eigene ({round}×{round2})', { round: Math.round(one.w), round2: Math.round(one.h) })}</option>
                     {FRAME_PRESETS.map((p) => (
                       <option key={p.key} value={p.key}>
                         {p.label}
@@ -272,150 +276,150 @@ export function Inspector({ api }: { api: EditorApi }) {
                 </Row>
               )}
               {has(els, 'rect', 'ellipse', 'diamond', 'line', 'arrow', 'draw', 'icon', 'table', 'chart', 'image') && (
-                <Row label="Linie" stack>
-                  <Swatches colors={STROKE_COLORS} value={common(els, 'stroke', undefined)} onPick={(c) => set({ stroke: c })} label="Linienfarbe" />
+                <Row label={tt('Linie')} stack>
+                  <Swatches colors={STROKE_COLORS} value={common(els, 'stroke', undefined)} onPick={(c) => set({ stroke: c })} label={tt('Linienfarbe')} />
                 </Row>
               )}
               {has(els, 'rect', 'ellipse', 'diamond', 'frame', 'table', 'chart') && (
-                <Row label="Füllung" stack>
-                  <Swatches colors={FILL_COLORS} value={common(shapes, 'fill', undefined)} onPick={(c) => set({ fill: c })} label="Füllung" />
+                <Row label={tt('Füllung')} stack>
+                  <Swatches colors={FILL_COLORS} value={common(shapes, 'fill', undefined)} onPick={(c) => set({ fill: c })} label={tt('Füllung')} />
                 </Row>
               )}
               {has(els, 'sticky') && (
-                <Row label="Farbe" stack>
-                  <Swatches colors={Object.values(STICKY_COLORS)} value={common(els, 'fill', undefined)} onPick={(c) => set({ fill: c })} label="Notizfarbe" />
+                <Row label={tt('Farbe')} stack>
+                  <Swatches colors={Object.values(STICKY_COLORS)} value={common(els, 'fill', undefined)} onPick={(c) => set({ fill: c })} label={tt('Notizfarbe')} />
                 </Row>
               )}
               {has(els, 'rect', 'ellipse', 'diamond', 'line', 'arrow') && (
-                <Row label="Stil">
-                  <Seg value={common(els, 'sketch', undefined) ? 'sketch' : 'clean'} options={[['clean', 'Sauber'], ['sketch', 'Handgezeichnet']]} onPick={(v) => set({ sketch: v === 'sketch' || undefined })} label="Stil" />
+                <Row label={tt('Stil')}>
+                  <Seg value={common(els, 'sketch', undefined) ? 'sketch' : 'clean'} options={[['clean', 'Sauber'], ['sketch', 'Handgezeichnet']]} onPick={(v) => set({ sketch: v === 'sketch' || undefined })} label={tt('Stil')} />
                 </Row>
               )}
               {has(els, 'rect', 'ellipse', 'diamond') && common(els, 'sketch', undefined) && (
-                <Row label="Füllart">
-                  <Seg value={common(els, 'fillStyle', 'hachure')} options={[['hachure', '▤', 'Schraffur'], ['cross', '▦', 'Kreuz'], ['solid', '■', 'Voll']]} onPick={(v) => set({ fillStyle: v })} label="Füllart" />
+                <Row label={tt('Füllart')}>
+                  <Seg value={common(els, 'fillStyle', 'hachure')} options={[['hachure', '▤', 'Schraffur'], ['cross', '▦', 'Kreuz'], ['solid', '■', 'Voll']]} onPick={(v) => set({ fillStyle: v })} label={tt('Füllart')} />
                 </Row>
               )}
               {has(els, 'rect', 'ellipse', 'diamond', 'line', 'arrow', 'draw', 'icon', 'image') && (
-                <Row label="Stärke">
-                  <Seg value={common(els, 'strokeWidth', 2)} options={[[1, '1'], [2, '2'], [4, '4'], [6, '6']]} onPick={(v) => set({ strokeWidth: v })} label="Linienstärke" />
+                <Row label={tt('Stärke')}>
+                  <Seg value={common(els, 'strokeWidth', 2)} options={[[1, '1'], [2, '2'], [4, '4'], [6, '6']]} onPick={(v) => set({ strokeWidth: v })} label={tt('Linienstärke')} />
                 </Row>
               )}
               {has(els, 'rect', 'ellipse', 'diamond', 'line', 'arrow') && (
-                <Row label="Strich">
-                  <Seg value={common(els, 'strokeStyle', 'solid')} options={[['solid', '—', 'Durchgezogen'], ['dashed', '– –', 'Gestrichelt'], ['dotted', '···', 'Gepunktet']]} onPick={(v) => set({ strokeStyle: v === 'solid' ? undefined : v })} label="Strichart" />
+                <Row label={tt('Strich')}>
+                  <Seg value={common(els, 'strokeStyle', 'solid')} options={[['solid', '—', 'Durchgezogen'], ['dashed', '– –', 'Gestrichelt'], ['dotted', '···', 'Gepunktet']]} onPick={(v) => set({ strokeStyle: v === 'solid' ? undefined : v })} label={tt('Strichart')} />
                 </Row>
               )}
               {lines.length > 0 && (
                 <>
-                  <Row label="Verlauf">
-                    <Seg value={common(lines, 'route', 'straight')} options={[['straight', '╱', 'Gerade'], ['elbow', '┐', 'Rechtwinklig'], ['curved', '∿', 'Kurve']]} onPick={(v) => set({ route: v })} label="Verlauf" />
+                  <Row label={tt('Verlauf')}>
+                    <Seg value={common(lines, 'route', 'straight')} options={[['straight', '╱', 'Gerade'], ['elbow', '┐', 'Rechtwinklig'], ['curved', '∿', 'Kurve']]} onPick={(v) => set({ route: v })} label={tt('Verlauf')} />
                   </Row>
-                  <Row label="Spitzen">
-                    <Seg value={common(lines, 'startHead', 'none')} options={[['none', '—'], ['arrow', '←'], ['triangle', '◀'], ['dot', '●']]} onPick={(v) => set({ startHead: v === 'none' ? undefined : v })} label="Anfang" />
-                    <Seg value={common(lines, 'endHead', lines[0].type === 'arrow' ? 'arrow' : 'none')} options={[['none', '—'], ['arrow', '→'], ['triangle', '▶'], ['dot', '●']]} onPick={(v) => set({ endHead: v })} label="Ende" />
+                  <Row label={tt('Spitzen')}>
+                    <Seg value={common(lines, 'startHead', 'none')} options={[['none', '—'], ['arrow', '←'], ['triangle', '◀'], ['dot', '●']]} onPick={(v) => set({ startHead: v === 'none' ? undefined : v })} label={tt('Anfang')} />
+                    <Seg value={common(lines, 'endHead', lines[0].type === 'arrow' ? 'arrow' : 'none')} options={[['none', '—'], ['arrow', '→'], ['triangle', '▶'], ['dot', '●']]} onPick={(v) => set({ endHead: v })} label={tt('Ende')} />
                   </Row>
                 </>
               )}
               {has(els, 'rect', 'frame', 'image', 'sticky', 'table', 'chart') && (
-                <Row label="Ecken">
-                  <Seg value={common(els, 'radius', 0)} options={[[0, '┌', 'Eckig'], [8, '╭', 'Leicht rund'], [24, '◜', 'Rund']]} onPick={(v) => set({ radius: v || undefined })} label="Ecken" />
+                <Row label={tt('Ecken')}>
+                  <Seg value={common(els, 'radius', 0)} options={[[0, '┌', 'Eckig'], [8, '╭', 'Leicht rund'], [24, '◜', 'Rund']]} onPick={(v) => set({ radius: v || undefined })} label={tt('Ecken')} />
                 </Row>
               )}
               {texty && (
                 <>
-                  <Row label="Schrift">
-                    <Seg value={common(els, 'font', 'sans')} options={[['sans', 'Aa', 'Sans'], ['serif', <span key="s" style={{ fontFamily: 'Georgia, serif' }}>Aa</span>, 'Serif'], ['mono', <span key="m" style={{ fontFamily: 'monospace' }}>Aa</span>, 'Mono'], ['hand', <span key="h" style={{ fontFamily: "'Segoe Print','Comic Sans MS',cursive" }}>Aa</span>, 'Handschrift']]} onPick={(v) => set({ font: v as FontKey })} label="Schriftart" />
+                  <Row label={tt('Schrift')}>
+                    <Seg value={common(els, 'font', 'sans')} options={[['sans', 'Aa', 'Sans'], ['serif', <span key="s" style={{ fontFamily: 'Georgia, serif' }}>{tt('Aa')}</span>, 'Serif'], ['mono', <span key="m" style={{ fontFamily: 'monospace' }}>{tt('Aa')}</span>, 'Mono'], ['hand', <span key="h" style={{ fontFamily: "'Segoe Print','Comic Sans MS',cursive" }}>{tt('Aa')}</span>, 'Handschrift']]} onPick={(v) => set({ font: v as FontKey })} label={tt('Schriftart')} />
                   </Row>
-                  <Row label="Größe">
-                    <Seg value={common(els, 'fontSize', 20)} options={[[14, 'S'], [20, 'M'], [28, 'L'], [40, 'XL'], [64, 'XXL']]} onPick={(v) => set({ fontSize: v })} label="Schriftgröße" />
+                  <Row label={tt('Größe')}>
+                    <Seg value={common(els, 'fontSize', 20)} options={[[14, 'S'], [20, 'M'], [28, 'L'], [40, 'XL'], [64, 'XXL']]} onPick={(v) => set({ fontSize: v })} label={tt('Schriftgröße')} />
                   </Row>
-                  <Row label="Text">
-                    <Seg value={common(els, 'bold', undefined) ? 'b' : ''} options={[['b', <b key="b">B</b>, 'Fett']]} onPick={() => set({ bold: !common(els, 'bold', undefined) || undefined })} label="Fett" />
-                    <Seg value={common(els, 'italic', undefined) ? 'i' : ''} options={[['i', <i key="i">I</i>, 'Kursiv']]} onPick={() => set({ italic: !common(els, 'italic', undefined) || undefined })} label="Kursiv" />
-                    <Seg value={common(els, 'align', undefined)} options={[['left', '⇤', 'Links'], ['center', '⇔', 'Mitte'], ['right', '⇥', 'Rechts']]} onPick={(v) => set({ align: v })} label="Ausrichtung" />
+                  <Row label={tt('Text')}>
+                    <Seg value={common(els, 'bold', undefined) ? 'b' : ''} options={[['b', <b key="b">B</b>, 'Fett']]} onPick={() => set({ bold: !common(els, 'bold', undefined) || undefined })} label={tt('Fett')} />
+                    <Seg value={common(els, 'italic', undefined) ? 'i' : ''} options={[['i', <i key="i">I</i>, 'Kursiv']]} onPick={() => set({ italic: !common(els, 'italic', undefined) || undefined })} label={tt('Kursiv')} />
+                    <Seg value={common(els, 'align', undefined)} options={[['left', '⇤', 'Links'], ['center', '⇔', 'Mitte'], ['right', '⇥', 'Rechts']]} onPick={(v) => set({ align: v })} label={tt('Ausrichtung')} />
                   </Row>
                   {has(els, 'text', 'rect', 'ellipse', 'diamond', 'sticky') && (
-                    <Row label="Farbe" stack>
-                      <Swatches colors={STROKE_COLORS} value={common(els, 'color', undefined)} onPick={(c) => set({ color: c })} label="Textfarbe" />
+                    <Row label={tt('Farbe')} stack>
+                      <Swatches colors={STROKE_COLORS} value={common(els, 'color', undefined)} onPick={(c) => set({ color: c })} label={tt('Textfarbe')} />
                     </Row>
                   )}
                 </>
               )}
               {one?.type === 'image' && (
-                <Row label="Bild">
-                  <Seg value={one.fit ?? 'cover'} options={[['cover', 'Füllen'], ['contain', 'Ganz']]} onPick={(v) => set({ fit: v })} label="Bild anpassen" />
+                <Row label={tt('Bild')}>
+                  <Seg value={one.fit ?? 'cover'} options={[['cover', 'Füllen'], ['contain', 'Ganz']]} onPick={(v) => set({ fit: v })} label={tt('Bild anpassen')} />
                 </Row>
               )}
               {one?.type === 'icon' && (
                 <button className="btn small secondary" onClick={() => api.open('icons', { id: one.id })}>
-                  Icon wechseln
+                  {tt('Icon wechseln')}
                 </button>
               )}
               {one?.type === 'table' && (
                 <button className="btn small secondary" onClick={() => api.open('table', { id: one.id })}>
-                  Tabelle bearbeiten
+                  {tt('Tabelle bearbeiten')}
                 </button>
               )}
               {one?.type === 'chart' && (
                 <button className="btn small secondary" onClick={() => api.open('chart', { id: one.id })}>
-                  Daten bearbeiten
+                  {tt('Daten bearbeiten')}
                 </button>
               )}
-              <Row label="Deckkraft">
-                <input type="range" min={10} max={100} step={5} value={Math.round((common(els, 'opacity', 1) ?? 1) * 100)} onChange={(e) => set({ opacity: Number(e.target.value) >= 100 ? undefined : Number(e.target.value) / 100 })} aria-label="Deckkraft" />
+              <Row label={tt('Deckkraft')}>
+                <input type="range" min={10} max={100} step={5} value={Math.round((common(els, 'opacity', 1) ?? 1) * 100)} onChange={(e) => set({ opacity: Number(e.target.value) >= 100 ? undefined : Number(e.target.value) / 100 })} aria-label={tt('Deckkraft')} />
               </Row>
               {one && one.type !== 'line' && one.type !== 'arrow' && (
-                <Row label="Link">
-                  <input className="cv-input" placeholder="https://… oder /app/…" defaultValue={one.link ?? ''} key={one.id} onBlur={(e) => set({ link: e.target.value.trim() || undefined })} />
+                <Row label={tt('Link')}>
+                  <input className="cv-input" placeholder={tt('https://… oder /app/…')} defaultValue={one.link ?? ''} key={one.id} onBlur={(e) => set({ link: e.target.value.trim() || undefined })} />
                 </Row>
               )}
               <div className="cv-actions">
-                <IconBtn title="Nach vorne" onClick={() => reorder(api.store, ids, 'front')}>⤒</IconBtn>
-                <IconBtn title="Nach hinten" onClick={() => reorder(api.store, ids, 'back')}>⤓</IconBtn>
-                <IconBtn title="Duplizieren (Strg D)" onClick={() => api.select(duplicate(api.store, ids))}>⧉</IconBtn>
-                {els.length > 1 && <IconBtn title="Gruppieren (Strg G)" onClick={() => group(api.store, ids)}>⊞</IconBtn>}
-                {els.some((e) => e.groupIds?.length) && <IconBtn title="Gruppierung aufheben" onClick={() => ungroup(api.store, ids)}>⊟</IconBtn>}
-                <IconBtn title="Sperren (Strg L)" onClick={() => set({ locked: true })}>
+                <IconBtn title={tt('Nach vorne')} onClick={() => reorder(api.store, ids, 'front')}>⤒</IconBtn>
+                <IconBtn title={tt('Nach hinten')} onClick={() => reorder(api.store, ids, 'back')}>⤓</IconBtn>
+                <IconBtn title={tt('Duplizieren (Strg D)')} onClick={() => api.select(duplicate(api.store, ids))}>⧉</IconBtn>
+                {els.length > 1 && <IconBtn title={tt('Gruppieren (Strg G)')} onClick={() => group(api.store, ids)}>⊞</IconBtn>}
+                {els.some((e) => e.groupIds?.length) && <IconBtn title={tt('Gruppierung aufheben')} onClick={() => ungroup(api.store, ids)}>⊟</IconBtn>}
+                <IconBtn title={tt('Sperren (Strg L)')} onClick={() => set({ locked: true })}>
                   <Icon name="lock" />
                 </IconBtn>
-                <IconBtn title="Kommentieren" onClick={() => api.comments.toggle()}>
+                <IconBtn title={tt('Kommentieren')} onClick={() => api.comments.toggle()}>
                   <Icon name="chat" />
                 </IconBtn>
-                <IconBtn title="Löschen (Entf)" onClick={() => api.store.remove(ids)}>
+                <IconBtn title={tt('Löschen (Entf)')} onClick={() => api.store.remove(ids)}>
                   <Icon name="trash" />
                 </IconBtn>
               </div>
               {els.length > 1 && (
                 <div className="cv-actions">
-                  <IconBtn title="Links ausrichten" onClick={() => align(api.store, ids, 'left')}>⫷</IconBtn>
-                  <IconBtn title="Horizontal zentrieren" onClick={() => align(api.store, ids, 'hcenter')}>⫼</IconBtn>
-                  <IconBtn title="Rechts ausrichten" onClick={() => align(api.store, ids, 'right')}>⫸</IconBtn>
-                  <IconBtn title="Oben ausrichten" onClick={() => align(api.store, ids, 'top')}>⊤</IconBtn>
-                  <IconBtn title="Vertikal zentrieren" onClick={() => align(api.store, ids, 'vcenter')}>⊝</IconBtn>
-                  <IconBtn title="Unten ausrichten" onClick={() => align(api.store, ids, 'bottom')}>⊥</IconBtn>
-                  {els.length > 2 && <IconBtn title="Horizontal verteilen" onClick={() => distribute(api.store, ids, 'h')}>↔</IconBtn>}
-                  {els.length > 2 && <IconBtn title="Vertikal verteilen" onClick={() => distribute(api.store, ids, 'v')}>↕</IconBtn>}
+                  <IconBtn title={tt('Links ausrichten')} onClick={() => align(api.store, ids, 'left')}>⫷</IconBtn>
+                  <IconBtn title={tt('Horizontal zentrieren')} onClick={() => align(api.store, ids, 'hcenter')}>⫼</IconBtn>
+                  <IconBtn title={tt('Rechts ausrichten')} onClick={() => align(api.store, ids, 'right')}>⫸</IconBtn>
+                  <IconBtn title={tt('Oben ausrichten')} onClick={() => align(api.store, ids, 'top')}>⊤</IconBtn>
+                  <IconBtn title={tt('Vertikal zentrieren')} onClick={() => align(api.store, ids, 'vcenter')}>⊝</IconBtn>
+                  <IconBtn title={tt('Unten ausrichten')} onClick={() => align(api.store, ids, 'bottom')}>⊥</IconBtn>
+                  {els.length > 2 && <IconBtn title={tt('Horizontal verteilen')} onClick={() => distribute(api.store, ids, 'h')}>↔</IconBtn>}
+                  {els.length > 2 && <IconBtn title={tt('Vertikal verteilen')} onClick={() => distribute(api.store, ids, 'v')}>↕</IconBtn>}
                 </div>
               )}
               {els.some((e) => (e.text ?? '').trim() && e.type !== 'card') && (
                 <div className="cv-crm-actions" data-tour="canvas-convert">
-                  <span className="muted small">In das CRM übernehmen</span>
+                  <span className="muted small">{tt('In das CRM übernehmen')}</span>
                   <button className="btn small secondary" onClick={() => api.open('convertTask', { ids })}>
-                    <Icon name="tasks" /> Als Aufgabe
+                    <Icon name="tasks" /> {tt('Als Aufgabe')}
                   </button>
                   <button className="btn small secondary" onClick={() => api.open('deal', { ids })}>
-                    <Icon name="deal" /> Als Deal
+                    <Icon name="deal" /> {tt('Als Deal')}
                   </button>
                 </div>
               )}
               {els.some((e) => e.type === 'frame') && (
                 <div className="cv-crm-actions">
                   <button className="btn small secondary" onClick={() => api.open('export', { scope: 'frame', frameId: els.find((e) => e.type === 'frame')!.id })}>
-                    <Icon name="download" /> Rahmen exportieren
+                    <Icon name="download" /> {tt('Rahmen exportieren')}
                   </button>
                   <button className="btn small secondary" onClick={() => api.open('funnel', { frameIds: els.filter((e) => e.type === 'frame').map((e) => e.id) })}>
-                    <Icon name="funnels" /> Als Funnel-Seiten
+                    <Icon name="funnels" /> {tt('Als Funnel-Seiten')}
                   </button>
                 </div>
               )}
@@ -434,18 +438,19 @@ const IconBtn = ({ title, onClick, children }: { title: string; onClick: () => v
 );
 
 function CardSection({ api, el }: { api: EditorApi; el: CanvasElement }) {
+  const tt = useT('x_misc');
   const data = api.store.cards[cardKey(el.card!.kind, el.card!.id)];
   return (
     <div className="cv-card-info">
-      <div className="muted small">{data?.ok ? 'Live-Daten aus dem CRM' : (data?.error ?? 'Lädt …')}</div>
+      <div className="muted small">{data?.ok ? tt('Live-Daten aus dem CRM') : (data?.error ?? tt('Lädt …'))}</div>
       <div className="cv-actions">
         {data?.url && (
           <button className="btn small" onClick={() => navigate(data.url!)}>
-            Öffnen
+            {tt('Öffnen')}
           </button>
         )}
-        <button className="btn small secondary" onClick={() => void api.refreshCards().then(() => toast('Aktualisiert'))}>
-          <Icon name="refresh" /> Aktualisieren
+        <button className="btn small secondary" onClick={() => void api.refreshCards().then(() => toast(tt('Aktualisiert')))}>
+          <Icon name="refresh" /> {tt('Aktualisieren')}
         </button>
       </div>
     </div>
@@ -455,6 +460,7 @@ function CardSection({ api, el }: { api: EditorApi; el: CanvasElement }) {
 // --- layers ------------------------------------------------------------------------------------------------------
 
 export function LayersPanel({ api, onClose }: { api: EditorApi; onClose: () => void }) {
+  const tt = useT('x_misc');
   const els = [...api.store.ordered].reverse();
   const top = els.filter((e) => !e.frameId || !api.store.els.has(e.frameId));
   const label = (e: CanvasElement) => (e.type === 'frame' ? e.name : e.type === 'card' ? `${CARD_LABELS[e.card!.kind]} · ${api.store.cards[cardKey(e.card!.kind, e.card!.id)]?.title ?? ''}` : e.name || e.text?.split('\n')[0] || (e.type === 'icon' ? e.icon : '')) || typeLabel(e.type);
@@ -465,10 +471,10 @@ export function LayersPanel({ api, onClose }: { api: EditorApi; onClose: () => v
         <span className="cv-layer-name">{label(e)}</span>
         {!api.readOnly && (
           <>
-            <button className="icon-btn" title={e.hidden ? 'Einblenden' : 'Ausblenden'} onClick={(ev) => (ev.stopPropagation(), api.store.update({ [e.id]: { hidden: e.hidden ? undefined : true } }))}>
+            <button className="icon-btn" title={e.hidden ? tt('Einblenden') : tt('Ausblenden')} onClick={(ev) => (ev.stopPropagation(), api.store.update({ [e.id]: { hidden: e.hidden ? undefined : true } }))}>
               {e.hidden ? '◌' : '◉'}
             </button>
-            <button className="icon-btn" title={e.locked ? 'Entsperren' : 'Sperren'} onClick={(ev) => (ev.stopPropagation(), api.store.update({ [e.id]: { locked: e.locked ? undefined : true } }))}>
+            <button className="icon-btn" title={e.locked ? tt('Entsperren') : tt('Sperren')} onClick={(ev) => (ev.stopPropagation(), api.store.update({ [e.id]: { locked: e.locked ? undefined : true } }))}>
               {e.locked ? <Icon name="lock" size={13} /> : <span className="muted">○</span>}
             </button>
           </>
@@ -480,12 +486,12 @@ export function LayersPanel({ api, onClose }: { api: EditorApi; onClose: () => v
   return (
     <aside className="cv-layers cv-panel" data-tour="canvas-layers-panel">
       <div className="cv-insp-head">
-        <b>Ebenen</b> <span className="muted small">{els.length}</span>
-        <button className="icon-btn" onClick={onClose} aria-label="Schließen">
+        <b>{tt('Ebenen')}</b> <span className="muted small">{els.length}</span>
+        <button className="icon-btn" onClick={onClose} aria-label={tt('Schließen')}>
           ✕
         </button>
       </div>
-      <div className="cv-layers-list">{top.length ? top.map((e) => row(e, 0)) : <p className="muted small">Noch nichts auf dem Board.</p>}</div>
+      <div className="cv-layers-list">{top.length ? top.map((e) => row(e, 0)) : <p className="muted small">{tt('Noch nichts auf dem Board.')}</p>}</div>
     </aside>
   );
 }

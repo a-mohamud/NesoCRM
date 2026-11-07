@@ -9,6 +9,7 @@ import { DARK_THEME, LIGHT_THEME, type XrTheme } from './engine/textures';
 import { canRecord } from '../agent/voice';
 import { warmUpMicrophone } from './engine/voice';
 import './viewer.css';
+import { useT } from '../i18n';
 
 /**
  * "In XR öffnen": the 3D view of a Living Board or a Canvas. A full-screen layer with a canvas: the browser preview (orbit with the
@@ -45,6 +46,7 @@ export function readTheme(): XrTheme {
 }
 
 export default function XrViewer({ kind, id, name, onClose }: { kind: 'board' | 'canvas'; id: string; name: string; onClose: () => void }) {
+  const tt = useT('x_misc');
   const canvas = useRef<HTMLCanvasElement>(null);
   const runtime = useRef<Runtime | null>(null);
   const [status, setStatus] = useState('Lädt …');
@@ -79,7 +81,7 @@ export default function XrViewer({ kind, id, name, onClose }: { kind: 'board' | 
     const common = { scene: rt.scene, onStatus: (t: string) => !closed && setStatus(t), onError: (t: string) => !closed && setError(t), onExit: () => (rt.immersive ? void rt.end() : exit.current()) };
     (kind === 'board' ? openBoardXr({ ...common, boardId: id }) : openCanvasXr({ ...common, canvasId: id, name }))
       .then((c) => (closed ? c.close() : (content = c)))
-      .catch((e: Error) => !closed && setError(e.message || 'Das lässt sich nicht öffnen.'));
+      .catch((e: Error) => !closed && setError(e.message || tt('Das lässt sich nicht öffnen.')));
     el.focus({ preventScroll: true });
     return () => {
       closed = true;
@@ -110,14 +112,14 @@ export default function XrViewer({ kind, id, name, onClose }: { kind: 'board' | 
       await runtime.current?.start(mode);
       setInSession(true);
     } catch (e) {
-      setError((e as Error).message || 'Die XR-Sitzung konnte nicht gestartet werden.');
+      setError((e as Error).message || tt('Die XR-Sitzung konnte nicht gestartet werden.'));
     }
   };
 
   const canXr = support.vr || support.ar;
   return createPortal(
-    <div className="xr-layer" role="dialog" aria-modal="true" aria-label={`3D-Ansicht: ${name}`} data-tour="xr-viewer">
-      <canvas ref={canvas} className="xr-canvas" tabIndex={0} aria-label="3D-Szene. Maus ziehen dreht, Mausrad zoomt, Panels lassen sich ziehen." />
+    <div className="xr-layer" role="dialog" aria-modal="true" aria-label={tt('3D-Ansicht: {name}', { name: name })} data-tour="xr-viewer">
+      <canvas ref={canvas} className="xr-canvas" tabIndex={0} aria-label={tt('3D-Szene. Maus ziehen dreht, Mausrad zoomt, Panels lassen sich ziehen.')} />
       <header className="xr-bar">
         <div className="xr-title">
           <Icon name="glasses" size={20} />
@@ -129,31 +131,31 @@ export default function XrViewer({ kind, id, name, onClose }: { kind: 'board' | 
         <div className="xr-actions">
           {support.vr && (
             <button type="button" className="btn" onClick={() => void start('immersive-vr')} disabled={inSession} data-tour="xr-start">
-              <Icon name="glasses" size={16} /> In XR starten
+              <Icon name="glasses" size={16} /> {tt('In XR starten')}
             </button>
           )}
           {support.ar && (
             <button type="button" className="btn secondary" onClick={() => void start('immersive-ar')} disabled={inSession}>
-              Mit Durchblick (AR)
+              {tt('Mit Durchblick (AR)')}
             </button>
           )}
           {kind === 'board' && canRecord() && (
-            <button type="button" className="btn secondary" onClick={async () => setMic((await warmUpMicrophone()) ?? 'Mikrofon ist erlaubt.')} title="Für die Sprachsteuerung im Headset: den Browser jetzt fragen, nicht erst im Raum">
-              <Icon name="mic" size={16} /> Mikrofon erlauben
+            <button type="button" className="btn secondary" onClick={async () => setMic((await warmUpMicrophone()) ?? 'Mikrofon ist erlaubt.')} title={tt('Für die Sprachsteuerung im Headset: den Browser jetzt fragen, nicht erst im Raum')}>
+              <Icon name="mic" size={16} /> {tt('Mikrofon erlauben')}
             </button>
           )}
           <button type="button" className="btn secondary" onClick={() => runtime.current?.orbit.reset()}>
-            <Icon name="reset" size={16} /> Ansicht
+            <Icon name="reset" size={16} /> {tt('Ansicht')}
           </button>
         </div>
-        <button type="button" className="icon-btn xr-close" onClick={onClose} aria-label="Schließen">
+        <button type="button" className="icon-btn xr-close" onClick={onClose} aria-label={tt('Schließen')}>
           ✕
         </button>
       </header>
       <footer className="xr-help">
         {mic && <span className="xr-mic">{mic}</span>}
-        {!canXr && <span>Dieses Gerät bietet kein WebXR – du siehst die 3D-Vorschau. </span>}
-        <span>Maus ziehen: drehen · Rad: Zoom · Panel ziehen: verschieben (beim Ziehen: Rad näher/ferner, Umschalt+Rad größer/kleiner) · Pfeiltasten: drehen · Esc: schließen</span>
+        {!canXr && <span>{tt('Dieses Gerät bietet kein WebXR – du siehst die 3D-Vorschau.')} </span>}
+        <span>{tt('Maus ziehen: drehen · Rad: Zoom · Panel ziehen: verschieben (beim Ziehen: Rad näher/ferner, Umschalt+Rad größer/kleiner) · Pfeiltasten: drehen · Esc: schließen')}</span>
       </footer>
     </div>,
     document.body,

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import { Badge, Empty, Field, Modal, Select, Spinner, Tabs, act, toast, useLoad } from '../ui';
 import { Bar, Section, eur } from './SalesKit';
+import { useT } from '../i18n';
 
 /**
  * Quoten und Rangliste: Ziele je Person und Team für Monat oder Quartal, Zielerreichung mit Zeitfortschritt und Pipeline, Rangliste.
@@ -12,6 +13,7 @@ const PACE_TONE: Record<string, 'green' | 'blue' | 'red' | 'yellow' | 'gray'> = 
 const BAR_TONE: Record<string, string> = { reached: 'green', ahead: 'green', on_track: '', behind: 'red', closed: 'red', none: '' };
 
 function QuotaEditor({ data, onClose, onSaved }: { data: any; onClose: () => void; onSaved: () => void }) {
+  const tt = useT('x_finance');
   const money = data.metric === 'won_value';
   const initial: Record<string, string> = {};
   for (const x of data.quotas) initial[`${x.scope}:${x.subject_id}`] = String(x.target);
@@ -23,31 +25,31 @@ function QuotaEditor({ data, onClose, onSaved }: { data: any; onClose: () => voi
   ];
   const save = async () => {
     const quotas = subjects.filter((s) => (v[s.key] ?? '') !== (initial[s.key] ?? '')).map((s) => ({ scope: s.scope, subject_id: s.id, target: v[s.key] === '' || v[s.key] === undefined ? 0 : Number(String(v[s.key]).replace(',', '.')) }));
-    if (quotas.length && !(await act(() => api.put('/api/quotas', { period: data.period.kind, start: data.period.start, metric: data.metric, quotas }), 'Quoten gespeichert'))) return;
-    if ((data.leaderboard ?? '') !== lb) await act(() => api.put('/api/quota-settings', { leaderboard: lb || null }), 'Einstellung gespeichert');
+    if (quotas.length && !(await act(() => api.put('/api/quotas', { period: data.period.kind, start: data.period.start, metric: data.metric, quotas }), tt('Quoten gespeichert')))) return;
+    if ((data.leaderboard ?? '') !== lb) await act(() => api.put('/api/quota-settings', { leaderboard: lb || null }), tt('Einstellung gespeichert'));
     onSaved();
   };
   const copy = async () => {
     const r = await act(() => api.post('/api/quotas/copy', { period: data.period.kind, start: data.period.start, metric: data.metric }));
-    if (r) (toast(`${r.copied} Quoten übernommen`), onSaved());
+    if (r) (toast(tt('{copied} Quoten übernommen', { copied: r.copied })), onSaved());
   };
   return (
     <Modal
-      title={`Quoten ${data.period.label}`}
+      title={tt('Quoten {label}', { label: data.period.label })}
       className="sales-modal"
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={copy}>
-            Aus der Vorperiode übernehmen
+            {tt('Aus der Vorperiode übernehmen')}
           </button>
           <button className="btn" onClick={save} data-tour="quota-save">
-            Speichern
+            {tt('Speichern')}
           </button>
         </>
       }
     >
-      <p className="muted">Ziel in {money ? data.currency : 'Deals'} je Person und Team ({data.metric_labels[data.metric]}). Leer lassen oder 0 = keine Quote. Teams haben ein eigenes Ziel; ihr Erreichtes ist die Summe ihrer Mitglieder.</p>
+      <p className="muted">{tt('Ziel in')} {money ? data.currency : tt('Deals')} {tt('je Person und Team ({v}). Leer lassen oder 0 = keine Quote. Teams haben ein eigenes Ziel; ihr Erreichtes ist die Summe ihrer Mitglieder.', { v: data.metric_labels[data.metric] })}</p>
       <table className="sales-table">
         <tbody>
           {subjects.map((s) => (
@@ -57,13 +59,13 @@ function QuotaEditor({ data, onClose, onSaved }: { data: any; onClose: () => voi
                 {s.sub && <div className="muted small">{s.sub}</div>}
               </td>
               <td style={{ width: 170 }}>
-                <input type="number" min={0} inputMode="decimal" aria-label={`Ziel ${s.name}`} value={v[s.key] ?? ''} onChange={(e) => setV({ ...v, [s.key]: e.target.value })} style={{ width: '100%' }} />
+                <input type="number" min={0} inputMode="decimal" aria-label={tt('Ziel {name}', { name: s.name })} value={v[s.key] ?? ''} onChange={(e) => setV({ ...v, [s.key]: e.target.value })} style={{ width: '100%' }} />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <Field label="Wer sieht die Zahlen der anderen?" hint="Ohne Auswahl: alle – außer Personen, deren Deals durch Datensatz-Zugriff eingeschränkt sind (sie sehen nur sich).">
+      <Field label={tt('Wer sieht die Zahlen der anderen?')} hint={tt('Ohne Auswahl: alle – außer Personen, deren Deals durch Datensatz-Zugriff eingeschränkt sind (sie sehen nur sich).')}>
         <Select value={lb} onChange={setLb} options={[['', 'Standard'], ['all', 'Alle sehen alle'], ['own', 'Jeder sieht nur sich (und sein Team)'], ['off', 'Niemand (nur Admins)']]} />
       </Field>
     </Modal>
@@ -71,6 +73,7 @@ function QuotaEditor({ data, onClose, onSaved }: { data: any; onClose: () => voi
 }
 
 export function SalesQuotas() {
+  const tt = useT('x_finance');
   const [kind, setKind] = useState('month');
   const [start, setStart] = useState('');
   const [metric, setMetric] = useState('won_value');
@@ -90,12 +93,12 @@ export function SalesQuotas() {
         <thead>
           <tr>
             <th>Name</th>
-            <th className="r">Ziel</th>
-            <th className="r">Erreicht</th>
-            <th style={{ minWidth: 150 }}>Erreichung</th>
-            <th>Stand</th>
-            <th className="r">Pipeline (gewichtet)</th>
-            <th className="r">Fehlt noch</th>
+            <th className="r">{tt('Ziel')}</th>
+            <th className="r">{tt('Erreicht')}</th>
+            <th style={{ minWidth: 150 }}>{tt('Erreichung')}</th>
+            <th>{tt('Stand')}</th>
+            <th className="r">{tt('Pipeline (gewichtet)')}</th>
+            <th className="r">{tt('Fehlt noch')}</th>
           </tr>
         </thead>
         <tbody>
@@ -122,10 +125,10 @@ export function SalesQuotas() {
         <Tabs tabs={[['month', 'Monat'], ['quarter', 'Quartal']]} value={kind} onChange={(v) => (setKind(v), setStart(''))} />
         {data && (
           <>
-            <button className="btn secondary" onClick={() => setStart(data.period.prev)} aria-label="Vorige Periode">‹</button>
+            <button className="btn secondary" onClick={() => setStart(data.period.prev)} aria-label={tt('Vorige Periode')}>‹</button>
             <b>{data.period.label}</b>
-            <button className="btn secondary" onClick={() => setStart(data.period.next)} aria-label="Nächste Periode">›</button>
-            <span className="muted small">{Math.round(data.period.elapsed_pct)} % der Zeit sind um{data.period.days_left ? ` · noch ${data.period.days_left} Tage` : ''}</span>
+            <button className="btn secondary" onClick={() => setStart(data.period.next)} aria-label={tt('Nächste Periode')}>›</button>
+            <span className="muted small">{tt('{round} % der Zeit sind um', { round: Math.round(data.period.elapsed_pct) })}{data.period.days_left ? tt(' · noch {days_left} Tage', { days_left: data.period.days_left }) : ''}</span>
           </>
         )}
         <span className="grow" />
@@ -134,7 +137,7 @@ export function SalesQuotas() {
         </div>
         {data?.can_edit && (
           <button className="btn" onClick={() => setEdit(true)} data-tour="quota-edit">
-            Quoten festlegen
+            {tt('Quoten festlegen')}
           </button>
         )}
       </div>
@@ -143,30 +146,30 @@ export function SalesQuotas() {
       ) : (
         <>
           {data.visibility === 'off' ? (
-            <Empty>Die Quoten sind in diesem Sub-Account ausgeschaltet.</Empty>
+            <Empty>{tt('Die Quoten sind in diesem Sub-Account ausgeschaltet.')}</Empty>
           ) : (
             <>
-              <Section title="Personen" tour="quota-table">{rows('user').length ? table(rows('user')) : <Empty action={data.can_edit && <button className="btn" onClick={() => setEdit(true)}>Quoten festlegen</button>}>Für diese Periode gibt es noch keine Quoten und nichts Gewonnenes.</Empty>}</Section>
+              <Section title={tt('Personen')} tour="quota-table">{rows('user').length ? table(rows('user')) : <Empty action={data.can_edit && <button className="btn" onClick={() => setEdit(true)}>{tt('Quoten festlegen')}</button>}>{tt('Für diese Periode gibt es noch keine Quoten und nichts Gewonnenes.')}</Empty>}</Section>
               {rows('team').length > 0 && <Section title="Teams">{table(rows('team'))}</Section>}
-              <Section title="Rangliste" tour="quota-board">
+              <Section title={tt('Rangliste')} tour="quota-board">
                 {!board.length ? (
-                  <p className="muted">Noch nichts gewonnen in dieser Periode.</p>
+                  <p className="muted">{tt('Noch nichts gewonnen in dieser Periode.')}</p>
                 ) : (
                   <table className="sales-table">
                     <tbody>
                       {board.map((r: any) => (
                         <tr key={r.subject_id} className={r.me ? 'me' : ''}>
                           <td style={{ width: 44 }}><b>{r.rank}.</b></td>
-                          <td>{r.name}{r.me ? ' (du)' : ''}</td>
+                          <td>{r.name}{r.me ? tt(' (du)') : ''}</td>
                           <td style={{ minWidth: 140 }}><Bar pct={(r.achieved / top) * 100} /></td>
                           <td className="r"><b>{fmt(r.achieved)}</b></td>
-                          <td className="r muted small">{r.attainment_pct === null ? 'keine Quote' : `${r.attainment_pct} %`}</td>
+                          <td className="r muted small">{r.attainment_pct === null ? tt('keine Quote') : `${r.attainment_pct} %`}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 )}
-                {lb.data && lb.data.visibility === 'own' && <p className="muted small">Du siehst nur deine Platzierung – {lb.data.total} Personen sind in der Rangliste.</p>}
+                {lb.data && lb.data.visibility === 'own' && <p className="muted small">{tt('Du siehst nur deine Platzierung – {total} Personen sind in der Rangliste.', { total: lb.data.total })}</p>}
               </Section>
             </>
           )}

@@ -6,6 +6,7 @@ import { act, navigate } from '../ui';
 import { JOURNEY, TOURS, composeSteps, resumeIndex, tourById, toursForPath, type Access, type RunStep } from './catalog';
 import { academyState, clearActive, createSandbox, loadAcademy, saveProgress, useAcademy } from './progress';
 import type { Tour } from './types';
+import { useT } from '../i18n';
 
 /**
  * The tour layer: a dimmed backdrop with a cut-out around the highlighted element, a card with
@@ -222,6 +223,7 @@ export function TourLayer() {
 }
 
 function StepView({ tour, steps, index, step, session, sandbox, onNext, onBack, onClose }: { tour: Tour; steps: RunStep[]; index: number; step: RunStep; session: Session; sandbox: { id: string; name: string } | null; onNext: () => void; onBack: () => void; onClose: () => void }) {
+  const tt = useT('x_tours_b');
   const [el, setEl] = useState<HTMLElement | null>(null);
   const [rect, setRect] = useState<Rect | null>(null);
   const [missing, setMissing] = useState(false);
@@ -470,10 +472,10 @@ function StepView({ tour, steps, index, step, session, sandbox, onNext, onBack, 
       >
         <div className="tour-head">
           <span className="tour-kicker">
-            <Icon name={tour.icon} size={14} /> {tour.chapter ? `Kapitel ${tour.chapter} · ` : ''}
+            <Icon name={tour.icon} size={14} /> {tour.chapter ? tt('Kapitel {chapter} · ', { chapter: tour.chapter }) : ''}
             {tour.title}
           </span>
-          <button className="icon-btn" onClick={onClose} aria-label="Tour schließen" title="Schließen (Esc)">
+          <button className="icon-btn" onClick={onClose} aria-label={tt('Tour schließen')} title={tt('Schließen (Esc)')}>
             ✕
           </button>
         </div>
@@ -484,15 +486,15 @@ function StepView({ tour, steps, index, step, session, sandbox, onNext, onBack, 
           <div className="tour-context">
             {inSandbox ? (
               <p className="tour-ok">
-                <Icon name="ok" size={15} /> Du bist schon in der Übungs-Firma – perfekt.
+                <Icon name="ok" size={15} /> {tt('Du bist schon in der Übungs-Firma – perfekt.')}
               </p>
             ) : (
               <>
                 <button className="btn" disabled={busy} onClick={toSandbox}>
-                  <Icon name="academy" size={15} /> {sandbox ? 'In die Übungs-Firma wechseln' : 'Übungs-Firma anlegen & wechseln'}
+                  <Icon name="academy" size={15} /> {sandbox ? tt('In die Übungs-Firma wechseln') : tt('Übungs-Firma anlegen & wechseln')}
                 </button>
                 <button className="btn ghost small" onClick={advance}>
-                  Hier im aktuellen Account weiter
+                  {tt('Hier im aktuellen Account weiter')}
                 </button>
               </>
             )}
@@ -517,7 +519,7 @@ function StepView({ tour, steps, index, step, session, sandbox, onNext, onBack, 
                   navigate(`academy/docs/${tour.docs!.file}${tour.docs!.anchor ? `#${tour.docs!.anchor}` : ''}`);
                 }}
               >
-                <Icon name="doc" size={14} /> Mehr dazu: {tour.docs.label}
+                <Icon name="doc" size={14} /> {tt('Mehr dazu: {label}', { label: tour.docs.label })}
               </a>
             )}
           </div>
@@ -529,11 +531,11 @@ function StepView({ tour, steps, index, step, session, sandbox, onNext, onBack, 
             <span>{richText(step.do, brand)}</span>
           </div>
         )}
-        {waiting && !missing && <div className="tour-wait">{kind === 'fill' ? 'Tippe einfach los – oder klick auf „Weiter“.' : kind === 'wait' ? 'Ich warte, bis es geklappt hat …' : 'Ich warte auf deinen Klick … oder „Weiter“.'}</div>}
-        {missing && step.target && <div className="tour-missing">{step.missing ?? 'Das markierte Element ist hier gerade nicht zu sehen (vielleicht ist die Liste noch leer oder der Bereich nicht eingerichtet). Kein Problem – du kannst einfach weitermachen.'}</div>}
+        {waiting && !missing && <div className="tour-wait">{kind === 'fill' ? tt('Tippe einfach los – oder klick auf „Weiter“.') : kind === 'wait' ? tt('Ich warte, bis es geklappt hat …') : tt('Ich warte auf deinen Klick … oder „Weiter“.')}</div>}
+        {missing && step.target && <div className="tour-missing">{step.missing ?? tt('Das markierte Element ist hier gerade nicht zu sehen (vielleicht ist die Liste noch leer oder der Bereich nicht eingerichtet). Kein Problem – du kannst einfach weitermachen.')}</div>}
         {step.demo && el && !done && (
           <button className="btn small secondary tour-demo" onClick={doIt}>
-            <Icon name="sparkles" size={14} /> {step.demo.label ?? 'Mach’s für mich'}
+            <Icon name="sparkles" size={14} /> {step.demo.label ?? tt('Mach’s für mich')}
           </button>
         )}
 
@@ -548,29 +550,29 @@ function StepView({ tour, steps, index, step, session, sandbox, onNext, onBack, 
           </div>
           <div className="tour-btns">
             {!last && (
-              <button className="btn ghost small" onClick={skipChapter} title={nextTour ? 'Zum nächsten Kapitel springen' : 'Tour beenden – Fortschritt bleibt gespeichert'}>
-                Überspringen
+              <button className="btn ghost small" onClick={skipChapter} title={nextTour ? tt('Zum nächsten Kapitel springen') : tt('Tour beenden – Fortschritt bleibt gespeichert')}>
+                {tt('Überspringen')}
               </button>
             )}
             {index > 0 && !last && (
               <button className="btn secondary small" onClick={onBack}>
-                Zurück
+                {tt('Zurück')}
               </button>
             )}
             {last ? (
               <>
                 {nextTour && (
                   <button className="btn small" onClick={() => startTour(nextTour.id, 0)}>
-                    Weiter: Kapitel {nextTour.chapter} →
+                    {tt('Weiter: Kapitel {chapter} →', { chapter: (nextTour.chapter) ?? '' })}
                   </button>
                 )}
                 <button className={`btn small${nextTour ? ' secondary' : ''}`} onClick={onClose}>
-                  Fertig
+                  {tt('Fertig')}
                 </button>
               </>
             ) : step.special === 'context' && !inSandbox ? null : (
               <button className={`btn small${waiting ? ' secondary' : ''}`} onClick={weiter} autoFocus>
-                Weiter →
+                {tt('Weiter →')}
               </button>
             )}
           </div>

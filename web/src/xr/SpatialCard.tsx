@@ -6,6 +6,7 @@ import { spatialOf, update } from '../theme/store';
 import { currentXr, hasWebGL2, xrSupport, type XrSupport } from './detect';
 import { INSTALL_HINTS, hintFor } from './install';
 import './card.css';
+import { useT } from '../i18n';
 
 /**
  * Einstellungen → Darstellung → Raum-Modus: the switch (Automatisch / An / Aus), what this device is, and the way to the rest of the XR
@@ -20,6 +21,7 @@ const LABEL: Record<SpatialMode, [string, string]> = {
 };
 
 export function SpatialCard({ p }: { p: Prefs }) {
+  const tt = useT('x_misc');
   const device = currentXr();
   const [support, setSupport] = useState<XrSupport | null>(null);
   useEffect(() => {
@@ -34,12 +36,12 @@ export function SpatialCard({ p }: { p: Prefs }) {
   return (
     <div className="card ap-section" data-tour="appearance-spatial">
       <h2>
-        Raum-Modus <span className="badge blue">{on ? 'aktiv' : 'aus'}</span>
+        {tt('Raum-Modus')} <span className="badge blue">{on ? 'aktiv' : 'aus'}</span>
       </h2>
       <p className="muted small" style={{ marginTop: -4 }}>
-        Für Brillen und Headsets: bedienbar mit Blick und Pinch oder mit Controllern. Ziele von mindestens 60 px, mehr Abstand, größere Schrift, ein sanftes Leuchten beim Anschauen, nichts ist nur beim Darüberfahren erreichbar – und Glasflächen, deren Text lesbar bleibt (Kontrast AA).
+        {tt('Für Brillen und Headsets: bedienbar mit Blick und Pinch oder mit Controllern. Ziele von mindestens 60 px, mehr Abstand, größere Schrift, ein sanftes Leuchten beim Anschauen, nichts ist nur beim Darüberfahren erreichbar – und Glasflächen, deren Text lesbar bleibt (Kontrast AA).')}
       </p>
-      <div className="ap-seg" role="radiogroup" aria-label="Raum-Modus">
+      <div className="ap-seg" role="radiogroup" aria-label={tt('Raum-Modus')}>
         {SPATIAL_MODES.map((m) => (
           <button key={m} role="radio" aria-checked={p.spatial === m} className={p.spatial === m ? 'on' : ''} onClick={() => void update({ spatial: m })} data-tour={`spatial-${m}`}>
             {LABEL[m][0]}
@@ -49,24 +51,24 @@ export function SpatialCard({ p }: { p: Prefs }) {
       <p className="muted small">{LABEL[p.spatial][1]}</p>
       <ul className="sp-facts small">
         <li>
-          <Icon name="glasses" size={14} /> Dieses Gerät: {device ? <b>{device.label}</b> : 'kein XR-Gerät erkannt'}
-          {device && p.spatial === 'auto' ? ' – der Raum-Modus ist deshalb an.' : ''}
+          <Icon name="glasses" size={14} /> {tt('Dieses Gerät:')} {device ? <b>{device.label}</b> : tt('kein XR-Gerät erkannt')}
+          {device && p.spatial === 'auto' ? tt(' – der Raum-Modus ist deshalb an.') : ''}
         </li>
         <li>
-          <Icon name="sparkles" size={14} /> WebXR-Sitzung:{' '}
-          {support === null ? 'wird geprüft …' : support.vr || support.ar ? <b>{[support.vr && 'VR', support.ar && 'AR'].filter(Boolean).join(' und ')} möglich</b> : 'nicht verfügbar – Boards und Canvas zeigen die 3D-Vorschau im Browser' + (hasWebGL2() ? '' : ' (dieser Browser kann auch kein WebGL2)')}
+          <Icon name="sparkles" size={14} /> {tt('WebXR-Sitzung:')}{' '}
+          {support === null ? tt('wird geprüft …') : support.vr || support.ar ? <b>{[support.vr && 'VR', support.ar && 'AR'].filter(Boolean).join(' und ')} {tt('möglich')}</b> : tt('nicht verfügbar – Boards und Canvas zeigen die 3D-Vorschau im Browser') + (hasWebGL2() ? '' : tt(' (dieser Browser kann auch kein WebGL2)'))}
         </li>
       </ul>
       <div className="actions" style={{ marginTop: 10 }}>
         <button type="button" className="btn secondary" onClick={() => navigate('workspace')} data-tour="appearance-workspace">
-          <Icon name="workspace" size={16} /> Arbeitsfläche öffnen
+          <Icon name="workspace" size={16} /> {tt('Arbeitsfläche öffnen')}
         </button>
         <button type="button" className="btn secondary" onClick={() => navigate('boards')}>
-          <Icon name="boards" size={16} /> Boards: „In XR öffnen“
+          <Icon name="boards" size={16} /> {tt('Boards: „In XR öffnen“')}
         </button>
       </div>
       <details className="sp-install" style={{ marginTop: 14 }} open={!!mine}>
-        <summary>App auf dem Headset installieren</summary>
+        <summary>{tt('App auf dem Headset installieren')}</summary>
         {(mine ? [mine, ...INSTALL_HINTS.filter((h) => h.id !== mine.id)] : INSTALL_HINTS).map((h) => (
           <div key={h.id} className={`sp-install-item${h === mine ? ' mine' : ''}`}>
             <b>{h.title}</b>

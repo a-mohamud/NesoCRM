@@ -8,6 +8,7 @@ import { MoreFields } from '../areas/fields';
 import { AiSubscriptions } from './AiSubscriptions';
 import { Gallery, ModelsModal } from './AiGallery';
 import '../agent/agent.css';
+import { useT } from '../i18n';
 
 /**
  * KI-Anbieter (BYOK): bring your own key for any model – text (OpenAI, Anthropic, Gemini, OpenRouter,
@@ -50,6 +51,7 @@ function Caps({ caps, labels, on, onToggle }: { caps: string[]; labels: Record<s
 
 /** Model field: search the live list (where the provider has one) or type any model id. */
 export function ModelPicker({ value, onChange, connectionId, suggestions, placeholder }: { value: string; onChange: (v: string) => void; connectionId?: string; suggestions: string[]; placeholder?: string }) {
+  const tt = useT('x_ai');
   const [live, setLive] = useState<string[] | null>(null);
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -63,13 +65,13 @@ export function ModelPicker({ value, onChange, connectionId, suggestions, placeh
       setLive(r.models);
       // "$0,80 / $3,20 je 1 Mio." next to the model id where the provider's list states prices
       setPrices(Object.fromEntries((r.details ?? []).filter((d: any) => d.in !== undefined).map((d: any) => [d.id, d.free ? 'kostenlos' : `$${d.in} / $${d.out} je 1 Mio. Tokens`])));
-      if (r.error) toast(`Modell-Liste nicht verfügbar: ${r.error}`);
+      if (r.error) toast(tt('Modell-Liste nicht verfügbar: {error}', { error: r.error }));
     }
   };
   const list = [...new Set([...(live ?? []), ...suggestions])];
   return (
     <div className="row" style={{ alignItems: 'center', gap: 6 }}>
-      <input className="grow" value={value} onChange={(e) => onChange(e.target.value)} list={id} placeholder={placeholder ?? 'Modell-ID (Freitext erlaubt)'} style={{ flex: '1 1 200px' }} />
+      <input className="grow" value={value} onChange={(e) => onChange(e.target.value)} list={id} placeholder={placeholder ?? tt('Modell-ID (Freitext erlaubt)')} style={{ flex: '1 1 200px' }} />
       <datalist id={id}>
         {list.map((m) => (
           <option key={m} value={m} label={prices[m] ? `${m} · ${prices[m]}` : undefined} />
@@ -77,7 +79,7 @@ export function ModelPicker({ value, onChange, connectionId, suggestions, placeh
       </datalist>
       {connectionId && (
         <button type="button" className="btn small secondary" onClick={() => void load(!!live)} disabled={loading}>
-          {loading ? '…' : live ? `${live.length} Modelle ↻` : 'Liste laden'}
+          {loading ? '…' : live ? tt('{length} Modelle ↻', { length: live.length }) : tt('Liste laden')}
         </button>
       )}
     </div>
@@ -85,6 +87,7 @@ export function ModelPicker({ value, onChange, connectionId, suggestions, placeh
 }
 
 function ConnectionForm({ preset, conn, meta, agency, onClose, onSaved }: { preset: any; conn?: any; meta: any; agency: boolean; onClose: () => void; onSaved: () => void }) {
+  const tt = useT('x_ai');
   const session = useSession();
   const admin = session.user.role === 'admin';
   const capLabels = Object.fromEntries(meta.capabilities.map((c: any) => [c.id, c.label]));
@@ -132,32 +135,32 @@ function ConnectionForm({ preset, conn, meta, agency, onClose, onSaved }: { pres
     }
   };
   const save = async () => {
-    const r = await act(() => (conn ? api.patch(`/api/ai-connections/${conn.id}`, body()) : api.post('/api/ai-connections', body())), 'Gespeichert');
+    const r = await act(() => (conn ? api.patch(`/api/ai-connections/${conn.id}`, body()) : api.post('/api/ai-connections', body())), tt('Gespeichert'));
     if (r) onSaved();
   };
   return (
     <Modal
-      title={`${conn ? 'Verbindung bearbeiten' : 'Verbinden'}: ${preset.label}`}
+      title={`${conn ? tt('Verbindung bearbeiten') : tt('Verbinden')}: ${preset.label}`}
       onClose={onClose}
       wide
       footer={
         <>
           <button className="btn secondary" onClick={runTest} disabled={testing} data-tour="aic-test">
-            {testing ? 'Teste …' : 'Verbindung testen'}
+            {testing ? tt('Teste …') : tt('Verbindung testen')}
           </button>
           <button className="btn" onClick={save}>
-            Speichern
+            {tt('Speichern')}
           </button>
         </>
       }
     >
       {preset.note && <p className="small muted">{preset.note}</p>}
       <div className="grid2">
-        <Field label="Name (optional)">
+        <Field label={tt('Name (optional)')}>
           <Input value={f.label} onChange={(v) => set({ label: v })} placeholder={preset.label} />
         </Field>
         {!conn && admin ? (
-          <Field label="Gilt für">
+          <Field label={tt('Gilt für')}>
             <Select value={f.scope} onChange={(v) => set({ scope: v })} options={[['location', 'Diesen Sub-Account'], ['agency', 'Alle Sub-Accounts (Agentur)']]} />
           </Field>
         ) : (
@@ -165,20 +168,20 @@ function ConnectionForm({ preset, conn, meta, agency, onClose, onSaved }: { pres
         )}
       </div>
       {preset.custom_url && (
-        <Field label="Adresse (Base URL)" hint={preset.local ? 'Läuft der Server auf einem anderen Rechner, dessen Adresse eintragen. Lokale Netze gibt ein Agentur-Admin frei.' : 'z. B. https://…/v1'}>
+        <Field label={tt('Adresse (Base URL)')} hint={preset.local ? tt('Läuft der Server auf einem anderen Rechner, dessen Adresse eintragen. Lokale Netze gibt ein Agentur-Admin frei.') : tt('z. B. https://…/v1')}>
           <Input value={f.base_url} onChange={(v) => set({ base_url: v })} placeholder={preset.base_url || 'https://…/v1'} />
         </Field>
       )}
       {(preset.key_required || preset.auth !== 'none' || f.auth_style !== 'none') && (
         <Field
-          label="API-Schlüssel"
+          label={tt('API-Schlüssel')}
           tour="aic-key"
           hint={
             <>
-              {conn?.key_set ? `Hinterlegt (${conn.key_hint}) – leer lassen, um ihn zu behalten. ` : ''}Wird verschlüsselt gespeichert und nie wieder angezeigt.{' '}
+              {conn?.key_set ? tt('Hinterlegt ({key_hint}) – leer lassen, um ihn zu behalten. ', { key_hint: conn.key_hint }) : ''}{tt('Wird verschlüsselt gespeichert und nie wieder angezeigt.')}{' '}
               {preset.key_url && (
                 <a href={preset.key_url} target="_blank" rel="noreferrer">
-                  Schlüssel holen
+                  {tt('Schlüssel holen')}
                 </a>
               )}{' '}
               <SignupLink id={preset.id} />
@@ -188,77 +191,77 @@ function ConnectionForm({ preset, conn, meta, agency, onClose, onSaved }: { pres
           <Input type="password" autoComplete="off" value={f.api_key} onChange={(v) => set({ api_key: v })} placeholder={preset.key_hint} />
         </Field>
       )}
-      <Field label="Fähigkeiten">
+      <Field label={tt('Fähigkeiten')}>
         <Caps caps={meta.capabilities.map((c: any) => c.id).filter((c: string) => preset.wire !== 'http' || c !== 'text')} labels={capLabels} on={f.capabilities} onToggle={(c) => set({ capabilities: f.capabilities.includes(c) ? f.capabilities.filter((x: string) => x !== c) : [...f.capabilities, c] })} />
       </Field>
       {f.capabilities.map((c: string) => (
-        <Field key={c} label={`Standard-Modell: ${capLabels[c] ?? c}`}>
-          <ModelPicker value={f.models[c] ?? ''} onChange={(v) => set({ models: { ...f.models, [c]: v } })} connectionId={conn?.id} suggestions={preset.models[c] ?? preset.models.text ?? []} placeholder={(preset.models[c] ?? [])[0] ?? (preset.id === 'azure' ? 'Name des Deployments' : 'Modell-ID')} />
+        <Field key={c} label={tt('Standard-Modell: {v}', { v: capLabels[c] ?? c })}>
+          <ModelPicker value={f.models[c] ?? ''} onChange={(v) => set({ models: { ...f.models, [c]: v } })} connectionId={conn?.id} suggestions={preset.models[c] ?? preset.models.text ?? []} placeholder={(preset.models[c] ?? [])[0] ?? (preset.id === 'azure' ? tt('Name des Deployments') : tt('Modell-ID'))} />
         </Field>
       ))}
-      <Check checked={f.enabled} onChange={(v) => set({ enabled: v })} label="Aktiv" />
+      <Check checked={f.enabled} onChange={(v) => set({ enabled: v })} label={tt('Aktiv')} />
       <button type="button" className="btn small ghost" onClick={() => setAdvanced(!advanced)}>
-        {advanced ? '▾' : '▸'} Erweitert (Anmeldung, Header, Preise)
+        {advanced ? '▾' : '▸'} {tt('Erweitert (Anmeldung, Header, Preise)')}
       </button>
       {advanced && (
         <div className="card" style={{ marginTop: 8 }}>
           <div className="grid2">
-            <Field label="Anmeldung">
+            <Field label={tt('Anmeldung')}>
               <Select value={f.auth_style} onChange={(v) => set({ auth_style: v })} options={AUTH.filter(([k]) => k !== 'query' || preset.wire === 'http')} />
             </Field>
             {(f.auth_style === 'header' || f.auth_style === 'query') && (
-              <Field label={f.auth_style === 'query' ? 'Name des URL-Parameters' : 'Header-Name'}>
+              <Field label={f.auth_style === 'query' ? tt('Name des URL-Parameters') : tt('Header-Name')}>
                 <Input value={f.auth_header} onChange={(v) => set({ auth_header: v })} placeholder={f.auth_style === 'query' ? 'key' : 'api-key'} />
               </Field>
             )}
           </div>
           {preset.wire === 'http' && (
-            <Field label="Webhook-Geheimnis (optional)" hint={`${conn?.webhook_secret_set ? 'Hinterlegt – leer lassen, um es zu behalten. ' : ''}Damit prüft HyperLevel die Signatur von Rückmeldungen des Anbieters (bei kie.ai der „webhookHmacKey“). Verschlüsselt gespeichert, nie wieder angezeigt.`}>
+            <Field label={tt('Webhook-Geheimnis (optional)')} hint={`${conn?.webhook_secret_set ? tt('Hinterlegt – leer lassen, um es zu behalten. ') : ''}Damit prüft HyperLevel die Signatur von Rückmeldungen des Anbieters (bei kie.ai der „webhookHmacKey“). Verschlüsselt gespeichert, nie wieder angezeigt.`}>
               <Input type="password" autoComplete="off" value={f.webhook_secret} onChange={(v) => set({ webhook_secret: v })} />
             </Field>
           )}
           {preset.id === 'custom_http' && (
-            <Field label="HTTP-Vorlage (JSON, optional)" hint="url, method, headers, body mit {{prompt}} usw., result_path, poll … – Aufbau siehe Doku „KI-Studio“. Ohne Vorlage nimmt das KI-Studio eine Vorlage aus „Eigene Anbieter“.">
+            <Field label={tt('HTTP-Vorlage (JSON, optional)')} hint={tt('url, method, headers, body mit {{prompt}} usw., result_path, poll … – Aufbau siehe Doku „KI-Studio“. Ohne Vorlage nimmt das KI-Studio eine Vorlage aus „Eigene Anbieter“.')}>
               <Textarea rows={6} value={f.template} onChange={(v) => set({ template: v })} placeholder='{"url": "https://api.example.com/v1/generate", "body": "{\"prompt\": \"{{prompt}}\"}", "result_path": "images[0].url"}' style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12 }} />
             </Field>
           )}
-          <Field label="Zusätzliche Header" hint="z. B. OpenAI-Organization oder ein Header deines Proxys. Werte werden verschlüsselt und nicht wieder angezeigt (leer = behalten).">
+          <Field label={tt('Zusätzliche Header')} hint={tt('z. B. OpenAI-Organization oder ein Header deines Proxys. Werte werden verschlüsselt und nicht wieder angezeigt (leer = behalten).')}>
             {f.headers.map((h: any, i: number) => (
               <div key={i} className="aic-headers">
-                <Input value={h.name} onChange={(v) => set({ headers: f.headers.map((x: any, j: number) => (j === i ? { ...x, name: v } : x)) })} placeholder="Header" />
-                <Input value={h.value} onChange={(v) => set({ headers: f.headers.map((x: any, j: number) => (j === i ? { ...x, value: v } : x)) })} placeholder={conn?.extra_header_names?.includes(h.name) ? '(hinterlegt)' : 'Wert'} />
-                <button className="icon-btn" aria-label="Header entfernen" onClick={() => set({ headers: f.headers.filter((_: any, j: number) => j !== i) })}>
+                <Input value={h.name} onChange={(v) => set({ headers: f.headers.map((x: any, j: number) => (j === i ? { ...x, name: v } : x)) })} placeholder={tt('Header')} />
+                <Input value={h.value} onChange={(v) => set({ headers: f.headers.map((x: any, j: number) => (j === i ? { ...x, value: v } : x)) })} placeholder={conn?.extra_header_names?.includes(h.name) ? tt('(hinterlegt)') : tt('Wert')} />
+                <button className="icon-btn" aria-label={tt('Header entfernen')} onClick={() => set({ headers: f.headers.filter((_: any, j: number) => j !== i) })}>
                   ✕
                 </button>
               </div>
             ))}
             <button type="button" className="btn small secondary" onClick={() => set({ headers: [...f.headers, { name: '', value: '' }] })}>
-              + Header
+              {tt('+ Header')}
             </button>
           </Field>
           {f.capabilities.includes('text') && (
             <div className="grid2">
-              <Field label="Preis Eingabe ($ je 1 Mio. Tokens)" hint={`Standard: ${preset.price.input}`}>
+              <Field label={tt('Preis Eingabe ($ je 1 Mio. Tokens)')} hint={tt('Standard: {input}', { input: preset.price.input })}>
                 <Input type="number" step="0.01" value={f.options.price_in} onChange={(v) => set({ options: { ...f.options, price_in: v } })} />
               </Field>
-              <Field label="Preis Ausgabe ($ je 1 Mio. Tokens)" hint={`Standard: ${preset.price.output}`}>
+              <Field label={tt('Preis Ausgabe ($ je 1 Mio. Tokens)')} hint={tt('Standard: {output}', { output: preset.price.output })}>
                 <Input type="number" step="0.01" value={f.options.price_out} onChange={(v) => set({ options: { ...f.options, price_out: v } })} />
               </Field>
             </div>
           )}
           {preset.id === 'azure' && (
-            <Field label="API-Version" hint="Standard 2024-10-21; bei einer Adresse mit /openai/v1 egal.">
+            <Field label={tt('API-Version')} hint={tt('Standard 2024-10-21; bei einer Adresse mit /openai/v1 egal.')}>
               <Input value={f.options.api_version} onChange={(v) => set({ options: { ...f.options, api_version: v } })} />
             </Field>
           )}
-          {admin && preset.custom_url && <Check checked={f.options.allow_private} onChange={(v) => set({ options: { ...f.options, allow_private: v } })} label="Lokales Netz erlauben (z. B. Ollama auf diesem Server oder im LAN) – nur Agentur-Admins" />}
+          {admin && preset.custom_url && <Check checked={f.options.allow_private} onChange={(v) => set({ options: { ...f.options, allow_private: v } })} label={tt('Lokales Netz erlauben (z. B. Ollama auf diesem Server oder im LAN) – nur Agentur-Admins')} />}
         </div>
       )}
       {test && (
         <div className={`agent-${test.ok ? 'notice' : 'error'}`} style={{ marginTop: 10 }}>
           {test.message}
-          {test.models?.length ? <div className="muted small">{test.models.length} Modelle gefunden.</div> : null}
-          {test.tools === true && <div className="muted small">Werkzeug-Aufrufe funktionieren – geeignet für den KI-Agenten.</div>}
+          {test.models?.length ? <div className="muted small">{tt('{length} Modelle gefunden.', { length: test.models.length })}</div> : null}
+          {test.tools === true && <div className="muted small">{tt('Werkzeug-Aufrufe funktionieren – geeignet für den KI-Agenten.')}</div>}
         </div>
       )}
     </Modal>
@@ -266,27 +269,28 @@ function ConnectionForm({ preset, conn, meta, agency, onClose, onSaved }: { pres
 }
 
 function Routing({ data, meta, agency, onChange }: { data: any; meta: any; agency: boolean; onChange: () => void }) {
+  const tt = useT('x_ai');
   const session = useSession();
   const admin = session.user.role === 'admin';
   const [scope, setScope] = useState<'location' | 'agency'>(agency ? 'agency' : 'location');
   const routing = scope === 'agency' ? data.routing.agency : data.routing.location;
   const save = async (usage: string, connection_id: string, model = '', fallbacks?: string) => {
-    if (await act(() => api.put('/api/ai-connections/routing', { scope, usage, connection_id, model, ...(fallbacks !== undefined ? { fallbacks } : {}) }), 'Gespeichert')) onChange();
+    if (await act(() => api.put('/api/ai-connections/routing', { scope, usage, connection_id, model, ...(fallbacks !== undefined ? { fallbacks } : {}) }), tt('Gespeichert'))) onChange();
   };
   return (
     <div className="card" data-tour="aic-routing">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>Wofür welches Modell?</h2>
+        <h2 style={{ margin: 0 }}>{tt('Wofür welches Modell?')}</h2>
         {admin && !agency && <Select value={scope} onChange={(v) => setScope(v as any)} options={[['location', 'Dieser Sub-Account'], ['agency', 'Agentur-Standard']]} />}
       </div>
-      <p className="muted small">„Automatisch“ nimmt die erste passende Verbindung (Sub-Account vor Agentur). Schnelle KI-Texte und Zusammenfassungen bleiben ohne Zuordnung beim Anbieter des KI-Assistenten.</p>
+      <p className="muted small">{tt('„Automatisch“ nimmt die erste passende Verbindung (Sub-Account vor Agentur). Schnelle KI-Texte und Zusammenfassungen bleiben ohne Zuordnung beim Anbieter des KI-Assistenten.')}</p>
       <table className="aic-routing">
         <thead>
           <tr>
-            <th>Verwendung</th>
-            <th>Verbindung</th>
-            <th>Modell</th>
-            <th>Aktuell</th>
+            <th>{tt('Verwendung')}</th>
+            <th>{tt('Verbindung')}</th>
+            <th>{tt('Modell')}</th>
+            <th>{tt('Aktuell')}</th>
           </tr>
         </thead>
         <tbody>
@@ -301,16 +305,16 @@ function Routing({ data, meta, agency, onChange }: { data: any; meta: any; agenc
                   <Select value={r?.connection_id ?? ''} onChange={(v) => void save(u.id, v)} options={[['', 'Automatisch'], ...options.map((c: any) => [c.id, `${c.label}${c.scope === 'agency' && scope === 'location' ? ' (Agentur)' : ''}`] as [string, string])]} />
                 </td>
                 <td>
-                  {r?.connection_id ? <input key={`${r.connection_id}:${r.model ?? ''}`} defaultValue={r.model ?? ''} placeholder="Standard der Verbindung" onBlur={(e) => e.target.value.trim() !== (r.model ?? '') && void save(u.id, r.connection_id, e.target.value.trim())} /> : <span className="muted small">–</span>}
+                  {r?.connection_id ? <input key={`${r.connection_id}:${r.model ?? ''}`} defaultValue={r.model ?? ''} placeholder={tt('Standard der Verbindung')} onBlur={(e) => e.target.value.trim() !== (r.model ?? '') && void save(u.id, r.connection_id, e.target.value.trim())} /> : <span className="muted small">–</span>}
                   {r?.connection_id && u.capability === 'text' && (
                     // Ersatzmodelle (docs/agent.md#ersatzmodelle): tried in order when the model fails – expert setting, folded in Einfach-Modus
-                    <MoreFields id={`aic-fallbacks-${scope}-${u.id}`} values={[r.fallbacks?.length ? 1 : '']} label="Ersatzmodelle">
+                    <MoreFields id={`aic-fallbacks-${scope}-${u.id}`} values={[r.fallbacks?.length ? 1 : '']} label={tt('Ersatzmodelle')}>
                       <input
                         key={`${r.connection_id}:fb:${(r.fallbacks ?? []).join(',')}`}
                         defaultValue={(r.fallbacks ?? []).join(', ')}
-                        placeholder="z. B. claude-sonnet-5, claude-haiku-5-5"
-                        aria-label="Ersatzmodelle, durch Komma getrennt"
-                        title="Fällt das Modell aus (Überlastung, 5xx, 429), versucht der Agent diese Modelle derselben Verbindung der Reihe nach – danach die anderen Text-Verbindungen. Leer = Standardreihenfolge des Anbieters."
+                        placeholder={tt('z. B. claude-sonnet-5, claude-haiku-5-5')}
+                        aria-label={tt('Ersatzmodelle, durch Komma getrennt')}
+                        title={tt('Fällt das Modell aus (Überlastung, 5xx, 429), versucht der Agent diese Modelle derselben Verbindung der Reihe nach – danach die anderen Text-Verbindungen. Leer = Standardreihenfolge des Anbieters.')}
                         onBlur={(e) => e.target.value.trim() !== (r.fallbacks ?? []).join(', ') && void save(u.id, r.connection_id, r.model ?? '', e.target.value.trim())}
                       />
                     </MoreFields>
@@ -327,6 +331,7 @@ function Routing({ data, meta, agency, onChange }: { data: any; meta: any; agenc
 }
 
 export function AiConnections({ agency = false }: { agency?: boolean }) {
+  const tt = useT('x_ai');
   const meta = useLoad(() => api.get('/api/ai-connections/presets'), []);
   const data = useLoad(() => api.get('/api/ai-connections'), []);
   const [form, setForm] = useState<{ preset: any; conn?: any } | null>(null);
@@ -345,11 +350,11 @@ export function AiConnections({ agency = false }: { agency?: boolean }) {
   return (
     <>
       <p className="muted">
-        Bring your own key: Verbinde jedes Modell mit deinem eigenen Schlüssel – Text-Modelle für KI-Agent und KI-Assistent, Bild-, Video- und Audio-Anbieter für Medien. Schlüssel werden verschlüsselt gespeichert und nie wieder angezeigt; die Kosten laufen über dein Konto beim Anbieter.
+        {tt('Bring your own key: Verbinde jedes Modell mit deinem eigenen Schlüssel – Text-Modelle für KI-Agent und KI-Assistent, Bild-, Video- und Audio-Anbieter für Medien. Schlüssel werden verschlüsselt gespeichert und nie wieder angezeigt; die Kosten laufen über dein Konto beim Anbieter.')}
       </p>
       {!agency && <AiSubscriptions onAddProvider={(id) => presetOf(id) && setForm({ preset: presetOf(id) })} />}
-      <h2>Verbunden</h2>
-      {!conns.length && <Empty>Noch nichts verbunden – wähle unten einen Anbieter.</Empty>}
+      <h2>{tt('Verbunden')}</h2>
+      {!conns.length && <Empty>{tt('Noch nichts verbunden – wähle unten einen Anbieter.')}</Empty>}
       <div className="aic-conns" data-tour="aic-list">
         {conns.map((c: any) => {
           const u = data.data.usage[c.id];
@@ -360,11 +365,11 @@ export function AiConnections({ agency = false }: { agency?: boolean }) {
                   <strong>{c.label}</strong>
                   <div className="muted small">
                     {c.provider_label}
-                    {c.scope === 'agency' ? ' · Agentur' : ' · Sub-Account'}
-                    {c.implicit ? ' · aus dem KI-Assistenten' : ''}
+                    {c.scope === 'agency' ? tt(' · Agentur') : tt(' · Sub-Account')}
+                    {c.implicit ? tt(' · aus dem KI-Assistenten') : ''}
                   </div>
                 </div>
-                {!c.enabled ? <Badge>aus</Badge> : c.status === 'ok' ? <Badge tone="green">geprüft</Badge> : c.status === 'error' ? <Badge tone="red">Fehler</Badge> : c.status === 'warning' ? <Badge tone="yellow">Hinweis</Badge> : null}
+                {!c.enabled ? <Badge>aus</Badge> : c.status === 'ok' ? <Badge tone="green">{tt('geprüft')}</Badge> : c.status === 'error' ? <Badge tone="red">{tt('Fehler')}</Badge> : c.status === 'warning' ? <Badge tone="yellow">{tt('Hinweis')}</Badge> : null}
               </div>
               <Caps caps={c.capabilities} labels={capLabels} />
               <div className="small">
@@ -378,8 +383,8 @@ export function AiConnections({ agency = false }: { agency?: boolean }) {
               </div>
               {c.status_message && <div className="muted small">{c.status_message}</div>}
               <div className="muted small">
-                {c.key_set ? `Schlüssel ${c.key_hint}` : 'ohne Schlüssel'}
-                {u ? ` · diesen Monat ${u.calls} Aufrufe, ${usd(u.cost_usd)}` : ''}
+                {c.key_set ? tt('Schlüssel {key_hint}', { key_hint: c.key_hint }) : tt('ohne Schlüssel')}
+                {u ? tt(' · diesen Monat {calls} Aufrufe, {usd}', { calls: u.calls, usd: usd(u.cost_usd) }) : ''}
               </div>
               <div className="row">
                 <button
@@ -393,26 +398,26 @@ export function AiConnections({ agency = false }: { agency?: boolean }) {
                     void data.reload();
                   }}
                 >
-                  {busy === c.id ? 'Teste …' : 'Testen'}
+                  {busy === c.id ? tt('Teste …') : tt('Testen')}
                 </button>
                 {presetOf(c.provider)?.list_models && (
                   <button className="btn small secondary" onClick={() => setModels(c)}>
-                    Modelle &amp; Preise
+                    {tt('Modelle & Preise')}
                   </button>
                 )}
                 {c.editable && (
                   <>
                     <button className="btn small secondary" onClick={() => setForm({ preset: presetOf(c.provider), conn: c })}>
-                      Bearbeiten
+                      {tt('Bearbeiten')}
                     </button>
-                    <button className="btn small ghost" onClick={async () => confirmAsk(`„${c.label}“ entfernen?`) && (await act(() => api.del(`/api/ai-connections/${c.id}`), 'Entfernt')) && data.reload()}>
-                      Entfernen
+                    <button className="btn small ghost" onClick={async () => confirmAsk(tt('„{label}“ entfernen?', { label: c.label })) && (await act(() => api.del(`/api/ai-connections/${c.id}`), tt('Entfernt'))) && data.reload()}>
+                      {tt('Entfernen')}
                     </button>
                   </>
                 )}
                 {c.implicit && (
                   <a className="btn small ghost" href="/app/settings/ai">
-                    Im KI-Assistenten ändern
+                    {tt('Im KI-Assistenten ändern')}
                   </a>
                 )}
               </div>
@@ -420,15 +425,15 @@ export function AiConnections({ agency = false }: { agency?: boolean }) {
           );
         })}
       </div>
-      <h2 style={{ marginTop: 22 }}>Anbieter hinzufügen</h2>
+      <h2 style={{ marginTop: 22 }}>{tt('Anbieter hinzufügen')}</h2>
       <Gallery presets={meta.data.presets} capLabels={capLabels} onPick={(p) => setForm({ preset: p })} onSubscription={(k) => window.dispatchEvent(new CustomEvent('pghl:ai-subscription', { detail: k }))} />
-      <p className="muted small">Amazon Bedrock, Vertex AI & Co.: über einen LiteLLM-Proxy (OpenAI-kompatibel) verbinden. Jede andere OpenAI-kompatible Adresse geht mit „Benutzerdefiniert“.</p>
+      <p className="muted small">{tt('Amazon Bedrock, Vertex AI & Co.: über einen LiteLLM-Proxy (OpenAI-kompatibel) verbinden. Jede andere OpenAI-kompatible Adresse geht mit „Benutzerdefiniert“.')}</p>
       <p className="muted small" data-tour="aic-voice-link">
-        Stimme, Spracherkennung und Telefon: Anbieter, Stimme und „Stimme testen“ gibt es unter{' '}
+        {tt('Stimme, Spracherkennung und Telefon: Anbieter, Stimme und „Stimme testen“ gibt es unter')}{' '}
         <a href="/app/settings/voice" onClick={(e) => (e.preventDefault(), navigate('settings/voice'))}>
-          Einstellungen → Stimme
+          {tt('Einstellungen → Stimme')}
         </a>
-        . Anbieter mit „Live“ können im Telefonat streamen.
+        {tt('. Anbieter mit „Live“ können im Telefonat streamen.')}
       </p>
       <div style={{ marginTop: 18 }}>
         <Routing data={data.data} meta={meta.data} agency={agency} onChange={() => void data.reload()} />

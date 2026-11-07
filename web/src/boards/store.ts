@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, currentLocation } from '../api';
 import { toastError } from '../ui';
 import type { BoardFull, BoardState, Catalogue, Spec, Viewer, WidgetData } from './types';
+import { useT } from '../i18n';
 
 /**
  * The state of one open board: the board itself, kept current by the server's event stream (so changes by other people,
@@ -19,6 +20,7 @@ export interface Live {
 }
 
 export function useBoard(id: string) {
+  const tt = useT('x_misc');
   const [board, setBoard] = useState<BoardFull | null>(null);
   const [error, setError] = useState('');
   const [viewers, setViewers] = useState<Viewer[]>([]);
@@ -73,7 +75,7 @@ export function useBoard(id: string) {
         if (!mine) setLive({ summary: d.summary, actor: d.actor, via: d.via, at: Date.now(), mine: false });
       });
       es.addEventListener('deleted', () => {
-        setError('Dieses Board wurde gelöscht.');
+        setError(tt('Dieses Board wurde gelöscht.'));
         es?.close();
       });
       es.addEventListener('access', () => void load());

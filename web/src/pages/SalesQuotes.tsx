@@ -4,6 +4,7 @@ import { Badge, Check, Copy, Empty, Field, Input, Modal, Select, Spinner, Textar
 import { Choice, LinesEditor, Section, StatusBadge, eur, fromCents, fromDraft, sumNet, toCents, toDraft, type LineDraft } from './SalesKit';
 import { Later, lazyPages } from '../lazy';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 // Internal approval (docs/sales.md#internal-approval): its own chunk, shown only where a rule or a request exists.
 const { QuoteApprovalPanel, QuoteApprovalInbox } = lazyPages(() => import('./QuoteApproval'), 'QuoteApprovalPanel', 'QuoteApprovalInbox');
@@ -28,27 +29,28 @@ interface OptionDraft {
 }
 
 function Totals({ t, currency }: { t: any; currency: string }) {
+  const tt = useT('x_finance');
   if (!t) return null;
   return (
     <div className="totals" data-tour="quote-totals">
       {t.discount_cents > 0 && (
         <div className="muted">
-          <span>Rabatte</span>
+          <span>{tt('Rabatte')}</span>
           <span>– {eur(t.discount_cents, currency)}</span>
         </div>
       )}
       <div>
-        <span>Summe netto</span>
+        <span>{tt('Summe netto')}</span>
         <span>{eur(t.net_cents, currency)}</span>
       </div>
       {t.groups.filter((g: any) => g.rate > 0).map((g: any) => (
         <div className="muted" key={g.rate}>
-          <span>USt {String(g.rate).replace('.', ',')} %</span>
+          <span>{tt('USt')} {String(g.rate).replace('.', ',')} %</span>
           <span>{eur(g.tax_cents, currency)}</span>
         </div>
       ))}
       <div className="big">
-        <span>Gesamt</span>
+        <span>{tt('Gesamt')}</span>
         <span>{eur(t.total_cents, currency)}</span>
       </div>
     </div>
@@ -56,28 +58,29 @@ function Totals({ t, currency }: { t: any; currency: string }) {
 }
 
 function SendDialog({ quote, onClose, onSent }: { quote: any; onClose: () => void; onSent: () => void }) {
+  const tt = useT('x_finance');
   const [deliver, setDeliver] = useState(!!quote.contact?.email);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const go = async () => {
-    const r = await act(() => api.post(`/api/quotes/${quote.id}/send`, { deliver, subject, body }), deliver ? 'Angebot gesendet' : 'Angebot freigegeben');
+    const r = await act(() => api.post(`/api/quotes/${quote.id}/send`, { deliver, subject, body }), deliver ? tt('Angebot gesendet') : tt('Angebot freigegeben'));
     if (r) onSent();
   };
   return (
-    <Modal title={`Angebot ${quote.number || ''} senden`.trim()} className="sales-modal" onClose={onClose} footer={<button className="btn" onClick={go} data-tour="quote-send-go">{deliver ? 'Senden' : 'Freigeben'}</button>}>
+    <Modal title={`Angebot ${quote.number || ''} senden`.trim()} className="sales-modal" onClose={onClose} footer={<button className="btn" onClick={go} data-tour="quote-send-go">{deliver ? tt('Senden') : tt('Freigeben')}</button>}>
       <p className="muted">
-        An <b>{quote.contact ? quote.contact.name : '–'}</b>
-        {quote.contact?.email ? ` (${quote.contact.email})` : ''}. Der Kunde bekommt einen Link zur Angebotsseite, wählt dort und unterschreibt. Mit dem Senden bekommt das Angebot seine Nummer – danach lässt es sich nicht mehr ändern (nur eine neue Version anlegen).
+        {tt('An')} <b>{quote.contact ? quote.contact.name : '–'}</b>
+        {quote.contact?.email ? ` (${quote.contact.email})` : ''}{tt('. Der Kunde bekommt einen Link zur Angebotsseite, wählt dort und unterschreibt. Mit dem Senden bekommt das Angebot seine Nummer – danach lässt es sich nicht mehr ändern (nur eine neue Version anlegen).')}
       </p>
-      <Check checked={deliver} onChange={setDeliver} label="Per E-Mail senden" />
-      {!deliver && <p className="muted small">Das Angebot wird nur freigegeben – den Link gibst du selbst weiter (Chat, Telefon, eigene Mail).</p>}
+      <Check checked={deliver} onChange={setDeliver} label={tt('Per E-Mail senden')} />
+      {!deliver && <p className="muted small">{tt('Das Angebot wird nur freigegeben – den Link gibst du selbst weiter (Chat, Telefon, eigene Mail).')}</p>}
       {deliver && (
         <>
-          <Field label="Betreff (optional)">
-            <Input value={subject} onChange={setSubject} placeholder="Ihr Angebot {{quote.number}} von {{location.name}}" />
+          <Field label={tt('Betreff (optional)')}>
+            <Input value={subject} onChange={setSubject} placeholder={tt('Ihr Angebot {{quote.number}} von {{location.name}}')} />
           </Field>
-          <Field label="Text (optional)" hint="Platzhalter: {{contact.first_name}}, {{quote.number}}, {{quote.title}}, {{quote.url}}, {{quote.total}}, {{quote.valid_until}}">
-            <Textarea value={body} onChange={setBody} rows={6} placeholder="Leer = Standardtext mit dem Link" />
+          <Field label={tt('Text (optional)')} hint={tt('Platzhalter: {{contact.first_name}}, {{quote.number}}, {{quote.title}}, {{quote.url}}, {{quote.total}}, {{quote.valid_until}}')}>
+            <Textarea value={body} onChange={setBody} rows={6} placeholder={tt('Leer = Standardtext mit dem Link')} />
           </Field>
         </>
       )}
@@ -86,6 +89,7 @@ function SendDialog({ quote, onClose, onSent }: { quote: any; onClose: () => voi
 }
 
 export function QuoteEditor({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
+  const tt = useT('x_finance');
   const q = useLoad(() => api.get<any>(`/api/quotes/${id}`), [id]);
   const products = useLoad(() => api.get<any[]>('/api/products'), []);
   const [f, setF] = useState<any>();
@@ -104,7 +108,7 @@ export function QuoteEditor({ id, onClose, onChanged }: { id: string; onClose: (
       options: data.doc.options.map((o: any): OptionDraft => ({ id: o.id, name: o.name, description: o.description, recommended: o.recommended, items: o.items.map(toDraft) })),
     });
   }, [data]);
-  if (!data || !f) return <Modal title="Angebot" className="sales-modal" wide onClose={onClose}>{q.error ? <p className="error">{q.error}</p> : <Spinner />}</Modal>;
+  if (!data || !f) return <Modal title={tt('Angebot')} className="sales-modal" wide onClose={onClose}>{q.error ? <p className="error">{q.error}</p> : <Spinner />}</Modal>;
   const draft = data.status === 'draft';
   const cur = data.currency;
   const setP = (p: any) => setF({ ...f, payment: { ...f.payment, ...p } });
@@ -119,7 +123,7 @@ export function QuoteEditor({ id, onClose, onChanged }: { id: string; onClose: (
     options: f.options.map((o: OptionDraft) => ({ ...(o.id ? { id: o.id } : {}), name: o.name, description: o.description, recommended: o.recommended, items: o.items.map((l) => fromDraft(l, true)) })),
   });
   const save = async (quiet = false) => {
-    const r = await act(() => api.patch(`/api/quotes/${id}`, body()), quiet ? undefined : 'Angebot gespeichert');
+    const r = await act(() => api.patch(`/api/quotes/${id}`, body()), quiet ? undefined : tt('Angebot gespeichert'));
     if (r) (q.setData(r), onChanged());
     return r;
   };
@@ -128,41 +132,41 @@ export function QuoteEditor({ id, onClose, onChanged }: { id: string; onClose: (
   const setOpt = (i: number, patch: Partial<OptionDraft>) => setF({ ...f, options: f.options.map((o: OptionDraft, j: number) => (j === i ? { ...o, ...patch } : o)) });
   return (
     <Modal
-      title={`${data.number ? `Angebot ${data.number}` : 'Angebot'}: ${data.title}`}
+      title={`${data.number ? tt('Angebot {number}', { number: data.number }) : tt('Angebot')}: ${data.title}`}
       wide
       className="sales-modal"
       onClose={onClose}
       footer={
         draft ? (
           <>
-            <button className="btn danger" onClick={async () => confirmAsk('Entwurf löschen?') && (await act(() => api.del(`/api/quotes/${id}`), 'Gelöscht')) && (onChanged(), onClose())}>
-              Löschen
+            <button className="btn danger" onClick={async () => confirmAsk(tt('Entwurf löschen?')) && (await act(() => api.del(`/api/quotes/${id}`), tt('Gelöscht'))) && (onChanged(), onClose())}>
+              {tt('Löschen')}
             </button>
             <button className="btn secondary" onClick={() => save()} data-tour="quote-save">
-              Speichern
+              {tt('Speichern')}
             </button>
             <button className="btn" onClick={async () => (await save(true)) && setSend(true)} data-tour="quote-send">
-              Speichern &amp; senden…
+              {tt('Speichern & senden…')}
             </button>
           </>
         ) : (
           <>
-            <button className="btn secondary" onClick={async () => (await act(() => api.post(`/api/quotes/${id}/duplicate`, {}), 'Neue Version angelegt')) && (onChanged(), onClose())}>
-              Neue Version
+            <button className="btn secondary" onClick={async () => (await act(() => api.post(`/api/quotes/${id}/duplicate`, {}), tt('Neue Version angelegt'))) && (onChanged(), onClose())}>
+              {tt('Neue Version')}
             </button>
             {['sent', 'viewed', 'expired'].includes(data.status) && (
               <>
                 <button className="btn secondary" onClick={() => setSend(true)}>
-                  Erneut senden
+                  {tt('Erneut senden')}
                 </button>
-                <button className="btn danger" onClick={async () => confirmAsk('Angebot zurückziehen? Der Link zeigt dann „zurückgezogen“.') && (await act(() => api.post(`/api/quotes/${id}/void`, {}), 'Zurückgezogen')) && refresh()}>
-                  Zurückziehen
+                <button className="btn danger" onClick={async () => confirmAsk(tt('Angebot zurückziehen? Der Link zeigt dann „zurückgezogen“.')) && (await act(() => api.post(`/api/quotes/${id}/void`, {}), tt('Zurückgezogen'))) && refresh()}>
+                  {tt('Zurückziehen')}
                 </button>
               </>
             )}
             {data.status === 'accepted' && data.estimate_id && !data.final_invoice_id && data.invoice_kind !== 'standard' && (
-              <button className="btn" onClick={async () => (await act(() => api.post(`/api/quotes/${id}/invoice`, {}), data.invoice_kind === 'partial' ? 'Schlussrechnung (Entwurf) angelegt' : 'Rechnung (Entwurf) angelegt')) && refresh()} data-tour="quote-invoice">
-                {data.invoice_kind === 'partial' ? 'Schlussrechnung erstellen' : 'Rechnung erstellen'}
+              <button className="btn" onClick={async () => (await act(() => api.post(`/api/quotes/${id}/invoice`, {}), data.invoice_kind === 'partial' ? tt('Schlussrechnung (Entwurf) angelegt') : tt('Rechnung (Entwurf) angelegt'))) && refresh()} data-tour="quote-invoice">
+                {data.invoice_kind === 'partial' ? tt('Schlussrechnung erstellen') : tt('Rechnung erstellen')}
               </button>
             )}
           </>
@@ -170,11 +174,11 @@ export function QuoteEditor({ id, onClose, onChanged }: { id: string; onClose: (
       }
     >
       <div className="sales-bar">
-        <StatusBadge status={data.status} label={data.expired && data.status !== 'expired' ? 'Abgelaufen' : data.status_label} />
+        <StatusBadge status={data.status} label={data.expired && data.status !== 'expired' ? tt('Abgelaufen') : data.status_label} />
         <span className="muted">
-          {data.contact?.name ?? ''} · Deal „{data.deal?.name}“ · Version {data.revision}
+          {data.contact?.name ?? ''} {tt('· Deal „{name}“ · Version {revision}', { name: data.deal?.name, revision: data.revision })}
         </span>
-        {data.valid_until && <span className="muted">gültig bis {d(`${data.valid_until}T12:00:00`)}</span>}
+        {data.valid_until && <span className="muted">{tt('gültig bis')} {d(`${data.valid_until}T12:00:00`)}</span>}
       </div>
       <Later>
         <QuoteApprovalPanel quoteId={id} version={data.updated_at} />
@@ -182,97 +186,97 @@ export function QuoteEditor({ id, onClose, onChanged }: { id: string; onClose: (
       {data.note && <p className="note-box warn">{data.note}</p>}
       {!draft && (
         <div className="quote-links">
-          <Copy text={link} label="Link kopieren" />
+          <Copy text={link} label={tt('Link kopieren')} />
           <a className="btn secondary" href={link} target="_blank" rel="noreferrer">
-            Kundenseite öffnen
+            {tt('Kundenseite öffnen')}
           </a>
-          {data.contract_id && <span className="badge green">Unterschrieben: {data.signer_name}</span>}
-          {data.estimate && <a className="btn secondary" href={`/app/invoices/${data.estimate.id}`}>Angebot {data.estimate.number}</a>}
-          {data.invoice && <a className="btn secondary" href={`/app/invoices/${data.invoice.id}`}>{data.invoice_kind === 'partial' ? 'Anzahlungsrechnung' : 'Rechnung'} {data.invoice.number || '(Entwurf)'} · {data.invoice.status}</a>}
-          {data.final_invoice && <a className="btn secondary" href={`/app/invoices/${data.final_invoice.id}`}>Schlussrechnung (Entwurf)</a>}
-          {data.paid_at && <Badge tone="green">Bezahlt</Badge>}
+          {data.contract_id && <span className="badge green">{tt('Unterschrieben: {signer_name}', { signer_name: data.signer_name })}</span>}
+          {data.estimate && <a className="btn secondary" href={`/app/invoices/${data.estimate.id}`}>{tt('Angebot {number}', { number: data.estimate.number })}</a>}
+          {data.invoice && <a className="btn secondary" href={`/app/invoices/${data.invoice.id}`}>{data.invoice_kind === 'partial' ? tt('Anzahlungsrechnung') : tt('Rechnung')} {data.invoice.number || tt('(Entwurf)')} · {data.invoice.status}</a>}
+          {data.final_invoice && <a className="btn secondary" href={`/app/invoices/${data.final_invoice.id}`}>{tt('Schlussrechnung (Entwurf)')}</a>}
+          {data.paid_at && <Badge tone="green">{tt('Bezahlt')}</Badge>}
         </div>
       )}
 
       <fieldset disabled={!draft} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="grid2">
-          <Field label="Titel">
+          <Field label={tt('Titel')}>
             <Input value={f.title} onChange={(v) => setF({ ...f, title: v })} maxLength={200} />
           </Field>
-          <Field label="Gültig bis">
+          <Field label={tt('Gültig bis')}>
             <Input type="date" value={f.valid_until} onChange={(v) => setF({ ...f, valid_until: v })} />
           </Field>
         </div>
-        <Field label="Einleitung (Text vor den Positionen)" hint="Einfaches Format: **fett**, - Aufzählung, # Überschrift">
+        <Field label={tt('Einleitung (Text vor den Positionen)')} hint={tt('Einfaches Format: **fett**, - Aufzählung, # Überschrift')}>
           <Textarea value={f.intro} onChange={(v) => setF({ ...f, intro: v })} rows={3} />
         </Field>
 
-        <Section title="Positionen (für alle Varianten)" tour="quote-items">
+        <Section title={tt('Positionen (für alle Varianten)')} tour="quote-items">
           <LinesEditor lines={f.items} onChange={(items) => setF({ ...f, items })} products={products.data ?? []} currency={cur} optional tour="quote-lines" />
-          {f.options.length === 0 && <div className="lines-total">Summe netto der festen Positionen: <b>{eur(sumNet(f.items), cur)}</b></div>}
+          {f.options.length === 0 && <div className="lines-total">{tt('Summe netto der festen Positionen:')} <b>{eur(sumNet(f.items), cur)}</b></div>}
         </Section>
 
         <Section
-          title="Varianten zur Auswahl"
+          title={tt('Varianten zur Auswahl')}
           tour="quote-options"
           actions={
             draft && f.options.length < 6 ? (
               <button type="button" className="btn secondary" onClick={() => setF({ ...f, options: [...f.options, { name: `Variante ${f.options.length + 1}`, description: '', recommended: false, items: [] }] })}>
-                + Variante
+                {tt('+ Variante')}
               </button>
             ) : undefined
           }
         >
-          {f.options.length === 0 && <p className="muted small">Mit mehreren Varianten (z. B. „Basis“, „Plus“) wählt der Kunde genau eine; mit einer einzigen gehört sie einfach zum Angebot.</p>}
+          {f.options.length === 0 && <p className="muted small">{tt('Mit mehreren Varianten (z. B. „Basis“, „Plus“) wählt der Kunde genau eine; mit einer einzigen gehört sie einfach zum Angebot.')}</p>}
           {f.options.map((o: OptionDraft, i: number) => (
             <div className="opt-box" key={o.id ?? `o${i}`}>
               <div className="row">
                 <div className="grow">
-                  <Field label="Name der Variante">
+                  <Field label={tt('Name der Variante')}>
                     <Input value={o.name} onChange={(v) => setOpt(i, { name: v })} maxLength={120} />
                   </Field>
                 </div>
                 <div className="grow">
-                  <Field label="Beschreibung">
+                  <Field label={tt('Beschreibung')}>
                     <Input value={o.description} onChange={(v) => setOpt(i, { description: v })} maxLength={1000} />
                   </Field>
                 </div>
-                <Check checked={o.recommended} onChange={(v) => setF({ ...f, options: f.options.map((x: OptionDraft, j: number) => ({ ...x, recommended: j === i ? v : v ? false : x.recommended })) })} label="Empfohlen" />
+                <Check checked={o.recommended} onChange={(v) => setF({ ...f, options: f.options.map((x: OptionDraft, j: number) => ({ ...x, recommended: j === i ? v : v ? false : x.recommended })) })} label={tt('Empfohlen')} />
                 {draft && (
                   <button type="button" className="btn small secondary" onClick={() => setF({ ...f, options: f.options.filter((_: unknown, j: number) => j !== i) })}>
-                    Entfernen
+                    {tt('Entfernen')}
                   </button>
                 )}
               </div>
               <LinesEditor lines={o.items} onChange={(items) => setOpt(i, { items })} products={products.data ?? []} currency={cur} optional />
-              {data.options[i] && <div className="lines-total">Preis dieser Variante (gespeicherter Stand): <b>{eur(data.options[i].totals.net_cents, cur)}</b> netto</div>}
+              {data.options[i] && <div className="lines-total">{tt('Preis dieser Variante (gespeicherter Stand):')} <b>{eur(data.options[i].totals.net_cents, cur)}</b> netto</div>}
             </div>
           ))}
         </Section>
 
-        <Section title="Was bei Annahme fällig wird" tour="quote-payment">
+        <Section title={tt('Was bei Annahme fällig wird')} tour="quote-payment">
           <Choice name="pay" value={f.payment.mode} onChange={(v) => setP({ mode: v })} options={PAYMENT.map((p) => ({ value: p.value, label: p.label, text: p.text }))} />
           {f.payment.mode === 'deposit' && (
             <div className="grid2">
-              <Field label="Anzahlung als">
+              <Field label={tt('Anzahlung als')}>
                 <Select value={f.payment.type} onChange={(v) => setP({ type: v, value: v === 'amount' ? '0.00' : '30' })} options={[['percent', 'Prozent vom Gesamtbetrag'], ['amount', 'Festbetrag netto']]} />
               </Field>
-              <Field label={f.payment.type === 'percent' ? 'Prozent' : `Betrag netto (${cur})`}>
+              <Field label={f.payment.type === 'percent' ? tt('Prozent') : tt('Betrag netto ({cur})', { cur: cur })}>
                 <Input inputMode="decimal" value={f.payment.value} onChange={(v) => setP({ value: v })} />
               </Field>
             </div>
           )}
-          {data.due_on_accept && <p className="muted small">Fällig bei Annahme (gespeicherter Stand): <b>{eur(data.due_on_accept.total_cents, cur)}</b> brutto ({data.due_on_accept.label}).</p>}
-          <Check checked={f.deal_on_accept} onChange={(v) => setF({ ...f, deal_on_accept: v })} label="Deal bei Annahme auf „Gewonnen“ setzen" />
+          {data.due_on_accept && <p className="muted small">{tt('Fällig bei Annahme (gespeicherter Stand):')} <b>{eur(data.due_on_accept.total_cents, cur)}</b> {tt('brutto ({label}).', { label: data.due_on_accept.label })}</p>}
+          <Check checked={f.deal_on_accept} onChange={(v) => setF({ ...f, deal_on_accept: v })} label={tt('Deal bei Annahme auf „Gewonnen“ setzen')} />
         </Section>
 
-        <Section title="Bedingungen">
-          <Textarea value={f.terms} onChange={(v) => setF({ ...f, terms: v })} rows={4} placeholder="Zahlungsziel, Lieferzeit, Hinweise …" />
+        <Section title={tt('Bedingungen')}>
+          <Textarea value={f.terms} onChange={(v) => setF({ ...f, terms: v })} rows={4} placeholder={tt('Zahlungsziel, Lieferzeit, Hinweise …')} />
         </Section>
       </fieldset>
 
       <Totals t={data.totals} currency={cur} />
-      {draft && <p className="muted small" style={{ textAlign: 'right' }}>Die Summen rechnet der Server beim Speichern (Rundung wie auf der Rechnung).</p>}
+      {draft && <p className="muted small" style={{ textAlign: 'right' }}>{tt('Die Summen rechnet der Server beim Speichern (Rundung wie auf der Rechnung).')}</p>}
       {send && <SendDialog quote={data} onClose={() => setSend(false)} onSent={() => (setSend(false), refresh())} />}
     </Modal>
   );
@@ -280,20 +284,21 @@ export function QuoteEditor({ id, onClose, onChanged }: { id: string; onClose: (
 
 /** Pick one of the open deals to quote for. */
 export function DealPicker({ onClose, onPicked }: { onClose: () => void; onPicked: (quoteId: string) => void }) {
+  const tt = useT('x_finance');
   const deals = useLoad(() => api.get<any[]>('/api/opportunities?status=open'), []);
   const [text, setText] = useState('');
   const list = (deals.data ?? []).filter((o) => `${o.name} ${name(o)}`.toLowerCase().includes(text.toLowerCase())).slice(0, 30);
   const pick = async (dealId: string) => {
-    const r = await act(() => api.post('/api/quotes', { deal_id: dealId }), 'Angebot angelegt');
+    const r = await act(() => api.post('/api/quotes', { deal_id: dealId }), tt('Angebot angelegt'));
     if (r) onPicked(r.id);
   };
   return (
-    <Modal title="Angebot für welchen Deal?" className="sales-modal" onClose={onClose}>
-      <Input value={text} onChange={setText} placeholder="Deal oder Kontakt suchen…" autoFocus />
+    <Modal title={tt('Angebot für welchen Deal?')} className="sales-modal" onClose={onClose}>
+      <Input value={text} onChange={setText} placeholder={tt('Deal oder Kontakt suchen…')} autoFocus />
       {!deals.data ? (
         <Spinner />
       ) : list.length === 0 ? (
-        <Empty>Keine offenen Deals gefunden. Lege zuerst unter Opportunities einen Deal an.</Empty>
+        <Empty>{tt('Keine offenen Deals gefunden. Lege zuerst unter Opportunities einen Deal an.')}</Empty>
       ) : (
         list.map((o) => (
           <div className="deal-row" key={o.id}>
@@ -303,7 +308,7 @@ export function DealPicker({ onClose, onPicked }: { onClose: () => void; onPicke
             </div>
             <span>{eur((o.value || 0) * 100, o.currency)}</span>
             <button className="btn small" onClick={() => pick(o.id)}>
-              Angebot erstellen
+              {tt('Angebot erstellen')}
             </button>
           </div>
         ))
@@ -313,6 +318,7 @@ export function DealPicker({ onClose, onPicked }: { onClose: () => void; onPicke
 }
 
 export function SalesQuotes() {
+  const tt = useT('x_finance');
   const [status, setStatus] = useState('');
   const list = useLoad(() => api.get<any[]>(`/api/quotes${status ? `?status=${status}` : ''}`), [status]);
   const stats = useLoad(() => api.get<any>('/api/quotes/stats'), []);
@@ -327,47 +333,47 @@ export function SalesQuotes() {
       </Later>
       {s && (
         <SortableGrid id="quotes.stats" className="sales-stats">
-          <div><b>{s.sent}</b><span>Gesendet</span></div>
-          <div><b>{s.open}</b><span>Warten auf Antwort</span></div>
-          <div><b>{s.accepted}</b><span>Angenommen</span></div>
-          <div><b>{eur(s.accepted_cents)}</b><span>Auftragswert (brutto)</span></div>
-          <div><b>{s.win_rate.toLocaleString('de-DE')} %</b><span>Annahmequote</span></div>
+          <div><b>{s.sent}</b><span>{tt('Gesendet')}</span></div>
+          <div><b>{s.open}</b><span>{tt('Warten auf Antwort')}</span></div>
+          <div><b>{s.accepted}</b><span>{tt('Angenommen')}</span></div>
+          <div><b>{eur(s.accepted_cents)}</b><span>{tt('Auftragswert (brutto)')}</span></div>
+          <div><b>{s.win_rate.toLocaleString('de-DE')} %</b><span>{tt('Annahmequote')}</span></div>
         </SortableGrid>
       )}
       <div className="sales-bar">
         <div style={{ width: 220 }}>
-          <Select value={status} onChange={setStatus} placeholder="Alle Status" options={Object.entries<string>(s?.labels ?? { draft: 'Entwurf', sent: 'Gesendet', accepted: 'Angenommen' })} />
+          <Select value={status} onChange={setStatus} placeholder={tt('Alle Status')} options={Object.entries<string>(s?.labels ?? { draft: 'Entwurf', sent: 'Gesendet', accepted: 'Angenommen' })} />
         </div>
         <span className="grow" />
         <button className="btn" onClick={() => setPick(true)} data-tour="quote-new">
-          + Neues Angebot
+          {tt('+ Neues Angebot')}
         </button>
       </div>
       {!list.data ? (
         <Spinner />
       ) : list.data.length === 0 ? (
-        <Empty action={<button className="btn" onClick={() => setPick(true)}>Erstes Angebot erstellen</button>}>Angebote entstehen aus einem Deal – mit Varianten, optionalen Positionen, Anzahlung und Unterschrift auf einer eigenen Seite.</Empty>
+        <Empty action={<button className="btn" onClick={() => setPick(true)}>{tt('Erstes Angebot erstellen')}</button>}>{tt('Angebote entstehen aus einem Deal – mit Varianten, optionalen Positionen, Anzahlung und Unterschrift auf einer eigenen Seite.')}</Empty>
       ) : (
         <div className="table-wrap">
           <table className="sales-table stack">
             <thead>
               <tr>
-                <th>Angebot</th>
+                <th>{tt('Angebot')}</th>
                 <th>Status</th>
-                <th>Kontakt</th>
-                <th className="r">Summe</th>
-                <th>Gültig bis</th>
+                <th>{tt('Kontakt')}</th>
+                <th className="r">{tt('Summe')}</th>
+                <th>{tt('Gültig bis')}</th>
               </tr>
             </thead>
             <tbody>
               {list.data.map((x) => (
                 <tr key={x.id} className="click" tabIndex={0} onClick={() => setOpen(x.id)} onKeyDown={(e) => e.key === 'Enter' && setOpen(x.id)}>
                   <td data-label="Angebot">
-                    <b>{x.number || 'Entwurf'}</b> {x.title}
-                    <div className="muted small">Deal „{x.deal?.name}“{x.revision > 1 ? ` · Version ${x.revision}` : ''}</div>
+                    <b>{x.number || tt('Entwurf')}</b> {x.title}
+                    <div className="muted small">{tt('Deal „{name}“', { name: x.deal?.name })}{x.revision > 1 ? tt(' · Version {revision}', { revision: x.revision }) : ''}</div>
                   </td>
                   <td data-label="Status">
-                    <StatusBadge status={x.status} label={x.expired && x.status !== 'expired' ? 'Abgelaufen' : x.status_label} />
+                    <StatusBadge status={x.status} label={x.expired && x.status !== 'expired' ? tt('Abgelaufen') : x.status_label} />
                     {x.paid_at && <Badge tone="green">bezahlt</Badge>}
                   </td>
                   <td data-label="Kontakt">{x.contact?.name ?? '–'}</td>

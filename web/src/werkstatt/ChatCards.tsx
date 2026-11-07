@@ -7,6 +7,7 @@ import { PlanView, Progress, StatusBadge, useBuild, useWerkstattMe, type Build, 
 import { PluginFrame } from './PluginFrame';
 import { CARD_TOOLS, NAMES, refreshPlugins, usd } from './shared';
 import './safety.css';
+import { useT } from '../i18n';
 
 /**
  * Cards of the Werkstatt in the HyperLevel Agent chat (the "Realtime Feature Lifecycle"): the plan with the person's own
@@ -68,6 +69,7 @@ export function WerkstattToolCard({ t, onNavigate }: { t: CardTool; onNavigate: 
 // --- an order ------------------------------------------------------------------------------------------------------
 
 function BuildCard({ buildId, cardId, onNavigate }: { buildId: string; cardId: string; onNavigate: (to: string) => void }) {
+  const tt = useT('x_ai');
   const me = useWerkstattMe();
   const build = useBuild(buildId);
   const mine = useClaim(`build:${buildId}`, cardId);
@@ -97,7 +99,7 @@ function BuildCard({ buildId, cardId, onNavigate }: { buildId: string; cardId: s
         <div className="head">
           <strong>{b.plan?.title ?? b.title}</strong> <StatusBadge b={b} />
           <button className="btn ghost small" onClick={() => onNavigate(`werkstatt/${b.id}`)}>
-            Öffnen
+            {tt('Öffnen')}
           </button>
         </div>
       </div>
@@ -111,11 +113,12 @@ function BuildCard({ buildId, cardId, onNavigate }: { buildId: string; cardId: s
 }
 
 function CardBody({ b, me, reload, onNavigate, onNested }: { b: Build; me?: WerkstattMe; reload: () => void; onNavigate: (to: string) => void; onNested: (id: string) => void }) {
+  const tt = useT('x_ai');
   if (b.status === 'planning')
     return (
       <>
         <div className="head">
-          <Icon name="hammer" size={15} /> <strong>{NAMES.werkstatt}: Plan wird erstellt</strong>
+          <Icon name="hammer" size={15} /> <strong>{tt('{werkstatt}: Plan wird erstellt', { werkstatt: NAMES.werkstatt })}</strong>
         </div>
         {b.progress?.label ? <Progress b={b} /> : <Progress b={{ ...b, progress: { label: 'Die KI analysiert den Wunsch …' } }} />}
         <Steps b={b} />
@@ -128,7 +131,7 @@ function CardBody({ b, me, reload, onNavigate, onNested }: { b: Build; me?: Werk
         <div className="head">
           <strong>{b.plan?.title ?? b.title}</strong> <StatusBadge b={b} />
         </div>
-        <p className="small">Ein Admin muss den Bau noch freigeben. Du bekommst Bescheid – diese Karte aktualisiert sich von selbst.</p>
+        <p className="small">{tt('Ein Admin muss den Bau noch freigeben. Du bekommst Bescheid – diese Karte aktualisiert sich von selbst.')}</p>
         <AiLine ai={b.ai} />
       </>
     );
@@ -137,7 +140,7 @@ function CardBody({ b, me, reload, onNavigate, onNested }: { b: Build; me?: Werk
       <>
         <div className="head">
           <strong>{b.plan?.title ?? b.title}</strong> <StatusBadge b={b} />
-          <span className="muted small">KI-Kosten bisher {usd(b.cost_usd)}</span>
+          <span className="muted small">{tt('KI-Kosten bisher {usd}', { usd: usd(b.cost_usd) })}</span>
         </div>
         <Progress b={b} />
         <Steps b={b} />
@@ -154,7 +157,7 @@ function CardBody({ b, me, reload, onNavigate, onNested }: { b: Build; me?: Werk
       {b.status === 'failed' && (
         <div className="actions">
           <button className="btn secondary small" onClick={() => onNavigate(`werkstatt/${b.id}`)}>
-            Protokoll ansehen
+            {tt('Protokoll ansehen')}
           </button>
         </div>
       )}
@@ -164,10 +167,11 @@ function CardBody({ b, me, reload, onNavigate, onNested }: { b: Build; me?: Werk
 
 /** The live steps: what the build did and is doing (the log of the order, newest at the bottom). */
 function Steps({ b }: { b: Build }) {
+  const tt = useT('x_ai');
   const log = (b.log ?? []).slice(-6);
   if (!log.length) return null;
   return (
-    <ol className="wk-chat-steps" aria-label="Schritte">
+    <ol className="wk-chat-steps" aria-label={tt('Schritte')}>
       {log.map((l, i) => (
         <li key={`${l.at}-${i}`} className={l.level === 'error' ? 'err' : i === log.length - 1 && b.status === 'building' ? 'now' : ''}>
           <span aria-hidden>{l.level === 'error' ? '✗' : i === log.length - 1 && b.status === 'building' ? '›' : '✓'}</span> {l.text}
@@ -178,6 +182,7 @@ function Steps({ b }: { b: Build }) {
 }
 
 function Done({ b, reload, onNavigate, onNested }: { b: Build; reload: () => void; onNavigate: (to: string) => void; onNested: (id: string) => void }) {
+  const tt = useT('x_ai');
   const diff = b.plan?.diff as DiffData | null | undefined;
   const added: string[] = b.plan?.new_scopes ?? [];
   return (
@@ -186,16 +191,16 @@ function Done({ b, reload, onNavigate, onNested }: { b: Build; reload: () => voi
         <Icon name="shieldOk" size={15} /> <strong>{b.plan?.title ?? b.title}</strong> <StatusBadge b={b} />
         {diff && (
           <Badge tone="blue">
-            Version {diff.to}
+            {tt('Version {to}', { to: diff.to })}
           </Badge>
         )}
       </div>
       <AiLine ai={b.ai} />
       {diff && (
         <>
-          <h4>Das hat sich geändert (Version {diff.from} → {diff.to})</h4>
+          <h4>{tt('Das hat sich geändert (Version {from} → {to})', { from: diff.from, to: diff.to })}</h4>
           <DiffList d={diff} />
-          {added.length > 0 && <p className="small">Die neue Version fragt zusätzliche Berechtigungen an – bitte beim Plugin bestätigen und aktivieren.</p>}
+          {added.length > 0 && <p className="small">{tt('Die neue Version fragt zusätzliche Berechtigungen an – bitte beim Plugin bestätigen und aktivieren.')}</p>}
         </>
       )}
       {b.plugin_id ? (
@@ -204,7 +209,7 @@ function Done({ b, reload, onNavigate, onNested }: { b: Build; reload: () => voi
         <>
           {(b.created ?? []).length > 0 && (
             <>
-              <h4>Angelegt</h4>
+              <h4>{tt('Angelegt')}</h4>
               <ul>
                 {b.created!.map((c, i) => (
                   <li key={i} style={c.undone ? { textDecoration: 'line-through' } : undefined}>
@@ -216,11 +221,11 @@ function Done({ b, reload, onNavigate, onNested }: { b: Build; reload: () => voi
           )}
           <div className="actions">
             <button className="btn secondary small" onClick={() => onNavigate(`werkstatt/${b.id}`)}>
-              Öffnen
+              {tt('Öffnen')}
             </button>
             {b.undoable && (
-              <button className="btn ghost small" onClick={async () => (await act(() => api.post(`/api/werkstatt/builds/${b.id}/undo`), 'Rückgängig gemacht')) && reload()}>
-                <Icon name="undo" size={14} /> Alles rückgängig machen
+              <button className="btn ghost small" onClick={async () => (await act(() => api.post(`/api/werkstatt/builds/${b.id}/undo`), tt('Rückgängig gemacht'))) && reload()}>
+                <Icon name="undo" size={14} /> {tt('Alles rückgängig machen')}
               </button>
             )}
           </div>
@@ -244,6 +249,7 @@ interface PluginData {
 }
 
 function PluginPreview({ pluginId, onNavigate, onNested, onChanged, showBadges }: { pluginId: string; onNavigate: (to: string) => void; onNested: (id: string) => void; onChanged: () => void; showBadges: boolean }) {
+  const tt = useT('x_ai');
   const r = useLoad(() => api.get<PluginData>(`/api/plugins/${pluginId}`), [pluginId]);
   const [gone, setGone] = useState(false);
   const [change, setChange] = useState(false);
@@ -254,9 +260,9 @@ function PluginPreview({ pluginId, onNavigate, onNested, onChanged, showBadges }
   useEffect(() => {
     window.dispatchEvent(new Event('pghl:agent-grew'));
   }, [p?.version, change, gone]);
-  if (gone) return <p className="muted small">Verworfen – das Plugin ist gelöscht.</p>;
+  if (gone) return <p className="muted small">{tt('Verworfen – das Plugin ist gelöscht.')}</p>;
   if (r.loading && !p) return <Spinner />;
-  if (!p) return <p className="muted small">{r.error || 'Das Plugin gibt es nicht mehr.'}</p>;
+  if (!p) return <p className="muted small">{r.error || tt('Das Plugin gibt es nicht mehr.')}</p>;
   const e = p.entries;
   const entry = e?.page ? { entry: 'page', title: e.page.title } : e?.widgets[0] ? { entry: `widget:${e.widgets[0].id}`, title: e.widgets[0].title } : e?.panels[0] ? { entry: `panel:${e.panels[0].id}`, title: e.panels[0].title, demo: true } : null;
   const active = p.versions.find((v) => v.active);
@@ -272,8 +278,8 @@ function PluginPreview({ pluginId, onNavigate, onNested, onChanged, showBadges }
     }
   };
   const discard = async () => {
-    if (!confirmAsk(`„${p.name}“ mit allen Versionen endgültig löschen?`)) return;
-    if (await act(() => api.del(`/api/plugins/${p.id}`), 'Verworfen')) {
+    if (!confirmAsk(tt('„{name}“ mit allen Versionen endgültig löschen?', { name: p.name }))) return;
+    if (await act(() => api.del(`/api/plugins/${p.id}`), tt('Verworfen'))) {
       void refreshPlugins();
       setGone(true);
       onChanged();
@@ -282,7 +288,7 @@ function PluginPreview({ pluginId, onNavigate, onNested, onChanged, showBadges }
   const rollback = async () => {
     const x = await act(() => api.post<{ to: string }>(`/api/plugins/${p.id}/rollback`, {}));
     if (x) {
-      toast(`Zurückgerollt auf Version ${x.to}`);
+      toast(tt('Zurückgerollt auf Version {to}', { to: x.to }));
       void refreshPlugins();
       void r.reload();
     }
@@ -290,7 +296,7 @@ function PluginPreview({ pluginId, onNavigate, onNested, onChanged, showBadges }
   return (
     <>
       <p className="small" style={{ margin: '6px 0 0' }}>
-        {p.name} · Version {p.version}
+        {tt('{name} · Version {version}', { name: p.name, version: p.version })}
         {p.status !== 'active' && <> · <Badge tone="red">{p.status === 'killed' ? 'abgeschaltet' : p.status}</Badge></>}
       </p>
       {showBadges && <VersionBadges b={active?.badges} />}
@@ -300,12 +306,12 @@ function PluginPreview({ pluginId, onNavigate, onNested, onChanged, showBadges }
         </div>
       ) : (
         <p className="muted small">
-          {entry ? 'Das Plugin ist gerade nicht aktiv.' : `Dieses Plugin hat keine Oberfläche – es läuft als ${[...(e?.actions ?? []).map((a) => `Automations-Schritt „${a.label}“`), ...(e?.jobs ?? []).map((j) => `Job „${j.label}“`)].join(', ') || 'Hintergrund-Logik'}.`}
+          {entry ? tt('Das Plugin ist gerade nicht aktiv.') : `Dieses Plugin hat keine Oberfläche – es läuft als ${[...(e?.actions ?? []).map((a) => `Automations-Schritt „${a.label}“`), ...(e?.jobs ?? []).map((j) => `Job „${j.label}“`)].join(', ') || tt('Hintergrund-Logik')}.`}
         </p>
       )}
       <div className="actions" data-tour="agent-wk-actions">
         <button className="btn small" onClick={open}>
-          <Icon name="play" size={14} /> Öffnen
+          <Icon name="play" size={14} /> {tt('Öffnen')}
         </button>
         {p.can_manage && p.status === 'active' && (
           <button className="btn secondary small" aria-expanded={change} onClick={() => setChange(!change)}>
@@ -314,25 +320,25 @@ function PluginPreview({ pluginId, onNavigate, onNested, onChanged, showBadges }
         )}
         {p.can_manage && p.versions.filter((v) => v.status === 'checked').length > 1 && (
           <button className="btn ghost small" onClick={rollback}>
-            <Icon name="undo" size={14} /> Version zurück
+            <Icon name="undo" size={14} /> {tt('Version zurück')}
           </button>
         )}
         {p.can_manage && (
           <button className="btn ghost small" onClick={discard}>
-            Verwerfen
+            {tt('Verwerfen')}
           </button>
         )}
       </div>
       {change && (
         <div style={{ marginTop: 8 }}>
-          <Textarea value={text} onChange={setText} rows={3} placeholder="Was soll anders sein? z. B. Zeige die Karten dunkler und füge die Firma hinzu." />
-          {est.data && <p className="muted small">Geschätzte KI-Kosten: etwa {usd(est.data.typical_usd)}, höchstens {usd(est.data.max_usd)}. Die bisherige Version bleibt erhalten.</p>}
+          <Textarea value={text} onChange={setText} rows={3} placeholder={tt('Was soll anders sein? z. B. Zeige die Karten dunkler und füge die Firma hinzu.')} />
+          {est.data && <p className="muted small">{tt('Geschätzte KI-Kosten: etwa {usd}, höchstens {usd2}. Die bisherige Version bleibt erhalten.', { usd: usd(est.data.typical_usd), usd2: usd(est.data.max_usd) })}</p>}
           <div className="actions">
             <button className="btn small" disabled={busy || text.trim().length < 5} onClick={send}>
-              <Icon name="hammer" size={14} /> Neue Version bauen
+              <Icon name="hammer" size={14} /> {tt('Neue Version bauen')}
             </button>
             <button className="btn ghost small" onClick={() => setChange(false)}>
-              Abbrechen
+              {tt('Abbrechen')}
             </button>
           </div>
         </div>

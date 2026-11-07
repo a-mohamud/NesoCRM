@@ -1,4 +1,5 @@
 import { Icon } from '../icons';
+import { useT } from '../i18n';
 
 /**
  * „Lernen“ links in empty states, page heads, the demo banner and the start page (docs/academy.md → Einstieg). They start the
@@ -19,8 +20,9 @@ export function learn(tourOrPath?: string) {
 const LABELS = { tour: 'Tour starten', learn: 'Lernen', guided: 'Geführte Tour starten', academy: 'Academy starten' } as const;
 
 export function LearnLink({ tour, label = 'tour', className = 'btn small secondary' }: { tour?: string; label?: keyof typeof LABELS; className?: string }) {
+  const tt = useT('x_tours_b');
   return (
-    <button type="button" className={`${className} learn-link`} data-tour="learn" onClick={() => learn(tour)} title="Geführte Tour zu diesem Bereich – direkt in der echten Oberfläche">
+    <button type="button" className={`${className} learn-link`} data-tour="learn" onClick={() => learn(tour)} title={tt('Geführte Tour zu diesem Bereich – direkt in der echten Oberfläche')}>
       <Icon name="academy" size={14} /> {LABELS[label]}
     </button>
   );

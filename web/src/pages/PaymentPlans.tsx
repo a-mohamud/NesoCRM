@@ -4,6 +4,7 @@ import { api, d, dt, money } from '../api';
 import { Check, Empty, Field, Input, Link, Modal, PageHead, Select, Spinner, Stat, Tabs, act, confirmAsk, useLoad } from '../ui';
 import { ACCESS_LABEL, Callout, Facts, Item, Panel, Progress, StatusBadge, euroText, parseEuro } from './CreatorKit';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /**
  * Ratenzahlung: payment plans on one-time products (the buyer picks "3 × 99 €" on the buy page; Stripe collects the instalments
@@ -26,6 +27,7 @@ const FILTERS: [string, string][] = [
 const every = (interval: string, n: number) => (interval === 'week' ? (n === 1 ? 'wöchentlich' : `alle ${n} Wochen`) : n === 1 ? 'monatlich' : n === 12 ? 'jährlich' : `alle ${n} Monate`);
 
 function PlanDialog({ plan, products, productId, onClose, onSaved }: { plan?: any; products: any[]; productId?: string; onClose: () => void; onSaved: () => void }) {
+  const tt = useT('x_finance');
   const [f, setF] = useState({
     product_id: plan?.product_id ?? productId ?? products[0]?.id ?? '',
     name: plan?.name ?? '',
@@ -58,7 +60,7 @@ function PlanDialog({ plan, products, productId, onClose, onSaved }: { plan?: an
   const price = prod ? Math.round(prod.price_cents * (1 + (Number(prod.tax_rate) || 0) / 100)) : null;
   const save = async () => {
     const body = { product_id: f.product_id, name: f.name, installments: n, interval: f.interval, interval_count: count, amount_cents: amount, first_amount_cents: first, on_default: f.on_default, active: f.active };
-    const r = await act(() => (plan ? api.patch(`/api/payment-plans/${plan.id}`, body) : api.post('/api/payment-plans', body)), 'Plan gespeichert');
+    const r = await act(() => (plan ? api.patch(`/api/payment-plans/${plan.id}`, body) : api.post('/api/payment-plans', body)), tt('Plan gespeichert'));
     if (r) {
       onSaved();
       onClose();
@@ -66,49 +68,49 @@ function PlanDialog({ plan, products, productId, onClose, onSaved }: { plan?: an
   };
   return (
     <Modal
-      title={plan ? 'Ratenplan bearbeiten' : 'Neuer Ratenplan'}
+      title={plan ? tt('Ratenplan bearbeiten') : tt('Neuer Ratenplan')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" disabled={!!problem} onClick={save} data-tour="plan-save">
-            Speichern
+            {tt('Speichern')}
           </button>
         </>
       }
     >
-      {plan && <Callout tone="info">Bestehende Käufe behalten die Bedingungen, zu denen sie gekauft wurden. Die Änderung gilt für neue Käufe.</Callout>}
-      <Field label="Produkt *" hint="Ratenzahlung gibt es für Einmal-Produkte, nicht für Abos.">
+      {plan && <Callout tone="info">{tt('Bestehende Käufe behalten die Bedingungen, zu denen sie gekauft wurden. Die Änderung gilt für neue Käufe.')}</Callout>}
+      <Field label={tt('Produkt *')} hint={tt('Ratenzahlung gibt es für Einmal-Produkte, nicht für Abos.')}>
         <Select value={f.product_id} onChange={(v) => set({ product_id: v })} options={products.map((p) => [p.id, `${p.name} · ${money(p.price_cents, p.currency)}`] as [string, string])} />
       </Field>
-      <Field label="Name (optional)" hint="Erscheint auf der Kaufseite statt der Standard-Beschreibung, z. B. „Bequem in 3 Raten“.">
+      <Field label={tt('Name (optional)')} hint={tt('Erscheint auf der Kaufseite statt der Standard-Beschreibung, z. B. „Bequem in 3 Raten“.')}>
         <Input value={f.name} onChange={(v) => set({ name: v })} maxLength={120} />
       </Field>
       <div className="cr-form-row">
-        <Field label="Anzahl Raten *">
+        <Field label={tt('Anzahl Raten *')}>
           <Input type="number" min={2} max={60} value={f.installments} onChange={(v) => set({ installments: v })} />
         </Field>
-        <Field label="Betrag je Rate (brutto) *">
+        <Field label={tt('Betrag je Rate (brutto) *')}>
           <Input inputMode="decimal" value={f.amount} onChange={(v) => set({ amount: v })} placeholder="99,00" />
         </Field>
       </div>
       <div className="cr-form-row">
-        <Field label="Abstand">
+        <Field label={tt('Abstand')}>
           <Input type="number" min={1} max={f.interval === 'week' ? 52 : 12} value={f.interval_count} onChange={(v) => set({ interval_count: v })} />
         </Field>
-        <Field label="Einheit">
+        <Field label={tt('Einheit')}>
           <Select value={f.interval} onChange={(v) => set({ interval: v })} options={[['month', 'Monat(e)'], ['week', 'Woche(n)']]} />
         </Field>
       </div>
-      <Field label="Erste Rate abweichend (optional)" hint="Zum Beispiel eine höhere Anzahlung. Leer = alle Raten gleich.">
+      <Field label={tt('Erste Rate abweichend (optional)')} hint={tt('Zum Beispiel eine höhere Anzahlung. Leer = alle Raten gleich.')}>
         <Input inputMode="decimal" value={f.first} onChange={(v) => set({ first: v })} placeholder="150,00" />
       </Field>
-      <Field label="Wenn eine Rate nicht eingezogen werden kann">
+      <Field label={tt('Wenn eine Rate nicht eingezogen werden kann')}>
         <Select value={f.on_default} onChange={(v) => set({ on_default: v })} options={ON_DEFAULT} />
       </Field>
-      <Check checked={f.active} onChange={(v) => set({ active: v })} label="Auf der Kaufseite anbieten" />
+      <Check checked={f.active} onChange={(v) => set({ active: v })} label={tt('Auf der Kaufseite anbieten')} />
       {problem ? (
         <p className="cr-err">{problem}</p>
       ) : (
@@ -116,9 +118,9 @@ function PlanDialog({ plan, products, productId, onClose, onSaved }: { plan?: an
           <strong>
             {first && first !== amount ? `${money(first)} + ${n - 1} × ${money(amount!)}` : `${n} × ${money(amount!)}`} {every(f.interval, count)}
           </strong>{' '}
-          · insgesamt {money(total!)}
-          {price !== null && total !== null && total < price && <p className="small">Achtung: Die Summe liegt unter dem Preis des Produkts ({money(price)}).</p>}
-          {price !== null && total !== null && total > price && <p className="small">Die Summe liegt über dem Einmalpreis ({money(price)}) – ein Ratenaufschlag. Das ist erlaubt, muss aber auf der Kaufseite klar erkennbar sein.</p>}
+          {tt('· insgesamt {money}', { money: money(total!) })}
+          {price !== null && total !== null && total < price && <p className="small">{tt('Achtung: Die Summe liegt unter dem Preis des Produkts ({money}).', { money: money(price) })}</p>}
+          {price !== null && total !== null && total > price && <p className="small">{tt('Die Summe liegt über dem Einmalpreis ({money}) – ein Ratenaufschlag. Das ist erlaubt, muss aber auf der Kaufseite klar erkennbar sein.', { money: money(price) })}</p>}
         </Callout>
       )}
     </Modal>
@@ -126,23 +128,24 @@ function PlanDialog({ plan, products, productId, onClose, onSaved }: { plan?: an
 }
 
 function PurchaseDialog({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
+  const tt = useT('x_finance');
   const { data, reload } = useLoad(() => api.get(`/api/payment-plans/subscriptions/${id}`), [id]);
   if (!data)
     return (
-      <Modal title="Ratenkauf" onClose={onClose}>
+      <Modal title={tt('Ratenkauf')} onClose={onClose}>
         <Spinner />
       </Modal>
     );
   const s = data;
   const toggle = async (on: boolean) => {
-    if (await act(() => api.post(`/api/payment-plans/subscriptions/${id}/access`, { on }), on ? 'Zugang fortgesetzt' : 'Zugang pausiert')) {
+    if (await act(() => api.post(`/api/payment-plans/subscriptions/${id}/access`, { on }), on ? tt('Zugang fortgesetzt') : tt('Zugang pausiert'))) {
       reload();
       onChanged();
     }
   };
   const cancel = async () => {
-    if (!confirmAsk(`Den Ratenplan beenden? Stripe bucht dann keine weiteren Raten ab (bisher bezahlt: ${s.paid_count} von ${s.installments}).`)) return;
-    if (await act(() => api.post(`/api/payment-plans/subscriptions/${id}/cancel`), 'Ratenplan beendet')) {
+    if (!confirmAsk(tt('Den Ratenplan beenden? Stripe bucht dann keine weiteren Raten ab (bisher bezahlt: {paid_count} von {installments}).', { paid_count: s.paid_count, installments: s.installments }))) return;
+    if (await act(() => api.post(`/api/payment-plans/subscriptions/${id}/cancel`), tt('Ratenplan beendet'))) {
       reload();
       onChanged();
     }
@@ -150,24 +153,24 @@ function PurchaseDialog({ id, onClose, onChanged }: { id: string; onClose: () =>
   const ended = s.status === 'completed' || s.status === 'canceled';
   return (
     <Modal
-      title="Ratenkauf"
+      title={tt('Ratenkauf')}
       wide
       onClose={onClose}
       footer={
         <>
           {s.contact_id && s.access === 'active' && s.status !== 'completed' && (
             <button className="btn secondary" onClick={() => toggle(false)}>
-              Zugang pausieren
+              {tt('Zugang pausieren')}
             </button>
           )}
           {s.contact_id && s.access !== 'active' && (
             <button className="btn secondary" onClick={() => toggle(true)}>
-              Zugang fortsetzen
+              {tt('Zugang fortsetzen')}
             </button>
           )}
           {!ended && (
             <button className="btn danger" onClick={cancel}>
-              Plan beenden
+              {tt('Plan beenden')}
             </button>
           )}
         </>
@@ -175,7 +178,7 @@ function PurchaseDialog({ id, onClose, onChanged }: { id: string; onClose: () =>
     >
       <Facts
         rows={[
-          ['Kontakt', s.contact_id ? <Link to={`contacts/${s.contact_id}`}>{s.contact?.name || 'Kontakt öffnen'}</Link> : 'noch nicht zugeordnet'],
+          ['Kontakt', s.contact_id ? <Link to={`contacts/${s.contact_id}`}>{s.contact?.name || tt('Kontakt öffnen')}</Link> : 'noch nicht zugeordnet'],
           ['Produkt', s.product_name],
           ['Plan', s.label],
           ['Status', <StatusBadge key="s" status={s.status} />],
@@ -188,17 +191,17 @@ function PurchaseDialog({ id, onClose, onChanged }: { id: string; onClose: () =>
           ['Grund', s.default_reason],
         ]}
       />
-      <Progress value={s.paid_count} max={s.installments} label="Bezahlte Raten" />
-      <h4 style={{ margin: '18px 0 8px' }}>Bezahlte Raten</h4>
+      <Progress value={s.paid_count} max={s.installments} label={tt('Bezahlte Raten')} />
+      <h4 style={{ margin: '18px 0 8px' }}>{tt('Bezahlte Raten')}</h4>
       {s.payments.length ? (
         <div className="table-wrap">
           <table className="t">
             <thead>
               <tr>
-                <th>Rate</th>
-                <th>Betrag</th>
-                <th>Bezahlt am</th>
-                <th>Rechnung</th>
+                <th>{tt('Rate')}</th>
+                <th>{tt('Betrag')}</th>
+                <th>{tt('Bezahlt am')}</th>
+                <th>{tt('Rechnung')}</th>
               </tr>
             </thead>
             <tbody>
@@ -207,24 +210,24 @@ function PurchaseDialog({ id, onClose, onChanged }: { id: string; onClose: () =>
                   <td>{p.number}</td>
                   <td>{money(p.amount_cents, s.currency)}</td>
                   <td>{dt(p.paid_at)}</td>
-                  <td>{p.invoice_id ? <Link to={`invoices/${p.invoice_id}`}>Beleg öffnen</Link> : '–'}</td>
+                  <td>{p.invoice_id ? <Link to={`invoices/${p.invoice_id}`}>{tt('Beleg öffnen')}</Link> : '–'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <p className="muted">Noch keine Rate bezahlt.</p>
+        <p className="muted">{tt('Noch keine Rate bezahlt.')}</p>
       )}
       {s.jobs.some((j: any) => j.status !== 'done') && (
         <Callout tone="warn">
-          <strong>Offene Aufgaben im Hintergrund</strong>
+          <strong>{tt('Offene Aufgaben im Hintergrund')}</strong>
           <ul>
             {s.jobs
               .filter((j: any) => j.status !== 'done')
               .map((j: any, i: number) => (
                 <li key={i}>
-                  {j.kind === 'cancel_at' ? 'Ende nach der letzten Rate bei Stripe setzen' : j.kind} – Versuch {j.attempts}, nächster {dt(j.next_at)}
+                  {j.kind === 'cancel_at' ? tt('Ende nach der letzten Rate bei Stripe setzen') : j.kind} {tt('– Versuch {attempts}, nächster {dt}', { attempts: j.attempts, dt: dt(j.next_at) })}
                   {j.error ? ` (${j.error})` : ''}
                 </li>
               ))}
@@ -236,6 +239,7 @@ function PurchaseDialog({ id, onClose, onChanged }: { id: string; onClose: () =>
 }
 
 export function PaymentPlans({ tab: tabParam }: { tab?: string }) {
+  const tt = useT('x_finance');
   const [tab, setTab] = useState(tabParam === 'plans' ? 'plans' : 'purchases');
   const stripe = useLoad(() => api.get('/api/stripe'), []);
   const products = useLoad(() => api.get<any[]>('/api/products'), []);
@@ -254,28 +258,28 @@ export function PaymentPlans({ tab: tabParam }: { tab?: string }) {
     all.reload();
   };
   const remove = async (p: any) => {
-    if (!confirmAsk(`Den Plan „${p.name || p.label}“ löschen? Bestehende Käufe laufen mit ihren Bedingungen weiter.`)) return;
-    if (await act(() => api.del(`/api/payment-plans/${p.id}`), 'Plan gelöscht')) refresh();
+    if (!confirmAsk(tt('Den Plan „{v}“ löschen? Bestehende Käufe laufen mit ihren Bedingungen weiter.', { v: p.name || p.label }))) return;
+    if (await act(() => api.del(`/api/payment-plans/${p.id}`), tt('Plan gelöscht'))) refresh();
   };
   const byProduct = oneTime.map((p) => ({ product: p, plans: (plans.data ?? []).filter((x) => x.product_id === p.id) }));
 
   return (
     <div className="cr cr-plans">
-      <PageHead title="Ratenzahlung" sub="Kunden zahlen in Raten – Stripe zieht ein und hört nach der letzten Rate von selbst auf. Der Zugang folgt der Zahlung.">
+      <PageHead title={tt('Ratenzahlung')} sub={tt('Kunden zahlen in Raten – Stripe zieht ein und hört nach der letzten Rate von selbst auf. Der Zugang folgt der Zahlung.')}>
         <button className="btn" data-tour="plans-new" disabled={!oneTime.length} onClick={() => setEditing({})}>
-          <Icon name="repeat" /> Neuer Ratenplan
+          <Icon name="repeat" /> {tt('Neuer Ratenplan')}
         </button>
       </PageHead>
       {stripe.data && !stripe.data.connected && (
         <Callout tone="warn" tour="plans-stripe">
-          <strong>Stripe ist noch nicht verbunden.</strong> Ratenzahlung läuft über Stripe-Abos – trage unter <Link to="settings/stripe">Einstellungen → Stripe</Link> deinen Schlüssel ein und richte den Webhook ein (siehe Anleitung).
+          <strong>{tt('Stripe ist noch nicht verbunden.')}</strong> {tt('Ratenzahlung läuft über Stripe-Abos – trage unter')} <Link to="settings/stripe">{tt('Einstellungen → Stripe')}</Link> {tt('deinen Schlüssel ein und richte den Webhook ein (siehe Anleitung).')}
         </Callout>
       )}
       <SortableGrid id="plans-stats" className="stats" data-tour="plans-stats">
-        <Stat label="Laufende Käufe" value={count('active')} />
-        <Stat label="Ausgefallen" value={count('defaulted')} sub={count('defaulted') ? 'Zahlung klären' : undefined} />
-        <Stat label="Abgeschlossen" value={count('completed')} />
-        <Stat label="Noch offen (laufend + ausgefallen)" value={money(openCents)} />
+        <Stat label={tt('Laufende Käufe')} value={count('active')} />
+        <Stat label={tt('Ausgefallen')} value={count('defaulted')} sub={count('defaulted') ? tt('Zahlung klären') : undefined} />
+        <Stat label={tt('Abgeschlossen')} value={count('completed')} />
+        <Stat label={tt('Noch offen (laufend + ausgefallen)')} value={money(openCents)} />
       </SortableGrid>
       <Tabs
         tabs={[
@@ -286,7 +290,7 @@ export function PaymentPlans({ tab: tabParam }: { tab?: string }) {
         onChange={setTab}
       />
       {tab === 'purchases' && (
-        <Panel title="Ratenkäufe" sub="Wer zahlt wie weit? Ein Klick zeigt die bezahlten Raten." wide tour="plans-purchases" actions={<Select value={status} onChange={setStatus} aria="Status" options={FILTERS} />}>
+        <Panel title={tt('Ratenkäufe')} sub={tt('Wer zahlt wie weit? Ein Klick zeigt die bezahlten Raten.')} wide tour="plans-purchases" actions={<Select value={status} onChange={setStatus} aria="Status" options={FILTERS} />}>
           {subs.loading && !subs.data ? (
             <Spinner />
           ) : subs.data?.length ? (
@@ -303,34 +307,34 @@ export function PaymentPlans({ tab: tabParam }: { tab?: string }) {
                     </>
                   }
                 >
-                  <strong>{s.contact?.name || 'Kontakt noch offen'}</strong> · {s.product_name}
+                  <strong>{s.contact?.name || tt('Kontakt noch offen')}</strong> · {s.product_name}
                   <div className="cr-sub">
-                    {s.label} · {s.paid_count} von {s.installments} Raten bezahlt ({money(s.paid_cents, s.currency)}) · seit {d(s.started_at)}
+                    {tt('{label} · {paid_count} von {installments} Raten bezahlt ({money}) · seit {d}', { label: s.label, paid_count: s.paid_count, installments: s.installments, money: money(s.paid_cents, s.currency), d: d(s.started_at) })}
                   </div>
-                  <Progress value={s.paid_count} max={s.installments} label="Bezahlte Raten" />
+                  <Progress value={s.paid_count} max={s.installments} label={tt('Bezahlte Raten')} />
                 </Item>
               ))}
             </div>
           ) : (
-            <Empty>{status ? 'Keine Käufe mit diesem Status.' : 'Noch kein Kauf mit Ratenzahlung. Lege einen Plan an – er erscheint dann auf der Kaufseite des Produkts.'}</Empty>
+            <Empty>{status ? tt('Keine Käufe mit diesem Status.') : tt('Noch kein Kauf mit Ratenzahlung. Lege einen Plan an – er erscheint dann auf der Kaufseite des Produkts.')}</Empty>
           )}
         </Panel>
       )}
       {tab === 'plans' && (
         <div className="cr-panels" data-tour="plans-list">
           {!oneTime.length && !products.loading && (
-            <Panel title="Noch kein Einmal-Produkt" wide>
-              <Empty action={<Link to="products" className="btn">Zu den Produkten</Link>}>Ratenzahlung gibt es für Produkte mit Einmalpreis. Lege zuerst eines an.</Empty>
+            <Panel title={tt('Noch kein Einmal-Produkt')} wide>
+              <Empty action={<Link to="products" className="btn">{tt('Zu den Produkten')}</Link>}>{tt('Ratenzahlung gibt es für Produkte mit Einmalpreis. Lege zuerst eines an.')}</Empty>
             </Panel>
           )}
           {byProduct.map(({ product, plans: list }) => (
             <Panel
               key={product.id}
               title={product.name}
-              sub={`Einmalpreis ${money(product.price_cents, product.currency)}${product.tax_rate ? ` + ${String(product.tax_rate).replace('.', ',')} % USt.` : ''}`}
+              sub={`Einmalpreis ${money(product.price_cents, product.currency)}${product.tax_rate ? tt(' + {replace} % USt.', { replace: String(product.tax_rate).replace('.', ',') }) : ''}`}
               actions={
                 <button className="btn small secondary" onClick={() => setEditing({ productId: product.id })}>
-                  + Plan
+                  {tt('+ Plan')}
                 </button>
               }
             >
@@ -350,20 +354,20 @@ export function PaymentPlans({ tab: tabParam }: { tab?: string }) {
                               void remove(p);
                             }}
                           >
-                            Löschen
+                            {tt('Löschen')}
                           </button>
                         </>
                       }
                     >
                       <strong>{p.name || p.label}</strong>
                       <div className="cr-sub">
-                        {p.name ? `${p.label} · ` : ''}insgesamt {money(p.total_cents, p.currency)} · {p.running} laufend · {p.completed} abgeschlossen · {p.defaulted} ausgefallen
+                        {p.name ? `${p.label} · ` : ''}{tt('insgesamt {money} · {running} laufend · {completed} abgeschlossen · {defaulted} ausgefallen', { money: money(p.total_cents, p.currency), running: p.running, completed: p.completed, defaulted: p.defaulted })}
                       </div>
                     </Item>
                   ))}
                 </div>
               ) : (
-                <p className="muted">Noch kein Plan – Kunden zahlen einmalig.</p>
+                <p className="muted">{tt('Noch kein Plan – Kunden zahlen einmalig.')}</p>
               )}
             </Panel>
           ))}

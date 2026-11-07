@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, currentLocation } from '../api';
 import { Icon } from '../icons';
 import { Link } from '../ui';
+import { useT } from '../i18n';
 
 /**
  * Below „Werkstatt“ in the menu: what waits for you – admins see the orders to approve, everyone sees new notes
@@ -48,13 +49,14 @@ export function useWerkstattNotes() {
 }
 
 export function WerkstattNav() {
+  const tt = useT('x_ai');
   const { unread, pending } = useWerkstattNotes();
   if (!unread && !pending) return null;
   return (
     <div className="nav-sub" data-tour="wk-nav-notes">
       {pending > 0 && (
         <Link to="werkstatt/approvals">
-          <Icon name="ok" size={15} /> {pending} zur Freigabe
+          <Icon name="ok" size={15} /> {tt('{pending} zur Freigabe', { pending: pending })}
         </Link>
       )}
       {unread > 0 && (

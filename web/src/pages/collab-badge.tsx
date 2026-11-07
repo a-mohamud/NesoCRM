@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { useT } from '../i18n';
 
 /**
  * Unread counter next to "Team-Chat" in the menu. Asked once, then once a minute while the tab is visible;
  * the chat page itself pushes the exact numbers (pghl:chat-unread) while it is open, so the menu follows live.
  */
 export function ChatBadge() {
+  const tt = useT('x_misc');
   const [n, setN] = useState({ unread: 0, mentions: 0 });
   useEffect(() => {
     let live = true;
@@ -31,7 +33,7 @@ export function ChatBadge() {
   const total = n.mentions || n.unread;
   if (!total) return null;
   return (
-    <span className={`nav-badge${n.mentions ? ' hot' : ''}`} aria-label={n.mentions ? `${n.mentions} Erwähnungen` : `${n.unread} ungelesene Nachrichten`}>
+    <span className={`nav-badge${n.mentions ? ' hot' : ''}`} aria-label={n.mentions ? tt('{mentions} Erwähnungen', { mentions: n.mentions }) : tt('{unread} ungelesene Nachrichten', { unread: n.unread })}>
       {total > 99 ? '99+' : total}
     </span>
   );

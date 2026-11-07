@@ -4,6 +4,7 @@ import { Icon } from '../icons';
 import { act, Badge, Check, confirmAsk, Empty, Field, Input, Modal, pressable, Select, Spinner, Tabs, Textarea, toast, useLoad } from '../ui';
 import { ContactPick, EuroInput, dlHref, euroText, germanDate, parseEuro, qty, ymdLocal } from './boCommon';
 import { ABS_STATUS, ABS_TYPES, AbsenceModal, BalanceBlock, DecideModal, absLabel, days, period } from './Hr';
+import { useT } from '../i18n';
 
 /** HR staff screens: employees (with the sealed sensitive block), absences, working-time overview, checklists. */
 
@@ -13,6 +14,7 @@ const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 // --- employees --------------------------------------------------------------------------------------------------------------
 
 export function HrEmployees({ canSensitive, defaultState, states }: { canSensitive: boolean; defaultState: string; states: Record<string, string> }) {
+  const tt = useT('x_finance');
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('active');
   const [open, setOpen] = useState<any>();
@@ -22,8 +24,8 @@ export function HrEmployees({ canSensitive, defaultState, states }: { canSensiti
     <>
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div style={{ width: 240 }}>
-          <Field label="Suche">
-            <Input value={q} onChange={setQ} placeholder="Name, Position, Abteilung …" />
+          <Field label={tt('Suche')}>
+            <Input value={q} onChange={setQ} placeholder={tt('Name, Position, Abteilung …')} />
           </Field>
         </div>
         <div style={{ width: 170 }}>
@@ -33,7 +35,7 @@ export function HrEmployees({ canSensitive, defaultState, states }: { canSensiti
         </div>
         <div style={{ marginLeft: 'auto', marginBottom: 12 }}>
           <button className="btn" data-tour="hr-new-employee" onClick={() => setOpen({})}>
-            Mitarbeiter anlegen
+            {tt('Mitarbeiter anlegen')}
           </button>
         </div>
       </div>
@@ -44,12 +46,12 @@ export function HrEmployees({ canSensitive, defaultState, states }: { canSensiti
           <table className="t">
             <thead>
               <tr>
-                <th>Nr.</th>
+                <th>{tt('Nr.')}</th>
                 <th>Name</th>
-                <th>Beschäftigung</th>
-                <th>Eintritt</th>
-                <th className="num">Urlaub (frei / Anspruch)</th>
-                <th>Login</th>
+                <th>{tt('Beschäftigung')}</th>
+                <th>{tt('Eintritt')}</th>
+                <th className="num">{tt('Urlaub (frei / Anspruch)')}</th>
+                <th>{tt('Login')}</th>
               </tr>
             </thead>
             <tbody>
@@ -61,18 +63,18 @@ export function HrEmployees({ canSensitive, defaultState, states }: { canSensiti
                     <div className="muted small">{[e.position, e.department].filter(Boolean).join(' · ')}</div>
                   </td>
                   <td>
-                    {EMPLOYMENT.find(([k]) => k === e.employment_type)?.[1]} <span className="muted small">{qty(e.weekly_hours)} Std.</span>
+                    {EMPLOYMENT.find(([k]) => k === e.employment_type)?.[1]} <span className="muted small">{tt('{qty} Std.', { qty: qty(e.weekly_hours) })}</span>
                   </td>
                   <td>{germanDate(e.start_date)}</td>
                   <td className="num">{e.vacation ? `${qty(e.vacation.available)} / ${qty(e.vacation.entitlement + e.vacation.carryover)}` : '–'}</td>
-                  <td>{e.user_id ? <Badge tone="green">verknüpft</Badge> : <span className="muted small">ohne Login</span>}</td>
+                  <td>{e.user_id ? <Badge tone="green">{tt('verknüpft')}</Badge> : <span className="muted small">{tt('ohne Login')}</span>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <Empty action={<button className="btn" onClick={() => setOpen({})}>Ersten Mitarbeiter anlegen</button>}>Keine Mitarbeiter.</Empty>
+        <Empty action={<button className="btn" onClick={() => setOpen({})}>{tt('Ersten Mitarbeiter anlegen')}</button>}>{tt('Keine Mitarbeiter.')}</Empty>
       )}
       {open && <EmployeeModal employee={open.id ? open : undefined} canSensitive={canSensitive} defaultState={defaultState} states={states} onClose={() => (setOpen(undefined), void list.reload())} />}
     </>
@@ -80,12 +82,13 @@ export function HrEmployees({ canSensitive, defaultState, states }: { canSensiti
 }
 
 function EmployeeModal({ employee, canSensitive, defaultState, states, onClose }: { employee?: any; canSensitive: boolean; defaultState: string; states: Record<string, string>; onClose: () => void }) {
+  const tt = useT('x_finance');
   const [tab, setTab] = useState('data');
   const [created, setCreated] = useState<any>();
   const emp = created ?? employee;
   const tabs: [string, string][] = emp ? [['data', 'Stammdaten'], ['vacation', 'Urlaub'], ['docs', 'Unterlagen'], ['sensitive', 'Gehalt & sensible Daten'], ['lists', 'Checklisten']] : [['data', 'Stammdaten']];
   return (
-    <Modal wide title={emp ? emp.name : 'Neuer Mitarbeiter'} onClose={onClose}>
+    <Modal wide title={emp ? emp.name : tt('Neuer Mitarbeiter')} onClose={onClose}>
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       {tab === 'data' && <EmployeeData employee={emp} defaultState={defaultState} states={states} onSaved={(e) => (e && !emp ? setCreated(e) : onClose())} />}
       {tab === 'vacation' && emp && <EmployeeVacation employee={emp} />}
@@ -97,6 +100,7 @@ function EmployeeModal({ employee, canSensitive, defaultState, states, onClose }
 }
 
 function EmployeeData({ employee, defaultState, states, onSaved }: { employee?: any; defaultState: string; states: Record<string, string>; onSaved: (e?: any) => void }) {
+  const tt = useT('x_finance');
   const users = useLoad(() => api.get('/api/hr/users'), []);
   const e = employee ?? {};
   const [f, setF] = useState<any>({
@@ -126,25 +130,25 @@ function EmployeeData({ employee, defaultState, states, onSaved }: { employee?: 
   return (
     <>
       <div className="grid3">
-        <Field label="Vorname"><Input value={f.first_name} onChange={set('first_name')} /></Field>
-        <Field label="Nachname"><Input value={f.last_name} onChange={set('last_name')} /></Field>
+        <Field label={tt('Vorname')}><Input value={f.first_name} onChange={set('first_name')} /></Field>
+        <Field label={tt('Nachname')}><Input value={f.last_name} onChange={set('last_name')} /></Field>
         <Field label="Status"><Select value={f.status} onChange={set('status')} options={[['active', 'Aktiv'], ['inactive', 'Ausgeschieden']]} /></Field>
         <Field label="E-Mail"><Input type="email" value={f.email} onChange={set('email')} /></Field>
-        <Field label="Telefon"><Input value={f.phone} onChange={set('phone')} /></Field>
-        <Field label="Beschäftigung"><Select value={f.employment_type} onChange={set('employment_type')} options={EMPLOYMENT} /></Field>
-        <Field label="Position"><Input value={f.position} onChange={set('position')} /></Field>
-        <Field label="Abteilung"><Input value={f.department} onChange={set('department')} /></Field>
-        <Field label="Kündigungsfrist"><Input value={f.notice_period} onChange={set('notice_period')} placeholder="z. B. 4 Wochen zum Monatsende" /></Field>
-        <Field label="Eintritt"><Input type="date" value={f.start_date} onChange={set('start_date')} /></Field>
-        <Field label="Ende der Probezeit"><Input type="date" value={f.probation_end} onChange={set('probation_end')} /></Field>
-        <Field label="Austritt"><Input type="date" value={f.end_date} onChange={set('end_date')} /></Field>
-        <Field label="Wochenstunden"><Input value={f.weekly_hours} onChange={set('weekly_hours')} inputMode="decimal" /></Field>
-        <Field label="Urlaubstage pro Jahr"><Input value={f.vacation_days} onChange={set('vacation_days')} inputMode="decimal" /></Field>
-        <Field label="Feiertage in" hint={`Leer = Standard (${states[defaultState] ?? defaultState})`}>
-          <Select value={f.state} onChange={set('state')} placeholder="Standard" options={Object.entries(states)} />
+        <Field label={tt('Telefon')}><Input value={f.phone} onChange={set('phone')} /></Field>
+        <Field label={tt('Beschäftigung')}><Select value={f.employment_type} onChange={set('employment_type')} options={EMPLOYMENT} /></Field>
+        <Field label={tt('Position')}><Input value={f.position} onChange={set('position')} /></Field>
+        <Field label={tt('Abteilung')}><Input value={f.department} onChange={set('department')} /></Field>
+        <Field label={tt('Kündigungsfrist')}><Input value={f.notice_period} onChange={set('notice_period')} placeholder={tt('z. B. 4 Wochen zum Monatsende')} /></Field>
+        <Field label={tt('Eintritt')}><Input type="date" value={f.start_date} onChange={set('start_date')} /></Field>
+        <Field label={tt('Ende der Probezeit')}><Input type="date" value={f.probation_end} onChange={set('probation_end')} /></Field>
+        <Field label={tt('Austritt')}><Input type="date" value={f.end_date} onChange={set('end_date')} /></Field>
+        <Field label={tt('Wochenstunden')}><Input value={f.weekly_hours} onChange={set('weekly_hours')} inputMode="decimal" /></Field>
+        <Field label={tt('Urlaubstage pro Jahr')}><Input value={f.vacation_days} onChange={set('vacation_days')} inputMode="decimal" /></Field>
+        <Field label={tt('Feiertage in')} hint={tt('Leer = Standard ({v})', { v: states[defaultState] ?? defaultState })}>
+          <Select value={f.state} onChange={set('state')} placeholder={tt('Standard')} options={Object.entries(states)} />
         </Field>
       </div>
-      <Field label="Arbeitstage">
+      <Field label={tt('Arbeitstage')}>
         <div className="row">
           {WEEKDAYS.map((w, i) => (
             <Check key={w} checked={f.work_days.includes(i + 1)} onChange={(v) => set('work_days')(v ? [...f.work_days, i + 1].sort() : f.work_days.filter((x: number) => x !== i + 1))} label={w} />
@@ -152,17 +156,17 @@ function EmployeeData({ employee, defaultState, states, onSaved }: { employee?: 
         </div>
       </Field>
       <div className="grid3">
-        <Field label="HyperLevel-Login" hint="Damit kann die Person Urlaub beantragen und ihre Unterlagen sehen">
-          <Select value={f.user_id} onChange={set('user_id')} placeholder="– ohne Login –" options={userOpts} />
+        <Field label={tt('HyperLevel-Login')} hint={tt('Damit kann die Person Urlaub beantragen und ihre Unterlagen sehen')}>
+          <Select value={f.user_id} onChange={set('user_id')} placeholder={tt('– ohne Login –')} options={userOpts} />
         </Field>
-        <Field label="Vorgesetzte/r (genehmigt Anträge)">
-          <Select value={f.manager_user_id} onChange={set('manager_user_id')} placeholder="– keine/r –" options={userOpts} />
+        <Field label={tt('Vorgesetzte/r (genehmigt Anträge)')}>
+          <Select value={f.manager_user_id} onChange={set('manager_user_id')} placeholder={tt('– keine/r –')} options={userOpts} />
         </Field>
-        <Field label="CRM-Kontakt" hint="Damit Workflows die Person erreichen">
+        <Field label={tt('CRM-Kontakt')} hint={tt('Damit Workflows die Person erreichen')}>
           <ContactPick value={f.contact} onChange={set('contact')} />
         </Field>
       </div>
-      <Field label="Interne Notizen (nur Personal)">
+      <Field label={tt('Interne Notizen (nur Personal)')}>
         <Textarea value={f.notes} onChange={set('notes')} rows={2} />
       </Field>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
@@ -172,11 +176,11 @@ function EmployeeData({ employee, defaultState, states, onSaved }: { employee?: 
           onClick={async () => {
             const body = { ...f, weekly_hours: Number(String(f.weekly_hours).replace(',', '.')), vacation_days: Number(String(f.vacation_days).replace(',', '.')), user_id: f.user_id || null, manager_user_id: f.manager_user_id || null, contact_id: f.contact?.id ?? null, state: f.state || '' };
             delete body.contact;
-            const r = await act(() => (employee ? api.patch(`/api/hr/employees/${employee.id}`, body) : api.post('/api/hr/employees', body)), 'Gespeichert');
+            const r = await act(() => (employee ? api.patch(`/api/hr/employees/${employee.id}`, body) : api.post('/api/hr/employees', body)), tt('Gespeichert'));
             if (r) onSaved(employee ? undefined : r);
           }}
         >
-          Speichern
+          {tt('Speichern')}
         </button>
       </div>
     </>
@@ -184,6 +188,7 @@ function EmployeeData({ employee, defaultState, states, onSaved }: { employee?: 
 }
 
 function EmployeeVacation({ employee }: { employee: any }) {
+  const tt = useT('x_finance');
   const [year, setYear] = useState(new Date().getFullYear());
   const r = useLoad(() => api.get(`/api/hr/employees/${employee.id}/balance?year=${year}`), [year]);
   const abs = useLoad(() => api.get(`/api/hr/absences?employee_id=${employee.id}&from=${year}-01-01&to=${year}-12-31`), [year]);
@@ -198,33 +203,33 @@ function EmployeeVacation({ employee }: { employee: any }) {
   return (
     <>
       <div className="row" style={{ alignItems: 'center', marginBottom: 8 }}>
-        <strong>Urlaubskonto {year}</strong>
-        <button className="btn small secondary" aria-label="Vorjahr" onClick={() => (setYear(year - 1), setCarry(undefined), setAdj(undefined))}>‹</button>
-        <button className="btn small secondary" aria-label="Folgejahr" onClick={() => (setYear(year + 1), setCarry(undefined), setAdj(undefined))}>›</button>
-        <button className="btn small" style={{ marginLeft: 'auto' }} onClick={() => setModal(true)}>Abwesenheit eintragen</button>
+        <strong>{tt('Urlaubskonto {year}', { year: year })}</strong>
+        <button className="btn small secondary" aria-label={tt('Vorjahr')} onClick={() => (setYear(year - 1), setCarry(undefined), setAdj(undefined))}>‹</button>
+        <button className="btn small secondary" aria-label={tt('Folgejahr')} onClick={() => (setYear(year + 1), setCarry(undefined), setAdj(undefined))}>›</button>
+        <button className="btn small" style={{ marginLeft: 'auto' }} onClick={() => setModal(true)}>{tt('Abwesenheit eintragen')}</button>
       </div>
       <div className="row">
         <div className="card grow">
           <BalanceBlock b={x.balance} />
         </div>
         <div className="card grow">
-          <h3>Resturlaub und Korrektur {year}</h3>
+          <h3>{tt('Resturlaub und Korrektur {year}', { year: year })}</h3>
           <div className="grid2" style={{ marginTop: 10 }}>
-            <Field label="Resturlaub aus dem Vorjahr (Tage)" hint={x.suggested_carryover === null ? 'Im Eintrittsjahr gibt es keinen Übertrag.' : `Vorschlag: ${qty(x.suggested_carryover)} Tage`}>
+            <Field label={tt('Resturlaub aus dem Vorjahr (Tage)')} hint={x.suggested_carryover === null ? tt('Im Eintrittsjahr gibt es keinen Übertrag.') : tt('Vorschlag: {qty} Tage', { qty: qty(x.suggested_carryover) })}>
               <Input value={carryVal} onChange={setCarry} inputMode="decimal" />
             </Field>
-            <Field label="Korrektur (+/− Tage)">
+            <Field label={tt('Korrektur (+/− Tage)')}>
               <Input value={adjVal} onChange={setAdj} inputMode="decimal" />
             </Field>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {x.suggested_carryover !== null && (
               <button className="btn small secondary" onClick={() => setCarry(String(x.suggested_carryover).replace('.', ','))}>
-                Vorschlag übernehmen
+                {tt('Vorschlag übernehmen')}
               </button>
             )}
-            <button className="btn small" onClick={async () => (await act(() => api.put(`/api/hr/employees/${employee.id}/leave-years/${year}`, { carryover_days: Number(carryVal.replace(',', '.')), adjustment_days: Number(adjVal.replace(',', '.')) }), 'Gespeichert')) && (setCarry(undefined), setAdj(undefined), refresh())}>
-              Speichern
+            <button className="btn small" onClick={async () => (await act(() => api.put(`/api/hr/employees/${employee.id}/leave-years/${year}`, { carryover_days: Number(carryVal.replace(',', '.')), adjustment_days: Number(adjVal.replace(',', '.')) }), tt('Gespeichert'))) && (setCarry(undefined), setAdj(undefined), refresh())}>
+              {tt('Speichern')}
             </button>
           </div>
         </div>
@@ -245,7 +250,7 @@ function EmployeeVacation({ employee }: { employee: any }) {
           </tbody>
         </table>
       ) : (
-        <p className="muted">Keine Abwesenheiten in {year}.</p>
+        <p className="muted">{tt('Keine Abwesenheiten in {year}.', { year: year })}</p>
       )}
       {modal && <AbsenceModal mode="hr" employeeId={employee.id} onClose={() => setModal(false)} onDone={() => (setModal(false), refresh())} />}
     </>
@@ -253,6 +258,7 @@ function EmployeeVacation({ employee }: { employee: any }) {
 }
 
 function EmployeeDocs({ employee, canSensitive }: { employee: any; canSensitive: boolean }) {
+  const tt = useT('x_finance');
   const list = useLoad(() => api.get(`/api/hr/employees/${employee.id}/documents`), []);
   const [cat, setCat] = useState('vertrag');
   const [vis, setVis] = useState('hr');
@@ -265,10 +271,10 @@ function EmployeeDocs({ employee, canSensitive }: { employee: any; canSensitive:
         const data = await new Promise<string>((res, rej) => {
           const rd = new FileReader();
           rd.onload = () => res(String(rd.result));
-          rd.onerror = () => rej(new Error('Datei konnte nicht gelesen werden'));
+          rd.onerror = () => rej(new Error(tt('Datei konnte nicht gelesen werden')));
           rd.readAsDataURL(file);
         });
-        await act(() => api.post(`/api/hr/employees/${employee.id}/documents`, { name: file.name, data, category: cat, visibility: vis }), 'Hochgeladen');
+        await act(() => api.post(`/api/hr/employees/${employee.id}/documents`, { name: file.name, data, category: cat, visibility: vis }), tt('Hochgeladen'));
       }
       void list.reload();
     } finally {
@@ -280,17 +286,17 @@ function EmployeeDocs({ employee, canSensitive }: { employee: any; canSensitive:
     <>
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div style={{ width: 170 }}>
-          <Field label="Art">
+          <Field label={tt('Art')}>
             <Select value={cat} onChange={setCat} options={[['vertrag', 'Vertrag'], ['zeugnis', 'Zeugnis'], ['bescheinigung', 'Bescheinigung'], ['abrechnung', 'Abrechnung'], ['sonstiges', 'Sonstiges']]} />
           </Field>
         </div>
         <div style={{ width: 210 }}>
-          <Field label="Sichtbar für">
+          <Field label={tt('Sichtbar für')}>
             <Select value={vis} onChange={setVis} options={[['hr', VIS.hr], ['employee', VIS.employee], ...(canSensitive ? [['sensitive', VIS.sensitive] as [string, string]] : [])]} />
           </Field>
         </div>
         <label className={`btn secondary${busy ? ' disabled' : ''}`} style={{ marginBottom: 12, cursor: 'pointer' }}>
-          <Icon name="upload" /> {busy ? 'Lädt …' : 'Datei hochladen'}
+          <Icon name="upload" /> {busy ? tt('Lädt …') : tt('Datei hochladen')}
           <input type="file" hidden multiple disabled={busy} accept="application/pdf,image/*,text/plain,.docx,.xlsx,.odt,.ods" onChange={(e) => (void upload(e.target.files), (e.target.value = ''))} />
         </label>
       </div>
@@ -303,7 +309,7 @@ function EmployeeDocs({ employee, canSensitive }: { employee: any; canSensitive:
                   <a href={dlHref(`/api/hr/documents/${x.id}`)} target="_blank" rel="noreferrer">
                     <Icon name="doc" /> {x.name}
                   </a>
-                  <div className="mono muted small" title="SHA-256">{x.sha256.slice(0, 16)}…</div>
+                  <div className="mono muted small" title={tt('SHA-256')}>{x.sha256.slice(0, 16)}…</div>
                 </td>
                 <td>{x.category}</td>
                 <td>
@@ -311,8 +317,8 @@ function EmployeeDocs({ employee, canSensitive }: { employee: any; canSensitive:
                 </td>
                 <td className="muted small">{d(x.created_at)}</td>
                 <td style={{ textAlign: 'right' }}>
-                  <button className="btn small ghost danger-text" onClick={async () => confirmAsk(`${x.name} löschen?`) && (await act(() => api.del(`/api/hr/documents/${x.id}`), 'Gelöscht')) && void list.reload()}>
-                    Löschen
+                  <button className="btn small ghost danger-text" onClick={async () => confirmAsk(tt('{name} löschen?', { name: x.name })) && (await act(() => api.del(`/api/hr/documents/${x.id}`), tt('Gelöscht'))) && void list.reload()}>
+                    {tt('Löschen')}
                   </button>
                 </td>
               </tr>
@@ -320,14 +326,15 @@ function EmployeeDocs({ employee, canSensitive }: { employee: any; canSensitive:
           </tbody>
         </table>
       ) : (
-        <Empty>Noch keine Unterlagen.</Empty>
+        <Empty>{tt('Noch keine Unterlagen.')}</Empty>
       )}
-      <p className="muted small">Verträge, Zeugnisse und Abrechnungen unterliegen Aufbewahrungsfristen (meist 6 bis 10 Jahre) – lösche nur, was du nicht mehr aufbewahren musst.</p>
+      <p className="muted small">{tt('Verträge, Zeugnisse und Abrechnungen unterliegen Aufbewahrungsfristen (meist 6 bis 10 Jahre) – lösche nur, was du nicht mehr aufbewahren musst.')}</p>
     </>
   );
 }
 
 function EmployeeSensitive({ employee, canSensitive, onDeleted }: { employee: any; canSensitive: boolean; onDeleted: () => void }) {
+  const tt = useT('x_finance');
   const r = useLoad(() => (canSensitive ? api.get(`/api/hr/employees/${employee.id}/sensitive`) : Promise.resolve(undefined)), []);
   const [f, setF] = useState<any>();
   useEffect(() => {
@@ -339,7 +346,7 @@ function EmployeeSensitive({ employee, canSensitive, onDeleted }: { employee: an
     return (
       <div className="bo-note" role="note">
         <Icon name="lock" size={16} />
-        <span>Diese Daten sehen nur Administratoren und die in Personal → Einstellungen freigegebenen Personen.</span>
+        <span>{tt('Diese Daten sehen nur Administratoren und die in Personal → Einstellungen freigegebenen Personen.')}</span>
       </div>
     );
   if (!f) return r.error ? <p style={{ color: 'var(--red)' }}>{r.error}</p> : <Spinner />;
@@ -348,51 +355,51 @@ function EmployeeSensitive({ employee, canSensitive, onDeleted }: { employee: an
     <>
       <div className="bo-note compact" role="note">
         <Icon name="lock" size={16} />
-        <span>Verschlüsselt gespeichert. Das Ansehen und jede Änderung steht im Protokoll (ohne die Werte).</span>
+        <span>{tt('Verschlüsselt gespeichert. Das Ansehen und jede Änderung steht im Protokoll (ohne die Werte).')}</span>
       </div>
       <div className="grid3">
-        <Field label="Gehalt (€)">
+        <Field label={tt('Gehalt (€)')}>
           <EuroInput value={f.salary} onChange={set('salary')} />
         </Field>
         <Field label="je">
           <Select value={f.salary_period} onChange={set('salary_period')} options={[['month', 'Monat'], ['year', 'Jahr'], ['hour', 'Stunde']]} />
         </Field>
-        <Field label="Geburtsdatum">
+        <Field label={tt('Geburtsdatum')}>
           <Input type="date" value={f.birth_date} onChange={set('birth_date')} />
         </Field>
         <Field label="IBAN">
           <Input value={f.iban} onChange={set('iban')} />
         </Field>
-        <Field label="Steuer-ID (11 Ziffern)">
+        <Field label={tt('Steuer-ID (11 Ziffern)')}>
           <Input value={f.tax_id} onChange={set('tax_id')} />
         </Field>
-        <Field label="Sozialversicherungsnummer">
+        <Field label={tt('Sozialversicherungsnummer')}>
           <Input value={f.social_security_no} onChange={set('social_security_no')} />
         </Field>
-        <Field label="Steuerklasse">
+        <Field label={tt('Steuerklasse')}>
           <Input value={f.tax_class} onChange={set('tax_class')} />
         </Field>
-        <Field label="Krankenkasse">
+        <Field label={tt('Krankenkasse')}>
           <Input value={f.health_insurance} onChange={set('health_insurance')} />
         </Field>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
         {employee.status === 'inactive' ? (
-          <button className="btn ghost danger-text" onClick={async () => confirmAsk(`${employee.name} mit allen Unterlagen endgültig löschen? Aufbewahrungsfristen beachten.`) && (await act(() => api.del(`/api/hr/employees/${employee.id}`), 'Gelöscht')) && onDeleted()}>
-            Mitarbeiter löschen
+          <button className="btn ghost danger-text" onClick={async () => confirmAsk(tt('{name} mit allen Unterlagen endgültig löschen? Aufbewahrungsfristen beachten.', { name: employee.name })) && (await act(() => api.del(`/api/hr/employees/${employee.id}`), tt('Gelöscht'))) && onDeleted()}>
+            {tt('Mitarbeiter löschen')}
           </button>
         ) : (
-          <span className="muted small">Löschen ist erst nach „Ausgeschieden“ möglich.</span>
+          <span className="muted small">{tt('Löschen ist erst nach „Ausgeschieden“ möglich.')}</span>
         )}
         <button
           className="btn"
           data-tour="hr-save-sensitive"
           onClick={async () => {
             const body = { salary_cents: f.salary === '' ? '' : parseEuro(f.salary), salary_period: f.salary_period, iban: f.iban, tax_id: f.tax_id, social_security_no: f.social_security_no, tax_class: f.tax_class, health_insurance: f.health_insurance, birth_date: f.birth_date };
-            if (await act(() => api.put(`/api/hr/employees/${employee.id}/sensitive`, body), 'Gespeichert')) toast('Gespeichert und protokolliert');
+            if (await act(() => api.put(`/api/hr/employees/${employee.id}/sensitive`, body), tt('Gespeichert'))) toast(tt('Gespeichert und protokolliert'));
           }}
         >
-          Speichern
+          {tt('Speichern')}
         </button>
       </div>
     </>
@@ -400,6 +407,7 @@ function EmployeeSensitive({ employee, canSensitive, onDeleted }: { employee: an
 }
 
 function EmployeeLists({ employee }: { employee: any }) {
+  const tt = useT('x_finance');
   const lists = useLoad(() => api.get(`/api/hr/checklists?employee_id=${employee.id}`), []);
   const tpl = useLoad(() => api.get('/api/hr/checklist-templates'), []);
   const [t, setT] = useState('');
@@ -407,15 +415,15 @@ function EmployeeLists({ employee }: { employee: any }) {
     <>
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div style={{ width: 280 }}>
-          <Field label="Checkliste starten">
-            <Select value={t} onChange={setT} placeholder="Vorlage wählen" options={(tpl.data?.templates ?? []).map((x: any) => [x.id, `${x.kind === 'onboarding' ? 'Onboarding' : 'Offboarding'}: ${x.name}`] as [string, string])} />
+          <Field label={tt('Checkliste starten')}>
+            <Select value={t} onChange={setT} placeholder={tt('Vorlage wählen')} options={(tpl.data?.templates ?? []).map((x: any) => [x.id, `${x.kind === 'onboarding' ? 'Onboarding' : 'Offboarding'}: ${x.name}`] as [string, string])} />
           </Field>
         </div>
-        <button className="btn" style={{ marginBottom: 12 }} disabled={!t} onClick={async () => (await act(() => api.post('/api/hr/checklists', { employee_id: employee.id, template_id: t }), 'Gestartet')) && (setT(''), void lists.reload())}>
-          Starten
+        <button className="btn" style={{ marginBottom: 12 }} disabled={!t} onClick={async () => (await act(() => api.post('/api/hr/checklists', { employee_id: employee.id, template_id: t }), tt('Gestartet'))) && (setT(''), void lists.reload())}>
+          {tt('Starten')}
         </button>
       </div>
-      {(lists.data ?? []).length ? (lists.data as any[]).map((c) => <ChecklistCard key={c.id} c={c} onChange={() => void lists.reload()} />) : <Empty>Keine Checklisten.</Empty>}
+      {(lists.data ?? []).length ? (lists.data as any[]).map((c) => <ChecklistCard key={c.id} c={c} onChange={() => void lists.reload()} />) : <Empty>{tt('Keine Checklisten.')}</Empty>}
     </>
   );
 }
@@ -423,6 +431,7 @@ function EmployeeLists({ employee }: { employee: any }) {
 // --- absences ------------------------------------------------------------------------------------------------------------------
 
 export function HrAbsences() {
+  const tt = useT('x_finance');
   const [status, setStatus] = useState('requested');
   const [emp, setEmp] = useState('');
   const [type, setType] = useState('');
@@ -443,18 +452,18 @@ export function HrAbsences() {
           </Field>
         </div>
         <div style={{ width: 220 }}>
-          <Field label="Mitarbeiter">
-            <Select value={emp} onChange={setEmp} placeholder="Alle" options={(emps.data ?? []).map((e: any) => [e.id, e.name] as [string, string])} />
+          <Field label={tt('Mitarbeiter')}>
+            <Select value={emp} onChange={setEmp} placeholder={tt('Alle')} options={(emps.data ?? []).map((e: any) => [e.id, e.name] as [string, string])} />
           </Field>
         </div>
         <div style={{ width: 170 }}>
-          <Field label="Art">
-            <Select value={type} onChange={setType} placeholder="Alle" options={ABS_TYPES} />
+          <Field label={tt('Art')}>
+            <Select value={type} onChange={setType} placeholder={tt('Alle')} options={ABS_TYPES} />
           </Field>
         </div>
         <div style={{ marginLeft: 'auto', marginBottom: 12 }}>
           <button className="btn" data-tour="hr-new-absence" onClick={() => setModal(true)}>
-            Abwesenheit eintragen
+            {tt('Abwesenheit eintragen')}
           </button>
         </div>
       </div>
@@ -465,10 +474,10 @@ export function HrAbsences() {
           <table className="t">
             <thead>
               <tr>
-                <th>Mitarbeiter</th>
-                <th>Art</th>
-                <th>Zeitraum</th>
-                <th className="num">Tage</th>
+                <th>{tt('Mitarbeiter')}</th>
+                <th>{tt('Art')}</th>
+                <th>{tt('Zeitraum')}</th>
+                <th className="num">{tt('Tage')}</th>
                 <th>Status</th>
                 <th />
               </tr>
@@ -481,7 +490,7 @@ export function HrAbsences() {
                     {a.reason && <div className="muted small">{a.reason}</div>}
                   </td>
                   <td>
-                    {absLabel(a)} {a.certificate ? <Badge tone="blue">Attest</Badge> : null}
+                    {absLabel(a)} {a.certificate ? <Badge tone="blue">{tt('Attest')}</Badge> : null}
                   </td>
                   <td>{period(a)}</td>
                   <td className="num">{days(a.days)}</td>
@@ -493,17 +502,17 @@ export function HrAbsences() {
                     {a.status === 'requested' &&
                       (a.can_decide ? (
                         <>
-                          <button className="btn small" onClick={() => setDecide({ a, decision: 'approved' })}>Genehmigen</button>{' '}
-                          <button className="btn small secondary" onClick={() => setDecide({ a, decision: 'rejected' })}>Ablehnen</button>{' '}
+                          <button className="btn small" onClick={() => setDecide({ a, decision: 'approved' })}>{tt('Genehmigen')}</button>{' '}
+                          <button className="btn small secondary" onClick={() => setDecide({ a, decision: 'rejected' })}>{tt('Ablehnen')}</button>{' '}
                         </>
                       ) : (
-                        <span className="muted small">eigener Antrag{' '}</span>
+                        <span className="muted small">{tt('eigener Antrag')}{' '}</span>
                       ))}
                     {['requested', 'approved'].includes(a.status) && (
                       <>
-                        <button className="btn small ghost" onClick={() => setEdit(a)}>Ändern</button>{' '}
-                        <button className="btn small ghost danger-text" onClick={async () => confirmAsk('Abwesenheit zurückziehen?') && (await act(() => api.post(`/api/hr/absences/${a.id}/cancel`, {}), 'Zurückgezogen')) && refresh()}>
-                          Zurückziehen
+                        <button className="btn small ghost" onClick={() => setEdit(a)}>{tt('Ändern')}</button>{' '}
+                        <button className="btn small ghost danger-text" onClick={async () => confirmAsk(tt('Abwesenheit zurückziehen?')) && (await act(() => api.post(`/api/hr/absences/${a.id}/cancel`, {}), tt('Zurückgezogen'))) && refresh()}>
+                          {tt('Zurückziehen')}
                         </button>
                       </>
                     )}
@@ -514,7 +523,7 @@ export function HrAbsences() {
           </table>
         </div>
       ) : (
-        <Empty>Keine Abwesenheiten für diese Auswahl.</Empty>
+        <Empty>{tt('Keine Abwesenheiten für diese Auswahl.')}</Empty>
       )}
       {modal && <AbsenceModal mode="hr" employees={emps.data ?? []} onClose={() => setModal(false)} onDone={() => (setModal(false), refresh())} />}
       {decide && <DecideModal a={decide.a} decision={decide.decision} url={`/api/hr/absences/${decide.a.id}/${decide.decision === 'approved' ? 'approve' : 'reject'}`} onClose={() => setDecide(undefined)} onDone={() => (setDecide(undefined), refresh())} />}
@@ -524,32 +533,33 @@ export function HrAbsences() {
 }
 
 function EditAbsence({ a, onClose, onDone }: { a: any; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_finance');
   const [f, setF] = useState({ type: a.type, label: a.label, start_date: a.start_date, end_date: a.end_date, half_start: a.half_start, half_end: a.half_end, reason: a.reason, certificate: a.certificate, force: false });
   const set = (k: string) => (v: any) => setF((s) => ({ ...s, [k]: v }));
   return (
     <Modal
-      title={`${a.employee_name}: Abwesenheit ändern`}
+      title={tt('{employee_name}: Abwesenheit ändern', { employee_name: a.employee_name })}
       onClose={onClose}
       footer={
         <>
-          <button className="btn secondary" onClick={onClose}>Abbrechen</button>
-          <button className="btn" onClick={async () => (await act(() => api.patch(`/api/hr/absences/${a.id}`, f), 'Gespeichert')) && onDone()}>Speichern</button>
+          <button className="btn secondary" onClick={onClose}>{tt('Abbrechen')}</button>
+          <button className="btn" onClick={async () => (await act(() => api.patch(`/api/hr/absences/${a.id}`, f), tt('Gespeichert'))) && onDone()}>{tt('Speichern')}</button>
         </>
       }
     >
       <div className="grid2">
-        <Field label="Art"><Select value={f.type} onChange={set('type')} options={ABS_TYPES} /></Field>
-        {f.type === 'other' && <Field label="Bezeichnung"><Input value={f.label} onChange={set('label')} /></Field>}
-        <Field label="Von"><Input type="date" value={f.start_date} onChange={set('start_date')} /></Field>
-        <Field label="Bis"><Input type="date" value={f.end_date} onChange={set('end_date')} /></Field>
+        <Field label={tt('Art')}><Select value={f.type} onChange={set('type')} options={ABS_TYPES} /></Field>
+        {f.type === 'other' && <Field label={tt('Bezeichnung')}><Input value={f.label} onChange={set('label')} /></Field>}
+        <Field label={tt('Von')}><Input type="date" value={f.start_date} onChange={set('start_date')} /></Field>
+        <Field label={tt('Bis')}><Input type="date" value={f.end_date} onChange={set('end_date')} /></Field>
       </div>
       <div className="row">
-        <Check checked={f.half_start} onChange={set('half_start')} label="erster Tag halb" />
-        <Check checked={f.half_end} onChange={set('half_end')} label="letzter Tag halb" />
-        <Check checked={f.force} onChange={set('force')} label="Auch über den Anspruch hinaus" />
+        <Check checked={f.half_start} onChange={set('half_start')} label={tt('erster Tag halb')} />
+        <Check checked={f.half_end} onChange={set('half_end')} label={tt('letzter Tag halb')} />
+        <Check checked={f.force} onChange={set('force')} label={tt('Auch über den Anspruch hinaus')} />
       </div>
       {f.type !== 'sick' && (
-        <Field label="Anmerkung">
+        <Field label={tt('Anmerkung')}>
           <Textarea value={f.reason} onChange={set('reason')} rows={2} />
         </Field>
       )}
@@ -560,6 +570,7 @@ function EditAbsence({ a, onClose, onDone }: { a: any; onClose: () => void; onDo
 // --- working time ---------------------------------------------------------------------------------------------------------------
 
 export function HrWorkingTime() {
+  const tt = useT('x_finance');
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const [from, setFrom] = useState(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`);
@@ -570,12 +581,12 @@ export function HrWorkingTime() {
     <>
       <div className="row" style={{ alignItems: 'flex-end' }} data-tour="hr-time-range">
         <div style={{ width: 150 }}>
-          <Field label="Von">
+          <Field label={tt('Von')}>
             <Input type="date" value={from} onChange={setFrom} />
           </Field>
         </div>
         <div style={{ width: 150 }}>
-          <Field label="Bis">
+          <Field label={tt('Bis')}>
             <Input type="date" value={to} onChange={setTo} />
           </Field>
         </div>
@@ -587,21 +598,21 @@ export function HrWorkingTime() {
           <table className="t">
             <thead>
               <tr>
-                <th>Mitarbeiter</th>
-                <th className="num">Soll (Std.)</th>
-                <th className="num">Erfasst (Std.)</th>
-                <th className="num">Saldo</th>
-                <th className="num">Urlaub</th>
-                <th className="num">Krank</th>
-                <th className="num">Sonstiges</th>
-                <th className="num">Feiertage</th>
+                <th>{tt('Mitarbeiter')}</th>
+                <th className="num">{tt('Soll (Std.)')}</th>
+                <th className="num">{tt('Erfasst (Std.)')}</th>
+                <th className="num">{tt('Saldo')}</th>
+                <th className="num">{tt('Urlaub')}</th>
+                <th className="num">{tt('Krank')}</th>
+                <th className="num">{tt('Sonstiges')}</th>
+                <th className="num">{tt('Feiertage')}</th>
               </tr>
             </thead>
             <tbody>
               {x.employees.map((e: any) => (
                 <tr key={e.employee_id}>
                   <td>
-                    <strong>{e.name}</strong> <span className="muted small">{qty(e.weekly_hours)} Std./Woche</span>
+                    <strong>{e.name}</strong> <span className="muted small">{tt('{qty} Std./Woche', { qty: qty(e.weekly_hours) })}</span>
                   </td>
                   <td className="num">{qty(e.target_hours)}</td>
                   <td className="num">{e.tracked_hours === null ? '–' : qty(e.tracked_hours)}</td>
@@ -616,10 +627,10 @@ export function HrWorkingTime() {
           </table>
         </div>
       ) : (
-        <Empty>Keine aktiven Mitarbeiter.</Empty>
+        <Empty>{tt('Keine aktiven Mitarbeiter.')}</Empty>
       )}
       <p className="muted small">
-        Soll = Wochenstunden verteilt auf die Arbeitstage, ohne Feiertage und genehmigte Abwesenheiten. {x && !x.tracking_connected ? 'Die Zeiterfassung ist nicht verbunden – erfasste Stunden erscheinen hier, sobald ein Zeiterfassungs-Modul sie liefert (siehe docs/backoffice.md).' : 'Die erfassten Stunden kommen aus der Zeiterfassung.'}
+        {tt('Soll = Wochenstunden verteilt auf die Arbeitstage, ohne Feiertage und genehmigte Abwesenheiten.')} {x && !x.tracking_connected ? tt('Die Zeiterfassung ist nicht verbunden – erfasste Stunden erscheinen hier, sobald ein Zeiterfassungs-Modul sie liefert (siehe docs/backoffice.md).') : tt('Die erfassten Stunden kommen aus der Zeiterfassung.')}
       </p>
     </>
   );
@@ -628,6 +639,7 @@ export function HrWorkingTime() {
 // --- checklists ------------------------------------------------------------------------------------------------------------------
 
 function ChecklistCard({ c, onChange }: { c: any; onChange: () => void }) {
+  const tt = useT('x_finance');
   const done = c.items.filter((i: any) => i.done).length;
   return (
     <div className="card" style={{ marginBottom: 12 }}>
@@ -635,14 +647,14 @@ function ChecklistCard({ c, onChange }: { c: any; onChange: () => void }) {
         <h3>
           {c.name} <Badge tone={c.status === 'done' ? 'green' : 'blue'}>{done} / {c.items.length}</Badge>
         </h3>
-        <button className="btn small ghost danger-text" onClick={async () => confirmAsk('Checkliste löschen?') && (await act(() => api.del(`/api/hr/checklists/${c.id}`))) && onChange()}>
-          Löschen
+        <button className="btn small ghost danger-text" onClick={async () => confirmAsk(tt('Checkliste löschen?')) && (await act(() => api.del(`/api/hr/checklists/${c.id}`))) && onChange()}>
+          {tt('Löschen')}
         </button>
       </div>
       {c.items.map((i: any) => (
         <label key={i.id} className="check">
           <input type="checkbox" checked={i.done} onChange={async (ev) => (await act(() => api.post(`/api/hr/checklists/${c.id}/items/${i.id}`, { done: ev.target.checked }))) && onChange()} /> {i.title}
-          <span className="muted small"> · {ASSIGNEE[i.assignee] ?? i.assignee}{i.due ? `, bis ${germanDate(i.due)}` : ''}{i.done && i.done_by ? `, erledigt von ${i.done_by}` : ''}</span>
+          <span className="muted small"> · {ASSIGNEE[i.assignee] ?? i.assignee}{i.due ? tt(', bis {germanDate}', { germanDate: germanDate(i.due) }) : ''}{i.done && i.done_by ? tt(', erledigt von {done_by}', { done_by: i.done_by }) : ''}</span>
         </label>
       ))}
     </div>
@@ -652,6 +664,7 @@ function ChecklistCard({ c, onChange }: { c: any; onChange: () => void }) {
 const ASSIGNEE: Record<string, string> = { hr: 'Personalbüro', employee: 'Mitarbeiter/in', manager: 'Vorgesetzte/r', it: 'IT / Technik' };
 
 export function HrChecklists() {
+  const tt = useT('x_finance');
   const tpl = useLoad(() => api.get('/api/hr/checklist-templates'), []);
   const lists = useLoad(() => api.get('/api/hr/checklists?status=open'), []);
   const [edit, setEdit] = useState<any>();
@@ -660,10 +673,10 @@ export function HrChecklists() {
     <>
       <div className="card" style={{ marginBottom: 14 }} data-tour="hr-templates">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0 }}>Vorlagen</h2>
-          <button className="btn small" onClick={() => setEdit({ kind: 'onboarding', name: '', items: [{ title: '', assignee: 'hr', due_days: 0 }] })}>Vorlage anlegen</button>
+          <h2 style={{ margin: 0 }}>{tt('Vorlagen')}</h2>
+          <button className="btn small" onClick={() => setEdit({ kind: 'onboarding', name: '', items: [{ title: '', assignee: 'hr', due_days: 0 }] })}>{tt('Vorlage anlegen')}</button>
         </div>
-        <p className="muted small">Starte eine Checkliste im Mitarbeiter-Dialog unter „Checklisten“. Die Fristen zählen ab Eintritt (Onboarding) bzw. Austritt (Offboarding).</p>
+        <p className="muted small">{tt('Starte eine Checkliste im Mitarbeiter-Dialog unter „Checklisten“. Die Fristen zählen ab Eintritt (Onboarding) bzw. Austritt (Offboarding).')}</p>
         <div className="bo-scroll"><table className="t">
           <tbody>
             {templates.map((t) => (
@@ -672,63 +685,64 @@ export function HrChecklists() {
                   <strong>{t.name}</strong>
                 </td>
                 <td>
-                  <Badge tone={t.kind === 'onboarding' ? 'green' : 'purple'}>{t.kind === 'onboarding' ? 'Onboarding' : 'Offboarding'}</Badge>
+                  <Badge tone={t.kind === 'onboarding' ? 'green' : 'purple'}>{t.kind === 'onboarding' ? tt('Onboarding') : tt('Offboarding')}</Badge>
                 </td>
-                <td className="muted small">{t.items.length} Punkte</td>
+                <td className="muted small">{tt('{length} Punkte', { length: t.items.length })}</td>
                 <td style={{ textAlign: 'right' }}>
-                  <button className="btn small secondary" onClick={() => setEdit(t)}>Bearbeiten</button>
+                  <button className="btn small secondary" onClick={() => setEdit(t)}>{tt('Bearbeiten')}</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table></div>
       </div>
-      <h2>Laufende Checklisten</h2>
-      {(lists.data ?? []).length ? (lists.data as any[]).map((c) => <ChecklistCard key={c.id} c={c} onChange={() => void lists.reload()} />) : <Empty>Keine offenen Checklisten.</Empty>}
+      <h2>{tt('Laufende Checklisten')}</h2>
+      {(lists.data ?? []).length ? (lists.data as any[]).map((c) => <ChecklistCard key={c.id} c={c} onChange={() => void lists.reload()} />) : <Empty>{tt('Keine offenen Checklisten.')}</Empty>}
       {edit && <TemplateModal t={edit} onClose={() => setEdit(undefined)} onDone={() => (setEdit(undefined), void tpl.reload())} />}
     </>
   );
 }
 
 function TemplateModal({ t, onClose, onDone }: { t: any; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_finance');
   const [f, setF] = useState({ kind: t.kind, name: t.name, items: t.items.map((i: any) => ({ ...i, due_days: String(i.due_days) })) as any[] });
   const upd = (i: number, k: string, v: string) => setF((s) => ({ ...s, items: s.items.map((x, j) => (j === i ? { ...x, [k]: v } : x)) }));
   return (
     <Modal
       wide
-      title={t.id ? 'Vorlage bearbeiten' : 'Neue Vorlage'}
+      title={t.id ? tt('Vorlage bearbeiten') : tt('Neue Vorlage')}
       onClose={onClose}
       footer={
         <>
           {t.id && (
-            <button className="btn ghost danger-text" onClick={async () => confirmAsk('Vorlage löschen? Laufende Checklisten bleiben.') && (await act(() => api.del(`/api/hr/checklist-templates/${t.id}`), 'Gelöscht')) && onDone()}>
-              Löschen
+            <button className="btn ghost danger-text" onClick={async () => confirmAsk(tt('Vorlage löschen? Laufende Checklisten bleiben.')) && (await act(() => api.del(`/api/hr/checklist-templates/${t.id}`), tt('Gelöscht'))) && onDone()}>
+              {tt('Löschen')}
             </button>
           )}
           <span style={{ flex: 1 }} />
-          <button className="btn secondary" onClick={onClose}>Abbrechen</button>
+          <button className="btn secondary" onClick={onClose}>{tt('Abbrechen')}</button>
           <button
             className="btn"
             onClick={async () => {
               const body = { kind: f.kind, name: f.name, items: f.items.filter((i) => i.title.trim()).map((i) => ({ title: i.title, assignee: i.assignee, due_days: Number(i.due_days) || 0 })) };
-              if (await act(() => (t.id ? api.patch(`/api/hr/checklist-templates/${t.id}`, body) : api.post('/api/hr/checklist-templates', body)), 'Gespeichert')) onDone();
+              if (await act(() => (t.id ? api.patch(`/api/hr/checklist-templates/${t.id}`, body) : api.post('/api/hr/checklist-templates', body)), tt('Gespeichert'))) onDone();
             }}
           >
-            Speichern
+            {tt('Speichern')}
           </button>
         </>
       }
     >
       <div className="grid2">
         <Field label="Name"><Input value={f.name} onChange={(v) => setF({ ...f, name: v })} /></Field>
-        <Field label="Art"><Select value={f.kind} onChange={(v) => setF({ ...f, kind: v })} options={[['onboarding', 'Onboarding (ab Eintritt)'], ['offboarding', 'Offboarding (ab Austritt)']]} /></Field>
+        <Field label={tt('Art')}><Select value={f.kind} onChange={(v) => setF({ ...f, kind: v })} options={[['onboarding', 'Onboarding (ab Eintritt)'], ['offboarding', 'Offboarding (ab Austritt)']]} /></Field>
       </div>
       <table className="t">
         <thead>
           <tr>
-            <th>Punkt</th>
-            <th style={{ width: 170 }}>Zuständig</th>
-            <th style={{ width: 120 }}>Frist (Tage)</th>
+            <th>{tt('Punkt')}</th>
+            <th style={{ width: 170 }}>{tt('Zuständig')}</th>
+            <th style={{ width: 120 }}>{tt('Frist (Tage)')}</th>
             <th />
           </tr>
         </thead>
@@ -740,15 +754,15 @@ function TemplateModal({ t, onClose, onDone }: { t: any; onClose: () => void; on
               <td><Input value={i.due_days} onChange={(v) => upd(idx, 'due_days', v)} inputMode="numeric" /></td>
               <td>
                 {f.items.length > 1 && (
-                  <button className="icon-btn" aria-label="Punkt entfernen" onClick={() => setF((s) => ({ ...s, items: s.items.filter((_, j) => j !== idx) }))}>✕</button>
+                  <button className="icon-btn" aria-label={tt('Punkt entfernen')} onClick={() => setF((s) => ({ ...s, items: s.items.filter((_, j) => j !== idx) }))}>✕</button>
                 )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <button className="btn small secondary" style={{ marginTop: 8 }} onClick={() => setF((s) => ({ ...s, items: [...s.items, { title: '', assignee: 'hr', due_days: '0' }] }))}>+ Punkt</button>
-      <p className="muted small">Frist in Tagen relativ zum Eintritts- bzw. Austrittsdatum; negativ = davor (−7: eine Woche vorher).</p>
+      <button className="btn small secondary" style={{ marginTop: 8 }} onClick={() => setF((s) => ({ ...s, items: [...s.items, { title: '', assignee: 'hr', due_days: '0' }] }))}>{tt('+ Punkt')}</button>
+      <p className="muted small">{tt('Frist in Tagen relativ zum Eintritts- bzw. Austrittsdatum; negativ = davor (−7: eine Woche vorher).')}</p>
     </Modal>
   );
 }

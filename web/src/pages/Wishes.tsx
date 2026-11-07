@@ -5,6 +5,7 @@ import { useSession } from '../session';
 import { Badge, Check, Empty, Input, Link, PageHead, Select, Spinner, Tabs, Textarea, act, navigate, useLoad, useRoute } from '../ui';
 import { WishBuilds } from '../werkstatt/Build';
 import { Shots, StatusPill, Thread, openReport, refreshFeedback, useFeedbackMe } from './Feedback';
+import { useT } from '../i18n';
 
 /**
  * Wunschliste for every login: all wishes (author and sub-account only visible to the agency),
@@ -34,6 +35,7 @@ type Wish = {
 };
 
 function VoteButton({ w, onChange, big }: { w: Pick<Wish, 'id' | 'votes' | 'my_vote' | 'status'>; onChange: (votes: number, mine: boolean) => void; big?: boolean }) {
+  const tt = useT('x_agency');
   const [busy, setBusy] = useState(false);
   const closed = w.status.board === 'declined';
   return (
@@ -42,8 +44,8 @@ function VoteButton({ w, onChange, big }: { w: Pick<Wish, 'id' | 'votes' | 'my_v
       className={`wish-vote${w.my_vote ? ' on' : ''}${big ? ' big' : ''}`}
       disabled={busy || (closed && !w.my_vote)}
       aria-pressed={w.my_vote}
-      aria-label={w.my_vote ? `Stimme zurücknehmen (${w.votes} Stimmen)` : `Dafür stimmen (${w.votes} Stimmen)`}
-      title={w.my_vote ? 'Stimme zurücknehmen' : 'Dafür stimmen'}
+      aria-label={w.my_vote ? tt('Stimme zurücknehmen ({votes} Stimmen)', { votes: w.votes }) : tt('Dafür stimmen ({votes} Stimmen)', { votes: w.votes })}
+      title={w.my_vote ? tt('Stimme zurücknehmen') : tt('Dafür stimmen')}
       onClick={async (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -55,12 +57,13 @@ function VoteButton({ w, onChange, big }: { w: Pick<Wish, 'id' | 'votes' | 'my_v
     >
       <Icon name="up" size={big ? 18 : 15} />
       <strong>{w.votes}</strong>
-      {big && <span>{w.my_vote ? 'Abgestimmt' : 'Dafür stimmen'}</span>}
+      {big && <span>{w.my_vote ? tt('Abgestimmt') : tt('Dafür stimmen')}</span>}
     </button>
   );
 }
 
 function WishCard({ w, onVote, compact }: { w: Wish; onVote: (votes: number, mine: boolean) => void; compact?: boolean }) {
+  const tt = useT('x_agency');
   return (
     <a className={`wish-card${compact ? ' compact' : ''}`} href={`/app/wishes/${w.id}`} onClick={(e) => (e.preventDefault(), navigate(`wishes/${w.id}`))}>
       <VoteButton w={w} onChange={onVote} />
@@ -75,7 +78,7 @@ function WishCard({ w, onVote, compact }: { w: Wish; onVote: (votes: number, min
               <Icon name="chat" size={12} /> {w.comments}
             </span>
           )}
-          {w.mine && <span className="muted small">dein Wunsch</span>}
+          {w.mine && <span className="muted small">{tt('dein Wunsch')}</span>}
           {w.author && !w.mine && (
             <span className="muted small">
               {w.author}
@@ -83,9 +86,9 @@ function WishCard({ w, onVote, compact }: { w: Wish; onVote: (votes: number, min
             </span>
           )}
           {w.hidden && <Badge tone="red">ausgeblendet</Badge>}
-          {w.version && <span className="muted small">Version {w.version}</span>}
+          {w.version && <span className="muted small">{tt('Version {version}', { version: w.version })}</span>}
         </span>
-        {w.reason && <span className="muted small wish-reason">Begründung: {w.reason}</span>}
+        {w.reason && <span className="muted small wish-reason">{tt('Begründung: {reason}', { reason: w.reason })}</span>}
       </span>
     </a>
   );
@@ -98,6 +101,7 @@ function useWishes(params: string) {
 }
 
 function WishList() {
+  const tt = useT('x_agency');
   const me = useFeedbackMe();
   const [q, setQ] = useState('');
   const [qd, setQd] = useState('');
@@ -114,9 +118,9 @@ function WishList() {
   return (
     <>
       <div className="wish-filters" data-tour="wish-filters">
-        <Input value={q} onChange={setQ} placeholder="Wünsche durchsuchen…" aria-label="Suchen" />
-        <Select value={area} onChange={setArea} placeholder="Alle Bereiche" options={me?.areas ?? []} />
-        <Select value={status} onChange={setStatus} placeholder="Jeder Status" options={me?.board ?? []} />
+        <Input value={q} onChange={setQ} placeholder={tt('Wünsche durchsuchen…')} aria-label={tt('Suchen')} />
+        <Select value={area} onChange={setArea} placeholder={tt('Alle Bereiche')} options={me?.areas ?? []} />
+        <Select value={status} onChange={setStatus} placeholder={tt('Jeder Status')} options={me?.board ?? []} />
         <Select
           value={sort}
           onChange={setSort}
@@ -126,7 +130,7 @@ function WishList() {
             ['status', 'Nach Status'],
           ]}
         />
-        <Check checked={mine} onChange={setMine} label="Nur meine & abgestimmte" />
+        <Check checked={mine} onChange={setMine} label={tt('Nur meine & abgestimmte')} />
       </div>
       {loading && !data ? (
         <Spinner />
@@ -141,11 +145,11 @@ function WishList() {
           tour="wish-list"
           action={
             <button className="btn" onClick={() => openReport('wish')}>
-              Wunsch einreichen
+              {tt('Wunsch einreichen')}
             </button>
           }
         >
-          {qd || area || status || mine ? 'Keine Wünsche passen zum Filter.' : 'Noch keine Wünsche – sei die oder der Erste!'}
+          {qd || area || status || mine ? tt('Keine Wünsche passen zum Filter.') : tt('Noch keine Wünsche – sei die oder der Erste!')}
         </Empty>
       )}
     </>
@@ -153,6 +157,7 @@ function WishList() {
 }
 
 function Roadmap() {
+  const tt = useT('x_agency');
   const { data, loading, vote } = useWishes('?sort=votes');
   const me = useFeedbackMe();
   if (loading && !data) return <Spinner />;
@@ -168,7 +173,7 @@ function Roadmap() {
               <h3>
                 {l} <span className="muted">{items.length}</span>
               </h3>
-              {items.length ? items.map((w) => <WishCard key={w.id} w={w} onVote={vote(w.id)} compact />) : <p className="muted small">Noch nichts.</p>}
+              {items.length ? items.map((w) => <WishCard key={w.id} w={w} onVote={vote(w.id)} compact />) : <p className="muted small">{tt('Noch nichts.')}</p>}
             </div>
           );
         })}
@@ -176,7 +181,7 @@ function Roadmap() {
       {declined.length > 0 && (
         <details className="card" style={{ marginTop: 14 }}>
           <summary>
-            Abgelehnt <span className="muted">({declined.length})</span>
+            {tt('Abgelehnt')} <span className="muted">({declined.length})</span>
           </summary>
           <div className="wish-list" style={{ marginTop: 10 }}>
             {declined.map((w) => (
@@ -190,6 +195,7 @@ function Roadmap() {
 }
 
 function Changelog() {
+  const tt = useT('x_agency');
   const { data, loading } = useLoad(() => api.get<{ entries: any[]; new_count: number }>('/api/feedback/changelog'), []);
   useEffect(() => {
     if (data?.new_count) void api.post('/api/feedback/changelog/seen').then(() => refreshFeedback());
@@ -197,7 +203,7 @@ function Changelog() {
   if (loading && !data) return <Spinner />;
   const groups = new Map<string, any[]>();
   for (const e of data?.entries ?? []) groups.set(e.version, [...(groups.get(e.version) ?? []), e]);
-  if (!groups.size) return <Empty tour="wish-changelog">Hier erscheinen neue Funktionen aus der Wunschliste und behobene Fehler – mit Versionsnummer.</Empty>;
+  if (!groups.size) return <Empty tour="wish-changelog">{tt('Hier erscheinen neue Funktionen aus der Wunschliste und behobene Fehler – mit Versionsnummer.')}</Empty>;
   return (
     <div className="changelog" data-tour="wish-changelog">
       {[...groups.entries()].map(([version, items]) => {
@@ -207,13 +213,13 @@ function Changelog() {
         return (
           <div key={version} className="card changelog-v">
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <h2>Version {version}</h2>
+              <h2>{tt('Version {version}', { version: version })}</h2>
               <span className="muted small">{day(items[0].at)}</span>
             </div>
             {wishes.length > 0 && (
               <>
                 <h3 className="changelog-h">
-                  <Icon name="idea" size={14} /> Neu
+                  <Icon name="idea" size={14} /> {tt('Neu')}
                 </h3>
                 <ul>
                   {wishes.map((e) => (
@@ -228,13 +234,13 @@ function Changelog() {
             {(lines.length > 0 || silent > 0) && (
               <>
                 <h3 className="changelog-h">
-                  <Icon name="bug" size={14} /> Behoben
+                  <Icon name="bug" size={14} /> {tt('Behoben')}
                 </h3>
                 <ul>
                   {lines.map((e) => (
                     <li key={e.id}>{e.title}</li>
                   ))}
-                  {silent > 0 && <li className="muted">{lines.length ? `und ${silent} weitere Fehlerbehebung${silent > 1 ? 'en' : ''}` : `${silent} Fehlerbehebung${silent > 1 ? 'en' : ''}`}</li>}
+                  {silent > 0 && <li className="muted">{lines.length ? tt('und {silent} weitere Fehlerbehebung{v}', { silent: silent, v: silent > 1 ? 'en' : '' }) : tt('{silent} Fehlerbehebung{v}', { silent: silent, v: silent > 1 ? 'en' : '' })}</li>}
                 </ul>
               </>
             )}
@@ -246,18 +252,19 @@ function Changelog() {
 }
 
 export function WishDetail({ id }: { id: string }) {
+  const tt = useT('x_agency');
   const session = useSession();
   const { data, error, setData } = useLoad(() => api.get(`/api/feedback/wishes/${id}`), [id]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => void (data && refreshFeedback()), [data?.wish.id]);
-  if (error) return <Empty action={<Link to="wishes">Zur Wunschliste</Link>}>{error}</Empty>;
+  if (error) return <Empty action={<Link to="wishes">{tt('Zur Wunschliste')}</Link>}>{error}</Empty>;
   if (!data) return <Spinner />;
   const w: Wish = data.wish;
   return (
     <>
       <div className="crumb-line">
-        <Link to="wishes">← Wunschliste</Link>
+        <Link to="wishes">{tt('← Wunschliste')}</Link>
       </div>
       <div className="wish-head" data-tour="page-head">
         <VoteButton big w={w} onChange={(votes, mine) => setData({ ...data, wish: { ...w, votes, my_vote: mine } })} />
@@ -267,11 +274,11 @@ export function WishDetail({ id }: { id: string }) {
             <StatusPill s={w.status} /> <Badge>{w.area}</Badge>
             <span className="muted small">
               eingereicht {dt(w.created_at)}
-              {w.mine ? ' · dein Wunsch' : w.author ? ` · ${w.author}${w.origin ? ` (${w.origin})` : ''}` : ''}
+              {w.mine ? tt(' · dein Wunsch') : w.author ? ` · ${w.author}${w.origin ? ` (${w.origin})` : ''}` : ''}
             </span>
             {data.wish.ticket && (
               <button className="btn small secondary" data-tour="wish-ticket" onClick={() => session.switchLocation(data.wish.ticket.location_id, `tickets/${data.wish.ticket.id}`)}>
-                <Icon name="ticket" size={13} /> Im Ticket #{w.number} bearbeiten
+                <Icon name="ticket" size={13} /> {tt('Im Ticket #{number} bearbeiten', { number: w.number })}
               </button>
             )}
           </div>
@@ -279,45 +286,45 @@ export function WishDetail({ id }: { id: string }) {
       </div>
       {data.duplicate_of && (
         <div className="card notice-card">
-          Zusammengeführt mit <Link to={data.duplicate_of.url.replace('/app/', '')}>{data.duplicate_of.title}</Link> – Stimmen und Kommentare zählen dort.
+          {tt('Zusammengeführt mit')} <Link to={data.duplicate_of.url.replace('/app/', '')}>{data.duplicate_of.title}</Link> {tt('– Stimmen und Kommentare zählen dort.')}
         </div>
       )}
       {w.version && (
         <div className="card notice-card ok">
-          <Icon name="ok" size={15} /> Umgesetzt in Version <strong>{w.version}</strong>
+          <Icon name="ok" size={15} /> {tt('Umgesetzt in Version')} <strong>{w.version}</strong>
           {w.note ? ` – ${w.note}` : ''}
         </div>
       )}
-      {w.reason && <div className="card notice-card">Abgelehnt: {w.reason}</div>}
+      {w.reason && <div className="card notice-card">{tt('Abgelehnt: {reason}', { reason: w.reason })}</div>}
       <div className="card">
         {w.body ? (
           <p className="fb-text" style={{ marginTop: 0 }}>
             {w.body}
           </p>
         ) : (
-          <p className="muted">Keine Beschreibung.</p>
+          <p className="muted">{tt('Keine Beschreibung.')}</p>
         )}
         <Shots files={data.files} />
       </div>
       {!data.duplicate_of && w.status.board !== 'declined' && <WishBuilds wishId={w.id} />}
       <div className="card" data-tour="wish-comments">
-        <h2>Kommentare</h2>
+        <h2>{tt('Kommentare')}</h2>
         <Thread items={data.thread.filter((e: any) => e.type !== 'status')} />
         {!data.duplicate_of && (
           <div style={{ marginTop: 12 }}>
-            <Textarea value={text} onChange={setText} rows={2} placeholder="Wofür brauchst du das? Ergänzungen helfen bei der Planung." />
+            <Textarea value={text} onChange={setText} rows={2} placeholder={tt('Wofür brauchst du das? Ergänzungen helfen bei der Planung.')} />
             <div className="actions" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
               <button
                 className="btn"
                 disabled={busy || !text.trim()}
                 onClick={async () => {
                   setBusy(true);
-                  const r = await act(() => api.post(`/api/feedback/wishes/${id}/comments`, { body: text }), 'Kommentar gespeichert');
+                  const r = await act(() => api.post(`/api/feedback/wishes/${id}/comments`, { body: text }), tt('Kommentar gespeichert'));
                   setBusy(false);
                   if (r) (setText(''), setData(r));
                 }}
               >
-                Kommentieren
+                {tt('Kommentieren')}
               </button>
             </div>
           </div>
@@ -329,6 +336,7 @@ export function WishDetail({ id }: { id: string }) {
 
 /** Route `wishes`, `wishes/roadmap`, `wishes/changelog`, `wishes/<id>`. */
 export function WishesPage() {
+  const tt = useT('x_agency');
   const route = useRoute();
   const me = useFeedbackMe();
   const session = useSession();
@@ -336,12 +344,12 @@ export function WishesPage() {
   if (!['list', 'roadmap', 'changelog'].includes(sub)) return <WishDetail id={sub} />;
   return (
     <>
-      <PageHead title="Wunschliste" sub={`Was soll ${session.branding.name} als Nächstes können? Stimme für Wünsche ab oder schlag selbst etwas vor.`}>
+      <PageHead title={tt('Wunschliste')} sub={tt('Was soll {name} als Nächstes können? Stimme für Wünsche ab oder schlag selbst etwas vor.', { name: session.branding.name })}>
         <button className="btn secondary" onClick={() => navigate('feedback')}>
-          <Icon name="inbox" size={14} /> Meine Meldungen
+          <Icon name="inbox" size={14} /> {tt('Meine Meldungen')}
         </button>
         <button className="btn" data-tour="wish-new" onClick={() => openReport('wish')}>
-          <Icon name="idea" size={14} /> Wunsch einreichen
+          <Icon name="idea" size={14} /> {tt('Wunsch einreichen')}
         </button>
       </PageHead>
       <Tabs

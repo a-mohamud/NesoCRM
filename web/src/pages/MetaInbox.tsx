@@ -38,6 +38,7 @@ export function ChannelFilter({ value, onChange }: { value: string; onChange: (v
 
 /** Image, audio, video, file or map link of an inbound WhatsApp/Messenger/Instagram message. */
 export function MessageMedia({ m }: { m: any }) {
+  const tt = useT('inbox');
   const [broken, setBroken] = useState(false);
   let a: any = m?.meta_media;
   if (typeof a === 'string') {
@@ -52,16 +53,16 @@ export function MessageMedia({ m }: { m: any }) {
   if (a.kind === 'location' && Number.isFinite(a.lat) && Number.isFinite(a.lng)) {
     return (
       <a className="media-link" href={`https://www.openstreetmap.org/?mlat=${a.lat}&mlon=${a.lng}#map=17/${a.lat}/${a.lng}`} target="_blank" rel="noreferrer">
-        <Icon name="location" size={14} /> Karte öffnen
+        <Icon name="location" size={14} /> {tt('Karte öffnen')}
       </a>
     );
   }
   const src = `/api/messages/meta/media/${encodeURIComponent(m.id)}?locationId=${encodeURIComponent(currentLocation())}`;
-  if (broken) return <div className="media-link muted">Datei bei Meta nicht mehr verfügbar</div>;
+  if (broken) return <div className="media-link muted">{tt('Datei bei Meta nicht mehr verfügbar')}</div>;
   if (a.kind === 'image' || a.kind === 'sticker') {
     return (
       <a href={src} target="_blank" rel="noreferrer" className="media-wrap">
-        <img className={`media-img${a.kind === 'sticker' ? ' sticker' : ''}`} src={src} alt={a.kind === 'sticker' ? 'Sticker' : 'Bild'} loading="lazy" onError={() => setBroken(true)} />
+        <img className={`media-img${a.kind === 'sticker' ? ' sticker' : ''}`} src={src} alt={a.kind === 'sticker' ? tt('Sticker') : tt('Bild')} loading="lazy" onError={() => setBroken(true)} />
       </a>
     );
   }
@@ -69,7 +70,7 @@ export function MessageMedia({ m }: { m: any }) {
   if (a.kind === 'video') return <video className="media-video" controls preload="none" src={src} onError={() => setBroken(true)} />;
   return (
     <a className="media-link" href={src} target="_blank" rel="noreferrer">
-      <Icon name="file" size={14} /> {a.filename || 'Datei öffnen'}
+      <Icon name="file" size={14} /> {a.filename || tt('Datei öffnen')}
     </a>
   );
 }
@@ -119,11 +120,12 @@ function left(ends: string) {
 
 /** Shows whether free text is allowed right now. */
 export function WindowState({ channel, st }: { channel: string; st: any }) {
+  const tt = useT('inbox');
   const w = st?.window ?? {};
   if (w.open) {
     return (
       <div className="win-state open">
-        <Icon name="ok" size={14} /> 24-Stunden-Fenster offen · {left(w.ends_at)}
+        <Icon name="ok" size={14} /> {tt('24-Stunden-Fenster offen · {left}', { left: left(w.ends_at) })}
       </div>
     );
   }
@@ -133,9 +135,9 @@ export function WindowState({ channel, st }: { channel: string; st: any }) {
       <Icon name="pending" size={14} />{' '}
       {channel === 'whatsapp'
         ? w.last_inbound_at
-          ? 'Fenster geschlossen (letzte Nachricht vor über 24 Std.) – nur freigegebene Vorlagen'
-          : 'Der Kontakt hat noch nicht per WhatsApp geschrieben – die erste Nachricht muss eine Vorlage sein'
-        : `Fenster geschlossen – über ${label} geht es erst weiter, wenn der Kontakt wieder schreibt`}
+          ? tt('Fenster geschlossen (letzte Nachricht vor über 24 Std.) – nur freigegebene Vorlagen')
+          : tt('Der Kontakt hat noch nicht per WhatsApp geschrieben – die erste Nachricht muss eine Vorlage sein')
+        : tt('Fenster geschlossen – über {label} geht es erst weiter, wenn der Kontakt wieder schreibt', { label: label })}
     </div>
   );
 }
@@ -144,10 +146,11 @@ const fill = (text: string, values: Record<string, string>, prefix: string) => S
 
 /** Preview of a WhatsApp template with the values filled in so far. */
 export function TemplatePreview({ t, values }: { t: any; values: Record<string, string> }) {
+  const tt = useT('inbox');
   return (
     <div className="tpl-preview">
       {t.header && <strong>{fill(t.header, values, 'header')}</strong>}
-      {t.header_format && t.header_format !== 'TEXT' && <div className="muted small">[{t.header_format === 'IMAGE' ? 'Bild' : t.header_format === 'VIDEO' ? 'Video' : 'Dokument'}]</div>}
+      {t.header_format && t.header_format !== 'TEXT' && <div className="muted small">[{t.header_format === 'IMAGE' ? tt('Bild') : t.header_format === 'VIDEO' ? tt('Video') : tt('Dokument')}]</div>}
       <div>{fill(t.body, values, 'body')}</div>
       {t.footer && <div className="muted small">{t.footer}</div>}
       {t.buttons?.length > 0 && (
@@ -163,13 +166,14 @@ export function TemplatePreview({ t, values }: { t: any; values: Record<string, 
 
 /** Inputs for the template's placeholders (header, body, link buttons, header media). */
 export function TemplateSlots({ t, values, onChange, hint }: { t: any; values: Record<string, string>; onChange: (v: Record<string, string>) => void; hint?: string }) {
-  if (!t.slots?.length) return <p className="muted small">Diese Vorlage hat keine Platzhalter.</p>;
+  const tt = useT('inbox');
+  if (!t.slots?.length) return <p className="muted small">{tt('Diese Vorlage hat keine Platzhalter.')}</p>;
   return (
     <div className="tpl-slots">
       {t.slots.map((s: any) => (
         <label key={s.key} className="field">
           <span>{s.label}</span>
-          <Input value={values[s.key]} onChange={(v) => onChange({ ...values, [s.key]: v })} placeholder={s.kind !== 'text' ? 'https://…' : s.example ? `z. B. ${s.example}` : hint} />
+          <Input value={values[s.key]} onChange={(v) => onChange({ ...values, [s.key]: v })} placeholder={s.kind !== 'text' ? 'https://…' : s.example ? tt('z. B. {example}', { example: s.example }) : hint} />
         </label>
       ))}
     </div>
@@ -177,6 +181,7 @@ export function TemplateSlots({ t, values, onChange, hint }: { t: any; values: R
 }
 
 function MetaComposerPanel({ channel, contact, st, onSent, draft }: { channel: string; contact: any; st: any; onSent: () => void; draft?: ComposerDraft }) {
+  const tt = useT('inbox');
   const open = !!st.window?.open;
   // A draft starts in text mode with its text; with the 24-hour window closed the text stays visible but only a template can go out.
   const [mode, setMode] = useState<'text' | 'template'>(channel === 'whatsapp' && !open && !draft ? 'template' : 'text');
@@ -196,7 +201,7 @@ function MetaComposerPanel({ channel, contact, st, onSent, draft }: { channel: s
   const send = async () => {
     let ignoreDnd = false;
     if (contact.dnd) {
-      if (!confirmAsk('Kontakt hat „Nicht stören“. Trotzdem senden?')) return;
+      if (!confirmAsk(tt('Kontakt hat „Nicht stören“. Trotzdem senden?'))) return;
       ignoreDnd = true;
     }
     setBusy(true);
@@ -210,9 +215,9 @@ function MetaComposerPanel({ channel, contact, st, onSent, draft }: { channel: s
     );
     setBusy(false);
     if (!r) return;
-    if (r.status === 'failed') toast(`Nicht gesendet: ${r.error}`);
+    if (r.status === 'failed') toast(tt('Nicht gesendet: {error}', { error: r.error }));
     else {
-      toast(`Per ${CHANNEL_LABELS[channel]} gesendet`);
+      toast(tt('Per {v} gesendet', { v: CHANNEL_LABELS[channel] }));
       if (draft && mode === 'text') await finishDraft(draft.id);
     }
     setBody('');
@@ -231,12 +236,12 @@ function MetaComposerPanel({ channel, contact, st, onSent, draft }: { channel: s
           </span>
         )}
         {channel === 'whatsapp' && (
-          <div className="seg" role="group" aria-label="Art">
+          <div className="seg" role="group" aria-label={tt('Art')}>
             <button type="button" className={mode === 'text' ? 'on' : ''} onClick={() => setMode('text')}>
-              Text
+              {tt('Text')}
             </button>
             <button type="button" className={mode === 'template' ? 'on' : ''} onClick={() => setMode('template')}>
-              <Icon name="template" size={13} /> Vorlage
+              <Icon name="template" size={13} /> {tt('Vorlage')}
             </button>
           </div>
         )}
@@ -247,24 +252,24 @@ function MetaComposerPanel({ channel, contact, st, onSent, draft }: { channel: s
           onChange={setBody}
           rows={4}
           disabled={!open}
-          placeholder={open ? `${CHANNEL_LABELS[channel]}-Nachricht an ${contact.first_name || 'den Kontakt'}` : channel === 'whatsapp' ? 'Freier Text erst wieder nach einer Nachricht des Kontakts – bitte „Vorlage“ wählen' : 'Freier Text erst wieder nach einer Nachricht des Kontakts'}
+          placeholder={open ? `${CHANNEL_LABELS[channel]}-Nachricht an ${contact.first_name || tt('den Kontakt')}` : channel === 'whatsapp' ? tt('Freier Text erst wieder nach einer Nachricht des Kontakts – bitte „Vorlage“ wählen') : tt('Freier Text erst wieder nach einer Nachricht des Kontakts')}
         />
       ) : !st.templates ? (
         <p className="muted small">
-          Für Vorlagen fehlt die WhatsApp-Business-Konto-ID – <Link to="settings/channels">Einstellungen → Kanäle</Link>.
+          {tt('Für Vorlagen fehlt die WhatsApp-Business-Konto-ID –')} <Link to="settings/channels">{tt('Einstellungen → Kanäle')}</Link>.
         </p>
       ) : templates.loading && !templates.data ? (
         <Spinner />
       ) : templates.error ? (
-        <p className="muted small">Vorlagen nicht geladen: {templates.error}</p>
+        <p className="muted small">{tt('Vorlagen nicht geladen: {error}', { error: templates.error })}</p>
       ) : !templates.data?.length ? (
-        <p className="muted small">Keine freigegebenen Vorlagen. Vorlagen legst du im WhatsApp Manager von Meta an; nach der Freigabe erscheinen sie hier.</p>
+        <p className="muted small">{tt('Keine freigegebenen Vorlagen. Vorlagen legst du im WhatsApp Manager von Meta an; nach der Freigabe erscheinen sie hier.')}</p>
       ) : (
         <>
           <Select
             value={tpl}
             onChange={(v) => (setTpl(v), setValues({}))}
-            placeholder="Vorlage wählen…"
+            placeholder={tt('Vorlage wählen…')}
             options={templates.data.map((t) => [`${t.name}|${t.language}`, `${t.name} (${t.language}, ${t.category === 'MARKETING' ? 'Marketing' : t.category === 'UTILITY' ? 'Service' : t.category === 'AUTHENTICATION' ? 'Code' : t.category})${t.supported ? '' : ' – nicht unterstützt'}`])}
           />
           {chosen && !chosen.supported && <p className="muted small">{chosen.reason}</p>}
@@ -278,10 +283,10 @@ function MetaComposerPanel({ channel, contact, st, onSent, draft }: { channel: s
       )}
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <small className="muted">
-          {mode === 'text' ? `${body.length} / ${st.limit} Zeichen` : chosen ? 'Vorlagen kosten je nach Kategorie eine Meta-Gebühr.' : ''}
+          {mode === 'text' ? tt('{length} / {limit} Zeichen', { length: body.length, limit: st.limit }) : chosen ? tt('Vorlagen kosten je nach Kategorie eine Meta-Gebühr.') : ''}
         </small>
         <button className="btn" disabled={!canSend} onClick={send}>
-          <ChannelIcon channel={channel} /> Senden
+          <ChannelIcon channel={channel} /> {tt('Senden')}
         </button>
       </div>
     </>

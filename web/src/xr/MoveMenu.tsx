@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Icon } from '../icons';
 import { useSpatial } from '../theme/store';
 import { Modal } from '../ui';
+import { useT } from '../i18n';
 
 /**
  * "Verschieben nach …": the way to move a card, a task or a widget without dragging it. Dragging needs a steady hand and a
@@ -19,6 +20,7 @@ export interface MoveTarget {
 }
 
 export function MoveMenu({ what, targets, current, onMove, title = 'Verschieben nach …' }: { what: string; targets: MoveTarget[]; current?: string; onMove: (id: string) => void | Promise<unknown>; title?: string }) {
+  const tt = useT('x_misc');
   const spatial = useSpatial();
   const [open, setOpen] = useState(false);
   if (!spatial) return null;
@@ -27,7 +29,7 @@ export function MoveMenu({ what, targets, current, onMove, title = 'Verschieben 
       <button
         type="button"
         className="btn secondary small sp-move-btn"
-        aria-label={`${what} verschieben`}
+        aria-label={tt('{what} verschieben', { what: what })}
         aria-haspopup="dialog"
         onClick={(e) => {
           e.stopPropagation();
@@ -36,7 +38,7 @@ export function MoveMenu({ what, targets, current, onMove, title = 'Verschieben 
         onPointerDown={(e) => e.stopPropagation()}
         draggable={false}
       >
-        <Icon name="move" size={16} /> Verschieben
+        <Icon name="move" size={16} /> {tt('Verschieben')}
       </button>
       {/* In a portal: the card is transformed on hover (a fixed dialog inside it would be placed and clipped by the card), and the
           wrapper keeps clicks in the dialog from reaching the card's own click handler (React events bubble through portals). */}

@@ -9,6 +9,7 @@ import { PluginDetail, PluginsTab } from './Plugins';
 import { AgencyTab, CoreTab, FlagsTab, PolicyTab } from './Admin';
 import { NAMES, openBuild, usd } from './shared';
 import { ModelGateNotice } from './badges';
+import { useT } from '../i18n';
 
 /**
  * The Werkstatt: where wishes get built. Tabs: Aufträge (builds), Plugins (mine / examples / import), and for admins
@@ -19,6 +20,7 @@ import { ModelGateNotice } from './badges';
 const TABS = ['builds', 'plugins', 'approvals', 'agency', 'policy', 'flags', 'core'];
 
 export function WerkstattPage() {
+  const tt = useT('x_ai');
   const route = useRoute();
   const [, a, b] = route;
   const me = useWerkstattMe();
@@ -31,7 +33,7 @@ export function WerkstattPage() {
   ];
   return (
     <>
-      <PageHead title={NAMES.werkstatt} sub="Hier werden Wünsche gebaut – erst nur für dich, später für alle.">
+      <PageHead title={NAMES.werkstatt} sub={tt('Hier werden Wünsche gebaut – erst nur für dich, später für alle.')}>
         <Link to="marktplatz" className="btn secondary">
           <Icon name="store" size={14} /> {NAMES.marktplatz}
         </Link>
@@ -57,17 +59,18 @@ export function WerkstattPage() {
 
 /** Who may build, the AI budget of this sub-account – and why a button is off. */
 function MeBar({ me }: { me: WerkstattMe }) {
+  const tt = useT('x_ai');
   const pct = me.budget.limit_usd > 0 ? Math.min(100, Math.round((me.budget.used_usd / me.budget.limit_usd) * 100)) : 100;
   return (
     <div className="wk-me card" data-tour="wk-budget">
       <div className="grow">
-        <strong>KI-Budget dieses Monats</strong>
-        <div className="wk-meter" role="progressbar" aria-label="Fortschritt" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <strong>{tt('KI-Budget dieses Monats')}</strong>
+        <div className="wk-meter" role="progressbar" aria-label={tt('Fortschritt')} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
           <span style={{ width: `${pct}%` }} className={pct >= 90 ? 'hot' : ''} />
         </div>
         <span className="muted small">
-          {usd(me.budget.used_usd)} von {usd(me.budget.limit_usd)} verbraucht · Bauen darf: {{ admins: 'nur Admins', team: 'das Team', everyone: 'jede Person' }[me.who as 'admins']}
-          {me.approval ? ' · mit Freigabe durch einen Admin' : ''}
+          {tt('{usd} von {usd2} verbraucht · Bauen darf:', { usd: usd(me.budget.used_usd), usd2: usd(me.budget.limit_usd) })} {{ admins: 'nur Admins', team: 'das Team', everyone: 'jede Person' }[me.who as 'admins']}
+          {me.approval ? tt(' · mit Freigabe durch einen Admin') : ''}
         </span>
       </div>
       {!me.can_build && <p className="muted small">{me.reason}</p>}
@@ -76,9 +79,9 @@ function MeBar({ me }: { me: WerkstattMe }) {
           {me.ai_problem} {me.ai_hint}
         </p>
       )}
-      {me.can_build && !me.ai_problem && <p className="muted small">KI: {me.ai.label} · {me.ai.model}</p>}
+      {me.can_build && !me.ai_problem && <p className="muted small">{tt('KI: {label} · {model}', { label: me.ai.label, model: me.ai.model })}</p>}
       {me.can_build && !me.ai_problem && me.model_gate?.ok && <ModelGateNotice gate={me.model_gate} />}
-      {me.server_logic !== 'script' && <p className="muted small">Server-Logik: {me.server_logic === 'declarative' ? 'nur deklarative Schritte (ohne Skripte)' : 'ausgeschaltet'}.</p>}
+      {me.server_logic !== 'script' && <p className="muted small">{tt('Server-Logik:')} {me.server_logic === 'declarative' ? tt('nur deklarative Schritte (ohne Skripte)') : 'ausgeschaltet'}.</p>}
     </div>
   );
 }
@@ -98,6 +101,7 @@ function useOpenLink() {
 
 /** What happened to your orders since you last looked (plan ready, approved, finished …). */
 function NoticesStrip() {
+  const tt = useT('x_ai');
   const { notices, unread, reload } = useWerkstattNotes();
   const open = useOpenLink();
   const fresh = notices.filter((n) => !n.read_at).slice(0, 5);
@@ -110,9 +114,9 @@ function NoticesStrip() {
   return (
     <div className="card wk-notes-strip" data-tour="wk-notices">
       <div className="row" style={{ alignItems: 'center' }}>
-        <strong className="grow">Neu für dich</strong>
+        <strong className="grow">{tt('Neu für dich')}</strong>
         <button className="btn ghost small" onClick={async () => (await api.post('/api/werkstatt/notices/read', {}).catch(() => {}), reload())}>
-          Alle gelesen
+          {tt('Alle gelesen')}
         </button>
       </div>
       <ul>
@@ -141,6 +145,7 @@ function useAutoReload(reload: () => unknown, busy: boolean, ms = 2500) {
 }
 
 function BuildRow({ b, admin }: { b: Build; admin?: boolean }) {
+  const tt = useT('x_ai');
   const open = useOpenLink();
   // An admin sees the orders of every sub-account here: opening one switches to its sub-account first.
   const foreign = !!b.location_id && b.location_id !== currentLocation();
@@ -157,7 +162,7 @@ function BuildRow({ b, admin }: { b: Build; admin?: boolean }) {
       <div className="grow">
         <strong>{b.title}</strong>
         <div className="muted small">
-          {b.kind === 'change' ? 'Änderung' : b.stage_label ? `Stufe ${b.stage} · ${b.stage_label}` : 'wird analysiert'} · {ago(b.created_at)}
+          {b.kind === 'change' ? tt('Änderung') : b.stage_label ? tt('Stufe {stage} · {stage_label}', { stage: b.stage, stage_label: b.stage_label }) : tt('wird analysiert')} · {ago(b.created_at)}
           {admin && b.user ? ` · ${b.user}${b.location ? ` (${b.location})` : ''}` : ''}
         </div>
       </div>
@@ -168,6 +173,7 @@ function BuildRow({ b, admin }: { b: Build; admin?: boolean }) {
 }
 
 function BuildsTab({ me }: { me?: WerkstattMe }) {
+  const tt = useT('x_ai');
   const l = useLoad(() => api.get<Build[]>('/api/werkstatt/builds'), []);
   const busy = !!l.data?.some((b) => ['planning', 'building'].includes(b.status));
   useAutoReload(l.reload, busy);
@@ -176,7 +182,7 @@ function BuildsTab({ me }: { me?: WerkstattMe }) {
   if (!list.length)
     return (
       <Empty tour="wk-empty" action={<button className="btn" onClick={() => openBuild()}>{NAMES.build}</button>}>
-        Noch keine Aufträge. Beschreibe, was du dir wünschst – die KI schlägt einen Plan vor und baut ihn nach deiner Bestätigung.
+        {tt('Noch keine Aufträge. Beschreibe, was du dir wünschst – die KI schlägt einen Plan vor und baut ihn nach deiner Bestätigung.')}
         {me && !me.can_build ? ` (${me.reason})` : ''}
       </Empty>
     );
@@ -191,6 +197,7 @@ function BuildsTab({ me }: { me?: WerkstattMe }) {
 
 /** One order: plan, confirmation, log. Admins also approve or reject here. */
 function BuildPage({ id, me }: { id: string; me?: WerkstattMe }) {
+  const tt = useT('x_ai');
   const r = useBuild(id);
   // Deep link from the email or the push buttons: ?action=approve|reject opens the decision dialog (never decides by itself).
   const [deciding, setDeciding] = useState<'approve' | 'reject' | null>(() => {
@@ -202,12 +209,12 @@ function BuildPage({ id, me }: { id: string; me?: WerkstattMe }) {
     if (new URLSearchParams(location.search).has('action')) history.replaceState(history.state, '', location.pathname);
   }, []);
   if (r.loading && !b) return <Spinner />;
-  if (!b) return <Empty>Auftrag nicht gefunden.</Empty>;
+  if (!b) return <Empty>{tt('Auftrag nicht gefunden.')}</Empty>;
   const canDecide = !!me?.admin && b.status === 'awaiting_approval';
   return (
     <div className="wk-build">
       <p>
-        <Link to="werkstatt">← Alle Aufträge</Link>
+        <Link to="werkstatt">{tt('← Alle Aufträge')}</Link>
       </p>
       <h2 style={{ marginTop: 0 }}>{b.title}</h2>
       <p className="muted small">
@@ -216,12 +223,12 @@ function BuildPage({ id, me }: { id: string; me?: WerkstattMe }) {
         {b.wish_id && (
           <>
             {' · '}
-            <Link to={`wishes/${b.wish_id}`}>Wunsch ansehen</Link>
+            <Link to={`wishes/${b.wish_id}`}>{tt('Wunsch ansehen')}</Link>
           </>
         )}
       </p>
       <details className="wk-text">
-        <summary>Wunsch im Wortlaut</summary>
+        <summary>{tt('Wunsch im Wortlaut')}</summary>
         <p style={{ whiteSpace: 'pre-wrap' }}>{b.text}</p>
       </details>
       <div className="card">
@@ -229,14 +236,14 @@ function BuildPage({ id, me }: { id: string; me?: WerkstattMe }) {
       </div>
       {canDecide && (
         <div className="card wk-approve" data-tour="wk-approve">
-          <h3 style={{ marginTop: 0 }}>Freigabe</h3>
-          <p className="muted small">Gebaut wird mit den Rechten der Auftraggeberin bzw. des Auftraggebers, nur in {b.location || 'ihrem Sub-Account'}. Plan, Berechtigungen und Kosten siehst du oben.</p>
+          <h3 style={{ marginTop: 0 }}>{tt('Freigabe')}</h3>
+          <p className="muted small">{tt('Gebaut wird mit den Rechten der Auftraggeberin bzw. des Auftraggebers, nur in')} {b.location || tt('ihrem Sub-Account')}{tt('. Plan, Berechtigungen und Kosten siehst du oben.')}</p>
           <div className="actions">
             <button className="btn danger" onClick={() => setDeciding('reject')}>
-              Ablehnen
+              {tt('Ablehnen')}
             </button>
             <button className="btn" onClick={() => setDeciding('approve')}>
-              <Icon name="ok" size={14} /> Freigeben und bauen
+              <Icon name="ok" size={14} /> {tt('Freigeben und bauen')}
             </button>
           </div>
         </div>
@@ -248,45 +255,47 @@ function BuildPage({ id, me }: { id: string; me?: WerkstattMe }) {
 }
 
 function DecideInfo({ b, onClose }: { b: Build; onClose: () => void }) {
+  const tt = useT('x_ai');
   return (
-    <Modal title="Schon entschieden" onClose={onClose} footer={<button className="btn" onClick={onClose}>OK</button>}>
-      <p>Dieser Auftrag wartet nicht mehr auf eine Freigabe: {b.status_label}.</p>
+    <Modal title={tt('Schon entschieden')} onClose={onClose} footer={<button className="btn" onClick={onClose}>OK</button>}>
+      <p>{tt('Dieser Auftrag wartet nicht mehr auf eine Freigabe: {status_label}.', { status_label: b.status_label })}</p>
     </Modal>
   );
 }
 
 /** Approve or decline: shows what is about to happen and asks for a note. ✕ and Esc close it. */
 function DecideModal({ b, what, onClose, onDone }: { b: Build; what: 'approve' | 'reject'; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_ai');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const go = async () => {
     setBusy(true);
-    const r = await act(() => api.post(`/api/werkstatt/builds/${b.id}/${what}`, { note }), what === 'approve' ? 'Freigegeben – der Bau startet' : 'Abgelehnt');
+    const r = await act(() => api.post(`/api/werkstatt/builds/${b.id}/${what}`, { note }), what === 'approve' ? tt('Freigegeben – der Bau startet') : tt('Abgelehnt'));
     setBusy(false);
     if (r) onDone();
   };
   const est = b.plan?.estimate?.typical_usd;
   return (
     <Modal
-      title={what === 'approve' ? `„${b.title}“ freigeben?` : `„${b.title}“ ablehnen?`}
+      title={what === 'approve' ? tt('„{title}“ freigeben?', { title: b.title }) : tt('„{title}“ ablehnen?', { title: b.title })}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className={`btn${what === 'reject' ? ' danger' : ''}`} disabled={busy} onClick={go}>
-            {what === 'approve' ? 'Freigeben und bauen' : 'Ablehnen'}
+            {what === 'approve' ? tt('Freigeben und bauen') : tt('Ablehnen')}
           </button>
         </>
       }
     >
       <p>
         {b.user}
-        {b.location ? ` (${b.location})` : ''} möchte „{b.title}“ bauen lassen{est ? ` – geschätzte KI-Kosten ${usd(est)}` : ''}.
+        {b.location ? ` (${b.location})` : ''} {tt('möchte „{title}“ bauen lassen', { title: b.title })}{est ? tt(' – geschätzte KI-Kosten {usd}', { usd: usd(est) }) : ''}.
       </p>
-      {what === 'approve' ? <p className="muted small">Gebaut wird mit den Rechten der Auftraggeberin bzw. des Auftraggebers, nur in deren Sub-Account. Die Berechtigungen hat sie bzw. er im Plan bestätigt.</p> : <p className="muted small">Die Person wird benachrichtigt – schreib ihr gern kurz, warum.</p>}
-      <Field label={what === 'approve' ? 'Notiz (optional)' : 'Begründung'}>
+      {what === 'approve' ? <p className="muted small">{tt('Gebaut wird mit den Rechten der Auftraggeberin bzw. des Auftraggebers, nur in deren Sub-Account. Die Berechtigungen hat sie bzw. er im Plan bestätigt.')}</p> : <p className="muted small">{tt('Die Person wird benachrichtigt – schreib ihr gern kurz, warum.')}</p>}
+      <Field label={what === 'approve' ? tt('Notiz (optional)') : tt('Begründung')}>
         <Textarea value={note} onChange={setNote} rows={3} />
       </Field>
     </Modal>
@@ -300,6 +309,7 @@ interface AgencyData {
 
 /** Admins: orders waiting for approval first, then the last builds of the whole agency. */
 function ApprovalsTab() {
+  const tt = useT('x_ai');
   const l = useLoad(() => api.get<AgencyData>('/api/werkstatt/agency'), []);
   useAutoReload(l.reload, !!l.data?.builds.some((b) => ['planning', 'building'].includes(b.status)));
   if (l.loading && !l.data) return <Spinner />;
@@ -309,18 +319,18 @@ function ApprovalsTab() {
   const rest = d.builds.filter((b) => b.status !== 'awaiting_approval');
   return (
     <>
-      <h3>Warten auf Freigabe</h3>
-      {waiting.length ? waiting.map((b) => <BuildRow key={b.id} b={b} admin />) : <p className="muted">Nichts offen.</p>}
-      <h3>Letzte Aufträge der Agentur</h3>
-      {rest.length ? rest.map((b) => <BuildRow key={b.id} b={b} admin />) : <p className="muted">Noch keine Aufträge.</p>}
-      <h3>KI-Budget je Sub-Account</h3>
+      <h3>{tt('Warten auf Freigabe')}</h3>
+      {waiting.length ? waiting.map((b) => <BuildRow key={b.id} b={b} admin />) : <p className="muted">{tt('Nichts offen.')}</p>}
+      <h3>{tt('Letzte Aufträge der Agentur')}</h3>
+      {rest.length ? rest.map((b) => <BuildRow key={b.id} b={b} admin />) : <p className="muted">{tt('Noch keine Aufträge.')}</p>}
+      <h3>{tt('KI-Budget je Sub-Account')}</h3>
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Sub-Account</th>
-              <th>Verbraucht</th>
-              <th>Budget</th>
+              <th>{tt('Sub-Account')}</th>
+              <th>{tt('Verbraucht')}</th>
+              <th>{tt('Budget')}</th>
             </tr>
           </thead>
           <tbody>

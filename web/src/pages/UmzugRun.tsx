@@ -2,23 +2,25 @@ import { useEffect, useState } from 'react';
 import { dt } from '../api';
 import { Badge, Modal, Spinner, act } from '../ui';
 import { EXISTING_LABELS, JOB_STATUS, type Job, type ReportRow, type UmzugApi } from './umzug-format';
+import { useT } from '../i18n';
 
 /** Schritt 4 des Umzugs: Fortschritt, Bericht, Pausieren/Fortsetzen, Rückgängig – und die Liste der letzten Umzüge. */
 
 export const isLive = (j?: Pick<Job, 'status'> | null) => j?.status === 'running' || j?.status === 'undoing';
 
 export function ReportTable({ rows }: { rows: ReportRow[] }) {
-  if (!rows.length) return <p className="muted">Es gab nichts zu übernehmen.</p>;
+  const tt = useT('x_integrations');
+  if (!rows.length) return <p className="muted">{tt('Es gab nichts zu übernehmen.')}</p>;
   return (
     <div className="table-wrap" data-tour="um-report">
       <table className="t um-report">
         <thead>
           <tr>
-            <th>Was</th>
-            <th className="num">Neu</th>
-            <th className="num">Aktualisiert</th>
-            <th className="num">Übersprungen</th>
-            <th className="num">Fehler</th>
+            <th>{tt('Was')}</th>
+            <th className="num">{tt('Neu')}</th>
+            <th className="num">{tt('Aktualisiert')}</th>
+            <th className="num">{tt('Übersprungen')}</th>
+            <th className="num">{tt('Fehler')}</th>
           </tr>
         </thead>
         <tbody>
@@ -38,30 +40,32 @@ export function ReportTable({ rows }: { rows: ReportRow[] }) {
 }
 
 function UndoModal({ job, onClose, onConfirm }: { job: Job; onClose: () => void; onConfirm: () => void }) {
+  const tt = useT('x_integrations');
   return (
     <Modal
-      title="Umzug rückgängig machen?"
+      title={tt('Umzug rückgängig machen?')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn danger" onClick={onConfirm} data-tour="um-undo-confirm">
-            Rückgängig machen
+            {tt('Rückgängig machen')}
           </button>
         </>
       }
     >
       <p>
-        Alles, was der Umzug aus {job.source_label} <strong>neu angelegt</strong> hat, wird wieder gelöscht. Kontakte, die es schon gab und die der Umzug nur ergänzt hat, bekommen ihre alten Werte zurück.
+        {tt('Alles, was der Umzug aus {source_label}', { source_label: job.source_label })} <strong>{tt('neu angelegt')}</strong> {tt('hat, wird wieder gelöscht. Kontakte, die es schon gab und die der Umzug nur ergänzt hat, bekommen ihre alten Werte zurück.')}
       </p>
-      <p className="muted small">Bleiben dürfen: Kontakte, an denen du nach dem Umzug selbst etwas geändert hast, Tags und Felder, die inzwischen anderswo benutzt werden, und aktivierte Automationen. Der Bericht danach nennt alles, was stehen blieb.</p>
+      <p className="muted small">{tt('Bleiben dürfen: Kontakte, an denen du nach dem Umzug selbst etwas geändert hast, Tags und Felder, die inzwischen anderswo benutzt werden, und aktivierte Automationen. Der Bericht danach nennt alles, was stehen blieb.')}</p>
     </Modal>
   );
 }
 
 export function UmzugRun({ api, jobId, first, onJob, onImport, onNew }: { api: UmzugApi; jobId: string; first?: Job; onJob: () => void; onImport: (dryRun: Job) => void; onNew: () => void }) {
+  const tt = useT('x_integrations');
   const [job, setJob] = useState<Job | undefined>(first);
   const [undo, setUndo] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -113,33 +117,33 @@ export function UmzugRun({ api, jobId, first, onJob, onImport, onNew }: { api: U
         <div className="um-run-head">
           <div>
             <h3>
-              {dry ? 'Probelauf' : 'Umzug'} aus {job.source_label} <Badge tone={tone}>{undoing ? 'wird rückgängig gemacht' : statusText}</Badge>
+              {dry ? tt('Probelauf') : tt('Umzug')} aus {job.source_label} <Badge tone={tone}>{undoing ? tt('wird rückgängig gemacht') : statusText}</Badge>
             </h3>
             <div className="muted small">
-              Gestartet {dt(job.created_at)}
-              {job.finished_at ? ` · fertig ${dt(job.finished_at)}` : ''}
+              {tt('Gestartet {dt}', { dt: dt(job.created_at) })}
+              {job.finished_at ? tt(' · fertig {dt}', { dt: dt(job.finished_at) }) : ''}
             </div>
           </div>
           <div className="um-actions">
             {job.status === 'running' && (
               <button className="btn secondary" disabled={busy} onClick={() => void run('pause')} data-tour="um-pause">
-                Pausieren
+                {tt('Pausieren')}
               </button>
             )}
             {(job.status === 'interrupted' || (job.status === 'failed' && !job.undone_at)) && !job.undo && (
               <button className="btn" disabled={busy} onClick={() => void run('resume')} data-tour="um-resume">
-                Fortsetzen
+                {tt('Fortsetzen')}
               </button>
             )}
           </div>
         </div>
         {(live || job.status === 'interrupted') && (
           <>
-            <div className="um-bar" role="progressbar" aria-valuenow={job.percent} aria-valuemin={0} aria-valuemax={100} aria-label="Fortschritt">
+            <div className="um-bar" role="progressbar" aria-valuenow={job.percent} aria-valuemin={0} aria-valuemax={100} aria-label={tt('Fortschritt')}>
               <div style={{ width: `${Math.max(live ? 3 : 0, job.percent)}%` }} />
             </div>
             <p className="muted small">
-              {undoing ? 'Das Angelegte wird wieder entfernt …' : job.step_label ? `${job.step_label}: ${job.processed}${job.total ? ` von ${job.total}` : ''}` : 'Startet …'}
+              {undoing ? tt('Das Angelegte wird wieder entfernt …') : job.step_label ? `${job.step_label}: ${job.processed}${job.total ? tt(' von {total}', { total: job.total }) : ''}` : tt('Startet …')}
             </p>
           </>
         )}
@@ -154,27 +158,27 @@ export function UmzugRun({ api, jobId, first, onJob, onImport, onNew }: { api: U
           </div>
         )}
         {job.error && <p className="um-err">{job.error}</p>}
-        {job.status === 'interrupted' && <p className="muted small">Pausiert – mit „Fortsetzen“ geht es an derselben Stelle weiter. Schon Übernommenes wird nicht doppelt angelegt.</p>}
+        {job.status === 'interrupted' && <p className="muted small">{tt('Pausiert – mit „Fortsetzen“ geht es an derselben Stelle weiter. Schon Übernommenes wird nicht doppelt angelegt.')}</p>}
       </div>
 
       {!live && (
         <div className="card">
-          <h3>{dry ? 'So würde der Import aussehen' : 'Ergebnis'}</h3>
-          {dry && <p className="muted small">Im Probelauf wurde nichts geschrieben. Gelesen werden höchstens die ersten Datensätze jedes Teils, die Zahlen sind deshalb nur ein Ausschnitt.</p>}
+          <h3>{dry ? tt('So würde der Import aussehen') : tt('Ergebnis')}</h3>
+          {dry && <p className="muted small">{tt('Im Probelauf wurde nichts geschrieben. Gelesen werden höchstens die ersten Datensätze jedes Teils, die Zahlen sind deshalb nur ein Ausschnitt.')}</p>}
           <ReportTable rows={job.report} />
           {job.undo && (
             <div className="um-undone">
-              <h4>Rückgängig gemacht</h4>
+              <h4>{tt('Rückgängig gemacht')}</h4>
               <ul>
                 {Object.entries(job.undo.deleted).map(([k, n]) => (
                   <li key={k}>
-                    {n} {EXISTING_LABELS[k] ?? k} gelöscht
+                    {tt('{n} {v} gelöscht', { n: n, v: EXISTING_LABELS[k] ?? k })}
                   </li>
                 ))}
-                {job.undo.restored > 0 && <li>{job.undo.restored} Kontakte auf den alten Stand zurückgesetzt</li>}
+                {job.undo.restored > 0 && <li>{tt('{restored} Kontakte auf den alten Stand zurückgesetzt', { restored: job.undo.restored })}</li>}
                 {Object.entries(job.undo.kept).map(([k, n]) => (
                   <li key={k}>
-                    {n} {EXISTING_LABELS[k] ?? k} bleiben stehen (inzwischen verändert oder in Benutzung)
+                    {tt('{n} {v} bleiben stehen (inzwischen verändert oder in Benutzung)', { n: n, v: EXISTING_LABELS[k] ?? k })}
                   </li>
                 ))}
                 {job.undo.notes.map((n) => (
@@ -186,16 +190,16 @@ export function UmzugRun({ api, jobId, first, onJob, onImport, onNew }: { api: U
           <div className="um-actions">
             {dry && job.status === 'done' && (
               <button className="btn" onClick={() => onImport(job)} data-tour="um-start">
-                Jetzt importieren
+                {tt('Jetzt importieren')}
               </button>
             )}
             {!dry && ['done', 'failed', 'interrupted'].includes(job.status) && (
               <button className="btn secondary" disabled={busy} onClick={() => setUndo(true)} data-tour="um-undo">
-                Umzug rückgängig machen
+                {tt('Umzug rückgängig machen')}
               </button>
             )}
             <button className="btn ghost" onClick={onNew}>
-              Neuer Umzug
+              {tt('Neuer Umzug')}
             </button>
           </div>
         </div>
@@ -203,7 +207,7 @@ export function UmzugRun({ api, jobId, first, onJob, onImport, onNew }: { api: U
 
       {!!job.warnings?.length && (
         <div className="card um-warn" data-tour="um-warnings">
-          <h3>Hinweise ({job.warnings.length})</h3>
+          <h3>{tt('Hinweise ({length})', { length: job.warnings.length })}</h3>
           <ul>
             {job.warnings.slice(0, 12).map((w, i) => (
               <li key={i}>{w}</li>
@@ -211,7 +215,7 @@ export function UmzugRun({ api, jobId, first, onJob, onImport, onNew }: { api: U
           </ul>
           {job.warnings.length > 12 && (
             <details>
-              <summary>Alle {job.warnings.length} Hinweise zeigen</summary>
+              <summary>{tt('Alle {length} Hinweise zeigen', { length: job.warnings.length })}</summary>
               <ul>
                 {job.warnings.slice(12).map((w, i) => (
                   <li key={i}>{w}</li>
@@ -224,7 +228,7 @@ export function UmzugRun({ api, jobId, first, onJob, onImport, onNew }: { api: U
 
       {!!job.log?.length && (
         <details className="um-log">
-          <summary>Protokoll ({job.log.length} Zeilen)</summary>
+          <summary>{tt('Protokoll ({length} Zeilen)', { length: job.log.length })}</summary>
           <pre>{job.log.join('\n')}</pre>
         </details>
       )}
@@ -243,19 +247,20 @@ export function UmzugRun({ api, jobId, first, onJob, onImport, onNew }: { api: U
 }
 
 export function UmzugHistory({ jobs, onOpen }: { jobs: Job[]; onOpen: (j: Job) => void }) {
+  const tt = useT('x_integrations');
   if (!jobs.length) return null;
   return (
     <div className="card" data-tour="um-history">
-      <h3>Letzte Umzüge</h3>
+      <h3>{tt('Letzte Umzüge')}</h3>
       <div className="table-wrap">
         <table className="t">
           <thead>
             <tr>
-              <th>Wann</th>
-              <th>Quelle</th>
-              <th>Art</th>
+              <th>{tt('Wann')}</th>
+              <th>{tt('Quelle')}</th>
+              <th>{tt('Art')}</th>
               <th>Status</th>
-              <th>Ergebnis</th>
+              <th>{tt('Ergebnis')}</th>
               <th />
             </tr>
           </thead>
@@ -267,14 +272,14 @@ export function UmzugHistory({ jobs, onOpen }: { jobs: Job[]; onOpen: (j: Job) =
                 <tr key={j.id}>
                   <td>{dt(j.created_at)}</td>
                   <td>{j.source_label}</td>
-                  <td>{j.kind === 'dry_run' ? 'Probelauf' : j.origin === 'file' ? 'Import (Datei)' : 'Import'}</td>
+                  <td>{j.kind === 'dry_run' ? tt('Probelauf') : j.origin === 'file' ? tt('Import (Datei)') : tt('Import')}</td>
                   <td>
                     <Badge tone={tone}>{text}</Badge>
                   </td>
-                  <td className="muted small">{j.report.length ? `${total} Datensätze` : j.error ? 'Fehler' : '–'}</td>
+                  <td className="muted small">{j.report.length ? tt('{total} Datensätze', { total: total }) : j.error ? tt('Fehler') : '–'}</td>
                   <td>
                     <button className="btn small secondary" onClick={() => onOpen(j)}>
-                      Öffnen
+                      {tt('Öffnen')}
                     </button>
                   </td>
                 </tr>

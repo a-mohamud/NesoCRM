@@ -3,6 +3,7 @@ import { currentLocation } from '../api';
 import { api } from '../api';
 import { Badge, Field, Input, act, useLoad } from '../ui';
 import './community-admin.css';
+import { useT } from '../i18n';
 
 /** Small pieces the lazy community tabs share (cards, key figures, copy field, sub-tabs). */
 
@@ -48,6 +49,7 @@ export function Sub({ tabs, value, onChange }: { tabs: [string, string][]; value
 }
 
 export function CopyField({ value, label }: { value: string; label?: string }) {
+  const tt = useT('x_community');
   const [done, setDone] = useState(false);
   useEffect(() => {
     if (!done) return;
@@ -55,9 +57,9 @@ export function CopyField({ value, label }: { value: string; label?: string }) {
     return () => clearTimeout(t);
   }, [done]);
   return (
-    <Field label={label ?? 'Link'}>
+    <Field label={label ?? tt('Link')}>
       <div className="cma-copy">
-        <input readOnly value={value} onFocus={(e) => e.currentTarget.select()} aria-label={label ?? 'Link'} />
+        <input readOnly value={value} onFocus={(e) => e.currentTarget.select()} aria-label={label ?? tt('Link')} />
         <button
           type="button"
           className="btn secondary"
@@ -70,7 +72,7 @@ export function CopyField({ value, label }: { value: string; label?: string }) {
             }
           }}
         >
-          {done ? 'Kopiert ✓' : 'Kopieren'}
+          {done ? tt('Kopiert ✓') : tt('Kopieren')}
         </button>
       </div>
     </Field>
@@ -96,12 +98,13 @@ export function StatusBadge({ status }: { status: string }) {
 
 /** Search a member of the group and pick one. */
 export function MemberPick({ group, onPick }: { group: any; onPick: (m: any) => void }) {
+  const tt = useT('x_community');
   const [q, setQ] = useState('');
   const list = useLoad(() => (q.trim().length >= 2 ? api.get<any[]>(`/api/community/groups/${group.id}/members?q=${encodeURIComponent(q.trim())}`) : Promise.resolve([] as any[])), [group.id, q]);
   return (
     <>
-      <Field label="Mitglied suchen">
-        <Input value={q} onChange={setQ} placeholder="Name oder E-Mail (mindestens 2 Zeichen)" autoFocus />
+      <Field label={tt('Mitglied suchen')}>
+        <Input value={q} onChange={setQ} placeholder={tt('Name oder E-Mail (mindestens 2 Zeichen)')} autoFocus />
       </Field>
       <ul className="cma-list">
         {(list.data ?? []).slice(0, 8).map((m) => (
@@ -111,7 +114,7 @@ export function MemberPick({ group, onPick }: { group: any; onPick: (m: any) => 
               <div className="muted small">{m.email}</div>
             </div>
             <button className="btn small" onClick={() => onPick(m)}>
-              Auswählen
+              {tt('Auswählen')}
             </button>
           </li>
         ))}

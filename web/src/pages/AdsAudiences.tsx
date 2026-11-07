@@ -5,12 +5,14 @@ import { Badge, Check, Empty, Field, Input, Link, Select, Spinner, TagInput, Tex
 import { AdsModal, PlatformBadge, type Platform } from './AdsKit';
 import { MoreFields } from '../areas/fields';
 import { GoogleLeadsCard } from './GoogleLeads';
+import { useT } from '../i18n';
 
 /** Zielgruppen (customer lists from smart lists, lookalikes) and Lead-Formulare (instant forms, lead import). */
 
 // --- audiences ---------------------------------------------------------------------------------------------------
 
 export function AdsAudiences() {
+  const tt = useT('x_integrations');
   const { data, loading, reload } = useLoad(() => api.get<any[]>('/api/ads/audiences'), []);
   const [modal, setModal] = useState<null | { kind: 'new' } | { kind: 'sync' | 'lookalike'; a: any }>(null);
   return (
@@ -18,30 +20,30 @@ export function AdsAudiences() {
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
           <div>
-            <h2 style={{ margin: 0 }}>Zielgruppen aus Smart Lists</h2>
+            <h2 style={{ margin: 0 }}>{tt('Zielgruppen aus Smart Lists')}</h2>
             <p className="muted small" style={{ margin: '4px 0 0' }}>
-              Deine Kontakte als Kundenliste bei Meta (Custom Audience) oder Google (Customer Match) – übertragen werden nur SHA-256-Hashes. Daraus lassen sich bei Meta Lookalikes machen.
+              {tt('Deine Kontakte als Kundenliste bei Meta (Custom Audience) oder Google (Customer Match) – übertragen werden nur SHA-256-Hashes. Daraus lassen sich bei Meta Lookalikes machen.')}
             </p>
           </div>
           <button className="btn" data-tour="ads-audience-new" onClick={() => setModal({ kind: 'new' })}>
-            + Zielgruppe
+            {tt('+ Zielgruppe')}
           </button>
         </div>
       </div>
       {loading && !data ? (
         <Spinner />
       ) : !data?.length ? (
-        <Empty>Noch keine Zielgruppen. Lege eine Smart List an (Kontakte) und mach daraus eine Zielgruppe.</Empty>
+        <Empty>{tt('Noch keine Zielgruppen. Lege eine Smart List an (Kontakte) und mach daraus eine Zielgruppe.')}</Empty>
       ) : (
         <div className="table-wrap">
           <table className="t">
             <thead>
               <tr>
-                <th>Zielgruppe</th>
-                <th>Quelle</th>
+                <th>{tt('Zielgruppe')}</th>
+                <th>{tt('Quelle')}</th>
                 <th>Status</th>
-                <th className="num">Übertragen</th>
-                <th>Zuletzt</th>
+                <th className="num">{tt('Übertragen')}</th>
+                <th>{tt('Zuletzt')}</th>
                 <th />
               </tr>
             </thead>
@@ -50,28 +52,28 @@ export function AdsAudiences() {
                 <tr key={a.id}>
                   <td>
                     <PlatformBadge platform={a.platform} /> <strong>{a.name}</strong>
-                    {a.kind === 'lookalike' && <span className="muted small"> · Lookalike {a.country} {a.ratio ? `${Math.round(a.ratio * 100)} %` : ''}</span>}
+                    {a.kind === 'lookalike' && <span className="muted small"> {tt('· Lookalike {country}', { country: a.country })} {a.ratio ? `${Math.round(a.ratio * 100)} %` : ''}</span>}
                   </td>
-                  <td className="muted">{a.kind === 'lookalike' ? 'aus einer Zielgruppe' : a.smart_list_name ? `Smart List „${a.smart_list_name}“` : '–'}</td>
+                  <td className="muted">{a.kind === 'lookalike' ? tt('aus einer Zielgruppe') : a.smart_list_name ? tt('Smart List „{smart_list_name}“', { smart_list_name: a.smart_list_name }) : '–'}</td>
                   <td>
-                    <Badge tone={a.status === 'ready' ? 'green' : a.status === 'error' ? 'red' : 'gray'}>{a.status === 'ready' ? 'bereit' : a.status === 'error' ? 'Fehler' : 'läuft'}</Badge>
+                    <Badge tone={a.status === 'ready' ? 'green' : a.status === 'error' ? 'red' : 'gray'}>{a.status === 'ready' ? 'bereit' : a.status === 'error' ? tt('Fehler') : tt('läuft')}</Badge>
                     {a.last_error && <div className="small" style={{ color: 'var(--red)' }}>{a.last_error}</div>}
                   </td>
-                  <td className="num">{a.kind === 'lookalike' ? '–' : `${a.sent}${a.skipped ? ` (${a.skipped} ausgelassen)` : ''}`}</td>
+                  <td className="num">{a.kind === 'lookalike' ? '–' : `${a.sent}${a.skipped ? tt(' ({skipped} ausgelassen)', { skipped: a.skipped }) : ''}`}</td>
                   <td className="muted">{dt(a.last_sync_at)}</td>
                   <td className="ads-actions">
                     {a.kind === 'customer_list' && a.smart_list_id && (
                       <button className="btn small secondary" onClick={() => setModal({ kind: 'sync', a })}>
-                        Aktualisieren
+                        {tt('Aktualisieren')}
                       </button>
                     )}
                     {a.platform === 'meta' && a.kind === 'customer_list' && a.status === 'ready' && (
                       <button className="btn small secondary" onClick={() => setModal({ kind: 'lookalike', a })}>
-                        Lookalike
+                        {tt('Lookalike')}
                       </button>
                     )}
-                    <button className="btn small ghost" onClick={async () => confirmAsk(`Zielgruppe „${a.name}“ löschen${a.platform_id ? ' (auch bei der Plattform)' : ''}?`) && (await act(() => api.del(`/api/ads/audiences/${a.id}`), 'Gelöscht'), reload())}>
-                      Löschen
+                    <button className="btn small ghost" onClick={async () => confirmAsk(`Zielgruppe „${a.name}“ löschen${a.platform_id ? tt(' (auch bei der Plattform)') : ''}?`) && (await act(() => api.del(`/api/ads/audiences/${a.id}`), tt('Gelöscht')), reload())}>
+                      {tt('Löschen')}
                     </button>
                   </td>
                 </tr>
@@ -81,7 +83,7 @@ export function AdsAudiences() {
         </div>
       )}
       <p className="muted small">
-        Meta braucht mindestens 100 passende Personen, Google je nach Liste 1.000 und mehr, bevor eine Liste ausgespielt wird. Neue Listen füllen sich bei Google innerhalb von bis zu 48 Stunden. Abgemeldete Kontakte („Nicht stören“) werden nie übertragen.
+        {tt('Meta braucht mindestens 100 passende Personen, Google je nach Liste 1.000 und mehr, bevor eine Liste ausgespielt wird. Neue Listen füllen sich bei Google innerhalb von bis zu 48 Stunden. Abgemeldete Kontakte („Nicht stören“) werden nie übertragen.')}
       </p>
       {modal?.kind === 'new' && <AudienceModal onClose={() => setModal(null)} onDone={() => (setModal(null), reload())} />}
       {modal?.kind === 'sync' && <AudienceModal sync={modal.a} onClose={() => setModal(null)} onDone={() => (setModal(null), reload())} />}
@@ -93,6 +95,7 @@ export function AdsAudiences() {
 const CONSENT = 'Ich bestätige: Die Kontakte dieser Liste haben der Nutzung ihrer Daten für Werbung zugestimmt. Es werden nur SHA-256-Hashes von E-Mail, Telefon und Name übertragen.';
 
 function AudienceModal({ sync, onClose, onDone }: { sync?: any; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_integrations');
   const lists = useLoad(() => api.get<any[]>('/api/smart-lists').catch(() => []), []);
   const conns = useLoad(() => api.get<any>('/api/ads/overview').catch(() => null), []);
   const [platform, setPlatform] = useState<Platform>(sync?.platform ?? 'meta');
@@ -107,43 +110,43 @@ function AudienceModal({ sync, onClose, onDone }: { sync?: any; onClose: () => v
   }, [list, platform]);
   const go = async () => {
     setBusy(true);
-    const r = await act(() => (sync ? api.post(`/api/ads/audiences/${sync.id}/sync`, { consent }) : api.post('/api/ads/audiences', { platform, name, smart_list_id: list, consent })), sync ? 'Aktualisiert' : 'Zielgruppe angelegt');
+    const r = await act(() => (sync ? api.post(`/api/ads/audiences/${sync.id}/sync`, { consent }) : api.post('/api/ads/audiences', { platform, name, smart_list_id: list, consent })), sync ? tt('Aktualisiert') : tt('Zielgruppe angelegt'));
     setBusy(false);
     if (r) onDone();
   };
   return (
     <AdsModal
-      title={sync ? `Zielgruppe „${sync.name}“ aktualisieren` : 'Zielgruppe aus Smart List'}
+      title={sync ? tt('Zielgruppe „{name}“ aktualisieren', { name: sync.name }) : tt('Zielgruppe aus Smart List')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" disabled={busy || !consent || !list || (!sync && !name.trim()) || !preview?.usable} onClick={go}>
-            {busy ? 'Überträgt …' : sync ? 'Jetzt übertragen' : 'Anlegen und übertragen'}
+            {busy ? tt('Überträgt …') : sync ? tt('Jetzt übertragen') : tt('Anlegen und übertragen')}
           </button>
         </>
       }
     >
       {!sync && (
         <>
-          <Field label="Plattform">
+          <Field label={tt('Plattform')}>
             <Select value={platform} onChange={(v) => setPlatform(v as Platform)} options={[['meta', `Meta${conns.data && !conns.data.connected.meta ? ' (nicht verbunden)' : ''}`], ['google', `Google Ads${conns.data && !conns.data.connected.google ? ' (nicht verbunden)' : ''}`]]} />
           </Field>
           <Field label="Name">
-            <Input value={name} onChange={setName} placeholder="z. B. Bestandskunden" />
+            <Input value={name} onChange={setName} placeholder={tt('z. B. Bestandskunden')} />
           </Field>
         </>
       )}
-      <Field label="Smart List" hint="Die Kontakte, die die Smart List gerade enthält">
-        <Select value={list} onChange={setList} placeholder="– wählen –" options={(lists.data ?? []).map((l) => [l.id, l.name] as [string, string])} />
+      <Field label={tt('Smart List')} hint={tt('Die Kontakte, die die Smart List gerade enthält')}>
+        <Select value={list} onChange={setList} placeholder={tt('– wählen –')} options={(lists.data ?? []).map((l) => [l.id, l.name] as [string, string])} />
       </Field>
       {preview && (
         <p className="small">
-          <strong>{preview.usable}</strong> von {preview.total} Kontakten werden übertragen
-          {preview.skipped.opted_out > 0 && ` · ${preview.skipped.opted_out} abgemeldet`}
-          {preview.skipped.no_identifier > 0 && ` · ${preview.skipped.no_identifier} ohne E-Mail/Telefon`}.
+          <strong>{preview.usable}</strong> {tt('von {total} Kontakten werden übertragen', { total: preview.total })}
+          {preview.skipped.opted_out > 0 && tt(' · {opted_out} abgemeldet', { opted_out: preview.skipped.opted_out })}
+          {preview.skipped.no_identifier > 0 && tt(' · {no_identifier} ohne E-Mail/Telefon', { no_identifier: preview.skipped.no_identifier })}.
         </p>
       )}
       <Check checked={consent} onChange={setConsent} label={CONSENT} />
@@ -152,38 +155,39 @@ function AudienceModal({ sync, onClose, onDone }: { sync?: any; onClose: () => v
 }
 
 function LookalikeModal({ a, onClose, onDone }: { a: any; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_integrations');
   const [country, setCountry] = useState('DE');
   const [ratio, setRatio] = useState('1');
   const [busy, setBusy] = useState(false);
   const go = async () => {
     setBusy(true);
-    const r = await act(() => api.post(`/api/ads/audiences/${a.id}/lookalike`, { country, ratio: Number(ratio) / 100 }), 'Lookalike angelegt – Meta baut ihn in bis zu 24 Stunden');
+    const r = await act(() => api.post(`/api/ads/audiences/${a.id}/lookalike`, { country, ratio: Number(ratio) / 100 }), tt('Lookalike angelegt – Meta baut ihn in bis zu 24 Stunden'));
     setBusy(false);
     if (r) onDone();
   };
   return (
     <AdsModal
-      title="Lookalike erstellen"
+      title={tt('Lookalike erstellen')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" disabled={busy || country.length !== 2} onClick={go}>
-            Lookalike anlegen
+            {tt('Lookalike anlegen')}
           </button>
         </>
       }
     >
       <p>
-        Meta sucht Menschen, die den Kontakten in <strong>„{a.name}“</strong> ähneln.
+        {tt('Meta sucht Menschen, die den Kontakten in')} <strong>„{a.name}“</strong> {tt('ähneln.')}
       </p>
       <div className="grid2">
-        <Field label="Land" hint="Zweistelliger Code, z. B. DE">
+        <Field label={tt('Land')} hint={tt('Zweistelliger Code, z. B. DE')}>
           <Input value={country} onChange={(v) => setCountry(v.toUpperCase().slice(0, 2))} />
         </Field>
-        <Field label="Größe" hint="1 % = die ähnlichsten, 20 % = breiter">
+        <Field label={tt('Größe')} hint={tt('1 % = die ähnlichsten, 20 % = breiter')}>
           <Select value={ratio} onChange={setRatio} options={['1', '2', '3', '5', '10', '15', '20'].map((v) => [v, `${v} %`] as [string, string])} />
         </Field>
       </div>
@@ -197,6 +201,7 @@ const QUESTION_LABEL: Record<string, string> = { FULL_NAME: 'Name', FIRST_NAME: 
 const STANDARD: [string, string][] = [['FULL_NAME', 'Vollständiger Name'], ['EMAIL', 'E-Mail'], ['PHONE', 'Telefon'], ['CITY', 'Stadt'], ['ZIP', 'PLZ'], ['COMPANY_NAME', 'Firma']];
 
 export function LeadFormModal({ onClose, onCreated }: { onClose: () => void; onCreated: (f: any) => void }) {
+  const tt = useT('x_integrations');
   const [f, setF] = useState({ name: '', headline: '', description: '', privacy_url: '', thank_title: 'Danke!', thank_body: 'Wir melden uns bei dir.', thank_url: '' });
   const [std, setStd] = useState<string[]>(['FULL_NAME', 'EMAIL', 'PHONE']);
   const [custom, setCustom] = useState<string[]>([]);
@@ -214,36 +219,36 @@ export function LeadFormModal({ onClose, onCreated }: { onClose: () => void; onC
           privacy_url: f.privacy_url,
           thank_you: { title: f.thank_title, body: f.thank_body, url: f.thank_url },
         }),
-      'Sofortformular bei Meta angelegt',
+      tt('Sofortformular bei Meta angelegt'),
     );
     setBusy(false);
     if (r) onCreated(r);
   };
   return (
     <AdsModal
-      title="Neues Sofortformular"
+      title={tt('Neues Sofortformular')}
       onClose={onClose}
       wide
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" disabled={busy || !f.name.trim() || !f.privacy_url.trim() || !std.length} onClick={go}>
-            {busy ? 'Legt an …' : 'Bei Meta anlegen'}
+            {busy ? tt('Legt an …') : tt('Bei Meta anlegen')}
           </button>
         </>
       }
     >
       <div className="grid2">
-        <Field label="Name des Formulars" hint="Nur intern sichtbar">
-          <Input value={f.name} onChange={(v) => set('name', v)} placeholder="Probestunde Herbst" />
+        <Field label={tt('Name des Formulars')} hint={tt('Nur intern sichtbar')}>
+          <Input value={f.name} onChange={(v) => set('name', v)} placeholder={tt('Probestunde Herbst')} />
         </Field>
-        <Field label="Link zur Datenschutzerklärung (nötig)" hint="Beginnt mit https://">
+        <Field label={tt('Link zur Datenschutzerklärung (nötig)')} hint={tt('Beginnt mit https://')}>
           <Input value={f.privacy_url} onChange={(v) => set('privacy_url', v)} placeholder="https://" />
         </Field>
       </div>
-      <h3>Fragen</h3>
+      <h3>{tt('Fragen')}</h3>
       <div className="ads-langs">
         {STANDARD.map(([k, label]) => (
           <Check key={k} checked={std.includes(k)} onChange={(v) => setStd(v ? [...std, k] : std.filter((x) => x !== k))} label={label} />
@@ -252,26 +257,26 @@ export function LeadFormModal({ onClose, onCreated }: { onClose: () => void; onC
       {/* Einfach-Modus: headline, short text, own questions and the thank-you page (good defaults) behind one toggle */}
       <MoreFields id="ads-leadform" values={[f.headline, f.description, custom, f.thank_title !== 'Danke!', f.thank_body !== 'Wir melden uns bei dir.', f.thank_url]}>
         <div className="grid2">
-          <Field label="Überschrift (optional)">
+          <Field label={tt('Überschrift (optional)')}>
             <Input value={f.headline} onChange={(v) => set('headline', v)} maxLength={60} />
           </Field>
-          <Field label="Kurztext (optional)">
+          <Field label={tt('Kurztext (optional)')}>
             <Input value={f.description} onChange={(v) => set('description', v)} />
           </Field>
         </div>
-        <Field label="Eigene Fragen" hint="Antworten landen als eigenes Feld am Kontakt und in der Notiz">
-          <TagInput value={custom} onChange={setCustom} placeholder="Frage + Enter, z. B. Welche Erfahrung hast du?" />
+        <Field label={tt('Eigene Fragen')} hint={tt('Antworten landen als eigenes Feld am Kontakt und in der Notiz')}>
+          <TagInput value={custom} onChange={setCustom} placeholder={tt('Frage + Enter, z. B. Welche Erfahrung hast du?')} />
         </Field>
-        <h3>Danke-Seite</h3>
+        <h3>{tt('Danke-Seite')}</h3>
         <div className="grid2">
-          <Field label="Titel">
+          <Field label={tt('Titel')}>
             <Input value={f.thank_title} onChange={(v) => set('thank_title', v)} maxLength={60} />
           </Field>
-          <Field label="Link (optional)">
+          <Field label={tt('Link (optional)')}>
             <Input value={f.thank_url} onChange={(v) => set('thank_url', v)} placeholder="https://" />
           </Field>
         </div>
-        <Field label="Text">
+        <Field label={tt('Text')}>
           <Textarea rows={2} value={f.thank_body} onChange={(v) => set('thank_body', v)} />
         </Field>
       </MoreFields>
@@ -280,6 +285,7 @@ export function LeadFormModal({ onClose, onCreated }: { onClose: () => void; onC
 }
 
 export function AdsLeads() {
+  const tt = useT('x_integrations');
   const status = useLoad(() => api.get<any>('/api/ads/leads/status').catch(() => null), []);
   const forms = useLoad(() => api.get<any[]>('/api/ads/leadforms').catch(() => []), []);
   const leads = useLoad(() => api.get<any[]>('/api/ads/leads').catch(() => []), []);
@@ -301,50 +307,50 @@ export function AdsLeads() {
       <div className="card" data-tour="ads-leads-enable">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div>
-            <h2 style={{ margin: 0 }}>Leads aus Meta-Lead-Anzeigen</h2>
+            <h2 style={{ margin: 0 }}>{tt('Leads aus Meta-Lead-Anzeigen')}</h2>
             <p className="muted small" style={{ margin: '4px 0 0' }}>
-              Jede Antwort wird zum Kontakt (mit Tags, Antworten als Notiz, Kampagne als Quelle) und startet Automationen mit dem Auslöser „Neuer Lead aus Anzeige“.
+              {tt('Jede Antwort wird zum Kontakt (mit Tags, Antworten als Notiz, Kampagne als Quelle) und startet Automationen mit dem Auslöser „Neuer Lead aus Anzeige“.')}
             </p>
           </div>
-          {s?.enabled ? <Badge tone="green">Import an</Badge> : <Badge>Import aus</Badge>}
+          {s?.enabled ? <Badge tone="green">{tt('Import an')}</Badge> : <Badge>{tt('Import aus')}</Badge>}
         </div>
         {!s?.page ? (
           <p className="muted">
-            Dafür braucht es eine verbundene Facebook-Seite – unter <Link to="ads/connections">Verbindungen</Link> mit der Option „Lead-Formulare“ verbinden und die Seite wählen.
+            {tt('Dafür braucht es eine verbundene Facebook-Seite – unter')} <Link to="ads/connections">{tt('Verbindungen')}</Link> {tt('mit der Option „Lead-Formulare“ verbinden und die Seite wählen.')}
           </p>
         ) : (
           <>
             <p className="small">
-              Seite: <strong>{s.page.name || s.page.id}</strong>
-              {!s.page_token && <span style={{ color: 'var(--red)' }}> · kein Seiten-Zugriff – neu verbinden mit „Lead-Formulare“</span>}
-              {s.polled_at && <span className="muted"> · zuletzt abgeholt {dt(s.polled_at)}</span>}
+              {tt('Seite:')} <strong>{s.page.name || s.page.id}</strong>
+              {!s.page_token && <span style={{ color: 'var(--red)' }}> {tt('· kein Seiten-Zugriff – neu verbinden mit „Lead-Formulare“')}</span>}
+              {s.polled_at && <span className="muted"> {tt('· zuletzt abgeholt {dt}', { dt: dt(s.polled_at) })}</span>}
             </p>
-            <Field label="Tags für neue Leads" hint="Lösen auch „Tag hinzugefügt“-Automationen aus">
-              <TagInput value={tags ?? s.tags} onChange={setTags} placeholder="Tag + Enter" />
+            <Field label={tt('Tags für neue Leads')} hint={tt('Lösen auch „Tag hinzugefügt“-Automationen aus')}>
+              <TagInput value={tags ?? s.tags} onChange={setTags} placeholder={tt('Tag + Enter')} />
             </Field>
             <div className="actions">
               {!s.enabled ? (
                 <button className="btn" disabled={busy || !s.page_token} onClick={() => run(async () => { const r = await api.post('/api/ads/leads/enable', { tags: tags ?? s.tags }); if (r.warning) await act(() => Promise.reject(new Error(r.warning))); return r; }, 'Lead-Import ist an')}>
-                  Lead-Import einschalten
+                  {tt('Lead-Import einschalten')}
                 </button>
               ) : (
                 <>
                   <button className="btn secondary" disabled={busy || !tags} onClick={() => run(() => api.put('/api/ads/leads/settings', { tags }), 'Gespeichert')}>
-                    Tags speichern
+                    {tt('Tags speichern')}
                   </button>
                   <button className="btn secondary" disabled={busy} onClick={() => run(() => api.post('/api/ads/leads/poll', {}), 'Abgeholt')}>
-                    <Icon name="refresh" /> Jetzt abholen
+                    <Icon name="refresh" /> {tt('Jetzt abholen')}
                   </button>
-                  <button className="btn ghost" disabled={busy} onClick={() => confirmAsk('Lead-Import ausschalten?') && run(() => api.post('/api/ads/leads/disable', {}), 'Ausgeschaltet')}>
-                    Ausschalten
+                  <button className="btn ghost" disabled={busy} onClick={() => confirmAsk(tt('Lead-Import ausschalten?')) && run(() => api.post('/api/ads/leads/disable', {}), 'Ausgeschaltet')}>
+                    {tt('Ausschalten')}
                   </button>
                 </>
               )}
             </div>
             <details className="ads-more">
-              <summary>Webhook bei Meta einrichten (einmal pro Meta-App)</summary>
+              <summary>{tt('Webhook bei Meta einrichten (einmal pro Meta-App)')}</summary>
               <p className="small">
-                Meta-App → Webhooks → Objekt <em>Page</em> → Callback-URL <code>{s.webhook_url}</code>, Verifizierungs-Token <code>{s.verify_token}</code>, Feld <code>leadgen</code> abonnieren. Ohne Webhook holt HyperLevel die Leads alle 10 Minuten ab. Details in docs/ads-manager.md.
+                {tt('Meta-App → Webhooks → Objekt')} <em>{tt('Page')}</em> {tt('→ Callback-URL')} <code>{s.webhook_url}</code>{tt(', Verifizierungs-Token')} <code>{s.verify_token}</code>{tt(', Feld')} <code>leadgen</code> {tt('abonnieren. Ohne Webhook holt HyperLevel die Leads alle 10 Minuten ab. Details in docs/ads-manager.md.')}
               </p>
             </details>
           </>
@@ -353,21 +359,21 @@ export function AdsLeads() {
 
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0 }}>Sofortformulare</h2>
+          <h2 style={{ margin: 0 }}>{tt('Sofortformulare')}</h2>
           <button className="btn" disabled={!s?.page_token} onClick={() => setNewForm(true)}>
-            + Formular
+            {tt('+ Formular')}
           </button>
         </div>
         {(forms.data ?? []).length === 0 ? (
-          <p className="muted">Noch keine Formulare von HyperLevel. Lege eines an und wähle es in der Kampagne.</p>
+          <p className="muted">{tt('Noch keine Formulare von HyperLevel. Lege eines an und wähle es in der Kampagne.')}</p>
         ) : (
           <div className="table-wrap" style={{ marginTop: 10 }}>
             <table className="t">
               <thead>
                 <tr>
-                  <th>Formular</th>
-                  <th>Fragen</th>
-                  <th>Angelegt</th>
+                  <th>{tt('Formular')}</th>
+                  <th>{tt('Fragen')}</th>
+                  <th>{tt('Angelegt')}</th>
                   <th />
                 </tr>
               </thead>
@@ -380,8 +386,8 @@ export function AdsLeads() {
                     <td className="muted">{(f.spec?.questions ?? []).map((q: any) => (typeof q === 'string' ? QUESTION_LABEL[q] ?? q : q.label)).join(', ')}</td>
                     <td className="muted">{dt(f.created_at)}</td>
                     <td className="ads-actions">
-                      <button className="btn small ghost" onClick={async () => confirmAsk(`Formular „${f.name}“ archivieren?`) && (await act(() => api.del(`/api/ads/leadforms/${f.id}`), 'Archiviert'), forms.reload())}>
-                        Archivieren
+                      <button className="btn small ghost" onClick={async () => confirmAsk(tt('Formular „{name}“ archivieren?', { name: f.name })) && (await act(() => api.del(`/api/ads/leadforms/${f.id}`), tt('Archiviert')), forms.reload())}>
+                        {tt('Archivieren')}
                       </button>
                     </td>
                   </tr>
@@ -394,14 +400,14 @@ export function AdsLeads() {
 
       {(leads.data ?? []).length > 0 && (
         <div className="card">
-          <h2>Zuletzt importierte Leads</h2>
+          <h2>{tt('Zuletzt importierte Leads')}</h2>
           <div className="table-wrap">
             <table className="t">
               <thead>
                 <tr>
-                  <th>Zeit</th>
-                  <th>Kontakt</th>
-                  <th>Kampagne</th>
+                  <th>{tt('Zeit')}</th>
+                  <th>{tt('Kontakt')}</th>
+                  <th>{tt('Kampagne')}</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -409,10 +415,10 @@ export function AdsLeads() {
                 {leads.data!.slice(0, 20).map((l) => (
                   <tr key={l.leadgen_id}>
                     <td className="muted">{dt(l.created_at)}</td>
-                    <td>{l.contact_id ? <Link to={`contacts/${l.contact_id}`}>{[l.first_name, l.last_name].filter(Boolean).join(' ') || l.email || 'Kontakt'}</Link> : '–'}</td>
+                    <td>{l.contact_id ? <Link to={`contacts/${l.contact_id}`}>{[l.first_name, l.last_name].filter(Boolean).join(' ') || l.email || tt('Kontakt')}</Link> : '–'}</td>
                     <td className="muted">{l.campaign_name || '–'}</td>
                     <td>
-                      <Badge tone={l.status === 'imported' ? 'green' : l.status === 'failed' ? 'red' : 'gray'}>{l.status === 'imported' ? 'importiert' : l.status === 'failed' ? 'Fehler' : 'übersprungen'}</Badge>
+                      <Badge tone={l.status === 'imported' ? 'green' : l.status === 'failed' ? 'red' : 'gray'}>{l.status === 'imported' ? 'importiert' : l.status === 'failed' ? tt('Fehler') : tt('übersprungen')}</Badge>
                       {l.error && <span className="muted small"> {l.error}</span>}
                     </td>
                   </tr>

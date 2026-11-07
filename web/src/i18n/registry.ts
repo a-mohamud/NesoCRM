@@ -41,26 +41,26 @@ export const NAMESPACES = {
   shell: {
     complete: true,
     // `file#A,B` = only those components of a file (the top-bar buttons of areas that are not translated yet)
-    files: ['main.tsx', 'nav.tsx', 'theme/Sidebar.tsx', 'ios/TabBar.tsx', 'ios/tabs.ts', 'ios/MasterDetail.tsx', 'pages/PmGlobal.tsx', 'demo.tsx', 'undo/Undo.tsx#ToastView,HistoryButton', 'agent/Panel.tsx#AgentButton', 'pages/Feedback.tsx#FeedbackButton'],
+    files: ['main.tsx', 'nav.tsx', 'theme/Sidebar.tsx', 'ios/TabBar.tsx', 'ios/tabs.ts', 'ios/MasterDetail.tsx', 'pages/PmGlobal.tsx', 'demo.tsx', 'undo/Undo.tsx', 'agent/Panel.tsx', 'pages/Feedback.tsx'],
   },
   login: { complete: true, files: ['pages/Login.tsx', 'webauthn.ts'] },
   dashboard: { complete: true, files: ['pages/Dashboard.tsx'] },
   contacts: {
     complete: true,
     // the list's filters and badges that live in their areas' files
-    files: ['pages/Contacts.tsx', 'pages/ObjectKit.tsx#CompanyFilter', 'pages/LeadScoring.tsx#LeadScoreFilter', 'pages/HealthScore.tsx#HealthBadge,HealthFilter,ContactService', 'pages/Attribution.tsx#AttributionFilter,ContactAttribution', 'pages/ContactFollowUp.tsx'],
+    files: ['pages/Contacts.tsx', 'pages/ObjectKit.tsx', 'pages/LeadScoring.tsx', 'pages/HealthScore.tsx#HealthBadge,HealthFilter,ContactService', 'pages/Attribution.tsx', 'pages/ContactFollowUp.tsx'],
   },
   deals: { complete: true, files: ['pages/Opportunities.tsx', 'pages/DealBoard.tsx', 'pages/deal-kit.ts', 'pages/DealList.tsx'] },
-  inbox: { complete: true, files: ['pages/Conversations.tsx', 'pages/MsgDrafts.tsx', 'pages/TeamInboxKit.tsx', 'pages/MetaInbox.tsx#ChannelFilter', 'pages/Tickets.tsx#TicketFromConversation'] },
+  inbox: { complete: true, files: ['pages/Conversations.tsx', 'pages/MsgDrafts.tsx', 'pages/TeamInboxKit.tsx', 'pages/MetaInbox.tsx', 'pages/Tickets.tsx#TicketFromConversation'] },
   calendar: { complete: true, files: ['pages/Calendars.tsx', 'pages/OAuthConnect.tsx#CalendarConnectionInfo'] },
   // the calendar view (day/week/month/team/agenda, drawer, booking from a slot, series) and the chat bot's "Termin buchen" settings
   calview: { complete: true, files: ['pages/CalendarView.tsx', 'pages/CalendarGrid.tsx', 'pages/CalendarDrawer.tsx', 'pages/AiBookingSettings.tsx', 'pages/calview-model.ts'] },
   settings: {
     complete: true,
     // Mein Konto's panels from other files (sign-in methods, push, app devices, iPhone app, calendar connections)
-    files: ['pages/Settings.tsx', 'pages/SignInMethods.tsx', 'pages/PushSettings.tsx', 'ios/push-flow.ts', 'pages/MobileApp.tsx#AppDevices', 'ios/IosAppCard.tsx', 'ios/install.ts', 'pages/OAuthConnect.tsx#CalendarConnections,ConnectionCard'],
+    files: ['pages/Settings.tsx', 'pages/SignInMethods.tsx', 'pages/PushSettings.tsx', 'ios/push-flow.ts', 'pages/MobileApp.tsx', 'ios/IosAppCard.tsx', 'ios/install.ts', 'pages/OAuthConnect.tsx'],
   },
-  invoices: { complete: true, files: ['pages/Payments.tsx', 'pages/InvoiceLegal.tsx#StateBadge', 'pages/Stripe.tsx#StripeStatusBadge,StripePaidBadge'] },
+  invoices: { complete: true, files: ['pages/Payments.tsx', 'pages/InvoiceLegal.tsx', 'pages/Stripe.tsx'] },
   // Live-Zusammenarbeit überall (top bar, sidebar avatars, banners, the Canvas header's people)
   presence: { complete: true, files: ['presence/Presence.tsx', 'presence/canvas.tsx'] },
   // phase 2 – automations: list, editor (builder, trigger and step settings, action picker, conditions), runs, test run, versions, import, AI builder
@@ -167,6 +167,16 @@ export const NAMESPACES = {
   // files in the customer portal: the share toggle on a contact's documents and the upload rules (docs/sales.md)
   portalfiles: { complete: true, files: ['pages/PortalFiles.tsx'] },
   gaps: { complete: true, files: ['pages/SiteSeo.tsx', 'pages/SocialExtras.tsx', 'pages/AgencyBanners.tsx', 'pages/RoleTemplates.tsx', 'pages/VideoTestimonials.tsx', 'pages/PromptLab.tsx', 'pages/GoogleLeads.tsx', 'pages/SystemMails.tsx', 'pages/WordPressPlugin.tsx', 'pages/ReviewBulk.tsx', 'pages/CourseAi.tsx'] },
+  // Neso fork: the rest of the app in English (one namespace per area)
+  x_tours_a: { complete: true, files: ['tour/content/journey.ts', 'tour/content/sites.ts', 'tour/content/connect.ts', 'tour/content/settings.ts', 'tour/content/crm.ts', 'tour/content/marketing.ts', 'tour/content/agency.ts', 'tour/content/company.ts', 'tour/content/data.ts', 'tour/content/creator.ts'] },
+  x_ai: { complete: true, files: ['pages/VideoStudio.tsx', 'werkstatt/Admin.tsx', 'pages/AiTools.tsx', 'pages/AiSubscriptions.tsx', 'agent/AgentsPage.tsx', 'werkstatt/Marktplatz.tsx', 'werkstatt/Plugins.tsx', 'pages/KiStudio.tsx', 'pages/AiAssistant.tsx', 'pages/VideoRecycle.tsx', 'pages/AiConnections.tsx', 'agent/AgentEditor.tsx', 'pages/CogneeSettings.tsx', 'pages/CogneeAgency.tsx', 'werkstatt/Build.tsx', 'werkstatt/Werkstatt.tsx', 'pages/AiGallery.tsx', 'pages/GenMediaKit.tsx', 'werkstatt/badges.tsx', 'pages/AiProvider.tsx', 'werkstatt/ChatCards.tsx', 'pages/AiEffort.tsx', 'agent/WorkflowStep.tsx', 'companion/spoken.ts', 'pages/CogneeKit.tsx', 'werkstatt/scopes.tsx', 'werkstatt/WorkflowStep.tsx', 'werkstatt/PluginFrame.tsx', 'companion/realtime.ts', 'companion/store.ts', 'pages/ai-gallery-filter.ts', 'agent/voice.ts', 'agent/context.ts', 'agent/stream.ts', 'werkstatt/Nav.tsx'] },
+  x_finance: { complete: true, files: ['pages/Dunning.tsx', 'pages/Inventory.tsx', 'pages/CalcInputs.tsx', 'pages/AccountingMore.tsx', 'pages/Accounting.tsx', 'pages/Sepa.tsx', 'pages/HrAdmin.tsx', 'pages/SalesSequences.tsx', 'pages/Hr.tsx', 'pages/CalcResults.tsx', 'pages/PaymentPlans.tsx', 'pages/SepaRuns.tsx', 'pages/SalesQuotes.tsx', 'pages/Calc.tsx', 'pages/BooksSync.tsx', 'pages/InvoiceSettings.tsx', 'pages/Properties.tsx', 'pages/QuoteApproval.tsx', 'pages/SalesDupes.tsx', 'pages/SalesQuotas.tsx', 'pages/SalesAccess.tsx', 'pages/Contracts.tsx', 'pages/SalesDeal.tsx', 'pages/CalcCharts.tsx', 'pages/SalesKit.tsx', 'pages/Sales.tsx', 'pages/boCommon.tsx', 'pages/CalcKit.tsx'] },
+  x_agency: { complete: true, files: ['pages/Saas.tsx', 'pages/CloudConsole.tsx', 'pages/Agency.tsx', 'pages/LoginSettings.tsx', 'pages/Affiliates.tsx', 'pages/CloudSettings.tsx', 'pages/FeedbackAdmin.tsx', 'pages/Cloud.tsx', 'pages/AgencyPlatform.tsx', 'pages/CloudTeam.tsx', 'pages/PartnerLinks.tsx', 'pages/SaasBilling.tsx', 'pages/SystemHealth.tsx', 'pages/Wishes.tsx', 'pages/CloudData.tsx', 'pages/BuyOffers.tsx', 'pages/Project.tsx', 'pages/Trash.tsx', 'pages/CloudWaitlist.tsx', 'pages/AgencyLists.tsx', 'pages/CloudKit.tsx', 'pages/ContactSales.tsx'] },
+  x_integrations: { complete: true, files: ['pages/Composio.tsx', 'pages/AdsWizard.tsx', 'pages/AdsAudiences.tsx', 'pages/McpServers.tsx', 'pages/Objects.tsx', 'pages/TodoistSync.tsx', 'pages/AdsConnect.tsx', 'pages/ConsentLegal.tsx', 'pages/Nango.tsx', 'pages/AdsManager.tsx', 'pages/Ads.tsx', 'pages/ConsentContact.tsx', 'pages/ConsentCmp.tsx', 'pages/Consent.tsx', 'pages/Connectors.tsx', 'pages/InboundWebhook.tsx', 'pages/UmzugZustellung.tsx', 'pages/umzug-format.ts', 'pages/AdsRules.tsx', 'pages/RestHooks.tsx', 'pages/Companies.tsx', 'pages/AdsConversions.tsx', 'pages/UmzugAssistent.tsx', 'pages/UmzugRun.tsx', 'pages/HubSpotImport.tsx', 'pages/ConsentCheckout.tsx', 'pages/UmzugConnect.tsx', 'pages/UmzugMapping.tsx', 'pages/OAuthConsent.tsx', 'pages/Integrations.tsx', 'pages/AdsKit.tsx', 'pages/SupabaseMirror.tsx', 'pages/ConsentKit.tsx', 'pages/UmzugPointer.tsx'] },
+  x_community: { complete: true, files: ['pages/Community.tsx', 'pages/CommunityJoin.tsx', 'pages/CommunityEngage.tsx', 'pages/WebinarTabs.tsx', 'pages/CommunityGrowth.tsx', 'pages/CommunityImport.tsx', 'pages/Quizzes.tsx', 'pages/QuizReviews.tsx', 'pages/Certificates.tsx', 'pages/WebinarRoomTab.tsx', 'pages/CommunityMessages.tsx', 'pages/WebinarStats.tsx', 'pages/CommunityStats.tsx', 'pages/KnowledgeBase.tsx', 'pages/Surveys.tsx', 'pages/Webinars.tsx', 'pages/WebinarEditor.tsx', 'pages/CommunityParts.tsx', 'pages/CreatorKit.tsx', 'pages/webinar-format.ts'] },
+  x_comms: { complete: true, files: ['pages/TeamCalendarEditor.tsx', 'pages/Mailboxes.tsx', 'pages/CallsNumbers.tsx', 'pages/CommentDm.tsx', 'pages/CallsFlows.tsx', 'pages/Voice.tsx', 'pages/CallsRouting.tsx', 'pages/CallsIntel.tsx', 'pages/CallsDialer.tsx', 'pages/Calls.tsx', 'pages/ChannelSettings.tsx', 'pages/TeamInboxSettings.tsx', 'pages/Phone.tsx', 'pages/MetaChannels.tsx', 'pages/VoiceAi.tsx', 'pages/CallsScorecards.tsx', 'pages/GoogleBusiness.tsx', 'pages/GoogleReviews.tsx', 'pages/BookingExtras.tsx', 'pages/ChannelProviders.tsx', 'pages/PhoneTools.tsx', 'pages/ChannelInbox.tsx', 'pages/ReviewReplies.tsx', 'pages/TeamCalendarKit.tsx', 'pages/CallsNotes.tsx', 'pages/Reviews.tsx', 'pages/CallsKit.tsx'] },
+  x_tours_b: { complete: true, files: ['tour/content/revenue.ts', 'tour/content/service.ts', 'tour/content/calls.ts', 'tour/content/backoffice.ts', 'tour/content/sales.ts', 'tour/content/ai.ts', 'tour/content/umzug.ts', 'tour/content/teamtools.ts', 'tour/content/pm.ts', 'tour/handover.tsx', 'werkstatt/tour.ts', 'tour/content/workflow-tools.ts', 'tour/content/start.ts', 'agent/tour.ts', 'pages/collab-tour.ts', 'tour/content/genmedia.ts', 'tour/content/ads.ts', 'tour/content/webinars.ts', 'tour/content/calc.ts', 'tour/content/feedback.ts', 'tour/content/mailbox.ts', 'tour/catalog.ts', 'tour/content/sepa.ts', 'pages/Academy.tsx', 'canvas/tour.ts', 'tour/content/boards.ts', 'tour/content/memory.ts', 'tour/handbook.ts', 'tour/content/undo.ts', 'tour/content/voice.ts', 'tour/content/xr.ts', 'tour/help.tsx', 'pages/Docs.tsx', 'tour/engine.tsx', 'tour/company-course.ts', 'tour/docs.tsx', 'tour/learn.tsx', 'tour/welcome.tsx'] },
+  x_misc: { complete: true, files: ['canvas/panels.tsx', 'theme/Appearance.tsx', 'canvas/dialogs-share.tsx', 'theme/BrandingLook.tsx', 'canvas/dialogs-crm.tsx', 'canvas/Editor.tsx', 'canvas/dialogs-insert.tsx', 'boards/BoardView.tsx', 'boards/Templates.tsx', 'theme/themes.ts', 'canvas/CanvasPage.tsx', 'areas/settings-nav.ts', 'canvas/dialogs-help.tsx', 'xr/Workspace.tsx', 'boards/BoardSettings.tsx', 'canvas/ai.tsx', 'xr/SpatialCard.tsx', 'boards/BoardList.tsx', 'boards/Settings.tsx', 'xr/engine/textures.ts', 'boards/PromptBar.tsx', 'boards/History.tsx', 'boards/PatchCard.tsx', 'ios/shortcuts.ts', 'xr/install.ts', 'boards/Picker.tsx', 'boards/TemplateSave.tsx', 'xr/XrViewer.tsx', 'theme/Profiles.tsx', 'ios/InstallSheet.tsx', 'canvas/comments.tsx', 'boards/views.tsx', 'undo/shared.ts', 'xr/engine/board-scene.ts', 'boards/Actions.tsx', 'boards/Grid.tsx', 'sortable/drag.ts', 'boards/EmbedHosts.tsx', 'boards/Shelf.tsx', 'pwa.tsx', 'xr/detect.ts', 'boards/WidgetCard.tsx', 'xr/SpatialSuggest.tsx', 'xr/XrButton.tsx', 'xr/engine/canvas-scene.ts', 'feedback/diagnostics.ts', 'pages/collab-badge.tsx', 'xr/MoveMenu.tsx', 'xr/engine/renderer.ts', 'xr/engine/runtime.ts', 'boards/store.ts', 'canvas/media.ts', 'pages/site/image-prep.ts', 'xr/workspace-layout.ts'] },
 } as const satisfies Record<string, { complete: boolean; server?: boolean; files: readonly string[] }>;
 export type Namespace = keyof typeof NAMESPACES;
 
@@ -229,5 +239,14 @@ export const CATALOGS: { [L in Exclude<Locale, typeof SOURCE_LOCALE>]: Partial<R
     rentals: () => import('./en/rentals'),
     gaps: () => import('./en/gaps'),
     portalfiles: () => import('./en/portalfiles'),
+    x_tours_a: () => import('./en/x_tours_a'),
+    x_ai: () => import('./en/x_ai'),
+    x_finance: () => import('./en/x_finance'),
+    x_agency: () => import('./en/x_agency'),
+    x_integrations: () => import('./en/x_integrations'),
+    x_community: () => import('./en/x_community'),
+    x_comms: () => import('./en/x_comms'),
+    x_tours_b: () => import('./en/x_tours_b'),
+    x_misc: () => import('./en/x_misc'),
   },
 };

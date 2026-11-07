@@ -3,6 +3,7 @@ import { Icon, channelIcon } from '../icons';
 import { api, currentLocation } from '../api';
 import { Input, Textarea, act, confirmAsk, toast } from '../ui';
 import type { ExtraChannel } from './MetaInbox';
+import { useT } from '../i18n';
 
 /**
  * Telegram, Discord and push inside Konversationen: composer tabs for contacts reachable there
@@ -35,6 +36,7 @@ export function useMoreChannels(contact: any, messages: any[] | undefined) {
 }
 
 function ChatPanel({ channel, contact, st, onSent }: { channel: string; contact: any; st: any; onSent: () => void }) {
+  const tt = useT('x_comms');
   const [body, setBody] = useState('');
   const [file, setFile] = useState('');
   const [showFile, setShowFile] = useState(false);
@@ -44,15 +46,15 @@ function ChatPanel({ channel, contact, st, onSent }: { channel: string; contact:
   const send = async () => {
     let ignoreDnd = false;
     if (contact.dnd) {
-      if (!confirmAsk('Kontakt hat „Nicht stören“. Trotzdem senden?')) return;
+      if (!confirmAsk(tt('Kontakt hat „Nicht stören“. Trotzdem senden?'))) return;
       ignoreDnd = true;
     }
     setBusy(true);
     const r = await act(() => api.post('/api/messages', { contact_id: contact.id, channel, body, ...(file.trim() ? { media_url: file.trim() } : {}), ignoreDnd }));
     setBusy(false);
     if (!r) return;
-    if (r.status === 'failed') toast(`Nicht gesendet: ${r.error}`);
-    else toast(`Per ${MORE_LABELS[channel]} gesendet`);
+    if (r.status === 'failed') toast(tt('Nicht gesendet: {error}', { error: r.error }));
+    else toast(tt('Per {v} gesendet', { v: MORE_LABELS[channel] }));
     setBody('');
     setFile('');
     onSent();
@@ -60,25 +62,25 @@ function ChatPanel({ channel, contact, st, onSent }: { channel: string; contact:
   return (
     <div data-tour={`composer-${channel}`}>
       <div className="muted small chan-to">
-        <Icon name={channelIcon(channel)} size={13} /> an {st.handle || 'den Kontakt'}
-        {channel === 'discord' && <> · {st.where === 'channel' ? 'Antwort im Kanal' : 'Direktnachricht'}</>}
+        <Icon name={channelIcon(channel)} size={13} /> an {st.handle || tt('den Kontakt')}
+        {channel === 'discord' && <> · {st.where === 'channel' ? tt('Antwort im Kanal') : tt('Direktnachricht')}</>}
       </div>
-      <Textarea value={body} onChange={setBody} rows={4} placeholder={`${MORE_LABELS[channel]}-Nachricht an ${contact.first_name || 'den Kontakt'}`} />
-      {channel === 'telegram' && showFile && <Input value={file} onChange={setFile} placeholder="https://… (Bild, PDF, Audio oder Video)" aria-label="Datei-Link" />}
+      <Textarea value={body} onChange={setBody} rows={4} placeholder={`${MORE_LABELS[channel]}-Nachricht an ${contact.first_name || tt('den Kontakt')}`} />
+      {channel === 'telegram' && showFile && <Input value={file} onChange={setFile} placeholder={tt('https://… (Bild, PDF, Audio oder Video)')} aria-label={tt('Datei-Link')} />}
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <small className="muted">
-          {body.length} / {limit} Zeichen
+          {tt('{length} / {limit} Zeichen', { length: body.length, limit: limit })}
           {channel === 'telegram' && !showFile && (
             <>
               {' · '}
               <button type="button" className="linkbtn" onClick={() => setShowFile(true)}>
-                <Icon name="file" size={12} /> Datei-Link anhängen
+                <Icon name="file" size={12} /> {tt('Datei-Link anhängen')}
               </button>
             </>
           )}
         </small>
         <button className="btn" disabled={!canSend} onClick={send}>
-          <Icon name={channelIcon(channel)} size={14} className={`ico chan-ico chan-${channel}`} /> Senden
+          <Icon name={channelIcon(channel)} size={14} className={`ico chan-ico chan-${channel}`} /> {tt('Senden')}
         </button>
       </div>
     </div>
@@ -86,6 +88,7 @@ function ChatPanel({ channel, contact, st, onSent }: { channel: string; contact:
 }
 
 function PushPanel({ contact, st, onSent }: { contact: any; st: any; onSent: () => void }) {
+  const tt = useT('x_comms');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [url, setUrl] = useState('');
@@ -96,7 +99,7 @@ function PushPanel({ contact, st, onSent }: { contact: any; st: any; onSent: () 
     const r = await act(() => api.post('/api/messages', { contact_id: contact.id, channel: 'push', subject: title, body, url: url.trim() }));
     setBusy(false);
     if (!r) return;
-    toast(r.status === 'failed' ? `Nicht gesendet: ${r.error}` : `Push an ${r.devices ?? 1} Gerät(e) gesendet`);
+    toast(r.status === 'failed' ? tt('Nicht gesendet: {error}', { error: r.error }) : tt('Push an {v} Gerät(e) gesendet', { v: r.devices ?? 1 }));
     setTitle('');
     setBody('');
     setUrl('');
@@ -105,15 +108,15 @@ function PushPanel({ contact, st, onSent }: { contact: any; st: any; onSent: () 
   return (
     <>
       <div className="muted small chan-to">
-        <Icon name="push" size={13} /> Browser-Benachrichtigung an {st.devices} {st.devices === 1 ? 'Gerät' : 'Geräte'}
+        <Icon name="push" size={13} /> {tt('Browser-Benachrichtigung an {devices}', { devices: st.devices })} {st.devices === 1 ? tt('Gerät') : tt('Geräte')}
       </div>
-      <Input value={title} onChange={setTitle} placeholder="Titel (leer = Firmenname)" maxLength={80} />
-      <Textarea value={body} onChange={setBody} rows={3} placeholder="Kurzer Text" />
-      <Input value={url} onChange={setUrl} placeholder="Link beim Antippen (https://…, optional)" />
+      <Input value={title} onChange={setTitle} placeholder={tt('Titel (leer = Firmenname)')} maxLength={80} />
+      <Textarea value={body} onChange={setBody} rows={3} placeholder={tt('Kurzer Text')} />
+      <Input value={url} onChange={setUrl} placeholder={tt('Link beim Antippen (https://…, optional)')} />
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <small className="muted">{body.length} / 300 Zeichen</small>
+        <small className="muted">{tt('{length} / 300 Zeichen', { length: body.length })}</small>
         <button className="btn" disabled={!canSend} onClick={send}>
-          <Icon name="push" size={14} /> Senden
+          <Icon name="push" size={14} /> {tt('Senden')}
         </button>
       </div>
     </>
@@ -122,6 +125,7 @@ function PushPanel({ contact, st, onSent }: { contact: any; st: any; onSent: () 
 
 /** Photo, voice message, video, document or map link of a Telegram/Discord message. */
 export function ChannelMedia({ m }: { m: any }) {
+  const tt = useT('x_comms');
   const [broken, setBroken] = useState(false);
   let a: any = m?.channel_media;
   if (typeof a === 'string') {
@@ -135,7 +139,7 @@ export function ChannelMedia({ m }: { m: any }) {
   if (a.kind === 'location' && Number.isFinite(a.lat) && Number.isFinite(a.lng)) {
     return (
       <a className="media-link" href={`https://www.openstreetmap.org/?mlat=${a.lat}&mlon=${a.lng}#map=17/${a.lat}/${a.lng}`} target="_blank" rel="noreferrer">
-        <Icon name="location" size={14} /> Karte öffnen
+        <Icon name="location" size={14} /> {tt('Karte öffnen')}
       </a>
     );
   }
@@ -148,11 +152,11 @@ export function ChannelMedia({ m }: { m: any }) {
     ) : null;
   }
   const src = `/api/messages/channels/media/${encodeURIComponent(m.id)}?locationId=${encodeURIComponent(currentLocation())}`;
-  if (broken) return <div className="media-link muted">Datei nicht mehr verfügbar</div>;
+  if (broken) return <div className="media-link muted">{tt('Datei nicht mehr verfügbar')}</div>;
   if (a.kind === 'image' || a.kind === 'sticker') {
     return (
       <a href={src} target="_blank" rel="noreferrer" className="media-wrap">
-        <img className={`media-img${a.kind === 'sticker' ? ' sticker' : ''}`} src={src} alt={a.kind === 'sticker' ? 'Sticker' : 'Bild'} loading="lazy" onError={() => setBroken(true)} />
+        <img className={`media-img${a.kind === 'sticker' ? ' sticker' : ''}`} src={src} alt={a.kind === 'sticker' ? tt('Sticker') : tt('Bild')} loading="lazy" onError={() => setBroken(true)} />
       </a>
     );
   }
@@ -160,7 +164,7 @@ export function ChannelMedia({ m }: { m: any }) {
   if (a.kind === 'video') return <video className="media-video" controls preload="none" src={src} onError={() => setBroken(true)} />;
   return (
     <a className="media-link" href={src} target="_blank" rel="noreferrer">
-      <Icon name="file" size={14} /> {a.filename || 'Datei öffnen'}
+      <Icon name="file" size={14} /> {a.filename || tt('Datei öffnen')}
     </a>
   );
 }

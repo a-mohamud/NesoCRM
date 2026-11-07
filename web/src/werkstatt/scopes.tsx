@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Badge, Check, Modal } from '../ui';
 import { CATEGORIES, SCOPES } from '../../../server/services/werkstatt/manifest';
+import { useT } from '../i18n';
 
 /** Permissions (scopes) of plugins: the table the server checks against, the consent list and the consent dialog. Loaded with the pages that need it. */
 
@@ -20,7 +21,8 @@ export interface ScopeInfo {
 
 /** The consent list: what the plugin may do, with the risk of each permission. */
 export function ScopeList({ scopes }: { scopes: ScopeInfo[] }) {
-  if (!scopes.length) return <p className="muted">Das Plugin fragt keine Berechtigungen an – es kann keine Daten lesen oder ändern.</p>;
+  const tt = useT('x_ai');
+  if (!scopes.length) return <p className="muted">{tt('Das Plugin fragt keine Berechtigungen an – es kann keine Daten lesen oder ändern.')}</p>;
   return (
     <ul className="wk-scopes" data-tour="wk-scopes">
       {scopes.map((s) => (
@@ -30,7 +32,7 @@ export function ScopeList({ scopes }: { scopes: ScopeInfo[] }) {
             <br />
             <span className="muted small">{s.hint}</span>
           </span>
-          <Badge tone={RISK[s.risk]?.tone ?? 'gray'}>{s.write ? 'ändert · ' : 'liest · '}Risiko {RISK[s.risk]?.label ?? s.risk}</Badge>
+          <Badge tone={RISK[s.risk]?.tone ?? 'gray'}>{s.write ? tt('ändert · ') : tt('liest · ')}{tt('Risiko {v}', { v: RISK[s.risk]?.label ?? s.risk })}</Badge>
         </li>
       ))}
     </ul>
@@ -43,6 +45,7 @@ export function ScopeList({ scopes }: { scopes: ScopeInfo[] }) {
  * The server only accepts the install when the consent equals exactly this list.
  */
 export function ConsentModal({ title, intro, scopes, confirm, busy, onConfirm, onClose, children }: { title: string; intro?: ReactNode; scopes: ScopeInfo[]; confirm: string; busy?: boolean; onConfirm: () => void; onClose: () => void; children?: ReactNode }) {
+  const tt = useT('x_ai');
   const [ok, setOk] = useState(false);
   return (
     <Modal
@@ -51,7 +54,7 @@ export function ConsentModal({ title, intro, scopes, confirm, busy, onConfirm, o
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" data-tour="wk-consent-ok" disabled={!ok || busy} onClick={onConfirm}>
             {confirm}
@@ -60,13 +63,13 @@ export function ConsentModal({ title, intro, scopes, confirm, busy, onConfirm, o
       }
     >
       {intro && <p>{intro}</p>}
-      <h4>Das Plugin darf</h4>
+      <h4>{tt('Das Plugin darf')}</h4>
       <ScopeList scopes={scopes} />
       <p className="muted small">
-        Alles läuft mit deinen eigenen Rechten und nur in diesem Sub-Account. Ein Plugin kann nichts versenden, löschen oder bezahlen, und es sieht nie deine Anmeldung.
+        {tt('Alles läuft mit deinen eigenen Rechten und nur in diesem Sub-Account. Ein Plugin kann nichts versenden, löschen oder bezahlen, und es sieht nie deine Anmeldung.')}
       </p>
       {children}
-      <Check checked={ok} onChange={setOk} label="Ich habe die Berechtigungen gelesen und stimme zu." />
+      <Check checked={ok} onChange={setOk} label={tt('Ich habe die Berechtigungen gelesen und stimme zu.')} />
     </Modal>
   );
 }

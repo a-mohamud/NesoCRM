@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { api, currentLocation, money, name as contactName } from '../api';
 import { Icon } from '../icons';
 import { Input, toastError } from '../ui';
+import { useT, tr } from '../i18n';
 
 /** Small pieces shared by the Back-Office pages (Buchhaltung, Lager, Personal). */
 
@@ -9,10 +10,11 @@ export const DISCLAIMER =
   'Buchhaltung light zur Vorbereitung für den Steuerberater – keine zertifizierte Buchhaltungssoftware, keine GoBD-Zertifizierung, keine Steuerberatung und keine Übermittlung an das Finanzamt (ELSTER). Bitte alle Auswertungen und Exporte mit dem Steuerberater abstimmen.';
 
 export function Disclaimer({ text, compact }: { text?: string; compact?: boolean }) {
+  const tt = useT('x_finance');
   return (
     <div className={`bo-note${compact ? ' compact' : ''}`} role="note" data-tour="acc-disclaimer">
       <Icon name="shield" size={16} />
-      <span>{compact ? 'Buchhaltung light – Vorbereitung für den Steuerberater. Keine zertifizierte Software, keine GoBD-Zertifizierung, kein ELSTER.' : text || DISCLAIMER}</span>
+      <span>{compact ? tt('Buchhaltung light – Vorbereitung für den Steuerberater. Keine zertifizierte Software, keine GoBD-Zertifizierung, kein ELSTER.') : text || DISCLAIMER}</span>
     </div>
   );
 }
@@ -47,19 +49,23 @@ export const dlHref = (path: string, params: Record<string, string | number | un
 };
 
 export const readDataUrl = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
+  {
+  const tt = tr('x_finance');
+  return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(new Error('Datei konnte nicht gelesen werden'));
+    r.onerror = () => reject(new Error(tt('Datei konnte nicht gelesen werden')));
     r.readAsDataURL(file);
   });
+};
 
 /** A file chooser button: hands each chosen file (as a data URL) to `onFile`; errors become toasts. */
 export function FileButton({ label, accept, multiple, onFile, tour, icon = 'upload', secondary = true }: { label: ReactNode; accept: string; multiple?: boolean; onFile: (f: { name: string; type: string; data: string }) => Promise<unknown>; tour?: string; icon?: 'upload' | 'camera'; secondary?: boolean }) {
+  const tt = useT('x_finance');
   const [busy, setBusy] = useState(false);
   return (
     <label className={`btn${secondary ? ' secondary' : ''}${busy ? ' disabled' : ''}`} data-tour={tour} style={{ cursor: 'pointer' }}>
-      <Icon name={icon} /> {busy ? 'Lädt …' : label}
+      <Icon name={icon} /> {busy ? tt('Lädt …') : label}
       <input
         type="file"
         accept={accept}
@@ -92,6 +98,7 @@ export const qty = (n: number | null | undefined) => (n === null || n === undefi
 
 /** Picks a CRM contact (supplier, linked person): type two letters, choose from the hits. */
 export function ContactPick({ value, onChange, placeholder }: { value: { id: string; name: string } | null; onChange: (v: { id: string; name: string } | null) => void; placeholder?: string }) {
+  const tt = useT('x_finance');
   const [q, setQ] = useState('');
   const [res, setRes] = useState<any[]>([]);
   useEffect(() => {
@@ -103,14 +110,14 @@ export function ContactPick({ value, onChange, placeholder }: { value: { id: str
     return (
       <div className="bo-pick">
         <span>{value.name}</span>
-        <button type="button" className="icon-btn" aria-label="Kontakt entfernen" onClick={() => onChange(null)}>
+        <button type="button" className="icon-btn" aria-label={tt('Kontakt entfernen')} onClick={() => onChange(null)}>
           ✕
         </button>
       </div>
     );
   return (
     <div className="bo-pick-wrap">
-      <Input value={q} onChange={setQ} placeholder={placeholder ?? 'Kontakt suchen …'} />
+      <Input value={q} onChange={setQ} placeholder={placeholder ?? tt('Kontakt suchen …')} />
       {res.length > 0 && (
         <div className="bo-pick-results">
           {res.map((c) => (

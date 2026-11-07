@@ -3,6 +3,7 @@ import { api, name as contactName } from '../api';
 import { ICONS, Icon, type IconName } from '../icons';
 import { Field, Input, Modal, act, navigate, toast } from '../ui';
 import type { ActionView } from './types';
+import { useT } from '../i18n';
 
 /**
  * The buttons of a "Schnellaktionen" widget. Everything they start goes through the regular routes as the person who
@@ -12,8 +13,9 @@ import type { ActionView } from './types';
 const KIND_ICON: Record<ActionView['kind'], IconName> = { workflow: 'workflows', form: 'forms', page: 'external', task: 'tasks', contact: 'contact' };
 
 export function ActionButtons({ actions, onDone }: { actions: ActionView[]; onDone?: () => void }) {
+  const tt = useT('x_misc');
   const [open, setOpen] = useState<ActionView | null>(null);
-  if (!actions.length) return <p className="bd-hint">Noch keine Knöpfe. Öffne die Einstellungen und füge welche hinzu.</p>;
+  if (!actions.length) return <p className="bd-hint">{tt('Noch keine Knöpfe. Öffne die Einstellungen und füge welche hinzu.')}</p>;
   const click = (a: ActionView) => {
     if (!a.enabled) return;
     if (a.kind === 'page' && a.href) navigate(a.href);
@@ -39,6 +41,7 @@ export function ActionButtons({ actions, onDone }: { actions: ActionView[]; onDo
 }
 
 function TaskDialog({ title, onClose, onDone }: { title: string; onClose: () => void; onDone?: () => void }) {
+  const tt = useT('x_misc');
   const [text, setText] = useState('');
   const [due, setDue] = useState('');
   return (
@@ -48,28 +51,28 @@ function TaskDialog({ title, onClose, onDone }: { title: string; onClose: () => 
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button
             className="btn"
             disabled={!text.trim()}
             onClick={async () => {
-              const r = await act(() => api.post('/api/tasks', { title: text.trim(), due_at: due || null }), 'Aufgabe angelegt');
+              const r = await act(() => api.post('/api/tasks', { title: text.trim(), due_at: due || null }), tt('Aufgabe angelegt'));
               if (r) {
                 onDone?.();
                 onClose();
               }
             }}
           >
-            Anlegen
+            {tt('Anlegen')}
           </button>
         </>
       }
     >
-      <Field label="Was ist zu tun?">
+      <Field label={tt('Was ist zu tun?')}>
         <Input value={text} onChange={setText} maxLength={300} autoFocus />
       </Field>
-      <Field label="Fällig am (optional)">
+      <Field label={tt('Fällig am (optional)')}>
         <Input type="date" value={due} onChange={setDue} />
       </Field>
     </Modal>
@@ -77,6 +80,7 @@ function TaskDialog({ title, onClose, onDone }: { title: string; onClose: () => 
 }
 
 function ContactDialog({ title, onClose, onDone }: { title: string; onClose: () => void; onDone?: () => void }) {
+  const tt = useT('x_misc');
   const [f, setF] = useState({ first_name: '', last_name: '', email: '', phone: '' });
   const ok = !!(f.first_name.trim() || f.last_name.trim() || f.email.trim() || f.phone.trim());
   return (
@@ -86,36 +90,36 @@ function ContactDialog({ title, onClose, onDone }: { title: string; onClose: () 
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button
             className="btn"
             disabled={!ok}
             onClick={async () => {
-              const r = await act(() => api.post('/api/contacts', f), 'Kontakt gespeichert');
+              const r = await act(() => api.post('/api/contacts', f), tt('Kontakt gespeichert'));
               if (r) {
                 onDone?.();
                 onClose();
               }
             }}
           >
-            Anlegen
+            {tt('Anlegen')}
           </button>
         </>
       }
     >
       <div className="grid2">
-        <Field label="Vorname">
+        <Field label={tt('Vorname')}>
           <Input value={f.first_name} onChange={(v) => setF({ ...f, first_name: v })} autoFocus />
         </Field>
-        <Field label="Nachname">
+        <Field label={tt('Nachname')}>
           <Input value={f.last_name} onChange={(v) => setF({ ...f, last_name: v })} />
         </Field>
       </div>
       <Field label="E-Mail">
         <Input type="email" value={f.email} onChange={(v) => setF({ ...f, email: v })} />
       </Field>
-      <Field label="Telefon">
+      <Field label={tt('Telefon')}>
         <Input value={f.phone} onChange={(v) => setF({ ...f, phone: v })} />
       </Field>
     </Modal>
@@ -123,6 +127,7 @@ function ContactDialog({ title, onClose, onDone }: { title: string; onClose: () 
 }
 
 function WorkflowDialog({ action, onClose, onDone }: { action: ActionView; onClose: () => void; onDone?: () => void }) {
+  const tt = useT('x_misc');
   const [q, setQ] = useState('');
   const [found, setFound] = useState<any[]>([]);
   const [picked, setPicked] = useState<any[]>([]);
@@ -138,7 +143,7 @@ function WorkflowDialog({ action, onClose, onDone }: { action: ActionView; onClo
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button
             className="btn"
@@ -146,19 +151,19 @@ function WorkflowDialog({ action, onClose, onDone }: { action: ActionView; onClo
             onClick={async () => {
               const r = await act(() => api.post(`/api/workflows/${action.target}/enroll`, { contact_ids: picked.map((c) => c.id) }));
               if (r) {
-                toast(r.enrolled ? `Automation für ${r.enrolled} ${r.enrolled === 1 ? 'Kontakt' : 'Kontakte'} gestartet` : 'Niemand wurde aufgenommen (läuft die Automation für diesen Kontakt schon?)');
+                toast(r.enrolled ? `Automation für ${r.enrolled} ${r.enrolled === 1 ? tt('Kontakt') : tt('Kontakte')} gestartet` : tt('Niemand wurde aufgenommen (läuft die Automation für diesen Kontakt schon?)'));
                 onDone?.();
                 onClose();
               }
             }}
           >
-            Starten
+            {tt('Starten')}
           </button>
         </>
       }
     >
-      <Field label="Für welche Kontakte?" hint="Suche nach Name, E-Mail oder Telefon.">
-        <Input value={q} onChange={setQ} placeholder="Name oder E-Mail" autoFocus />
+      <Field label={tt('Für welche Kontakte?')} hint={tt('Suche nach Name, E-Mail oder Telefon.')}>
+        <Input value={q} onChange={setQ} placeholder={tt('Name oder E-Mail')} autoFocus />
       </Field>
       {found.length > 0 && (
         <ul className="bd-found">
@@ -178,7 +183,7 @@ function WorkflowDialog({ action, onClose, onDone }: { action: ActionView; onClo
           {picked.map((c) => (
             <span key={c.id} className="chip on">
               {contactName(c)}
-              <button type="button" className="chip-x" aria-label={`${contactName(c)} entfernen`} onClick={() => setPicked(picked.filter((p) => p.id !== c.id))}>
+              <button type="button" className="chip-x" aria-label={tt('{contactName} entfernen', { contactName: contactName(c) })} onClick={() => setPicked(picked.filter((p) => p.id !== c.id))}>
                 ×
               </button>
             </span>

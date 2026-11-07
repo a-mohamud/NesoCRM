@@ -3,6 +3,7 @@ import { api } from '../api';
 import { Icon } from '../icons';
 import { Badge, Modal, act, toast } from '../ui';
 import './cognee.css';
+import { useT } from '../i18n';
 
 /** Pieces shared by the agency card and the sub-account tab of the Wissensgedächtnis (docs/cognee.md). */
 
@@ -19,9 +20,10 @@ export function Note({ level = 'info', children }: { level?: 'critical' | 'warni
 
 /** Where the Cognee server's access control stands, as a badge. */
 export function PostureBadge({ state }: { state?: string | null }) {
-  if (state === 'closed') return <Badge tone="green">Zugriffskontrolle an</Badge>;
-  if (state === 'open') return <Badge tone="red">Server ohne Anmeldung!</Badge>;
-  return <Badge tone="yellow">Zugriffskontrolle nicht geprüft</Badge>;
+  const tt = useT('x_ai');
+  if (state === 'closed') return <Badge tone="green">{tt('Zugriffskontrolle an')}</Badge>;
+  if (state === 'open') return <Badge tone="red">{tt('Server ohne Anmeldung!')}</Badge>;
+  return <Badge tone="yellow">{tt('Zugriffskontrolle nicht geprüft')}</Badge>;
 }
 
 /**
@@ -29,15 +31,16 @@ export function PostureBadge({ state }: { state?: string | null }) {
  * is queued and sent to Cognee in the background; the dialog says what it removes.
  */
 export function PurgeDialog({ types, labels, url, onClose }: { types: string[]; labels: Record<string, string>; url: string; onClose: (done?: boolean) => void }) {
+  const tt = useT('x_ai');
   const [busy, setBusy] = useState(false);
   return (
     <Modal
-      title="Daten in Cognee löschen?"
+      title={tt('Daten in Cognee löschen?')}
       onClose={() => onClose()}
       footer={
         <>
           <button className="btn secondary" onClick={() => onClose()}>
-            Später
+            {tt('Später')}
           </button>
           <button
             className="btn danger"
@@ -47,25 +50,25 @@ export function PurgeDialog({ types, labels, url, onClose }: { types: string[]; 
               const r = await act(() => api.post<Json>(url, { types, confirm: true }));
               setBusy(false);
               if (r) {
-                toast(`Löschung angestoßen (${r.items} ${r.items === 1 ? 'Eintrag' : 'Einträge'})`);
+                toast(`Löschung angestoßen (${r.items} ${r.items === 1 ? tt('Eintrag') : tt('Einträge')})`);
                 onClose(true);
               }
             }}
           >
-            Jetzt in Cognee löschen
+            {tt('Jetzt in Cognee löschen')}
           </button>
         </>
       }
     >
       <p>
-        Die Freigabe ist beendet – es wird nichts mehr übertragen. Die bereits übertragenen Daten liegen aber noch auf dem Cognee-Server:
+        {tt('Die Freigabe ist beendet – es wird nichts mehr übertragen. Die bereits übertragenen Daten liegen aber noch auf dem Cognee-Server:')}
       </p>
       <ul>
         {types.map((t) => (
           <li key={t}>{labels[t] ?? t}</li>
         ))}
       </ul>
-      <p className="muted small">„Jetzt löschen“ entfernt diese Daten dort endgültig (das jeweilige Dataset mit Wissensgraph und Vektoren). In HyperLevel bleibt alles unverändert. Bei „Später“ bleiben sie in Cognee, bis du sie über „Status“ löschst.</p>
+      <p className="muted small">{tt('„Jetzt löschen“ entfernt diese Daten dort endgültig (das jeweilige Dataset mit Wissensgraph und Vektoren). In HyperLevel bleibt alles unverändert. Bei „Später“ bleiben sie in Cognee, bis du sie über „Status“ löschst.')}</p>
     </Modal>
   );
 }

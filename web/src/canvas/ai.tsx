@@ -3,6 +3,7 @@ import { api } from '../api';
 import { act, toast } from '../ui';
 import { Icon } from '../icons';
 import type { EditorApi } from './Editor';
+import { useT } from '../i18n';
 
 /** „KI zeichnen lassen“: prompt → diagram/mind map/wireframe; with a selection: explain, tasks, tidy up. */
 
@@ -18,6 +19,7 @@ const KINDS: [string, string][] = [
 const IDEAS = ['Vertriebsprozess vom Lead bis zum Abschluss', 'Mindmap: Marketing-Ideen für den Herbst', 'Wireframe einer Landingpage für ein Webinar', 'Onboarding neuer Kunden als Flussdiagramm', 'Organigramm einer kleinen Agentur'];
 
 export function AiBar({ api: ed, open, setOpen }: { api: EditorApi; open: boolean; setOpen: (v: boolean) => void }) {
+  const tt = useT('x_misc');
   const [prompt, setPrompt] = useState('');
   const [kind, setKind] = useState('auto');
   const [busy, setBusy] = useState('');
@@ -42,7 +44,7 @@ export function AiBar({ api: ed, open, setOpen }: { api: EditorApi; open: boolea
     <div className={`cv-ai cv-panel${open ? ' open' : ''}`} data-tour="canvas-ai">
       {!open ? (
         <button className="cv-ai-btn" onClick={() => setOpen(true)}>
-          <Icon name="ai" /> KI zeichnen lassen
+          <Icon name="ai" /> {tt('KI zeichnen lassen')}
         </button>
       ) : (
         <>
@@ -51,7 +53,7 @@ export function AiBar({ api: ed, open, setOpen }: { api: EditorApi; open: boolea
             <input
               autoFocus
               value={prompt}
-              placeholder={sel.length ? 'Was soll mit der Auswahl passieren? Oder neu zeichnen …' : 'Was soll ich zeichnen? z. B. „Kundenreise für unseren Onlinekurs“'}
+              placeholder={sel.length ? tt('Was soll mit der Auswahl passieren? Oder neu zeichnen …') : tt('Was soll ich zeichnen? z. B. „Kundenreise für unseren Onlinekurs“')}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => {
                 e.stopPropagation();
@@ -61,7 +63,7 @@ export function AiBar({ api: ed, open, setOpen }: { api: EditorApi; open: boolea
               disabled={!!busy}
               data-tour="canvas-ai-input"
             />
-            <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Art" disabled={!!busy}>
+            <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label={tt('Art')} disabled={!!busy}>
               {KINDS.map(([k, l]) => (
                 <option key={k} value={k}>
                   {l}
@@ -69,24 +71,24 @@ export function AiBar({ api: ed, open, setOpen }: { api: EditorApi; open: boolea
               ))}
             </select>
             <button className="btn small" onClick={() => void run('draw')} disabled={!!busy || !prompt.trim()}>
-              {busy || 'Zeichnen'}
+              {busy || tt('Zeichnen')}
             </button>
-            <button className="icon-btn" onClick={() => setOpen(false)} aria-label="Schließen">
+            <button className="icon-btn" onClick={() => setOpen(false)} aria-label={tt('Schließen')}>
               ✕
             </button>
           </div>
           <div className="cv-ai-chips">
             {sel.length > 0 ? (
               <>
-                <span className="muted small">{sel.length} ausgewählt:</span>
+                <span className="muted small">{tt('{length} ausgewählt:', { length: sel.length })}</span>
                 <button className="cv-chip" onClick={() => void run('explain')} disabled={!!busy}>
-                  Auswahl erklären
+                  {tt('Auswahl erklären')}
                 </button>
                 <button className="cv-chip" onClick={() => void run('tasks')} disabled={!!busy}>
-                  In Aufgaben verwandeln
+                  {tt('In Aufgaben verwandeln')}
                 </button>
                 <button className="cv-chip" onClick={() => void run('tidy')} disabled={!!busy}>
-                  Layout aufräumen
+                  {tt('Layout aufräumen')}
                 </button>
               </>
             ) : (
@@ -96,8 +98,8 @@ export function AiBar({ api: ed, open, setOpen }: { api: EditorApi; open: boolea
                     {i}
                   </button>
                 ))}
-                <button className="cv-chip" onClick={() => void run('tidy')} disabled={!!busy} title="Ordnet verbundene Formen automatisch an">
-                  Layout aufräumen
+                <button className="cv-chip" onClick={() => void run('tidy')} disabled={!!busy} title={tt('Ordnet verbundene Formen automatisch an')}>
+                  {tt('Layout aufräumen')}
                 </button>
               </>
             )}

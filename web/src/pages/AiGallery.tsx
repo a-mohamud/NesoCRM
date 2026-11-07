@@ -4,6 +4,7 @@ import { Badge, Modal, Spinner, act } from '../ui';
 import { SignupLink } from '../referrals';
 import { FILTERS, PINNED, SUB_PRESETS, filterPresets } from './ai-gallery-filter';
 import './AiGallery.css';
+import { useT } from '../i18n';
 
 /**
  * The provider gallery of Einstellungen → KI-Anbieter: search, filters (EU-Hosting, günstig, schnell, lokal, Abo-Anmeldung) and the
@@ -23,6 +24,7 @@ const usd = (v?: number) => (v === undefined || v === null ? '–' : `$${v.toLoc
 const tokens = (n?: number) => (n ? (n >= 1_000_000 ? `${(n / 1_000_000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mio.` : `${Math.round(n / 1000).toLocaleString('de-DE')} Tsd.`) : '–');
 
 export function Gallery({ presets, capLabels, onPick, onSubscription }: { presets: any[]; capLabels: Record<string, string>; onPick: (p: any) => void; onSubscription: (kind: 'chatgpt' | 'claude') => void }) {
+  const tt = useT('x_ai');
   const [q, setQ] = useState('');
   const [kind, setKind] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -32,18 +34,18 @@ export function Gallery({ presets, capLabels, onPick, onSubscription }: { preset
   return (
     <>
       <div className="aig-toolbar" data-tour="aig-filters">
-        <input type="search" className="aig-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Anbieter suchen …" aria-label="Anbieter suchen" />
+        <input type="search" className="aig-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={tt('Anbieter suchen …')} aria-label={tt('Anbieter suchen')} />
       </div>
-      <div className="aig-chips" role="group" aria-label="Filter">
-        <span className="lbl">Filter</span>
+      <div className="aig-chips" role="group" aria-label={tt('Filter')}>
+        <span className="lbl">{tt('Filter')}</span>
         {FILTERS.map(([k, l]) => (
           <button key={k} type="button" className={`aig-chip${k === 'eu' ? ' eu' : ''}`} aria-pressed={tags.includes(k)} onClick={() => toggle(k)} data-tour={k === 'eu' ? 'aig-eu' : undefined}>
             {l}
           </button>
         ))}
       </div>
-      <div className="aig-chips" role="group" aria-label="Art des Anbieters">
-        <span className="lbl">Art</span>
+      <div className="aig-chips" role="group" aria-label={tt('Art des Anbieters')}>
+        <span className="lbl">{tt('Art')}</span>
         {KINDS.map(([k, l]) => (
           <button key={k} type="button" className="aig-chip" aria-pressed={kind === k} onClick={() => setKind(k)}>
             {l}
@@ -51,7 +53,7 @@ export function Gallery({ presets, capLabels, onPick, onSubscription }: { preset
         ))}
       </div>
       <div className="aig-count" aria-live="polite">
-        {shown.length} von {presets.length} Anbietern
+        {tt('{length} von {length2} Anbietern', { length: shown.length, length2: presets.length })}
       </div>
       <div className="aig-grid" data-tour="aic-presets">
         {subCards && (
@@ -59,23 +61,23 @@ export function Gallery({ presets, capLabels, onPick, onSubscription }: { preset
             <div className="aig-card pinned">
               <button type="button" className="aig-main" onClick={() => onSubscription('chatgpt')}>
                 <span className="aig-name">
-                  Mit ChatGPT anmelden
+                  {tt('Mit ChatGPT anmelden')}
                   <span className="aig-badges">
-                    <span className="aig-badge sub">Abo-Anmeldung</span>
+                    <span className="aig-badge sub">{tt('Abo-Anmeldung')}</span>
                   </span>
                 </span>
-                <span className="aig-meta">Dein ChatGPT-Plan statt API-Schlüssel – persönlich, für deinen Agenten, Assistenten und die Werkstatt.</span>
+                <span className="aig-meta">{tt('Dein ChatGPT-Plan statt API-Schlüssel – persönlich, für deinen Agenten, Assistenten und die Werkstatt.')}</span>
               </button>
             </div>
             <div className="aig-card pinned">
               <button type="button" className="aig-main" onClick={() => onSubscription('claude')}>
                 <span className="aig-name">
-                  Mit Claude verbinden
+                  {tt('Mit Claude verbinden')}
                   <span className="aig-badges">
-                    <span className="aig-badge sub">Abo-Anmeldung</span>
+                    <span className="aig-badge sub">{tt('Abo-Anmeldung')}</span>
                   </span>
                 </span>
-                <span className="aig-meta">Claude Code auf deinem Rechner mit deinem Pro- oder Max-Abo (Bridge).</span>
+                <span className="aig-meta">{tt('Claude Code auf deinem Rechner mit deinem Pro- oder Max-Abo (Bridge).')}</span>
               </button>
             </div>
           </>
@@ -86,18 +88,18 @@ export function Gallery({ presets, capLabels, onPick, onSubscription }: { preset
               <span className="aig-name">
                 {p.label}
                 <span className="aig-badges">
-                  {PINNED.includes(p.id) && <span className="aig-badge pin">Empfohlen</span>}
+                  {PINNED.includes(p.id) && <span className="aig-badge pin">{tt('Empfohlen')}</span>}
                   {p.eu && (
-                    <span className="aig-badge eu" title={`${p.eu.note} Quelle: ${p.eu.source}`} data-tour="aig-eu-badge">
-                      EU-Hosting · {p.eu.region}
+                    <span className="aig-badge eu" title={tt('{note} Quelle: {source}', { note: p.eu.note, source: p.eu.source })} data-tour="aig-eu-badge">
+                      {tt('EU-Hosting · {region}', { region: p.eu.region })}
                     </span>
                   )}
-                  {SUB_PRESETS.has(p.id) && <span className="aig-badge sub">Abo möglich</span>}
+                  {SUB_PRESETS.has(p.id) && <span className="aig-badge sub">{tt('Abo möglich')}</span>}
                   {p.local && <span className="aig-badge">lokal</span>}
-                  {(p.tags ?? []).includes('cheap') && <span className="aig-badge">günstig</span>}
+                  {(p.tags ?? []).includes('cheap') && <span className="aig-badge">{tt('günstig')}</span>}
                   {(p.tags ?? []).includes('fast') && <span className="aig-badge">schnell</span>}
-                  {(p.tags ?? []).includes('gateway') && <span className="aig-badge">Gateway</span>}
-                  {(p.realtime?.audio_tts || p.realtime?.stt) && <span className="aig-badge">Live</span>}
+                  {(p.tags ?? []).includes('gateway') && <span className="aig-badge">{tt('Gateway')}</span>}
+                  {(p.realtime?.audio_tts || p.realtime?.stt) && <span className="aig-badge">{tt('Live')}</span>}
                 </span>
               </span>
               <span className="aic-caps">
@@ -108,28 +110,29 @@ export function Gallery({ presets, capLabels, onPick, onSubscription }: { preset
                 ))}
               </span>
               <span className="aig-meta">
-                {p.group === 'text' || p.group === 'local' ? `Richtwert ≈ ${usd(p.price.input)} / ${usd(p.price.output)} je 1 Mio. Tokens · ` : ''}
-                {p.key_required ? p.key_hint : 'Schlüssel optional'}
+                {p.group === 'text' || p.group === 'local' ? tt('Richtwert ≈ {usd} / {usd2} je 1 Mio. Tokens · ', { usd: usd(p.price.input), usd2: usd(p.price.output) }) : ''}
+                {p.key_required ? p.key_hint : tt('Schlüssel optional')}
               </span>
             </button>
             <div className="aig-foot">
               <SignupLink id={p.referral || p.id} />
               {p.docs && (
                 <a href={p.docs} target="_blank" rel="noopener noreferrer">
-                  Doku ↗
+                  {tt('Doku ↗')}
                 </a>
               )}
             </div>
           </div>
         ))}
       </div>
-      {!shown.length && !subCards && <div className="aig-empty">Kein Anbieter passt zu dieser Suche. Jede OpenAI-kompatible Adresse geht auch mit „Benutzerdefiniert“.</div>}
+      {!shown.length && !subCards && <div className="aig-empty">{tt('Kein Anbieter passt zu dieser Suche. Jede OpenAI-kompatible Adresse geht auch mit „Benutzerdefiniert“.')}</div>}
     </>
   );
 }
 
 /** Live model list of a connection with context size and prices per million tokens (where the provider's list has them). */
 export function ModelsModal({ conn, preset, onClose, onChanged }: { conn: any; preset: any; onClose: () => void; onChanged: () => void }) {
+  const tt = useT('x_ai');
   const [q, setQ] = useState('');
   const [r, setR] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -152,19 +155,19 @@ export function ModelsModal({ conn, preset, onClose, onChanged }: { conn: any; p
   const priced = rows.some((m) => m.in !== undefined);
   const current = conn.models?.text;
   const use = async (id: string) => {
-    if (await act(() => api.patch(`/api/ai-connections/${conn.id}`, { models: { ...conn.models, text: id } }), `„${id}“ ist jetzt das Standard-Modell`)) onChanged();
+    if (await act(() => api.patch(`/api/ai-connections/${conn.id}`, { models: { ...conn.models, text: id } }), tt('„{id}“ ist jetzt das Standard-Modell', { id: id }))) onChanged();
   };
   return (
-    <Modal title={`Modelle von ${conn.label || preset?.label || conn.provider}`} onClose={onClose} wide>
+    <Modal title={tt('Modelle von {v}', { v: conn.label || preset?.label || conn.provider })} onClose={onClose} wide>
       <div className="aim-bar">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Modell suchen …" aria-label="Modell suchen" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tt('Modell suchen …')} aria-label={tt('Modell suchen')} />
         <button className="btn secondary aisub-btn" onClick={() => void load(true)} disabled={loading}>
-          {loading ? 'Lade …' : 'Neu laden'}
+          {loading ? tt('Lade …') : tt('Neu laden')}
         </button>
       </div>
-      {r?.error && <p className="aisub-err">Liste nicht verfügbar: {r.error}</p>}
-      {r && !r.live && !r.error && <p className="aisub-note">Dieser Anbieter hat keine Modell-Liste per Schnittstelle – hier stehen Vorschläge. Jede Modell-ID kannst du im Verbindungsformular selbst eintippen.</p>}
-      {r?.live && !priced && <p className="aisub-note">Dieser Anbieter nennt in seiner Liste keine Preise. Eigene Preise (für die Kostenschätzung) trägst du im Formular unter „Erweitert“ ein.</p>}
+      {r?.error && <p className="aisub-err">{tt('Liste nicht verfügbar: {error}', { error: r.error })}</p>}
+      {r && !r.live && !r.error && <p className="aisub-note">{tt('Dieser Anbieter hat keine Modell-Liste per Schnittstelle – hier stehen Vorschläge. Jede Modell-ID kannst du im Verbindungsformular selbst eintippen.')}</p>}
+      {r?.live && !priced && <p className="aisub-note">{tt('Dieser Anbieter nennt in seiner Liste keine Preise. Eigene Preise (für die Kostenschätzung) trägst du im Formular unter „Erweitert“ ein.')}</p>}
       {!r ? (
         <Spinner />
       ) : (
@@ -173,11 +176,11 @@ export function ModelsModal({ conn, preset, onClose, onChanged }: { conn: any; p
             <table className="aim-table">
               <thead>
                 <tr>
-                  <th>Modell</th>
-                  <th className="num">Kontext</th>
-                  <th className="num">Eingabe je 1 Mio.</th>
-                  <th className="num">Ausgabe je 1 Mio.</th>
-                  <th>Merkmale</th>
+                  <th>{tt('Modell')}</th>
+                  <th className="num">{tt('Kontext')}</th>
+                  <th className="num">{tt('Eingabe je 1 Mio.')}</th>
+                  <th className="num">{tt('Ausgabe je 1 Mio.')}</th>
+                  <th>{tt('Merkmale')}</th>
                   <th />
                 </tr>
               </thead>
@@ -192,17 +195,17 @@ export function ModelsModal({ conn, preset, onClose, onChanged }: { conn: any; p
                     <td className="num">{m.free ? 'kostenlos' : usd(m.in)}</td>
                     <td className="num">{m.free ? 'kostenlos' : usd(m.out)}</td>
                     <td>
-                      {m.vision && <Badge tone="blue">Bilder</Badge>} {m.tools && <Badge tone="green">Werkzeuge</Badge>}
+                      {m.vision && <Badge tone="blue">{tt('Bilder')}</Badge>} {m.tools && <Badge tone="green">{tt('Werkzeuge')}</Badge>}
                     </td>
                     <td className="num">
-                      {conn.editable && (m.id === current ? <Badge tone="green">Standard</Badge> : <button className="btn secondary aisub-btn" onClick={() => void use(m.id)}>Als Standard</button>)}
+                      {conn.editable && (m.id === current ? <Badge tone="green">{tt('Standard')}</Badge> : <button className="btn secondary aisub-btn" onClick={() => void use(m.id)}>{tt('Als Standard')}</button>)}
                     </td>
                   </tr>
                 ))}
                 {!rows.length && (
                   <tr>
                     <td colSpan={6} className="muted">
-                      Keine Treffer.
+                      {tt('Keine Treffer.')}
                     </td>
                   </tr>
                 )}
@@ -210,8 +213,8 @@ export function ModelsModal({ conn, preset, onClose, onChanged }: { conn: any; p
             </table>
           </div>
           <p className="aisub-note" style={{ marginTop: 8 }}>
-            {r.total > rows.length ? `${rows.length} von ${r.total} Modellen – oben suchen, um die Liste einzugrenzen. ` : `${rows.length} Modelle. `}
-            Preise in US-Dollar je eine Million Tokens, wie der Anbieter sie nennt; die Kostenschätzung in HyperLevel nutzt sie, solange du keine eigenen einträgst.
+            {r.total > rows.length ? tt('{length} von {total} Modellen – oben suchen, um die Liste einzugrenzen. ', { length: rows.length, total: r.total }) : tt('{length} Modelle. ', { length: rows.length })}
+            {tt('Preise in US-Dollar je eine Million Tokens, wie der Anbieter sie nennt; die Kostenschätzung in HyperLevel nutzt sie, solange du keine eigenen einträgst.')}
           </p>
         </>
       )}

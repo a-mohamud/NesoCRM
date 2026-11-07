@@ -3,6 +3,7 @@ import { Modal } from '../ui';
 import { type InstallState, closeSheet, installKey, installOffer, installSteps, parseState } from './install';
 import { type InstallMethod } from './platform';
 import './ios-sheet.css';
+import { useT } from '../i18n';
 
 /**
  * "Zum Home-Bildschirm hinzufügen" for iPhone and iPad: a friendly sheet with the Share icon drawn out, shown a few seconds after
@@ -33,13 +34,14 @@ const isIpad = () => /iPad/.test(navigator.userAgent) || (navigator.platform ===
 
 /** Share icon (square with an arrow up), "Zum Home-Bildschirm" row and the finished icon – in the theme's colours. */
 export function InstallIllustration({ ipad }: { ipad: boolean }) {
+  const tt = useT('x_misc');
   const share = (x: number, y: number, hot: boolean) => (
     <g transform={`translate(${x} ${y})`} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" stroke={hot ? 'var(--brand)' : 'currentColor'} opacity={hot ? 1 : 0.55}>
       <path d="M9 3v11M5.5 6.5L9 3l3.5 3.5M4 10H3.5A1.5 1.5 0 0 0 2 11.5v7A1.5 1.5 0 0 0 3.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 14.5 10H14" />
     </g>
   );
   return (
-    <svg className="ios-illu" viewBox="0 0 320 132" role="img" aria-label={ipad ? 'Teilen oben rechts in Safari, dann „Zum Home-Bildschirm“' : 'Teilen unten in Safari, dann „Zum Home-Bildschirm“'}>
+    <svg className="ios-illu" viewBox="0 0 320 132" role="img" aria-label={ipad ? tt('Teilen oben rechts in Safari, dann „Zum Home-Bildschirm“') : tt('Teilen unten in Safari, dann „Zum Home-Bildschirm“')}>
       {/* 1 – the browser bar with Share */}
       <rect x="4" y="6" width="140" height="120" rx="14" fill="var(--bg)" stroke="var(--line)" />
       {ipad ? (
@@ -60,7 +62,7 @@ export function InstallIllustration({ ipad }: { ipad: boolean }) {
       )}
       <path d={ipad ? 'M118 40 V58' : 'M84 92 V72'} stroke="var(--brand)" strokeWidth="2.5" strokeLinecap="round" fill="none" />
       <text x="74" y={ipad ? 82 : 52} textAnchor="middle" fontSize="11" fontWeight="700" fill="var(--brand)">
-        1 · Teilen
+        {tt('1 · Teilen')}
       </text>
       {/* 2 – the menu row */}
       <rect x="164" y="6" width="152" height="120" rx="14" fill="var(--bg)" stroke="var(--line)" />
@@ -71,17 +73,18 @@ export function InstallIllustration({ ipad }: { ipad: boolean }) {
         <path d="M9 5.5v7M5.5 9h7" />
       </g>
       <text x="202" y="63" fontSize="10" fontWeight="700" fill="#fff" textLength="98" lengthAdjust="spacingAndGlyphs">
-        Zum Home-Bildschirm
+        {tt('Zum Home-Bildschirm')}
       </text>
       <rect x="174" y="78" width="132" height="22" rx="8" fill="var(--panel)" stroke="var(--line)" />
       <text x="240" y="116" textAnchor="middle" fontSize="11" fontWeight="700" fill="var(--brand)">
-        2 · Hinzufügen
+        {tt('2 · Hinzufügen')}
       </text>
     </svg>
   );
 }
 
 export function InstallSheet({ userId }: { userId: string }) {
+  const tt = useT('x_misc');
   const [method, setMethod] = useState<InstallMethod | null>(null);
   // A few seconds after the app is up: not in the middle of loading.
   useEffect(() => {
@@ -101,23 +104,23 @@ export function InstallSheet({ userId }: { userId: string }) {
   };
   return (
     <Modal
-      title="Zum Home-Bildschirm hinzufügen"
+      title={tt('Zum Home-Bildschirm hinzufügen')}
       onClose={() => later()}
       className="ios-sheet"
       footer={
         <>
           <button className="btn ghost" onClick={() => later(true)}>
-            Nicht mehr zeigen
+            {tt('Nicht mehr zeigen')}
           </button>
           <button className="btn" onClick={() => later()} data-tour="ios-install-ok">
-            Verstanden
+            {tt('Verstanden')}
           </button>
         </>
       }
     >
       <div data-tour="ios-install">
         <p className="ios-lead">
-          So startet HyperLevel wie eine App: eigenes Fenster ohne Browserleisten, Mitteilungen bei neuen Nachrichten und eine Zahl auf dem Symbol.
+          {tt('So startet HyperLevel wie eine App: eigenes Fenster ohne Browserleisten, Mitteilungen bei neuen Nachrichten und eine Zahl auf dem Symbol.')}
         </p>
         <InstallIllustration ipad={ipad} />
         <ol className="ios-steps">
@@ -125,7 +128,7 @@ export function InstallSheet({ userId }: { userId: string }) {
             <li key={s}>{s}</li>
           ))}
         </ol>
-        <p className="muted small">Du bleibst angemeldet. Mitteilungen schaltest du danach in der App unter Einstellungen → Mein Konto ein.</p>
+        <p className="muted small">{tt('Du bleibst angemeldet. Mitteilungen schaltest du danach in der App unter Einstellungen → Mein Konto ein.')}</p>
       </div>
     </Modal>
   );

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Badge, Field, Input, Tabs, act, confirmAsk, toastError } from '../ui';
 import { sizeLabel, type Conn, type SourceInfo, type UFile, type UmzugApi } from './umzug-format';
+import { useT } from '../i18n';
 
 /** Schritt 2 des Umzugs: mit der Schnittstelle verbinden (API-Schlüssel) oder Export-Dateien hochladen. */
 
@@ -31,6 +32,7 @@ export function UmzugConnect({
   onChanged: () => void;
   onNext: () => void;
 }) {
+  const tt = useT('x_integrations');
   const [creds, setCreds] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
   const [reconnect, setReconnect] = useState(false);
@@ -39,7 +41,7 @@ export function UmzugConnect({
 
   const connect = async () => {
     setBusy('connect');
-    const r = await act(() => api.put(`/api/umzug/connections/${src.key}`, creds), `${src.label} ist verbunden`);
+    const r = await act(() => api.put(`/api/umzug/connections/${src.key}`, creds), tt('{label} ist verbunden', { label: src.label }));
     setBusy('');
     if (r) {
       setCreds({});
@@ -48,8 +50,8 @@ export function UmzugConnect({
     }
   };
   const disconnect = async () => {
-    if (!confirmAsk(`Verbindung zu ${src.label} trennen? Der gespeicherte Schlüssel wird gelöscht – schon übernommene Daten bleiben.`)) return;
-    await act(() => api.del(`/api/umzug/connections/${src.key}`), 'Verbindung getrennt');
+    if (!confirmAsk(tt('Verbindung zu {label} trennen? Der gespeicherte Schlüssel wird gelöscht – schon übernommene Daten bleiben.', { label: src.label }))) return;
+    await act(() => api.del(`/api/umzug/connections/${src.key}`), tt('Verbindung getrennt'));
     onChanged();
   };
 
@@ -59,7 +61,7 @@ export function UmzugConnect({
     const added: string[] = [];
     for (const file of list) {
       if (file.size > maxMb * 1024 * 1024) {
-        toastError(new Error(`„${file.name}“ ist größer als ${maxMb} MB`));
+        toastError(new Error(tt('„{name}“ ist größer als {maxMb} MB', { name: file.name, maxMb: maxMb })));
         continue;
       }
       const r = await act(() => api.upload(src.key, file, kind));
@@ -98,18 +100,18 @@ export function UmzugConnect({
               <>
                 <p>
                   <Badge tone="green">verbunden</Badge> <strong>{conn?.label || conn?.account}</strong>
-                  {conn?.hint && <span className="muted small"> · Schlüssel {conn.hint}</span>}
+                  {conn?.hint && <span className="muted small"> {tt('· Schlüssel {hint}', { hint: conn.hint })}</span>}
                 </p>
-                <p className="muted small">Der Schlüssel liegt verschlüsselt auf deinem Server und wird nur für den Umzug gelesen.</p>
+                <p className="muted small">{tt('Der Schlüssel liegt verschlüsselt auf deinem Server und wird nur für den Umzug gelesen.')}</p>
                 <div className="um-actions">
                   <button className="btn" onClick={onNext} data-tour="um-next-preview">
-                    Weiter zur Vorschau
+                    {tt('Weiter zur Vorschau')}
                   </button>
                   <button className="btn secondary" onClick={() => setReconnect(true)}>
-                    Anderen Schlüssel eintragen
+                    {tt('Anderen Schlüssel eintragen')}
                   </button>
                   <button className="btn ghost" onClick={disconnect}>
-                    Trennen
+                    {tt('Trennen')}
                   </button>
                 </div>
               </>
@@ -127,11 +129,11 @@ export function UmzugConnect({
                 ))}
                 <div className="um-actions">
                   <button className="btn" type="submit" disabled={!ready || !!busy}>
-                    {busy === 'connect' ? 'Prüfe …' : 'Verbinden und prüfen'}
+                    {busy === 'connect' ? tt('Prüfe …') : tt('Verbinden und prüfen')}
                   </button>
                   {reconnect && (
                     <button className="btn ghost" type="button" onClick={() => setReconnect(false)}>
-                      Abbrechen
+                      {tt('Abbrechen')}
                     </button>
                   )}
                 </div>
@@ -139,7 +141,7 @@ export function UmzugConnect({
             )}
           </div>
           <div className="card um-howto">
-            <h3>So kommst du an den Schlüssel</h3>
+            <h3>{tt('So kommst du an den Schlüssel')}</h3>
             <ol>
               {src.howto.map((h) => (
                 <li key={h}>{h}</li>
@@ -150,8 +152,8 @@ export function UmzugConnect({
       ) : (
         <div className="um-two">
           <div className="card" data-tour="um-upload">
-            <h3>Dateien hochladen</h3>
-            <p className="muted small">Bis {maxMb} MB je Datei. Die Dateien liegen nur auf deinem Server und werden nach dem Import gelöscht.</p>
+            <h3>{tt('Dateien hochladen')}</h3>
+            <p className="muted small">{tt('Bis {maxMb} MB je Datei. Die Dateien liegen nur auf deinem Server und werden nach dem Import gelöscht.', { maxMb: maxMb })}</p>
             <div className="um-exports">
               {src.exports.map((x) => (
                 <div key={x.key} className="um-export">
@@ -160,7 +162,7 @@ export function UmzugConnect({
                     <div className="muted small">{x.describe}</div>
                   </div>
                   <label className={`btn secondary${busy ? ' disabled' : ''}`}>
-                    {busy === `up-${x.key}` ? 'Lädt hoch …' : 'Datei wählen'}
+                    {busy === `up-${x.key}` ? tt('Lädt hoch …') : tt('Datei wählen')}
                     <input type="file" hidden multiple disabled={!!busy} accept={x.accept.join(',')} onChange={(e) => {
                       const picked = Array.from(e.target.files ?? []);
                       e.target.value = '';
@@ -172,26 +174,26 @@ export function UmzugConnect({
             </div>
             {files.length > 0 && (
               <div className="um-files">
-                <h4>Bereitliegende Dateien</h4>
+                <h4>{tt('Bereitliegende Dateien')}</h4>
                 {files.map((f) => (
                   <div key={f.id} className="um-file">
-                    <input type="checkbox" aria-label={`${f.name} verwenden`} checked={selected.includes(f.id)} onChange={(e) => onSelected(e.target.checked ? [...selected, f.id] : selected.filter((x) => x !== f.id))} />
+                    <input type="checkbox" aria-label={tt('{name} verwenden', { name: f.name })} checked={selected.includes(f.id)} onChange={(e) => onSelected(e.target.checked ? [...selected, f.id] : selected.filter((x) => x !== f.id))} />
                     <div className="um-file-main">
                       <strong>{f.name}</strong>
                       <div className="muted small">
-                        {sizeLabel(f.size)} · {f.rows ?? 0} Zeilen{f.detected ? ` · erkannt: ${f.detected}` : ''}
+                        {tt('{sizeLabel} · {v} Zeilen', { sizeLabel: sizeLabel(f.size), v: f.rows ?? 0 })}{f.detected ? tt(' · erkannt: {detected}', { detected: f.detected }) : ''}
                       </div>
-                      {f.tables && f.tables.length > 0 && <div className="muted small um-cols">Spalten: {f.tables[0].header.slice(0, 8).join(', ')}{f.tables[0].columns > 8 ? ' …' : ''}</div>}
+                      {f.tables && f.tables.length > 0 && <div className="muted small um-cols">{tt('Spalten:')} {f.tables[0].header.slice(0, 8).join(', ')}{f.tables[0].columns > 8 ? ' …' : ''}</div>}
                     </div>
-                    <select aria-label={`Art von ${f.name}`} value={f.kind} onChange={(e) => void setKind(f, e.target.value)}>
+                    <select aria-label={tt('Art von {name}', { name: f.name })} value={f.kind} onChange={(e) => void setKind(f, e.target.value)}>
                       {fileKinds.map((k) => (
                         <option key={k.key} value={k.key}>
                           {k.label}
                         </option>
                       ))}
                     </select>
-                    <button className="btn small ghost" onClick={() => void remove(f)} aria-label={`${f.name} löschen`}>
-                      Löschen
+                    <button className="btn small ghost" onClick={() => void remove(f)} aria-label={tt('{name} löschen', { name: f.name })}>
+                      {tt('Löschen')}
                     </button>
                   </div>
                 ))}
@@ -199,12 +201,12 @@ export function UmzugConnect({
             )}
             <div className="um-actions">
               <button className="btn" disabled={!selected.length} onClick={onNext} data-tour="um-next-preview-file">
-                Weiter zur Vorschau
+                {tt('Weiter zur Vorschau')}
               </button>
             </div>
           </div>
           <div className="card um-howto">
-            <h3>Welche Dateien gehen?</h3>
+            <h3>{tt('Welche Dateien gehen?')}</h3>
             <ul>
               {src.exports.map((x) => (
                 <li key={x.key}>
@@ -212,12 +214,12 @@ export function UmzugConnect({
                 </li>
               ))}
             </ul>
-            <p className="muted small">Die Art einer Datei wird erkannt – stimmt sie nicht, wähle sie in der Liste um.</p>
+            <p className="muted small">{tt('Die Art einer Datei wird erkannt – stimmt sie nicht, wähle sie in der Liste um.')}</p>
           </div>
         </div>
       )}
       <details className="um-limits">
-        <summary>Was nicht mitkommt</summary>
+        <summary>{tt('Was nicht mitkommt')}</summary>
         <ul>
           {src.limits.map((l) => (
             <li key={l}>{l}</li>

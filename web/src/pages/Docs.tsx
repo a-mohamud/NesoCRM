@@ -4,6 +4,7 @@ import { Icon, type IconName } from '../icons';
 import { StatusDot, useOpenProject, useProjects } from '../nav';
 import { can, useSession } from '../session';
 import { Empty, Input, Select, Spinner, act, confirmAsk, useLoad } from '../ui';
+import { useT } from '../i18n';
 
 /** Reports, Claude artifacts and documents: per project and agency-wide with an inbox. */
 
@@ -23,6 +24,7 @@ export function kindOfUrl(url: string): string {
 }
 
 function DocRow({ d, actions }: { d: any; actions?: React.ReactNode }) {
+  const tt = useT('x_tours_b');
   const [kindIcon, kindLabel] = KIND[d.kind] ?? KIND.link;
   // Codex tasks are sessions too, with their own icon.
   const codex = d.source === 'Codex' || /chatgpt\.com\/codex/.test(d.url);
@@ -42,7 +44,7 @@ function DocRow({ d, actions }: { d: any; actions?: React.ReactNode }) {
             <>
               {' · '}
               <a href={d.session_url} target="_blank" rel="noreferrer">
-                Sitzung öffnen
+                {tt('Sitzung öffnen')}
               </a>
             </>
           )}
@@ -55,13 +57,14 @@ function DocRow({ d, actions }: { d: any; actions?: React.ReactNode }) {
 
 /** Card on the project page. */
 export function ProjectDocs() {
+  const tt = useT('x_tours_b');
   const session = useSession();
   const docs = useLoad(() => api.get<any[]>('/api/docs'), [session.locationId]);
   const [add, setAdd] = useState({ title: '', url: '' });
   const edit = can(session, 'settings');
   return (
     <div className="card" data-tour="project-docs">
-      <h2>Berichte & Artefakte</h2>
+      <h2>{tt('Berichte & Artefakte')}</h2>
       {!docs.data ? (
         <Spinner />
       ) : docs.data.length ? (
@@ -73,10 +76,10 @@ export function ProjectDocs() {
               actions={
                 edit && (
                   <span className="doc-actions">
-                    <button className="icon-btn" title={d.pinned ? 'Nicht mehr anheften' : 'Anheften'} onClick={async () => (await act(() => api.patch(`/api/docs/${d.id}`, { pinned: !d.pinned }))) && docs.reload()}>
+                    <button className="icon-btn" title={d.pinned ? tt('Nicht mehr anheften') : tt('Anheften')} onClick={async () => (await act(() => api.patch(`/api/docs/${d.id}`, { pinned: !d.pinned }))) && docs.reload()}>
                       <Icon name="pin" size={14} />
                     </button>
-                    <button className="icon-btn" title="Entfernen" onClick={async () => confirmAsk(`„${d.title}“ aus dem Projekt entfernen?`) && (await act(() => api.del(`/api/docs/${d.id}`))) && docs.reload()}>
+                    <button className="icon-btn" title={tt('Entfernen')} onClick={async () => confirmAsk(tt('„{title}“ aus dem Projekt entfernen?', { title: d.title })) && (await act(() => api.del(`/api/docs/${d.id}`))) && docs.reload()}>
                       <Icon name="trash" size={14} />
                     </button>
                   </span>
@@ -86,14 +89,14 @@ export function ProjectDocs() {
           ))}
         </div>
       ) : (
-        <p className="muted small">Noch nichts abgelegt. Claude-Artefakte, ChatGPT-Canvas und Codex-Aufgaben zu diesem Projekt erscheinen hier automatisch.</p>
+        <p className="muted small">{tt('Noch nichts abgelegt. Claude-Artefakte, ChatGPT-Canvas und Codex-Aufgaben zu diesem Projekt erscheinen hier automatisch.')}</p>
       )}
       {edit && (
         <div className="list-row" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.3fr) auto', marginTop: 10 }}>
-          <Input value={add.title} onChange={(title) => setAdd({ ...add, title })} placeholder="Titel" />
-          <Input value={add.url} onChange={(url) => setAdd({ ...add, url })} placeholder="Link (claude.ai, chatgpt.com …)" />
-          <button className="btn small secondary" disabled={!add.url} onClick={async () => (await act(() => api.post('/api/docs', { ...add, kind: kindOfUrl(add.url) }), 'Abgelegt')) && (setAdd({ title: '', url: '' }), docs.reload())}>
-            + Ablegen
+          <Input value={add.title} onChange={(title) => setAdd({ ...add, title })} placeholder={tt('Titel')} />
+          <Input value={add.url} onChange={(url) => setAdd({ ...add, url })} placeholder={tt('Link (claude.ai, chatgpt.com …)')} />
+          <button className="btn small secondary" disabled={!add.url} onClick={async () => (await act(() => api.post('/api/docs', { ...add, kind: kindOfUrl(add.url) }), tt('Abgelegt'))) && (setAdd({ title: '', url: '' }), docs.reload())}>
+            {tt('+ Ablegen')}
           </button>
         </div>
       )}
@@ -103,6 +106,7 @@ export function ProjectDocs() {
 
 /** Agency tab: all documents, the inbox first. */
 export function AgencyDocs() {
+  const tt = useT('x_tours_b');
   const projects = useProjects();
   const open = useOpenProject();
   const [q, setQ] = useState('');
@@ -116,21 +120,21 @@ export function AgencyDocs() {
   const groups = new Map<string, any[]>();
   for (const d of filed) groups.set(d.location_id, [...(groups.get(d.location_id) ?? []), d]);
   const status = Object.fromEntries(projects.map((p) => [p.id, p.status]));
-  const assign = async (d: any, location_id: string) => (await act(() => api.patch(`/api/agency/docs/${d.id}`, { location_id }), location_id ? 'Zugeordnet' : 'In den Eingang gelegt')) && docs.reload();
+  const assign = async (d: any, location_id: string) => (await act(() => api.patch(`/api/agency/docs/${d.id}`, { location_id }), location_id ? tt('Zugeordnet') : tt('In den Eingang gelegt'))) && docs.reload();
   return (
     <>
       <div className="row" style={{ marginBottom: 12 }}>
         <div className="grow" style={{ maxWidth: 420 }}>
-          <Input value={q} onChange={setQ} placeholder="Titel, Projekt…" />
+          <Input value={q} onChange={setQ} placeholder={tt('Titel, Projekt…')} />
         </div>
         <div style={{ width: 260 }}>
-          <Select value={loc} onChange={setLoc} placeholder="Alle Projekte" options={options} />
+          <Select value={loc} onChange={setLoc} placeholder={tt('Alle Projekte')} options={options} />
         </div>
       </div>
       {inbox.length > 0 && !loc && (
         <div className="card">
           <h2>
-            <Icon name="inbox" size={18} /> Eingang <span className="muted small">· {inbox.length} ohne Projekt</span>
+            <Icon name="inbox" size={18} /> {tt('Eingang')} <span className="muted small">{tt('· {length} ohne Projekt', { length: inbox.length })}</span>
           </h2>
           <div className="doc-list">
             {inbox.map((d) => (
@@ -139,7 +143,7 @@ export function AgencyDocs() {
                 d={d}
                 actions={
                   <div style={{ width: 220 }}>
-                    <Select value="" onChange={(v) => v && assign(d, v)} placeholder="Projekt zuordnen…" options={options} />
+                    <Select value="" onChange={(v) => v && assign(d, v)} placeholder={tt('Projekt zuordnen…')} options={options} />
                   </div>
                 }
               />
@@ -159,7 +163,7 @@ export function AgencyDocs() {
                 key={d.id}
                 d={d}
                 actions={
-                  <button className="icon-btn" title="Zurück in den Eingang" onClick={() => assign(d, '')}>
+                  <button className="icon-btn" title={tt('Zurück in den Eingang')} onClick={() => assign(d, '')}>
                     <Icon name="inbox" size={14} />
                   </button>
                 }
@@ -168,7 +172,7 @@ export function AgencyDocs() {
           </div>
         </div>
       ))}
-      {!inbox.length && !groups.size && <Empty>Keine Dokumente gefunden.</Empty>}
+      {!inbox.length && !groups.size && <Empty>{tt('Keine Dokumente gefunden.')}</Empty>}
     </>
   );
 }

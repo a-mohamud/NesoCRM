@@ -2,25 +2,27 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../icons';
 import { api, dt } from '../api';
 import { act, Badge, Check, confirmAsk, Empty, Field, Input, Link, Modal, PageHead, pressable, Select, Spinner, Tabs, TagInput, Textarea, useLoad } from '../ui';
+import { useT } from '../i18n';
 
 /** Wissensdatenbank: categories and Markdown articles for the public help center. */
 
 function CategoryModal({ cat, onClose, onSaved }: { cat?: any; onClose: () => void; onSaved: () => void }) {
+  const tt = useT('x_community');
   const [c, setC] = useState<any>(cat ?? { name: '', description: '' });
-  const save = async () => (await act(() => (cat ? api.patch(`/api/kb/categories/${cat.id}`, c) : api.post('/api/kb/categories', c)), 'Gespeichert')) && onSaved();
+  const save = async () => (await act(() => (cat ? api.patch(`/api/kb/categories/${cat.id}`, c) : api.post('/api/kb/categories', c)), tt('Gespeichert'))) && onSaved();
   return (
     <Modal
-      title={cat ? 'Kategorie bearbeiten' : 'Neue Kategorie'}
+      title={cat ? tt('Kategorie bearbeiten') : tt('Neue Kategorie')}
       onClose={onClose}
       footer={
         <>
           {cat && (
-            <button className="btn danger" onClick={async () => confirmAsk(`Kategorie „${cat.name}“ löschen? Die Artikel bleiben (ohne Kategorie).`) && (await act(() => api.del(`/api/kb/categories/${cat.id}`))) && onSaved()}>
-              Löschen
+            <button className="btn danger" onClick={async () => confirmAsk(tt('Kategorie „{name}“ löschen? Die Artikel bleiben (ohne Kategorie).', { name: cat.name })) && (await act(() => api.del(`/api/kb/categories/${cat.id}`))) && onSaved()}>
+              {tt('Löschen')}
             </button>
           )}
           <button className="btn" onClick={save}>
-            Speichern
+            {tt('Speichern')}
           </button>
         </>
       }
@@ -28,11 +30,11 @@ function CategoryModal({ cat, onClose, onSaved }: { cat?: any; onClose: () => vo
       <Field label="Name">
         <Input value={c.name} onChange={(v) => setC({ ...c, name: v })} autoFocus />
       </Field>
-      <Field label="Beschreibung (öffentlich)">
+      <Field label={tt('Beschreibung (öffentlich)')}>
         <Input value={c.description} onChange={(v) => setC({ ...c, description: v })} />
       </Field>
       {cat && (
-        <Field label="Adresse" hint="Teil der URL im Hilfe-Center">
+        <Field label={tt('Adresse')} hint={tt('Teil der URL im Hilfe-Center')}>
           <Input value={c.slug} onChange={(v) => setC({ ...c, slug: v })} />
         </Field>
       )}
@@ -41,6 +43,7 @@ function CategoryModal({ cat, onClose, onSaved }: { cat?: any; onClose: () => vo
 }
 
 function ArticleEditor({ id, cats, onClose, onSaved }: { id?: string; cats: any[]; onClose: () => void; onSaved: () => void }) {
+  const tt = useT('x_community');
   const loaded = useLoad(() => (id ? api.get(`/api/kb/articles/${id}`) : Promise.resolve({ title: '', body: '', status: 'draft', tags: [], seo: {}, category_id: cats[0]?.id ?? '' })), [id]);
   const [a, setA] = useState<any>();
   const [tab, setTab] = useState('text');
@@ -53,70 +56,70 @@ function ArticleEditor({ id, cats, onClose, onSaved }: { id?: string; cats: any[
   if (!a) return null;
   const save = async (status?: string) => {
     const body = { title: a.title, body: a.body, excerpt: a.excerpt, category_id: a.category_id || '', tags: a.tags, seo: a.seo, slug: a.slug, status: status ?? a.status };
-    const r = await act(() => (id ? api.patch(`/api/kb/articles/${id}`, body) : api.post('/api/kb/articles', body)), status === 'published' ? 'Veröffentlicht' : 'Gespeichert');
+    const r = await act(() => (id ? api.patch(`/api/kb/articles/${id}`, body) : api.post('/api/kb/articles', body)), status === 'published' ? tt('Veröffentlicht') : tt('Gespeichert'));
     if (r) onSaved();
   };
   return (
     <Modal
-      title={id ? 'Artikel bearbeiten' : 'Neuer Artikel'}
+      title={id ? tt('Artikel bearbeiten') : tt('Neuer Artikel')}
       wide
       onClose={onClose}
       footer={
         <>
           {id && (
-            <button className="btn danger" onClick={async () => confirmAsk('Artikel löschen?') && (await act(() => api.del(`/api/kb/articles/${id}`))) && onSaved()}>
-              Löschen
+            <button className="btn danger" onClick={async () => confirmAsk(tt('Artikel löschen?')) && (await act(() => api.del(`/api/kb/articles/${id}`))) && onSaved()}>
+              {tt('Löschen')}
             </button>
           )}
           {a.preview_url && (
             <a className="btn secondary" href={a.preview_url} target="_blank" rel="noopener">
-              Vorschau öffnen
+              {tt('Vorschau öffnen')}
             </a>
           )}
           <button className="btn secondary" onClick={() => save(a.status === 'published' ? 'draft' : undefined)}>
-            {a.status === 'published' ? 'Zurück auf Entwurf' : 'Als Entwurf speichern'}
+            {a.status === 'published' ? tt('Zurück auf Entwurf') : tt('Als Entwurf speichern')}
           </button>
           <button className="btn" data-tour="kb-publish" onClick={() => save('published')}>
-            {a.status === 'published' ? 'Speichern' : 'Veröffentlichen'}
+            {a.status === 'published' ? tt('Speichern') : tt('Veröffentlichen')}
           </button>
         </>
       }
     >
-      <Field label="Titel" tour="kb-title">
-        <Input value={a.title} onChange={(v) => setA({ ...a, title: v })} autoFocus={!id} placeholder="z. B. Passwort zurücksetzen" />
+      <Field label={tt('Titel')} tour="kb-title">
+        <Input value={a.title} onChange={(v) => setA({ ...a, title: v })} autoFocus={!id} placeholder={tt('z. B. Passwort zurücksetzen')} />
       </Field>
       <div className="grid2">
-        <Field label="Kategorie" tour="kb-category">
-          <Select value={a.category_id} onChange={(v) => setA({ ...a, category_id: v })} placeholder="– ohne –" options={cats.map((c) => [c.id, c.name])} />
+        <Field label={tt('Kategorie')} tour="kb-category">
+          <Select value={a.category_id} onChange={(v) => setA({ ...a, category_id: v })} placeholder={tt('– ohne –')} options={cats.map((c) => [c.id, c.name])} />
         </Field>
-        <Field label="Tags (Suchbegriffe)" tour="kb-tags">
+        <Field label={tt('Tags (Suchbegriffe)')} tour="kb-tags">
           <TagInput value={a.tags ?? []} onChange={(v) => setA({ ...a, tags: v })} />
         </Field>
       </div>
       <Tabs tabs={[['text', 'Text (Markdown)'], ['preview', 'Vorschau'], ['seo', 'SEO & Adresse']]} value={tab} onChange={setTab} />
       {tab === 'text' && (
-        <Field tour="kb-body" label="Text" hint="## Überschrift, **fett**, *kursiv*, - Liste, 1. Liste, [Link](https://…), ![Bild](https://…), > Hinweis, ``` Code; ein YouTube-/Vimeo-Link allein in einer Zeile wird zum Video.">
+        <Field tour="kb-body" label={tt('Text')} hint={tt('## Überschrift, **fett**, *kursiv*, - Liste, 1. Liste, [Link](https://…), ![Bild](https://…), > Hinweis, ``` Code; ein YouTube-/Vimeo-Link allein in einer Zeile wird zum Video.')}>
           <Textarea value={a.body} onChange={(v) => setA({ ...a, body: v })} rows={16} className="mono" />
         </Field>
       )}
       {tab === 'preview' && <div className="card kb-preview prose" dangerouslySetInnerHTML={{ __html: preview || '<p class="muted">Kein Text.</p>' }} />}
       {tab === 'seo' && (
         <>
-          <Field label="Kurzbeschreibung" hint="Erscheint in Listen und Suchergebnissen – leer = Anfang des Textes">
+          <Field label={tt('Kurzbeschreibung')} hint={tt('Erscheint in Listen und Suchergebnissen – leer = Anfang des Textes')}>
             <Textarea value={a.excerpt} onChange={(v) => setA({ ...a, excerpt: v })} rows={2} />
           </Field>
-          <Field label="SEO-Titel">
+          <Field label={tt('SEO-Titel')}>
             <Input value={a.seo?.title} onChange={(v) => setA({ ...a, seo: { ...a.seo, title: v } })} placeholder={a.title} />
           </Field>
-          <Field label="SEO-Beschreibung (meta description)">
+          <Field label={tt('SEO-Beschreibung (meta description)')}>
             <Textarea value={a.seo?.description} onChange={(v) => setA({ ...a, seo: { ...a.seo, description: v } })} rows={2} />
           </Field>
           {id && (
-            <Field label="Adresse (Slug)">
+            <Field label={tt('Adresse (Slug)')}>
               <Input value={a.slug} onChange={(v) => setA({ ...a, slug: v })} />
             </Field>
           )}
-          <Check checked={!!a.seo?.noindex} onChange={(v) => setA({ ...a, seo: { ...a.seo, noindex: v } })} label="Nicht in Suchmaschinen anzeigen (noindex)" />
+          <Check checked={!!a.seo?.noindex} onChange={(v) => setA({ ...a, seo: { ...a.seo, noindex: v } })} label={tt('Nicht in Suchmaschinen anzeigen (noindex)')} />
         </>
       )}
     </Modal>
@@ -124,6 +127,7 @@ function ArticleEditor({ id, cats, onClose, onSaved }: { id?: string; cats: any[
 }
 
 export function KnowledgeBase() {
+  const tt = useT('x_community');
   const info = useLoad(() => api.get('/api/kb/info'), []);
   const cats = useLoad(() => api.get<any[]>('/api/kb/categories'), []);
   const [status, setStatus] = useState('');
@@ -134,50 +138,50 @@ export function KnowledgeBase() {
   const reload = () => (setModal(null), arts.reload(), cats.reload());
   return (
     <>
-      <PageHead title="Wissensdatenbank" sub="Hilfe-Artikel für dein öffentliches Hilfe-Center – und als Vorschläge beim Beantworten von Tickets">
+      <PageHead title={tt('Wissensdatenbank')} sub={tt('Hilfe-Artikel für dein öffentliches Hilfe-Center – und als Vorschläge beim Beantworten von Tickets')}>
         {info.data && (
           <a className="btn secondary" data-tour="kb-public" href={info.data.url} target="_blank" rel="noopener">
-            <Icon name="external" size={14} /> Hilfe-Center {info.data.enabled ? 'öffnen' : '(nicht öffentlich)'}
+            <Icon name="external" size={14} /> {tt('Hilfe-Center')} {info.data.enabled ? tt('öffnen') : tt('(nicht öffentlich)')}
           </a>
         )}
         <button className="btn secondary" data-tour="kb-new-cat" onClick={() => setModal({ kind: 'cat' })}>
-          + Kategorie
+          {tt('+ Kategorie')}
         </button>
         <button className="btn" data-tour="kb-new" onClick={() => setModal({ kind: 'art' })}>
-          + Artikel
+          {tt('+ Artikel')}
         </button>
       </PageHead>
       {info.data && !info.data.enabled && (
         <div className="card notice-card" data-tour="kb-notice">
-          Das Hilfe-Center ist noch nicht öffentlich. Einschalten unter <Link to="settings/helpdesk">Einstellungen → Service</Link> (Bereich „Kundenportal & Hilfe-Center“).
+          {tt('Das Hilfe-Center ist noch nicht öffentlich. Einschalten unter')} <Link to="settings/helpdesk">{tt('Einstellungen → Service')}</Link> {tt('(Bereich „Kundenportal & Hilfe-Center“).')}
         </div>
       )}
       <div className="kb-layout">
         <aside className="card kb-cats" data-tour="kb-cats">
           <button className={`kb-cat${cat === '' ? ' on' : ''}`} onClick={() => setCat('')}>
-            Alle Artikel
+            {tt('Alle Artikel')}
           </button>
           {(cats.data ?? []).map((c) => (
             <div key={c.id} className={`kb-cat${cat === c.id ? ' on' : ''}`}>
               <button onClick={() => setCat(c.id)}>
                 {c.name} <span className="muted small">{c.articles}</span>
               </button>
-              <button className="icon-btn" aria-label={`Kategorie ${c.name} bearbeiten`} onClick={() => setModal({ kind: 'cat', cat: c })}>
+              <button className="icon-btn" aria-label={tt('Kategorie {name} bearbeiten', { name: c.name })} onClick={() => setModal({ kind: 'cat', cat: c })}>
                 <Icon name="edit" size={13} />
               </button>
             </div>
           ))}
           <button className={`kb-cat${cat === 'none' ? ' on' : ''}`} onClick={() => setCat('none')}>
-            <span className="muted">Ohne Kategorie</span>
+            <span className="muted">{tt('Ohne Kategorie')}</span>
           </button>
         </aside>
         <div style={{ minWidth: 0 }}>
           <div className="row" style={{ marginBottom: 12 }} data-tour="kb-search">
             <div className="grow">
-              <Input value={q} onChange={setQ} placeholder="Artikel suchen…" />
+              <Input value={q} onChange={setQ} placeholder={tt('Artikel suchen…')} />
             </div>
             <div style={{ width: 170 }}>
-              <Select value={status} onChange={setStatus} placeholder="Alle Status" options={[['published', 'Veröffentlicht'], ['draft', 'Entwurf']]} />
+              <Select value={status} onChange={setStatus} placeholder={tt('Alle Status')} options={[['published', 'Veröffentlicht'], ['draft', 'Entwurf']]} />
             </div>
           </div>
           {arts.loading && !arts.data ? (
@@ -187,11 +191,11 @@ export function KnowledgeBase() {
               <table className="t">
                 <thead>
                   <tr>
-                    <th>Artikel</th>
+                    <th>{tt('Artikel')}</th>
                     <th>Status</th>
-                    <th>Aufrufe</th>
-                    <th>Hilfreich</th>
-                    <th>Geändert</th>
+                    <th>{tt('Aufrufe')}</th>
+                    <th>{tt('Hilfreich')}</th>
+                    <th>{tt('Geändert')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -202,7 +206,7 @@ export function KnowledgeBase() {
                         <td>
                           <strong>{a.title}</strong>
                           <div className="muted small">
-                            {a.category_name || 'ohne Kategorie'}
+                            {a.category_name || tt('ohne Kategorie')}
                             {a.status === 'published' && (
                               <>
                                 {' · '}
@@ -213,7 +217,7 @@ export function KnowledgeBase() {
                             )}
                           </div>
                         </td>
-                        <td>{a.status === 'published' ? <Badge tone="green">Veröffentlicht</Badge> : <Badge>Entwurf</Badge>}</td>
+                        <td>{a.status === 'published' ? <Badge tone="green">{tt('Veröffentlicht')}</Badge> : <Badge>{tt('Entwurf')}</Badge>}</td>
                         <td>{a.views}</td>
                         <td>{votes ? `${Math.round((a.helpful_yes / votes) * 100)} % (${votes})` : <span className="muted">–</span>}</td>
                         <td className="muted small">{dt(a.updated_at)}</td>
@@ -224,7 +228,7 @@ export function KnowledgeBase() {
               </table>
             </div>
           ) : (
-            <Empty action={<button className="btn" onClick={() => setModal({ kind: 'art' })}>Ersten Artikel schreiben</button>}>Noch keine Artikel{q || status || cat ? ' für diese Filter' : ''}.</Empty>
+            <Empty action={<button className="btn" onClick={() => setModal({ kind: 'art' })}>{tt('Ersten Artikel schreiben')}</button>}>{tt('Noch keine Artikel')}{q || status || cat ? tt(' für diese Filter') : ''}.</Empty>
           )}
         </div>
       </div>

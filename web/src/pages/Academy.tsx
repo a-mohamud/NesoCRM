@@ -9,6 +9,7 @@ import { accessOf, startTour } from '../tour/engine';
 import { Handover } from '../tour/handover';
 import { createSandbox, deleteSandbox, resetTour, useAcademy } from '../tour/progress';
 import type { Tour, TourProgress } from '../tour/types';
+import { useT } from '../i18n';
 
 /**
  * Akademie: guided tours through the whole app – the big journey „Firma übernehmen“ for a
@@ -28,6 +29,7 @@ function Progress({ value, label }: { value: number; label?: string }) {
 }
 
 function TourCard({ t, p }: { t: Tour; p?: TourProgress }) {
+  const tt = useT('x_tours_b');
   const at = resumeAt(p);
   return (
     <div className={`card ac-card${p?.done ? ' done' : ''}`}>
@@ -38,20 +40,20 @@ function TourCard({ t, p }: { t: Tour; p?: TourProgress }) {
         <div className="grow">
           <h3>{t.title}</h3>
           <div className="muted small">
-            {t.steps.length} Schritte · ca. {t.minutes} Min.{t.admin ? ' · Agentur' : ''}
+            {tt('{length} Schritte · ca. {minutes} Min.', { length: t.steps.length, minutes: t.minutes })}{t.admin ? tt(' · Agentur') : ''}
           </div>
         </div>
       </div>
       <p className="muted small ac-sum">{t.summary}</p>
-      {p && !p.done && <Progress value={share(p)} label={`Fortschritt ${t.title}`} />}
+      {p && !p.done && <Progress value={share(p)} label={tt('Fortschritt {title}', { title: t.title })} />}
       <div className="actions">
-        {p?.done && <Badge tone="green">✓ erledigt</Badge>}
+        {p?.done && <Badge tone="green">{tt('✓ erledigt')}</Badge>}
         <button className={`btn small${p?.done ? ' secondary' : ''}`} onClick={() => startTour(t.id, at)}>
-          <Icon name="play" size={14} /> {at ? 'Weitermachen' : p?.done ? 'Nochmal' : 'Starten'}
+          <Icon name="play" size={14} /> {at ? tt('Weitermachen') : p?.done ? tt('Nochmal') : tt('Starten')}
         </button>
         {p && !p.done && at > 0 && (
           <button className="btn small ghost" onClick={() => act(() => resetTour(t.id)).then(() => startTour(t.id, 0))}>
-            Von vorn
+            {tt('Von vorn')}
           </button>
         )}
       </div>
@@ -60,6 +62,7 @@ function TourCard({ t, p }: { t: Tour; p?: TourProgress }) {
 }
 
 function SandboxCard() {
+  const tt = useT('x_tours_b');
   const session = useSession();
   const academy = useAcademy();
   const [busy, setBusy] = useState(false);
@@ -67,35 +70,35 @@ function SandboxCard() {
   return (
     <div className="card ac-sandbox" data-tour="academy-sandbox">
       <h2>
-        <Icon name="academy" size={18} /> Übungs-Firma
+        <Icon name="academy" size={18} /> {tt('Übungs-Firma')}
       </h2>
       <p className="muted small">
-        Ein eigener Sub-Account mit erfundenen Kunden, Deals, Terminen und Rechnungen (…@example.com). E-Mails und SMS werden dort nur gespeichert, nie verschickt – ideal, um alles gefahrlos auszuprobieren.
+        {tt('Ein eigener Sub-Account mit erfundenen Kunden, Deals, Terminen und Rechnungen (…@example.com). E-Mails und SMS werden dort nur gespeichert, nie verschickt – ideal, um alles gefahrlos auszuprobieren.')}
       </p>
       {sb ? (
         <div className="actions">
           {session.locationId === sb.id ? (
-            <Badge tone="blue">Du bist gerade drin</Badge>
+            <Badge tone="blue">{tt('Du bist gerade drin')}</Badge>
           ) : (
             <button className="btn small" onClick={() => session.switchLocation(sb.id, 'academy')}>
-              In die Übungs-Firma wechseln
+              {tt('In die Übungs-Firma wechseln')}
             </button>
           )}
           <button
             className="btn small ghost"
             disabled={busy}
             onClick={async () => {
-              if (!confirmAsk(`„${sb.name}“ mit allen Übungsdaten löschen?`)) return;
+              if (!confirmAsk(tt('„{name}“ mit allen Übungsdaten löschen?', { name: sb.name }))) return;
               setBusy(true);
               const back = session.locations.find((l) => l.id !== sb.id);
-              if ((await act(() => deleteSandbox(), 'Übungs-Firma gelöscht')) !== undefined) {
+              if ((await act(() => deleteSandbox(), tt('Übungs-Firma gelöscht'))) !== undefined) {
                 await session.reload();
                 if (session.locationId === sb.id && back) session.switchLocation(back.id, 'academy');
               }
               setBusy(false);
             }}
           >
-            Löschen
+            {tt('Löschen')}
           </button>
         </div>
       ) : (
@@ -104,7 +107,7 @@ function SandboxCard() {
           disabled={busy}
           onClick={async () => {
             setBusy(true);
-            const r = await act(() => createSandbox(), 'Übungs-Firma angelegt');
+            const r = await act(() => createSandbox(), tt('Übungs-Firma angelegt'));
             if (r) {
               await session.reload();
               session.switchLocation(r.id, 'academy');
@@ -112,7 +115,7 @@ function SandboxCard() {
             setBusy(false);
           }}
         >
-          {busy ? 'Wird angelegt …' : 'Übungs-Firma mit Demo-Daten anlegen'}
+          {busy ? tt('Wird angelegt …') : tt('Übungs-Firma mit Demo-Daten anlegen')}
         </button>
       )}
     </div>
@@ -120,6 +123,7 @@ function SandboxCard() {
 }
 
 function Overview() {
+  const tt = useT('x_tours_b');
   const session = useSession();
   const academy = useAcademy();
   const [q, setQ] = useState('');
@@ -139,10 +143,10 @@ function Overview() {
 
   return (
     <>
-      <PageHead title="Akademie" sub="Geführte Touren direkt in der echten Oberfläche – Schritt für Schritt, mit Pausen, jederzeit fortsetzbar.">
-        <input className="ac-search" data-tour="academy-search" placeholder="Tour suchen, z. B. Rechnung, WhatsApp …" value={q} onChange={(e) => setQ(e.target.value)} />
+      <PageHead title={tt('Akademie')} sub={tt('Geführte Touren direkt in der echten Oberfläche – Schritt für Schritt, mit Pausen, jederzeit fortsetzbar.')}>
+        <input className="ac-search" data-tour="academy-search" placeholder={tt('Tour suchen, z. B. Rechnung, WhatsApp …')} value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="btn secondary" data-tour="academy-handbook" onClick={() => navigate('academy/handbuch')}>
-          <Icon name="printer" size={15} /> Handbuch
+          <Icon name="printer" size={15} /> {tt('Handbuch')}
         </button>
       </PageHead>
 
@@ -153,28 +157,28 @@ function Overview() {
               <Icon name="trophy" size={26} />
             </span>
             <div className="grow">
-              <div className="muted small">Gesamt-Guide · {chapters.length} Kapitel · ca. {Math.round(chapterMinutes / 60)} Std.</div>
-              <h2>Firma übernehmen</h2>
+              <div className="muted small">{tt('Gesamt-Guide · {length} Kapitel · ca. {round} Std.', { length: chapters.length, round: Math.round(chapterMinutes / 60) })}</div>
+              <h2>{tt('Firma übernehmen')}</h2>
               <p className="muted" style={{ margin: 0 }}>
-                Alles, was du brauchst, um die Firma mit {session.branding.name} zu führen – vom sicheren Zugang über die Tagesroutine bis zum Server-Betrieb. Mach ein Kapitel nach dem anderen; du kannst jederzeit pausieren.
+                {tt('Alles, was du brauchst, um die Firma mit {name} zu führen – vom sicheren Zugang über die Tagesroutine bis zum Server-Betrieb. Mach ein Kapitel nach dem anderen; du kannst jederzeit pausieren.', { name: session.branding.name })}
               </p>
             </div>
             <div className="ac-journey-cta">
               {nextChapter ? (
                 <button className="btn" onClick={() => startTour(nextChapter.id, resumeAt(progress[nextChapter.id]))}>
-                  <Icon name="play" size={15} /> {j.done || resumeAt(progress[nextChapter.id]) ? 'Weitermachen' : 'Jetzt starten'}
+                  <Icon name="play" size={15} /> {j.done || resumeAt(progress[nextChapter.id]) ? tt('Weitermachen') : tt('Jetzt starten')}
                 </button>
               ) : (
-                <Badge tone="green">🏆 Alles geschafft</Badge>
+                <Badge tone="green">{tt('🏆 Alles geschafft')}</Badge>
               )}
             </div>
           </div>
           <div className="row" style={{ alignItems: 'center', gap: 10 }}>
             <div className="grow">
-              <Progress value={j.share} label="Fortschritt Gesamt-Guide" />
+              <Progress value={j.share} label={tt('Fortschritt Gesamt-Guide')} />
             </div>
             <span className="small muted">
-              {j.done}/{j.total} Kapitel
+              {tt('{done}/{total} Kapitel', { done: j.done, total: j.total })}
             </span>
           </div>
           <ol className="ac-chapters">
@@ -188,7 +192,7 @@ function Overview() {
                     <span className="grow">
                       {c.title}
                       <small>
-                        {c.steps.length} Schritte · {c.minutes} Min.{p && !p.done && resumeAt(p) ? ' · angefangen' : ''}
+                        {tt('{length} Schritte · {minutes} Min.', { length: c.steps.length, minutes: c.minutes })}{p && !p.done && resumeAt(p) ? tt(' · angefangen') : ''}
                       </small>
                     </span>
                   </button>
@@ -201,11 +205,11 @@ function Overview() {
 
       {!q && started.length > 0 && (
         <div className="card ac-continue">
-          <h3>Weitermachen</h3>
+          <h3>{tt('Weitermachen')}</h3>
           <div className="actions">
             {started.map((t) => (
               <button key={t.id} className="btn small secondary" onClick={() => startTour(t.id, resumeAt(progress[t.id]))}>
-                <Icon name={t.icon} size={14} /> {t.title} · Schritt {resumeAt(progress[t.id]) + 1}
+                <Icon name={t.icon} size={14} /> {tt('{title} · Schritt {v}', { title: t.title, v: resumeAt(progress[t.id]) + 1 })}
               </button>
             ))}
           </div>
@@ -216,12 +220,12 @@ function Overview() {
         <div className="ac-row">
           <div className="card ac-badges" data-tour="academy-badges">
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <h2>Abzeichen</h2>
+              <h2>{tt('Abzeichen')}</h2>
               <span className="muted small">
-                {doneCount} von {allVisible.length} Touren erledigt
+                {tt('{doneCount} von {length} Touren erledigt', { doneCount: doneCount, length: allVisible.length })}
               </span>
             </div>
-            <Progress value={allVisible.length ? doneCount / allVisible.length : 0} label="Alle Touren" />
+            <Progress value={allVisible.length ? doneCount / allVisible.length : 0} label={tt('Alle Touren')} />
             <div className="ac-badge-list">
               {earned.map((b) => (
                 <div key={b.id} className={`ac-badge${b.earned ? ' on' : ''}`} title={b.hint}>
@@ -259,7 +263,7 @@ function Overview() {
             </section>
           );
         })}
-        {!tours.length && <Empty>Keine Tour gefunden. Versuch ein anderes Wort – oder frag oben rechts beim „?“.</Empty>}
+        {!tours.length && <Empty>{tt('Keine Tour gefunden. Versuch ein anderes Wort – oder frag oben rechts beim „?“.')}</Empty>}
       </div>
     </>
   );

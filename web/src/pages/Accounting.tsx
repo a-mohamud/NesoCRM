@@ -5,6 +5,7 @@ import { act, Badge, Check, confirmAsk, Empty, Field, Input, Modal, navigate, Pa
 import { Disclaimer, EuroInput, FileButton, dlHref, euroText, germanDate, parseEuro, signedMoney, ymdLocal } from './boCommon';
 import { AccountsTab, BankTab, ExportTab, ReportsTab, SettingsTab } from './AccountingMore';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /**
  * Buchhaltung light – Vorbereitung für den Steuerberater (docs/backoffice.md). Not certified software, no GoBD certification,
@@ -23,6 +24,7 @@ const TABS: [string, string][] = [
 ];
 
 export function Accounting({ tab }: { tab?: string }) {
+  const tt = useT('x_finance');
   const t = TABS.some(([k]) => k === tab) ? tab! : 'overview';
   const status = useLoad(() => api.get('/api/accounting/status'), []);
   const accounts = useLoad(() => (status.data?.enabled ? api.get('/api/accounting/accounts?active=1') : Promise.resolve([])), [status.data?.enabled]);
@@ -34,7 +36,7 @@ export function Accounting({ tab }: { tab?: string }) {
   const label = (k: string, l: string) => (k === 'receipts' && c.receipts_inbox ? `${l} (${c.receipts_inbox})` : k === 'bank' && c.bank_open ? `${l} (${c.bank_open})` : l);
   return (
     <>
-      <PageHead title="Buchhaltung" sub={`Buchhaltung light, Vorbereitung für den Steuerberater · ${st.standard.toUpperCase()}${st.vat_mode === 'small' ? ' · Kleinunternehmer' : ''}`} />
+      <PageHead title={tt('Buchhaltung')} sub={`Buchhaltung light, Vorbereitung für den Steuerberater · ${st.standard.toUpperCase()}${st.vat_mode === 'small' ? tt(' · Kleinunternehmer') : ''}`} />
       <Disclaimer compact={t !== 'overview'} text={st.disclaimer} />
       <Tabs tabs={TABS.map(([k, l]) => [k, label(k, l)])} value={t} onChange={(v) => navigate(`accounting/${v}`)} />
       <datalist id="acc-accounts">
@@ -57,27 +59,28 @@ export function Accounting({ tab }: { tab?: string }) {
 }
 
 function Setup({ st, onDone }: { st: any; onDone: () => void }) {
+  const tt = useT('x_finance');
   const [standard, setStandard] = useState('skr03');
   const [vat, setVat] = useState(st.invoice_small_business ? 'small' : 'regular');
   return (
     <>
-      <PageHead title="Buchhaltung" sub="Belege sammeln, Buchungen vorbereiten, Auswertungen und DATEV-Export für den Steuerberater." />
+      <PageHead title={tt('Buchhaltung')} sub={tt('Belege sammeln, Buchungen vorbereiten, Auswertungen und DATEV-Export für den Steuerberater.')} />
       <Disclaimer text={st.disclaimer} />
       <div className="card" style={{ maxWidth: 620 }} data-tour="acc-setup">
-        <h2>Buchhaltung einrichten</h2>
+        <h2>{tt('Buchhaltung einrichten')}</h2>
         <p className="muted">
-          Beim Einrichten wird der Kontenrahmen angelegt. Er lässt sich bis zur ersten Buchung noch wechseln. Rechnungen und Zahlungen aus HyperLevel werden danach automatisch gebucht (in den Einstellungen abschaltbar).
+          {tt('Beim Einrichten wird der Kontenrahmen angelegt. Er lässt sich bis zur ersten Buchung noch wechseln. Rechnungen und Zahlungen aus HyperLevel werden danach automatisch gebucht (in den Einstellungen abschaltbar).')}
         </p>
         <div className="grid2">
-          <Field label="Kontenrahmen" hint="Frag deinen Steuerberater, womit er arbeitet. SKR03 ist in kleinen Betrieben am häufigsten.">
+          <Field label={tt('Kontenrahmen')} hint={tt('Frag deinen Steuerberater, womit er arbeitet. SKR03 ist in kleinen Betrieben am häufigsten.')}>
             <Select value={standard} onChange={setStandard} options={[['skr03', 'SKR03 (Prozessgliederung)'], ['skr04', 'SKR04 (Abschlussgliederung)']]} />
           </Field>
-          <Field label="Umsatzsteuer" hint={st.invoice_small_business ? 'In den Rechnungs-Einstellungen ist Kleinunternehmer eingetragen.' : undefined}>
+          <Field label={tt('Umsatzsteuer')} hint={st.invoice_small_business ? tt('In den Rechnungs-Einstellungen ist Kleinunternehmer eingetragen.') : undefined}>
             <Select value={vat} onChange={setVat} options={[['regular', 'Regelbesteuerung (19 % / 7 %)'], ['small', 'Kleinunternehmer (§ 19 UStG)']]} />
           </Field>
         </div>
-        <button className="btn" onClick={async () => (await act(() => api.post('/api/accounting/setup', { standard, vat_mode: vat }), 'Buchhaltung eingerichtet')) && onDone()}>
-          Einrichten
+        <button className="btn" onClick={async () => (await act(() => api.post('/api/accounting/setup', { standard, vat_mode: vat }), tt('Buchhaltung eingerichtet'))) && onDone()}>
+          {tt('Einrichten')}
         </button>
       </div>
     </>
@@ -87,6 +90,7 @@ function Setup({ st, onDone }: { st: any; onDone: () => void }) {
 // --- overview ---------------------------------------------------------------------------------------------------------------
 
 function Overview({ st }: { st: any }) {
+  const tt = useT('x_finance');
   const year = new Date().getFullYear();
   const sum = useLoad(() => api.get(`/api/accounting/summary?from=${year}-01-01&to=${year}-12-31`), []);
   const audit = useLoad(() => api.get('/api/accounting/audit?limit=12'), []);
@@ -96,55 +100,55 @@ function Overview({ st }: { st: any }) {
   return (
     <>
       <SortableGrid id="acc-stats" className="stats" data-tour="acc-stats">
-        <Stat label={`Erträge ${year}`} value={money(s?.income_cents ?? 0)} sub="netto, nach Buchungsdatum" />
-        <Stat label={`Aufwand ${year}`} value={money(s?.expenses_cents ?? 0)} />
-        <Stat label="Ergebnis" value={signedMoney(s?.result_cents ?? 0)} sub={`${s?.entries ?? 0} Buchungen`} />
-        <Stat label="Offene Forderungen" value={money(s?.open_receivables_cents ?? 0)} />
-        <Stat label="Offene Verbindlichkeiten" value={money(s?.open_payables_cents ?? 0)} />
+        <Stat label={tt('Erträge {year}', { year: year })} value={money(s?.income_cents ?? 0)} sub={tt('netto, nach Buchungsdatum')} />
+        <Stat label={tt('Aufwand {year}', { year: year })} value={money(s?.expenses_cents ?? 0)} />
+        <Stat label={tt('Ergebnis')} value={signedMoney(s?.result_cents ?? 0)} sub={tt('{v} Buchungen', { v: s?.entries ?? 0 })} />
+        <Stat label={tt('Offene Forderungen')} value={money(s?.open_receivables_cents ?? 0)} />
+        <Stat label={tt('Offene Verbindlichkeiten')} value={money(s?.open_payables_cents ?? 0)} />
       </SortableGrid>
       <div className="row" style={{ marginBottom: 14 }}>
         <div className="card grow" data-tour="acc-todo">
-          <h2>Zu erledigen</h2>
+          <h2>{tt('Zu erledigen')}</h2>
           <ul className="bo-list">
             <li>
               <a href="#" onClick={(e) => (e.preventDefault(), navigate('accounting/receipts'))}>
-                <Icon name="inbox" /> {c.receipts_inbox} {c.receipts_inbox === 1 ? 'Beleg wartet' : 'Belege warten'} auf Prüfung
+                <Icon name="inbox" /> {c.receipts_inbox} {c.receipts_inbox === 1 ? tt('Beleg wartet') : tt('Belege warten')} {tt('auf Prüfung')}
               </a>
             </li>
             <li>
               <a href="#" onClick={(e) => (e.preventDefault(), navigate('accounting/bank'))}>
-                <Icon name="bank" /> {c.bank_open} Bankumsätze ohne Buchung
+                <Icon name="bank" /> {tt('{bank_open} Bankumsätze ohne Buchung', { bank_open: c.bank_open })}
               </a>
             </li>
             <li>
-              <Icon name="lock" /> Festgeschrieben bis: <strong>{st.locked_through ? `${st.locked_through.slice(5, 7)}/${st.locked_through.slice(0, 4)}` : 'noch nichts'}</strong>
+              <Icon name="lock" /> {tt('Festgeschrieben bis:')} <strong>{st.locked_through ? `${st.locked_through.slice(5, 7)}/${st.locked_through.slice(0, 4)}` : tt('noch nichts')}</strong>
             </li>
             <li>
-              <Icon name="download" /> DATEV: {st.datev_ready ? 'Berater- und Mandantennummer sind eingetragen' : 'Berater-/Mandantennummer fehlen noch (Einstellungen)'}
+              <Icon name="download" /> {tt('DATEV:')} {st.datev_ready ? tt('Berater- und Mandantennummer sind eingetragen') : tt('Berater-/Mandantennummer fehlen noch (Einstellungen)')}
             </li>
           </ul>
         </div>
         <div className="card grow" data-tour="acc-verify">
-          <h2>Integrität</h2>
-          <p className="muted small">Buchungen sind unveränderbar und verkettet (SHA-256). Die Prüfung rechnet die Kette nach und meldet den ersten Bruch.</p>
+          <h2>{tt('Integrität')}</h2>
+          <p className="muted small">{tt('Buchungen sind unveränderbar und verkettet (SHA-256). Die Prüfung rechnet die Kette nach und meldet den ersten Bruch.')}</p>
           <div className="row" style={{ alignItems: 'center' }}>
             <button className="btn secondary" onClick={async () => setVerify(await act(() => api.get('/api/accounting/verify')))}>
-              <Icon name="ok" /> Kette prüfen
+              <Icon name="ok" /> {tt('Kette prüfen')}
             </button>
-            <button className="btn secondary" title="Rechnungen, Zahlungen und Stripe-Auszahlungen nachbuchen, falls etwas fehlt" onClick={async () => (await act(() => api.post('/api/accounting/autopost/run'), 'Nachgebucht')) && (void sum.reload(), void audit.reload())}>
-              <Icon name="refresh" /> Automatik nachholen
+            <button className="btn secondary" title={tt('Rechnungen, Zahlungen und Stripe-Auszahlungen nachbuchen, falls etwas fehlt')} onClick={async () => (await act(() => api.post('/api/accounting/autopost/run'), tt('Nachgebucht'))) && (void sum.reload(), void audit.reload())}>
+              <Icon name="refresh" /> {tt('Automatik nachholen')}
             </button>
           </div>
           {verify && (
             <p className={verify.ok ? 'bo-ok' : 'bo-bad'}>
-              {verify.ok ? `In Ordnung: ${verify.checked} Buchungen und ${verify.documents} archivierte Belege geprüft.` : `Bruch in der Kette bei ${verify.broken_at}: ${verify.reason}`}
+              {verify.ok ? tt('In Ordnung: {checked} Buchungen und {documents} archivierte Belege geprüft.', { checked: verify.checked, documents: verify.documents }) : tt('Bruch in der Kette bei {broken_at}: {reason}', { broken_at: verify.broken_at, reason: verify.reason })}
             </p>
           )}
         </div>
       </div>
       {!!s?.top_expenses?.length && (
         <div className="card" style={{ marginBottom: 14 }}>
-          <h2>Größte Kostenarten {year}</h2>
+          <h2>{tt('Größte Kostenarten {year}', { year: year })}</h2>
           <div className="bo-scroll"><table className="t">
             <tbody>
               {s.top_expenses.map((e: any) => (
@@ -159,8 +163,8 @@ function Overview({ st }: { st: any }) {
         </div>
       )}
       <div className="card" data-tour="acc-audit">
-        <h2>Änderungsprotokoll</h2>
-        <p className="muted small">Wer hat wann was getan – unveränderbar, wird nie gelöscht.</p>
+        <h2>{tt('Änderungsprotokoll')}</h2>
+        <p className="muted small">{tt('Wer hat wann was getan – unveränderbar, wird nie gelöscht.')}</p>
         {(audit.data ?? []).length ? (
           <div className="bo-scroll"><table className="t">
             <tbody>
@@ -177,7 +181,7 @@ function Overview({ st }: { st: any }) {
             </tbody>
           </table></div>
         ) : (
-          <Empty>Noch keine Einträge.</Empty>
+          <Empty>{tt('Noch keine Einträge.')}</Empty>
         )}
       </div>
     </>
@@ -190,6 +194,7 @@ const R_STATUS: Record<string, [string, 'gray' | 'green' | 'red' | 'blue' | 'yel
 const METHOD: Record<string, string> = { xrechnung: 'E-Rechnung (exakt gelesen)', zugferd: 'ZUGFeRD (exakt gelesen)', ai: 'KI gelesen – bitte prüfen', manual: 'von Hand' };
 
 function Receipts({ accounts, onChange }: { accounts: any[]; onChange: () => void }) {
+  const tt = useT('x_finance');
   const [filter, setFilter] = useState('open');
   const [open, setOpen] = useState<string>();
   const list = useLoad(() => api.get(`/api/accounting/receipts?status=${filter === 'all' ? '' : filter}`), [filter]);
@@ -199,7 +204,7 @@ function Receipts({ accounts, onChange }: { accounts: any[]; onChange: () => voi
   return (
     <>
       <div className="row" style={{ marginBottom: 12, alignItems: 'center' }}>
-        <FileButton label="Beleg hochladen" accept="application/pdf,image/*,.xml,text/xml" multiple secondary={false} tour="acc-upload" onFile={async (f) => (await api.post('/api/accounting/receipts', { name: f.name, data: f.data }), void list.reload(), later(), onChange())} />
+        <FileButton label={tt('Beleg hochladen')} accept="application/pdf,image/*,.xml,text/xml" multiple secondary={false} tour="acc-upload" onFile={async (f) => (await api.post('/api/accounting/receipts', { name: f.name, data: f.data }), void list.reload(), later(), onChange())} />
         <div className="tabs" style={{ margin: 0, border: 0 }} data-tour="acc-receipt-filter">
           {[['open', 'Offen'], ['booked', 'Gebucht'], ['discarded', 'Verworfen'], ['all', 'Alle']].map(([k, l]) => (
             <button key={k} className={k === filter ? 'on' : ''} onClick={() => setFilter(k)}>
@@ -209,7 +214,7 @@ function Receipts({ accounts, onChange }: { accounts: any[]; onChange: () => voi
         </div>
       </div>
       <p className="muted small">
-        PDF, Foto (auch vom Handy), XRechnung oder ZUGFeRD. Jede Datei wird sofort mit Prüfsumme archiviert und nie verändert. E-Rechnungen werden exakt ausgelesen, Fotos und PDFs von der KI (wenn eine Verbindung mit Bilderkennung eingerichtet ist) – sonst trägst du die Werte von Hand ein.
+        {tt('PDF, Foto (auch vom Handy), XRechnung oder ZUGFeRD. Jede Datei wird sofort mit Prüfsumme archiviert und nie verändert. E-Rechnungen werden exakt ausgelesen, Fotos und PDFs von der KI (wenn eine Verbindung mit Bilderkennung eingerichtet ist) – sonst trägst du die Werte von Hand ein.')}
       </p>
       {list.loading && !list.data ? (
         <Spinner />
@@ -219,12 +224,12 @@ function Receipts({ accounts, onChange }: { accounts: any[]; onChange: () => voi
             <thead>
               <tr>
                 <th>Status</th>
-                <th>Lieferant</th>
-                <th>Rechnung</th>
-                <th>Datum</th>
-                <th className="num">Brutto</th>
-                <th>Konto</th>
-                <th>Eingang</th>
+                <th>{tt('Lieferant')}</th>
+                <th>{tt('Rechnung')}</th>
+                <th>{tt('Datum')}</th>
+                <th className="num">{tt('Brutto')}</th>
+                <th>{tt('Konto')}</th>
+                <th>{tt('Eingang')}</th>
               </tr>
             </thead>
             <tbody>
@@ -249,7 +254,7 @@ function Receipts({ accounts, onChange }: { accounts: any[]; onChange: () => voi
           </table>
         </div>
       ) : (
-        <Empty>{filter === 'open' ? 'Keine offenen Belege – lade einen hoch oder leite Rechnungen per E-Mail weiter (Einstellungen).' : 'Nichts gefunden.'}</Empty>
+        <Empty>{filter === 'open' ? tt('Keine offenen Belege – lade einen hoch oder leite Rechnungen per E-Mail weiter (Einstellungen).') : tt('Nichts gefunden.')}</Empty>
       )}
       {open && <ReceiptEditor id={open} accounts={accounts} onClose={() => (setOpen(undefined), void list.reload(), onChange())} />}
     </>
@@ -257,6 +262,7 @@ function Receipts({ accounts, onChange }: { accounts: any[]; onChange: () => voi
 }
 
 function ReceiptEditor({ id, accounts, onClose }: { id: string; accounts: any[]; onClose: () => void }) {
+  const tt = useT('x_finance');
   const r = useLoad(() => api.get(`/api/accounting/receipts/${id}`), [id]);
   const [f, setF] = useState<any>();
   useEffect(() => {
@@ -279,7 +285,7 @@ function ReceiptEditor({ id, accounts, onClose }: { id: string; accounts: any[];
       });
   }, [r.data]);
   const x = r.data;
-  if (!x || !f) return <Modal title="Beleg" onClose={onClose}>{r.error ? <p style={{ color: 'var(--red)' }}>{r.error}</p> : <Spinner />}</Modal>;
+  if (!x || !f) return <Modal title={tt('Beleg')} onClose={onClose}>{r.error ? <p style={{ color: 'var(--red)' }}>{r.error}</p> : <Spinner />}</Modal>;
   const locked = x.status === 'booked' || x.status === 'discarded';
   const set = (k: string) => (v: any) => setF((s: any) => ({ ...s, [k]: v }));
   const body = () => ({
@@ -303,34 +309,34 @@ function ReceiptEditor({ id, accounts, onClose }: { id: string; accounts: any[];
   return (
     <Modal
       wide
-      title={x.document?.name ?? 'Beleg'}
+      title={x.document?.name ?? tt('Beleg')}
       onClose={onClose}
       footer={
         <>
           {!locked && (
-            <button className="btn ghost danger-text" onClick={async () => confirmAsk('Beleg verwerfen? Die Datei bleibt archiviert.') && (await act(() => api.post(`/api/accounting/receipts/${id}/discard`, {}), 'Verworfen')) && onClose()}>
-              Verwerfen
+            <button className="btn ghost danger-text" onClick={async () => confirmAsk(tt('Beleg verwerfen? Die Datei bleibt archiviert.')) && (await act(() => api.post(`/api/accounting/receipts/${id}/discard`, {}), tt('Verworfen'))) && onClose()}>
+              {tt('Verwerfen')}
             </button>
           )}
           <span style={{ flex: 1 }} />
           {!locked && (
             <>
-              <button className="btn secondary" onClick={async () => (await save()) && toast('Gespeichert')}>
-                Speichern
+              <button className="btn secondary" onClick={async () => (await save()) && toast(tt('Gespeichert'))}>
+                {tt('Speichern')}
               </button>
               <button
                 className="btn"
                 data-tour="acc-book"
                 onClick={async () => {
                   if (!(await save())) return;
-                  if (await act(() => api.post(`/api/accounting/receipts/${id}/book`, { account: f.account, payment: f.payment }), 'Gebucht')) onClose();
+                  if (await act(() => api.post(`/api/accounting/receipts/${id}/book`, { account: f.account, payment: f.payment }), tt('Gebucht'))) onClose();
                 }}
               >
-                Buchen
+                {tt('Buchen')}
               </button>
             </>
           )}
-          {locked && <button className="btn secondary" onClick={onClose}>Schließen</button>}
+          {locked && <button className="btn secondary" onClick={onClose}>{tt('Schließen')}</button>}
         </>
       }
     >
@@ -339,13 +345,13 @@ function ReceiptEditor({ id, accounts, onClose }: { id: string; accounts: any[];
         {ex.method && <Badge tone={ex.method === 'ai' ? 'yellow' : 'green'}>{METHOD[ex.method] ?? ex.method}</Badge>}
         {x.document && (
           <a className="btn small secondary" href={dlHref(x.document.url)} target="_blank" rel="noreferrer">
-            <Icon name="external" /> Original ansehen
+            <Icon name="external" /> {tt('Original ansehen')}
           </a>
         )}
-        {x.document?.sha256 && <span className="mono muted" title="SHA-256 der archivierten Datei">SHA-256 {x.document.sha256.slice(0, 16)}…</span>}
+        {x.document?.sha256 && <span className="mono muted" title={tt('SHA-256 der archivierten Datei')}>{tt('SHA-256 {slice}…', { slice: x.document.sha256.slice(0, 16) })}</span>}
         {!locked && (
           <button className="btn small secondary" onClick={async () => (await act(() => api.post(`/api/accounting/receipts/${id}/extract`, { overwrite: true }))) && (setF(undefined), void r.reload())}>
-            <Icon name="ai" /> Neu auslesen
+            <Icon name="ai" /> {tt('Neu auslesen')}
           </button>
         )}
       </div>
@@ -355,51 +361,51 @@ function ReceiptEditor({ id, accounts, onClose }: { id: string; accounts: any[];
       {ex.note && <p className="muted small">{ex.note}</p>}
       {x.entry && (
         <p className="bo-ok">
-          Gebucht als {x.entry.number} vom {germanDate(x.entry.date)}. Zum Ändern die Buchung unter „Buchungen“ stornieren.
+          {tt('Gebucht als {number} vom {germanDate}. Zum Ändern die Buchung unter „Buchungen“ stornieren.', { number: x.entry.number, germanDate: germanDate(x.entry.date) })}
         </p>
       )}
       <fieldset disabled={locked} style={{ border: 0, padding: 0, margin: 0 }}>
         <div className="grid2">
-          <Field label="Lieferant">
+          <Field label={tt('Lieferant')}>
             <Input value={f.supplier} onChange={set('supplier')} />
           </Field>
-          <Field label="Rechnungsnummer">
+          <Field label={tt('Rechnungsnummer')}>
             <Input value={f.invoice_no} onChange={set('invoice_no')} />
           </Field>
-          <Field label="Rechnungsdatum">
+          <Field label={tt('Rechnungsdatum')}>
             <Input type="date" value={f.invoice_date} onChange={set('invoice_date')} />
           </Field>
-          <Field label="Fällig am">
+          <Field label={tt('Fällig am')}>
             <Input type="date" value={f.due_date} onChange={set('due_date')} />
           </Field>
         </div>
         <div className="grid3">
-          <Field label="Netto (€)">
+          <Field label={tt('Netto (€)')}>
             <EuroInput value={f.net} onChange={set('net')} />
           </Field>
-          <Field label="Steuer (€)">
+          <Field label={tt('Steuer (€)')}>
             <EuroInput value={f.vat} onChange={set('vat')} />
           </Field>
-          <Field label="Brutto (€)">
+          <Field label={tt('Brutto (€)')}>
             <EuroInput value={f.gross} onChange={set('gross')} />
           </Field>
         </div>
         <div className="grid3">
-          <Field label="Steuersatz">
+          <Field label={tt('Steuersatz')}>
             <Select value={f.vat_rate} onChange={set('vat_rate')} options={[['19', '19 %'], ['7', '7 %'], ['0', '0 % / ohne']]} />
           </Field>
-          <Field label="Konto (Aufwand / Anlage)" hint={accountName}>
-            <Input list="acc-accounts" value={f.account} onChange={set('account')} placeholder="z. B. 4980" />
+          <Field label={tt('Konto (Aufwand / Anlage)')} hint={accountName}>
+            <Input list="acc-accounts" value={f.account} onChange={set('account')} placeholder={tt('z. B. 4980')} />
           </Field>
-          <Field label="Bezahlt">
+          <Field label={tt('Bezahlt')}>
             <Select value={f.payment} onChange={set('payment')} options={[['open', 'Noch offen (Verbindlichkeit)'], ['bank', 'Per Bank'], ['cash', 'Bar (Kasse)'], ['private', 'Privat ausgelegt']]} />
           </Field>
         </div>
         <div className="row">
-          <Check checked={f.reverse_charge} onChange={set('reverse_charge')} label="Reverse Charge (§ 13b UStG) – Betrag ist netto, Steuer schuldet der Empfänger" />
-          <Check checked={f.credit_note} onChange={set('credit_note')} label="Gutschrift des Lieferanten" />
+          <Check checked={f.reverse_charge} onChange={set('reverse_charge')} label={tt('Reverse Charge (§ 13b UStG) – Betrag ist netto, Steuer schuldet der Empfänger')} />
+          <Check checked={f.credit_note} onChange={set('credit_note')} label={tt('Gutschrift des Lieferanten')} />
         </div>
-        <Field label="Notiz">
+        <Field label={tt('Notiz')}>
           <Textarea value={f.note} onChange={set('note')} rows={2} />
         </Field>
       </fieldset>
@@ -412,6 +418,7 @@ function ReceiptEditor({ id, accounts, onClose }: { id: string; accounts: any[];
 const SOURCES: Record<string, string> = { manual: 'Von Hand', invoice: 'Rechnung', payment: 'Zahlung', receipt: 'Beleg', bank: 'Bank', stripe: 'Stripe', opening: 'Eröffnung', storno: 'Storno' };
 
 function Entries({ accounts, lockedThrough }: { accounts: any[]; lockedThrough: string | null }) {
+  const tt = useT('x_finance');
   const year = new Date().getFullYear();
   const [q, setQ] = useState('');
   const [from, setFrom] = useState(`${year}-01-01`);
@@ -427,31 +434,31 @@ function Entries({ accounts, lockedThrough }: { accounts: any[]; lockedThrough: 
     <>
       <div className="row" style={{ alignItems: 'flex-end', marginBottom: 8 }}>
         <div style={{ width: 200 }}>
-          <Field label="Suche">
-            <Input value={q} onChange={setQ} placeholder="Text, Beleg, Nummer" />
+          <Field label={tt('Suche')}>
+            <Input value={q} onChange={setQ} placeholder={tt('Text, Beleg, Nummer')} />
           </Field>
         </div>
         <div style={{ width: 150 }}>
-          <Field label="Von">
+          <Field label={tt('Von')}>
             <Input type="date" value={from} onChange={setFrom} />
           </Field>
         </div>
         <div style={{ width: 150 }}>
-          <Field label="Bis">
+          <Field label={tt('Bis')}>
             <Input type="date" value={to} onChange={setTo} />
           </Field>
         </div>
         <div style={{ width: 150 }}>
-          <Field label="Quelle">
-            <Select value={source} onChange={setSource} placeholder="Alle" options={Object.entries(SOURCES).filter(([k]) => k !== 'storno')} />
+          <Field label={tt('Quelle')}>
+            <Select value={source} onChange={setSource} placeholder={tt('Alle')} options={Object.entries(SOURCES).filter(([k]) => k !== 'storno')} />
           </Field>
         </div>
         <div style={{ marginLeft: 'auto', marginBottom: 12, display: 'flex', gap: 8 }}>
           <a className="btn secondary" data-tour="acc-journal-csv" href={dlHref('/api/accounting/reports/journal.csv', { from, to })}>
-            <Icon name="download" /> Journal (CSV)
+            <Icon name="download" /> {tt('Journal (CSV)')}
           </a>
           <button className="btn" data-tour="acc-new-entry" onClick={() => setModal({ kind: 'new' })}>
-            Neue Buchung
+            {tt('Neue Buchung')}
           </button>
         </div>
       </div>
@@ -462,11 +469,11 @@ function Entries({ accounts, lockedThrough }: { accounts: any[]; lockedThrough: 
           <table className="t">
             <thead>
               <tr>
-                <th>Nr.</th>
-                <th>Datum</th>
-                <th>Text</th>
-                <th>Beleg</th>
-                <th>Soll / Haben</th>
+                <th>{tt('Nr.')}</th>
+                <th>{tt('Datum')}</th>
+                <th>{tt('Text')}</th>
+                <th>{tt('Beleg')}</th>
+                <th>{tt('Soll / Haben')}</th>
                 <th />
               </tr>
             </thead>
@@ -479,7 +486,7 @@ function Entries({ accounts, lockedThrough }: { accounts: any[]; lockedThrough: 
                     <strong>{e.text}</strong>
                     <div className="muted small">
                       {SOURCES[e.source] ?? e.source}
-                      {e.party_name ? ` · ${e.party_name}` : ''} {e.reverses_id && <Badge tone="purple">Storno</Badge>} {e.reversed_by && <Badge tone="red">storniert</Badge>}
+                      {e.party_name ? ` · ${e.party_name}` : ''} {e.reverses_id && <Badge tone="purple">{tt('Storno')}</Badge>} {e.reversed_by && <Badge tone="red">storniert</Badge>}
                     </div>
                   </td>
                   <td>{e.doc_ref || '–'}</td>
@@ -493,7 +500,7 @@ function Entries({ accounts, lockedThrough }: { accounts: any[]; lockedThrough: 
                   <td onClick={(ev) => ev.stopPropagation()}>
                     {!e.reversed_by && !e.reverses_id && (
                       <button className="btn small secondary" onClick={() => setModal({ kind: 'storno', entry: e })}>
-                        Storno
+                        {tt('Storno')}
                       </button>
                     )}
                   </td>
@@ -503,9 +510,9 @@ function Entries({ accounts, lockedThrough }: { accounts: any[]; lockedThrough: 
           </table>
         </div>
       ) : (
-        <Empty>Keine Buchungen im Zeitraum.</Empty>
+        <Empty>{tt('Keine Buchungen im Zeitraum.')}</Empty>
       )}
-      {list.data && list.data.total > rows.length && <p className="muted small">{rows.length} von {list.data.total} Buchungen – Zeitraum oder Suche eingrenzen.</p>}
+      {list.data && list.data.total > rows.length && <p className="muted small">{tt('{length} von {total} Buchungen – Zeitraum oder Suche eingrenzen.', { length: rows.length, total: list.data.total })}</p>}
       {modal?.kind === 'new' && <NewEntry accounts={accounts} lockedThrough={lockedThrough} onClose={() => setModal(undefined)} onDone={done} />}
       {modal?.kind === 'view' && <EntryView entry={modal.entry} accounts={accounts} onClose={() => setModal(undefined)} />}
       {modal?.kind === 'storno' && <StornoModal entry={modal.entry} onClose={() => setModal(undefined)} onDone={done} />}
@@ -514,6 +521,7 @@ function Entries({ accounts, lockedThrough }: { accounts: any[]; lockedThrough: 
 }
 
 function NewEntry({ accounts, lockedThrough, onClose, onDone }: { accounts: any[]; lockedThrough: string | null; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_finance');
   const codes = useLoad(() => api.get('/api/accounting/tax-codes'), []);
   const [f, setF] = useState({ date: ymdLocal(), text: '', doc_ref: '' });
   const [rows, setRows] = useState([{ debit: '', credit: '', amount: '', tax_code: 'none', text: '' }]);
@@ -522,34 +530,34 @@ function NewEntry({ accounts, lockedThrough, onClose, onDone }: { accounts: any[
   return (
     <Modal
       wide
-      title="Neue Buchung"
+      title={tt('Neue Buchung')}
       onClose={onClose}
       footer={
         <>
-          <button className="btn secondary" onClick={onClose}>Abbrechen</button>
+          <button className="btn secondary" onClick={onClose}>{tt('Abbrechen')}</button>
           <button
             className="btn"
             onClick={async () => {
               const postings = rows.map((r) => ({ debit: r.debit, credit: r.credit, amount_cents: parseEuro(r.amount), tax_code: r.tax_code, text: r.text }));
-              if (await act(() => api.post('/api/accounting/entries', { ...f, postings }), 'Gebucht')) onDone();
+              if (await act(() => api.post('/api/accounting/entries', { ...f, postings }), tt('Gebucht'))) onDone();
             }}
           >
-            Buchen
+            {tt('Buchen')}
           </button>
         </>
       }
     >
       <p className="muted small">
-        Eine Buchung ist danach unveränderbar – Fehler korrigierst du mit einer Storno-Buchung.{lockedThrough ? ` Bis ${lockedThrough.slice(5, 7)}/${lockedThrough.slice(0, 4)} ist festgeschrieben.` : ''}
+        {tt('Eine Buchung ist danach unveränderbar – Fehler korrigierst du mit einer Storno-Buchung.')}{lockedThrough ? tt(' Bis {slice}/{slice2} ist festgeschrieben.', { slice: lockedThrough.slice(5, 7), slice2: lockedThrough.slice(0, 4) }) : ''}
       </p>
       <div className="grid3">
-        <Field label="Buchungsdatum">
+        <Field label={tt('Buchungsdatum')}>
           <Input type="date" value={f.date} onChange={(v) => setF({ ...f, date: v })} />
         </Field>
-        <Field label="Buchungstext">
-          <Input value={f.text} onChange={(v) => setF({ ...f, text: v })} placeholder="z. B. Büromaterial" />
+        <Field label={tt('Buchungstext')}>
+          <Input value={f.text} onChange={(v) => setF({ ...f, text: v })} placeholder={tt('z. B. Büromaterial')} />
         </Field>
-        <Field label="Belegnummer">
+        <Field label={tt('Belegnummer')}>
           <Input value={f.doc_ref} onChange={(v) => setF({ ...f, doc_ref: v })} />
         </Field>
       </div>
@@ -557,10 +565,10 @@ function NewEntry({ accounts, lockedThrough, onClose, onDone }: { accounts: any[
         <table className="t">
           <thead>
             <tr>
-              <th>Soll</th>
-              <th>Haben</th>
-              <th>Betrag (€, brutto)</th>
-              <th>Steuer</th>
+              <th>{tt('Soll')}</th>
+              <th>{tt('Haben')}</th>
+              <th>{tt('Betrag (€, brutto)')}</th>
+              <th>{tt('Steuer')}</th>
               <th />
             </tr>
           </thead>
@@ -568,11 +576,11 @@ function NewEntry({ accounts, lockedThrough, onClose, onDone }: { accounts: any[
             {rows.map((r, i) => (
               <tr key={i}>
                 <td>
-                  <Input list="acc-accounts" value={r.debit} onChange={(v) => upd(i, 'debit', v)} placeholder="Konto" />
+                  <Input list="acc-accounts" value={r.debit} onChange={(v) => upd(i, 'debit', v)} placeholder={tt('Konto')} />
                   <div className="muted small">{name(r.debit)}</div>
                 </td>
                 <td>
-                  <Input list="acc-accounts" value={r.credit} onChange={(v) => upd(i, 'credit', v)} placeholder="Konto" />
+                  <Input list="acc-accounts" value={r.credit} onChange={(v) => upd(i, 'credit', v)} placeholder={tt('Konto')} />
                   <div className="muted small">{name(r.credit)}</div>
                 </td>
                 <td>
@@ -583,7 +591,7 @@ function NewEntry({ accounts, lockedThrough, onClose, onDone }: { accounts: any[
                 </td>
                 <td>
                   {rows.length > 1 && (
-                    <button className="icon-btn" aria-label="Zeile entfernen" onClick={() => setRows((x) => x.filter((_, j) => j !== i))}>
+                    <button className="icon-btn" aria-label={tt('Zeile entfernen')} onClick={() => setRows((x) => x.filter((_, j) => j !== i))}>
                       ✕
                     </button>
                   )}
@@ -594,45 +602,46 @@ function NewEntry({ accounts, lockedThrough, onClose, onDone }: { accounts: any[
         </table>
       </div>
       <button className="btn small secondary" style={{ marginTop: 8 }} onClick={() => setRows((r) => [...r, { debit: '', credit: '', amount: '', tax_code: 'none', text: '' }])}>
-        + Zeile
+        {tt('+ Zeile')}
       </button>
       <p className="muted small">
-        Steuerschlüssel: bei Umsatz- und Vorsteuer-Schlüsseln ist der Betrag der Bruttobetrag, die Steuer wird herausgerechnet und auf die Steuerkonten gebucht (Reverse Charge: Betrag netto). Die Buchung muss ausgeglichen sein – das prüft das System.
+        {tt('Steuerschlüssel: bei Umsatz- und Vorsteuer-Schlüsseln ist der Betrag der Bruttobetrag, die Steuer wird herausgerechnet und auf die Steuerkonten gebucht (Reverse Charge: Betrag netto). Die Buchung muss ausgeglichen sein – das prüft das System.')}
       </p>
     </Modal>
   );
 }
 
 function EntryView({ entry, accounts, onClose }: { entry: any; accounts: any[]; onClose: () => void }) {
+  const tt = useT('x_finance');
   const name = (n: string) => accounts.find((a) => a.number === n)?.name ?? '';
   return (
-    <Modal wide title={`Buchung ${entry.number}`} onClose={onClose}>
+    <Modal wide title={tt('Buchung {number}', { number: entry.number })} onClose={onClose}>
       <div className="grid2">
         <p>
           <strong>{entry.text}</strong>
           <br />
-          <span className="muted">{germanDate(entry.date)} · Beleg {entry.doc_ref || '–'} · {SOURCES[entry.source] ?? entry.source}</span>
+          <span className="muted">{tt('{germanDate} · Beleg', { germanDate: germanDate(entry.date) })} {entry.doc_ref || '–'} · {SOURCES[entry.source] ?? entry.source}</span>
         </p>
         <p className="small muted">
-          {entry.reverses_id && <>Storno zu einer früheren Buchung.<br /></>}
-          {entry.reversed_by && <>Diese Buchung wurde storniert.<br /></>}
-          Erfasst {dt(entry.created_at)}
+          {entry.reverses_id && <>{tt('Storno zu einer früheren Buchung.')}<br /></>}
+          {entry.reversed_by && <>{tt('Diese Buchung wurde storniert.')}<br /></>}
+          {tt('Erfasst {dt}', { dt: dt(entry.created_at) })}
         </p>
       </div>
       <table className="t">
         <thead>
           <tr>
-            <th>Konto</th>
-            <th className="num">Soll</th>
-            <th className="num">Haben</th>
-            <th>Steuer</th>
+            <th>{tt('Konto')}</th>
+            <th className="num">{tt('Soll')}</th>
+            <th className="num">{tt('Haben')}</th>
+            <th>{tt('Steuer')}</th>
           </tr>
         </thead>
         <tbody>
           {entry.lines.map((l: any, i: number) => (
             <tr key={i}>
               <td>
-                <span className="mono">{l.account}</span> {name(l.account)} {l.is_tax ? <Badge>Steuer</Badge> : null}
+                <span className="mono">{l.account}</span> {name(l.account)} {l.is_tax ? <Badge>{tt('Steuer')}</Badge> : null}
               </td>
               <td className="num">{l.side === 'S' ? money(l.cents) : ''}</td>
               <td className="num">{l.side === 'H' ? money(l.cents) : ''}</td>
@@ -644,41 +653,42 @@ function EntryView({ entry, accounts, onClose }: { entry: any; accounts: any[]; 
       {entry.document_id && (
         <p>
           <a href={dlHref(`/api/accounting/documents/${entry.document_id}`)} target="_blank" rel="noreferrer">
-            <Icon name="external" /> Archivierter Beleg
+            <Icon name="external" /> {tt('Archivierter Beleg')}
           </a>
         </p>
       )}
-      <p className="mono muted small" title="Jede Buchung trägt den Hash der vorherigen – so fällt jede Änderung auf.">
-        Hash {entry.hash?.slice(0, 24)}… · vorher {entry.prev_hash ? `${entry.prev_hash.slice(0, 12)}…` : '–'}
+      <p className="mono muted small" title={tt('Jede Buchung trägt den Hash der vorherigen – so fällt jede Änderung auf.')}>
+        {tt('Hash {slice}… · vorher', { slice: entry.hash?.slice(0, 24) })} {entry.prev_hash ? `${entry.prev_hash.slice(0, 12)}…` : '–'}
       </p>
     </Modal>
   );
 }
 
 function StornoModal({ entry, onClose, onDone }: { entry: any; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_finance');
   const [reason, setReason] = useState('');
   const [date, setDate] = useState(ymdLocal());
   return (
     <Modal
-      title={`Buchung ${entry.number} stornieren`}
+      title={tt('Buchung {number} stornieren', { number: entry.number })}
       onClose={onClose}
       footer={
         <>
-          <button className="btn secondary" onClick={onClose}>Abbrechen</button>
-          <button className="btn danger" onClick={async () => (await act(() => api.post(`/api/accounting/entries/${entry.id}/storno`, { reason, date }), 'Storniert')) && onDone()}>
-            Stornieren
+          <button className="btn secondary" onClick={onClose}>{tt('Abbrechen')}</button>
+          <button className="btn danger" onClick={async () => (await act(() => api.post(`/api/accounting/entries/${entry.id}/storno`, { reason, date }), tt('Storniert'))) && onDone()}>
+            {tt('Stornieren')}
           </button>
         </>
       }
     >
       <p>
-        <strong>{entry.text}</strong> wird nicht gelöscht: Es entsteht eine Gegenbuchung (Soll und Haben vertauscht), beide bleiben im Journal sichtbar.
+        <strong>{entry.text}</strong> {tt('wird nicht gelöscht: Es entsteht eine Gegenbuchung (Soll und Haben vertauscht), beide bleiben im Journal sichtbar.')}
       </p>
-      <Field label="Datum der Storno-Buchung" hint="In einem festgeschriebenen Monat ist das nicht möglich – dann bitte im laufenden Monat.">
+      <Field label={tt('Datum der Storno-Buchung')} hint={tt('In einem festgeschriebenen Monat ist das nicht möglich – dann bitte im laufenden Monat.')}>
         <Input type="date" value={date} onChange={setDate} />
       </Field>
-      <Field label="Grund">
-        <Input value={reason} onChange={setReason} placeholder="z. B. falsches Konto" />
+      <Field label={tt('Grund')}>
+        <Input value={reason} onChange={setReason} placeholder={tt('z. B. falsches Konto')} />
       </Field>
     </Modal>
   );

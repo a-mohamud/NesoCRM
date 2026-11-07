@@ -5,6 +5,7 @@ import { Icon } from '../icons';
 import { Link, toastError } from '../ui';
 import { PatchCard } from './PatchCard';
 import type { BoardFull, Catalogue, ComposeResult } from './types';
+import { useT } from '../i18n';
 
 const EXAMPLES = ['Zeig mir die offenen Angebote und die heutigen Aufgaben', 'Mach das Umsatz-Diagramm größer und setz es nach oben', 'Füge einen Kalender neben der Pipeline hinzu', 'Entferne die Notizen und nenne das Board „Montag“', 'Färbe das Board violett'];
 
@@ -14,6 +15,7 @@ const EXAMPLES = ['Zeig mir die offenen Angebote und die heutigen Aufgaben', 'Ma
  * never confirm anything themselves.
  */
 export function PromptBar({ board, catalogue, call, onUndo, canEdit, wish }: { board: BoardFull; catalogue: Catalogue | null; call: <T extends { board?: BoardFull }>(path: string, body?: Record<string, unknown>) => Promise<T>; onUndo: () => Promise<unknown>; canEdit: boolean; wish?: { text: string; n: number } }) {
+  const tt = useT('x_misc');
   const [text, setText] = useState(wish?.text ?? '');
   const [busy, setBusy] = useState(false);
   const [card, setCard] = useState<ComposeResult | null>(null);
@@ -147,7 +149,7 @@ export function PromptBar({ board, catalogue, call, onUndo, canEdit, wish }: { b
     return (
       <div className="bd-dock">
         <p className="bd-dock-ro">
-          <Icon name="lock" size={14} /> Du darfst dieses Board ansehen, aber nicht ändern.
+          <Icon name="lock" size={14} /> {tt('Du darfst dieses Board ansehen, aber nicht ändern.')}
         </p>
       </div>
     );
@@ -167,7 +169,7 @@ export function PromptBar({ board, catalogue, call, onUndo, canEdit, wish }: { b
               await onUndo();
             }}
           >
-            <Icon name="undo" size={14} /> Rückgängig
+            <Icon name="undo" size={14} /> {tt('Rückgängig')}
           </button>
         </div>
       )}
@@ -175,7 +177,7 @@ export function PromptBar({ board, catalogue, call, onUndo, canEdit, wish }: { b
         <p className="bd-error" role="alert">
           {error.text}{' '}
           {error.setup && (
-            <Link to="settings/ai">KI-Assistent einrichten</Link>
+            <Link to="settings/ai">{tt('KI-Assistent einrichten')}</Link>
           )}
         </p>
       )}
@@ -191,8 +193,8 @@ export function PromptBar({ board, catalogue, call, onUndo, canEdit, wish }: { b
           ref={input}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={rec === 'recording' ? `Ich höre zu … ${Math.floor(recMs / 1000)} s` : rec === 'working' ? 'Ich schreibe mit …' : (typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches ? 'Sag dem Board, was du willst …' : `Sag dem Board, was du sehen willst – z. B. „${EXAMPLES[ex % EXAMPLES.length]}“`)}
-          aria-label="Wunsch an das Board"
+          placeholder={rec === 'recording' ? tt('Ich höre zu … {floor} s', { floor: Math.floor(recMs / 1000) }) : rec === 'working' ? tt('Ich schreibe mit …') : (typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches ? tt('Sag dem Board, was du willst …') : tt('Sag dem Board, was du sehen willst – z. B. „{v}“', { v: EXAMPLES[ex % EXAMPLES.length] }))}
+          aria-label={tt('Wunsch an das Board')}
           maxLength={1000}
           disabled={busy || rec !== 'idle'}
           autoComplete="off"
@@ -214,16 +216,16 @@ export function PromptBar({ board, catalogue, call, onUndo, canEdit, wish }: { b
               }
             }}
             disabled={busy || rec === 'working'}
-            aria-label={rec === 'recording' ? 'Aufnahme beenden' : 'Sprechen (Taste halten oder tippen)'}
+            aria-label={rec === 'recording' ? tt('Aufnahme beenden') : tt('Sprechen (Taste halten oder tippen)')}
             aria-pressed={rec === 'recording'}
-            title="Sprechen: Taste halten oder tippen"
+            title={tt('Sprechen: Taste halten oder tippen')}
           >
             <Icon name={rec === 'recording' ? 'micOff' : 'mic'} size={17} />
           </button>
         )}
-        <button type="submit" className="btn bd-send" disabled={busy || !text.trim() || rec !== 'idle'} aria-label="Senden">
+        <button type="submit" className="btn bd-send" disabled={busy || !text.trim() || rec !== 'idle'} aria-label={tt('Senden')}>
           {busy ? <span className="bd-spin" aria-hidden="true" /> : <Icon name="send" size={16} />}
-          <span className="bd-send-text">Los</span>
+          <span className="bd-send-text">{tt('Los')}</span>
         </button>
       </form>
     </div>

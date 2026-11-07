@@ -6,6 +6,7 @@ import { renderSvg, sceneDisplayList } from '../../../server/services/canvas-ren
 import { withLocation } from './media';
 import type { EditorApi } from './Editor';
 import type { DialogProps } from './dialogs';
+import { useT } from '../i18n';
 
 /** Output and sharing: export (PNG/SVG/PDF) and "use in …", team and public links, versions, board settings. */
 
@@ -26,6 +27,7 @@ function exportQuery(o: { format: Format; scope: Scope; ids: string[]; frameId: 
 }
 
 export function ExportDialog({ api: ed, data, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const frames = ed.store.ordered.filter((e) => e.type === 'frame' && !e.hidden);
   const hasSel = ed.selection.length > 0;
   const [format, setFormat] = useState<Format>('png');
@@ -63,30 +65,30 @@ export function ExportDialog({ api: ed, data, onClose }: DialogProps) {
     const body: Record<string, unknown> = { format: format === 'pdf' ? 'png' : format, name: ed.board.name, scale, ...(dark ? { theme: 'dark' } : {}), ...(transparent ? { transparent: true } : {}) };
     if (scope === 'selection' && ed.selection.length) body.ids = ed.selection;
     if (scope === 'frame' && frameId) body.frame_id = frameId;
-    const r = await act(() => api.post(`/api/canvas/${ed.board.id}/export`, body), 'In der Mediathek gespeichert');
+    const r = await act(() => api.post(`/api/canvas/${ed.board.id}/export`, body), tt('In der Mediathek gespeichert'));
     setBusy(false);
     if (r) setUse({ id: r.id, src: r.src, url: r.url, name: r.name });
   };
   if (use) return <UseDialog ed={ed} media={use} onClose={onClose} onBack={() => setUse(null)} />;
   return (
     <Modal
-      title="Exportieren"
+      title={tt('Exportieren')}
       onClose={onClose}
       wide
       footer={
         <>
-          <button className="btn secondary" onClick={toLibrary} disabled={busy || format === 'pdf'} title={format === 'pdf' ? 'Für PDF: erst herunterladen' : 'Speichert die Grafik und bietet Social-Post, E-Mail und Funnel an'} data-tour="canvas-export-use">
-            In Mediathek / verwenden …
+          <button className="btn secondary" onClick={toLibrary} disabled={busy || format === 'pdf'} title={format === 'pdf' ? tt('Für PDF: erst herunterladen') : tt('Speichert die Grafik und bietet Social-Post, E-Mail und Funnel an')} data-tour="canvas-export-use">
+            {tt('In Mediathek / verwenden …')}
           </button>
           <a className="btn" href={href} download data-tour="canvas-export-download">
-            <Icon name="download" /> Herunterladen
+            <Icon name="download" /> {tt('Herunterladen')}
           </a>
         </>
       }
     >
       <div className="cv-two">
         <div>
-          <Field label="Format">
+          <Field label={tt('Format')}>
             <div className="cv-seg">
               {(['png', 'svg', 'pdf'] as const).map((f) => (
                 <button key={f} className={format === f ? 'on' : ''} onClick={() => setFormat(f)}>
@@ -95,7 +97,7 @@ export function ExportDialog({ api: ed, data, onClose }: DialogProps) {
               ))}
             </div>
           </Field>
-          <Field label="Was?">
+          <Field label={tt('Was?')}>
             <Select
               value={scope}
               onChange={(v) => setScope(v as Scope)}
@@ -104,7 +106,7 @@ export function ExportDialog({ api: ed, data, onClose }: DialogProps) {
           </Field>
           {scope === 'frame' && <Select value={frameId} onChange={setFrameId} options={frames.map((f) => [f.id, `${f.name ?? 'Rahmen'} (${Math.round(f.w)}×${Math.round(f.h)})`] as [string, string])} />}
           {format === 'png' && (
-            <Field label="Größe">
+            <Field label={tt('Größe')}>
               <div className="cv-seg">
                 {[1, 2, 3, 4].map((s) => (
                   <button key={s} className={scale === s ? 'on' : ''} onClick={() => setScale(s)}>
@@ -114,16 +116,16 @@ export function ExportDialog({ api: ed, data, onClose }: DialogProps) {
               </div>
             </Field>
           )}
-          {format === 'pdf' && scope === 'board' && frames.length > 1 && <Check checked={pages} onChange={setPages} label="Eine Seite pro Rahmen" />}
-          <Check checked={dark} onChange={setDark} label="Dunkles Design" />
-          {format !== 'pdf' && <Check checked={transparent} onChange={setTransparent} label="Transparenter Hintergrund" />}
+          {format === 'pdf' && scope === 'board' && frames.length > 1 && <Check checked={pages} onChange={setPages} label={tt('Eine Seite pro Rahmen')} />}
+          <Check checked={dark} onChange={setDark} label={tt('Dunkles Design')} />
+          {format !== 'pdf' && <Check checked={transparent} onChange={setTransparent} label={tt('Transparenter Hintergrund')} />}
           {dims && (
             <p className="muted small">
-              {format === 'pdf' && scope === 'board' && pages && frames.length > 1 ? `${frames.length} Seiten` : `${dims.w} × ${dims.h} px`}
-              {format === 'svg' ? ' · Vektor, Text bleibt Text' : format === 'pdf' ? ' · Vektor, druckfertig' : ''}
+              {format === 'pdf' && scope === 'board' && pages && frames.length > 1 ? tt('{length} Seiten', { length: frames.length }) : tt('{w} × {h} px', { w: dims.w, h: dims.h })}
+              {format === 'svg' ? tt(' · Vektor, Text bleibt Text') : format === 'pdf' ? tt(' · Vektor, druckfertig') : ''}
             </p>
           )}
-          <p className="muted small">CRM-Karten erscheinen mit dem aktuellen Stand der Daten.</p>
+          <p className="muted small">{tt('CRM-Karten erscheinen mit dem aktuellen Stand der Daten.')}</p>
         </div>
         <div className={`cv-preview wide${transparent ? ' checker' : ''}${dark ? ' dark' : ''}`} dangerouslySetInnerHTML={{ __html: preview || '<p class="muted" style="padding:20px">Nichts zu exportieren.</p>' }} />
       </div>
@@ -133,14 +135,15 @@ export function ExportDialog({ api: ed, data, onClose }: DialogProps) {
 
 /** What to do with an exported image: social post, e-mail campaign, funnel page, or just the link. */
 function UseDialog({ ed, media, onClose, onBack }: { ed: EditorApi; media: { id: string; src: string; url: string; name: string }; onClose: () => void; onBack: () => void }) {
+  const tt = useT('x_misc');
   const [tab, setTab] = useState('link');
   return (
-    <Modal title="Grafik verwenden" onClose={onClose} wide footer={<button className="btn secondary" onClick={onBack}>Zurück zum Export</button>}>
+    <Modal title={tt('Grafik verwenden')} onClose={onClose} wide footer={<button className="btn secondary" onClick={onBack}>{tt('Zurück zum Export')}</button>}>
       <div className="cv-use-head">
         <img src={media.src} alt="" />
         <div>
           <b>{media.name}</b>
-          <p className="muted small">Liegt jetzt in der Mediathek und ist von dort in Social-Posts, E-Mails und Funnels nutzbar.</p>
+          <p className="muted small">{tt('Liegt jetzt in der Mediathek und ist von dort in Social-Posts, E-Mails und Funnels nutzbar.')}</p>
         </div>
       </div>
       <Tabs
@@ -167,22 +170,23 @@ function UseDialog({ ed, media, onClose, onBack }: { ed: EditorApi; media: { id:
 }
 
 function UseSocial({ media, board, onDone }: { media: { id: string }; board: string; onDone: () => void }) {
+  const tt = useT('x_misc');
   const social = useLoad(() => api.get<any>('/api/social'), []);
   const [text, setText] = useState('');
   const [chosen, setChosen] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  if (social.loading) return <p className="muted">Lädt …</p>;
+  if (social.loading) return <p className="muted">{tt('Lädt …')}</p>;
   if (social.error || !social.data?.configured || !social.data.channels?.length)
     return (
       <p className="muted">
-        Es ist noch kein Social-Kanal verbunden. <a href="/app/social" onClick={(e) => (e.preventDefault(), onDone(), navigate('social'))}>Zum Social Planner</a> – danach kannst du Grafiken direkt als Entwurf einplanen.
+        {tt('Es ist noch kein Social-Kanal verbunden.')} <a href="/app/social" onClick={(e) => (e.preventDefault(), onDone(), navigate('social'))}>{tt('Zum Social Planner')}</a> {tt('– danach kannst du Grafiken direkt als Entwurf einplanen.')}
       </p>
     );
   const channels = (social.data.channels as any[]).filter((c) => c.supported !== false && !c.disabled);
   return (
     <div>
-      <Field label="Text zum Post">
-        <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder={`z. B. Neu: ${board}`} />
+      <Field label={tt('Text zum Post')}>
+        <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder={tt('z. B. Neu: {board}', { board: board })} />
       </Field>
       <div className="cv-pick-list short">
         {channels.map((c) => (
@@ -199,24 +203,25 @@ function UseSocial({ media, board, onDone }: { media: { id: string }; board: str
         disabled={busy || !text.trim() || !chosen.length}
         onClick={async () => {
           setBusy(true);
-          const r = await act(() => api.post('/api/social/posts', { content: text.trim(), integration_ids: chosen, type: 'draft', upload_ids: [media.id] }), 'Als Entwurf im Social Planner gespeichert');
+          const r = await act(() => api.post('/api/social/posts', { content: text.trim(), integration_ids: chosen, type: 'draft', upload_ids: [media.id] }), tt('Als Entwurf im Social Planner gespeichert'));
           setBusy(false);
           if (r) onDone();
         }}
       >
-        Als Entwurf speichern
+        {tt('Als Entwurf speichern')}
       </button>
     </div>
   );
 }
 
 function UseEmail({ media, board, onDone }: { media: { url: string; name: string }; board: string; onDone: () => void }) {
+  const tt = useT('x_misc');
   const [subject, setSubject] = useState(board);
   const [busy, setBusy] = useState(false);
   return (
     <div>
-      <p className="muted">Legt eine neue E-Mail-Kampagne als Entwurf an – die Grafik steht schon im Text. Empfänger und Versand bestimmst du im Kampagnen-Editor.</p>
-      <Field label="Betreff">
+      <p className="muted">{tt('Legt eine neue E-Mail-Kampagne als Entwurf an – die Grafik steht schon im Text. Empfänger und Versand bestimmst du im Kampagnen-Editor.')}</p>
+      <Field label={tt('Betreff')}>
         <Input value={subject} onChange={setSubject} />
       </Field>
       <button
@@ -233,13 +238,14 @@ function UseEmail({ media, board, onDone }: { media: { url: string; name: string
           }
         }}
       >
-        E-Mail-Entwurf anlegen
+        {tt('E-Mail-Entwurf anlegen')}
       </button>
     </div>
   );
 }
 
 function UseFunnel({ media, board, onDone }: { media: { url: string; name: string }; board: string; onDone: () => void }) {
+  const tt = useT('x_misc');
   const funnels = useLoad(() => api.get<any[]>('/api/funnels'), []);
   const [fid, setFid] = useState('');
   const [page, setPage] = useState('new');
@@ -248,14 +254,14 @@ function UseFunnel({ media, board, onDone }: { media: { url: string; name: strin
   useEffect(() => {
     if (!fid && funnels.data?.length) setFid(funnels.data[0].id);
   }, [funnels.data, fid]);
-  if (funnels.loading) return <p className="muted">Lädt …</p>;
-  if (!funnels.data?.length) return <p className="muted">Noch kein Funnel angelegt. Unter „Funnels & Websites“ geht’s los – oder gestalte Seiten als Rahmen und nutze „Rahmen → Funnel-Seiten“.</p>;
+  if (funnels.loading) return <p className="muted">{tt('Lädt …')}</p>;
+  if (!funnels.data?.length) return <p className="muted">{tt('Noch kein Funnel angelegt. Unter „Funnels & Websites“ geht’s los – oder gestalte Seiten als Rahmen und nutze „Rahmen → Funnel-Seiten“.')}</p>;
   const pages: any[] = detail.data?.pages ?? [];
   const block = { type: 'image', src: media.url, alt: media.name };
   return (
     <div>
       <div className="grid2">
-        <Field label="Funnel">
+        <Field label={tt('Funnel')}>
           <Select
             value={fid}
             onChange={(v) => {
@@ -265,7 +271,7 @@ function UseFunnel({ media, board, onDone }: { media: { url: string; name: strin
             options={funnels.data.map((f) => [f.id, f.name] as [string, string])}
           />
         </Field>
-        <Field label="Seite">
+        <Field label={tt('Seite')}>
           <Select value={page} onChange={setPage} options={[['new', 'Neue Seite'], ...pages.map((p) => [p.id, `Unten an „${p.name}“`] as [string, string])]} />
         </Field>
       </div>
@@ -278,7 +284,7 @@ function UseFunnel({ media, board, onDone }: { media: { url: string; name: strin
             if (page === 'new') return api.post(`/api/funnels/${fid}/pages`, { name: board.slice(0, 100), blocks: [block] });
             const p = pages.find((x) => x.id === page);
             return api.patch(`/api/funnel-pages/${page}`, { blocks: [...(p?.blocks ?? []), block] });
-          }, 'Bild in den Funnel eingefügt');
+          }, tt('Bild in den Funnel eingefügt'));
           setBusy(false);
           if (r) {
             onDone();
@@ -286,7 +292,7 @@ function UseFunnel({ media, board, onDone }: { media: { url: string; name: strin
           }
         }}
       >
-        Einfügen
+        {tt('Einfügen')}
       </button>
     </div>
   );
@@ -304,6 +310,7 @@ interface Person {
 }
 
 export function ShareDialog({ api: ed, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const isOwner = ed.board.access === 'owner';
   const [tab, setTab] = useState('team');
   const people = useLoad(() => api.get<Person[]>(`/api/canvas/${ed.board.id}/people`), [ed.board.id]);
@@ -311,7 +318,7 @@ export function ShareDialog({ api: ed, onClose }: DialogProps) {
   const [label, setLabel] = useState('');
   const team = ed.board.team_access;
   return (
-    <Modal title="Teilen" onClose={onClose} wide>
+    <Modal title={tt('Teilen')} onClose={onClose} wide>
       <Tabs
         tabs={[
           ['team', 'Team'],
@@ -322,7 +329,7 @@ export function ShareDialog({ api: ed, onClose }: DialogProps) {
       />
       {tab === 'team' && (
         <div data-tour="canvas-share-team">
-          <Field label="Alle mit Zugang zu diesem Projekt" hint={isOwner ? undefined : 'Nur die Besitzerin oder der Besitzer ändert das.'}>
+          <Field label={tt('Alle mit Zugang zu diesem Projekt')} hint={isOwner ? undefined : tt('Nur die Besitzerin oder der Besitzer ändert das.')}>
             <Select
               value={team}
               onChange={(v) => void ed.saveBoard({ team_access: v as 'edit' | 'view' | 'none' })}
@@ -333,8 +340,8 @@ export function ShareDialog({ api: ed, onClose }: DialogProps) {
               ]}
             />
           </Field>
-          {!isOwner && <p className="muted small">Deine Rolle: {ed.board.access === 'edit' ? 'Bearbeiten' : 'Ansehen'}.</p>}
-          <h3 style={{ margin: '14px 0 6px' }}>Personen</h3>
+          {!isOwner && <p className="muted small">{tt('Deine Rolle:')} {ed.board.access === 'edit' ? tt('Bearbeiten') : tt('Ansehen')}.</p>}
+          <h3 style={{ margin: '14px 0 6px' }}>{tt('Personen')}</h3>
           <div className="cv-people-list">
             {(people.data ?? []).map((p) => (
               <div key={p.id} className="cv-person">
@@ -342,7 +349,7 @@ export function ShareDialog({ api: ed, onClose }: DialogProps) {
                   {p.name.slice(0, 1).toUpperCase()}
                 </span>
                 <span>
-                  <b>{p.name}</b> {p.owner && <Badge tone="blue">Besitzer:in</Badge>} {p.admin && <Badge tone="purple">Agentur</Badge>}
+                  <b>{p.name}</b> {p.owner && <Badge tone="blue">{tt('Besitzer:in')}</Badge>} {p.admin && <Badge tone="purple">{tt('Agentur')}</Badge>}
                   <br />
                   <small className="muted">{p.email}</small>
                 </span>
@@ -354,48 +361,48 @@ export function ShareDialog({ api: ed, onClose }: DialogProps) {
                       const r = await act(() => api.put(`/api/canvas/${ed.board.id}/members`, { user_id: p.id, role: v === 'default' ? 'none' : v }));
                       if (r) await people.reload();
                     }}
-                    aria-label={`Rolle von ${p.name}`}
+                    aria-label={tt('Rolle von {name}', { name: p.name })}
                   >
-                    <option value="default">wie Team ({team === 'edit' ? 'bearbeiten' : team === 'view' ? 'ansehen' : 'kein Zugriff'})</option>
+                    <option value="default">{tt('wie Team (')}{team === 'edit' ? 'bearbeiten' : team === 'view' ? 'ansehen' : tt('kein Zugriff')})</option>
                     <option value="edit">bearbeiten</option>
-                    <option value="view">nur ansehen</option>
+                    <option value="view">{tt('nur ansehen')}</option>
                   </select>
                 ) : (
-                  <span className="muted small">{p.owner ? 'Besitz' : (p.member ?? 'Team')}</span>
+                  <span className="muted small">{p.owner ? tt('Besitz') : (p.member ?? 'Team')}</span>
                 )}
               </div>
             ))}
-            {people.loading && <p className="muted">Lädt …</p>}
+            {people.loading && <p className="muted">{tt('Lädt …')}</p>}
           </div>
         </div>
       )}
       {tab === 'link' && (
         <div data-tour="canvas-share-link">
-          <p className="muted">Wer den Link hat, sieht das Board – nur ansehen, ohne Anmeldung, mit Zoom und Verschieben. CRM-Karten zeigen dort keine Live-Daten, nur ihre Form. Du kannst einen Link jederzeit widerrufen.</p>
+          <p className="muted">{tt('Wer den Link hat, sieht das Board – nur ansehen, ohne Anmeldung, mit Zoom und Verschieben. CRM-Karten zeigen dort keine Live-Daten, nur ihre Form. Du kannst einen Link jederzeit widerrufen.')}</p>
           {isOwner ? (
             <div className="cv-link-new">
-              <Input value={label} onChange={setLabel} placeholder="Bezeichnung, z. B. „Kunde Müller“" />
+              <Input value={label} onChange={setLabel} placeholder={tt('Bezeichnung, z. B. „Kunde Müller“')} />
               <button
                 className="btn"
                 onClick={async () => {
-                  const r = await act(() => api.post(`/api/canvas/${ed.board.id}/shares`, { label }), 'Link erstellt');
+                  const r = await act(() => api.post(`/api/canvas/${ed.board.id}/shares`, { label }), tt('Link erstellt'));
                   if (r) {
                     setLabel('');
                     await shares.reload();
                   }
                 }}
               >
-                Link erstellen
+                {tt('Link erstellen')}
               </button>
             </div>
           ) : (
-            <p className="muted small">Links erstellt die Besitzerin oder der Besitzer des Boards.</p>
+            <p className="muted small">{tt('Links erstellt die Besitzerin oder der Besitzer des Boards.')}</p>
           )}
           <div className="cv-share-list">
             {(shares.data ?? []).map((s) => (
               <div key={s.id} className={`cv-share${s.revoked_at ? ' revoked' : ''}`}>
                 <div>
-                  <b>{s.label || 'Link'}</b> <small className="muted">von {s.created_by} · {ago(s.created_at)} · {s.views} Aufrufe{s.last_used_at ? ` · zuletzt ${ago(s.last_used_at)}` : ''}</small>
+                  <b>{s.label || tt('Link')}</b> <small className="muted">{tt('von {created_by} · {ago} · {views} Aufrufe', { created_by: s.created_by, ago: ago(s.created_at), views: s.views })}{s.last_used_at ? tt(' · zuletzt {ago}', { ago: ago(s.last_used_at) }) : ''}</small>
                   {s.url ? (
                     <div className="codebox">
                       <code>{s.url}</code>
@@ -409,17 +416,17 @@ export function ShareDialog({ api: ed, onClose }: DialogProps) {
                   <button
                     className="btn small danger"
                     onClick={async () => {
-                      if (!confirmAsk('Diesen Link widerrufen? Er funktioniert dann nicht mehr.')) return;
-                      const r = await act(() => api.del(`/api/canvas/${ed.board.id}/shares/${s.id}`), 'Link widerrufen');
+                      if (!confirmAsk(tt('Diesen Link widerrufen? Er funktioniert dann nicht mehr.'))) return;
+                      const r = await act(() => api.del(`/api/canvas/${ed.board.id}/shares/${s.id}`), tt('Link widerrufen'));
                       if (r) await shares.reload();
                     }}
                   >
-                    Widerrufen
+                    {tt('Widerrufen')}
                   </button>
                 )}
               </div>
             ))}
-            {!shares.loading && !shares.data?.length && <p className="muted small">Noch kein Link.</p>}
+            {!shares.loading && !shares.data?.length && <p className="muted small">{tt('Noch kein Link.')}</p>}
           </div>
         </div>
       )}
@@ -430,6 +437,7 @@ export function ShareDialog({ api: ed, onClose }: DialogProps) {
 // --- versions ---------------------------------------------------------------------------------------------
 
 export function HistoryDialog({ api: ed, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const snaps = useLoad(() => api.get<any[]>(`/api/canvas/${ed.board.id}/snapshots`), [ed.board.id]);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -437,7 +445,7 @@ export function HistoryDialog({ api: ed, onClose }: DialogProps) {
   const save = async () => {
     setBusy(true);
     await ed.store.flush();
-    const r = await act(() => api.post(`/api/canvas/${ed.board.id}/snapshots`, { name: name.trim() }), 'Version gespeichert');
+    const r = await act(() => api.post(`/api/canvas/${ed.board.id}/snapshots`, { name: name.trim() }), tt('Version gespeichert'));
     setBusy(false);
     if (r) {
       setName('');
@@ -445,13 +453,13 @@ export function HistoryDialog({ api: ed, onClose }: DialogProps) {
     }
   };
   return (
-    <Modal title="Versionen" onClose={onClose} wide>
-      <p className="muted">Das Board speichert sich alle 30 Minuten selbst eine Version, wenn daran gearbeitet wird. Eigene Versionen kannst du jederzeit anlegen – und eine alte zurückholen, ohne dass etwas verloren geht (vorher wird der aktuelle Stand gesichert).</p>
+    <Modal title={tt('Versionen')} onClose={onClose} wide>
+      <p className="muted">{tt('Das Board speichert sich alle 30 Minuten selbst eine Version, wenn daran gearbeitet wird. Eigene Versionen kannst du jederzeit anlegen – und eine alte zurückholen, ohne dass etwas verloren geht (vorher wird der aktuelle Stand gesichert).')}</p>
       {canEdit && (
         <div className="cv-link-new">
-          <Input value={name} onChange={setName} placeholder="Name der Version, z. B. „Vor dem Kundentermin“" />
+          <Input value={name} onChange={setName} placeholder={tt('Name der Version, z. B. „Vor dem Kundentermin“')} />
           <button className="btn" onClick={save} disabled={busy}>
-            Version speichern
+            {tt('Version speichern')}
           </button>
         </div>
       )}
@@ -459,18 +467,18 @@ export function HistoryDialog({ api: ed, onClose }: DialogProps) {
         {(snaps.data ?? []).map((s) => (
           <div key={s.id} className="cv-snap">
             <img src={withLocation(`/api/canvas/${ed.board.id}/snapshots/${s.id}/svg`)} alt="" loading="lazy" />
-            <b>{s.name || 'Version'}</b>
+            <b>{s.name || tt('Version')}</b>
             <span className="muted small">
-              {dt(s.created_at)} · {s.element_count} Elemente {s.auto ? <Badge>automatisch</Badge> : null}
+              {tt('{dt} · {element_count} Elemente', { dt: dt(s.created_at), element_count: s.element_count })} {s.auto ? <Badge>automatisch</Badge> : null}
             </span>
             {canEdit && (
               <div className="cv-actions">
                 <button
                   className="btn small secondary"
                   onClick={async () => {
-                    if (!confirmAsk('Diese Version wiederherstellen? Der aktuelle Stand wird vorher als Version gesichert.')) return;
+                    if (!confirmAsk(tt('Diese Version wiederherstellen? Der aktuelle Stand wird vorher als Version gesichert.'))) return;
                     await ed.store.flush();
-                    const r = await act(() => api.post(`/api/canvas/${ed.board.id}/snapshots/${s.id}/restore`, { clientId: ed.store.clientId }), 'Version wiederhergestellt');
+                    const r = await act(() => api.post(`/api/canvas/${ed.board.id}/snapshots/${s.id}/restore`, { clientId: ed.store.clientId }), tt('Version wiederhergestellt'));
                     if (r) {
                       await ed.store.catchUp();
                       onClose();
@@ -478,14 +486,14 @@ export function HistoryDialog({ api: ed, onClose }: DialogProps) {
                     }
                   }}
                 >
-                  Wiederherstellen
+                  {tt('Wiederherstellen')}
                 </button>
                 {ed.board.access === 'owner' && (
                   <button
                     className="icon-btn"
-                    title="Version löschen"
+                    title={tt('Version löschen')}
                     onClick={async () => {
-                      if (!confirmAsk('Diese Version löschen?')) return;
+                      if (!confirmAsk(tt('Diese Version löschen?'))) return;
                       const r = await act(() => api.del(`/api/canvas/${ed.board.id}/snapshots/${s.id}`));
                       if (r) await snaps.reload();
                     }}
@@ -497,8 +505,8 @@ export function HistoryDialog({ api: ed, onClose }: DialogProps) {
             )}
           </div>
         ))}
-        {snaps.loading && <p className="muted">Lädt …</p>}
-        {!snaps.loading && !snaps.data?.length && <p className="muted">Noch keine Versionen.</p>}
+        {snaps.loading && <p className="muted">{tt('Lädt …')}</p>}
+        {!snaps.loading && !snaps.data?.length && <p className="muted">{tt('Noch keine Versionen.')}</p>}
       </div>
     </Modal>
   );
@@ -507,6 +515,7 @@ export function HistoryDialog({ api: ed, onClose }: DialogProps) {
 // --- settings ---------------------------------------------------------------------------------------------
 
 export function SettingsDialog({ api: ed, onClose }: DialogProps) {
+  const tt = useT('x_misc');
   const b = ed.board;
   const [name, setName] = useState(b.name);
   const [description, setDescription] = useState(b.description ?? '');
@@ -524,7 +533,7 @@ export function SettingsDialog({ api: ed, onClose }: DialogProps) {
   };
   return (
     <Modal
-      title="Board-Einstellungen"
+      title={tt('Board-Einstellungen')}
       onClose={onClose}
       footer={
         <>
@@ -533,19 +542,19 @@ export function SettingsDialog({ api: ed, onClose }: DialogProps) {
               className="btn danger"
               style={{ marginRight: 'auto' }}
               onClick={async () => {
-                if (!confirmAsk(`Board „${b.name}“ endgültig löschen? Alle Elemente, Kommentare und Versionen gehen verloren.`)) return;
-                const r = await act(() => api.del(`/api/canvas/${b.id}`), 'Board gelöscht');
+                if (!confirmAsk(tt('Board „{name}“ endgültig löschen? Alle Elemente, Kommentare und Versionen gehen verloren.', { name: b.name }))) return;
+                const r = await act(() => api.del(`/api/canvas/${b.id}`), tt('Board gelöscht'));
                 if (r) navigate('canvas');
               }}
             >
-              Löschen
+              {tt('Löschen')}
             </button>
           )}
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button className="btn" onClick={save} disabled={busy || b.access === 'view'}>
-            Speichern
+            {tt('Speichern')}
           </button>
         </>
       }
@@ -553,11 +562,11 @@ export function SettingsDialog({ api: ed, onClose }: DialogProps) {
       <Field label="Name">
         <Input value={name} onChange={setName} maxLength={200} />
       </Field>
-      <Field label="Beschreibung">
+      <Field label={tt('Beschreibung')}>
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} />
       </Field>
       <div className="grid2">
-        <Field label="Raster">
+        <Field label={tt('Raster')}>
           <Select
             value={grid}
             onChange={(v) => setGrid(v as typeof grid)}
@@ -569,23 +578,23 @@ export function SettingsDialog({ api: ed, onClose }: DialogProps) {
           />
         </Field>
         <div style={{ alignSelf: 'end' }}>
-          <Check checked={snap} onChange={setSnap} label="Am Raster einrasten" />
+          <Check checked={snap} onChange={setSnap} label={tt('Am Raster einrasten')} />
         </div>
       </div>
-      <Check checked={sketch} onChange={setSketch} label="Neue Formen „Handgezeichnet“" />
+      <Check checked={sketch} onChange={setSketch} label={tt('Neue Formen „Handgezeichnet“')} />
       <div className="cv-actions" style={{ marginTop: 14 }}>
         <button
           className="btn small secondary"
           onClick={async () => {
             await ed.store.flush();
-            const r = await act(() => api.post(`/api/canvas/${b.id}/duplicate`, {}), 'Board dupliziert');
+            const r = await act(() => api.post(`/api/canvas/${b.id}/duplicate`, {}), tt('Board dupliziert'));
             if (r) {
               onClose();
               navigate(`canvas/${r.id}`);
             }
           }}
         >
-          <Icon name="copy" /> Board duplizieren
+          <Icon name="copy" /> {tt('Board duplizieren')}
         </button>
       </div>
     </Modal>

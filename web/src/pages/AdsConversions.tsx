@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, dt } from '../api';
 import { Badge, Check, Field, Input, Link, Modal, Spinner, act, useLoad } from '../ui';
+import { useT } from '../i18n';
 
 /**
  * Attribution → Tracking & Werbekonten: Google Ads offline conversions – the Google counterpart of the Meta Conversions API card.
@@ -27,6 +28,7 @@ const HINT: Record<string, string> = {
 };
 
 export function GoogleConversions() {
+  const tt = useT('x_integrations');
   const st = useLoad(() => api.get<Json>('/api/ads/conversions'), []);
   const log = useLoad(() => api.get<Json[]>('/api/ads/conversions/log?limit=50'), []);
   const [f, setF] = useState<Json | null>(null);
@@ -51,19 +53,19 @@ export function GoogleConversions() {
   return (
     <div className="card gconv" data-tour="ads-gconv">
       <div className="gconv-head">
-        <h2 style={{ margin: 0 }}>Google Ads: Offline-Conversions</h2>
-        {!s.google.connected ? <Badge>Google Ads nicht verbunden</Badge> : s.enabled ? <Badge tone={s.last_error ? 'red' : 'green'}>{s.last_error ? 'Fehler' : 'aktiv'}</Badge> : <Badge>aus</Badge>}
+        <h2 style={{ margin: 0 }}>{tt('Google Ads: Offline-Conversions')}</h2>
+        {!s.google.connected ? <Badge>{tt('Google Ads nicht verbunden')}</Badge> : s.enabled ? <Badge tone={s.last_error ? 'red' : 'green'}>{s.last_error ? tt('Fehler') : 'aktiv'}</Badge> : <Badge>aus</Badge>}
       </div>
       <p className="muted small">
-        Gewonnene Deals, Formulare, Termine und bezahlte Rechnungen gehen als Conversion an Google zurück – mit der Klick-ID (gclid, gbraid, wbraid) des Kontakts und auf Wunsch als erweiterte Conversions für Leads (E-Mail und Telefon nur als SHA-256-Hash). <strong>Nur Kontakte mit Einwilligung für Marketing</strong> (Einwilligungen → Tracking & Cookies) werden hochgeladen.
+        {tt('Gewonnene Deals, Formulare, Termine und bezahlte Rechnungen gehen als Conversion an Google zurück – mit der Klick-ID (gclid, gbraid, wbraid) des Kontakts und auf Wunsch als erweiterte Conversions für Leads (E-Mail und Telefon nur als SHA-256-Hash).')} <strong>{tt('Nur Kontakte mit Einwilligung für Marketing')}</strong> {tt('(Einwilligungen → Tracking & Cookies) werden hochgeladen.')}
       </p>
       {!s.google.connected && (
         <p className="small">
-          Zuerst Google Ads verbinden: <Link to="ads/connections">Anzeigen → Verbindungen</Link> (oder oben unter „Google Ads“ die Zugangsdaten eintragen).
+          {tt('Zuerst Google Ads verbinden:')} <Link to="ads/connections">{tt('Anzeigen → Verbindungen')}</Link> {tt('(oder oben unter „Google Ads“ die Zugangsdaten eintragen).')}
         </p>
       )}
       {s.last_error && <p className="small" style={{ color: 'var(--red)' }}>{s.last_error}</p>}
-      <Check checked={enabled} onChange={setEnabled} label="Conversions automatisch hochladen" />
+      <Check checked={enabled} onChange={setEnabled} label={tt('Conversions automatisch hochladen')} />
       <div className="gconv-events">
         {(s.events as Json[]).map((e) => {
           const ev = f.events[e.key];
@@ -71,17 +73,17 @@ export function GoogleConversions() {
             <div key={e.key} className="gconv-event">
               <Check checked={!!ev.enabled} onChange={(v) => setEvent(e.key, { enabled: v })} label={e.label} />
               <div className="grid2">
-                <Field label="Conversion-Aktion" hint={`customers/${s.google.customer_id || '1234567890'}/conversionActions/… oder nur die ID`}>
-                  <Input value={ev.action} onChange={(v) => setEvent(e.key, { action: v })} placeholder="z. B. 987654321" />
+                <Field label={tt('Conversion-Aktion')} hint={tt('customers/{v}/conversionActions/… oder nur die ID', { v: s.google.customer_id || '1234567890' })}>
+                  <Input value={ev.action} onChange={(v) => setEvent(e.key, { action: v })} placeholder={tt('z. B. 987654321')} />
                 </Field>
                 {(e.key === 'form_submitted' || e.key === 'booking') && (
-                  <Field label="Wert (optional)" hint={HINT[e.key]}>
+                  <Field label={tt('Wert (optional)')} hint={HINT[e.key]}>
                     <Input value={ev.value || ''} onChange={(v) => setEvent(e.key, { value: v })} inputMode="decimal" placeholder="0" />
                   </Field>
                 )}
                 {e.key === 'form_submitted' && (
-                  <Field label="Nur diese Formulare (optional)">
-                    <Input value={(ev.form_ids ?? []).join(', ')} onChange={(v) => setEvent(e.key, { form_ids: v })} placeholder="alle Formulare" />
+                  <Field label={tt('Nur diese Formulare (optional)')}>
+                    <Input value={(ev.form_ids ?? []).join(', ')} onChange={(v) => setEvent(e.key, { form_ids: v })} placeholder={tt('alle Formulare')} />
                   </Field>
                 )}
               </div>
@@ -90,41 +92,41 @@ export function GoogleConversions() {
           );
         })}
       </div>
-      <Check checked={!!f.enhanced_leads} onChange={(v) => setF({ ...f, enhanced_leads: v })} label="Erweiterte Conversions für Leads: gehashte E-Mail/Telefon mitsenden (auch Leads ohne Klick-ID)" />
+      <Check checked={!!f.enhanced_leads} onChange={(v) => setF({ ...f, enhanced_leads: v })} label={tt('Erweiterte Conversions für Leads: gehashte E-Mail/Telefon mitsenden (auch Leads ohne Klick-ID)')} />
       <div className="grid2">
-        <Field label="Währung, wenn nichts angegeben ist">
+        <Field label={tt('Währung, wenn nichts angegeben ist')}>
           <Input value={f.currency} onChange={(v) => setF({ ...f, currency: v })} maxLength={3} />
         </Field>
       </div>
       <div className="actions gconv-actions">
         <button className="btn" disabled={!!busy} onClick={async () => (await run('save', () => api.put('/api/ads/conversions', { enabled, config: f }), 'Gespeichert')) && (st.reload(), log.reload())}>
-          Speichern
+          {tt('Speichern')}
         </button>
         <button className="btn secondary" disabled={!!busy || !s.google.connected} onClick={async () => {
           const r = await run('check', () => api.post<Json>('/api/ads/conversions/validate'));
           if (r) setCheck(r);
         }}>
-          Prüflauf (validate_only)
+          {tt('Prüflauf (validate_only)')}
         </button>
         {s.enabled && (
           <button className="btn secondary" disabled={!!busy} onClick={async () => (await run('run', () => api.post('/api/ads/conversions/run'), 'Warteschlange abgearbeitet')) && (st.reload(), log.reload())}>
-            Jetzt hochladen
+            {tt('Jetzt hochladen')}
           </button>
         )}
       </div>
       <p className="muted small">
-        {counts.sent ?? 0} hochgeladen · {(counts.pending ?? 0) + (counts.retry ?? 0)} wartend · {counts.failed ?? 0} Fehler · {counts.blocked ?? 0} ohne Einwilligung{s.last_run_at ? ` · zuletzt ${dt(s.last_run_at)}` : ''}
+        {tt('{v} hochgeladen · {v2} wartend · {v3} Fehler · {v4} ohne Einwilligung', { v: counts.sent ?? 0, v2: (counts.pending ?? 0) + (counts.retry ?? 0), v3: counts.failed ?? 0, v4: counts.blocked ?? 0 })}{s.last_run_at ? tt(' · zuletzt {dt}', { dt: dt(s.last_run_at) }) : ''}
       </p>
       {(log.data ?? []).length > 0 && (
         <details className="gconv-log">
-          <summary>Protokoll ({log.data!.length})</summary>
+          <summary>{tt('Protokoll ({length})', { length: log.data!.length })}</summary>
           <div className="table-wrap">
             <table className="t">
               <thead>
                 <tr>
-                  <th>Zeit</th>
-                  <th>Ereignis</th>
-                  <th>Kontakt</th>
+                  <th>{tt('Zeit')}</th>
+                  <th>{tt('Ereignis')}</th>
+                  <th>{tt('Kontakt')}</th>
                   <th>Status</th>
                   <th />
                 </tr>
@@ -145,7 +147,7 @@ export function GoogleConversions() {
                     <td>
                       {['failed', 'retry', 'blocked', 'skipped'].includes(l.status) && (
                         <button className="btn secondary" disabled={!!busy} onClick={async () => (await run(`r${l.id}`, () => api.post(`/api/ads/conversions/${l.id}/retry`), 'Neuer Versuch')) && log.reload()}>
-                          Erneut
+                          {tt('Erneut')}
                         </button>
                       )}
                     </td>
@@ -157,13 +159,13 @@ export function GoogleConversions() {
         </details>
       )}
       {check && (
-        <Modal title="Prüflauf bei Google" onClose={() => setCheck(null)}>
-          <p>{check.ok ? 'Google hat alles akzeptiert – im Prüflauf wird nichts gespeichert.' : 'Google meldet Probleme (im Prüflauf wird nichts gespeichert):'}</p>
-          {check.sample && <p className="muted small">Keine wartenden Conversions – geprüft wurde ein Beispiel mit einer Test-E-Mail.</p>}
+        <Modal title={tt('Prüflauf bei Google')} onClose={() => setCheck(null)}>
+          <p>{check.ok ? tt('Google hat alles akzeptiert – im Prüflauf wird nichts gespeichert.') : tt('Google meldet Probleme (im Prüflauf wird nichts gespeichert):')}</p>
+          {check.sample && <p className="muted small">{tt('Keine wartenden Conversions – geprüft wurde ein Beispiel mit einer Test-E-Mail.')}</p>}
           <ul className="gconv-check">
             {(check.results as Json[]).map((r, i) => (
               <li key={i}>
-                <Badge tone={r.ok ? 'green' : 'red'}>{r.ok ? 'ok' : r.code || 'Fehler'}</Badge> {r.order_id} {r.message && <span className="muted small">– {r.message}</span>}
+                <Badge tone={r.ok ? 'green' : 'red'}>{r.ok ? 'ok' : r.code || tt('Fehler')}</Badge> {r.order_id} {r.message && <span className="muted small">– {r.message}</span>}
               </li>
             ))}
           </ul>

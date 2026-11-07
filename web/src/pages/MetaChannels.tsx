@@ -5,6 +5,7 @@ import { Badge, CodeBox, Field, Input, MergeHint, Select, Spinner, Textarea, act
 import { MoreFields, ProOnly } from '../areas/fields';
 import { ChannelIcon, TemplatePreview, TemplateSlots } from './MetaInbox';
 import { SignupLink } from '../referrals';
+import { useT } from '../i18n';
 
 /** Einstellungen → Kanäle: WhatsApp Business, Facebook Messenger and Instagram Direct (Meta). */
 
@@ -17,6 +18,7 @@ function ResultLine({ r }: { r?: Result }) {
 }
 
 export function MetaSettings() {
+  const tt = useT('x_comms');
   const s = useLoad(() => api.get('/api/settings/meta'), []);
   const [f, setF] = useState(EMPTY_FORM);
   const [results, setResults] = useState<Record<string, Result>>({});
@@ -53,40 +55,40 @@ export function MetaSettings() {
     setBusy('');
   };
   const disconnect = async (which: 'whatsapp' | 'page') => {
-    if (!confirmAsk(which === 'whatsapp' ? 'WhatsApp trennen? Bisherige Nachrichten bleiben erhalten.' : 'Messenger und Instagram trennen? Bisherige Nachrichten bleiben erhalten.')) return;
+    if (!confirmAsk(which === 'whatsapp' ? tt('WhatsApp trennen? Bisherige Nachrichten bleiben erhalten.') : tt('Messenger und Instagram trennen? Bisherige Nachrichten bleiben erhalten.'))) return;
     const patch = which === 'whatsapp' ? { wa_phone_number_id: '', wa_business_account_id: '', wa_token: null } : { page_id: '', ig_account_id: '', page_token: null };
-    const r = await act(() => api.put('/api/settings/meta', patch), 'Getrennt');
+    const r = await act(() => api.put('/api/settings/meta', patch), tt('Getrennt'));
     if (r) (s.setData(r), setResults({}));
   };
-  const status = (on: boolean, label?: string) => (on ? <Badge tone="green">verbunden{label ? ` · ${label}` : ''}</Badge> : <Badge>nicht eingerichtet</Badge>);
+  const status = (on: boolean, label?: string) => (on ? <Badge tone="green">verbunden{label ? ` · ${label}` : ''}</Badge> : <Badge>{tt('nicht eingerichtet')}</Badge>);
 
   return (
     <div className="meta-settings">
       <div className="card" data-tour="meta-webhook">
         <h2>
-          <Icon name="webhook" size={18} /> Webhook in der Meta-App
+          <Icon name="webhook" size={18} /> {tt('Webhook in der Meta-App')}
         </h2>
         <p className="muted small">
-          In der App auf developers.facebook.com unter <b>WhatsApp → Konfiguration</b> bzw. <b>Messenger/Instagram → Webhooks</b> eintragen und das Feld <code>messages</code> abonnieren. Eine Schritt-für-Schritt-Anleitung steht in <code>docs/meta-channels.md</code>. <SignupLink id="meta" />
+          {tt('In der App auf developers.facebook.com unter')} <b>{tt('WhatsApp → Konfiguration')}</b> bzw. <b>{tt('Messenger/Instagram → Webhooks')}</b> {tt('eintragen und das Feld')} <code>messages</code> {tt('abonnieren. Eine Schritt-für-Schritt-Anleitung steht in')} <code>docs/meta-channels.md</code>. <SignupLink id="meta" />
         </p>
-        <MoreFields id="meta-webhook" label="Webhook-Angaben" values={[!d.last_webhook_at || !d.app_secret_set || !!d.last_error]}>
+        <MoreFields id="meta-webhook" label={tt('Webhook-Angaben')} values={[!d.last_webhook_at || !d.app_secret_set || !!d.last_error]}>
         <div className="grid2">
-          <Field label="Rückruf-URL (Callback URL)">
+          <Field label={tt('Rückruf-URL (Callback URL)')}>
             <CodeBox text={d.webhook_url} />
           </Field>
-          <Field label="Verify-Token">
+          <Field label={tt('Verify-Token')}>
             <CodeBox text={d.verify_token} />
           </Field>
         </div>
         <div className="grid2">
-          <Field label="App-Secret" hint="Meta-App → Einstellungen → Allgemein. Damit wird jede eingehende Nachricht geprüft – ohne Secret wird nichts angenommen.">
-            <Input type="password" autoComplete="new-password" value={f.app_secret} onChange={(v) => set({ app_secret: v })} placeholder={d.app_secret_set ? '•••••• gespeichert – leer lassen zum Behalten' : 'App-Secret einfügen'} />
+          <Field label={tt('App-Secret')} hint={tt('Meta-App → Einstellungen → Allgemein. Damit wird jede eingehende Nachricht geprüft – ohne Secret wird nichts angenommen.')}>
+            <Input type="password" autoComplete="new-password" value={f.app_secret} onChange={(v) => set({ app_secret: v })} placeholder={d.app_secret_set ? tt('•••••• gespeichert – leer lassen zum Behalten') : tt('App-Secret einfügen')} />
           </Field>
           <div className="meta-hook-state">
-            {d.last_webhook_at ? <Badge tone="green">Letzter Eingang {dt(d.last_webhook_at)}</Badge> : <Badge>Noch nichts empfangen</Badge>}
+            {d.last_webhook_at ? <Badge tone="green">{tt('Letzter Eingang {dt}', { dt: dt(d.last_webhook_at) })}</Badge> : <Badge>{tt('Noch nichts empfangen')}</Badge>}
             {d.last_error && <div className="meta-result err">{d.last_error}</div>}
-            <button className="btn small secondary" onClick={() => confirmAsk('Neuen Verify-Token erzeugen? Danach muss er in der Meta-App neu eingetragen werden.') && save({ regenerate_verify_token: true }, 'Neuer Verify-Token')}>
-              Neuen Verify-Token erzeugen
+            <button className="btn small secondary" onClick={() => confirmAsk(tt('Neuen Verify-Token erzeugen? Danach muss er in der Meta-App neu eingetragen werden.')) && save({ regenerate_verify_token: true }, 'Neuer Verify-Token')}>
+              {tt('Neuen Verify-Token erzeugen')}
             </button>
           </div>
         </div>
@@ -97,24 +99,24 @@ export function MetaSettings() {
         <div className="card" style={{ flex: '1 1 380px' }} data-tour="meta-whatsapp">
           <h2 className="row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
             <span>
-              <ChannelIcon channel="whatsapp" size={18} /> WhatsApp Business
+              <ChannelIcon channel="whatsapp" size={18} /> {tt('WhatsApp Business')}
             </span>
             {status(d.whatsapp.configured, d.whatsapp.display_phone || undefined)}
           </h2>
-          {d.whatsapp.verified_name && <p className="muted small">Anzeigename: {d.whatsapp.verified_name}</p>}
-          <Field label="Telefonnummer-ID" hint="WhatsApp → API-Einrichtung: „Phone number ID“ (nicht die Telefonnummer selbst)">
-            <Input value={f.wa_phone_number_id} onChange={(v) => set({ wa_phone_number_id: v })} placeholder="z. B. 106540352242922" inputMode="numeric" />
+          {d.whatsapp.verified_name && <p className="muted small">{tt('Anzeigename: {verified_name}', { verified_name: d.whatsapp.verified_name })}</p>}
+          <Field label={tt('Telefonnummer-ID')} hint={tt('WhatsApp → API-Einrichtung: „Phone number ID“ (nicht die Telefonnummer selbst)')}>
+            <Input value={f.wa_phone_number_id} onChange={(v) => set({ wa_phone_number_id: v })} placeholder={tt('z. B. 106540352242922')} inputMode="numeric" />
           </Field>
-          <Field label="WhatsApp-Business-Konto-ID" hint="„WhatsApp Business Account ID“ – nötig für Vorlagen">
-            <Input value={f.wa_business_account_id} onChange={(v) => set({ wa_business_account_id: v })} placeholder="z. B. 102290129340398" inputMode="numeric" />
+          <Field label={tt('WhatsApp-Business-Konto-ID')} hint={tt('„WhatsApp Business Account ID“ – nötig für Vorlagen')}>
+            <Input value={f.wa_business_account_id} onChange={(v) => set({ wa_business_account_id: v })} placeholder={tt('z. B. 102290129340398')} inputMode="numeric" />
           </Field>
-          <Field label="Dauerhafter Zugriffstoken" hint="Von einem System-Benutzer im Business-Manager (läuft nicht ab), Rechte whatsapp_business_messaging + whatsapp_business_management">
-            <Input type="password" autoComplete="new-password" value={f.wa_token} onChange={(v) => set({ wa_token: v })} placeholder={d.whatsapp.token_set ? '•••••• gespeichert – leer lassen zum Behalten' : 'EAAG…'} />
+          <Field label={tt('Dauerhafter Zugriffstoken')} hint={tt('Von einem System-Benutzer im Business-Manager (läuft nicht ab), Rechte whatsapp_business_messaging + whatsapp_business_management')}>
+            <Input type="password" autoComplete="new-password" value={f.wa_token} onChange={(v) => set({ wa_token: v })} placeholder={d.whatsapp.token_set ? tt('•••••• gespeichert – leer lassen zum Behalten') : tt('EAAG…')} />
           </Field>
           <ResultLine r={results.whatsapp} />
           {(d.whatsapp.configured || d.whatsapp.phone_number_id) && (
             <button className="btn small secondary" onClick={() => disconnect('whatsapp')}>
-              WhatsApp trennen
+              {tt('WhatsApp trennen')}
             </button>
           )}
         </div>
@@ -127,23 +129,23 @@ export function MetaSettings() {
             {status(d.messenger.configured || d.instagram.configured)}
           </h2>
           <p className="muted small">
-            {d.messenger.page_name ? <>Seite „{d.messenger.page_name}“</> : 'Facebook-Seite'}
-            {d.instagram.username ? <> · Instagram @{d.instagram.username}</> : ''}
+            {d.messenger.page_name ? <>{tt('Seite „{page_name}“', { page_name: d.messenger.page_name })}</> : tt('Facebook-Seite')}
+            {d.instagram.username ? <> {tt('· Instagram @{username}', { username: d.instagram.username })}</> : ''}
           </p>
-          <Field label="Seiten-ID" hint="Facebook-Seite → Info → Seitentransparenz, oder Meta Business Suite">
-            <Input value={f.page_id} onChange={(v) => set({ page_id: v })} placeholder="z. B. 112233445566778" inputMode="numeric" />
+          <Field label={tt('Seiten-ID')} hint={tt('Facebook-Seite → Info → Seitentransparenz, oder Meta Business Suite')}>
+            <Input value={f.page_id} onChange={(v) => set({ page_id: v })} placeholder={tt('z. B. 112233445566778')} inputMode="numeric" />
           </Field>
-          <Field label="Seiten-Zugriffstoken" hint="Dauerhafter Token der Seite (System-Benutzer), Rechte pages_messaging (+ instagram_manage_messages für Instagram)">
-            <Input type="password" autoComplete="new-password" value={f.page_token} onChange={(v) => set({ page_token: v })} placeholder={d.messenger.token_set ? '•••••• gespeichert – leer lassen zum Behalten' : 'EAAG…'} />
+          <Field label={tt('Seiten-Zugriffstoken')} hint={tt('Dauerhafter Token der Seite (System-Benutzer), Rechte pages_messaging (+ instagram_manage_messages für Instagram)')}>
+            <Input type="password" autoComplete="new-password" value={f.page_token} onChange={(v) => set({ page_token: v })} placeholder={d.messenger.token_set ? tt('•••••• gespeichert – leer lassen zum Behalten') : tt('EAAG…')} />
           </Field>
-          <Field label="Instagram-Konto-ID (optional)" hint="ID des Instagram-Profi-Kontos, das mit der Seite verknüpft ist">
-            <Input value={f.ig_account_id} onChange={(v) => set({ ig_account_id: v })} placeholder="z. B. 17841400000000000" inputMode="numeric" />
+          <Field label={tt('Instagram-Konto-ID (optional)')} hint={tt('ID des Instagram-Profi-Kontos, das mit der Seite verknüpft ist')}>
+            <Input value={f.ig_account_id} onChange={(v) => set({ ig_account_id: v })} placeholder={tt('z. B. 17841400000000000')} inputMode="numeric" />
           </Field>
           <ResultLine r={results.messenger} />
           <ResultLine r={results.instagram} />
           {(d.messenger.configured || d.messenger.page_id) && (
             <button className="btn small secondary" onClick={() => disconnect('page')}>
-              Messenger &amp; Instagram trennen
+              {tt('Messenger & Instagram trennen')}
             </button>
           )}
         </div>
@@ -152,17 +154,17 @@ export function MetaSettings() {
       <div className="card" data-tour="meta-actions">
         <div className="actions" style={{ flexWrap: 'wrap' }}>
           <button className="btn" onClick={() => save()}>
-            Speichern
+            {tt('Speichern')}
           </button>
           <button className="btn secondary" disabled={!!busy} onClick={() => run('test')}>
-            {busy === 'test' ? 'Prüfe…' : 'Verbindung testen'}
+            {busy === 'test' ? tt('Prüfe…') : tt('Verbindung testen')}
           </button>
-          <button className="btn secondary" disabled={!!busy} onClick={() => run('subscribe')} title="Abonniert die App für das WhatsApp-Konto (mit dieser Rückruf-URL) und für die Facebook-Seite">
-            {busy === 'subscribe' ? 'Abonniere…' : 'Webhooks bei Meta abonnieren'}
+          <button className="btn secondary" disabled={!!busy} onClick={() => run('subscribe')} title={tt('Abonniert die App für das WhatsApp-Konto (mit dieser Rückruf-URL) und für die Facebook-Seite')}>
+            {busy === 'subscribe' ? tt('Abonniere…') : tt('Webhooks bei Meta abonnieren')}
           </button>
           <ProOnly>
             <label className="row" style={{ alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-              <span className="muted small">Graph-API</span>
+              <span className="muted small">{tt('Graph-API')}</span>
               <span style={{ width: 90 }}>
                 <Input value={f.api_version} onChange={(v) => set({ api_version: v })} />
               </span>
@@ -171,7 +173,7 @@ export function MetaSettings() {
         </div>
         <ResultLine r={results.webhook} />
         <p className="muted small" style={{ marginBottom: 0 }}>
-          <b>Kosten:</b> Antworten im 24-Stunden-Fenster sind kostenlos, WhatsApp-Vorlagen außerhalb kosten je Nachricht (Meta-Preisliste). Messenger und Instagram sind kostenlos.
+          <b>{tt('Kosten:')}</b> {tt('Antworten im 24-Stunden-Fenster sind kostenlos, WhatsApp-Vorlagen außerhalb kosten je Nachricht (Meta-Preisliste). Messenger und Instagram sind kostenlos.')}
         </p>
       </div>
     </div>
@@ -180,12 +182,13 @@ export function MetaSettings() {
 
 /** Workflow step „WhatsApp senden“: text in the 24-hour window, otherwise (or always) a template. */
 export function WhatsAppStep({ step, set }: { step: any; set: (p: any) => void }) {
+  const tt = useT('x_comms');
   const mode = step.mode ?? 'auto';
   const tpls = useLoad(() => (mode === 'text' ? Promise.resolve([] as any[]) : api.get<any[]>('/api/messages/meta/templates')), [mode]);
   const chosen = (tpls.data ?? []).find((t) => t.name === step.template && (!step.language || t.language === step.language));
   return (
     <>
-      <Field label="Senden als">
+      <Field label={tt('Senden als')}>
         <Select
           value={mode}
           onChange={(v) => set({ mode: v })}
@@ -197,7 +200,7 @@ export function WhatsAppStep({ step, set }: { step: any; set: (p: any) => void }
         />
       </Field>
       {mode !== 'template' && (
-        <Field label="Text">
+        <Field label={tt('Text')}>
           <Textarea value={step.body} onChange={(v) => set({ body: v })} rows={4} />
         </Field>
       )}
@@ -206,16 +209,16 @@ export function WhatsAppStep({ step, set }: { step: any; set: (p: any) => void }
           {tpls.loading && !tpls.data ? (
             <Spinner />
           ) : tpls.error ? (
-            <p className="muted small">Vorlagen nicht geladen: {tpls.error}</p>
+            <p className="muted small">{tt('Vorlagen nicht geladen: {error}', { error: tpls.error })}</p>
           ) : (
-            <Field label={mode === 'auto' ? 'Vorlage (außerhalb des Fensters)' : 'Vorlage'}>
+            <Field label={mode === 'auto' ? tt('Vorlage (außerhalb des Fensters)') : tt('Vorlage')}>
               <Select
                 value={step.template ? `${step.template}|${step.language ?? ''}` : ''}
                 onChange={(v) => {
                   const [name, language] = v.split('|');
                   set({ template: name || '', language: language || '', values: {} });
                 }}
-                placeholder="wählen…"
+                placeholder={tt('wählen…')}
                 options={(tpls.data ?? []).filter((t) => t.supported).map((t) => [`${t.name}|${t.language}`, `${t.name} (${t.language})`])}
               />
             </Field>
@@ -223,7 +226,7 @@ export function WhatsAppStep({ step, set }: { step: any; set: (p: any) => void }
           {chosen && (
             <>
               <TemplatePreview t={chosen} values={step.values ?? {}} />
-              <TemplateSlots t={chosen} values={step.values ?? {}} onChange={(values) => set({ values })} hint="Text oder {{contact.first_name}}" />
+              <TemplateSlots t={chosen} values={step.values ?? {}} onChange={(values) => set({ values })} hint={tt('Text oder {{contact.first_name}}')} />
             </>
           )}
         </>

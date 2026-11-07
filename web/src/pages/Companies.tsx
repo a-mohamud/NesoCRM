@@ -26,6 +26,7 @@ import { MoreFields, useSimple } from '../areas/fields';
 import { COMPANY_COLUMNS, defaultColumns } from '../areas/easy-core';
 import '../areas/easy-core.css';
 import { SortableGrid } from '../sortable/Sortable';
+import { useT } from '../i18n';
 
 /** Firmen: list with filters, columns and saved views; company page with everything linked to it. */
 
@@ -64,42 +65,43 @@ function useCompanySchema() {
 const stageTone = (s: string) => (s === 'customer' || s === 'evangelist' ? 'green' : s === 'opportunity' || s === 'sql' ? 'blue' : s === 'mql' || s === 'lead' ? 'yellow' : 'gray');
 
 function NewCompany({ onClose, onSaved }: { onClose: () => void; onSaved: (c: any) => void }) {
+  const tt = useT('x_integrations');
   const users = useUsers();
   const [c, setC] = useState<any>({ name: '', domain: '', industry: '', size: '', lifecycle_stage: 'lead', owner_id: '', city: '', phone: '' });
   const save = async () => {
     const r = await act(() => api.post('/api/companies', { ...c, owner_id: c.owner_id || null }));
     if (r) {
-      toast(r.created ? 'Firma angelegt' : `Gibt es schon (${r.domain}) – aktualisiert`);
+      toast(r.created ? tt('Firma angelegt') : tt('Gibt es schon ({domain}) – aktualisiert', { domain: r.domain }));
       onSaved(r);
     }
   };
   return (
-    <Modal title="Neue Firma" onClose={onClose} footer={<button className="btn" disabled={!c.name && !c.domain} onClick={save}>Speichern</button>}>
+    <Modal title={tt('Neue Firma')} onClose={onClose} footer={<button className="btn" disabled={!c.name && !c.domain} onClick={save}>{tt('Speichern')}</button>}>
       <div className="grid2">
-        <Field label="Name *" tour="company-name">
-          <Input value={c.name} onChange={(v) => setC({ ...c, name: v })} autoFocus placeholder="Muster GmbH" />
+        <Field label={tt('Name *')} tour="company-name">
+          <Input value={c.name} onChange={(v) => setC({ ...c, name: v })} autoFocus placeholder={tt('Muster GmbH')} />
         </Field>
-        <Field label="Domain" hint="Kontakte mit dieser E-Mail-Domain werden verknüpft" tour="company-domain">
+        <Field label={tt('Domain')} hint={tt('Kontakte mit dieser E-Mail-Domain werden verknüpft')} tour="company-domain">
           <Input value={c.domain} onChange={(v) => setC({ ...c, domain: v })} placeholder="muster.de" />
         </Field>
-        <Field label="Branche">
+        <Field label={tt('Branche')}>
           <Input value={c.industry} onChange={(v) => setC({ ...c, industry: v })} />
         </Field>
         {/* Einfach-Modus: the rest behind "Weitere Felder" (Profi: inline, same order as always) */}
         <MoreFields id="company-new" values={[c.size, c.lifecycle_stage === 'lead' ? '' : c.lifecycle_stage, c.owner_id, c.city, c.phone]} count={5}>
-        <Field label="Größe">
+        <Field label={tt('Größe')}>
           <Select value={c.size} onChange={(v) => setC({ ...c, size: v })} placeholder="–" options={SIZES} />
         </Field>
-        <Field label="Phase">
+        <Field label={tt('Phase')}>
           <Select value={c.lifecycle_stage} onChange={(v) => setC({ ...c, lifecycle_stage: v })} placeholder="–" options={Object.entries(LIFECYCLE)} />
         </Field>
-        <Field label="Zuständig">
+        <Field label={tt('Zuständig')}>
           <Select value={c.owner_id} onChange={(v) => setC({ ...c, owner_id: v })} placeholder="–" options={users.map((u) => [u.id, u.name] as [string, string])} />
         </Field>
-        <Field label="Ort">
+        <Field label={tt('Ort')}>
           <Input value={c.city} onChange={(v) => setC({ ...c, city: v })} />
         </Field>
-        <Field label="Telefon">
+        <Field label={tt('Telefon')}>
           <Input value={c.phone} onChange={(v) => setC({ ...c, phone: v })} />
         </Field>
         </MoreFields>
@@ -109,22 +111,23 @@ function NewCompany({ onClose, onSaved }: { onClose: () => void; onSaved: (c: an
 }
 
 function CompanySettings({ onClose }: { onClose: () => void }) {
+  const tt = useT('x_integrations');
   const s = useLoad(() => api.get<any>('/api/companies/settings'), []);
   const [busy, setBusy] = useState(false);
   const set = async (patch: any) => {
-    const r = await act(() => api.put('/api/companies/settings', patch), 'Gespeichert');
+    const r = await act(() => api.put('/api/companies/settings', patch), tt('Gespeichert'));
     if (r) s.setData(r);
   };
   return (
-    <Modal title="Firmen-Einstellungen" onClose={onClose}>
+    <Modal title={tt('Firmen-Einstellungen')} onClose={onClose}>
       {!s.data ? (
         <Spinner />
       ) : (
         <>
-          <Check tour="companies-auto" checked={s.data.auto_associate} onChange={(v) => set({ auto_associate: v })} label="Kontakte automatisch per E-Mail-Domain mit Firmen verknüpfen (nie bei Freemail wie gmail.com, web.de)" />
-          <Check checked={s.data.create_from_domain} onChange={(v) => set({ create_from_domain: v })} label="Für unbekannte Firmen-Domains automatisch eine Firma anlegen" />
-          <Check checked={s.data.create_from_text} onChange={(v) => set({ create_from_text: v })} label="Aus dem Feld „Firma“ am Kontakt eine Firma anlegen und als primäre verknüpfen" />
-          <p className="muted small">Das Feld „Firma“ am Kontakt zeigt immer den Namen der primären Firma – ändert man es, wird die passende Firma primär.</p>
+          <Check tour="companies-auto" checked={s.data.auto_associate} onChange={(v) => set({ auto_associate: v })} label={tt('Kontakte automatisch per E-Mail-Domain mit Firmen verknüpfen (nie bei Freemail wie gmail.com, web.de)')} />
+          <Check checked={s.data.create_from_domain} onChange={(v) => set({ create_from_domain: v })} label={tt('Für unbekannte Firmen-Domains automatisch eine Firma anlegen')} />
+          <Check checked={s.data.create_from_text} onChange={(v) => set({ create_from_text: v })} label={tt('Aus dem Feld „Firma“ am Kontakt eine Firma anlegen und als primäre verknüpfen')} />
+          <p className="muted small">{tt('Das Feld „Firma“ am Kontakt zeigt immer den Namen der primären Firma – ändert man es, wird die passende Firma primär.')}</p>
           <button
             className="btn secondary"
             disabled={busy}
@@ -132,10 +135,10 @@ function CompanySettings({ onClose }: { onClose: () => void }) {
               setBusy(true);
               const r = await act(() => api.post('/api/companies/sync'));
               setBusy(false);
-              if (r) toast(`${r.contacts} Kontakte geprüft · ${r.companies} Firmen`);
+              if (r) toast(tt('{contacts} Kontakte geprüft · {companies} Firmen', { contacts: r.contacts, companies: r.companies }));
             }}
           >
-            <Icon name="refresh" /> Alle Kontakte jetzt abgleichen
+            <Icon name="refresh" /> {tt('Alle Kontakte jetzt abgleichen')}
           </button>
         </>
       )}
@@ -152,6 +155,7 @@ function loadView(columns: string[]): ViewConfig & { id: string } {
 }
 
 export function Companies() {
+  const tt = useT('x_integrations');
   const schema = useCompanySchema();
   const users = useUsers();
   // Einfach-Modus starts with four columns; "Spalten" adds the rest (web/src/areas/easy-core.ts).
@@ -201,18 +205,18 @@ export function Companies() {
 
   return (
     <>
-      <PageHead title="Firmen" sub={list.data ? `${list.data.total} Firmen` : undefined}>
-        <button className="btn secondary" data-tour="companies-settings" onClick={() => setModal('settings')} title="Einstellungen">
+      <PageHead title={tt('Firmen')} sub={list.data ? tt('{total} Firmen', { total: list.data.total }) : undefined}>
+        <button className="btn secondary" data-tour="companies-settings" onClick={() => setModal('settings')} title={tt('Einstellungen')}>
           <Icon name="settings" />
         </button>
         <button className="btn secondary" onClick={() => setModal('import')}>
-          Import
+          {tt('Import')}
         </button>
         <a className="btn secondary" href={`/api/companies/export.csv?${qs}&locationId=${encodeURIComponent(localStorage.getItem('pghl.location') ?? '')}`}>
-          Export
+          {tt('Export')}
         </a>
         <button className="btn" data-tour="companies-new" onClick={() => setModal('new')}>
-          + Firma
+          {tt('+ Firma')}
         </button>
       </PageHead>
       <ViewsBar
@@ -231,13 +235,13 @@ export function Companies() {
       />
       <div className="row list-tools" data-tour="companies-tools">
         <div className="grow">
-          <Input value={q} onChange={(v) => (setQ(v), setPage(0))} placeholder="Name, Domain, Ort, Branche…" />
+          <Input value={q} onChange={(v) => (setQ(v), setPage(0))} placeholder={tt('Name, Domain, Ort, Branche…')} />
         </div>
         <button className={`btn secondary${active.length ? ' has-count' : ''}`} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters}>
-          <Icon name="filter" /> Filter{active.length ? ` (${active.length})` : ''}
+          <Icon name="filter" /> {tt('Filter')}{active.length ? ` (${active.length})` : ''}
         </button>
         <button className="btn secondary" onClick={() => setModal('columns')}>
-          <Icon name="columns" /> Spalten
+          <Icon name="columns" /> {tt('Spalten')}
         </button>
       </div>
       {showFilters && (
@@ -250,16 +254,16 @@ export function Companies() {
       ) : list.data.companies.length ? (
         <RecordTable fields={fields} columns={columns} rows={list.data.companies} cell={cell} sort={sort} onSort={(s) => (setSort(s), setPage(0))} onRow={(r) => navigate(`companies/${r.id}`)} />
       ) : (
-        <Empty action={<button className="btn" onClick={() => setModal('new')}>Erste Firma anlegen</button>}>{debounced || active.length ? 'Keine Firma passt zu Suche und Filter.' : 'Noch keine Firmen. Kontakte mit Firmenname oder Firmen-E-Mail werden automatisch zugeordnet.'}</Empty>
+        <Empty action={<button className="btn" onClick={() => setModal('new')}>{tt('Erste Firma anlegen')}</button>}>{debounced || active.length ? tt('Keine Firma passt zu Suche und Filter.') : tt('Noch keine Firmen. Kontakte mit Firmenname oder Firmen-E-Mail werden automatisch zugeordnet.')}</Empty>
       )}
       {list.data && <Pager total={list.data.total} page={page} size={50} onPage={setPage} />}
       {modal === 'new' && <NewCompany onClose={() => setModal('')} onSaved={(c) => navigate(`companies/${c.id}`)} />}
       {modal === 'import' && (
         <CsvImportModal
-          title="Firmen importieren (CSV)"
+          title={tt('Firmen importieren (CSV)')}
           url="/api/companies/import"
-          hint="Kopfzeile mit z. B. Name, Domain, Branche, Größe, Telefon, Webseite, Ort – eigene Eigenschaften über ihren Namen. Gleiche Domain (sonst gleicher Name) wird aktualisiert statt doppelt angelegt."
-          placeholder="Name;Domain;Branche"
+          hint={tt('Kopfzeile mit z. B. Name, Domain, Branche, Größe, Telefon, Webseite, Ort – eigene Eigenschaften über ihren Namen. Gleiche Domain (sonst gleicher Name) wird aktualisiert statt doppelt angelegt.')}
+          placeholder={tt('Name;Domain;Branche')}
           onClose={() => setModal('')}
           onDone={list.reload}
         />
@@ -271,6 +275,7 @@ export function Companies() {
 }
 
 function MergeModal({ company, onClose, onDone }: { company: any; onClose: () => void; onDone: () => void }) {
+  const tt = useT('x_integrations');
   const [q, setQ] = useState(company.name.split(/\s+/)[0] ?? '');
   const [found, setFound] = useState<any[]>([]);
   useEffect(() => {
@@ -278,31 +283,32 @@ function MergeModal({ company, onClose, onDone }: { company: any; onClose: () =>
     return () => clearTimeout(t);
   }, [q]);
   return (
-    <Modal title="Firmen zusammenführen" onClose={onClose}>
+    <Modal title={tt('Firmen zusammenführen')} onClose={onClose}>
       <p className="muted" style={{ marginTop: 0 }}>
-        Die gewählte Firma wird in <strong>{company.name}</strong> übernommen: Kontakte, Deals, Notizen und leere Felder wandern hierher, danach wird sie gelöscht.
+        {tt('Die gewählte Firma wird in')} <strong>{company.name}</strong> {tt('übernommen: Kontakte, Deals, Notizen und leere Felder wandern hierher, danach wird sie gelöscht.')}
       </p>
-      <Input value={q} onChange={setQ} placeholder="Firma suchen…" autoFocus />
+      <Input value={q} onChange={setQ} placeholder={tt('Firma suchen…')} autoFocus />
       <div className="assoc-found" style={{ marginTop: 8 }}>
         {found.map((c) => (
           <button
             type="button"
             key={c.id}
             onClick={async () => {
-              if (!confirmAsk(`„${c.name}“ in „${company.name}“ zusammenführen?`)) return;
-              if (await act(() => api.post(`/api/companies/${company.id}/merge`, { from_id: c.id }), 'Zusammengeführt')) onDone();
+              if (!confirmAsk(tt('„{name}“ in „{name2}“ zusammenführen?', { name: c.name, name2: company.name }))) return;
+              if (await act(() => api.post(`/api/companies/${company.id}/merge`, { from_id: c.id }), tt('Zusammengeführt'))) onDone();
             }}
           >
             <strong>{c.name}</strong> <span className="muted small">{[c.domain, c.city, `${c.contacts_count} Kontakte`].filter(Boolean).join(' · ')}</span>
           </button>
         ))}
-        {!found.length && <span className="muted small">Keine andere Firma gefunden.</span>}
+        {!found.length && <span className="muted small">{tt('Keine andere Firma gefunden.')}</span>}
       </div>
     </Modal>
   );
 }
 
 export function CompanyDetail({ id }: { id: string }) {
+  const tt = useT('x_integrations');
   const c = useLoad(() => api.get<any>(`/api/companies/${id}`), [id]);
   const schema = useCompanySchema();
   const users = useUsers();
@@ -320,7 +326,7 @@ export function CompanyDetail({ id }: { id: string }) {
       if (k.startsWith('custom.')) body.custom[k.slice(7)] = val;
       else body[k] = val;
     }
-    const r = await act(() => api.patch(`/api/companies/${id}`, body), 'Gespeichert');
+    const r = await act(() => api.patch(`/api/companies/${id}`, body), tt('Gespeichert'));
     if (r) c.reload();
     return r;
   };
@@ -337,40 +343,40 @@ export function CompanyDetail({ id }: { id: string }) {
               </a>
             )}
             {co.domain ? ' · ' : ''}
-            {co.lifecycle_stage && <Badge tone={stageTone(co.lifecycle_stage) as any}>{LIFECYCLE[co.lifecycle_stage]}</Badge>} Angelegt {dt(co.created_at)}
-            {co.source ? ` · Quelle: ${co.source}` : ''}
+            {co.lifecycle_stage && <Badge tone={stageTone(co.lifecycle_stage) as any}>{LIFECYCLE[co.lifecycle_stage]}</Badge>} {tt('Angelegt {dt}', { dt: dt(co.created_at) })}
+            {co.source ? tt(' · Quelle: {source}', { source: co.source }) : ''}
           </>
         }
       >
         <Link to="companies" className="btn secondary">
-          ← Firmen
+          {tt('← Firmen')}
         </Link>
         <CanvasPin kind="company" id={id} name={co.name} />
         <button className="btn secondary" data-tour="company-merge" onClick={() => setMerge(true)}>
-          Zusammenführen
+          {tt('Zusammenführen')}
         </button>
-        <button className="btn danger" onClick={async () => confirmAsk('Firma löschen? Kontakte und Deals bleiben erhalten.') && (await act(() => api.del(`/api/companies/${id}`), 'Gelöscht')) && navigate('companies')}>
-          Löschen
+        <button className="btn danger" onClick={async () => confirmAsk(tt('Firma löschen? Kontakte und Deals bleiben erhalten.')) && (await act(() => api.del(`/api/companies/${id}`), tt('Gelöscht'))) && navigate('companies')}>
+          {tt('Löschen')}
         </button>
       </PageHead>
       <SortableGrid id="company-stats" className="stats rec-stats" data-tour="company-stats">
         <div className="stat card">
-          <div className="muted">Kontakte</div>
+          <div className="muted">{tt('Kontakte')}</div>
           <div className="stat-value">{co.contacts.length}</div>
         </div>
         <div className="stat card">
-          <div className="muted">Deal-Wert</div>
+          <div className="muted">{tt('Deal-Wert')}</div>
           <div className="stat-value">{euro(co.deals_value)}</div>
-          <div className="muted small">{co.deals.length} Deals, ohne verlorene</div>
+          <div className="muted small">{tt('{length} Deals, ohne verlorene', { length: co.deals.length })}</div>
         </div>
         <div className="stat card">
-          <div className="muted">Offene Aufgaben</div>
+          <div className="muted">{tt('Offene Aufgaben')}</div>
           <div className="stat-value">{openTasks + co.contact_tasks.length}</div>
         </div>
       </SortableGrid>
       <div className="row rec-layout">
         <div className="rec-left">
-          <PropertyCard id="company-props" title="Eigenschaften" fields={fields} groups={schema.groups} values={values} edit={edit} setEdit={setEdit} users={users} onSave={save} />
+          <PropertyCard id="company-props" title={tt('Eigenschaften')} fields={fields} groups={schema.groups} values={values} edit={edit} setEdit={setEdit} users={users} onSave={save} />
         </div>
         <div className="rec-main">
           <div className="card" style={{ padding: 0 }} data-tour="company-activity">
@@ -389,7 +395,7 @@ export function CompanyDetail({ id }: { id: string }) {
               {tab === 'activity' && (
                 <>
                   <p className="muted small" style={{ marginTop: 0 }}>
-                    Änderungen der Firma und die Aktivität aller verknüpften Kontakte.
+                    {tt('Änderungen der Firma und die Aktivität aller verknüpften Kontakte.')}
                   </p>
                   <Timeline items={co.timeline} />
                 </>
@@ -399,12 +405,12 @@ export function CompanyDetail({ id }: { id: string }) {
                 <>
                   <div className="row">
                     <div className="grow">
-                      <Input value={task.title} onChange={(v) => setTask({ ...task, title: v })} placeholder="Neue Aufgabe zur Firma" />
+                      <Input value={task.title} onChange={(v) => setTask({ ...task, title: v })} placeholder={tt('Neue Aufgabe zur Firma')} />
                     </div>
                     <div style={{ width: 170 }}>
-                      <Input type="date" value={task.due_at} onChange={(v) => setTask({ ...task, due_at: v })} aria-label="Fällig am" />
+                      <Input type="date" value={task.due_at} onChange={(v) => setTask({ ...task, due_at: v })} aria-label={tt('Fällig am')} />
                     </div>
-                    <button className="btn" disabled={!task.title} aria-label="Aufgabe anlegen" onClick={() => act(() => api.post(`/api/companies/${id}/tasks`, { ...task, due_at: task.due_at ? new Date(task.due_at).toISOString() : null })).then(() => (setTask({ title: '', due_at: '' }), c.reload()))}>
+                    <button className="btn" disabled={!task.title} aria-label={tt('Aufgabe anlegen')} onClick={() => act(() => api.post(`/api/companies/${id}/tasks`, { ...task, due_at: task.due_at ? new Date(task.due_at).toISOString() : null })).then(() => (setTask({ title: '', due_at: '' }), c.reload()))}>
                       +
                     </button>
                   </div>
@@ -414,7 +420,7 @@ export function CompanyDetail({ id }: { id: string }) {
                   {co.contact_tasks.length > 0 && (
                     <>
                       <div className="prop-group" style={{ marginTop: 14 }}>
-                        Offene Aufgaben der Kontakte
+                        {tt('Offene Aufgaben der Kontakte')}
                       </div>
                       {co.contact_tasks.map((t: any) => (
                         <div key={t.id} className="small" style={{ padding: '4px 0' }}>
@@ -423,14 +429,14 @@ export function CompanyDetail({ id }: { id: string }) {
                       ))}
                     </>
                   )}
-                  {!co.tasks.length && !co.contact_tasks.length && <p className="muted">Keine Aufgaben.</p>}
+                  {!co.tasks.length && !co.contact_tasks.length && <p className="muted">{tt('Keine Aufgaben.')}</p>}
                 </>
               )}
             </div>
           </div>
         </div>
         <div className="rec-side">
-          <AssociationsPanel type="company" id={id} title="Kontakte, Deals & mehr" exclude={['task']} onChange={c.reload} />
+          <AssociationsPanel type="company" id={id} title={tt('Kontakte, Deals & mehr')} exclude={['task']} onChange={c.reload} />
         </div>
       </div>
       {merge && <MergeModal company={co} onClose={() => setMerge(false)} onDone={() => (setMerge(false), c.reload())} />}

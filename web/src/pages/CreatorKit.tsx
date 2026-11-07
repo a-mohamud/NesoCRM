@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { currentLocation } from '../api';
 import { Badge, toastError } from '../ui';
 import './creator.css';
+import { tr } from '../i18n';
 
 /**
  * Small shared parts of the Creator & Commerce pages (Ratenzahlung, Mahnwesen, Quiz & Zertifikate, Kommentar-zu-DM): euro input,
@@ -126,9 +127,10 @@ export const ACCESS_LABEL: Record<string, string> = { active: 'Zugang aktiv', pa
 
 /** Opens a file from an admin route (PDF, hand-in) in a new tab – or saves it under `saveAs`: the request carries the session, a plain link would not. */
 export async function openAuthed(path: string, saveAs?: string) {
+  const tt = tr('x_community');
   try {
     const r = await fetch(path, { headers: { 'x-pghl': '1', 'x-location-id': currentLocation() } });
-    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as any)?.error ?? `Fehler ${r.status}`);
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as any)?.error ?? tt('Fehler {status}', { status: r.status }));
     const url = URL.createObjectURL(await r.blob());
     if (saveAs) {
       const a = document.createElement('a');

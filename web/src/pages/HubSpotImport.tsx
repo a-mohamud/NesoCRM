@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, dt } from '../api';
 import { Badge, Check, Field, Input, Spinner, act, confirmAsk, navigate, useLoad } from '../ui';
+import { useT } from '../i18n';
 
 /** Einstellungen → Import → HubSpot: token, dry run with counts, resumable import with progress. */
 
@@ -34,6 +35,7 @@ const ORDER = ['owners', 'properties', 'companies', 'contacts', 'lists', 'pipeli
 const JOB_STATUS: Record<string, [string, 'blue' | 'green' | 'red' | 'yellow']> = { running: ['läuft', 'blue'], done: ['fertig', 'green'], failed: ['abgebrochen', 'red'], interrupted: ['pausiert', 'yellow'] };
 
 export function HubSpotImport() {
+  const tt = useT('x_integrations');
   const st = useLoad(() => api.get<any>('/api/import/hubspot'), []);
   const [token, setToken] = useState('');
   const [parts, setParts] = useState<string[] | null>(null);
@@ -66,76 +68,75 @@ export function HubSpotImport() {
   const totals: Record<string, number> = Object.fromEntries((dry?.result ?? []).map((r: any) => [r.object, r.hubspot ?? 0]));
   return (
     <div className="card hs-import" data-tour="hs-import">
-      <h2>Von HubSpot umziehen</h2>
+      <h2>{tt('Von HubSpot umziehen')}</h2>
       <p className="muted">
-        Holt Owner (als Nutzer per E-Mail), Kontakte mit allen eigenen Eigenschaften, Firmen, Deals mit Pipelines, Notizen, Aufgaben, Anrufe/E-Mails/Meetings als Verlauf, Tickets und Listen (als Tags) in diesen Sub-Account. Mehrfach ausführbar – aktualisiert statt zu verdoppeln; ein
-        abgebrochener Import macht an derselben Stelle weiter.
+        {tt('Holt Owner (als Nutzer per E-Mail), Kontakte mit allen eigenen Eigenschaften, Firmen, Deals mit Pipelines, Notizen, Aufgaben, Anrufe/E-Mails/Meetings als Verlauf, Tickets und Listen (als Tags) in diesen Sub-Account. Mehrfach ausführbar – aktualisiert statt zu verdoppeln; ein abgebrochener Import macht an derselben Stelle weiter.')}
       </p>
       <ol className="muted small">
         <li>
-          In HubSpot: <strong>Einstellungen → Integrationen → Private Apps → „Private App erstellen“</strong>.
+          {tt('In HubSpot:')} <strong>{tt('Einstellungen → Integrationen → Private Apps → „Private App erstellen“')}</strong>.
         </li>
         <li>
-          Scopes (lesen): <code>crm.objects.contacts.read</code>, <code>crm.objects.companies.read</code>, <code>crm.objects.deals.read</code>, <code>crm.objects.owners.read</code>, <code>crm.schemas.contacts.read</code>, <code>crm.lists.read</code>, <code>tickets</code>,{' '}
+          {tt('Scopes (lesen):')} <code>crm.objects.contacts.read</code>, <code>crm.objects.companies.read</code>, <code>crm.objects.deals.read</code>, <code>crm.objects.owners.read</code>, <code>crm.schemas.contacts.read</code>, <code>crm.lists.read</code>, <code>tickets</code>,{' '}
           <code>sales-email-read</code>.
         </li>
-        <li>Token (pat-…) hier eintragen – er wird verschlüsselt gespeichert und nie wieder angezeigt.</li>
+        <li>{tt('Token (pat-…) hier eintragen – er wird verschlüsselt gespeichert und nie wieder angezeigt.')}</li>
       </ol>
 
       {s.connection.connected ? (
         <div className="row hs-conn">
           <Badge tone="green">verbunden</Badge>
           <span>
-            HubSpot-Portal <strong>{s.connection.portal_id}</strong> · Token {s.connection.token_hint}
+            {tt('HubSpot-Portal')} <strong>{s.connection.portal_id}</strong> {tt('· Token {token_hint}', { token_hint: s.connection.token_hint })}
             {s.connection.time_zone ? ` · ${s.connection.time_zone}` : ''}
           </span>
-          <button className="btn small ghost" disabled={job?.status === 'running'} onClick={() => confirmAsk('HubSpot-Token entfernen? Importierte Daten bleiben.') && run('disconnect', () => api.del('/api/import/hubspot/connection'), 'Getrennt').then(st.reload)}>
-            Trennen
+          <button className="btn small ghost" disabled={job?.status === 'running'} onClick={() => confirmAsk(tt('HubSpot-Token entfernen? Importierte Daten bleiben.')) && run('disconnect', () => api.del('/api/import/hubspot/connection'), 'Getrennt').then(st.reload)}>
+            {tt('Trennen')}
           </button>
         </div>
       ) : (
         <div className="row" style={{ alignItems: 'flex-end' }}>
           <div className="grow">
-            <Field label="HubSpot Private-App-Token" tour="hs-token">
+            <Field label={tt('HubSpot Private-App-Token')} tour="hs-token">
               <Input type="password" value={token} onChange={setToken} placeholder="pat-eu1-…" autoComplete="off" />
             </Field>
           </div>
           <button className="btn" style={{ marginBottom: 12 }} disabled={!token || !!busy} onClick={() => run('connect', () => api.put('/api/import/hubspot/connection', { token }), 'Verbunden').then((r) => r && (setToken(''), st.reload()))}>
-            Verbinden
+            {tt('Verbinden')}
           </button>
         </div>
       )}
 
-      <h3 className="integ-h">Was soll mit?</h3>
+      <h3 className="integ-h">{tt('Was soll mit?')}</h3>
       <div className="hs-parts" data-tour="hs-parts">
         {s.parts.map((p: any) => (
           <Check key={p.key} checked={parts.includes(p.key)} onChange={(on) => setParts(on ? [...parts, p.key] : parts.filter((x) => x !== p.key))} label={p.label} />
         ))}
       </div>
       <p className="muted small">
-        {s.modules.companies ? 'Firmen landen im Firmen-Modul und werden mit ihren Kontakten verknüpft.' : 'Kein Firmen-Modul installiert: der Firmenname kommt ins Kontaktfeld „Firma“.'}{' '}
-        {s.modules.tickets ? 'Tickets gehen in den Helpdesk.' : 'Tickets werden übersprungen, solange kein Helpdesk-Modul installiert ist.'} Deals, Notizen und Verlauf hängen an importierten Kontakten.
+        {s.modules.companies ? tt('Firmen landen im Firmen-Modul und werden mit ihren Kontakten verknüpft.') : tt('Kein Firmen-Modul installiert: der Firmenname kommt ins Kontaktfeld „Firma“.')}{' '}
+        {s.modules.tickets ? tt('Tickets gehen in den Helpdesk.') : tt('Tickets werden übersprungen, solange kein Helpdesk-Modul installiert ist.')} {tt('Deals, Notizen und Verlauf hängen an importierten Kontakten.')}
       </p>
       <div className="row" style={{ gap: 8 }} data-tour="hs-run">
         <button className="btn secondary" disabled={!s.connection.connected || !parts.length || !!busy || job?.status === 'running'} onClick={() => run('dry', () => api.post('/api/import/hubspot/dry-run', { parts })).then((r) => r && st.setData({ ...s, dry_run: r }))}>
-          {busy === 'dry' ? 'Zählt …' : 'Probelauf'}
+          {busy === 'dry' ? tt('Zählt …') : tt('Probelauf')}
         </button>
         <button className="btn" disabled={!s.connection.connected || !parts.length || !!busy || job?.status === 'running'} onClick={() => run('start', () => api.post('/api/import/hubspot/start', { parts }), 'Import gestartet').then((r) => r && setJob(r))}>
-          Import starten
+          {tt('Import starten')}
         </button>
       </div>
 
       {dry && (
         <div className="hs-dry">
-          <div className="muted small">Probelauf vom {dt(dry.created_at)}</div>
+          <div className="muted small">{tt('Probelauf vom {dt}', { dt: dt(dry.created_at) })}</div>
           <div className="table-wrap">
             <table className="t">
               <thead>
                 <tr>
-                  <th>Bereich</th>
-                  <th className="num">In HubSpot</th>
-                  <th className="num">Schon importiert</th>
-                  <th className="num">Neu</th>
+                  <th>{tt('Bereich')}</th>
+                  <th className="num">{tt('In HubSpot')}</th>
+                  <th className="num">{tt('Schon importiert')}</th>
+                  <th className="num">{tt('Neu')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -162,22 +163,22 @@ export function HubSpotImport() {
         <div className="hs-job" data-tour="hs-job">
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>
-              Import <Badge tone={JOB_STATUS[job.status]?.[1] ?? 'blue'}>{JOB_STATUS[job.status]?.[0] ?? job.status}</Badge>
+              {tt('Import')} <Badge tone={JOB_STATUS[job.status]?.[1] ?? 'blue'}>{JOB_STATUS[job.status]?.[0] ?? job.status}</Badge>
             </strong>
             <div className="row" style={{ gap: 6 }}>
               {job.status === 'running' && (
-                <button className="btn small secondary" onClick={() => act(() => api.post(`/api/import/hubspot/jobs/${job.id}/pause`, {}), 'Wird nach dieser Seite pausiert')}>
-                  Pausieren
+                <button className="btn small secondary" onClick={() => act(() => api.post(`/api/import/hubspot/jobs/${job.id}/pause`, {}), tt('Wird nach dieser Seite pausiert'))}>
+                  {tt('Pausieren')}
                 </button>
               )}
               {['failed', 'interrupted'].includes(job.status) && (
                 <button className="btn small" onClick={() => run('resume', () => api.post(`/api/import/hubspot/jobs/${job.id}/resume`, {})).then((r) => r && setJob(r))}>
-                  Fortsetzen
+                  {tt('Fortsetzen')}
                 </button>
               )}
               {job.status === 'done' && (
                 <button className="btn small secondary" onClick={() => navigate('contacts')}>
-                  Zu den Kontakten
+                  {tt('Zu den Kontakten')}
                 </button>
               )}
             </div>
@@ -204,11 +205,11 @@ export function HubSpotImport() {
               {job.progress.notes.slice(0, 8).map((n: string) => (
                 <li key={n}>{n}</li>
               ))}
-              {job.progress.notes.length > 8 && <li>… und {job.progress.notes.length - 8} weitere Hinweise</li>}
+              {job.progress.notes.length > 8 && <li>{tt('… und {v} weitere Hinweise', { v: job.progress.notes.length - 8 })}</li>}
             </ul>
           )}
           <details>
-            <summary className="small">Protokoll</summary>
+            <summary className="small">{tt('Protokoll')}</summary>
             <pre className="hook-pre">{(job.log ?? []).join('\n')}</pre>
           </details>
         </div>

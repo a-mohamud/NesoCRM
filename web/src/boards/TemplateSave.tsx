@@ -3,6 +3,7 @@ import { api } from '../api';
 import { Icon } from '../icons';
 import { Check, Field, Input, Modal, Select, Spinner, Textarea, act, useLoad } from '../ui';
 import type { BoardFull, TemplateItem, TemplateReview } from './types';
+import { useT } from '../i18n';
 
 const CATEGORIES: [string, string][] = [['vertrieb', 'Vertrieb'], ['service', 'Service'], ['projekte', 'Projekte'], ['marketing', 'Marketing'], ['agentur', 'Agentur'], ['sonstiges', 'Sonstiges']];
 
@@ -21,6 +22,7 @@ export function ReviewList({ review }: { review: TemplateReview }) {
 
 /** Saves the board as a template – only its configuration, never data – for this sub-account or the Marktplatz (admins). */
 export function TemplateSave({ board, admin, onClose, onDone }: { board: BoardFull; admin: boolean; onClose: () => void; onDone: (t: TemplateItem) => void }) {
+  const tt = useT('x_misc');
   const { data, error, loading } = useLoad(() => api.get<{ review: TemplateReview; stripped: string[]; widgets: number }>(`/api/board-templates/check?board_id=${board.id}`), [board.id]);
   const [name, setName] = useState(board.name);
   const [description, setDescription] = useState('');
@@ -33,63 +35,63 @@ export function TemplateSave({ board, admin, onClose, onDone }: { board: BoardFu
   const blocked = review?.verdict === 'fail' || (market && (!approve || (review?.verdict === 'warn' && !read)));
   return (
     <Modal
-      title="Als Vorlage speichern"
+      title={tt('Als Vorlage speichern')}
       onClose={onClose}
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>
-            Abbrechen
+            {tt('Abbrechen')}
           </button>
           <button
             className="btn"
             disabled={!review || blocked || !name.trim()}
             onClick={async () => {
-              const r = await act(() => api.post<TemplateItem>('/api/board-templates', { board_id: board.id, name, description, category, scope, ...(market ? { approve: true, accept_warnings: read } : {}) }), market ? 'Im Marktplatz veröffentlicht' : 'Vorlage gespeichert');
+              const r = await act(() => api.post<TemplateItem>('/api/board-templates', { board_id: board.id, name, description, category, scope, ...(market ? { approve: true, accept_warnings: read } : {}) }), market ? tt('Im Marktplatz veröffentlicht') : tt('Vorlage gespeichert'));
               if (r) {
                 onDone(r);
                 onClose();
               }
             }}
           >
-            {market ? 'Veröffentlichen' : 'Speichern'}
+            {market ? tt('Veröffentlichen') : tt('Speichern')}
           </button>
         </>
       }
     >
-      <p className="muted small">Eine Vorlage enthält nur die Anordnung und die Einstellungen der Widgets – keine Kontakte, Zahlen oder Zugangsdaten. Wer sie benutzt, sieht die Daten des eigenen Sub-Accounts.</p>
+      <p className="muted small">{tt('Eine Vorlage enthält nur die Anordnung und die Einstellungen der Widgets – keine Kontakte, Zahlen oder Zugangsdaten. Wer sie benutzt, sieht die Daten des eigenen Sub-Accounts.')}</p>
       <Field label="Name">
         <Input value={name} onChange={setName} maxLength={80} />
       </Field>
-      <Field label="Beschreibung">
-        <Textarea value={description} onChange={setDescription} maxLength={600} rows={3} placeholder="Wofür ist das Board gut?" />
+      <Field label={tt('Beschreibung')}>
+        <Textarea value={description} onChange={setDescription} maxLength={600} rows={3} placeholder={tt('Wofür ist das Board gut?')} />
       </Field>
-      <Field label="Kategorie">
+      <Field label={tt('Kategorie')}>
         <Select value={category} onChange={setCategory} options={CATEGORIES} />
       </Field>
       <div className="field">
-        <span>Wer darf sie benutzen?</span>
-        <div className="chips" role="radiogroup" aria-label="Wer darf sie benutzen?">
+        <span>{tt('Wer darf sie benutzen?')}</span>
+        <div className="chips" role="radiogroup" aria-label={tt('Wer darf sie benutzen?')}>
           <button type="button" role="radio" aria-checked={!market} className={`chip${!market ? ' on' : ''}`} onClick={() => setScope('location')}>
-            Nur dieser Sub-Account
+            {tt('Nur dieser Sub-Account')}
           </button>
-          <button type="button" role="radio" aria-checked={market} className={`chip${market ? ' on' : ''}`} onClick={() => setScope('marketplace')} disabled={!admin} title={admin ? '' : 'Das dürfen nur Admins'}>
-            Im Marktplatz veröffentlichen
+          <button type="button" role="radio" aria-checked={market} className={`chip${market ? ' on' : ''}`} onClick={() => setScope('marketplace')} disabled={!admin} title={admin ? '' : tt('Das dürfen nur Admins')}>
+            {tt('Im Marktplatz veröffentlichen')}
           </button>
         </div>
       </div>
-      <h4 className="bd-h4">Prüfung</h4>
+      <h4 className="bd-h4">{tt('Prüfung')}</h4>
       {loading && <Spinner />}
       {error && <p className="bd-error">{error}</p>}
       {review && <ReviewList review={review} />}
       {data && data.stripped.length > 0 && (
         <p className="muted small">
-          Nicht mitgenommen (gehören zu diesem Sub-Account, wer die Vorlage nutzt wählt sie neu): {data.stripped.join(', ')}.
+          {tt('Nicht mitgenommen (gehören zu diesem Sub-Account, wer die Vorlage nutzt wählt sie neu):')} {data.stripped.join(', ')}.
         </p>
       )}
       {market && review && (
         <div className="bd-consent">
-          {review.verdict === 'warn' && <Check checked={read} onChange={setRead} label="Ich habe die Hinweise gelesen." />}
-          <Check checked={approve} onChange={setApprove} label="Ich möchte diese Vorlage im Marktplatz veröffentlichen. Alle Sub-Accounts dieser Installation können sie dann installieren." />
+          {review.verdict === 'warn' && <Check checked={read} onChange={setRead} label={tt('Ich habe die Hinweise gelesen.')} />}
+          <Check checked={approve} onChange={setApprove} label={tt('Ich möchte diese Vorlage im Marktplatz veröffentlichen. Alle Sub-Accounts dieser Installation können sie dann installieren.')} />
         </div>
       )}
     </Modal>

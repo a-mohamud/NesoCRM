@@ -1,4 +1,5 @@
 import type { Mat4 } from './math';
+import { tr } from '../../i18n';
 
 /**
  * The in-house WebGL2 renderer: textured quads (panels, optionally bent around the viewer) and lines (the pointer rays, the floor
@@ -99,18 +100,20 @@ const SEGMENTS = 32;
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
+  const tt = tr('x_misc');
   const s = gl.createShader(type)!;
   gl.shaderSource(s, src);
   gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(`Shader: ${gl.getShaderInfoLog(s)}`);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(tt('Shader: {getShaderInfoLog}', { getShaderInfoLog: (gl.getShaderInfoLog(s)) ?? '' }));
   return s;
 }
 function program(gl: WebGL2RenderingContext, vs: string, fs: string): WebGLProgram {
+  const tt = tr('x_misc');
   const p = gl.createProgram()!;
   gl.attachShader(p, compile(gl, gl.VERTEX_SHADER, vs));
   gl.attachShader(p, compile(gl, gl.FRAGMENT_SHADER, fs));
   gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(`Programm: ${gl.getProgramInfoLog(p)}`);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(tt('Programm: {getProgramInfoLog}', { getProgramInfoLog: (gl.getProgramInfoLog(p)) ?? '' }));
   return p;
 }
 
