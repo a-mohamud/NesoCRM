@@ -85,7 +85,7 @@ function WishCard({ w, onVote, compact }: { w: Wish; onVote: (votes: number, min
               {w.origin ? ` · ${w.origin}` : ''}
             </span>
           )}
-          {w.hidden && <Badge tone="red">ausgeblendet</Badge>}
+          {w.hidden && <Badge tone="red">{tt('ausgeblendet')}</Badge>}
           {w.version && <span className="muted small">{tt('Version {version}', { version: w.version })}</span>}
         </span>
         {w.reason && <span className="muted small wish-reason">{tt('Begründung: {reason}', { reason: w.reason })}</span>}
@@ -120,14 +120,14 @@ function WishList() {
       <div className="wish-filters" data-tour="wish-filters">
         <Input value={q} onChange={setQ} placeholder={tt('Wünsche durchsuchen…')} aria-label={tt('Suchen')} />
         <Select value={area} onChange={setArea} placeholder={tt('Alle Bereiche')} options={me?.areas ?? []} />
-        <Select value={status} onChange={setStatus} placeholder={tt('Jeder Status')} options={me?.board ?? []} />
+        <Select value={status} onChange={setStatus} placeholder={tt('Jeder Status')} options={(me?.board ?? []).map(([k, l]) => [k, tt(l)] as [string, string])} />
         <Select
           value={sort}
           onChange={setSort}
           options={[
-            ['votes', 'Meiste Stimmen'],
-            ['new', 'Neueste'],
-            ['status', 'Nach Status'],
+            ['votes', tt('Meiste Stimmen')],
+            ['new', tt('Neueste')],
+            ['status', tt('Nach Status')],
           ]}
         />
         <Check checked={mine} onChange={setMine} label={tt('Nur meine & abgestimmte')} />
@@ -171,7 +171,7 @@ function Roadmap() {
           return (
             <div key={k} className={`roadmap-col c-${k}`}>
               <h3>
-                {l} <span className="muted">{items.length}</span>
+                {tt(l)} <span className="muted">{items.length}</span>
               </h3>
               {items.length ? items.map((w) => <WishCard key={w.id} w={w} onVote={vote(w.id)} compact />) : <p className="muted small">{tt('Noch nichts.')}</p>}
             </div>
@@ -240,7 +240,7 @@ function Changelog() {
                   {lines.map((e) => (
                     <li key={e.id}>{e.title}</li>
                   ))}
-                  {silent > 0 && <li className="muted">{lines.length ? tt('und {silent} weitere Fehlerbehebung{v}', { silent: silent, v: silent > 1 ? 'en' : '' }) : tt('{silent} Fehlerbehebung{v}', { silent: silent, v: silent > 1 ? 'en' : '' })}</li>}
+                  {silent > 0 && <li className="muted">{lines.length ? tt.plural(silent, { one: 'und {n} weitere Fehlerbehebung', other: 'und {n} weitere Fehlerbehebungen' }) : tt.plural(silent, { one: '{n} Fehlerbehebung', other: '{n} Fehlerbehebungen' })}</li>}
                 </ul>
               </>
             )}
@@ -273,7 +273,7 @@ export function WishDetail({ id }: { id: string }) {
           <div className="wish-meta">
             <StatusPill s={w.status} /> <Badge>{w.area}</Badge>
             <span className="muted small">
-              eingereicht {dt(w.created_at)}
+              {tt('eingereicht {dt}', { dt: dt(w.created_at) })}
               {w.mine ? tt(' · dein Wunsch') : w.author ? ` · ${w.author}${w.origin ? ` (${w.origin})` : ''}` : ''}
             </span>
             {data.wish.ticket && (
@@ -354,9 +354,9 @@ export function WishesPage() {
       </PageHead>
       <Tabs
         tabs={[
-          ['list', 'Alle Wünsche'],
-          ['roadmap', 'Roadmap'],
-          ['changelog', me?.changelog_new ? `Was ist neu (${me.changelog_new})` : 'Was ist neu'],
+          ['list', tt('Alle Wünsche')],
+          ['roadmap', tt('Roadmap')],
+          ['changelog', me?.changelog_new ? tt('Was ist neu ({n})', { n: me.changelog_new }) : tt('Was ist neu')],
         ]}
         value={sub}
         onChange={(t) => navigate(t === 'list' ? 'wishes' : `wishes/${t}`)}

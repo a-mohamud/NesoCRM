@@ -58,8 +58,8 @@ function OpenAiKeyField({ info, keyValue, setKey, onClear }: { info: any; keyVal
         </div>
       ) : (
         <>
-          <Input type="password" autoComplete="off" value={keyValue} onChange={setKey} placeholder={info.key_source && info.key_source !== 'account' ? tt('leer = {v}', { v: source[info.key_source] }) : 'sk-…'} />
-          {!info.key_set && info.key_source && info.key_source !== 'account' && <small className="muted">{tt('Ohne eigenen Schlüssel wird der {v} genutzt.', { v: source[info.key_source] })}</small>}
+          <Input type="password" autoComplete="off" value={keyValue} onChange={setKey} placeholder={info.key_source && info.key_source !== 'account' ? tt('leer = {v}', { v: tt(source[info.key_source]) }) : 'sk-…'} />
+          {!info.key_set && info.key_source && info.key_source !== 'account' && <small className="muted">{tt('Ohne eigenen Schlüssel wird der {v} genutzt.', { v: tt(source[info.key_source]) })}</small>}
         </>
       )}
     </Field>
@@ -101,7 +101,7 @@ export function AiProviderCard({ onChange, onPick, onDraft, version = 0 }: { onC
         </p>
       )}
       <Field label={tt('KI-Anbieter')} hint={tt('„Wie die Agentur“ folgt dem Standard der Agentur (gerade: {label}). Vorschläge, Chat-Bot, Workflows, Telefonagent, Video-Recycling und App-Diktat nutzen alle diesen Anbieter.', { label: label(d.agency_default) })}>
-        <Select value={provider} onChange={setProvider} options={[['', `Wie die Agentur (${label(d.agency_default)})`], ['anthropic', 'Anthropic (Claude)'], ['openai', 'OpenAI (GPT)']]} />
+        <Select value={provider} onChange={setProvider} options={[['', tt('Wie die Agentur ({label})', { label: label(d.agency_default) })], ['anthropic', 'Anthropic (Claude)'], ['openai', 'OpenAI (GPT)']]} />
       </Field>
       {effective === 'openai' && (
         <div className="grid2">

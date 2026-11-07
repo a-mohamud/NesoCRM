@@ -26,7 +26,7 @@ export function Inventory({ tab }: { tab?: string }) {
   const articles = useLoad(() => api.get('/api/inventory/articles?all=1&limit=2000'), []);
   const st = status.data;
   const refresh = () => (void status.reload(), void articles.reload(), void places.reload());
-  const label = (k: string, l: string) => (k === 'stock' && st?.low ? `${l} (${st.low} knapp)` : k === 'orders' && st?.open_orders ? `${l} (${st.open_orders})` : l);
+  const label = (k: string, l: string) => (k === 'stock' && st?.low ? tt('{label} ({n} knapp)', { label: tt(l), n: st.low }) : k === 'orders' && st?.open_orders ? `${tt(l)} (${st.open_orders})` : tt(l));
   return (
     <>
       <PageHead title={tt('Lager & Einkauf')} sub={tt('Artikel, Bestände, Bestellungen und Inventur – verknüpft mit Produkten und Rechnungen.')} />
@@ -152,7 +152,7 @@ function ArticleModal({ article, articles, places, onClose, onDone }: { article?
       name: a.name ?? '',
       variant: a.variant ?? '',
       parent_id: a.parent_id ?? '',
-      unit: a.unit ?? 'Stk',
+      unit: a.unit ?? tt('Stk'),
       ean: a.ean ?? '',
       min_stock: a.min_stock ? String(a.min_stock) : '',
       reorder_qty: a.reorder_qty ? String(a.reorder_qty) : '',
@@ -295,7 +295,7 @@ function ArticleModal({ article, articles, places, onClose, onDone }: { article?
                 {x.movements.slice(0, 12).map((m: any) => (
                   <tr key={m.id}>
                     <td className="muted small">{dt(m.created_at)}</td>
-                    <td>{MOVE_LABEL[m.type] ?? m.type}</td>
+                    <td>{tt(MOVE_LABEL[m.type] ?? m.type)}</td>
                     <td className="num">{m.qty > 0 ? '+' : ''}{qty(m.qty)}</td>
                     <td>{m.place}</td>
                     <td className="muted small">{m.note}</td>
@@ -334,7 +334,7 @@ function Movements({ articles, places, onChange }: { articles: any[]; places: an
         </div>
         <div style={{ width: 170 }}>
           <Field label={tt('Art')}>
-            <Select value={type} onChange={setType} placeholder={tt('Alle')} options={Object.entries(MOVE_LABEL)} />
+            <Select value={type} onChange={setType} placeholder={tt('Alle')} options={Object.entries(MOVE_LABEL).map(([k, l]): [string, string] => [k, tt(l)])} />
           </Field>
         </div>
         <div style={{ width: 140 }}>
@@ -432,7 +432,7 @@ function MovementModal({ articles, places, initial, onClose, onDone }: { article
       </Field>
       <div className="grid2">
         <Field label={tt('Art')}>
-          <Select value={f.type} onChange={set('type')} options={[['receipt', 'Wareneingang'], ['issue', 'Warenausgang'], ['correction', 'Korrektur (+/−)'], ['transfer', 'Umlagerung']]} />
+          <Select value={f.type} onChange={set('type')} options={[['receipt', tt('Wareneingang')], ['issue', tt('Warenausgang')], ['correction', tt('Korrektur (+/−)')], ['transfer', tt('Umlagerung')]]} />
         </Field>
         <Field label={tt('Menge{v}', { v: art ? ` (${art.unit})` : '' })}>
           <Input value={f.qty} onChange={set('qty')} inputMode="decimal" />
@@ -480,7 +480,7 @@ function Orders({ articles, places, onChange }: { articles: any[]; places: any[]
           {tt('Neue Bestellung')}
         </button>
         <div className="tabs" style={{ margin: 0, border: 0 }}>
-          {[['open', 'Offen'], ['received', 'Geliefert'], ['cancelled', 'Storniert'], ['all', 'Alle']].map(([k, l]) => (
+          {[['open', tt('Offen')], ['received', tt('Geliefert')], ['cancelled', tt('Storniert')], ['all', tt('Alle')]].map(([k, l]) => (
             <button key={k} className={k === filter ? 'on' : ''} onClick={() => setFilter(k)}>
               {l}
             </button>
@@ -508,7 +508,7 @@ function Orders({ articles, places, onChange }: { articles: any[]; places: any[]
                   <td className="mono">{o.number}</td>
                   <td>{o.supplier_name || '–'}</td>
                   <td>
-                    <Badge tone={O_STATUS[o.status]?.[1]}>{O_STATUS[o.status]?.[0] ?? o.status}</Badge>
+                    <Badge tone={O_STATUS[o.status]?.[1]}>{tt(O_STATUS[o.status]?.[0] ?? o.status)}</Badge>
                   </td>
                   <td className="num">{o.lines}</td>
                   <td className="num">{money(o.total_cents)}</td>
@@ -634,14 +634,14 @@ function OrderView({ id, places, onClose, onEdit, onDone }: { id: string; places
         <>
           {o.status === 'draft' && <button className="btn secondary" onClick={() => onEdit(o)}>{tt('Bearbeiten')}</button>}
           {['draft', 'ordered'].includes(o.status) && !o.lines.some((l: any) => l.received > 0) && (
-            <button className="btn ghost danger-text" onClick={async () => confirmAsk(tt('Bestellung stornieren?')) && (await act2(() => api.post(`/api/inventory/orders/${id}/cancel`, {}), 'Storniert'))}>
+            <button className="btn ghost danger-text" onClick={async () => confirmAsk(tt('Bestellung stornieren?')) && (await act2(() => api.post(`/api/inventory/orders/${id}/cancel`, {}), tt('Storniert')))}>
               {tt('Stornieren')}
             </button>
           )}
           <span style={{ flex: 1 }} />
           {o.status === 'draft' && (
             <>
-              <button className="btn secondary" onClick={() => act2(() => api.post(`/api/inventory/orders/${id}/place`, {}), 'Als bestellt markiert')}>
+              <button className="btn secondary" onClick={() => act2(() => api.post(`/api/inventory/orders/${id}/place`, {}), tt('Als bestellt markiert'))}>
                 {tt('Als bestellt markieren')}
               </button>
               <button className="btn" disabled={!o.contact_email} title={o.contact_email ? undefined : tt('Der Lieferant braucht einen Kontakt mit E-Mail-Adresse')} onClick={() => act2(() => api.post(`/api/inventory/orders/${id}/send`, {}), 'Gesendet')}>
@@ -670,7 +670,7 @@ function OrderView({ id, places, onClose, onEdit, onDone }: { id: string; places
       }
     >
       <p>
-        <Badge tone={O_STATUS[o.status]?.[1]}>{O_STATUS[o.status]?.[0]}</Badge> {o.contact_name || o.supplier_name} {o.contact_email && <span className="muted">· {o.contact_email}</span>}
+        <Badge tone={O_STATUS[o.status]?.[1]}>{tt(O_STATUS[o.status]?.[0] ?? o.status)}</Badge> {o.contact_name || o.supplier_name} {o.contact_email && <span className="muted">· {o.contact_email}</span>}
         {o.expected_at && <span className="muted"> {tt('· erwartet {germanDate}', { germanDate: germanDate(o.expected_at) })}</span>}
       </p>
       {o.notes && <p className="muted">{o.notes}</p>}
@@ -759,7 +759,7 @@ function Counts({ places, onChange }: { places: any[]; onChange: () => void }) {
                   </td>
                   <td>{c.place || 'alle'}</td>
                   <td>
-                    <Badge tone={c.status === 'open' ? 'blue' : c.status === 'closed' ? 'green' : 'gray'}>{{ open: 'läuft', closed: 'abgeschlossen', cancelled: 'verworfen' }[c.status as string] ?? c.status}</Badge>
+                    <Badge tone={c.status === 'open' ? 'blue' : c.status === 'closed' ? 'green' : 'gray'}>{tt({ open: 'läuft', closed: 'abgeschlossen', cancelled: 'verworfen' }[c.status as string] ?? c.status)}</Badge>
                   </td>
                   <td className="num">
                     {c.counted} / {c.lines}
@@ -861,7 +861,7 @@ function CountView({ id, onClose }: { id: string; onClose: () => void }) {
             <tr>
               <th>{tt('Artikel')}</th>
               <th>{tt('Lagerort')}</th>
-              <th className="num">{tt('Soll')}</th>
+              <th className="num">{tt('Soll-Bestand')}</th>
               <th style={{ width: 120 }}>{tt('Gezählt')}</th>
               <th className="num">{tt('Differenz')}</th>
             </tr>
@@ -1048,7 +1048,7 @@ function InvSettings() {
         {tt('Wenn eine Rechnung bezahlt (oder versendet) wird, bucht HyperLevel die Positionen aus dem Lager aus. Eine Position wird einem Artikel zugeordnet über die Artikelnummer im Text (z. B. „[KAFFEE-500]“), das verknüpfte Produkt oder den Artikelnamen. Bei Zweifeln wird nichts geraten – die Position bleibt unberührt. Jede Rechnung wird nur einmal ausgebucht.')}
       </p>
       <Field label={tt('Ausbuchen, wenn die Rechnung …')}>
-        <Select value={f.auto_issue_on} onChange={(v) => setF({ ...f, auto_issue_on: v })} options={[['paid', 'bezahlt ist'], ['sent', 'versendet wird'], ['off', 'nie (nur von Hand)']]} />
+        <Select value={f.auto_issue_on} onChange={(v) => setF({ ...f, auto_issue_on: v })} options={[['paid', tt('bezahlt ist')], ['sent', tt('versendet wird')], ['off', tt('nie (nur von Hand)')]]} />
       </Field>
       <Check checked={f.allow_negative} onChange={(v) => setF({ ...f, allow_negative: v })} label={tt('Negativen Bestand erlauben (sonst wird ein zu großer Warenausgang abgelehnt)')} />
       <div style={{ marginTop: 12 }}>

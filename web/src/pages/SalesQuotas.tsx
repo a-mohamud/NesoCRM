@@ -66,7 +66,7 @@ function QuotaEditor({ data, onClose, onSaved }: { data: any; onClose: () => voi
         </tbody>
       </table>
       <Field label={tt('Wer sieht die Zahlen der anderen?')} hint={tt('Ohne Auswahl: alle – außer Personen, deren Deals durch Datensatz-Zugriff eingeschränkt sind (sie sehen nur sich).')}>
-        <Select value={lb} onChange={setLb} options={[['', 'Standard'], ['all', 'Alle sehen alle'], ['own', 'Jeder sieht nur sich (und sein Team)'], ['off', 'Niemand (nur Admins)']]} />
+        <Select value={lb} onChange={setLb} options={[['', tt('Standard')], ['all', tt('Alle sehen alle')], ['own', tt('Jeder sieht nur sich (und sein Team)')], ['off', tt('Niemand (nur Admins)')]]} />
       </Field>
     </Modal>
   );
@@ -104,15 +104,15 @@ export function SalesQuotas() {
         <tbody>
           {list.map((r) => (
             <tr key={`${r.scope}${r.subject_id}`}>
-              <td data-label="Name"><b>{r.name}</b></td>
-              <td className="r" data-label="Ziel">{fmt(r.target)}</td>
-              <td className="r" data-label="Erreicht">{fmt(r.achieved)}</td>
-              <td data-label="Erreichung">
+              <td data-label={tt('Name')}><b>{r.name}</b></td>
+              <td className="r" data-label={tt('Ziel')}>{fmt(r.target)}</td>
+              <td className="r" data-label={tt('Erreicht')}>{fmt(r.achieved)}</td>
+              <td data-label={tt('Erreichung')}>
                 <Bar pct={r.attainment_pct} tone={BAR_TONE[r.pace]} /> <span className="small" style={{ whiteSpace: 'nowrap' }}>{r.attainment_pct === null ? '–' : `${r.attainment_pct} %`}</span>
               </td>
-              <td data-label="Stand"><Badge tone={PACE_TONE[r.pace]}>{r.pace_label}</Badge></td>
+              <td data-label={tt('Stand')}><Badge tone={PACE_TONE[r.pace]}>{tt(r.pace_label)}</Badge></td>
               <td className="r" data-label="Pipeline">{money ? eur(r.weighted_pipeline * 100, data.currency) : '–'}</td>
-              <td className="r" data-label="Fehlt noch">{r.gap === null ? '–' : fmt(r.gap)}</td>
+              <td className="r" data-label={tt('Fehlt noch')}>{r.gap === null ? '–' : fmt(r.gap)}</td>
             </tr>
           ))}
         </tbody>
@@ -122,7 +122,7 @@ export function SalesQuotas() {
   return (
     <div data-tour="quota-page">
       <div className="sales-bar">
-        <Tabs tabs={[['month', 'Monat'], ['quarter', 'Quartal']]} value={kind} onChange={(v) => (setKind(v), setStart(''))} />
+        <Tabs tabs={[['month', tt('Monat')], ['quarter', tt('Quartal')]]} value={kind} onChange={(v) => (setKind(v), setStart(''))} />
         {data && (
           <>
             <button className="btn secondary" onClick={() => setStart(data.period.prev)} aria-label={tt('Vorige Periode')}>‹</button>
@@ -133,7 +133,7 @@ export function SalesQuotas() {
         )}
         <span className="grow" />
         <div style={{ flex: '1 1 210px', maxWidth: 260 }}>
-          <Select value={metric} onChange={setMetric} options={Object.entries<string>(data?.metric_labels ?? { won_value: 'Gewonnener Umsatz', won_count: 'Gewonnene Deals' })} />
+          <Select value={metric} onChange={setMetric} options={Object.entries<string>(data?.metric_labels ?? { won_value: tt('Gewonnener Umsatz'), won_count: tt('Gewonnene Deals') })} />
         </div>
         {data?.can_edit && (
           <button className="btn" onClick={() => setEdit(true)} data-tour="quota-edit">

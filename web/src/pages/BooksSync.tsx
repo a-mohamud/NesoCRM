@@ -65,7 +65,7 @@ export function BooksSync() {
                 <strong>{p.name}</strong>
                 {on ? <Badge tone={!s.enabled ? 'gray' : s.last_test_ok === false || counts.failed ? 'red' : 'green'}>{!s.enabled ? 'pausiert' : s.last_test_ok === false ? tt('Test fehlgeschlagen') : counts.failed ? tt('{failed} Fehler', { failed: counts.failed }) : 'verbunden'}</Badge> : <Badge>{tt('nicht verbunden')}</Badge>}
               </div>
-              <p className="small">{BLURB[p.key as Provider]}</p>
+              <p className="small">{tt(BLURB[p.key as Provider])}</p>
               {on && s.last_test_at && (
                 <p className="muted small">
                   {tt('Letzter Test {dt}: {last_test_result}', { dt: dt(s.last_test_at), last_test_result: s.last_test_result })}
@@ -78,10 +78,10 @@ export function BooksSync() {
                 </button>
                 {on && (
                   <>
-                    <button className="btn secondary" disabled={!!busy} onClick={() => run('test', () => api.post('/api/books-sync/test'), 'Verbindung klappt')}>
+                    <button className="btn secondary" disabled={!!busy} onClick={() => run('test', () => api.post('/api/books-sync/test'), tt('Verbindung klappt'))}>
                       {tt('Verbindung testen')}
                     </button>
-                    <button className="btn secondary" disabled={!!busy || !s.options.pull_payments} onClick={() => run('pull', () => api.post('/api/books-sync/pull'), 'Zahlungen abgeglichen')}>
+                    <button className="btn secondary" disabled={!!busy || !s.options.pull_payments} onClick={() => run('pull', () => api.post('/api/books-sync/pull'), tt('Zahlungen abgeglichen'))}>
                       <Icon name="refresh" /> {tt('Zahlungen abgleichen')}
                     </button>
                     <button className="btn secondary" disabled={!!busy} onClick={() => setBackfill(true)}>
@@ -137,13 +137,13 @@ export function BooksSync() {
                       </td>
                       <td>{money(j.total_cents, j.currency)}</td>
                       <td>
-                        <Badge tone={STATUS[j.status]?.[1] ?? 'gray'}>{STATUS[j.status]?.[0] ?? j.status}</Badge>
+                        <Badge tone={STATUS[j.status]?.[1] ?? 'gray'}>{tt(STATUS[j.status]?.[0] ?? j.status)}</Badge>
                         {j.status === 'retry' && <div className="muted small">{tt('nächster Versuch {dt}', { dt: dt(j.next_at) })}</div>}
                       </td>
                       <td className="small">{j.last_error || (j.remote_id ? tt('ID {remote_id}', { remote_id: j.remote_id }) : '')}</td>
                       <td>
                         {['failed', 'retry', 'skipped'].includes(j.status) && (
-                          <button className="btn secondary" disabled={!!busy} onClick={() => run(`retry-${j.id}`, () => api.post(`/api/books-sync/jobs/${j.id}/retry`), 'Neuer Versuch gestartet')}>
+                          <button className="btn secondary" disabled={!!busy} onClick={() => run(`retry-${j.id}`, () => api.post(`/api/books-sync/jobs/${j.id}/retry`), tt('Neuer Versuch gestartet'))}>
                             {tt('Erneut versuchen')}
                           </button>
                         )}
@@ -225,7 +225,7 @@ function ConnectModal({ provider, state, onClose, onSaved }: { provider: Provide
         <h4>{tt('Zuordnung')}</h4>
         <div className="grid2">
           <Field label={tt('Kunde in der Buchhaltung')} hint={tt('Erst die gespeicherte Verknüpfung, dann Kundennummer, dann E-Mail – sonst wird der Kunde angelegt.')}>
-            <Select value={o.contact_match} onChange={(v) => set('contact_match', v)} options={provider === 'lexware' ? [['auto', 'Kunden abgleichen oder anlegen'], ['collective', 'Sammelkunde (ohne Kundendaten)']] : [['auto', 'Kunden abgleichen oder anlegen']]} />
+            <Select value={o.contact_match} onChange={(v) => set('contact_match', v)} options={provider === 'lexware' ? [['auto', tt('Kunden abgleichen oder anlegen')], ['collective', tt('Sammelkunde (ohne Kundendaten)')]] : [['auto', tt('Kunden abgleichen oder anlegen')]]} />
           </Field>
           <Field label={tt('Eigenes Feld mit der Kundennummer')} hint={tt('Schlüssel des eigenen Kontaktfelds (der Umzug füllt customer_number)')}>
             <Input value={o.customer_number_field} onChange={(v) => set('customer_number_field', v)} placeholder="customer_number" />

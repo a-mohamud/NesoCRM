@@ -47,18 +47,18 @@ function Diagnostics({ d, kind }: { d: any; kind: string }) {
     <>
       <KV
         rows={[
-          ['Seite', d.route || d.url],
+          [tt('Seite'), d.route || d.url],
           ['URL', d.url && d.url !== d.route ? <span className="mono">{d.url}</span> : ''],
-          ['Sub-Account', d.location_name],
-          ['Rolle', d.role],
-          ['Version', [d.app_version ? `App ${d.app_version}` : '', d.build ? `Web-Build ${d.build}` : '', d.server_version ? `Server ${d.server_version}` : ''].filter(Boolean).join(' · ')],
-          ['Achtung', stale ? 'Der Browser lief mit einer älteren Web-Version (Seite nicht neu geladen).' : ''],
-          ['Browser', [d.browser, d.os].filter(Boolean).join(' · ')],
-          ['Gerät', dv.model ? `${dv.manufacturer ? `${dv.manufacturer} ` : ''}${dv.model} · Android ${dv.android ?? '?'}${dv.sdk ? ` (API ${dv.sdk})` : ''}` : ''],
-          ['Fenster', [d.viewport, d.screen].filter(Boolean).join(' · Bildschirm ')],
-          ['Sprache / Zone', [d.language, d.timezone].filter(Boolean).join(' · ')],
-          ['Request-ID', d.request_id ? <span className="mono">{d.request_id}</span> : ''],
-          ['User-Agent', d.user_agent ? <span className="mono small">{d.user_agent}</span> : ''],
+          [tt('Sub-Account'), d.location_name],
+          [tt('Rolle'), d.role],
+          [tt('Version'), [d.app_version ? tt('App {v}', { v: d.app_version }) : '', d.build ? tt('Web-Build {v}', { v: d.build }) : '', d.server_version ? tt('Server {v}', { v: d.server_version }) : ''].filter(Boolean).join(' · ')],
+          [tt('Achtung'), stale ? tt('Der Browser lief mit einer älteren Web-Version (Seite nicht neu geladen).') : ''],
+          [tt('Browser'), [d.browser, d.os].filter(Boolean).join(' · ')],
+          [tt('Gerät'), dv.model ? `${dv.manufacturer ? `${dv.manufacturer} ` : ''}${dv.model} · Android ${dv.android ?? '?'}${dv.sdk ? ` (API ${dv.sdk})` : ''}` /* i18n-ignore */ : ''],
+          [tt('Fenster'), [d.viewport, d.screen].filter(Boolean).join(tt(' · Bildschirm '))],
+          [tt('Sprache / Zone'), [d.language, d.timezone].filter(Boolean).join(' · ')],
+          [tt('Request-ID'), d.request_id ? <span className="mono">{d.request_id}</span> : ''],
+          [tt('User-Agent'), d.user_agent ? <span className="mono small">{d.user_agent}</span> : ''],
         ]}
       />
       {d.message && kind === 'auto' && (
@@ -168,7 +168,7 @@ export function BugTriagePanel({ ticketId, onChanged }: { ticketId: string; onCh
             )}
             {f.kind === 'auto' && (
               <span>
-                <strong>{f.occurrences}×</strong> aufgetreten
+                <strong>{f.occurrences}×</strong> {tt('aufgetreten')}
               </span>
             )}
             <span>
@@ -180,12 +180,12 @@ export function BugTriagePanel({ ticketId, onChanged }: { ticketId: string; onCh
           </div>
           <KV
             rows={[
-              ['Art', `${KIND[f.kind]?.[0] ?? f.kind}${f.platform === 'android' ? ' · Android-App' : f.platform === 'server' ? ' · Server' : ''}`],
-              ['Schweregrad', SEVERITY[f.severity] ?? f.severity],
-              ['Bereich', f.area],
-              ['Erstes / letztes Mal', f.kind === 'auto' ? `${dt(f.first_seen_at)} / ${ago(f.last_seen_at)}` : ''],
-              ['Version', f.version ? `${f.kind === 'wish' ? 'umgesetzt' : 'behoben'} in ${f.version}${f.public_note ? ` – ${f.public_note}` : ''}` : ''],
-              ['Begründung', f.status.key === 'abgelehnt' ? f.public_note : ''],
+              [tt('Art'), `${KIND[f.kind] ? tt(KIND[f.kind][0]) : f.kind}${f.platform === 'android' ? tt(' · Android-App') : f.platform === 'server' ? tt(' · Server') : ''}`],
+              [tt('Schweregrad'), SEVERITY[f.severity] ? tt(SEVERITY[f.severity]) : f.severity],
+              [tt('Bereich'), f.area],
+              [tt('Erstes / letztes Mal'), f.kind === 'auto' ? `${dt(f.first_seen_at)} / ${ago(f.last_seen_at)}` : ''],
+              [tt('Version'), f.version ? (f.kind === 'wish' ? tt('umgesetzt in {v}', { v: f.version }) : tt('behoben in {v}', { v: f.version })) + (f.public_note ? ` – ${f.public_note}` : '') : ''],
+              [tt('Begründung'), f.status.key === 'abgelehnt' ? f.public_note : ''],
             ]}
           />
           {f.duplicate_of && (
@@ -226,7 +226,7 @@ export function BugTriagePanel({ ticketId, onChanged }: { ticketId: string; onCh
               </button>
             )}
             {f.kind === 'wish' && (
-              <button className="btn small ghost" onClick={() => patch({ hidden: !f.hidden }, f.hidden ? 'Wieder sichtbar' : 'Ausgeblendet')}>
+              <button className="btn small ghost" onClick={() => patch({ hidden: !f.hidden }, f.hidden ? tt('Wieder sichtbar') : tt('Ausgeblendet'))}>
                 {f.hidden ? tt('In Wunschliste zeigen') : tt('In Wunschliste ausblenden')}
               </button>
             )}
@@ -235,7 +235,7 @@ export function BugTriagePanel({ ticketId, onChanged }: { ticketId: string; onCh
             <Section title={`${f.kind === 'auto' ? tt('Betroffene Nutzer') : tt('Melder')} (${f.reporters.length})`} open={f.kind !== 'auto'}>
               {f.reporters.map((r: any) => (
                 <div key={r.user_id} className="fb-person">
-                  <strong>{r.name}</strong> <span className="muted small">{[r.role, r.location_name, r.link === 'reporter' ? '' : 'betroffen'].filter(Boolean).join(' · ')}</span>
+                  <strong>{r.name}</strong> <span className="muted small">{[r.role, r.location_name, r.link === 'reporter' ? '' : tt('betroffen')].filter(Boolean).join(' · ')}</span>
                   <div className="muted small">{r.email}</div>
                 </div>
               ))}
@@ -303,7 +303,7 @@ export function BugTriagePanel({ ticketId, onChanged }: { ticketId: string; onCh
                     #{c.number} {c.title}
                     <small className="muted">
                       {' '}
-                      · {KIND[c.kind]?.[0]} · {c.status.label}
+                      · {KIND[c.kind] ? tt(KIND[c.kind][0]) : c.kind} · {tt(c.status.label)}
                     </small>
                   </span>
                 </label>
@@ -349,7 +349,7 @@ export function BugTriagePanel({ ticketId, onChanged }: { ticketId: string; onCh
           title={tt('Öffentlich antworten')}
           onClose={() => setDialog(null)}
           footer={
-            <button className="btn" disabled={!form.reply.trim()} onClick={() => patch({ reply: form.reply }, 'Antwort gesendet')}>
+            <button className="btn" disabled={!form.reply.trim()} onClick={() => patch({ reply: form.reply }, tt('Antwort gesendet'))}>
               {tt('Senden')}
             </button>
           }
@@ -367,7 +367,7 @@ export function BugTriagePanel({ ticketId, onChanged }: { ticketId: string; onCh
           title={tt('Ablehnen')}
           onClose={() => setDialog(null)}
           footer={
-            <button className="btn danger" onClick={() => patch({ status: 'abgelehnt', reason: form.reason }, 'Abgelehnt')}>
+            <button className="btn danger" onClick={() => patch({ status: 'abgelehnt', reason: form.reason } /* i18n-ignore */, tt('Abgelehnt'))}>
               {tt('Ablehnen')}
             </button>
           }
@@ -412,9 +412,9 @@ function TriageTable({ params, empty }: { params: string; empty: string }) {
               <td>
                 <StatusPill s={r.status} />
               </td>
-              <td>{r.kind === 'wish' ? tt('{votes} Stimmen', { votes: r.votes }) : r.kind === 'auto' ? `${r.occurrences}×` : SEVERITY[r.severity] || '–'}</td>
+              <td>{r.kind === 'wish' ? tt('{votes} Stimmen', { votes: r.votes }) : r.kind === 'auto' ? `${r.occurrences}×` : SEVERITY[r.severity] ? tt(SEVERITY[r.severity]) : '–'}</td>
               <td className="small">
-                {r.reporter || (r.kind === 'auto' ? 'automatisch' : '–')}
+                {r.reporter || (r.kind === 'auto' ? tt('automatisch') : '–')}
                 {r.origin ? <span className="muted"> · {r.origin}</span> : null}
               </td>
               <td className="small muted">{ago(r.last_seen_at || r.created_at)}</td>
@@ -478,9 +478,9 @@ export function AgencyFeedback() {
       </SortableGrid>
       <Tabs
         tabs={[
-          ['reports', 'Offene Meldungen'],
-          ['wishes', 'Top-Wünsche'],
-          ['auto', 'Häufigste Fehler'],
+          ['reports', tt('Offene Meldungen')],
+          ['wishes', tt('Top-Wünsche')],
+          ['auto', tt('Häufigste Fehler')],
         ]}
         value={tab}
         onChange={setTab}

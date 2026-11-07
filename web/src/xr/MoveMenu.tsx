@@ -19,7 +19,7 @@ export interface MoveTarget {
   icon?: string;
 }
 
-export function MoveMenu({ what, targets, current, onMove, title = 'Verschieben nach …' }: { what: string; targets: MoveTarget[]; current?: string; onMove: (id: string) => void | Promise<unknown>; title?: string }) {
+export function MoveMenu({ what, targets, current, onMove, title }: { what: string; targets: MoveTarget[]; current?: string; onMove: (id: string) => void | Promise<unknown>; title?: string }) {
   const tt = useT('x_misc');
   const spatial = useSpatial();
   const [open, setOpen] = useState(false);
@@ -45,7 +45,7 @@ export function MoveMenu({ what, targets, current, onMove, title = 'Verschieben 
       {open &&
         createPortal(
           <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-            <Modal title={title} onClose={() => setOpen(false)}>
+            <Modal title={title ?? tt('Verschieben nach …')} onClose={() => setOpen(false)}>
               <p className="muted small" style={{ marginTop: 0 }}>{what}</p>
               <div className="sp-move-list" role="list">
                 {targets.map((t) => (
@@ -62,7 +62,7 @@ export function MoveMenu({ what, targets, current, onMove, title = 'Verschieben 
                   >
                     <span className="sp-move-name">{t.label}</span>
                     {t.hint && <span className="muted small">{t.hint}</span>}
-                    {t.id === current && <span className="small">aktuell</span>}
+                    {t.id === current && <span className="small">{tt('aktuell')}</span>}
                   </button>
                 ))}
               </div>

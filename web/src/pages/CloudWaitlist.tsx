@@ -54,19 +54,19 @@ export function CloudWaitlist() {
     <>
       <div className="card">
         <h3 style={{ marginTop: 0 }}>
-          {tt('Warteliste')} {x.enabled ? <Badge tone="green">aktiv</Badge> : <Badge tone="gray">aus</Badge>}
+          {tt('Warteliste')} {x.enabled ? <Badge tone="green">{tt('aktiv')}</Badge> : <Badge tone="gray">{tt('aus')}</Badge>}
         </h3>
         {x.enabled ? (
           <p style={{ margin: 0 }}>
             {tt('Neue Anmeldungen, Zahlungen und Testphasen sind gesperrt; Preis- und Startseite zeigen die geplanten Tarife und das Wartelisten-Formular. Bestehende Kunden arbeiten normal weiter.')}{' '}
-            <span className="muted">{x.reason ? REASON[x.reason] : ''}</span>
+            <span className="muted">{x.reason && REASON[x.reason] ? tt(REASON[x.reason]) : ''}</span>
           </p>
         ) : (
           <p style={{ margin: 0 }}>{tt('Die Cloud ist offen: Kunden melden sich unter /start an. Das Formular nimmt keine Einträge an; die Liste unten bleibt erhalten.')}</p>
         )}
         <p className="muted small" style={{ marginBottom: 0 }}>
           {x.forms
-            ? `Einträge gehen in das Formular ${x.forms.form_id} des Sub-Accounts „${x.forms.location_name || x.forms.location_id}“ (PGHL_LANDING_LOCATION)${x.forms.doi ? tt(' mit Double-Opt-in') : ''} – dort stehen sie als Kontakte mit Einwilligungsnachweis. Hier steht nur, was vorher in der eingebauten Liste gelandet ist.`
+            ? tt('Einträge gehen in das Formular {form} des Sub-Accounts „{location}“ (PGHL_LANDING_LOCATION){doi} – dort stehen sie als Kontakte mit Einwilligungsnachweis. Hier steht nur, was vorher in der eingebauten Liste gelandet ist.', { form: x.forms.form_id, location: x.forms.location_name || x.forms.location_id, doi: x.forms.doi ? tt(' mit Double-Opt-in') : '' })
             : tt('Einträge landen in der eingebauten Liste unten: E-Mail, optional Name und Tarif, Sprache, Einwilligungstext mit Zeitpunkt, IP nur als Hash. Die Liste verschickt nie selbst E-Mails.')}
           {x.privacy_url ? tt(' Datenschutz-Link am Formular: {privacy_url}', { privacy_url: x.privacy_url }) : tt(' Kein Datenschutz-Link gesetzt (PGHL_LANDING_PRIVACY_URL).')}
         </p>
@@ -74,7 +74,7 @@ export function CloudWaitlist() {
       <SortableGrid id="cloud-waitlist.stats" className="stats" style={{ margin: '12px 0' }}>
         <Stat label={tt('Einträge')} value={x.total} />
         {Object.entries(PLAN).map(([k, n]) => (
-          <Stat key={k} label={n} value={x.by_plan[k] ?? 0} />
+          <Stat key={k} label={tt(n)} value={x.by_plan[k] ?? 0} />
         ))}
         <Stat label={tt('Noch unsicher')} value={x.by_plan.none ?? 0} />
       </SortableGrid>
@@ -93,7 +93,7 @@ export function CloudWaitlist() {
               <thead>
                 <tr>
                   <th>{tt('Eingetragen')}</th>
-                  <th>E-Mail</th>
+                  <th>{tt('E-Mail')}</th>
                   <th>{tt('Tarif')}</th>
                   <th>{tt('Sprache')}</th>
                   <th>{tt('Einwilligung')}</th>
@@ -108,7 +108,7 @@ export function CloudWaitlist() {
                       {it.email}
                       {it.name && <div className="muted small">{it.name}</div>}
                     </td>
-                    <td>{PLAN[it.plan] ?? '–'}</td>
+                    <td>{PLAN[it.plan] ? tt(PLAN[it.plan]) : '–'}</td>
                     <td>{it.lang === 'en' ? tt('Englisch') : tt('Deutsch')}</td>
                     <td className="nowrap" title={it.consent_text}>
                       {dt(it.consent_at)}

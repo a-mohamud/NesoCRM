@@ -110,7 +110,7 @@ export function CommentsPanel({ api: ed, draft, focusId, onDraftDone, onClose }:
   }, [focusId, comments.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const target = (c: Comment) => {
     const el = c.element_id ? ed.store.els.get(c.element_id) : null;
-    return el ? (el.text || el.name || 'Element').split('\n')[0].slice(0, 40) : 'Stelle auf dem Board';
+    return el ? (el.text || el.name || tt('Element')).split('\n')[0].slice(0, 40) : tt('Stelle auf dem Board');
   };
   return (
     <aside className="cv-comments cv-panel" data-tour="canvas-comments-panel">

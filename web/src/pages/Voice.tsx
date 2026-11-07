@@ -5,7 +5,7 @@ import { canRecord, micError, playDataUrl, startRecording, transcribe, type Reco
 import { Badge, Check, Empty, Field, Input, Select, Spinner, Textarea, act, navigate, toast, useLoad } from '../ui';
 import { MoreFields } from '../areas/fields';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { intlLocale, tr, useT } from '../i18n';
 
 /**
  * Einstellungen → Stimme: the voice layer on top of KI-Anbieter (BYOK). Which provider speaks and listens, the voice
@@ -26,7 +26,11 @@ const LANGS: [string, string][] = [
   ['tr', 'Türkisch'],
 ];
 /** The language list plus a stored value it does not know (e.g. de-DE). */
-const langOptions = (v: string): [string, string][] => (LANGS.some(([k]) => k === v) ? LANGS : [[v, v], ...LANGS]);
+const langOptions = (v: string): [string, string][] => {
+  const t = tr('x_comms');
+  const list = LANGS.map(([k, l]) => [k, t(l)] as [string, string]);
+  return LANGS.some(([k]) => k === v) ? list : [[v, v], ...list];
+};
 const TRANSPORTS: [string, string][] = [
   ['auto', 'Automatisch (Live-Stream, wenn der Anbieter es kann)'],
   ['stream', 'Live-Stream (schnell, Anrufer können unterbrechen)'],
@@ -37,7 +41,8 @@ const TRANSPORT_NAME: Record<string, string> = { twilio: 'Twilio-Stimme', stream
 type Conn = { id: string; provider: string; label: string; model: string; live: boolean; stream: string | null };
 
 function ConnSelect({ value, onChange, list, routed }: { value: string; onChange: (v: string) => void; list: Conn[]; routed?: { label: string } | null }) {
-  return <Select value={value} onChange={onChange} options={[['', `Automatisch${routed ? ` (${routed.label})` : ' – keine Verbindung'}`], ...list.map((c) => [c.id, `${c.label}${c.live ? ' · Live' : ''}`] as [string, string])]} />;
+  const tt = useT('x_comms');
+  return <Select value={value} onChange={onChange} options={[['', routed ? tt('Automatisch ({label})', { label: routed.label }) : tt('Automatisch – keine Verbindung')], ...list.map((c) => [c.id, `${c.label}${c.live ? ' · Live' : ''}`] as [string, string])]} />;
 }
 
 /** Voice: free text with the provider's own list as suggestions. */
@@ -85,7 +90,7 @@ function VoiceField({ value, onChange, connectionId, language, tour, hint }: { v
 
 function TtsTest({ s, d }: { s: any; d: any }) {
   const tt = useT('x_comms');
-  const [text, setText] = useState('Guten Tag, hier spricht Ihr digitaler Assistent. Wie kann ich Ihnen helfen?');
+  const [text, setText] = useState(() => tt('Guten Tag, hier spricht Ihr digitaler Assistent. Wie kann ich Ihnen helfen?'));
   const [busy, setBusy] = useState(false);
   const [last, setLast] = useState<any>(null);
   const run = async () => {
@@ -136,7 +141,7 @@ function MicTest({ s }: { s: any }) {
     setState('working');
     try {
       const blob = await h.stop();
-      if (!blob) return setResult({ error: 'Es wurde nichts aufgenommen.' });
+      if (!blob) return setResult({ error: tt('Es wurde nichts aufgenommen.') });
       const r = await transcribe(blob, { language: lang.current });
       setResult({ text: r.text || '(nichts erkannt)', ms: r.ms, provider: r.provider });
     } catch (e) {
@@ -178,7 +183,7 @@ function Latency({ l }: { l: any }) {
   const tt = useT('x_comms');
   const data = useLoad(() => api.get<any>('/api/voice/latency?limit=12'), []);
   if (!l?.turns) return <p className="muted small">{tt('Noch keine Telefonate mit eigener Stimme – hier erscheinen die Antwortzeiten.')}</p>;
-  const ms = (v: number | null | undefined) => (v === null || v === undefined ? '–' : `${(v / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} s`);
+  const ms = (v: number | null | undefined) => (v === null || v === undefined ? '–' : `${(v / 1000).toLocaleString(intlLocale(), { maximumFractionDigits: 1 })} s`);
   return (
     <div data-tour="voice-latency">
       <SortableGrid id="voice.latency" className="voice-stats">
@@ -222,7 +227,7 @@ function Latency({ l }: { l: any }) {
           <tbody>
             {data.data.turns.map((t: any, i: number) => (
               <tr key={i}>
-                <td>{new Date(t.at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                <td>{new Date(t.at).toLocaleString(intlLocale(), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                 <td>{t.transport === 'stream' ? tt('Live') : tt('Runden')}{t.interrupted ? tt(' · unterbrochen') : ''}</td>
                 <td>{ms(t.stt_ms)}</td>
                 <td>{ms(t.llm_ms)}</td>
@@ -291,7 +296,7 @@ export function VoiceSettingsPage() {
             <Field label={tt('Modell (optional)')} hint={tt('Leer = Standard der Verbindung.')}>
               <Input value={s.tts.model} onChange={(v) => set('tts', { model: v })} placeholder={tt('z. B. gpt-4o-mini-tts')} />
             </Field>
-            <Field label={tt('Tempo: {n}×', { n: Number(s.tts.speed).toLocaleString('de-DE') })} hint={tt('Nicht jeder Anbieter kann das Tempo ändern.')}>
+            <Field label={tt('Tempo: {n}×', { n: Number(s.tts.speed).toLocaleString(intlLocale()) })} hint={tt('Nicht jeder Anbieter kann das Tempo ändern.')}>
               <input type="range" min={0.5} max={2} step={0.05} value={s.tts.speed} onChange={(e) => set('tts', { speed: Number(e.target.value) })} aria-label={tt('Sprechtempo')} />
             </Field>
           </div>
@@ -330,15 +335,15 @@ export function VoiceSettingsPage() {
           <h2>
             <Icon name="phone" size={18} /> {tt('Telefon (KI-Telefonagent)')}
           </h2>
-          <Badge tone={plan.engine === 'own' && plan.transport !== 'twilio' ? 'green' : 'gray'}>{TRANSPORT_NAME[plan.transport]}</Badge>
+          <Badge tone={plan.engine === 'own' && plan.transport !== 'twilio' ? 'green' : 'gray'}>{tt(TRANSPORT_NAME[plan.transport] ?? '')}</Badge>
         </div>
         <Field label={tt('Stimme und Zuhören am Telefon')} tour="voice-phone-engine">
-          <Select value={s.phone.engine} onChange={(v) => set('phone', { engine: v })} options={[['twilio', 'Twilio (Standard) – deutsche Stimmen von Amazon Polly und Google'], ['own', 'Eigener Anbieter – deine Stimme und Spracherkennung']]} />
+          <Select value={s.phone.engine} onChange={(v) => set('phone', { engine: v })} options={[['twilio', tt('Twilio (Standard) – deutsche Stimmen von Amazon Polly und Google')], ['own', tt('Eigener Anbieter – deine Stimme und Spracherkennung')]]} />
         </Field>
         {own && (
           <>
             <Field label={tt('Übertragung')} hint={tt('Live-Stream: Twilio öffnet eine WebSocket-Verbindung zu deinem Server (öffentliche https-Adresse nötig). Aufnahme-Runden: nach jedem Satz wird aufgenommen, erkannt und die Antwort abgespielt – ohne Unterbrechen.')}>
-              <Select value={s.phone.transport} onChange={(v) => set('phone', { transport: v })} options={TRANSPORTS} />
+              <Select value={s.phone.transport} onChange={(v) => set('phone', { transport: v })} options={TRANSPORTS.map(([k, l]) => [k, tt(l)] as [string, string])} />
             </Field>
             <details className="voice-more">
               <summary>{tt('Am Telefon andere Anbieter oder Stimme als oben')}</summary>
@@ -377,7 +382,7 @@ export function VoiceSettingsPage() {
               tt('Twilio-Stimme (Standard).')
             ) : (
               <>
-                {TRANSPORT_NAME[plan.transport]}
+                {tt(TRANSPORT_NAME[plan.transport] ?? '')}
                 {plan.tts && <> {tt('· Stimme: {label}', { label: plan.tts.label })}</>}
                 {plan.stt && <> {tt('· Erkennung: {label}', { label: plan.stt.label })}{plan.stt.live ? tt(' (live)') : tt(' (pro Satz)')}</>}
               </>
@@ -421,7 +426,7 @@ export function VoiceSettingsPage() {
       <div className="card">
         <h2>{tt('Nutzung der letzten {days} Tage', { days: d.usage.days })}</h2>
         <p className="small">
-          {d.usage.tts_chars.toLocaleString('de-DE')} {tt('Zeichen gesprochen ({tts_calls} Aufrufe) · {stt_calls} Aufnahmen erkannt · {phone_calls} Telefonate mit eigener Stimme ({round} Min.)', { tts_calls: d.usage.tts_calls, stt_calls: d.usage.stt_calls, phone_calls: d.usage.phone_calls, round: Math.round(d.usage.phone_seconds / 60) })}
+          {d.usage.tts_chars.toLocaleString(intlLocale())} {tt('Zeichen gesprochen ({tts_calls} Aufrufe) · {stt_calls} Aufnahmen erkannt · {phone_calls} Telefonate mit eigener Stimme ({round} Min.)', { tts_calls: d.usage.tts_calls, stt_calls: d.usage.stt_calls, phone_calls: d.usage.phone_calls, round: Math.round(d.usage.phone_seconds / 60) })}
         </p>
         <p className="muted small">{tt('Abgerechnet wird beim Anbieter; hier siehst du nur, wie viel HyperLevel angefragt hat.')}</p>
       </div>

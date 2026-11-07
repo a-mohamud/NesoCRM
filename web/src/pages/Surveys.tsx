@@ -22,10 +22,10 @@ function Csat() {
     <>
       <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 10 }}>
         <div style={{ width: 170 }}>
-          <Select value={score} onChange={setScore} placeholder={tt('Alle Bewertungen')} options={[5, 4, 3, 2, 1].map((n) => [String(n), `${FACES[n - 1]} ${n} von 5`])} />
+          <Select value={score} onChange={setScore} placeholder={tt('Alle Bewertungen')} options={[5, 4, 3, 2, 1].map((n) => [String(n), `${FACES[n - 1]} ${tt('{n} von 5', { n })}`])} />
         </div>
         <div style={{ width: 170 }}>
-          <Select value={days} onChange={setDays} aria={tt('Zeitraum')} options={[['30', 'Letzte 30 Tage'], ['90', 'Letzte 90 Tage'], ['365', 'Letztes Jahr']]} />
+          <Select value={days} onChange={setDays} aria={tt('Zeitraum')} options={[['30', tt('Letzte 30 Tage')], ['90', tt('Letzte 90 Tage')], ['365', tt('Letztes Jahr')]]} />
         </div>
       </div>
       <div className="grid2" style={{ gap: 14, alignItems: 'start' }}>
@@ -94,14 +94,15 @@ function CampaignModal({ c, onClose, onSaved }: { c?: any; onClose: () => void; 
   const tt = useT('x_community');
   const tags = useTags();
   const lists = useLoad(() => api.get<any[]>('/api/smart-lists'), []);
+  const npsQuestion = tt(NPS_QUESTION);
   const [f, setF] = useState<any>(
     c ?? {
       name: '',
       channel: 'email',
       tags: [],
-      question: NPS_QUESTION,
-      subject: 'Kurze Frage: Würdest du uns weiterempfehlen?',
-      body: 'Hallo {{contact.first_name|}},\n\nwie wahrscheinlich ist es, dass du uns weiterempfiehlst? Eine Antwort dauert 10 Sekunden:\n\n{{nps_link}}\n\nDanke!\n{{location.name}}',
+      question: npsQuestion,
+      subject: tt('Kurze Frage: Würdest du uns weiterempfehlen?'),
+      body: tt('Hallo {{contact.first_name|}},\n\nwie wahrscheinlich ist es, dass du uns weiterempfiehlst? Eine Antwort dauert 10 Sekunden:\n\n{{nps_link}}\n\nDanke!\n{{location.name}}'),
     },
   );
   const save = async () => {
@@ -115,7 +116,7 @@ function CampaignModal({ c, onClose, onSaved }: { c?: any; onClose: () => void; 
           <Input value={f.name} onChange={(v) => setF({ ...f, name: v })} placeholder={tt('NPS Herbst')} autoFocus />
         </Field>
         <Field label={tt('Kanal')}>
-          <Select value={f.channel} onChange={(v) => setF({ ...f, channel: v })} options={[['email', 'E-Mail'], ['sms', 'SMS']]} />
+          <Select value={f.channel} onChange={(v) => setF({ ...f, channel: v })} options={[['email', tt('E-Mail')], ['sms', 'SMS']]} />
         </Field>
       </div>
       <Field label={tt('An Kontakte mit einem dieser Tags')}>
@@ -126,10 +127,10 @@ function CampaignModal({ c, onClose, onSaved }: { c?: any; onClose: () => void; 
           <Input value={f.subject} onChange={(v) => setF({ ...f, subject: v })} />
         </Field>
       )}
-      <Field label={tt('Nachricht')} hint="{{nps_link}} wird zum persönlichen Umfrage-Link; außerdem {{contact.first_name}}, {{location.name}}. Kontakte mit „Nicht stören“ bekommen nichts.">
+      <Field label={tt('Nachricht')} hint={tt('{{nps_link}} wird zum persönlichen Umfrage-Link; außerdem {{contact.first_name}}, {{location.name}}. Kontakte mit „Nicht stören“ bekommen nichts.')}>
         <Textarea value={f.body} onChange={(v) => setF({ ...f, body: v })} rows={7} />
       </Field>
-      <MoreFields id="nps-campaign" values={[f.question !== NPS_QUESTION && f.question, f.smart_list_id]}>
+      <MoreFields id="nps-campaign" values={[f.question !== npsQuestion && f.question, f.smart_list_id]}>
         <Field label={tt('Frage (auf der Umfrage-Seite)')}>
           <Input value={f.question} onChange={(v) => setF({ ...f, question: v })} />
         </Field>
@@ -201,10 +202,10 @@ function Nps() {
                 <div>
                   <h2 style={{ margin: 0 }}>{c.name}</h2>
                   <div className="muted small">
-                    {c.channel === 'sms' ? 'SMS' : 'E-Mail'} · {c.tags.length ? tt('Tags: {n}', { n: c.tags.join(', ') }) : c.smart_list_id ? tt('Smart List') : tt('keine Zielgruppe')}
+                    {c.channel === 'sms' ? 'SMS' : tt('E-Mail')} · {c.tags.length ? tt('Tags: {n}', { n: c.tags.join(', ') }) : c.smart_list_id ? tt('Smart List') : tt('keine Zielgruppe')}
                   </div>
                 </div>
-                <Badge tone={c.status === 'sent' ? 'green' : c.status === 'sending' ? 'blue' : 'gray'}>{c.status === 'sent' ? 'gesendet' : c.status === 'sending' ? tt('wird gesendet') : tt('Entwurf')}</Badge>
+                <Badge tone={c.status === 'sent' ? 'green' : c.status === 'sending' ? 'blue' : 'gray'}>{c.status === 'sent' ? tt('gesendet') : c.status === 'sending' ? tt('wird gesendet') : tt('Entwurf')}</Badge>
               </div>
               <div className="nps-score">
                 <div className="big">{c.stats.score ?? '–'}</div>
@@ -254,7 +255,7 @@ export function Surveys({ tab }: { tab?: string }) {
   return (
     <>
       <PageHead title={tt('Umfragen')} sub={tt('Zufriedenheit nach gelösten Tickets (CSAT) und Weiterempfehlung (NPS)')} />
-      <Tabs tabs={[['csat', 'Zufriedenheit (CSAT)'], ['nps', 'Weiterempfehlung (NPS)']]} value={cur} onChange={(v) => navigate(`surveys/${v}`)} />
+      <Tabs tabs={[['csat', tt('Zufriedenheit (CSAT)')], ['nps', tt('Weiterempfehlung (NPS)')]]} value={cur} onChange={(v) => navigate(`surveys/${v}`)} />
       <div style={{ marginTop: 14 }}>{cur === 'csat' ? <Csat /> : <Nps />}</div>
     </>
   );

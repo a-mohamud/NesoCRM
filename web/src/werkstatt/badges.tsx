@@ -75,22 +75,22 @@ export function VersionBadges({ b }: { b?: VersionBadgesData }) {
   return (
     <div className="wk-vbadges" data-tour="wk-version-badges">
       <Chip kind={b.static ? 'ok' : 'bad'} title={tt('Statische Prüfung: verbotene Zugriffe, externe Adressen, Berechtigungen')}>
-        {b.static ? '✓' : '✗'} statisch
+        {b.static ? '✓' : '✗'} {tt('statisch')}
       </Chip>
       <Chip kind={b.tests === null ? 'muted' : b.tests ? 'ok' : 'bad'} title={b.tests_detail || tt('Automatischer Selbsttest in der Sandbox')}>
         {b.tests === null ? '–' : b.tests ? '✓' : '✗'} {tt('Tests')}
       </Chip>
       <Chip kind={b.review ? tone(b.review.verdict) : 'muted'} title={b.review ? tt('Sicherheitsprüfung durch {model}', { model: b.review.model }) : tt('Noch nicht geprüft (nur nötig vor dem Veröffentlichen)')}>
-        {b.review ? (b.review.verdict === 'pass' ? '✓' : b.review.verdict === 'warn' ? '!' : '✗') : '–'} {tt('Prüfung')}{b.review ? ` ${VERDICT[b.review.verdict]}` : ''}
+        {b.review ? (b.review.verdict === 'pass' ? '✓' : b.review.verdict === 'warn' ? '!' : '✗') : '–'} {tt('Prüfung')}{b.review ? ` ${tt(VERDICT[b.review.verdict] ?? b.review.verdict)}` : ''}
       </Chip>
       {b.second_opinion && (
         <Chip kind={tone(b.second_opinion.verdict)} title={tt('Zweitmeinung von {model}', { model: b.second_opinion.model })}>
-          {b.second_opinion.verdict === 'pass' ? '✓' : b.second_opinion.verdict === 'warn' ? '!' : '✗'} {tt('Zweitmeinung {v}', { v: VERDICT[b.second_opinion.verdict] })}
+          {b.second_opinion.verdict === 'pass' ? '✓' : b.second_opinion.verdict === 'warn' ? '!' : '✗'} {tt('Zweitmeinung {v}', { v: tt(VERDICT[b.second_opinion.verdict] ?? b.second_opinion.verdict) })}
         </Chip>
       )}
       {b.signature && (
         <Chip kind={b.signature.state === 'signed' ? 'ok' : b.signature.state === 'invalid' ? 'bad' : 'warn'} title={b.signature.label || undefined}>
-          {b.signature.state === 'signed' ? (b.signature.gohigh ? tt('✓ von HyperLevel signiert') : `✓ signiert (${b.signature.label || tt('bekannter Schlüssel')})`) : tt('ungeprüft')}
+          {b.signature.state === 'signed' ? (b.signature.gohigh ? tt('✓ von HyperLevel signiert') : tt('✓ signiert ({label})', { label: b.signature.label || tt('bekannter Schlüssel') })) : tt('ungeprüft')}
         </Chip>
       )}
       {b.model && (

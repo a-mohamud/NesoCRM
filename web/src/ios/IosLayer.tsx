@@ -1,9 +1,10 @@
 import { RefreshCw } from 'lucide-react';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, Suspense, useEffect, useRef, useState } from 'react';
 import { Modal } from '../ui';
 import { InstallSheet } from './InstallSheet';
 import { HOLD_HINT_MS, matchShortcut, modKey, primaryAction, shortcutRows } from './shortcuts';
 import { keepStorage } from './viewport';
+import { tr, useT, type TFn } from '../i18n';
 import './ios-sheet.css';
 
 /**
@@ -12,14 +13,19 @@ import './ios-sheet.css';
  */
 
 const mod = () => modKey(navigator.platform ?? '', navigator.userAgent);
+/** The shortcut list (German data in shortcuts.ts) in the active language. */
+const rows = (tt: TFn) => {
+  const m = mod();
+  return shortcutRows(m === 'Strg' ? tt('Strg') : m).map((g) => ({ group: tt(g.group), rows: g.rows.map((x) => ({ keys: tt(x.keys), text: tt(x.text) })) }));
+};
 
 function ShortcutSheet({ onClose }: { onClose: () => void }) {
-  const m = mod();
+  const tt = useT('x_misc');
   return (
-    <Modal title="Tastaturkürzel" onClose={onClose} className="kb-sheet">
+    <Modal title={tt('Tastaturkürzel')} onClose={onClose} className="kb-sheet">
       <table className="kb-table" data-tour="shortcuts-sheet">
         <tbody>
-          {shortcutRows(m).map((g) => (
+          {rows(tt).map((g) => (
             <Fragment key={g.group}>
               <tr>
                 <th colSpan={2}>{g.group}</th>
@@ -41,6 +47,21 @@ function ShortcutSheet({ onClose }: { onClose: () => void }) {
 }
 
 /** ⌘N → the page's main action, ⌘/ → the overview; holding ⌘ (or Strg) for about a second shows the short list. */
+/** The short list while ⌘ is held (loads the x_misc catalog only when it shows). */
+function ShortcutHint() {
+  const tt = useT('x_misc');
+  return (
+    <div className="kb-hint" role="status">
+      {rows(tt)[0].rows.slice(0, 5).map((r) => (
+        <div key={r.keys}>
+          <kbd>{r.keys}</kbd>
+          <span>{r.text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Shortcuts() {
   const [help, setHelp] = useState(false);
   const [hint, setHint] = useState(false);
@@ -80,20 +101,12 @@ function Shortcuts() {
       window.removeEventListener('blur', stop);
     };
   }, []);
-  const m = mod();
   return (
     <>
-      {hint && !help && (
-        <div className="kb-hint" role="status">
-          {shortcutRows(m)[0].rows.slice(0, 5).map((r) => (
-            <div key={r.keys}>
-              <kbd>{r.keys}</kbd>
-              <span>{r.text}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {help && <ShortcutSheet onClose={() => setHelp(false)} />}
+      <Suspense fallback={null}>
+        {hint && !help && <ShortcutHint />}
+        {help && <ShortcutSheet onClose={() => setHelp(false)} />}
+      </Suspense>
     </>
   );
 }
@@ -161,7 +174,7 @@ function PullToRefresh() {
   }, []);
   if (!pull && !busy) return null;
   return (
-    <div className={`ptr${busy ? ' spin' : ''}`} style={{ opacity: busy ? 1 : Math.min(1, pull / 40), transform: busy ? undefined : `translateY(${pull - 40}px) rotate(${pull * 4}deg)` }} role="status" aria-label="Aktualisieren">
+    <div className={`ptr${busy ? ' spin' : ''}`} style={{ opacity: busy ? 1 : Math.min(1, pull / 40), transform: busy ? undefined : `translateY(${pull - 40}px) rotate(${pull * 4}deg)` }} role="status" aria-label={tr('x_misc')('Aktualisieren')}>
       <RefreshCw size={18} />
     </div>
   );

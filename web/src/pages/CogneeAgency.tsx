@@ -57,7 +57,7 @@ export function CogneeAgencySetup() {
         <Input value={f.base_url} onChange={(x) => set({ base_url: x })} placeholder="https://cognee.example.com" autoComplete="off" />
       </Field>
       <Field label={tt('Anmeldung')}>
-        <Select value={f.auth_mode} onChange={(x) => set({ auth_mode: x, secret: '' })} options={[['password', 'E-Mail und Passwort (Cognee-Nutzer für HyperLevel)'], ['api_key', 'API-Schlüssel (Cognee → /api/v1/auth/api-keys)']]} />
+        <Select value={f.auth_mode} onChange={(x) => set({ auth_mode: x, secret: '' })} options={[['password', tt('E-Mail und Passwort (Cognee-Nutzer für HyperLevel)')], ['api_key', tt('API-Schlüssel (Cognee → /api/v1/auth/api-keys)')]]} />
       </Field>
       {password && (
         <Field label={tt('E-Mail des Cognee-Nutzers')}>
@@ -67,7 +67,7 @@ export function CogneeAgencySetup() {
       <Field label={password ? tt('Passwort') : tt('API-Schlüssel')} hint={tt('Wird verschlüsselt gespeichert und nie wieder angezeigt. Leer lassen = bisherigen Wert behalten.')}>
         <Input type="password" value={f.secret} onChange={(x) => set({ secret: x })} autoComplete="new-password" placeholder={v.configured && v.secret_set && v.auth_mode === f.auth_mode ? `•••••••• ${v.hint}` : ''} />
       </Field>
-      <Check checked={f.allow_private} onChange={(x) => set({ allow_private: x })} label={`Internes Netz erlauben (Cognee läuft im selben Docker-Netz oder LAN)${hostLooksInternal && !f.allow_private ? tt(' – vermutlich nötig') : ''}`} />
+      <Check checked={f.allow_private} onChange={(x) => set({ allow_private: x })} label={`${tt('Internes Netz erlauben (Cognee läuft im selben Docker-Netz oder LAN)')}${hostLooksInternal && !f.allow_private ? tt(' – vermutlich nötig') : ''}`} />
       <Check checked={f.locations_may_enable} onChange={(x) => set({ locations_may_enable: x })} label={tt('Sub-Account-Admins dürfen das Gedächtnis selbst einschalten (aus: nur die Agentur)')} />
       <button type="button" className="btn small ghost" onClick={() => setMore(!more)}>
         {more ? '▾' : '▸'} {tt('Weitere Einstellungen')}
@@ -110,7 +110,7 @@ export function CogneeAgencySetup() {
       {test && <TestResult r={test} />}
       {v.configured && !test && v.last_test && (
         <p className="muted small">
-          {tt('Letzter Test {dt}:', { dt: dt(v.last_test.at) })} {v.last_test.ok ? <Badge tone="green">ok</Badge> : <Badge tone="red">fehlgeschlagen</Badge>} <PostureBadge state={v.posture?.state} />
+          {tt('Letzter Test {dt}:', { dt: dt(v.last_test.at) })} {v.last_test.ok ? <Badge tone="green">{tt('ok')}</Badge> : <Badge tone="red">{tt('fehlgeschlagen')}</Badge>} <PostureBadge state={v.posture?.state} />
         </p>
       )}
       {v.configured && <CogneeOverview />}
@@ -125,8 +125,8 @@ function TestResult({ r }: { r: Json }) {
       <ul className="cg-steps">
         {r.steps.map((st: Json) => (
           <li key={st.key}>
-            <Badge tone={st.ok ? (st.warn ? 'yellow' : 'green') : 'red'}>{st.ok ? (st.warn ? 'unklar' : 'ok') : tt('Fehler')}</Badge>
-            <span className="cg-step-label">{st.label}</span>
+            <Badge tone={st.ok ? (st.warn ? 'yellow' : 'green') : 'red'}>{st.ok ? (st.warn ? tt('unklar') : tt('ok')) : tt('Fehler')}</Badge>
+            <span className="cg-step-label">{tt(st.label)}</span>
             <span className="muted small">{st.detail}</span>
           </li>
         ))}
@@ -157,7 +157,7 @@ function CogneeOverview() {
           <thead>
             <tr>
               <th>{tt('Sub-Account')}</th>
-              <th>{tt('Freigabe')}</th>
+              <th>{tt('Datenfreigabe')}</th>
               <th>{tt('Einträge')}</th>
               <th>{tt('Letzter Abgleich')}</th>
               <th>{tt('Zugang')}</th>
@@ -169,7 +169,7 @@ function CogneeOverview() {
               <tr key={r.id}>
                 <td>{r.name}</td>
                 <td>
-                  {r.enabled ? <Badge tone="green">an</Badge> : <Badge>aus</Badge>} {r.enabled && <span className="muted small">{tt('{length} Datentyp', { length: r.types.length })}{r.types.length === 1 ? '' : 'en'}</span>}
+                  {r.enabled ? <Badge tone="green">{tt('an')}</Badge> : <Badge>{tt('aus')}</Badge>} {r.enabled && <span className="muted small">{tt.plural(r.types.length, { one: '{n} Datentyp', other: '{n} Datentypen' })}</span>}
                   {r.errors > 0 && (
                     <>
                       {' '}
@@ -184,7 +184,7 @@ function CogneeOverview() {
                 <td>{r.last_sync_at ? dt(r.last_sync_at) : '–'}</td>
                 <td>
                   <button className="btn small ghost" onClick={() => setAccount(r)}>
-                    {r.account === 'override' ? <Badge tone="blue">eigener: {r.account_label}</Badge> : tt('Agentur-Zugang')}
+                    {r.account === 'override' ? <Badge tone="blue">{tt('eigener: {label}', { label: r.account_label })}</Badge> : tt('Agentur-Zugang')}
                   </button>
                 </td>
                 <td style={{ whiteSpace: 'nowrap' }}>
@@ -291,7 +291,7 @@ function AccountDialog({ row, onClose }: { row: Json; onClose: () => void }) {
         {tt('Jetzt:')} {own ? <Badge tone="blue">{tt('eigener Zugang ({account_label})', { account_label: row.account_label })}</Badge> : <Badge>{tt('Zugang der Agentur')}</Badge>}
       </p>
       <Field label={tt('Anmeldung')}>
-        <Select value={mode} onChange={setMode} options={[['password', 'E-Mail und Passwort'], ['api_key', 'API-Schlüssel']]} />
+        <Select value={mode} onChange={setMode} options={[['password', tt('E-Mail und Passwort')], ['api_key', tt('API-Schlüssel')]]} />
       </Field>
       {mode === 'password' && (
         <Field label={tt('E-Mail des Cognee-Nutzers')}>

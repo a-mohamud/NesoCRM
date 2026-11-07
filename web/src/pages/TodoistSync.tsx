@@ -84,7 +84,7 @@ export function TodoistSync() {
   };
   const setEnabled = async (enabled: boolean) => {
     const toCreate = v.locations.filter((l: any) => l.mode === 'auto' && !l.project_id).length;
-    if (enabled && !bySections && toCreate > 1 && !confirmAsk(`Das legt bis zu ${toCreate} neue Projekte in Todoist an${v.account?.premium === false ? tt(' – im kostenlosen Plan sind nur 5 Projekte erlaubt') : ''}. Trotzdem einschalten?`)) return;
+    if (enabled && !bySections && toCreate > 1 && !confirmAsk(tt('Das legt bis zu {n} neue Projekte in Todoist an{note}. Trotzdem einschalten?', { n: toCreate, note: v.account?.premium === false ? tt(' – im kostenlosen Plan sind nur 5 Projekte erlaubt') : '' }))) return;
     await save({ enabled });
   };
   const runNow = async (full: boolean) => {
@@ -94,16 +94,16 @@ export function TodoistSync() {
     s.reload();
     return r;
   };
-  const counts = st.counts ? COUNT_LABELS.filter(([k]) => st.counts[k]).map(([k, l]) => `${st.counts[k]} ${l}`) : [];
+  const counts = st.counts ? COUNT_LABELS.filter(([k]) => st.counts[k]).map(([k, l]) => `${st.counts[k]} ${tt(l)}`) : [];
   const homeOptions: [string, string][] = [
-    ['', `Automatisch: „${v.parent_name || 'HyperLevel'}“`],
-    ...(projects ?? (v.home.picked ? [{ id: v.home.id, name: v.home.name }] : [])).map((p: Pick) => [p.id, p.inbox ? `${p.name} (Eingang)` : p.name] as [string, string]),
-    ...(projects ? [] : [[LOAD, 'Vorhandenes Projekt wählen …'] as [string, string]]),
+    ['', tt('Automatisch: „{name}“', { name: v.parent_name || 'HyperLevel' })],
+    ...(projects ?? (v.home.picked ? [{ id: v.home.id, name: v.home.name }] : [])).map((p: Pick) => [p.id, p.inbox ? tt('{name} (Eingang)', { name: p.name }) : p.name] as [string, string]),
+    ...(projects ? [] : [[LOAD, tt('Vorhandenes Projekt wählen …')] as [string, string]]),
   ];
   const targetLabel = (l: any) => {
     if (l.mode === 'off') return '';
-    if (bySections) return l.section_id ? `→ ${v.home.name} / ${l.section_name || l.section_id}` : l.mode === 'auto' ? `Abschnitt wird beim nächsten Abgleich angelegt (in „${v.home.name}“)` : '';
-    return l.project_id ? `→ ${l.project_name || l.project_id}` : l.mode === 'auto' ? `Projekt wird beim nächsten Abgleich angelegt${v.parent_name ? ` (unter „${v.parent_name}“)` : ''}` : '';
+    if (bySections) return l.section_id ? `→ ${v.home.name} / ${l.section_name || l.section_id}` : l.mode === 'auto' ? tt('Abschnitt wird beim nächsten Abgleich angelegt (in „{name}“)', { name: v.home.name }) : '';
+    return l.project_id ? `→ ${l.project_name || l.project_id}` : l.mode === 'auto' ? (v.parent_name ? tt('Projekt wird beim nächsten Abgleich angelegt (unter „{name}“)', { name: v.parent_name }) : tt('Projekt wird beim nächsten Abgleich angelegt')) : '';
   };
   const pickList = bySections ? sections : projects;
 
@@ -120,7 +120,7 @@ export function TodoistSync() {
         <div className="todoist-conn">
           {v.token_set && v.account ? (
             <>
-              <Badge tone="green">verbunden</Badge> <strong>{v.account.name || v.account.email}</strong>
+              <Badge tone="green">{tt('verbunden')}</Badge> <strong>{v.account.name || v.account.email}</strong>
               {v.account.premium === false && <Badge>{tt('kostenloser Plan')}</Badge>}
               {v.account.email && v.account.name && <span className="muted small"> · {v.account.email}</span>}
             </>
@@ -164,7 +164,7 @@ export function TodoistSync() {
                 )
               }
             >
-              <Select value={v.layout} onChange={(layout) => (setPicking({}), save({ layout }))} options={[['sections', 'Ein Projekt mit Abschnitten (empfohlen)'], ['projects', 'Ein Projekt je Sub-Account']]} />
+              <Select value={v.layout} onChange={(layout) => (setPicking({}), save({ layout }))} options={[['sections', tt('Ein Projekt mit Abschnitten (empfohlen)')], ['projects', tt('Ein Projekt je Sub-Account')]]} />
             </Field>
             {bySections ? (
               <Field label={tt('Todoist-Projekt')} hint={v.home.picked ? tt('Abschnitte werden in diesem Projekt angelegt') : v.home.id ? tt('Angelegt – die Abschnitte liegen in „{name}“', { name: v.home.name }) : tt('Wird beim ersten Abgleich angelegt (oder ein vorhandenes gleichen Namens genommen)')}>
@@ -182,17 +182,17 @@ export function TodoistSync() {
             )}
             {bySections && (
               <Field label={tt('Aufgaben ohne Abschnitt')} hint={tt('Neue Aufgaben im Projekt, die in keinem Abschnitt liegen')}>
-                <Select value={v.unsectioned_location_id ?? ''} onChange={(id) => save({ unsectioned_location_id: id })} options={[['', 'Ignorieren'], ...v.locations.map((l: any) => [l.id, `→ ${l.name}`] as [string, string])]} />
+                <Select value={v.unsectioned_location_id ?? ''} onChange={(id) => save({ unsectioned_location_id: id })} options={[['', tt('Ignorieren')], ...v.locations.map((l: any) => [l.id, `→ ${l.name}`] as [string, string])]} />
               </Field>
             )}
             <Field label={tt('Richtung')}>
-              <Select value={v.direction} onChange={(direction) => save({ direction })} options={[['both', 'Beide Richtungen'], ['push', 'Nur HyperLevel → Todoist']]} />
+              <Select value={v.direction} onChange={(direction) => save({ direction })} options={[['both', tt('Beide Richtungen')], ['push', tt('Nur HyperLevel → Todoist')]]} />
             </Field>
             <Field label={tt('Welche Aufgaben')} hint={tt('Bereits verknüpfte Aufgaben bleiben verknüpft')}>
-              <Select value={v.scope} onChange={(scope) => save({ scope })} options={[['all', 'Alle Aufgaben'], ['mine', 'Nur mir zugewiesene']]} />
+              <Select value={v.scope} onChange={(scope) => save({ scope })} options={[['all', tt('Alle Aufgaben')], ['mine', tt('Nur mir zugewiesene')]]} />
             </Field>
             <Field label={tt('Sub-Accounts ohne eigene Einstellung')}>
-              <Select value={v.default_mode} onChange={(default_mode) => save({ default_mode })} options={[['auto', bySections ? 'Abschnitt automatisch anlegen' : 'Projekt automatisch anlegen'], ['off', 'Nicht abgleichen']]} />
+              <Select value={v.default_mode} onChange={(default_mode) => save({ default_mode })} options={[['auto', bySections ? tt('Abschnitt automatisch anlegen') : tt('Projekt automatisch anlegen')], ['off', tt('Nicht abgleichen')]]} />
             </Field>
           </div>
           <Check checked={v.label} onChange={(label) => save({ label })} label={<>{tt('Label')} <code>ghp</code> {tt('an Aufgaben, die von hier kommen')}</>} />
@@ -215,7 +215,7 @@ export function TodoistSync() {
                     </td>
                     <td>
                       <div className="todoist-map">
-                        <Select value={picking[l.id] ? 'existing' : l.mode} onChange={(m) => setMode(l, m)} options={MODES[v.layout] ?? MODES.sections} />
+                        <Select value={picking[l.id] ? 'existing' : l.mode} onChange={(m) => setMode(l, m)} options={(MODES[v.layout] ?? MODES.sections).map(([k, l]) => [k, tt(l)] as [string, string])} />
                         {picking[l.id] &&
                           (pickList ? (
                             <Select value="" placeholder={bySections ? tt('Abschnitt wählen …') : tt('Projekt wählen …')} onChange={(p) => pickExisting(l, p)} options={pickList.map((p) => [p.id, p.inbox ? `${p.name} (Eingang)` : p.name] as [string, string])} />
@@ -233,7 +233,7 @@ export function TodoistSync() {
           </div>
           {bySections && <p className="muted small">{tt('Wird eine Aufgabe in Todoist in einen anderen Abschnitt verschoben, bleibt sie hier im bisherigen Sub-Account.')}</p>}
 
-          <h3 className="todoist-h">Status</h3>
+          <h3 className="todoist-h">{tt('Status')}</h3>
           {st.limit_error && (
             <p className="todoist-limit small">
               <Badge tone="red">{tt('Limit')}</Badge> {st.limit_error}
@@ -301,7 +301,7 @@ export function TodoistSync() {
               <ul className="todoist-log">
                 {v.log.map((e: any) => (
                   <li key={e.id}>
-                    <Badge tone={LEVEL_TONE[e.level] ?? 'gray'}>{LEVEL_LABEL[e.level] ?? e.level}</Badge> <span className="muted small">{dt(e.at)}</span> {e.message}
+                    <Badge tone={LEVEL_TONE[e.level] ?? 'gray'}>{tt(LEVEL_LABEL[e.level] ?? e.level)}</Badge> <span className="muted small">{dt(e.at)}</span> {e.message}
                   </li>
                 ))}
               </ul>

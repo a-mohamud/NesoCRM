@@ -68,11 +68,12 @@ function Section({ title, tour, lock, children, hint }: { title: string; tour: s
 }
 
 function Seg<T extends string>({ value, options, onChange, disabled, label }: { value: T; options: [T, string][]; onChange: (v: T) => void; disabled?: boolean; label: string }) {
+  const tt = useT('x_misc');
   return (
     <div className="ap-seg" role="radiogroup" aria-label={label}>
       {options.map(([v, l]) => (
         <button key={v} role="radio" aria-checked={value === v} className={value === v ? 'on' : ''} onClick={() => onChange(v)} disabled={disabled}>
-          {l}
+          {tt(l)}
         </button>
       ))}
     </div>
@@ -113,14 +114,14 @@ function Themes({ p, lock }: { p: Prefs; lock: boolean }) {
         return (
           <button key={t.id} className={`ap-theme${p.theme === t.id ? ' on' : ''}`} onClick={() => void update({ theme: t.id })} disabled={lock} role="radio" aria-checked={p.theme === t.id} data-tour={`theme-${t.id}`}>
             <div className="ap-theme-head">
-              <span className="ap-theme-name">{t.name}</span>
+              <span className="ap-theme-name">{tt(t.name)}</span>
               {p.theme === t.id && <Icon name="ok" size={16} />}
             </div>
             <div className="ap-pair">
               <Frame k={t.light} accent={accent(false)} />
               <Frame k={t.dark} accent={accent(true)} />
             </div>
-            <span className="ap-theme-blurb">{t.blurb}</span>
+            <span className="ap-theme-blurb">{tt(t.blurb)}</span>
           </button>
         );
       })}
@@ -178,19 +179,19 @@ function DeptSection({ p, lock }: { p: Prefs; lock: boolean }) {
   return (
     <Section title={tt('Bereichsfarben')} tour="appearance-dept" lock={lock} hint={tt('Jeder Bereich hat seine eigene Farbe, damit du dich auf einen Blick zurechtfindest.')}>
       <Seg label={tt('Intensität')} value={p.dept} options={DEPT_LEVELS.map((l) => [l, DEPT_LEVEL_LABEL[l]] as [DeptLevel, string])} onChange={(v) => void update({ dept: v })} disabled={lock} />
-      <p className="muted small">{DEPT_LEVEL_HINT[p.dept]}</p>
+      <p className="muted small">{tt(DEPT_LEVEL_HINT[p.dept])}</p>
       <div className="ap-pal" role="radiogroup" aria-label={tt('Palette')}>
         {DEPT_PALETTES.map((id) => {
           const vars = buildVars({ theme: p.theme, accent: p.accent, palette: id, brandColor: look.brandColor }, dark);
           return (
             <button key={id} className={p.dept_palette === id ? 'on' : ''} onClick={() => void update({ dept_palette: id })} disabled={lock} role="radio" aria-checked={p.dept_palette === id} data-tour={`palette-${id}`}>
-              <b>{PALETTE_LABEL[id][0]}</b>
+              <b>{tt(PALETTE_LABEL[id][0])}</b>
               <span className="ap-pal-strip">
                 {DEPTS.map((d) => (
                   <i key={d.id} style={{ background: `linear-gradient(120deg, ${vars[`--d-${d.id}`]}, ${vars[`--d-${d.id}-2`]})` }} />
                 ))}
               </span>
-              <span className="muted small">{PALETTE_LABEL[id][1]}</span>
+              <span className="muted small">{tt(PALETTE_LABEL[id][1])}</span>
             </button>
           );
         })}
@@ -199,7 +200,7 @@ function DeptSection({ p, lock }: { p: Prefs; lock: boolean }) {
       <div className="ap-dept-row">
         {DEPTS.map((d) => (
           <span key={d.id} className="ap-dept-chip" data-dept={d.id}>
-            {d.label}
+            {tt(d.label)}
           </span>
         ))}
       </div>
@@ -252,7 +253,7 @@ function Modules({ p, lock }: { p: Prefs; lock: boolean }) {
           <ProfilePreview profile={pick} />
           <div className="actions" style={{ marginTop: 8 }}>
             <button className="btn" disabled={lock} onClick={async () => (await update({ hidden: hiddenForProfile(pick.id), profile: pick.id, asked: true }), setPick(null))} data-tour="profile-apply">
-              {tt('„{label}“ übernehmen', { label: pick.label })}
+              {tt('„{label}“ übernehmen', { label: tt(pick.label) })}
             </button>
             <button className="btn secondary" onClick={() => setPick(null)}>
               {tt('Abbrechen')}
@@ -263,10 +264,10 @@ function Modules({ p, lock }: { p: Prefs; lock: boolean }) {
       <h3 style={{ margin: '16px 0 4px' }}>{tt('Einzeln')}</h3>
       {MODULE_SECTIONS.map((s) => (
         <div key={s.id} className="ap-mod-sec">
-          <h3>{s.label}</h3>
+          <h3>{tt(s.label)}</h3>
           <div className="ap-mods">
             {s.modules.map(([id, label]) => (
-              <Check key={id} checked={!hidden.has(id)} onChange={(v) => !lock && toggle(id, v)} label={label} />
+              <Check key={id} checked={!hidden.has(id)} onChange={(v) => !lock && toggle(id, v)} label={tt(label)} />
             ))}
           </div>
         </div>
@@ -324,9 +325,9 @@ export function Appearance() {
         <div className="ap-packs" role="radiogroup" aria-label={tt('Icon-Pack')}>
           {ICON_PACKS.map((id) => (
             <button key={id} className={`ap-pack${p.icons === id ? ' on' : ''}`} onClick={() => void update({ icons: id })} disabled={!!L.icons} role="radio" aria-checked={p.icons === id} data-tour={`pack-${id}`}>
-              <b>{PACKS[id][0]}</b>
+              <b>{tt(PACKS[id][0])}</b>
               <PackIcons id={id} />
-              <span className="muted small">{PACKS[id][1]}</span>
+              <span className="muted small">{tt(PACKS[id][1])}</span>
             </button>
           ))}
         </div>

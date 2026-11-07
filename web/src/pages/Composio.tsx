@@ -92,9 +92,9 @@ function useComposioReturn(onDone?: () => void) {
     const q = new URLSearchParams(location.search);
     const st = q.get('composio');
     if (!st) return;
-    if (st === 'ok') toast(`${q.get('app') ?? tt('App')} verbunden`);
-    else if (st === 'pending') toast(`${q.get('app') ?? tt('App')}: Verbindung wird noch geprüft – gleich „Aktualisieren“`);
-    else toastError(q.get('msg') || 'Verbinden fehlgeschlagen');
+    if (st === 'ok') toast(tt('{app} verbunden', { app: q.get('app') ?? tt('App') }));
+    else if (st === 'pending') toast(tt('{app}: Verbindung wird noch geprüft – gleich „Aktualisieren“', { app: q.get('app') ?? tt('App') }));
+    else toastError(q.get('msg') || tt('Verbinden fehlgeschlagen'));
     history.replaceState(null, '', location.pathname);
     onDone?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,13 +135,13 @@ export function SchemaForm({ schema, values, onChange, merge = true }: { schema:
     const v = values?.[k] === undefined || values?.[k] === null ? '' : typeof values[k] === 'object' ? JSON.stringify(values[k]) : String(values[k]);
     const desc = s.description ? clip(s.description, 180) : '';
     if (Array.isArray(s.enum) && s.enum.length) return <Field key={k} label={label} hint={desc || undefined}><Select value={v} onChange={(x) => set(k, x)} placeholder="–" options={s.enum.map(String)} /></Field>;
-    if (t === 'boolean') return <Field key={k} label={label} hint={desc || undefined}><Select value={v} onChange={(x) => set(k, x)} placeholder="–" options={[['true', 'Ja'], ['false', 'Nein']]} /></Field>;
+    if (t === 'boolean') return <Field key={k} label={label} hint={desc || undefined}><Select value={v} onChange={(x) => set(k, x)} placeholder="–" options={[['true', tt('Ja')], ['false', tt('Nein')]]} /></Field>;
     if (t === 'object' || t === 'array') {
-      const hint = `${desc ? `${desc} – ` : ''}${t === 'array' ? 'eine Angabe pro Zeile oder JSON-Liste' : 'als JSON'}`;
+      const hint = `${desc ? `${desc} – ` : ''}${t === 'array' ? tt('eine Angabe pro Zeile oder JSON-Liste') : tt('als JSON')}`;
       return <Field key={k} label={label} hint={hint}><Textarea value={v} onChange={(x) => set(k, x)} rows={3} /></Field>;
     }
     const long = t === 'string' && /body|text|content|message|description|html|markdown|comment|note|summary/i.test(k);
-    const ph = s.default !== undefined ? String(s.default) : Array.isArray(s.examples) && s.examples.length ? String(s.examples[0]) : t === 'integer' || t === 'number' ? 'Zahl' : '';
+    const ph = s.default !== undefined ? String(s.default) : Array.isArray(s.examples) && s.examples.length ? String(s.examples[0]) : t === 'integer' || t === 'number' ? tt('Zahl') : '';
     return <Field key={k} label={label} hint={desc || undefined}>{long ? <Textarea value={v} onChange={(x) => set(k, x)} rows={4} placeholder={ph} /> : <Input value={v} onChange={(x) => set(k, x)} placeholder={ph} />}</Field>;
   };
   return (
@@ -170,14 +170,14 @@ export function AppsHub({ tab = 'catalog' }: { tab?: string }) {
       <PageHead title={tt('Apps & Integrationen')} sub={tt('Eingebaute Integrationen, 250+ Apps über Composio und direkte Verbindungen – alles, was dieser Sub-Account verbunden hat.')} />
       <Tabs
         tabs={[
-          ['catalog', 'Katalog'],
-          ['composio', 'Composio-Apps'],
-          ['events', 'App-Ereignisse'],
-          ['ai', 'KI & MCP'],
-          ['direct', 'Direkt-Verbindungen'],
-          ['books', 'Buchhaltung'],
-          ['nango', 'Nango'],
-          ['mcp', 'MCP-Server'],
+          ['catalog', tt('Katalog')],
+          ['composio', tt('Composio-Apps')],
+          ['events', tt('App-Ereignisse')],
+          ['ai', tt('KI & MCP')],
+          ['direct', tt('Direkt-Verbindungen')],
+          ['books', tt('Buchhaltung')],
+          ['nango', tt('Nango')],
+          ['mcp', tt('MCP-Server')],
         ]}
         value={value}
         onChange={(t) => navigate(t === 'catalog' ? 'apps' : `apps/${t}`)}
@@ -279,7 +279,7 @@ function ToolkitCard({ t }: { t: Toolkit }) {
         {t.no_auth ? (
           <Badge tone="blue">{tt('ohne Anmeldung')}</Badge>
         ) : st && t.connection === 'active' ? (
-          <Badge tone={st[1]}>{st[0]}</Badge>
+          <Badge tone={st[1]}>{tt(st[0])}</Badge>
         ) : (
           <button className="btn small" onClick={() => void connectApp(t.slug)}>
             {t.connection ? tt('Neu verbinden') : tt('Verbinden')}
@@ -315,14 +315,14 @@ function ComposioKeyCard({ v, onChange }: { v: Json; onChange: () => void }) {
     <div className="card" data-tour="apps-composio-status">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0 }}>{tt('Composio')}</h2>
-        {v.configured ? <Badge tone="green">eingerichtet</Badge> : <Badge>{tt('nicht eingerichtet')}</Badge>}
+        {v.configured ? <Badge tone="green">{tt('eingerichtet')}</Badge> : <Badge>{tt('nicht eingerichtet')}</Badge>}
       </div>
       <p className="muted small">
         {tt('Composio verbindet 250+ Apps mit verwalteter Anmeldung (OAuth, API-Schlüssel). Dieser Sub-Account ist bei Composio der Nutzer')} <code>{v.user_id}</code> {tt('– seine Verbindungen sind von anderen Sub-Accounts getrennt.')}
       </p>
       {v.configured ? (
         <p className="small">
-          {tt('Verwendet:')} <strong>{SOURCE[v.source] ?? v.source}</strong> {v.key_hint && <code>{v.key_hint}</code>}
+          {tt('Verwendet:')} <strong>{tt(SOURCE[v.source] ?? v.source)}</strong> {v.key_hint && <code>{v.key_hint}</code>}
         </p>
       ) : (
         <p className="small">{v.is_admin ? tt('Trag den Schlüssel einmal für die Agentur ein (Agentur → Integrationen → Einrichtung) oder hier nur für diesen Sub-Account.') : tt('Die Agentur hat Composio noch nicht eingerichtet. Optional kannst du hier einen eigenen Schlüssel eintragen.')}</p>
@@ -344,7 +344,7 @@ function ComposioKeyCard({ v, onChange }: { v: Json; onChange: () => void }) {
       </div>
       {test && (
         <p className="small">
-          <Badge tone="green">OK</Badge> {tt('{auth_configs} Auth-Konfiguration', { auth_configs: test.auth_configs })}{test.auth_configs === 1 ? '' : 'en'} {tt('im Composio-Projekt')}
+          <Badge tone="green">OK</Badge> {test.auth_configs === 1 ? tt('{auth_configs} Auth-Konfiguration', { auth_configs: test.auth_configs }) : tt('{auth_configs} Auth-Konfigurationen', { auth_configs: test.auth_configs })} {tt('im Composio-Projekt')}
           {test.webhook ? (test.webhook.exists ? (test.webhook.ours ? tt(' · Webhook zeigt auf HyperLevel') : tt(' · Webhook zeigt woandershin (App-Ereignisse kommen trotzdem an)')) : tt(' · Webhook wird beim ersten App-Ereignis angelegt')) : ''}
         </p>
       )}
@@ -404,7 +404,7 @@ function Connections({ conns, onChange }: { conns: Conn[]; onChange: () => void 
                     {c.status_reason ? ` · ${clip(c.status_reason, 80)}` : ''}
                   </span>
                 </div>
-                <Badge tone={s[1]}>{s[0]}</Badge>
+                <Badge tone={s[1]}>{tt(s[0])}</Badge>
                 {c.status !== 'active' && c.status !== 'pending' && (
                   <button className="btn small" onClick={() => void connectApp(c.toolkit)}>
                     {tt('Neu verbinden')}
@@ -527,7 +527,7 @@ function ComposioEvents() {
               <thead>
                 <tr>
                   <th>{tt('Ereignis')}</th>
-                  <th>Status</th>
+                  <th>{tt('Status')}</th>
                   <th>{tt('Empfangen')}</th>
                   <th />
                 </tr>
@@ -543,7 +543,7 @@ function ComposioEvents() {
                       </div>
                       {r.last_error && <div className="small" style={{ color: 'var(--red)' }}>{r.last_error}</div>}
                     </td>
-                    <td>{r.status === 'active' ? <Badge tone="green">aktiv</Badge> : r.status === 'paused' ? <Badge>pausiert</Badge> : <Badge tone="red">{tt('Fehler')}</Badge>}</td>
+                    <td>{r.status === 'active' ? <Badge tone="green">{tt('aktiv')}</Badge> : r.status === 'paused' ? <Badge>{tt('pausiert')}</Badge> : <Badge tone="red">{tt('Fehler')}</Badge>}</td>
                     <td className="small">
                       {r.events}× {r.last_event_at ? <span className="muted">{tt('· zuletzt {dt}', { dt: dt(r.last_event_at) })}</span> : null}
                     </td>
@@ -655,7 +655,7 @@ function TriggerLog({ row, onClose }: { row: Json; onClose: () => void }) {
               <tr key={e.id}>
                 <td className="small" style={{ whiteSpace: 'nowrap' }}>{dt(e.created_at)}</td>
                 <td>
-                  <Badge tone={(LABEL[e.status] ?? [e.status, 'gray'])[1]}>{(LABEL[e.status] ?? [e.status])[0]}</Badge> <span className="muted small">{e.detail}</span>
+                  <Badge tone={(LABEL[e.status] ?? [e.status, 'gray'])[1]}>{tt((LABEL[e.status] ?? [e.status])[0])}</Badge> <span className="muted small">{e.detail}</span>
                   {open === e.id && <pre className="cx-pre">{JSON.stringify(e.payload, null, 2)}</pre>}
                 </td>
                 <td style={{ textAlign: 'right' }}>
@@ -686,14 +686,14 @@ function TriggerMapping({ row, onClose, onDone }: { row: Json; onClose: () => vo
   const [tags, setTags] = useState<string[]>(row.tags ?? []);
   const [sample, setSample] = useState('');
   const [preview, setPreview] = useState<Json | null>(null);
-  const targets: [string, string][] = [...CONTACT_TARGETS, ...(fields.data ?? []).map((f) => [`custom.${f.key}`, `Feld: ${f.label}`] as [string, string])];
+  const targets: [string, string][] = [...CONTACT_TARGETS.map(([k, l]) => [k, tt(l)] as [string, string]), ...(fields.data ?? []).map((f) => [`custom.${f.key}`, tt('Feld: {label}', { label: f.label })] as [string, string])];
   const run = async () => {
     let payload: unknown;
     if (sample.trim()) {
       try {
         payload = JSON.parse(sample);
       } catch {
-        return toastError('Beispiel ist kein gültiges JSON');
+        return toastError(tt('Beispiel ist kein gültiges JSON'));
       }
     }
     const r = await act(() => api.post(`/api/composio/triggers/${row.id}/preview`, { mapping: map, ...(payload ? { payload } : {}) }));
@@ -710,7 +710,7 @@ function TriggerMapping({ row, onClose, onDone }: { row: Json; onClose: () => vo
         </button>
       }
     >
-      <p className="muted small">{tt('Leer = automatisch (erste E-Mail-Adresse, Telefonnummer und Name im Ereignis). Pfade mit Punkten, z. B.')} <code>customer.email</code> oder <code>answers.0.email</code>.</p>
+      <p className="muted small">{tt('Leer = automatisch (erste E-Mail-Adresse, Telefonnummer und Name im Ereignis). Pfade mit Punkten, z. B.')} <code>customer.email</code> {tt('oder')} <code>answers.0.email</code>.</p>
       {map.map((m, i) => (
         <div key={i} className="row" style={{ marginBottom: 6 }}>
           <div className="grow">
@@ -817,7 +817,7 @@ function ComposioAi() {
                   <tr key={c.id}>
                     <td className="small" style={{ whiteSpace: 'nowrap' }}>{dt(c.created_at)}</td>
                     <td>
-                      <code>{c.tool}</code> <span className="muted small">{tt('über')} {({ workflow: 'Workflow', ui: 'Oberfläche', api: 'API', mcp: 'MCP', ai: 'KI' } as Json)[c.source] ?? c.source}</span>
+                      <code>{c.tool}</code> <span className="muted small">{tt('über')} {tt(({ workflow: 'Workflow', ui: 'Oberfläche', api: 'API', mcp: 'MCP', ai: 'KI' } as Json)[c.source] ?? c.source)}</span>
                       {c.error && <div className="small" style={{ color: 'var(--red)' }}>{clip(c.error, 160)}</div>}
                     </td>
                     <td>{c.ok ? <Badge tone="green">OK</Badge> : <Badge tone="red">{tt('Fehler')}</Badge>}</td>
@@ -883,7 +883,7 @@ function AllowApp({ conn, allow, setAllow }: { conn: Conn; allow: string[]; setA
                       <code>{t.slug}</code> <span className="muted small">{clip(t.description, 100)}</span>
                     </span>
                     {allow.includes(t.slug) ? (
-                      <Badge tone="green">freigegeben</Badge>
+                      <Badge tone="green">{tt('freigegeben')}</Badge>
                     ) : (
                       <button className="btn small" onClick={() => setAllow([...allow, t.slug])}>
                         {tt('+ Freigeben')}
@@ -957,7 +957,7 @@ export function ComposioAgencySetup() {
         {tt('Ein Projekt-Schlüssel von')} <a href="https://composio.dev" target="_blank" rel="noopener">composio.dev</a> {tt('für alle Sub-Accounts: Slack, Notion, HubSpot, Shopify, Google Sheets & Co. mit verwalteter Anmeldung. Jeder Sub-Account verbindet seine eigenen Konten; ein Sub-Account kann auch einen eigenen Schlüssel nutzen.')}
       </p>
       <Field label={tt('API-Schlüssel')} hint={tt('Composio → Settings → API Keys (Projekt-Schlüssel). Wird verschlüsselt gespeichert.')}>
-        <Input type="password" value={key} onChange={setKey} autoComplete="off" placeholder={v.key_set ? `•••••••• ${v.key_hint} (${v.source === 'env' ? tt('aus der Umgebung') : 'gespeichert'})` : 'ak_…'} />
+        <Input type="password" value={key} onChange={setKey} autoComplete="off" placeholder={v.key_set ? `•••••••• ${v.key_hint} (${v.source === 'env' ? tt('aus der Umgebung') : tt('gespeichert')})` : 'ak_…'} />
       </Field>
       <div className="row" style={{ gap: 6 }}>
         <button className="btn" disabled={!key} onClick={async () => (await act(() => api.put('/api/agency/composio', { api_key: key }), tt('Gespeichert'))) && (setKey(''), s.reload())}>
@@ -976,7 +976,7 @@ export function ComposioAgencySetup() {
       </div>
       {test && (
         <p className="small">
-          <Badge tone="green">verbunden</Badge> {tt('{auth_configs} Auth-Konfigurationen', { auth_configs: test.auth_configs })}{test.webhook ? (test.webhook.exists ? (test.webhook.ours ? tt(' · Webhook zeigt auf HyperLevel') : tt(' · Webhook zeigt auf eine andere Adresse')) : tt(' · noch kein Webhook')) : ''}
+          <Badge tone="green">{tt('verbunden')}</Badge> {tt('{auth_configs} Auth-Konfigurationen', { auth_configs: test.auth_configs })}{test.webhook ? (test.webhook.exists ? (test.webhook.ours ? tt(' · Webhook zeigt auf HyperLevel') : tt(' · Webhook zeigt auf eine andere Adresse')) : tt(' · noch kein Webhook')) : ''}
         </p>
       )}
       <p className="muted small">
@@ -1003,7 +1003,7 @@ export function ComposioActionStep({ step, set, customFields }: { step: Json; se
   const tool = useLoad(() => (step.tool ? api.get<Json>(`/api/composio/tools/${encodeURIComponent(step.tool)}`) : Promise.resolve(null)), [step.tool]);
   const active = (conns.data ?? []).filter((c) => c.status === 'active');
   const map: { from: string; to: string }[] = step.map ?? [];
-  const targets: [string, string][] = [...CONTACT_TARGETS.filter(([k]) => !['name', 'tags'].includes(k)), ...customFields.map((f) => [`custom.${f.key}`, `Feld: ${f.label}`] as [string, string])];
+  const targets: [string, string][] = [...CONTACT_TARGETS.filter(([k]) => !['name', 'tags'].includes(k)).map(([k, l]) => [k, tt(l)] as [string, string]), ...customFields.map((f) => [`custom.${f.key}`, tt('Feld: {label}', { label: f.label })] as [string, string])];
   if (!conns.data) return <Spinner />;
   if (!active.length && !step.tool)
     return (
@@ -1097,7 +1097,7 @@ export function ComposioTriggerFilter({ config, set }: { config: Json; set: (p: 
         <a href="/app/apps/events" onClick={(e) => (e.preventDefault(), navigate('apps/events'))}>
           {tt('Apps → App-Ereignisse')}
         </a>{' '}
-        {tt('– Felder des Ereignisses stehen als')} <code>{'{{event.<feld>}}'}</code> {tt('bereit, dazu')} <code>{'{{event.app}}'}</code> und <code>{'{{event.trigger}}'}</code>.
+        {tt('– Felder des Ereignisses stehen als')} <code>{'{{event.<feld>}}'}</code> {tt('bereit, dazu')} <code>{'{{event.app}}'}</code> {tt('und')} <code>{'{{event.trigger}}'}</code>.
       </p>
     </>
   );

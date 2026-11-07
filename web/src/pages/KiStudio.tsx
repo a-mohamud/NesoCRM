@@ -38,11 +38,11 @@ export function KiStudio({ tab: initial }: { tab?: string }) {
         value={tab}
         onChange={go}
         tabs={[
-          ['bild', 'Bild'],
-          ['video', 'Video'],
-          ['audio', 'Audio'],
-          ['sprache', 'Sprache'],
-          ['anbieter', 'Eigene Anbieter'],
+          ['bild', tt('Bild')],
+          ['video', tt('Video')],
+          ['audio', tt('Audio')],
+          ['sprache', tt('Sprache')],
+          ['anbieter', tt('Eigene Anbieter')],
         ]}
       />
       {meta.loading && !meta.data ? (
@@ -186,7 +186,7 @@ function Generator({ cap, meta, prefill, onStarted }: { cap: Capability; meta: G
           <datalist id={listId}>
             {models.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.label}
+                {tt(m.label)}
               </option>
             ))}
           </datalist>
@@ -232,7 +232,7 @@ function Generator({ cap, meta, prefill, onStarted }: { cap: Capability; meta: G
       ) : null}
       {!kieTask && (
         <Field label={cap === 'audio_tts' ? tt('Text') : cap === 'stt' ? tt('Hinweis (optional)') : tt('Beschreibung (Prompt)')} tour="gm-prompt">
-          <Textarea value={f.prompt} onChange={(v) => set({ prompt: v })} rows={cap === 'audio_tts' ? 6 : 4} placeholder={PLACEHOLDER[cap]} />
+          <Textarea value={f.prompt} onChange={(v) => set({ prompt: v })} rows={cap === 'audio_tts' ? 6 : 4} placeholder={tt(PLACEHOLDER[cap])} />
         </Field>
       )}
       {(cap === 'image' || cap === 'video') && !kieTask && (
@@ -348,16 +348,16 @@ function JobCard({ job: initial, onChange, onPrefill, onAdd }: { job: GenJob; on
           <div className="gm-text">{job.text}</div>
         ) : running ? (
           <div className="gm-wait">
-            <span className="gm-dot" /> {STATUS_LABEL[job.status]}
+            <span className="gm-dot" /> {tt(STATUS_LABEL[job.status])}
             {job.progress ? ` · ${job.progress} %` : ''}
           </div>
         ) : (
-          <div className="gm-wait err">{job.error || STATUS_LABEL[job.status]}</div>
+          <div className="gm-wait err">{job.error || tt(STATUS_LABEL[job.status])}</div>
         )}
       </div>
       <div className="gm-meta">
         <div className="actions" style={{ justifyContent: 'space-between' }}>
-          <Badge tone={STATUS_TONE[job.status]}>{STATUS_LABEL[job.status]}</Badge>
+          <Badge tone={STATUS_TONE[job.status]}>{tt(STATUS_LABEL[job.status])}</Badge>
           <span className="muted small">{ago(job.created_at)}</span>
         </div>
         <p className="gm-prompt" title={job.prompt}>
@@ -470,7 +470,7 @@ function SocialModal({ job, onClose, onDone }: { job: GenJob; onClose: () => voi
           <Field label={tt('Text')}>
             <Textarea value={text} onChange={setText} rows={5} />
           </Field>
-          <p className="muted small">{tt('Das')} {video ? tt('Video') : tt('Bild')} {tt('wird in der Mediathek gespeichert und als Entwurf eingeplant – freigeben im Social Planner.')}</p>
+          <p className="muted small">{video ? tt('Das Video wird in der Mediathek gespeichert und als Entwurf eingeplant – freigeben im Social Planner.') : tt('Das Bild wird in der Mediathek gespeichert und als Entwurf eingeplant – freigeben im Social Planner.')}</p>
         </>
       )}
     </Modal>
@@ -502,14 +502,14 @@ function Templates({ meta, onChange }: { meta: GenMeta | undefined; onChange: ()
       <div className="card">
         <h2>{tt('Jeder andere Anbieter – ohne Code')}</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          {tt('Eine HTTP-Vorlage beschreibt, wie HyperLevel einen Dienst aufruft: Adresse, Kopfzeilen und ein JSON-Body mit Platzhaltern wie')} <code>{'{{prompt}}'}</code>, <code>{'{{aspect_ratio}}'}</code>, <code>{'{{image_url}}'}</code> oder <code>{'{{params.x}}'}</code>{tt(', wo die Datei-URL in der Antwort steht und – bei asynchronen Diensten – wie der Status abgefragt wird. Den Schlüssel trägst du als Verbindung „Eigener Anbieter (HTTP)“ unter Einstellungen → KI-Anbieter (BYOK) ein.')}
+          {tt('Eine HTTP-Vorlage beschreibt, wie HyperLevel einen Dienst aufruft: Adresse, Kopfzeilen und ein JSON-Body mit Platzhaltern wie')} <code>{'{{prompt}}'}</code>, <code>{'{{aspect_ratio}}'}</code>, <code>{'{{image_url}}'}</code> {tt('oder')} <code>{'{{params.x}}'}</code>{tt(', wo die Datei-URL in der Antwort steht und – bei asynchronen Diensten – wie der Status abgefragt wird. Den Schlüssel trägst du als Verbindung „Eigener Anbieter (HTTP)“ unter Einstellungen → KI-Anbieter (BYOK) ein.')}
         </p>
         {!custom.length && <p className="muted small">{tt('Noch keine Verbindung vom Typ „Eigener Anbieter“ – Vorlagen kannst du trotzdem schon anlegen.')}</p>}
         <div className="actions">
           <button className="btn" onClick={() => setEdit({ name: '', capability: 'image', config: { method: 'POST', headers: {} } })} data-tour="gm-template-new">
             {tt('+ Vorlage')}
           </button>
-          <button className="btn secondary" onClick={() => setEdit(JSON.parse(JSON.stringify(EXAMPLE)))}>
+          <button className="btn secondary" onClick={() => setEdit({ ...JSON.parse(JSON.stringify(EXAMPLE)), name: tt(EXAMPLE.name) })}>
             {tt('Beispiel öffnen')}
           </button>
         </div>
@@ -521,7 +521,7 @@ function Templates({ meta, onChange }: { meta: GenMeta | undefined; onChange: ()
           <table className="t">
             <thead>
               <tr>
-                <th>Name</th>
+                <th>{tt('Name')}</th>
                 <th>{tt('Art')}</th>
                 <th>{tt('Adresse')}</th>
                 <th />
@@ -568,7 +568,7 @@ function TemplateEditor({ tpl, onClose, onSaved }: { tpl: any; onClose: () => vo
   const c = t.config;
   const setC = (p: any) => setT({ ...t, config: { ...c, ...p } });
   const setP = (p: any) => setC({ poll: { ...(c.poll ?? {}), ...p } });
-  const caps: [string, string][] = [['image', 'Bild'], ['video', 'Video'], ['audio_tts', 'Text in Sprache'], ['audio_music', 'Musik & Sound'], ['stt', 'Sprache in Text']];
+  const caps: [string, string][] = [['image', tt('Bild')], ['video', tt('Video')], ['audio_tts', tt('Text in Sprache')], ['audio_music', tt('Musik & Sound')], ['stt', tt('Sprache in Text')]];
   const save = async () => {
     let headers: any = {};
     try {
@@ -612,7 +612,7 @@ function TemplateEditor({ tpl, onClose, onSaved }: { tpl: any; onClose: () => vo
           <Input value={c.result_path} onChange={(v) => setC({ result_path: v })} />
         </Field>
         <Field label={tt('Ergebnis ist')}>
-          <Select value={c.result_type ?? 'url'} onChange={(v) => setC({ result_type: v })} options={[['url', 'eine URL'], ['base64', 'Base64-Daten']]} />
+          <Select value={c.result_type ?? 'url'} onChange={(v) => setC({ result_type: v })} options={[['url', tt('eine URL')], ['base64', tt('Base64-Daten')]]} />
         </Field>
         <Field label={tt('Text-Pfad (Transkription)')}>
           <Input value={c.text_path} onChange={(v) => setC({ text_path: v })} placeholder="text" />

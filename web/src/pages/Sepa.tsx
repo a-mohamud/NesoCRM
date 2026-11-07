@@ -13,7 +13,10 @@ import { useT } from '../i18n';
  */
 
 const TONE: Record<string, 'gray' | 'green' | 'red' | 'blue' | 'yellow' | 'purple'> = { pending: 'yellow', active: 'green', suspended: 'red', revoked: 'gray', expired: 'gray', used: 'gray', final: 'gray' };
-const MandateBadge = ({ m }: { m: { status: string; status_label: string } }) => <Badge tone={TONE[m.status] ?? 'gray'}>{m.status_label}</Badge>;
+const MandateBadge = ({ m }: { m: { status: string; status_label: string } }) => {
+  const tt = useT('x_finance');
+  return <Badge tone={TONE[m.status] ?? 'gray'}>{tt(m.status_label)}</Badge>;
+};
 
 // --- contact picker ---------------------------------------------------------------------------------------------------------
 
@@ -98,10 +101,10 @@ function PaperDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (id: 
           </div>
           <div className="row">
             <Field label={tt('Lastschriftart')}>
-              <Select value={f.scheme} onChange={set('scheme')} options={[['CORE', 'Basislastschrift (CORE)'], ['B2B', 'Firmenlastschrift (B2B)']]} />
+              <Select value={f.scheme} onChange={set('scheme')} options={[['CORE', tt('Basislastschrift (CORE)')], ['B2B', tt('Firmenlastschrift (B2B)')]]} />
             </Field>
             <Field label={tt('Mandat für')}>
-              <Select value={f.kind} onChange={set('kind')} options={[['RCUR', 'Wiederkehrende Zahlungen'], ['OOFF', 'Eine einmalige Zahlung']]} />
+              <Select value={f.kind} onChange={set('kind')} options={[['RCUR', tt('Wiederkehrende Zahlungen')], ['OOFF', tt('Eine einmalige Zahlung')]]} />
             </Field>
           </div>
           <Field label={tt('Mandatsreferenz (optional)')} hint={tt('Leer lassen: HyperLevel vergibt die nächste Nummer. Die Referenz auf dem Papier-Mandat muss genau so lauten.')}>
@@ -175,10 +178,10 @@ function RequestDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
             <>
               <div className="row">
                 <Field label={tt('Lastschriftart')}>
-                  <Select value={scheme} onChange={setScheme} options={[['CORE', 'Basislastschrift (CORE)'], ['B2B', 'Firmenlastschrift (B2B)']]} />
+                  <Select value={scheme} onChange={setScheme} options={[['CORE', tt('Basislastschrift (CORE)')], ['B2B', tt('Firmenlastschrift (B2B)')]]} />
                 </Field>
                 <Field label={tt('Mandat für')}>
-                  <Select value={kind} onChange={setKind} options={[['RCUR', 'Wiederkehrende Zahlungen'], ['OOFF', 'Eine einmalige Zahlung']]} />
+                  <Select value={kind} onChange={setKind} options={[['RCUR', tt('Wiederkehrende Zahlungen')], ['OOFF', tt('Eine einmalige Zahlung')]]} />
                 </Field>
               </div>
               <Check checked={send} onChange={setSend} label={tt('Link gleich per E-Mail an den Kontakt senden')} />
@@ -204,7 +207,7 @@ function MandateDialog({ id, onClose, onChanged }: { id: string; onClose: () => 
   };
   const revoke = () => {
     const reason = window.prompt(tt('Warum endet das Mandat? (z. B. „Kunde hat widerrufen“)'), '');
-    if (reason !== null) void run(() => api.post(`/api/sepa/mandates/${id}/revoke`, { reason }), 'Mandat widerrufen');
+    if (reason !== null) void run(() => api.post(`/api/sepa/mandates/${id}/revoke`, { reason }), tt('Mandat widerrufen'));
   };
   const proof = m.proof ?? {};
   const live = ['pending', 'active', 'suspended'].includes(m.status);
@@ -216,12 +219,12 @@ function MandateDialog({ id, onClose, onChanged }: { id: string; onClose: () => 
       footer={
         <>
           {m.status === 'suspended' && (
-            <button className="btn" onClick={() => run(() => api.post(`/api/sepa/mandates/${id}/reactivate`), 'Mandat wieder freigegeben')}>
+            <button className="btn" onClick={() => run(() => api.post(`/api/sepa/mandates/${id}/reactivate`), tt('Mandat wieder freigegeben'))}>
               {tt('Wieder freigeben')}
             </button>
           )}
           {m.status === 'active' && m.kind === 'RCUR' && m.next_seq !== 'FRST' && (
-            <button className="btn secondary" onClick={() => run(() => api.patch(`/api/sepa/mandates/${id}`, { final_next: !m.final_next }), m.final_next ? 'Wieder normale Folgelastschrift' : 'Nächster Einzug ist der letzte')}>
+            <button className="btn secondary" onClick={() => run(() => api.patch(`/api/sepa/mandates/${id}`, { final_next: !m.final_next }), m.final_next ? tt('Wieder normale Folgelastschrift') : tt('Nächster Einzug ist der letzte'))}>
               {m.final_next ? tt('Doch nicht der letzte Einzug') : tt('Nächster Einzug ist der letzte')}
             </button>
           )}
@@ -235,20 +238,20 @@ function MandateDialog({ id, onClose, onChanged }: { id: string; onClose: () => 
     >
       <Facts
         rows={[
-          ['Kontakt', m.contact ? <Link to={`contacts/${m.contact_id}`}>{m.contact.name}</Link> : 'nicht (mehr) zugeordnet'],
-          ['Status', <MandateBadge key="s" m={m} />],
-          ['Nächste Lastschrift', m.next_seq ? <SeqBadge key="q" seq={m.next_seq} label={m.next_seq_label} /> : ''],
-          ['Lastschriftart', m.scheme_label],
-          ['Mandat für', m.kind === 'OOFF' ? 'eine einmalige Zahlung' : 'wiederkehrende Zahlungen'],
-          ['Kontoinhaber', m.holder],
+          [tt('Kontakt'), m.contact ? <Link to={`contacts/${m.contact_id}`}>{m.contact.name}</Link> : tt('nicht (mehr) zugeordnet')],
+          [tt('Status'), <MandateBadge key="s" m={m} />],
+          [tt('Nächste Lastschrift'), m.next_seq ? <SeqBadge key="q" seq={m.next_seq} label={m.next_seq_label} /> : ''],
+          [tt('Lastschriftart'), tt(m.scheme_label)],
+          [tt('Mandat für'), m.kind === 'OOFF' ? tt('eine einmalige Zahlung') : tt('wiederkehrende Zahlungen')],
+          [tt('Kontoinhaber'), m.holder],
           ['IBAN', m.iban],
           ['BIC', m.bic],
-          ['Anschrift', [m.street, [m.postal_code, m.city].filter(Boolean).join(' '), m.country].filter(Boolean).join(', ')],
-          ['Unterschrieben', m.signed_at ? `${ymdDe(m.signed_at)}${m.signed_place ? ` in ${m.signed_place}` : ''}` : ''],
-          ['Erfasst', m.source === 'online' ? 'online über den Mandats-Link' : m.source === 'import' ? 'importiert' : 'Papier-Mandat'],
-          ['Erste / letzte Lastschrift', m.first_used_at ? `${ymdDe(m.first_used_at)} / ${ymdDe(m.last_used_at)}` : ''],
-          ['Läuft ab', m.expires_on ? `${ymdDe(m.expires_on)} (36 Monate ohne Einzug)` : ''],
-          ['Beendet', m.ended_at ? `${dt(m.ended_at)}${m.end_reason ? ` – ${m.end_reason}` : ''}` : ''],
+          [tt('Anschrift'), [m.street, [m.postal_code, m.city].filter(Boolean).join(' '), m.country].filter(Boolean).join(', ')],
+          [tt('Unterschrieben'), m.signed_at ? (m.signed_place ? tt('{date} in {place}', { date: ymdDe(m.signed_at), place: m.signed_place }) : ymdDe(m.signed_at)) : ''],
+          [tt('Erfasst'), m.source === 'online' ? tt('online über den Mandats-Link') : m.source === 'import' ? tt('importiert') : tt('Papier-Mandat')],
+          [tt('Erste / letzte Lastschrift'), m.first_used_at ? `${ymdDe(m.first_used_at)} / ${ymdDe(m.last_used_at)}` : ''],
+          [tt('Läuft ab'), m.expires_on ? tt('{date} (36 Monate ohne Einzug)', { date: ymdDe(m.expires_on) }) : ''],
+          [tt('Beendet'), m.ended_at ? `${dt(m.ended_at)}${m.end_reason ? ` – ${m.end_reason}` : ''}` : ''],
         ]}
       />
       {m.status === 'pending' && (
@@ -260,10 +263,10 @@ function MandateDialog({ id, onClose, onChanged }: { id: string; onClose: () => 
             </div>
           )}
           <div className="row" style={{ marginTop: 10 }}>
-            <button className="btn secondary" onClick={() => run(() => api.post(`/api/sepa/mandates/${id}/link`, { send: true }), 'Neuer Link gesendet')}>
+            <button className="btn secondary" onClick={() => run(() => api.post(`/api/sepa/mandates/${id}/link`, { send: true }), tt('Neuer Link gesendet'))}>
               {tt('Neuen Link per E-Mail senden')}
             </button>
-            <button className="btn secondary" onClick={() => run(() => api.post(`/api/sepa/mandates/${id}/link`, {}), 'Neuer Link erzeugt')}>
+            <button className="btn secondary" onClick={() => run(() => api.post(`/api/sepa/mandates/${id}/link`, {}), tt('Neuer Link erzeugt'))}>
               {tt('Nur neuen Link erzeugen')}
             </button>
           </div>
@@ -273,10 +276,10 @@ function MandateDialog({ id, onClose, onChanged }: { id: string; onClose: () => 
         <Fold title={tt('Nachweis der Zustimmung')} open>
           <Facts
             rows={[
-              ['Zeitpunkt', dt(proof.signed_at)],
-              ['IP-Netz', proof.ip_net || '–'],
-              ['Browser-Fingerabdruck', proof.ua_digest || '–'],
-              ['Prüfsumme des Textes (SHA-256)', <code key="h" className="sepa-hash">{proof.text_hash}</code>],
+              [tt('Zeitpunkt'), dt(proof.signed_at)],
+              [tt('IP-Netz'), proof.ip_net || '–'],
+              [tt('Browser-Fingerabdruck'), proof.ua_digest || '–'],
+              [tt('Prüfsumme des Textes (SHA-256)'), <code key="h" className="sepa-hash">{proof.text_hash}</code>],
             ]}
           />
         </Fold>
@@ -289,7 +292,7 @@ function MandateDialog({ id, onClose, onChanged }: { id: string; onClose: () => 
       <h4 className="sepa-h4">{tt('Lastschriften')}</h4>
       <div className="cr-list">
         {m.collections.map((x: any) => (
-          <Item key={x.id} side={<Badge tone={x.status === 'paid' ? 'green' : x.status === 'returned' ? 'red' : x.status === 'dropped' ? 'gray' : 'yellow'}>{x.status === 'paid' ? 'bezahlt' : x.status === 'returned' ? tt('zurück {return_code}', { return_code: x.return_code }) : x.status === 'dropped' ? 'entfernt' : x.status === 'draft' ? tt('angekündigt') : 'eingereicht'}</Badge>}>
+          <Item key={x.id} side={<Badge tone={x.status === 'paid' ? 'green' : x.status === 'returned' ? 'red' : x.status === 'dropped' ? 'gray' : 'yellow'}>{x.status === 'paid' ? tt('bezahlt') : x.status === 'returned' ? tt('zurück {return_code}', { return_code: x.return_code }) : x.status === 'dropped' ? 'entfernt' : x.status === 'draft' ? tt('angekündigt') : 'eingereicht'}</Badge>}>
             <strong>{x.invoice_number || tt('Rechnung')}</strong> · {money(x.amount_cents)} · {x.seq} <span className="muted small">{tt('fällig {ymdDe}', { ymdDe: ymdDe(x.exec_date) })}</span>
           </Item>
         ))}
@@ -331,7 +334,7 @@ function MandatesTab({ reloadOverview }: { reloadOverview: () => void }) {
           <Input value={q} onChange={setQ} placeholder={tt('Referenz, Inhaber, Kontakt')} />
         </Field>
         <Field label="Status">
-          <Select value={status} onChange={setStatus} options={[['', 'Alle'], ['active', 'Aktiv'], ['pending', 'Wartet auf Unterschrift'], ['suspended', 'Gesperrt'], ['ended', 'Beendet / abgelaufen']]} />
+          <Select value={status} onChange={setStatus} options={[['', tt('Alle')], ['active', tt('Aktiv')], ['pending', tt('Wartet auf Unterschrift')], ['suspended', tt('Gesperrt')], ['ended', tt('Beendet / abgelaufen')]]} />
         </Field>
       </div>
       {!list.data ? (
@@ -382,7 +385,7 @@ function SettingsTab({ onSaved }: { onSaved: () => void }) {
         <Field label={tt('Gläubiger-Identifikationsnummer')} hint={tt('z. B. DE98ZZZ09999999999 – wird mit Prüfziffern geprüft')}>
           <Input value={f.creditor_id} onChange={set('creditor_id')} spellCheck={false} maxLength={40} />
         </Field>
-        <Field label={tt('Name des Zahlungsempfängers')} hint={`Leer: ${cr.name || tt('Name aus den Rechnungs-Einstellungen')}`}>
+        <Field label={tt('Name des Zahlungsempfängers')} hint={tt('Leer: {v}', { v: cr.name || tt('Name aus den Rechnungs-Einstellungen') })}>
           <Input value={f.creditor_name} onChange={set('creditor_name')} maxLength={70} />
         </Field>
         <div className="row">
@@ -394,7 +397,7 @@ function SettingsTab({ onSaved }: { onSaved: () => void }) {
           </Field>
         </div>
         <Field label={tt('Standard-Lastschriftart')}>
-          <Select value={f.default_scheme} onChange={set('default_scheme')} options={[['CORE', 'Basislastschrift (CORE) – Verbraucher und Firmen'], ['B2B', 'Firmenlastschrift (B2B) – nur Firmen, kein Widerspruch']]} />
+          <Select value={f.default_scheme} onChange={set('default_scheme')} options={[['CORE', tt('Basislastschrift (CORE) – Verbraucher und Firmen')], ['B2B', tt('Firmenlastschrift (B2B) – nur Firmen, kein Widerspruch')]]} />
         </Field>
       </Panel>
       <Panel title={tt('Vorabankündigung')} sub={tt('Vor jedem Einzug erfährt der Kunde Betrag und Datum. Standard sind 14 Tage; kürzer (mindestens 1 Tag) nur, wenn es im Mandat steht – HyperLevel schreibt die Frist in den Mandatstext.')} tour="sepa-lead">
@@ -435,11 +438,11 @@ function SettingsTab({ onSaved }: { onSaved: () => void }) {
 export function Sepa({ tab: tabParam }: { tab?: string }) {
   const tt = useT('x_finance');
   const TABS: [string, string][] = [
-    ['mandates', 'Mandate'],
-    ['collect', 'Einzug'],
-    ['runs', 'Läufe'],
-    ['transfers', 'Überweisungen'],
-    ['settings', 'Einstellungen'],
+    ['mandates', tt('Mandate')],
+    ['collect', tt('Einzug')],
+    ['runs', tt('Läufe')],
+    ['transfers', tt('Überweisungen')],
+    ['settings', tt('Einstellungen')],
   ];
   const [tab, setTab] = useState(TABS.some(([k]) => k === tabParam) ? tabParam! : 'mandates');
   const [openRun, setOpenRun] = useState('');

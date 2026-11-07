@@ -72,12 +72,12 @@ function Report({ range, setRange }: { range: { from: string; to: string }; setR
       <RangePicker from={range.from} to={range.to} onChange={setRange}>
         <div style={{ width: 168 }}>
           <Field label={tt('Gruppieren nach')} tour="attribution-group">
-            <Select value={group} onChange={setGroup} options={GROUPS} />
+            <Select value={group} onChange={setGroup} options={GROUPS.map(([k, l]) => [k, tt(l)] as [string, string])} />
           </Field>
         </div>
         <div style={{ width: 150 }}>
           <Field label={tt('Zuordnung')} tour="attribution-model">
-            <Select value={model} onChange={setModel} options={MODELS} />
+            <Select value={model} onChange={setModel} options={MODELS.map(([k, l]) => [k, tt(l)] as [string, string])} />
           </Field>
         </div>
         <a className="btn secondary attr-export" data-tour="attribution-csv" title={tt('Tabelle als CSV herunterladen')} href={`/api/attribution/report.csv?${qs}&locationId=${encodeURIComponent(currentLocation())}`}>
@@ -100,7 +100,7 @@ function Report({ range, setRange }: { range: { from: string; to: string }; setR
               <table className="t attr-table">
                 <thead>
                   <tr>
-                    <th>{GROUPS.find((g) => g[0] === group)?.[1]}</th>
+                    <th>{tt(GROUPS.find((g) => g[0] === group)?.[1] ?? '')}</th>
                     <th className="num">{tt('Leads')}</th>
                     <th className="num">{tt('Deals')}</th>
                     <th className="num">{tt('Deal-Wert')}</th>
@@ -171,9 +171,9 @@ function TrackingSettings() {
             value={f.cookie}
             onChange={(v) => setF({ ...f, cookie: v })}
             options={[
-              ['consent', 'Nur mit Einwilligung (empfohlen)'],
-              ['always', 'Immer – nur mit eigener Rechtsgrundlage'],
-              ['never', 'Nie'],
+              ['consent', tt('Nur mit Einwilligung (empfohlen)')],
+              ['always', tt('Immer – nur mit eigener Rechtsgrundlage')],
+              ['never', tt('Nie')],
             ]}
           />
         </Field>

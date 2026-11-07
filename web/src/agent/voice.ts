@@ -1,4 +1,5 @@
 import { currentLocation } from '../api';
+import { tr } from '../i18n';
 
 /**
  * Voice in the browser, Android WebView and PWA: recording with MediaRecorder (→ the server's speech to text, see
@@ -18,11 +19,12 @@ export function recordingMime(): string {
 
 /** Why recording failed, in words for people. */
 export function micError(e: unknown): string {
+  const tt = tr('x_ai');
   const name = (e as DOMException)?.name;
-  if (name === 'NotAllowedError' || name === 'SecurityError') return 'Der Browser darf das Mikrofon nicht benutzen – bitte in den Seiteneinstellungen erlauben.';
-  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'Kein Mikrofon gefunden.';
-  if (name === 'NotReadableError') return 'Das Mikrofon wird gerade von einer anderen App benutzt.';
-  return (e as Error)?.message || 'Aufnahme nicht möglich.';
+  if (name === 'NotAllowedError' || name === 'SecurityError') return tt('Der Browser darf das Mikrofon nicht benutzen – bitte in den Seiteneinstellungen erlauben.');
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return tt('Kein Mikrofon gefunden.');
+  if (name === 'NotReadableError') return tt('Das Mikrofon wird gerade von einer anderen App benutzt.');
+  return (e as Error)?.message || tt('Aufnahme nicht möglich.');
 }
 
 export interface RecordingHandle {
@@ -135,7 +137,7 @@ const headers = (extra: Record<string, string> = {}): Record<string, string> => 
 async function readError(r: Response): Promise<string> {
   const data = (r.headers.get('content-type') ?? '').includes('json') ? await r.json().catch(() => null) : null;
   if (r.status === 401) window.dispatchEvent(new Event('pghl:logout'));
-  return data?.error || `Fehler ${r.status}`;
+  return data?.error || tr('x_ai')('Fehler {status}', { status: r.status });
 }
 
 /** Recording → text with the sub-account's speech recognition. */

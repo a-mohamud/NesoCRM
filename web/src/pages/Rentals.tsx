@@ -4,6 +4,7 @@ import { MoreFields } from '../areas/fields';
 import { useT } from '../i18n';
 import { Badge, Check, Empty, Field, Input, Modal, Select, Spinner, Textarea, act, confirmAsk, useLoad } from '../ui';
 
+import { parseDecimal } from '../numparse';
 /**
  * Kalender → Vermietung (modules/rentals.ts, docs/booking.md#rentals): items with a quantity (3 e-bikes, a holiday flat) that customers
  * book by date range on `/book/rent/<slug>` – per day or per night, with a price and an optional deposit. Each item is a calendar of its
@@ -31,7 +32,7 @@ type Rental = {
 };
 
 const EMPTY: Rental = { name: '', description: '', quantity: 1, unit: 'day', price_cents: 0, deposit_cents: 0, min_units: 1, max_units: 0, checkin_time: '', checkout_time: '', max_days: 365, active: true };
-const toCents = (s: string) => Math.max(0, Math.round(Number(String(s).replace(/\./g, '').replace(',', '.')) * 100) || 0);
+const toCents = (s: string) => Math.max(0, Math.round(parseDecimal(s) * 100) || 0);
 const centsText = (c: number) => (c ? (c / 100).toFixed(2).replace('.', ',') : '');
 const money = (c: number, cur = 'EUR') => (c / 100).toLocaleString('de-DE', { style: 'currency', currency: cur });
 

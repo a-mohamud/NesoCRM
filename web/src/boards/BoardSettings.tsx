@@ -94,7 +94,7 @@ export function BoardSettings({ board, admin, home, autoApply, onPatch, onReload
                 onChange={async (v) => {
                   if (await act(() => api.patch(`/api/boards/${board.id}`, { team_access: v }))) await onReload();
                 }}
-                options={[['view', 'nur ansehen'], ['edit', 'ansehen und ändern']]}
+                options={[['view', tt('nur ansehen')], ['edit', tt('ansehen und ändern')]]}
               />
             </Field>
           )}

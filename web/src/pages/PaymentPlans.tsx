@@ -4,7 +4,7 @@ import { api, d, dt, money } from '../api';
 import { Check, Empty, Field, Input, Link, Modal, PageHead, Select, Spinner, Stat, Tabs, act, confirmAsk, useLoad } from '../ui';
 import { ACCESS_LABEL, Callout, Facts, Item, Panel, Progress, StatusBadge, euroText, parseEuro } from './CreatorKit';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { tr, useT, type TFn } from '../i18n';
 
 /**
  * Ratenzahlung: payment plans on one-time products (the buyer picks "3 × 99 €" on the buy page; Stripe collects the instalments
@@ -24,7 +24,13 @@ const FILTERS: [string, string][] = [
   ['canceled', 'Beendet'],
 ];
 
-const every = (interval: string, n: number) => (interval === 'week' ? (n === 1 ? 'wöchentlich' : `alle ${n} Wochen`) : n === 1 ? 'monatlich' : n === 12 ? 'jährlich' : `alle ${n} Monate`);
+/** The access state of a purchase (ACCESS_LABEL in CreatorKit), translated in this namespace. */
+const accessText = (tt: TFn, access: string) => ({ active: tt('Zugang aktiv'), paused: tt('Zugang pausiert'), revoked: tt('Zugang entzogen') })[access] ?? ACCESS_LABEL[access] ?? access;
+
+const every = (interval: string, n: number) => {
+  const tt = tr('x_finance');
+  return interval === 'week' ? (n === 1 ? tt('wöchentlich') : tt('alle {n} Wochen', { n })) : n === 1 ? tt('monatlich') : n === 12 ? tt('jährlich') : tt('alle {n} Monate', { n });
+};
 
 function PlanDialog({ plan, products, productId, onClose, onSaved }: { plan?: any; products: any[]; productId?: string; onClose: () => void; onSaved: () => void }) {
   const tt = useT('x_finance');
@@ -46,15 +52,15 @@ function PlanDialog({ plan, products, productId, onClose, onSaved }: { plan?: an
   const count = Math.round(Number(f.interval_count));
   const prod = products.find((p) => p.id === f.product_id);
   const problem = !prod
-    ? 'Bitte ein Produkt wählen.'
+    ? tt('Bitte ein Produkt wählen.')
     : !(n >= 2 && n <= 60)
-      ? 'Raten: 2 bis 60.'
+      ? tt('Raten: 2 bis 60.')
       : !(count >= 1 && count <= (f.interval === 'week' ? 52 : 12))
-        ? f.interval === 'week' ? 'Abstand: 1 bis 52 Wochen.' : 'Abstand: 1 bis 12 Monate.'
+        ? f.interval === 'week' ? tt('Abstand: 1 bis 52 Wochen.') : tt('Abstand: 1 bis 12 Monate.')
         : amount === null || amount < 50
-          ? 'Rate: mindestens 0,50 €.'
+          ? tt('Rate: mindestens 0,50 €.')
           : f.first.trim() && (first === null || first < 50)
-            ? 'Erste Rate: mindestens 0,50 € – oder leer lassen.'
+            ? tt('Erste Rate: mindestens 0,50 € – oder leer lassen.')
             : '';
   const total = amount === null || !(n >= 2) ? null : (first ?? amount) + (n - 1) * amount;
   const price = prod ? Math.round(prod.price_cents * (1 + (Number(prod.tax_rate) || 0) / 100)) : null;
@@ -101,14 +107,14 @@ function PlanDialog({ plan, products, productId, onClose, onSaved }: { plan?: an
           <Input type="number" min={1} max={f.interval === 'week' ? 52 : 12} value={f.interval_count} onChange={(v) => set({ interval_count: v })} />
         </Field>
         <Field label={tt('Einheit')}>
-          <Select value={f.interval} onChange={(v) => set({ interval: v })} options={[['month', 'Monat(e)'], ['week', 'Woche(n)']]} />
+          <Select value={f.interval} onChange={(v) => set({ interval: v })} options={[['month', tt('Monat(e)')], ['week', tt('Woche(n)')]]} />
         </Field>
       </div>
       <Field label={tt('Erste Rate abweichend (optional)')} hint={tt('Zum Beispiel eine höhere Anzahlung. Leer = alle Raten gleich.')}>
         <Input inputMode="decimal" value={f.first} onChange={(v) => set({ first: v })} placeholder="150,00" />
       </Field>
       <Field label={tt('Wenn eine Rate nicht eingezogen werden kann')}>
-        <Select value={f.on_default} onChange={(v) => set({ on_default: v })} options={ON_DEFAULT} />
+        <Select value={f.on_default} onChange={(v) => set({ on_default: v })} options={ON_DEFAULT.map(([k, l]): [string, string] => [k, tt(l)])} />
       </Field>
       <Check checked={f.active} onChange={(v) => set({ active: v })} label={tt('Auf der Kaufseite anbieten')} />
       {problem ? (
@@ -178,17 +184,17 @@ function PurchaseDialog({ id, onClose, onChanged }: { id: string; onClose: () =>
     >
       <Facts
         rows={[
-          ['Kontakt', s.contact_id ? <Link to={`contacts/${s.contact_id}`}>{s.contact?.name || tt('Kontakt öffnen')}</Link> : 'noch nicht zugeordnet'],
-          ['Produkt', s.product_name],
-          ['Plan', s.label],
-          ['Status', <StatusBadge key="s" status={s.status} />],
-          ['Zugang', ACCESS_LABEL[s.access] ?? s.access],
-          ['Bezahlt', `${s.paid_count} von ${s.installments} Raten · ${money(s.paid_cents, s.currency)} von ${money(s.total_cents, s.currency)}`],
-          ['Offen', money(s.open_cents, s.currency)],
-          ['Gestartet', d(s.started_at)],
-          ['Abgeschlossen', s.completed_at ? d(s.completed_at) : ''],
-          ['Fehlversuche', s.failed_count ? `${s.failed_count} (zuletzt ${dt(s.last_failed_at)})` : ''],
-          ['Grund', s.default_reason],
+          [tt('Kontakt'), s.contact_id ? <Link to={`contacts/${s.contact_id}`}>{s.contact?.name || tt('Kontakt öffnen')}</Link> : tt('noch nicht zugeordnet')],
+          [tt('Produkt'), s.product_name],
+          [tt('Plan'), s.label],
+          [tt('Status'), <StatusBadge key="s" status={s.status} />],
+          [tt('Zugang'), accessText(tt, s.access)],
+          [tt('Bezahlt'), tt('{paid} von {total} Raten · {paid_money} von {total_money}', { paid: s.paid_count, total: s.installments, paid_money: money(s.paid_cents, s.currency), total_money: money(s.total_cents, s.currency) })],
+          [tt('Offen'), money(s.open_cents, s.currency)],
+          [tt('Gestartet'), d(s.started_at)],
+          [tt('Abgeschlossen'), s.completed_at ? d(s.completed_at) : ''],
+          [tt('Fehlversuche'), s.failed_count ? `${s.failed_count} (zuletzt ${dt(s.last_failed_at)})` : ''],
+          [tt('Grund'), s.default_reason],
         ]}
       />
       <Progress value={s.paid_count} max={s.installments} label={tt('Bezahlte Raten')} />
@@ -283,14 +289,14 @@ export function PaymentPlans({ tab: tabParam }: { tab?: string }) {
       </SortableGrid>
       <Tabs
         tabs={[
-          ['purchases', `Käufe${all.data ? ` (${all.data.length})` : ''}`],
-          ['plans', 'Pläne'],
+          ['purchases', all.data ? tt('Käufe ({n})', { n: all.data.length }) : tt('Käufe')],
+          ['plans', tt('Pläne')],
         ]}
         value={tab}
         onChange={setTab}
       />
       {tab === 'purchases' && (
-        <Panel title={tt('Ratenkäufe')} sub={tt('Wer zahlt wie weit? Ein Klick zeigt die bezahlten Raten.')} wide tour="plans-purchases" actions={<Select value={status} onChange={setStatus} aria="Status" options={FILTERS} />}>
+        <Panel title={tt('Ratenkäufe')} sub={tt('Wer zahlt wie weit? Ein Klick zeigt die bezahlten Raten.')} wide tour="plans-purchases" actions={<Select value={status} onChange={setStatus} aria="Status" options={FILTERS.map(([k, l]): [string, string] => [k, tt(l)])} />}>
           {subs.loading && !subs.data ? (
             <Spinner />
           ) : subs.data?.length ? (
@@ -303,7 +309,7 @@ export function PaymentPlans({ tab: tabParam }: { tab?: string }) {
                   side={
                     <>
                       <StatusBadge status={s.status} />
-                      {s.access !== 'active' && <span className="badge yellow">{ACCESS_LABEL[s.access]}</span>}
+                      {s.access !== 'active' && <span className="badge yellow">{accessText(tt, s.access)}</span>}
                     </>
                   }
                 >
@@ -331,7 +337,7 @@ export function PaymentPlans({ tab: tabParam }: { tab?: string }) {
             <Panel
               key={product.id}
               title={product.name}
-              sub={`Einmalpreis ${money(product.price_cents, product.currency)}${product.tax_rate ? tt(' + {replace} % USt.', { replace: String(product.tax_rate).replace('.', ',') }) : ''}`}
+              sub={tt('Einmalpreis {price}', { price: money(product.price_cents, product.currency) }) + (product.tax_rate ? tt(' + {replace} % USt.', { replace: String(product.tax_rate).replace('.', ',') }) : '')}
               actions={
                 <button className="btn small secondary" onClick={() => setEditing({ productId: product.id })}>
                   {tt('+ Plan')}

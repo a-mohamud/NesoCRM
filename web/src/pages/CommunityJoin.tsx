@@ -30,7 +30,7 @@ export function JoinTab({ group, onChange }: { group: any; onChange: () => void 
     <div className="cma" data-tour="community-join">
       {data.access_mode !== 'join' && (
         <div className="cma-note" role="note">
-          <strong>{tt('Aktuell kommen Mitglieder so herein: {v}.', { v: ACCESS[data.access_mode] ?? data.access_mode })}</strong> {tt('Die Beitritts-Seite, Stufen, Zahlung und Freigabe wirken erst, wenn du den Zugang auf „Beitritt über die Community-Seite“ stellst. Alle, die jetzt schon drin sind, bleiben als kostenlose Mitglieder.')}
+          <strong>{tt('Aktuell kommen Mitglieder so herein: {v}.', { v: ACCESS[data.access_mode] ? tt(ACCESS[data.access_mode]) : data.access_mode })}</strong> {tt('Die Beitritts-Seite, Stufen, Zahlung und Freigabe wirken erst, wenn du den Zugang auf „Beitritt über die Community-Seite“ stellst. Alle, die jetzt schon drin sind, bleiben als kostenlose Mitglieder.')}
           <div className="cma-actions">
             <button
               className="btn"
@@ -48,12 +48,12 @@ export function JoinTab({ group, onChange }: { group: any; onChange: () => void 
         value={sub}
         onChange={setSub}
         tabs={[
-          ['page', 'Öffentliche Seite'],
-          ['tiers', `Stufen (${data.tiers.length})`],
-          ['requests', `Anfragen${pending ? ` (${pending})` : ''}`],
-          ['members', 'Mitgliedschaften'],
-          ['invites', 'Einladungs-Links'],
-          ['coupons', 'Rabattcodes'],
+          ['page', tt('Öffentliche Seite')],
+          ['tiers', `${tt('Stufen')} (${data.tiers.length})`],
+          ['requests', `${tt('Anfragen')}${pending ? ` (${pending})` : ''}`],
+          ['members', tt('Mitgliedschaften')],
+          ['invites', tt('Einladungs-Links')],
+          ['coupons', tt('Rabattcodes')],
         ]}
       />
       {sub === 'page' && <PageForm group={group} data={data} onSaved={reload} />}
@@ -222,7 +222,7 @@ function Tiers({ group, data, onSaved }: { group: any; data: any; onSaved: () =>
             <div className="cma-chips" style={{ marginBottom: 8 }}>
               {t.billings.map((b: string) => (
                 <Badge key={b} tone="blue">
-                  {b === 'free' ? tt('Kostenlos') : `${BILL[b]}: ${t.prices[b]?.text ?? ''}`}
+                  {b === 'free' ? tt('Kostenlos') : `${tt(BILL[b])}: ${t.prices[b]?.text ?? ''}`}
                 </Badge>
               ))}
               {t.trial_days > 0 && <Badge tone="green">{tt('{trial_days} Tage testen', { trial_days: t.trial_days })}</Badge>}
@@ -262,7 +262,7 @@ function TierEditor({ group, data, tier, onClose, onDone }: { group: any; data: 
   const del = async () => {
     if (await confirmAsk(tt('Stufe „{name}“ löschen?', { name: tier.name }))) if (await act(() => api.del(`/api/community/tiers/${tier.id}`), tt('Gelöscht'))) onDone();
   };
-  const productLine = (p: any) => `${p.name} – ${euro(p.price_cents, p.currency)}${p.recurring === 'month' ? ' / Monat' : p.recurring === 'year' ? ' / Jahr' : ''}`;
+  const productLine = (p: any) => `${p.name} – ${euro(p.price_cents, p.currency)}${p.recurring === 'month' ? tt(' / Monat') : p.recurring === 'year' ? tt(' / Jahr') : ''}`;
   return (
     <Modal
       title={tier.id ? tt('Stufe „{name}“', { name: tier.name }) : tt('Neue Stufe')}
@@ -300,7 +300,7 @@ function TierEditor({ group, data, tier, onClose, onDone }: { group: any; data: 
             <Select value={f.product_id} onChange={(v) => set({ product_id: v })} placeholder={tt('Kostenlos')} options={[...rec('month'), ...rec('one')].map((p: any) => [p.id, productLine(p)])} />
           </Field>
           <Field label={tt('Jahres-Alternative (optional)')}>
-            <Select value={f.annual_product_id} onChange={(v) => set({ annual_product_id: v })} placeholder="keine" options={rec('year').map((p: any) => [p.id, productLine(p)])} />
+            <Select value={f.annual_product_id} onChange={(v) => set({ annual_product_id: v })} placeholder={tt('keine')} options={rec('year').map((p: any) => [p.id, productLine(p)])} />
           </Field>
         </div>
         <div className="cma-two">
@@ -415,7 +415,7 @@ function Memberships({ group, data, onDone }: { group: any; data: any; onDone: (
           <Input value={q} onChange={setQ} placeholder={tt('Name oder E-Mail …')} />
         </div>
         <div style={{ width: 220 }}>
-          <Select value={status} onChange={setStatus} placeholder={tt('Alle Status')} options={Object.entries(data.counts).map(([k, n]) => [k, `${k === 'active' ? 'Aktiv' : k === 'trialing' ? 'Testphase' : k === 'past_due' ? 'Zahlung offen' : k === 'canceled' ? 'Beendet' : k === 'rejected' ? 'Abgelehnt' : k === 'pending' ? 'Wartet auf Freigabe' : 'Wartet auf Zahlung'} (${n})`])} />
+          <Select value={status} onChange={setStatus} placeholder={tt('Alle Status')} options={Object.entries(data.counts).map(([k, n]) => [k, `${tt(k === 'active' ? 'Aktiv' : k === 'trialing' ? 'Testphase' : k === 'past_due' ? 'Zahlung offen' : k === 'canceled' ? 'Beendet' : k === 'rejected' ? 'Abgelehnt' : k === 'pending' ? 'Wartet auf Freigabe' : 'Wartet auf Zahlung')} (${n})`])} />
         </div>
         <button className="btn" onClick={() => setAdding(true)}>
           {tt('+ Person hinzufügen')}
@@ -447,7 +447,7 @@ function Memberships({ group, data, onDone }: { group: any; data: any; onDone: (
                   </td>
                   <td>
                     <StatusBadge status={m.status} />
-                    {m.trial_ends_at && m.status === 'trialing' && <div className="muted small">bis {d(m.trial_ends_at)}</div>}
+                    {m.trial_ends_at && m.status === 'trialing' && <div className="muted small">{tt('bis {d}', { d: d(m.trial_ends_at) })}</div>}
                     {m.left_reason && m.status === 'canceled' && <div className="muted small">{m.left_reason}</div>}
                   </td>
                   <td className="muted">{d(m.joined_at ?? m.requested_at)}</td>
@@ -614,7 +614,7 @@ function Coupons({ group, data }: { group: any; data: any }) {
         </div>
         <div className="cma-two">
           <Field label={tt('Rabatt')}>
-            <Select value={f.kind} onChange={(v) => setF({ ...f, kind: v })} options={[['percent', 'Prozent'], ['amount', 'Betrag in Euro']]} />
+            <Select value={f.kind} onChange={(v) => setF({ ...f, kind: v })} options={[['percent', tt('Prozent')], ['amount', tt('Betrag in Euro')]]} />
           </Field>
           <Field label={f.kind === 'percent' ? tt('Prozent') : tt('Euro')}>
             <Input value={f.value} onChange={(v) => setF({ ...f, value: v })} inputMode="decimal" />
@@ -622,7 +622,7 @@ function Coupons({ group, data }: { group: any; data: any }) {
         </div>
         <div className="cma-two">
           <Field label={tt('Wie lange')}>
-            <Select value={f.duration} onChange={(v) => setF({ ...f, duration: v })} options={[['once', 'Nur die erste Zahlung'], ['repeating', 'Mehrere Monate'], ['forever', 'Für immer']]} />
+            <Select value={f.duration} onChange={(v) => setF({ ...f, duration: v })} options={[['once', tt('Nur die erste Zahlung')], ['repeating', tt('Mehrere Monate')], ['forever', tt('Für immer')]]} />
           </Field>
           {f.duration === 'repeating' && <NumberField label={tt('Monate')} min={1} max={36} value={Number(f.months)} onChange={(v) => setF({ ...f, months: String(v ?? 3) })} />}
         </div>
@@ -654,7 +654,7 @@ function Coupons({ group, data }: { group: any; data: any }) {
                   </div>
                   <div className="muted small">
                     {c.text} · {c.uses}
-                    {c.max_uses ? `/${c.max_uses}` : ''} genutzt{c.expires_at ? tt(' · bis {d}', { d: d(c.expires_at) }) : ''}
+                    {c.max_uses ? `/${c.max_uses}` : ''} {tt('genutzt')}{c.expires_at ? tt(' · bis {d}', { d: d(c.expires_at) }) : ''}
                   </div>
                 </div>
                 <button className="btn small secondary" onClick={() => run(() => api.patch(`/api/community/coupons/${c.id}`, { active: !c.active }), c.active ? 'Ausgeschaltet' : 'Eingeschaltet', () => void list.reload())}>

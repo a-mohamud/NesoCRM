@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api, d } from '../api';
 import { Icon } from '../icons';
 import { Badge, Field, Input, Modal, Select, act, useLoad } from '../ui';
-import type { CloudMe } from './CloudKit';
+import { legalDocName, type CloudMe } from './CloudKit';
 import { useT } from '../i18n';
 
 /** Cloud-Konto → Daten & Konto: export, support access, contracts (AVV) and deleting the account. */
@@ -78,7 +78,7 @@ export function CloudData({ me, reload }: { me: CloudMe; reload: () => void }) {
 
       <div className="card" data-tour="cloud-support">
         <h3 style={{ marginTop: 0 }}>
-          {tt('Support-Zugriff')} {t.support.active ? <Badge tone="yellow">{tt('freigegeben bis {d}', { d: d(t.support.until) })}</Badge> : <Badge>aus</Badge>}
+          {tt('Support-Zugriff')} {t.support.active ? <Badge tone="yellow">{tt('freigegeben bis {d}', { d: d(t.support.until) })}</Badge> : <Badge>{tt('aus')}</Badge>}
         </h3>
         <p className="muted">
           {tt('Standardmäßig kann niemand vom Anbieter dein Konto öffnen. Wenn du Hilfe möchtest, gib den Zugriff für eine Zeit frei. Jeder Zugriff steht in deinem Protokoll (Einstellungen → Protokoll).')}
@@ -86,7 +86,7 @@ export function CloudData({ me, reload }: { me: CloudMe; reload: () => void }) {
         <div className="row" style={{ alignItems: 'flex-end' }}>
           <div className="grow">
             <Field label={tt('Freigabe')}>
-              <Select value={support} onChange={setSupport} options={SUPPORT} />
+              <Select value={support} onChange={setSupport} options={SUPPORT.map(([k, l]) => [k, tt(l)] as [string, string])} />
             </Field>
           </div>
           <button className="btn" style={{ marginBottom: 12 }} onClick={async () => (await act(() => api.put('/api/cloud/support', { hours: Number(support) }), Number(support) ? tt('Freigegeben') : tt('Widerrufen'))) && reload()}>
@@ -118,7 +118,7 @@ export function CloudData({ me, reload }: { me: CloudMe; reload: () => void }) {
           </a>
         </div>
         <p className="muted small" style={{ marginBottom: 0 }}>
-          {tt('Zugestimmt:')} {(['agb', 'avv', 'datenschutz'] as const).map((k) => (last(k) ? `${k.toUpperCase()} v${last(k)!.version} (${d(last(k)!.at)})` : null)).filter(Boolean).join(' · ') || '–'}
+          {tt('Zugestimmt:')} {(['agb', 'avv', 'datenschutz'] as const).map((k) => (last(k) ? `${legalDocName(tt, k)} v${last(k)!.version} (${d(last(k)!.at)})` : null)).filter(Boolean).join(' · ') || '–'}
         </p>
       </div>
 

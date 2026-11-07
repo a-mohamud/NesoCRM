@@ -55,7 +55,7 @@ export function CheckoutLaw() {
             <Input value={s.withdrawal_url} onChange={(v) => set({ withdrawal_url: v })} placeholder="https://…" />
           </Field>
           <Field label={tt('Standard für Produkte')}>
-            <Select value={s.content_type} onChange={(v) => set({ content_type: v })} options={TYPES} />
+            <Select value={s.content_type} onChange={(v) => set({ content_type: v })} options={TYPES.map(([k, l]) => [k, tt(l)] as [string, string])} />
           </Field>
         </div>
         <Check checked={s.confirmation_mail} onChange={(v) => set({ confirmation_mail: v })} label={tt('Nach dem Kauf eine Bestätigungs-Mail mit AGB-/Widerrufsangaben schicken (dauerhafter Datenträger)')} />
@@ -77,7 +77,7 @@ export function CheckoutLaw() {
                 {data.products.map((p: any) => (
                   <tr key={p.id}>
                     <td>{p.name}</td>
-                    <td><Select value={productType(p.id)} onChange={(v) => setProduct(p.id, v)} options={TYPES} placeholder={tt('Wie Standard')} /></td>
+                    <td><Select value={productType(p.id)} onChange={(v) => setProduct(p.id, v)} options={TYPES.map(([k, l]) => [k, tt(l)] as [string, string])} placeholder={tt('Wie Standard')} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -102,7 +102,7 @@ export function CheckoutLaw() {
                     <td>{a.product_name || '–'}</td>
                     <td className="small">{a.email || '–'}</td>
                     <td>{a.terms_version ? <Badge tone="green">V{a.terms_version}</Badge> : <Badge>–</Badge>}</td>
-                    <td>{a.waiver_kind ? <Badge tone="green">{KIND[a.waiver_kind] ?? a.waiver_kind}</Badge> : <Badge>–</Badge>}</td>
+                    <td>{a.waiver_kind ? <Badge tone="green">{tt(KIND[a.waiver_kind] ?? a.waiver_kind)}</Badge> : <Badge>–</Badge>}</td>
                   </tr>
                 ))}
               </tbody>

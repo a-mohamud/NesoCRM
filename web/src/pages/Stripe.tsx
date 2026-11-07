@@ -98,7 +98,7 @@ export function StripeSettings() {
           {tt('Endpunkt-URL:')} <CodeBox text={s.webhook_url} />
         </li>
         <li>
-          {tt('Ereignisse:')} <CodeList list={EVENTS} />{tt('. Für Abo-Produkte zusätzlich')} <CodeList list={SUB_EVENTS} last=" und " />{tt('. Optional')} <code>charge.refunded</code>{tt(': Erstattungen stornieren Affiliate-Provisionen.')}
+          {tt('Ereignisse:')} <CodeList list={EVENTS} />{tt('. Für Abo-Produkte zusätzlich')} <CodeList list={SUB_EVENTS} last={tt(' und ')} />{tt('. Optional')} <code>charge.refunded</code>{tt(': Erstattungen stornieren Affiliate-Provisionen.')}
         </li>
         <li>{tt('Das „Signing Secret“ (whsec_…) des Endpunkts unten eintragen.')}</li>
       </ol>
@@ -245,14 +245,14 @@ export function ProductBuyLink({ product, links }: { product: any; links: Return
           <Field label={tt('Kurzname im Link (optional)')} hint={tt('z. B. „online-kurs“ → /buy/online-kurs')}>
             <Input value={edit.slug} onChange={(v) => setEdit({ ...edit, slug: v })} placeholder={product.id} />
           </Field>
-          <Field label={tt('Tag für Käufer')} hint={`leer = ${l.tag.startsWith('kauf:') && !l.custom_tag ? l.tag : tt('kauf:<kurzname>')} – damit schaltest du z. B. Kurse frei`}>
+          <Field label={tt('Tag für Käufer')} hint={tt('leer = {v} – damit schaltest du z. B. Kurse frei', { v: l.tag.startsWith('kauf:') && !l.custom_tag ? l.tag : tt('kauf:<kurzname>') })}>
             <Input value={edit.tag} onChange={(v) => setEdit({ ...edit, tag: v })} placeholder={l.custom_tag ? '' : l.tag} />
           </Field>
           <Field label={tt('Weiterleitung nach dem Kauf (optional)')} hint={tt('z. B. Kurs- oder Danke-Seite; sonst zeigen wir eine Danke-Seite')}>
             <Input value={edit.redirect_url} onChange={(v) => setEdit({ ...edit, redirect_url: v })} placeholder="https://…" />
           </Field>
           <Check checked={edit.enabled !== false} onChange={(v) => setEdit({ ...edit, enabled: v })} label={tt('Kauf-Link aktiv')} />
-          {product.recurring && <p className="small muted">{tt('Abo-Produkt: Stripe bucht')} {product.recurring === 'month' ? 'monatlich' : tt('jährlich')} {tt('ab; jede Verlängerung erzeugt eine bezahlte Rechnung, bei Kündigung wird der Tag wieder entfernt.')}</p>}
+          {product.recurring && <p className="small muted">{tt('Abo-Produkt: Stripe bucht')} {product.recurring === 'month' ? tt('monatlich') : tt('jährlich')} {tt('ab; jede Verlängerung erzeugt eine bezahlte Rechnung, bei Kündigung wird der Tag wieder entfernt.')}</p>}
           {offers.ui}
         </Modal>
       )}

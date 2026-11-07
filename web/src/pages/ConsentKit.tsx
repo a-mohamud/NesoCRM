@@ -4,9 +4,10 @@ import { useT } from '../i18n';
 export const LEGAL_NOTE = 'Keine Rechtsberatung – bitte prüfen. Alle Texte und Voreinstellungen hier sind Vorlagen nach deutschem Recht (DSGVO, UWG, TDDDG, BGB). Lass sie von einer Anwältin oder einem Anwalt bzw. deinem Datenschutzbeauftragten prüfen.';
 
 export function LegalNotice() {
+  const tt = useT('x_integrations');
   return (
     <p className="card legal-note" data-tour="consent-notice">
-      <strong>{LEGAL_NOTE}</strong>
+      <strong>{tt(LEGAL_NOTE)}</strong>
     </p>
   );
 }

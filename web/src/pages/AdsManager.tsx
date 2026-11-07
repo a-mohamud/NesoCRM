@@ -39,7 +39,7 @@ export function AdsManager({ path }: { path: string[] }) {
           </button>
         )}
       </PageHead>
-      <Tabs tabs={TABS} value={tab} onChange={(v) => navigate(`ads/${v}`)} />
+      <Tabs tabs={TABS.map(([k, l]) => [k, tt(l)] as [string, string])} value={tab} onChange={(v) => navigate(`ads/${v}`)} />
       {tab === 'campaigns' && <Campaigns />}
       {tab === 'audiences' && <AdsAudiences />}
       {tab === 'leads' && <AdsLeads />}
@@ -107,7 +107,7 @@ function Campaigns() {
               <div>
                 <strong>{a.summary}</strong>
                 <div className="muted small">
-                  {tt('Angefragt über')} {VIA[a.requested_via] ?? a.requested_via ?? 'API'}{a.requested_by_name && a.requested_by_name !== VIA[a.requested_via] ? ` (${a.requested_by_name})` : ''} {tt('· {dt} · gültig bis {dt2}', { dt: dt(a.created_at), dt2: dt(a.expires_at) })}
+                  {tt('Angefragt über')} {tt(VIA[a.requested_via] ?? a.requested_via ?? 'API')}{a.requested_by_name && a.requested_by_name !== VIA[a.requested_via] ? ` (${a.requested_by_name})` : ''} {tt('· {dt} · gültig bis {dt2}', { dt: dt(a.created_at), dt2: dt(a.expires_at) })}
                 </div>
               </div>
               <div className="actions">
@@ -160,7 +160,7 @@ function Campaigns() {
                 <thead>
                   <tr>
                     <th>{tt('Kampagne')}</th>
-                    <th>Status</th>
+                    <th>{tt('Status')}</th>
                     <th className="num">{tt('Budget')}</th>
                     <th className="num">{tt('Ausgaben')}</th>
                     <th className="num">{tt('Klicks')}</th>
@@ -184,7 +184,7 @@ function Campaigns() {
                         <td>
                           <StatusBadge status={r.status} />
                         </td>
-                        <td className="num">{r.budget_cents ? `${money(r.budget_cents, r.currency)}${r.budget_type === 'lifetime' ? ' ges.' : tt(' / Tag')}` : '–'}</td>
+                        <td className="num">{r.budget_cents ? `${money(r.budget_cents, r.currency)}${r.budget_type === 'lifetime' ? tt(' ges.') : tt(' / Tag')}` : '–'}</td>
                         <td className="num">{m ? money(m.spend_cents, m.currency) : '–'}</td>
                         <td className="num">{m ? int(m.clicks) : '–'}</td>
                         <td className="num">{m ? pct(m.ctr) : '–'}</td>
@@ -203,7 +203,7 @@ function Campaigns() {
                           ) : r.status === 'ended' ? null : (
                             <>
                               {r.status === 'active' ? (
-                                <button className="btn small secondary" onClick={() => run(() => api.post(`/api/ads/campaigns/${encodeURIComponent(ref(r))}/status`, { status: 'paused' }), 'Pausiert')}>
+                                <button className="btn small secondary" onClick={() => run(() => api.post(`/api/ads/campaigns/${encodeURIComponent(ref(r))}/status`, { status: 'paused' }), tt('Pausiert'))}>
                                   {tt('Pausieren')}
                                 </button>
                               ) : (
@@ -215,7 +215,7 @@ function Campaigns() {
                                 {tt('Budget')}
                               </button>
                               {r.managed && r.id && (
-                                <button className="btn small ghost" title={tt('Als neuen Entwurf kopieren')} onClick={async () => { const c = await run(() => api.post(`/api/ads/campaigns/${r.id}/duplicate`, {}), 'Kopie als Entwurf angelegt'); if (c?.id) navigate(`ads/edit/${c.id}`); }}>
+                                <button className="btn small ghost" title={tt('Als neuen Entwurf kopieren')} onClick={async () => { const c = await run(() => api.post(`/api/ads/campaigns/${r.id}/duplicate`, {}), tt('Kopie als Entwurf angelegt')); if (c?.id) navigate(`ads/edit/${c.id}`); }}>
                                   {tt('Duplizieren')}
                                 </button>
                               )}
@@ -240,7 +240,7 @@ function Campaigns() {
           onDone={async () => {
             const r = dialog.row!;
             setDialog(null);
-            await run(() => api.post(`/api/ads/campaigns/${encodeURIComponent(r.id ?? `${r.platform}:${r.remote_id}`)}/status`, { status: 'active', confirm: true }), 'Aktiviert');
+            await run(() => api.post(`/api/ads/campaigns/${encodeURIComponent(r.id ?? `${r.platform}:${r.remote_id}`)}/status`, { status: 'active', confirm: true }), tt('Aktiviert'));
           }}
         />
       )}
@@ -251,7 +251,7 @@ function Campaigns() {
           onDone={async (cents) => {
             const r = dialog.row!;
             setDialog(null);
-            await run(() => api.post(`/api/ads/campaigns/${encodeURIComponent(r.id ?? `${r.platform}:${r.remote_id}`)}/budget`, { amount_cents: cents, type: r.budget_type ?? undefined, confirm: true }), 'Budget geändert');
+            await run(() => api.post(`/api/ads/campaigns/${encodeURIComponent(r.id ?? `${r.platform}:${r.remote_id}`)}/budget`, { amount_cents: cents, type: r.budget_type ?? undefined, confirm: true }), tt('Budget geändert'));
           }}
         />
       )}
@@ -270,7 +270,7 @@ function Campaigns() {
                 onClick={async () => {
                   const a = dialog.approval;
                   setDialog(null);
-                  await run(() => api.post(`/api/ads/approvals/${a.id}/approve`, {}), 'Freigegeben und ausgeführt');
+                  await run(() => api.post(`/api/ads/approvals/${a.id}/approve`, {}), tt('Freigegeben und ausgeführt'));
                 }}
               >
                 {tt('Freigeben und ausführen')}
@@ -282,7 +282,7 @@ function Campaigns() {
             <strong>{dialog.approval.summary}</strong>
           </p>
           <p className="muted">
-            {tt('Angefragt über')} {VIA[dialog.approval.requested_via] ?? 'API'}{dialog.approval.requested_by_name && dialog.approval.requested_by_name !== VIA[dialog.approval.requested_via] ? ` (${dialog.approval.requested_by_name})` : ''}{tt('. Mit „Freigeben“ wird es sofort bei')} {dialog.approval.platform === 'meta' ? tt('Meta') : 'Google'} {tt('ausgeführt und im Protokoll festgehalten.')}
+            {tt('Angefragt über')} {tt(VIA[dialog.approval.requested_via] ?? 'API')}{dialog.approval.requested_by_name && dialog.approval.requested_by_name !== VIA[dialog.approval.requested_via] ? ` (${dialog.approval.requested_by_name})` : ''}{tt('. Mit „Freigeben“ wird es sofort bei')} {dialog.approval.platform === 'meta' ? tt('Meta') : tt('Google')} {tt('ausgeführt und im Protokoll festgehalten.')}
           </p>
         </AdsModal>
       )}
@@ -292,7 +292,7 @@ function Campaigns() {
 
 function ActivateDialog({ row, onClose, onDone }: { row: Row; onClose: () => void; onDone: () => void }) {
   const tt = useT('x_integrations');
-  const budget = row.budget_cents ? `${money(row.budget_cents, row.currency)} ${row.budget_type === 'lifetime' ? 'insgesamt' : 'pro Tag'}` : 'dem eingestellten Budget';
+  const budget = row.budget_cents ? (row.budget_type === 'lifetime' ? tt('{money} insgesamt', { money: money(row.budget_cents, row.currency) }) : tt('{money} pro Tag', { money: money(row.budget_cents, row.currency) })) : tt('dem eingestellten Budget');
   return (
     <AdsModal
       title={tt('Kampagne aktivieren?')}
@@ -309,7 +309,7 @@ function ActivateDialog({ row, onClose, onDone }: { row: Row; onClose: () => voi
       }
     >
       <p>
-        <strong>„{row.name}“</strong> bei {row.platform === 'meta' ? tt('Meta (Facebook & Instagram)') : tt('Google Ads')} {tt('wird aktiviert.')}
+        <strong>„{row.name}“</strong> {tt('bei')} {row.platform === 'meta' ? tt('Meta (Facebook & Instagram)') : tt('Google Ads')} {tt('wird aktiviert.')}
       </p>
       <p>
         {tt('Ab sofort wird')} <strong>{tt('Geld ausgegeben')}</strong> {tt('– bis zu {budget}. Du kannst die Kampagne jederzeit pausieren.', { budget: budget })}

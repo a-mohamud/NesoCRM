@@ -75,11 +75,11 @@ function ProviderModal({ initial, locations, base, onClose, onSaved }: { initial
           <Select
             value={p.preset}
             onChange={(v) => setP({ ...p, preset: v, scopes: PRESETS[v].scopes, config: { ...c, claims: { ...c.claims, groups: PRESETS[v].groups }, trust_email: !!PRESETS[v].trust } })}
-            options={Object.entries(PRESETS).map(([k, x]) => [k, x.label])}
+            options={Object.entries(PRESETS).map(([k, x]) => [k, tt(x.label)])}
           />
         </Field>
         <Field label={tt('Für')}>
-          <Select value={p.location_id} onChange={(v) => setP({ ...p, location_id: v, config: { ...c, default_role: v ? 'member' : c.default_role } })} options={[['', 'Agentur (alle Logins)'], ...locations.map((l) => [l.id, `Kunde: ${l.name}`] as [string, string])]} />
+          <Select value={p.location_id} onChange={(v) => setP({ ...p, location_id: v, config: { ...c, default_role: v ? 'member' : c.default_role } })} options={[['', tt('Agentur (alle Logins)')], ...locations.map((l) => [l.id, tt('Kunde: {name}', { name: l.name })] as [string, string])]} />
         </Field>
         <Field label={tt('Name auf dem Button')}>
           <Input value={p.name} onChange={(v) => set({ name: v, slug: p.id ? p.slug : v.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) })} placeholder={tt('Firmen-Login')} />
@@ -88,7 +88,7 @@ function ProviderModal({ initial, locations, base, onClose, onSaved }: { initial
           <Input value={p.slug} onChange={(v) => set({ slug: v })} />
         </Field>
       </div>
-      <p className="muted small">{preset.hint}</p>
+      <p className="muted small">{tt(preset.hint)}</p>
       <Field label={tt('Issuer- oder Discovery-URL')}>
         <Input value={p.issuer} onChange={(v) => set({ issuer: v })} placeholder={preset.issuer} />
       </Field>
@@ -124,7 +124,7 @@ function ProviderModal({ initial, locations, base, onClose, onSaved }: { initial
       </div>
       <div className="grid2" style={{ marginTop: 8 }}>
         <Field label={tt('SSO erzwingen für Domains')} hint={tt('Diese Adressen können sich nur noch hierüber anmelden (kein Passwort, kein Link, kein Passkey).')}>
-          <Input value={domains.enforce} onChange={(v) => setDomains({ ...domains, enforce: v })} placeholder="firma.de" />
+          <Input value={domains.enforce} onChange={(v) => setDomains({ ...domains, enforce: v })} placeholder={tt('firma.de')} />
         </Field>
         <Field label={tt('Erlaubte Domains')} hint={tt('leer = jede bestätigte Adresse des Anbieters')}>
           <Input value={domains.allowed} onChange={(v) => setDomains({ ...domains, allowed: v })} placeholder={tt('firma.de, firma.at')} />
@@ -133,7 +133,7 @@ function ProviderModal({ initial, locations, base, onClose, onSaved }: { initial
       <h3>{tt('Neue Konten')}</h3>
       <div className="grid2">
         <Field label={tt('Rolle')}>
-          <Select value={client ? 'member' : c.default_role} onChange={(v) => setC({ default_role: v })} options={client ? [['member', 'Kunden-Login']] : [['member', 'Mitglied (Rechte unten)'], ['admin', 'Agentur-Admin']]} />
+          <Select value={client ? 'member' : c.default_role} onChange={(v) => setC({ default_role: v })} options={client ? [['member', tt('Kunden-Login')]] : [['member', tt('Mitglied (Rechte unten)')], ['admin', tt('Agentur-Admin')]]} />
         </Field>
         <div />
         {!client && (
@@ -155,7 +155,7 @@ function ProviderModal({ initial, locations, base, onClose, onSaved }: { initial
                 <Input value={r.group} onChange={(v) => upd({ group: v })} placeholder="crm-admins" />
               </Field>
               <Field label={tt('Rolle')}>
-                <Select value={r.role ?? ''} onChange={(v) => upd({ role: v || undefined })} options={[['', '–'], ['member', 'Mitglied'], ...(client ? [] : [['admin', 'Agentur-Admin'] as [string, string]])]} />
+                <Select value={r.role ?? ''} onChange={(v) => upd({ role: v || undefined })} options={[['', '–'], ['member', tt('Mitglied')], ...(client ? [] : [['admin', tt('Agentur-Admin')] as [string, string]])]} />
               </Field>
               <button className="btn small ghost" style={{ marginBottom: 12 }} aria-label={tt('Regel entfernen')} onClick={() => setC({ group_rules: c.group_rules.filter((_: any, j: number) => j !== i) })}>
                 ✕
@@ -217,7 +217,7 @@ export function LoginSettings() {
       ))}
     </div>
   );
-  const status = (k: string) => (data.data.ready[k] ? <Badge tone="green">bereit</Badge> : p.social[k].enabled ? <Badge tone="yellow">{tt('Angaben fehlen')}</Badge> : <Badge>aus</Badge>);
+  const status = (k: string) => (data.data.ready[k] ? <Badge tone="green">{tt('bereit')}</Badge> : p.social[k].enabled ? <Badge tone="yellow">{tt('Angaben fehlen')}</Badge> : <Badge>{tt('aus')}</Badge>);
 
   return (
     <div className="login-settings">
@@ -241,7 +241,7 @@ export function LoginSettings() {
               <Input type="number" min={1} max={365} value={p.session_days} onChange={(v) => set({ session_days: Number(v) })} />
             </Field>
             <Field label={tt('E-Mail-Links senden über')}>
-              <Select value={p.mail_location_id} onChange={(v) => set({ mail_location_id: v })} options={[['', 'automatisch'], ...locations.map((l) => [l.id, l.name] as [string, string])]} />
+              <Select value={p.mail_location_id} onChange={(v) => set({ mail_location_id: v })} options={[['', tt('automatisch')], ...locations.map((l) => [l.id, l.name] as [string, string])]} />
             </Field>
           </div>
           </MoreFields>
@@ -293,7 +293,7 @@ export function LoginSettings() {
                 <>
                   <div className="grid2">
                     <Field label={tt('Services-ID')}>
-                      <Input value={p.social.apple.client_id} onChange={(v) => setSocial('apple', { client_id: v })} placeholder="com.firma.login" />
+                      <Input value={p.social.apple.client_id} onChange={(v) => setSocial('apple', { client_id: v })} placeholder={tt('com.firma.login')} />
                     </Field>
                     <Field label={tt('Team-ID')}>
                       <Input value={p.social.apple.team_id} onChange={(v) => setSocial('apple', { team_id: v })} />
@@ -340,7 +340,7 @@ export function LoginSettings() {
                 {providers.map((x) => (
                   <tr key={x.id}>
                     <td>
-                      <strong>{x.name}</strong> {x.enabled ? <Badge tone="green">aktiv</Badge> : <Badge>aus</Badge>}
+                      <strong>{x.name}</strong> {x.enabled ? <Badge tone="green">{tt('aktiv')}</Badge> : <Badge>{tt('aus')}</Badge>}
                       <div className="muted small">{x.issuer}</div>
                     </td>
                     <td>{x.location_id ? locations.find((l) => l.id === x.location_id)?.name ?? tt('Kunde') : tt('Agentur')}</td>
@@ -351,7 +351,7 @@ export function LoginSettings() {
                         className="btn small secondary"
                         onClick={async () => {
                           const r = await act(() => api.post(`/api/agency/sso/${x.id}/test`));
-                          if (r) r.ok ? toast(`Verbindung ok: ${r.keys} Schlüssel${r.pkce === false ? tt(' (ohne PKCE-Angabe)') : ''}`) : toast(tt('Fehler: {error}', { error: r.error }));
+                          if (r) r.ok ? toast(tt('Verbindung ok: {n} Schlüssel', { n: r.keys }) + (r.pkce === false ? tt(' (ohne PKCE-Angabe)') : '')) : toast(tt('Fehler: {error}', { error: r.error }));
                         }}
                       >
                         {tt('Testen')}
@@ -376,11 +376,11 @@ export function LoginSettings() {
           <h2>{tt('Neue Konten beim ersten Login')}</h2>
           <p className="muted small">{tt('Gilt für Google & Co. und E-Mail-Links. SSO-Anbieter haben ihre eigene Einstellung (JIT).')}</p>
           <Field label={tt('Registrierung')}>
-            <Select value={p.signup.mode} onChange={(v) => set({ signup: { ...p.signup, mode: v } })} options={[['closed', 'Geschlossen – nur bestehende Logins'], ['invite', 'Nur mit Einladung'], ['domains', 'Erlaubte E-Mail-Domains']]} />
+            <Select value={p.signup.mode} onChange={(v) => set({ signup: { ...p.signup, mode: v } })} options={[['closed', tt('Geschlossen – nur bestehende Logins')], ['invite', tt('Nur mit Einladung')], ['domains', tt('Erlaubte E-Mail-Domains')]]} />
           </Field>
           {p.signup.mode === 'domains' && (
             <Field label={tt('Domains')} hint={tt('Bestätigte Adressen dieser Domains bekommen ein Kunden-Login.')}>
-              <Input value={domains} onChange={setDomains} placeholder="firma.de" />
+              <Input value={domains} onChange={setDomains} placeholder={tt('firma.de')} />
             </Field>
           )}
           {p.signup.mode !== 'closed' && (
@@ -399,7 +399,7 @@ export function LoginSettings() {
               {data.data.invites.map((i: any) => (
                 <div key={i.email} className="signin-row">
                   <span style={{ flex: 1 }}>
-                    {i.email} <span className="muted small">bis {d(i.expires_at)}</span>
+                    {i.email} <span className="muted small">{tt('bis {d}', { d: d(i.expires_at) })}</span>
                   </span>
                   <button className="btn small ghost" onClick={async () => (await act(() => api.del(`/api/agency/login/invites/${encodeURIComponent(i.email)}`), tt('Entfernt'))) && data.reload()}>
                     {tt('Entfernen')}
@@ -407,7 +407,7 @@ export function LoginSettings() {
                 </div>
               ))}
               <div className="row" style={{ alignItems: 'flex-end' }}>
-                <Field label="E-Mail">
+                <Field label={tt('E-Mail')}>
                   <Input type="email" value={invite.email} onChange={(v) => setInvite({ ...invite, email: v })} />
                 </Field>
                 <Check checked={invite.send} onChange={(v) => setInvite({ ...invite, send: v })} label={tt('Link per E-Mail senden')} />

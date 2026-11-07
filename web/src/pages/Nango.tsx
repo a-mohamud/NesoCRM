@@ -76,7 +76,7 @@ export function NangoAgencySetup() {
         {tt('Hunderte APIs über')} <a href="https://nango.dev" target="_blank" rel="noopener">{tt('Nango')}</a> {tt('– Cloud oder selbst gehostet. Du legst je Anbieter einmal eine eigene OAuth-App im Nango-Dashboard an; danach klicken Sub-Accounts nur noch „Verbinden“. Nango steht unter der Elastic License 2.0 (quelloffen, nicht OSI); die kostenlose selbst gehostete Version kann Anmeldung + Proxy – genau das, was HyperLevel nutzt.')}
       </p>
       <Field label={tt('Nango-Adresse')} hint={tt('Nango Cloud: https://api.nango.dev · selbst gehostet: die Server-Adresse (z. B. https://nango.example.com oder http://nango-server:3003 im selben Docker-Netz).')}>
-        <Select value={cloud ? 'cloud' : 'self'} onChange={(x) => set({ base_url: x === 'cloud' ? 'https://api.nango.dev' : '' })} options={[['cloud', 'Nango Cloud'], ['self', 'Selbst gehostet']]} />
+        <Select value={cloud ? 'cloud' : 'self'} onChange={(x) => set({ base_url: x === 'cloud' ? 'https://api.nango.dev' : '' })} options={[['cloud', tt('Nango Cloud')], ['self', tt('Selbst gehostet')]]} />
         {!cloud && <Input value={f.base_url} onChange={(x) => set({ base_url: x })} placeholder="https://nango.example.com" />}
       </Field>
       <Field label={tt('Secret-Key')} hint={tt('Nango → Environment Settings → Secret Key (je Umgebung, z. B. prod). Wird verschlüsselt gespeichert und nie wieder angezeigt.')}>
@@ -122,7 +122,7 @@ export function NangoAgencySetup() {
       </div>
       {test && (
         <p className="small">
-          <Badge tone="green">verbunden</Badge> {tt('{integrations} Integration', { integrations: test.integrations })}{test.integrations === 1 ? '' : 'en'} {tt('in Nango')}{test.names?.length ? `: ${test.names.join(', ')}` : tt(' – leg im Nango-Dashboard die erste an')}
+          <Badge tone="green">{tt('verbunden')}</Badge> {test.integrations === 1 ? tt('{integrations} Integration', { integrations: test.integrations }) : tt('{integrations} Integrationen', { integrations: test.integrations })} {tt('in Nango')}{test.names?.length ? `: ${test.names.join(', ')}` : tt(' – leg im Nango-Dashboard die erste an')}
         </p>
       )}
       <p className="muted small">
@@ -189,7 +189,7 @@ export function NangoApps() {
       <div className="card" data-tour="apps-nango-status">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0 }}>{tt('Nango')}</h2>
-          {v.configured ? <Badge tone="green">eingerichtet</Badge> : <Badge>{tt('nicht eingerichtet')}</Badge>}
+          {v.configured ? <Badge tone="green">{tt('eingerichtet')}</Badge> : <Badge>{tt('nicht eingerichtet')}</Badge>}
         </div>
         <p className="muted small">
           {tt('Apps mit Anmeldung über Nango – mit den eigenen OAuth-Apps der Agentur. Dieser Sub-Account ist bei Nango der Nutzer')} <code>{v.end_user_id}</code>{tt('; seine Verbindungen sind von anderen Sub-Accounts getrennt. „Verbinden“ führt direkt zur Anmeldung der App (kein Popup) – danach mit „Zurück“ oder durch Schließen des Tabs wieder hierher, die Verbindung erscheint automatisch.')}
@@ -197,7 +197,7 @@ export function NangoApps() {
         {!v.configured && <p className="small">{v.is_admin ? tt('Trag Nango einmal unter Agentur → Integrationen → Einrichtung ein.') : tt('Die Agentur hat Nango noch nicht eingerichtet.')}</p>}
         {v.pending?.length > 0 && (
           <p className="small">
-            <Badge tone="blue">wartet</Badge> {tt('Anmeldung läuft:')} {v.pending.map((p: Json) => p.integration).join(', ')} –{' '}
+            <Badge tone="blue">{tt('wartet')}</Badge> {tt('Anmeldung läuft:')} {v.pending.map((p: Json) => p.integration).join(', ')} –{' '}
             <button className="btn small ghost" onClick={async () => (await act(() => api.get('/api/nango/connections?refresh=1'))) && reload()}>
               {tt('Status prüfen')}
             </button>
@@ -253,7 +253,7 @@ function NangoCard({ i }: { i: Integration }) {
         {!i.supported ? (
           <span className="muted small" title={tt('HyperLevel unterstützt Integrations-IDs mit Buchstaben, Ziffern und . _ - ~ @')}>{tt('ID nicht unterstützt')}</span>
         ) : st && i.connection === 'active' ? (
-          <Badge tone={st[1]}>{st[0]}</Badge>
+          <Badge tone={st[1]}>{tt(st[0])}</Badge>
         ) : (
           <button className="btn small" onClick={() => void connect(i.key)}>
             {i.connection ? tt('Neu verbinden') : tt('Verbinden')}
@@ -297,7 +297,7 @@ function NangoConnections({ conns, onChange }: { conns: Json[]; onChange: () => 
                     {c.status_reason ? ` · ${clip(c.status_reason, 80)}` : ''}
                   </span>
                 </div>
-                <Badge tone={s[1]}>{s[0]}</Badge>
+                <Badge tone={s[1]}>{tt(s[0])}</Badge>
                 {c.status !== 'active' && (
                   <button className="btn small" onClick={() => void connect(c.integration)}>
                     {tt('Neu verbinden')}
@@ -340,7 +340,7 @@ function NangoAllow({ allow, conns, onChange }: { allow: AllowEntry[]; conns: Js
                   <td style={{ width: 200 }}>
                     <Check checked={!!e} onChange={(on) => put(k, on ? { integration: k, methods: ['GET'], path: '' } : null)} label={<strong>{k}</strong>} />
                   </td>
-                  <td style={{ width: 200 }}>{e && <Select value={e.methods.includes('*') ? '*' : 'GET'} onChange={(m) => put(k, { ...e, methods: [m] })} options={[['GET', 'Nur lesen (GET)'], ['*', 'Alles (auch schreiben)']]} />}</td>
+                  <td style={{ width: 200 }}>{e && <Select value={e.methods.includes('*') ? '*' : 'GET'} onChange={(m) => put(k, { ...e, methods: [m] })} options={[['GET', tt('Nur lesen (GET)')], ['*', tt('Alles (auch schreiben)')]]} />}</td>
                   <td>{e && <Input value={e.path} onChange={(p) => put(k, { ...e, path: p })} placeholder={tt('alle Pfade – oder z. B. /repos/*')} />}</td>
                 </tr>
               );
@@ -439,7 +439,7 @@ export function NangoRequestStep({ step, set, customFields }: { step: Json; set:
   const tt = useT('x_integrations');
   const conns = useLoad(() => api.get<Json[]>('/api/nango/connections').catch(() => [] as Json[]), []);
   const map: { from: string; to: string }[] = step.map ?? [];
-  const targets: [string, string][] = [...CONTACT_TARGETS, ...customFields.map((f) => [`custom.${f.key}`, `Feld: ${f.label}`] as [string, string])];
+  const targets: [string, string][] = [...CONTACT_TARGETS.map(([k, l]) => [k, tt(l)] as [string, string]), ...customFields.map((f) => [`custom.${f.key}`, tt('Feld: {label}', { label: f.label })] as [string, string])];
   if (!conns.data) return <Spinner />;
   const keys = [...new Set(conns.data.map((c) => String(c.integration)))];
   if (!keys.length && !step.integration)
@@ -480,7 +480,7 @@ export function NangoRequestStep({ step, set, customFields }: { step: Json; set:
       <MergeHint />
       <h4 className="integ-h">{tt('Ergebnis übernehmen (optional)')}</h4>
       <p className="muted small">
-        {tt('Pfad in der Antwort → Kontaktfeld, z. B.')} <code>id</code> oder <code>items.0.name</code>{tt('. Spätere Schritte lesen die Antwort als')} <code>{'{{event.nango_result.data.<pfad>}}'}</code>.
+        {tt('Pfad in der Antwort → Kontaktfeld, z. B.')} <code>id</code> {tt('oder')} <code>items.0.name</code>{tt('. Spätere Schritte lesen die Antwort als')} <code>{'{{event.nango_result.data.<pfad>}}'}</code>.
       </p>
       {map.map((m, i) => (
         <div key={i} className="row" style={{ marginBottom: 6 }}>

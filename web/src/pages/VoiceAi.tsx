@@ -62,7 +62,7 @@ export function VoiceAiSettings() {
         <h2>
           <Icon name="bot" size={18} /> {tt('KI-Telefonagent')}
         </h2>
-        {d.settings.mode === 'off' ? <Badge>aus</Badge> : d.active_now ? <Badge tone="green">{tt('nimmt Anrufe an')}</Badge> : <Badge tone="yellow">wartet</Badge>}
+        {d.settings.mode === 'off' ? <Badge>{tt('aus')}</Badge> : d.active_now ? <Badge tone="green">{tt('nimmt Anrufe an')}</Badge> : <Badge tone="yellow">{tt('wartet')}</Badge>}
       </div>
       <p className="muted small">
         {tt('Claude nimmt Anrufe an, beantwortet Fragen aus dem Wissen des KI-Assistenten, bucht Termine, nimmt Nachrichten auf oder verbindet weiter. Danach liegen Zusammenfassung und Verlauf am Anruf und beim Kontakt.')}
@@ -76,7 +76,7 @@ export function VoiceAiSettings() {
 
       <div className="grid2">
         <Field label={tt('Wann nimmt der Agent ab?')} tour="voice-mode">
-          <Select value={s.mode} onChange={(v) => set({ mode: v })} options={MODES} />
+          <Select value={s.mode} onChange={(v) => set({ mode: v })} options={MODES.map(([k, l]) => [k, tt(l)] as [string, string])} />
         </Field>
         <Field label={tt('Stimme')} hint={
             <>
@@ -166,7 +166,7 @@ export function VoiceAiSettings() {
           <span className="muted small">{tt('Letzte 30 Tage:')}</span>
           {stats.map(([k, v]) => (
             <Badge key={k} tone={OUTCOME_TONE[k] ?? 'gray'}>
-              {d.outcomes[k] ?? k}: {v}
+              {tt(d.outcomes[k] ?? k)}: {v}
             </Badge>
           ))}
         </div>
@@ -205,7 +205,7 @@ function AiCallModal({ callId, onClose }: { callId: string; onClose: () => void 
       ) : (
         <div className="voice-call">
           <div className="row" style={{ alignItems: 'center', gap: 8 }}>
-            {v.outcome ? <Badge tone={OUTCOME_TONE[v.outcome] ?? 'gray'}>{v.outcome_label}</Badge> : <Badge tone="blue">{tt('läuft')}</Badge>}
+            {v.outcome ? <Badge tone={OUTCOME_TONE[v.outcome] ?? 'gray'}>{tt(v.outcome_label ?? '')}</Badge> : <Badge tone="blue">{tt('läuft')}</Badge>}
             <span className="muted small">
               {dt(v.started_at)} · {v.from_number || tt('Nummer unterdrückt')} {tt('· {turns} Runden', { turns: v.turns })}
             </span>
@@ -248,7 +248,7 @@ export function VoiceOutcomeFilter({ value, onChange }: { value: string; onChang
   const tt = useT('x_comms');
   return (
     <Field label={tt('Ergebnis')}>
-      <Select value={value} onChange={onChange} placeholder="jedes" options={VOICE_OUTCOMES} />
+      <Select value={value} onChange={onChange} placeholder={tt('jedes')} options={VOICE_OUTCOMES.map(([k, l]) => [k, tt(l)] as [string, string])} />
     </Field>
   );
 }

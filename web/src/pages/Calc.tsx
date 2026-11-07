@@ -193,7 +193,7 @@ export function Calc({ id }: { id?: string }) {
 
   const res = calc.res;
   const inp = calc.input;
-  const focusLabel = res && inp ? (calc.cell ? `Bei ${de(res.focus.customers)} Kunden zu ${res.focus.column.label}` : `Deine Rechnung: ${de(res.focus.customers)} Kunden${inp.matrix.columns === 'plan' ? '' : ' zu den eingegebenen Preisen'}`) : '';
+  const focusLabel = res && inp ? (calc.cell ? tt('Bei {n} Kunden zu {label}', { n: de(res.focus.customers), label: res.focus.column.label }) : inp.matrix.columns === 'plan' ? tt('Deine Rechnung: {n} Kunden', { n: de(res.focus.customers) }) : tt('Deine Rechnung: {n} Kunden zu den eingegebenen Preisen', { n: de(res.focus.customers) })) : '';
 
   return (
     <CalcContext.Provider value={ctx}>
@@ -223,7 +223,7 @@ export function Calc({ id }: { id?: string }) {
           <span className="muted small">{tt('Vorlage:')}</span>
           {PRESETS.map((p) => (
             <button key={p.key} type="button" className={`chip${presetKey === p.key ? ' on' : ''}`} onClick={() => loadPreset(p.key)} title={p.description} aria-pressed={presetKey === p.key}>
-              {SHORT[p.key] ?? p.name}
+              {tt(SHORT[p.key] ?? p.name)}
             </button>
           ))}
         </div>
@@ -274,10 +274,10 @@ export function Calc({ id }: { id?: string }) {
               <p className="muted small">{tt('Der Agent und externe KI-Clients (Claude, ChatGPT, Codex über MCP) benutzen genau diesen Rechner: Fragen stellen, Szenarien speichern, vergleichen. Ein Klick legt die Frage in den Agenten.')}</p>
               <div className="calc-agent-chips">
                 {[
-                  'Was bleibt bei 300 Kunden im HyperLevel Standort-Modell nach allen Kosten und Steuern übrig?',
-                  'Ab wie vielen Kunden bin ich mit der HyperLevel Staffel im Plus?',
-                  'Welcher Grundpreis bringt bei 200 Kunden 5.000 € Nettogewinn im Monat?',
-                  'Vergleiche meine gespeicherten Szenarien im Gewinnrechner.',
+                  tt('Was bleibt bei 300 Kunden im HyperLevel Standort-Modell nach allen Kosten und Steuern übrig?'),
+                  tt('Ab wie vielen Kunden bin ich mit der HyperLevel Staffel im Plus?'),
+                  tt('Welcher Grundpreis bringt bei 200 Kunden 5.000 € Nettogewinn im Monat?'),
+                  tt('Vergleiche meine gespeicherten Szenarien im Gewinnrechner.'),
                 ].map((q) => (
                   <button key={q} type="button" className="chip" onClick={() => window.dispatchEvent(new CustomEvent('pghl:agent', { detail: { prompt: q } }))}>
                     {q}
@@ -488,7 +488,7 @@ function CompareTable({ cmp }: { cmp: Comparison }) {
           <tbody>
             {cmp.rows.map((r) => (
               <tr key={r.key}>
-                <td className="strong">{r.label}</td>
+                <td className="strong">{tt(r.label)}</td>
                 {r.values.map((v, i) => (
                   <td key={i} className={`num${r.best === i ? ' best' : ''}${v !== null && v < 0 ? ' neg' : ''}`}>
                     {formatKpi(v, unit(r.key))}
@@ -505,7 +505,7 @@ function CompareTable({ cmp }: { cmp: Comparison }) {
           </tbody>
         </table>
       </div>
-      <p className="muted small calc-foot">{tt('Unterschied jeweils zum ersten Szenario; das beste Ergebnis je Zeile ist hervorgehoben. {disclaimer}.', { disclaimer: cmp.disclaimer })}</p>
+      <p className="muted small calc-foot">{tt('Unterschied jeweils zum ersten Szenario; das beste Ergebnis je Zeile ist hervorgehoben. {disclaimer}.', { disclaimer: tt(cmp.disclaimer) })}</p>
     </>
   );
 }

@@ -24,7 +24,7 @@ import {
   type Filter,
   type ViewConfig,
 } from './ObjectKit';
-import { COMPANY_STANDARD } from './Companies';
+import { COMPANY_STANDARD, trFields } from './Companies';
 import { MoreFields, useSimple } from '../areas/fields';
 import { recordColumns, splitFields } from '../areas/easy-core';
 import '../areas/easy-core.css';
@@ -91,7 +91,7 @@ function PropRowEditor({ p, onChange, onRemove }: { p: NewProp; onChange: (p: Ne
   return (
     <div className="prop-row-edit">
       <Input value={p.label} onChange={(v) => onChange({ ...p, label: v })} placeholder={tt('Bezeichnung, z. B. Kennzeichen')} />
-      <Select value={p.type} onChange={(v) => onChange({ ...p, type: v })} options={Object.entries(TYPE_LABELS)} />
+      <Select value={p.type} onChange={(v) => onChange({ ...p, type: v })} options={Object.entries(TYPE_LABELS).map(([k, l]) => [k, tt(l)] as [string, string])} />
       {(p.type === 'select' || p.type === 'multiselect') && <Input value={p.options} onChange={(v) => onChange({ ...p, options: v })} placeholder={tt('Optionen, mit Komma')} />}
       <Check checked={p.required} onChange={(v) => onChange({ ...p, required: v })} label={tt('Pflicht')} />
       {!['checkbox', 'multiselect', 'textarea', 'file'].includes(p.type) && <Check checked={p.unique} onChange={(v) => onChange({ ...p, unique: v })} label={tt('Eindeutig')} />}
@@ -211,9 +211,9 @@ export function ObjectBuilder({ type, onClose, onSaved }: { type?: any; onClose:
                     <strong>{p.label}</strong> {p.key === cur.primary_property && <Badge tone="blue">{tt('Anzeige')}</Badge>}
                   </td>
                   <td className="mono muted">{p.key}</td>
-                  <td>{TYPE_LABELS[p.type] ?? p.type}</td>
+                  <td>{tt(TYPE_LABELS[p.type] ?? p.type)}</td>
                   <td>
-                    {p.required && <Badge tone="yellow">{tt('Pflicht')}</Badge>} {p.unique && <Badge tone="purple">eindeutig</Badge>}
+                    {p.required && <Badge tone="yellow">{tt('Pflicht')}</Badge>} {p.unique && <Badge tone="purple">{tt('eindeutig')}</Badge>}
                   </td>
                 </tr>
               ))}
@@ -367,7 +367,7 @@ export function RecordsList({ objectKey }: { objectKey: string }) {
   const types = useLoad(() => api.get<any[]>('/api/objects'), [objectKey]);
   const type = types.data?.find((t) => t.key === objectKey);
   const users = useUsers();
-  const fields = useMemo(() => [...typeFields(type), ...SYSTEM], [type]);
+  const fields = useMemo(() => [...typeFields(type), ...trFields(tt, SYSTEM)], [type, tt]);
   // Einfach-Modus: the primary property plus three; Profi: plus five and "Geändert" (web/src/areas/easy-core.ts).
   const simple = useSimple();
   const defaults = useMemo(() => (type ? recordColumns(type.primary_property, typeFields(type).filter((f) => f.type !== 'textarea').map((f) => f.key), simple) : []), [type, simple]);
@@ -489,7 +489,7 @@ export function RecordPage({ objectKey, id }: { objectKey: string; id: string })
   if (!r.data) return r.error ? <Empty>{r.error}</Empty> : <Spinner />;
   const rec = r.data;
   const type = rec.type;
-  const fields: FieldDef[] = [...typeFields(type), { key: 'owner_id', label: 'Zuständig', type: 'user' }];
+  const fields: FieldDef[] = [...typeFields(type), { key: 'owner_id', label: tt('Zuständig'), type: 'user' }];
   const values = { ...rec.properties, owner_id: rec.owner_id };
   const save = async (v: Record<string, any>) => {
     const { owner_id, ...properties } = v;
@@ -523,8 +523,8 @@ export function RecordPage({ objectKey, id }: { objectKey: string; id: string })
             <div style={{ padding: '6px 14px 0' }}>
               <Tabs
                 tabs={[
-                  ['activity', 'Aktivität'],
-                  ['notes', `Notizen (${rec.notes.length})`],
+                  ['activity', tt('Aktivität')],
+                  ['notes', tt('Notizen ({n})', { n: rec.notes.length })],
                 ]}
                 value={tab}
                 onChange={setTab}
@@ -555,19 +555,21 @@ export function ObjectsPage({ route }: { route: string[] }) {
 // --- workflows ------------------------------------------------------------------------------------
 
 function useObjectChoices() {
+  const tt = useT('x_integrations');
   const { types } = useObjectTypes();
   const company = useLoad(() => api.get<any>('/api/properties?object=company'), []);
-  const companyFields: FieldDef[] = [...COMPANY_STANDARD, ...(company.data?.properties ?? [])];
-  const objects: [string, string][] = [['company', 'Firma'], ...types.map((t) => [t.key, t.singular] as [string, string])];
+  const companyFields: FieldDef[] = [...trFields(tt, COMPANY_STANDARD), ...(company.data?.properties ?? [])];
+  const objects: [string, string][] = [['company', tt('Firma')], ...types.map((t) => [t.key, t.singular] as [string, string])];
   const fieldsOf = (object: string): FieldDef[] => (object === 'company' ? companyFields : typeFields(types.find((t) => t.key === object)));
   return { types, objects, fieldsOf };
 }
 
-function LabelSelect({ object, value, onChange, label = 'Label der Verknüpfung (optional)' }: { object: string; value: string; onChange: (v: string) => void; label?: string }) {
+function LabelSelect({ object, value, onChange, label }: { object: string; value: string; onChange: (v: string) => void; label?: string }) {
+  const tt = useT('x_integrations');
   const labels = useLoad(() => (object ? api.get<any[]>(`/api/association-labels?a_type=contact&b_type=${encodeURIComponent(object)}`) : Promise.resolve([])), [object]);
   if (!(labels.data ?? []).length) return null;
   return (
-    <Field label={label}>
+    <Field label={label ?? tt('Label der Verknüpfung (optional)')}>
       <Select value={value} onChange={onChange} placeholder="–" options={(labels.data ?? []).map((l) => [l.name, l.name] as [string, string])} />
     </Field>
   );
@@ -589,7 +591,7 @@ export function ObjectTriggerFilter({ type, config, set }: { type: string; confi
       )}
       {(type.endsWith('.property_changed') || type.endsWith('.updated')) && object && (
         <Field label={tt('Eigenschaft')}>
-          <Select value={config.property} onChange={(v) => set({ property: v })} placeholder="jede" options={fields.map((f) => [f.key, f.label] as [string, string])} />
+          <Select value={config.property} onChange={(v) => set({ property: v })} placeholder={tt('jede')} options={fields.map((f) => [f.key, f.label] as [string, string])} />
         </Field>
       )}
       {type.endsWith('.property_changed') && config.property && (
@@ -648,7 +650,7 @@ export function ObjectStep({ step, set }: { step: any; set: (p: any) => void }) 
           <Select
             value={step.target ?? 'trigger'}
             onChange={(v) => set({ target: v })}
-            options={[['trigger', 'Der Datensatz aus dem Auslöser'], ['associated', 'Alle mit dem Kontakt verknüpften'], ...(object === 'company' ? ([['primary', 'Die primäre Firma des Kontakts']] as [string, string][]) : [])]}
+            options={[['trigger', tt('Der Datensatz aus dem Auslöser')], ['associated', tt('Alle mit dem Kontakt verknüpften')], ...(object === 'company' ? ([['primary', tt('Die primäre Firma des Kontakts')]] as [string, string][]) : [])]}
           />
         </Field>
       )}
@@ -661,7 +663,7 @@ export function ObjectStep({ step, set }: { step: any; set: (p: any) => void }) 
       {object && step.type === 'associate_records' && (
         <>
           <Field label={tt('Datensatz finden')}>
-            <Select value={step.target ?? 'match'} onChange={(v) => set({ target: v })} options={[['match', 'Über eine Eigenschaft'], ['trigger', 'Der Datensatz aus dem Auslöser']]} />
+            <Select value={step.target ?? 'match'} onChange={(v) => set({ target: v })} options={[['match', tt('Über eine Eigenschaft')], ['trigger', tt('Der Datensatz aus dem Auslöser')]]} />
           </Field>
           {(step.target ?? 'match') === 'match' && (
             <div className="grid2">

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../icons';
 import { api, currentLocation, d, money } from '../api';
 import { Badge, Check, Field, Input, Link, Modal, Select, Spinner, Textarea, act, confirmAsk, navigate, toast, useLoad } from '../ui';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * The invoicing parts of the invoice screen that come with the GoBD rules: the lock banner, finalising, Storno, credit notes,
@@ -47,7 +47,7 @@ export function LockBar({ inv }: { inv: any }) {
     <div className="card notice-card lockbar" data-tour="invoice-lock">
       <Icon name="lock" />
       <div>
-        <strong>{inv.doc_title} {inv.number} festgeschrieben</strong> am {d(inv.finalised_at)}
+        <strong>{tt('{title} {number} festgeschrieben', { title: tt(inv.doc_title), number: inv.number })}</strong> {tt('am {d}', { d: d(inv.finalised_at) })}
         {inv.doc_hash && <span className="muted mono"> {tt('· SHA-256 {slice}…', { slice: String(inv.doc_hash).slice(0, 12) })}</span>}
         <div className="muted small">
           {tt('Positionen, Beträge und Kundendaten sind gesperrt. Änderbar bleiben Hinweistext, Fälligkeit und Zahlungslink.')}
@@ -93,7 +93,7 @@ export function FinaliseModal({ inv, onClose, onDone, send, email }: { inv: any;
   };
   return (
     <Modal
-      title={`${inv.kind === 'credit_note' ? tt('Gutschrift') : tt('Rechnung')} ${send ? tt('festschreiben und senden') : 'festschreiben'}`}
+      title={inv.kind === 'credit_note' ? (send ? tt('Gutschrift festschreiben und senden') : tt('Gutschrift festschreiben')) : send ? tt('Rechnung festschreiben und senden') : tt('Rechnung festschreiben')}
       onClose={onClose}
       footer={
         <>
@@ -111,7 +111,7 @@ export function FinaliseModal({ inv, onClose, onDone, send, email }: { inv: any;
       ) : (
         <>
           <p style={{ marginTop: 0 }}>
-            {tt('Beim Festschreiben bekommt die')} {inv.kind === 'credit_note' ? tt('Gutschrift') : tt('Rechnung')} {tt('ihre endgültige Nummer')}
+            {inv.kind === 'credit_note' ? tt('Beim Festschreiben bekommt die Gutschrift ihre endgültige Nummer') : tt('Beim Festschreiben bekommt die Rechnung ihre endgültige Nummer')}
             {p.next_number ? (
               <>
                 {' '}
@@ -287,13 +287,16 @@ export function CreditNoteModal({ inv, onClose }: { inv: any; onClose: () => voi
   );
 }
 
+/** Stored payment method values (German); shown translated. */
+const PAY_METHODS = ['Überweisung', 'Lastschrift', 'Bar', 'PayPal', 'Karte', 'Verrechnung'];
+
 // --- payments --------------------------------------------------------------------------------------------------------------------------------
 
 export function PaymentModal({ inv, onClose, onDone }: { inv: any; onClose: () => void; onDone: (r: any) => void }) {
   const tt = useT('invoices');
   const [amount, setAmount] = useState(fromCents(inv.open_cents));
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [method, setMethod] = useState('Überweisung');
+  const [method, setMethod] = useState('Überweisung'); // i18n-ignore – stored value, shown via tt()
   const [note, setNote] = useState('');
   const [skonto, setSkonto] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -330,7 +333,7 @@ export function PaymentModal({ inv, onClose, onDone }: { inv: any; onClose: () =
           <Input type="date" value={date} onChange={setDate} />
         </Field>
         <Field label={tt('Art')}>
-          <Select value={method} onChange={setMethod} options={['Überweisung', 'Lastschrift', 'Bar', 'PayPal', 'Karte', 'Verrechnung']} />
+          <Select value={method} onChange={setMethod} options={PAY_METHODS.map((m): [string, string] => [m, tt(m)])} />
         </Field>
         <Field label={tt('Notiz')}>
           <Input value={note} onChange={setNote} />
@@ -358,7 +361,7 @@ export function PaymentsBox({ inv, onChanged }: { inv: any; onChanged: (r: any) 
             <tr key={r.id} style={reverted.has(r.id) ? { opacity: 0.55 } : undefined}>
               <td>{d(r.paid_at)}</td>
               <td>
-                {r.kind === 'skonto' ? tt('Skonto') : r.kind === 'reversal' ? tt('zurückgenommen') : r.method || tt('Zahlung')}
+                {r.kind === 'skonto' ? tt('Skonto') : r.kind === 'reversal' ? tt('zurückgenommen') : (r.method ? tt(r.method) : tt('Zahlung'))}
                 {r.note && r.kind !== 'reversal' ? <span className="muted"> · {r.note}</span> : null}
               </td>
               <td style={{ textAlign: 'right' }}>{money(r.amount_cents, inv.currency)}</td>
@@ -402,7 +405,7 @@ export function LegalFields({ inv, set, frozen, settings }: { inv: any; set: (pa
       <fieldset disabled={frozen} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       {isInvoice && (
         <Field label={tt('Art')}>
-          <Select value={inv.inv_type ?? 'standard'} onChange={(v) => set({ inv_type: v, ...(v !== 'final' ? { deduct_ids: [] } : {}) })} options={[['standard', 'Rechnung'], ['partial', 'Abschlagsrechnung'], ['final', 'Schlussrechnung (zieht Abschläge ab)']]} />
+          <Select value={inv.inv_type ?? 'standard'} onChange={(v) => set({ inv_type: v, ...(v !== 'final' ? { deduct_ids: [] } : {}) })} options={[['standard', tt('Rechnung')], ['partial', tt('Abschlagsrechnung')], ['final', tt('Schlussrechnung (zieht Abschläge ab)')]]} />
         </Field>
       )}
       {inv.inv_type === 'final' && !frozen && (
@@ -493,7 +496,7 @@ export function LegalFields({ inv, set, frozen, settings }: { inv: any; set: (pa
               {vat.vies?.checked ? (
                 <>
                   {' '}
-                  {tt('· VIES:')} {vat.vies.valid ? <Badge tone="green">{tt('gültig')}{vat.vies.name ? ` – ${vat.vies.name}` : ''}</Badge> : <Badge tone="red">unbekannt</Badge>}
+                  {tt('· VIES:')} {vat.vies.valid ? <Badge tone="green">{tt('gültig')}{vat.vies.name ? ` – ${vat.vies.name}` : ''}</Badge> : <Badge tone="red">{tt('unbekannt')}</Badge>}
                 </>
               ) : vat.vies_enabled ? (
                 <span className="muted"> {tt('· VIES nicht erreichbar')}</span>
@@ -627,7 +630,7 @@ export function AuditBox({ inv }: { inv: any }) {
                   {d(a.at)}
                 </td>
                 <td>
-                  <span className="small">{ACTIONS[a.action] ?? a.action}</span>
+                  <span className="small">{ACTIONS[a.action] ? tt(ACTIONS[a.action]) : a.action}</span>
                   {a.detail && <div className="muted small">{a.detail}</div>}
                 </td>
                 <td className="muted small">{a.actor}</td>
@@ -666,7 +669,7 @@ const ACTIONS: Record<string, string> = {
 
 // --- list helpers ------------------------------------------------------------------------------------------------------------------------------------------
 
-export const numberLabel = (i: any) => (i.number ? i.number : 'Entwurf');
+export const numberLabel = (i: any) => (i.number ? i.number : tr('invoices')('Entwurf'));
 
 export function StateBadge({ i }: { i: any }) {
   // Shown in the invoice list and editor: translated with them (invoices catalog; STATE_LABEL's texts are its message ids).

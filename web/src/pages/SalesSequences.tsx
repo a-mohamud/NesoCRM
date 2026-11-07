@@ -65,7 +65,7 @@ function StepEditor({ step, index, count, onChange, onRemove, onMove }: { step: 
       <div className="step-head">
         <span className="num">{index + 1}</span>
         <div style={{ width: 170 }}>
-          <Select value={step.type} onChange={(v) => set({ type: v, wait: v !== 'email' })} options={STEP_TYPES} />
+          <Select value={step.type} onChange={(v) => set({ type: v, wait: v !== 'email' })} options={STEP_TYPES.map(([k, l]): [string, string] => [k, tt(l)])} />
         </div>
         <label className="row" style={{ alignItems: 'center', gap: 6, margin: 0 }}>
           <span className="muted small">{index === 0 ? tt('Start nach') : tt('Warten')}</span>
@@ -175,8 +175,8 @@ function SequenceEditor({ seq, tokens, onClose, onSaved }: { seq?: any; tokens: 
               value={s.mode}
               onChange={(v) => setS({ ...s, mode: v })}
               options={[
-                { value: 'marketing', label: 'Werbung (mit Einwilligung)', text: 'Läuft durch die Einwilligungsprüfung: wer nicht eingewilligt hat, wird nicht aufgenommen. Jede Mail hat einen Abmeldelink.' },
-                { value: 'individual', label: 'Einzelkorrespondenz', text: 'Persönliche 1:1-Mails an Menschen, mit denen du bereits in Kontakt bist – wie von Hand geschrieben.' },
+                { value: 'marketing', label: tt('Werbung (mit Einwilligung)'), text: tt('Läuft durch die Einwilligungsprüfung: wer nicht eingewilligt hat, wird nicht aufgenommen. Jede Mail hat einen Abmeldelink.') },
+                { value: 'individual', label: tt('Einzelkorrespondenz'), text: tt('Persönliche 1:1-Mails an Menschen, mit denen du bereits in Kontakt bist – wie von Hand geschrieben.') },
               ]}
             />
             {s.mode === 'individual' && (
@@ -215,7 +215,7 @@ function SequenceEditor({ seq, tokens, onClose, onSaved }: { seq?: any; tokens: 
             <div className="sales-bar" style={{ marginTop: 10 }}>
               {STEP_TYPES.map(([k, l]) => (
                 <button type="button" key={k} className="btn secondary" onClick={() => setS({ ...s, steps: [...s.steps, blankStep(k)] })}>
-                  + {l}
+                  + {tt(l)}
                 </button>
               ))}
             </div>
@@ -235,7 +235,7 @@ function SequenceEditor({ seq, tokens, onClose, onSaved }: { seq?: any; tokens: 
                   {DAYS.map(([k, l]) => (
                     <label key={k} className={win.days.includes(k) ? 'on' : ''}>
                       <input type="checkbox" checked={win.days.includes(k)} onChange={(e) => setWin({ days: e.target.checked ? [...win.days, k] : win.days.filter((x: string) => x !== k) })} />
-                      {l}
+                      {tt(l)}
                     </label>
                   ))}
                 </div>
@@ -286,7 +286,7 @@ function EnrollDialog({ seq, onClose, onDone }: { seq: any; onClose: () => void;
   const [list, setList] = useState('');
   const [res, setRes] = useState<any>();
   const go = async () => {
-    const r = await act(() => api.post(`/api/sequences/${seq.id}/enroll`, by === 'tag' ? { tag, source: `Tag ${tag}` } : { smart_list_id: list, source: 'Liste' }));
+    const r = await act(() => api.post(`/api/sequences/${seq.id}/enroll`, by === 'tag' ? { tag, source: tt('Tag {tag}', { tag }) } : { smart_list_id: list, source: tt('Liste') }));
     if (r) setRes(r);
   };
   return (
@@ -294,7 +294,7 @@ function EnrollDialog({ seq, onClose, onDone }: { seq: any; onClose: () => void;
       {!res ? (
         <>
           <p className="muted">{tt('Die Mails gehen aus deinem Postfach, in deinen Sendezeiten. Kontakte ohne E-Mail-Adresse, mit „Nicht stören“ oder (bei Werbung) ohne Einwilligung werden übersprungen und genannt.')}</p>
-          <Select value={by} onChange={(v) => setBy(v as 'tag' | 'list')} options={[['tag', 'Kontakte mit einem Tag'], ['list', 'Gespeicherte Liste']]} />
+          <Select value={by} onChange={(v) => setBy(v as 'tag' | 'list')} options={[['tag', tt('Kontakte mit einem Tag')], ['list', tt('Gespeicherte Liste')]]} />
           {by === 'tag' ? <Select value={tag} onChange={setTag} placeholder={tt('Tag wählen…')} options={(tags.data ?? []).map((t: any) => t.name)} /> : <Select value={list} onChange={setList} placeholder={tt('Liste wählen…')} options={(lists.data ?? []).map((l: any) => [l.id, l.name] as [string, string])} />}
         </>
       ) : (
@@ -333,7 +333,7 @@ function StepStats({ seq }: { seq: any }) {
               <Fragment key={st.id}>
                 <tr>
                   <td>
-                    {i + 1}. {STEP_TYPES.find(([k]) => k === st.type)?.[1]}
+                    {i + 1}. {tt(STEP_TYPES.find(([k]) => k === st.type)?.[1] ?? st.type)}
                     <div className="muted small">{def?.subject || def?.title || tt('(Antwort im Gespräch)')}</div>
                   </td>
                   <td className="r">{st.type === 'email' ? st.sent : tt('{tasks} Aufgaben', { tasks: st.tasks })}</td>
@@ -408,7 +408,7 @@ function SequenceDetail({ id, tokens, onClose, onChanged }: { id: string; tokens
       }
     >
       <div className="sales-bar">
-        <Badge tone={tone}>{label}</Badge>
+        <Badge tone={tone}>{tt(label)}</Badge>
         <Badge tone={s.mode === 'individual' ? 'purple' : 'blue'}>{s.mode === 'individual' ? tt('Einzelkorrespondenz') : tt('Werbung')}</Badge>
         {s.mode === 'individual' && s.legal_ack_at && <span className="muted small">{tt('bestätigt am {d}', { d: d(s.legal_ack_at) })}</span>}
       </div>
@@ -422,7 +422,7 @@ function SequenceDetail({ id, tokens, onClose, onChanged }: { id: string; tokens
       {st.sent > 0 && st.open_tracking.on < st.open_tracking.senders && <p className="note-box warn">{tt('Öffnungen werden nur gezählt, wenn im Postfach der Absender „Öffnungen und Klicks verfolgen“ eingeschaltet ist (Einstellungen → E-Mail & SMS).')}</p>}
       {Object.keys(st.stopped_by).length > 0 && (
         <p className="muted small">
-          {tt('Beendet wegen:')} {Object.entries(st.stopped_by).map(([k, n]) => `${s.stop_labels[k] ?? k} (${n})`).join(' · ')}
+          {tt('Beendet wegen:')} {Object.entries(st.stopped_by).map(([k, n]) => `${tt(s.stop_labels[k] ?? k)} (${n})`).join(' · ')}
         </p>
       )}
       <Section title={tt('Schritte')}>
@@ -432,7 +432,7 @@ function SequenceDetail({ id, tokens, onClose, onChanged }: { id: string; tokens
         title={tt('Aufnahmen')}
         actions={
           <div style={{ width: 200 }}>
-            <Select value={status} onChange={setStatus} placeholder={tt('Alle')} options={Object.entries(ENROLL_LABEL)} />
+            <Select value={status} onChange={setStatus} placeholder={tt('Alle')} options={Object.entries(ENROLL_LABEL).map(([k, l]): [string, string] => [k, tt(l)])} />
           </div>
         }
       >
@@ -455,16 +455,16 @@ function SequenceDetail({ id, tokens, onClose, onChanged }: { id: string; tokens
               <tbody>
                 {enr.data.map((e: any) => (
                   <tr key={e.id}>
-                    <td data-label="Kontakt">
+                    <td data-label={tt('Kontakt')}>
                       <a href={`/app/contacts/${e.contact_id}`}>{name(e)}</a>
                       <div className="muted small">{e.email}</div>
                     </td>
-                    <td data-label="Status">
-                      <Badge tone={ENROLL_TONE[e.status]}>{ENROLL_LABEL[e.status]}</Badge>
-                      {e.stop_label && <div className="muted small">{e.stop_label}</div>}
+                    <td data-label={tt('Status')}>
+                      <Badge tone={ENROLL_TONE[e.status]}>{tt(ENROLL_LABEL[e.status] ?? e.status)}</Badge>
+                      {e.stop_label && <div className="muted small">{tt(e.stop_label)}</div>}
                     </td>
-                    <td data-label="Nächster Schritt">{e.status === 'active' ? tt('Schritt {v} von {step_total} · {dt}', { v: e.step_index + 1, step_total: e.step_total, dt: dt(e.next_at) }) : e.status === 'waiting' ? e.note : '–'}</td>
-                    <td data-label="Absender">{e.user_name ?? '–'}</td>
+                    <td data-label={tt('Nächster Schritt')}>{e.status === 'active' ? tt('Schritt {v} von {step_total} · {dt}', { v: e.step_index + 1, step_total: e.step_total, dt: dt(e.next_at) }) : e.status === 'waiting' ? e.note : '–'}</td>
+                    <td data-label={tt('Absender')}>{e.user_name ?? '–'}</td>
                     <td className="r">
                       {(e.status === 'active' || e.status === 'waiting') && (
                         <button className="btn small secondary" onClick={async () => (await act(() => api.post(`/api/sequence-enrollments/${e.id}/stop`, {}), tt('Beendet'))) && (enr.reload(), seq.reload())}>
@@ -545,20 +545,20 @@ export function SalesSequences() {
             <tbody>
               {list.data.map((s) => (
                 <tr key={s.id} className="click" onClick={() => setOpen(s.id)} tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpen(s.id)}>
-                  <td data-label="Sequenz">
+                  <td data-label={tt('Sequenz')}>
                     <b>{s.name}</b>
                     {s.mode === 'individual' && <span className="muted small"> {tt('· Einzelkorrespondenz')}</span>}
                   </td>
-                  <td data-label="Status">
-                    <Badge tone={STATUS[s.status]?.[1] ?? 'gray'}>{STATUS[s.status]?.[0]}</Badge>
+                  <td data-label={tt('Status')}>
+                    <Badge tone={STATUS[s.status]?.[1] ?? 'gray'}>{tt(STATUS[s.status]?.[0] ?? s.status)}</Badge>
                   </td>
-                  <td className="r" data-label="Schritte">{s.steps}</td>
-                  <td className="r" data-label="Aufgenommen">
+                  <td className="r" data-label={tt('Schritte')}>{s.steps}</td>
+                  <td className="r" data-label={tt('Aufgenommen')}>
                     {s.enrolled} <span className="muted small">{tt('({active} aktiv)', { active: s.active })}</span>
                   </td>
-                  <td className="r" data-label="Gesendet">{s.sent}</td>
-                  <td className="r" data-label="Antworten">{s.replied}</td>
-                  <td className="r" data-label="Termine">{s.meetings}</td>
+                  <td className="r" data-label={tt('Gesendet')}>{s.sent}</td>
+                  <td className="r" data-label={tt('Antworten')}>{s.replied}</td>
+                  <td className="r" data-label={tt('Termine')}>{s.meetings}</td>
                 </tr>
               ))}
             </tbody>
@@ -578,7 +578,7 @@ export function EnrollContact({ contactId, onClose, onDone }: { contactId: strin
   const [sid, setSid] = useState('');
   const active = (list.data ?? []).filter((s) => s.status === 'active');
   const go = async () => {
-    const r = await act(() => api.post(`/api/sequences/${sid}/enroll`, { contact_ids: [contactId], source: 'Kontaktseite' }));
+    const r = await act(() => api.post(`/api/sequences/${sid}/enroll`, { contact_ids: [contactId], source: tt('Kontaktseite') }));
     if (!r) return;
     if (r.enrolled) toast(tt('In die Sequenz aufgenommen'));
     else toast(tt('Nicht aufgenommen: {v}', { v: r.skipped?.[0]?.reason ?? 'unbekannt' }));

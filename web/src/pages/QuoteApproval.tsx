@@ -4,7 +4,7 @@ import { Icon } from '../icons';
 import { Badge, Check, Field, Input, Modal, Select, Spinner, Textarea, act, useLoad } from '../ui';
 import { centsToEuros, eurosToCents } from './pm-format';
 import './costing.css';
-import { useT } from '../i18n';
+import { fmtNumber, useT } from '../i18n';
 
 /**
  * Internal approval of quotes (docs/sales.md#internal-approval): the box in the quote editor (why approval is needed, request,
@@ -83,7 +83,7 @@ export function QuoteApprovalPanel({ quoteId, version, onChanged }: { quoteId: s
       <div className="row">
         <Icon name={st.approved ? 'shieldOk' : 'shield'} size={16} />
         <b className="grow">{st.approved ? tt('Intern genehmigt – kann gesendet werden') : st.required ? tt('Interne Genehmigung nötig, bevor das Angebot rausgeht') : tt('Interne Genehmigung')}</b>
-        {cur && <Badge tone={STATUS[cur.status][1]}>{cur.stale ? tt('Veraltet – Angebot geändert') : STATUS[cur.status][0]}</Badge>}
+        {cur && <Badge tone={STATUS[cur.status][1]}>{cur.stale ? tt('Veraltet – Angebot geändert') : tt(STATUS[cur.status][0])}</Badge>}
       </div>
       {st.reasons.length > 0 && (
         <ul>
@@ -99,7 +99,7 @@ export function QuoteApprovalPanel({ quoteId, version, onChanged }: { quoteId: s
           {cur.decided_by_name && (
             <>
               <br />
-              {cur.status === 'approved' ? tt('Genehmigt') : tt('Abgelehnt')} von {cur.decided_by_name}
+              {cur.status === 'approved' ? tt('Genehmigt von {name}', { name: cur.decided_by_name }) : tt('Abgelehnt von {name}', { name: cur.decided_by_name })}
               {cur.decision_comment && <> – „{cur.decision_comment}“</>}
             </>
           )}
@@ -274,16 +274,16 @@ export function QuoteApprovalInbox({ onOpen }: { onOpen: (quoteId: string) => vo
     <div className="jc jc-inbox" data-tour="quote-approval-inbox">
       <div className="sales-bar" style={{ marginBottom: 4 }}>
         <b className="grow">
-          {mine.length ? tt('{length} Angebot{v} warten auf deine Genehmigung', { length: mine.length, v: mine.length === 1 ? '' : 'e' }) : s.data.rule.enabled ? tt('Interne Genehmigung ist an') : tt('Interne Genehmigung')}
+          {mine.length ? tt.plural(mine.length, { one: '{n} Angebot wartet auf deine Genehmigung', other: '{n} Angebote warten auf deine Genehmigung' }) : s.data.rule.enabled ? tt('Interne Genehmigung ist an') : tt('Interne Genehmigung')}
         </b>
         {s.data.rule.enabled && (
           <span className="muted small">
             {[
-              s.data.rule.min_net_cents !== null ? `ab ${money(s.data.rule.min_net_cents)} netto` : '',
-              s.data.rule.max_discount_percent !== null ? `ab ${String(s.data.rule.max_discount_percent).replace('.', ',')} % Rabatt` : '',
+              s.data.rule.min_net_cents !== null ? tt('ab {money} netto', { money: money(s.data.rule.min_net_cents) }) : '',
+              s.data.rule.max_discount_percent !== null ? tt('ab {pct} % Rabatt', { pct: fmtNumber(s.data.rule.max_discount_percent) }) : '',
             ]
               .filter(Boolean)
-              .join(' oder ')}
+              .join(tt(' oder '))}
           </span>
         )}
         {s.data.can_configure && (

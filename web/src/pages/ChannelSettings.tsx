@@ -27,7 +27,7 @@ function Head({ icon, title, on, label, children }: { icon: IconName; title: str
       <h2>
         <Icon name={icon} size={18} className={`ico chan-${icon}`} /> {title}
       </h2>
-      {on ? <Badge tone="green">verbunden{label ? ` · ${label}` : ''}</Badge> : <Badge>{tt('nicht eingerichtet')}</Badge>}
+      {on ? <Badge tone="green">{tt('verbunden')}{label ? ` · ${label}` : ''}</Badge> : <Badge>{tt('nicht eingerichtet')}</Badge>}
       {children}
     </div>
   );
@@ -97,7 +97,7 @@ function TelegramCard() {
         {tt('Bot bei')} <b>{tt('@BotFather')}</b> {tt('anlegen (')}<code>/newbot</code>{tt('), Token hier eintragen, speichern, dann')} <b>{tt('„Webhook setzen“')}</b>{tt('. Kostenlos. Private Chats landen in den Konversationen.')}
       </p>
       <Field label={tt('Bot-Token')} tour="telegram-token">
-        <Input type="password" autoComplete="new-password" value={f.bot_token} onChange={(v) => setF({ ...f, bot_token: v })} placeholder={d.token_set ? KEEP : tt('123456789:AA…')} />
+        <Input type="password" autoComplete="new-password" value={f.bot_token} onChange={(v) => setF({ ...f, bot_token: v })} placeholder={d.token_set ? tt(KEEP) : tt('123456789:AA…')} />
       </Field>
       {d.bot && (
         <div className="grid2" data-tour="telegram-deeplink">
@@ -124,7 +124,7 @@ function TelegramCard() {
         <button className="btn" onClick={save}>
           {tt('Speichern')}
         </button>
-        <button className="btn secondary" disabled={!d.configured} onClick={async () => (await attempt(() => api.post('/api/settings/channels/telegram/webhook'), setRes, () => 'Webhook gesetzt – Nachrichten kommen jetzt an')) && s.reload()}>
+        <button className="btn secondary" disabled={!d.configured} onClick={async () => (await attempt(() => api.post('/api/settings/channels/telegram/webhook'), setRes, () => tt('Webhook gesetzt – Nachrichten kommen jetzt an'))) && s.reload()}>
           {tt('Webhook setzen')}
         </button>
         <button className="btn secondary" disabled={!d.configured} onClick={() => attempt(() => api.post('/api/settings/channels/telegram/test'), setRes, (r) => r.info)}>
@@ -164,11 +164,11 @@ function DiscordCard() {
         <SignupLink id="discord" />
       </Head>
       <p className="muted small">
-        {tt('Im')} <b>{tt('Discord Developer Portal')}</b> {tt('eine App mit Bot anlegen, unter')} <b>{tt('Bot')}</b> den <b>{tt('Message Content Intent')}</b> {tt('einschalten, Token kopieren. Direktnachrichten an den Bot und Nachrichten in den gewählten Kanälen werden Konversationen. Kostenlos.')}
+        {tt('Im')} <b>{tt('Discord Developer Portal')}</b> {tt('eine App mit Bot anlegen, unter')} <b>{tt('Bot')}</b> {tt('den')} <b>{tt('Message Content Intent')}</b> {tt('einschalten, Token kopieren. Direktnachrichten an den Bot und Nachrichten in den gewählten Kanälen werden Konversationen. Kostenlos.')}
       </p>
       <div className="grid2">
         <Field label={tt('Bot-Token')} tour="discord-token">
-          <Input type="password" autoComplete="new-password" value={f.bot_token} onChange={(v) => setF({ ...f, bot_token: v })} placeholder={d.token_set ? KEEP : tt('MTIz…')} />
+          <Input type="password" autoComplete="new-password" value={f.bot_token} onChange={(v) => setF({ ...f, bot_token: v })} placeholder={d.token_set ? tt(KEEP) : tt('MTIz…')} />
         </Field>
         <Field label={tt('Kanal-IDs, die mitgelesen werden (Komma)')} hint={tt('Rechtsklick auf den Kanal → ID kopieren (Entwicklermodus). Leer = nur Direktnachrichten.')}>
           <Input value={f.channel_ids} onChange={(v) => setF({ ...f, channel_ids: v })} placeholder="1234567890123456789" />
@@ -197,7 +197,7 @@ function DiscordCard() {
         <button className="btn secondary" disabled={!d.configured} onClick={() => attempt(() => api.post('/api/settings/channels/discord/test'), setRes, (r) => r.info).then(() => s.reload())}>
           {tt('Verbindung testen')}
         </button>
-        <button className="btn secondary" disabled={!d.configured} onClick={() => attempt(() => api.post('/api/settings/channels/discord/commands'), setRes, () => 'Befehl /support registriert (erscheint nach einigen Minuten)')}>
+        <button className="btn secondary" disabled={!d.configured} onClick={() => attempt(() => api.post('/api/settings/channels/discord/commands'), setRes, () => tt('Befehl /support registriert (erscheint nach einigen Minuten)'))}>
           {tt('/support registrieren')}
         </button>
         {d.token_set && (
@@ -248,7 +248,7 @@ function SlackCard() {
         <>
           <div className="grid2">
             <Field label={tt('Bot User OAuth Token')} tour="slack-token">
-              <Input type="password" autoComplete="new-password" value={f.bot_token} onChange={(v) => setF({ ...f, bot_token: v })} placeholder={d.bot_token_set ? KEEP : 'xoxb-…'} />
+              <Input type="password" autoComplete="new-password" value={f.bot_token} onChange={(v) => setF({ ...f, bot_token: v })} placeholder={d.bot_token_set ? tt(KEEP) : 'xoxb-…'} />
             </Field>
             <Field label={tt('Kanal-ID')} hint={tt('Kanal → Details → ganz unten; Bot mit /invite in den Kanal holen')}>
               <Input value={f.channel} onChange={(v) => setF({ ...f, channel: v })} placeholder={tt('C0123ABCD')} />
@@ -256,7 +256,7 @@ function SlackCard() {
           </div>
           <MoreFields id="channels-slack-replies" label={tt('Antworten aus Slack')} values={[d.signing_secret_set]}>
             <Field label={tt('Signing Secret (für Antworten aus Slack)')}>
-              <Input type="password" autoComplete="new-password" value={f.signing_secret} onChange={(v) => setF({ ...f, signing_secret: v })} placeholder={d.signing_secret_set ? KEEP : tt('Basic Information → App Credentials')} />
+              <Input type="password" autoComplete="new-password" value={f.signing_secret} onChange={(v) => setF({ ...f, signing_secret: v })} placeholder={d.signing_secret_set ? tt(KEEP) : tt('Basic Information → App Credentials')} />
             </Field>
             <Field label={tt('Request URL für Event Subscriptions (Bot-Events message.channels, message.groups)')}>
               <CodeBox text={d.events_url} />
@@ -265,7 +265,7 @@ function SlackCard() {
         </>
       ) : (
         <Field label={tt('Incoming-Webhook-Adresse')}>
-          <Input type="password" autoComplete="new-password" value={f.webhook_url} onChange={(v) => setF({ ...f, webhook_url: v })} placeholder={d.webhook_url_set ? KEEP : 'https://hooks.slack.com/services/…'} />
+          <Input type="password" autoComplete="new-password" value={f.webhook_url} onChange={(v) => setF({ ...f, webhook_url: v })} placeholder={d.webhook_url_set ? tt(KEEP) : 'https://hooks.slack.com/services/…'} />
         </Field>
       )}
       <MoreFields id="channels-slack-filter" values={[d.channels]}>
@@ -273,7 +273,7 @@ function SlackCard() {
           <span>{tt('Welche Kanäle weiterleiten? (nichts gewählt = alle)')}</span>
           <div className="chan-checks">
             {INBOX_CHANNELS.map(([k, l]) => (
-              <Check key={k} checked={f.channels.includes(k)} onChange={(v) => toggle(k, v)} label={l} />
+              <Check key={k} checked={f.channels.includes(k)} onChange={(v) => toggle(k, v)} label={tt(l)} />
             ))}
           </div>
         </div>
@@ -388,7 +388,7 @@ export function TelegramTriggerFilter({ value, onChange }: { value: string; onCh
   const tt = useT('x_comms');
   return (
     <Field label={tt('Nur Kampagne (leer = jede)')} hint={tt('Der Teil nach ?start= im Link t.me/<bot>?start=…')}>
-      <Input value={value} onChange={onChange} placeholder="messe-2026" />
+      <Input value={value} onChange={onChange} placeholder={tt('z. B. messe-2026')} />
     </Field>
   );
 }

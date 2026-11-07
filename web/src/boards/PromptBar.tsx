@@ -66,7 +66,7 @@ export function PromptBar({ board, catalogue, call, onUndo, canEdit, wish }: { b
     try {
       const r = await call<ComposeResult>('compose', { prompt: p, voice });
       setText('');
-      if (r.applied) setApplied({ summary: r.proposal?.summary || r.message || 'Übernommen', id: Date.now() });
+      if (r.applied) setApplied({ summary: r.proposal?.summary || r.message || tt('Übernommen'), id: Date.now() });
       else setCard(r);
     } catch (e) {
       const m = (e as Error).message;
@@ -83,7 +83,7 @@ export function PromptBar({ board, catalogue, call, onUndo, canEdit, wish }: { b
     try {
       if (apply) {
         const r = await call<{ summary: string; board: BoardFull }>(`proposals/${id}/apply`);
-        setApplied({ summary: r.summary || 'Übernommen', id: Date.now() });
+        setApplied({ summary: r.summary || tt('Übernommen'), id: Date.now() });
       } else await call(`proposals/${id}/reject`);
       setCard(null);
     } catch (e) {
@@ -121,7 +121,7 @@ export function PromptBar({ board, catalogue, call, onUndo, canEdit, wish }: { b
       const blob = await h.stop();
       if (!blob) return;
       const said = (await transcribe(blob)).text.trim();
-      if (!said) return setError({ text: 'Ich habe nichts verstanden – bitte noch einmal sprechen.', setup: false });
+      if (!said) return setError({ text: tt('Ich habe nichts verstanden – bitte noch einmal sprechen.'), setup: false });
       if (autoSend) void send(said, true);
       else {
         setText(said);
@@ -193,7 +193,7 @@ export function PromptBar({ board, catalogue, call, onUndo, canEdit, wish }: { b
           ref={input}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={rec === 'recording' ? tt('Ich höre zu … {floor} s', { floor: Math.floor(recMs / 1000) }) : rec === 'working' ? tt('Ich schreibe mit …') : (typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches ? tt('Sag dem Board, was du willst …') : tt('Sag dem Board, was du sehen willst – z. B. „{v}“', { v: EXAMPLES[ex % EXAMPLES.length] }))}
+          placeholder={rec === 'recording' ? tt('Ich höre zu … {floor} s', { floor: Math.floor(recMs / 1000) }) : rec === 'working' ? tt('Ich schreibe mit …') : (typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches ? tt('Sag dem Board, was du willst …') : tt('Sag dem Board, was du sehen willst – z. B. „{v}“', { v: tt(EXAMPLES[ex % EXAMPLES.length]) }))}
           aria-label={tt('Wunsch an das Board')}
           maxLength={1000}
           disabled={busy || rec !== 'idle'}

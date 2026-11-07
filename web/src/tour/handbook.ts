@@ -1,4 +1,5 @@
-import { JOURNEY, MODULE_TOURS, GROUPS } from './catalog';
+import { JOURNEY, MODULE_TOURS, GROUPS, groupLabel, localizeTour } from './catalog';
+import { tr } from '../i18n';
 import { slug } from './slug';
 import type { Tour } from './types';
 
@@ -122,56 +123,65 @@ const TABS: Record<string, string> = {
 
 /** „Einstellungen → Telefonie“ for `settings/telephony`. */
 export function placeLabel(route: string): string {
+  const tb = tr('x_tours_b');
   const [a, b] = route.split('/');
-  const first = SECTIONS[a] ?? a;
-  const tab = b ? (TABS[`${a}/${b}`] ?? null) : null;
+  const first = SECTIONS[a] ? tb(SECTIONS[a]) : a;
+  const tab = b && TABS[`${a}/${b}`] ? tb(TABS[`${a}/${b}`]) : null;
   return tab ? `${first} → ${tab}` : first;
 }
 
 const plain = (s: string, brand: string) => s.replace(/\{brand\}/g, brand).replace(/\s+/g, ' ').trim();
 const docLink = (t: Tour) => (t.docs ? `[${t.docs.label}](${t.docs.file === 'README' ? '../README.de.md' : `${t.docs.file}.md`}${t.docs.anchor ? `#${t.docs.anchor}` : ''})` : '');
 
-function chapter(t: Tour, brand: string): string {
+function chapter(raw: Tour, brand: string): string {
+  const tb = tr('x_tours_b');
+  const t = localizeTour(raw);
   const out: string[] = [];
-  out.push(`## Kapitel ${t.chapter}: ${t.title}`, '', `${plain(t.summary, brand)} *(ca. ${t.minutes} Minuten${t.admin ? ', nur für die Agentur' : ''})*`, '');
+  out.push(
+    tb('## Kapitel {chapter}: {title}', { chapter: t.chapter ?? '', title: t.title }),
+    '',
+    `${plain(t.summary, brand)} *(${t.admin ? tb('ca. {minutes} Minuten, nur für die Agentur', { minutes: t.minutes }) : tb('ca. {minutes} Minuten', { minutes: t.minutes })})*`,
+    '',
+  );
   let place = '';
   t.steps.forEach((s, i) => {
     const here = s.route ? placeLabel(s.route) : '';
     const where = here && here !== place ? ` *(${here})*` : '';
     if (here) place = here;
-    const extra = s.do ? ` – *So geht's:* ${plain(s.do, brand)}` : '';
+    const extra = s.do ? tb(" – *So geht's:* {text}", { text: plain(s.do, brand) }) : '';
     out.push(`${i + 1}. **${plain(s.title, brand)}**${where} – ${plain(s.text, brand)}${extra}`);
   });
-  out.push('', '**Das hast du gelernt:**', '');
+  out.push('', tb('**Das hast du gelernt:**'), '');
   for (const l of t.learned) out.push(`- ${plain(l, brand)}`);
-  if (t.docs) out.push('', `Mehr dazu: ${docLink(t)}`);
+  if (t.docs) out.push('', tb('Mehr dazu: {link}', { link: docLink(t) }));
   out.push('');
   return out.join('\n');
 }
 
 export function handbookMarkdown(brand = 'HyperLevel'): string {
+  const tb = tr('x_tours_b');
   const minutes = JOURNEY.reduce((s, t) => s + t.minutes, 0);
   const out: string[] = [
-    `# Handbuch: Die Firma mit ${brand} übernehmen`,
+    tb('# Handbuch: Die Firma mit {brand} übernehmen', { brand }),
     '',
-    `Dieses Handbuch ist die gedruckte Fassung des Gesamt-Guides **„Firma übernehmen“** aus der **Akademie** (Menüpunkt *Akademie* in ${brand}). Es führt eine Nachfolgerin oder einen Nachfolger in ${JOURNEY.length} Kapiteln durch alles, was man braucht, um die Firma zu führen – vom sicheren Zugang über die Tagesroutine bis zum Betrieb des Servers. Zusammen dauert das etwa ${Math.round(minutes / 60)} Stunden; jedes Kapitel lässt sich einzeln machen und später fortsetzen.`,
+    tb('Dieses Handbuch ist die gedruckte Fassung des Gesamt-Guides **„Firma übernehmen“** aus der **Akademie** (Menüpunkt *Akademie* in {brand}). Es führt eine Nachfolgerin oder einen Nachfolger in {chapters} Kapiteln durch alles, was man braucht, um die Firma zu führen – vom sicheren Zugang über die Tagesroutine bis zum Betrieb des Servers. Zusammen dauert das etwa {hours} Stunden; jedes Kapitel lässt sich einzeln machen und später fortsetzen.', { brand, chapters: JOURNEY.length, hours: Math.round(minutes / 60) }),
     '',
-    '> Am besten machst du die Kapitel direkt in der App: Die Tour markiert dort jedes Feld und jeden Knopf, erklärt ihn und wartet, bis du ihn ausprobiert hast. Zum Üben legt die Akademie auf Wunsch eine **Übungs-Firma** mit erfundenen Kunden an – dort kann nichts kaputtgehen und nichts wird verschickt.',
+    tb('> Am besten machst du die Kapitel direkt in der App: Die Tour markiert dort jedes Feld und jeden Knopf, erklärt ihn und wartet, bis du ihn ausprobiert hast. Zum Üben legt die Akademie auf Wunsch eine **Übungs-Firma** mit erfundenen Kunden an – dort kann nichts kaputtgehen und nichts wird verschickt.'),
     '',
-    '**Inhalt**',
+    tb('**Inhalt**'),
     '',
-    ...JOURNEY.map((t) => `${t.chapter}. [${t.title}](#${slug(`Kapitel ${t.chapter}: ${t.title}`)}) – ${plain(t.summary, brand)}`),
+    ...JOURNEY.map(localizeTour).map((t) => `${t.chapter}. [${t.title}](#${slug(tb('Kapitel {chapter}: {title}', { chapter: t.chapter ?? '', title: t.title }))}) – ${plain(t.summary, brand)}`),
     '',
     '---',
     '',
   ];
   for (const t of JOURNEY) out.push(chapter(t, brand), '---', '');
-  out.push('## Anhang: Alle Modul-Touren', '', `Neben dem Gesamt-Guide gibt es für jeden Bereich eine kurze Tour (5–15 Schritte). Du findest sie in der Akademie oder über das **?** oben rechts auf jeder Seite.`, '');
+  out.push(tb('## Anhang: Alle Modul-Touren'), '', tb('Neben dem Gesamt-Guide gibt es für jeden Bereich eine kurze Tour (5–15 Schritte). Du findest sie in der Akademie oder über das **?** oben rechts auf jeder Seite.'), '');
   for (const g of GROUPS) {
-    const list = MODULE_TOURS.filter((t) => t.group === g.id);
+    const list = MODULE_TOURS.filter((t) => t.group === g.id).map(localizeTour);
     if (!list.length) continue;
-    out.push(`### ${g.label}`, '');
-    for (const t of list) out.push(`- **${t.title}** (${t.steps.length} Schritte, ca. ${t.minutes} Min.${t.admin ? ', Agentur' : ''}) – ${plain(t.summary, brand)}`);
+    out.push(`### ${groupLabel(g)}`, '');
+    for (const t of list) out.push(`- **${t.title}** (${t.admin ? tb('{steps} Schritte, ca. {minutes} Min., Agentur', { steps: t.steps.length, minutes: t.minutes }) : tb('{steps} Schritte, ca. {minutes} Min.', { steps: t.steps.length, minutes: t.minutes })}) – ${plain(t.summary, brand)}`);
     out.push('');
   }
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';

@@ -30,7 +30,7 @@ export function BoardShelf() {
               <Icon name={(t.icon || 'boards') as IconName} size={14} /> {t.name}
             </b>
             <span className="muted small">
-              {tt('{widgets} Widgets · von', { widgets: t.widgets })} {t.author || 'unbekannt'} {tt('· {installs}× installiert', { installs: t.installs })}
+              {tt('{widgets} Widgets · von', { widgets: t.widgets })} {t.author || tt('unbekannt')} {tt('· {installs}× installiert', { installs: t.installs })}
             </span>
           </Link>
         ))}

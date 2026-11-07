@@ -32,7 +32,7 @@ export function ScopeList({ scopes }: { scopes: ScopeInfo[] }) {
             <br />
             <span className="muted small">{s.hint}</span>
           </span>
-          <Badge tone={RISK[s.risk]?.tone ?? 'gray'}>{s.write ? tt('ändert · ') : tt('liest · ')}{tt('Risiko {v}', { v: RISK[s.risk]?.label ?? s.risk })}</Badge>
+          <Badge tone={RISK[s.risk]?.tone ?? 'gray'}>{s.write ? tt('ändert · ') : tt('liest · ')}{tt('Risiko {v}', { v: tt(RISK[s.risk]?.label ?? s.risk) })}</Badge>
         </li>
       ))}
     </ul>

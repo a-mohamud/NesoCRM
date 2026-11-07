@@ -37,7 +37,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
   const [fly, setFly] = useState<'' | 'shapes' | 'frames' | 'more'>('');
   const [shape, setShape] = useState<'rect' | 'ellipse' | 'diamond'>('rect');
   const T = (t: Tool, icon: IconName | ReactNode, label: string, key?: string, tour?: string) => (
-    <button key={t} className={`cv-tool${api.tool === t ? ' on' : ''}`} onClick={() => api.setTool(t)} title={key ? `${label} (${key})` : label} aria-label={label} data-tour={tour}>
+    <button key={t} className={`cv-tool${api.tool === t ? ' on' : ''}`} onClick={() => api.setTool(t)} title={key ? `${tt(label)} (${tt(key)})` : tt(label)} aria-label={tt(label)} data-tour={tour}>
       {typeof icon === 'string' ? <Icon name={icon as IconName} size={18} /> : icon}
     </button>
   );
@@ -67,7 +67,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
                   api.setTool(s);
                   setFly('');
                 }}
-                title={{ rect: 'Rechteck (R)', ellipse: 'Ellipse (O)', diamond: 'Raute (D)' }[s]}
+                title={tt({ rect: 'Rechteck (R)', ellipse: 'Ellipse (O)', diamond: 'Raute (D)' }[s])}
               >
                 {shapeIcon(s)}
               </button>
@@ -93,13 +93,13 @@ export function Toolbar({ api }: { api: EditorApi }) {
                   key={p.key}
                   onClick={() => {
                     const [cx, cy] = at();
-                    api.insert([createElement({ type: 'frame', x: cx - p.w / 2, y: cy - p.h / 2, w: p.w, h: p.h, name: p.label, preset: p.key }, newId)]);
+                    api.insert([createElement({ type: 'frame', x: cx - p.w / 2, y: cy - p.h / 2, w: p.w, h: p.h, name: tt(p.label), preset: p.key }, newId)]);
                     setTimeout(() => api.zoomTo(api.store.ordered.slice(-1).map((e) => e.id)), 30);
                     setFly('');
                   }}
                 >
-                  <span>{p.label}</span>
-                  <small>{p.group}</small>
+                  <span>{tt(p.label)}</span>
+                  <small>{tt(p.group)}</small>
                 </button>
               ))}
             </div>
@@ -190,11 +190,12 @@ function Swatches({ colors, value, onPick, label }: { colors: string[]; value: s
 }
 
 function Seg<T extends string | number>({ value, options, onPick, label }: { value: T | undefined; options: [T, ReactNode, string?][]; onPick: (v: T) => void; label: string }) {
+  const tt = useT('x_misc');
   return (
     <div className="cv-seg" role="group" aria-label={label}>
       {options.map(([v, l, title]) => (
-        <button key={String(v)} className={value === v ? 'on' : ''} onClick={() => onPick(v)} title={title}>
-          {l}
+        <button key={String(v)} className={value === v ? 'on' : ''} onClick={() => onPick(v)} title={title ? tt(title) : undefined}>
+          {typeof l === 'string' ? tt(l) : l}
         </button>
       ))}
     </div>
@@ -240,7 +241,7 @@ export function Inspector({ api }: { api: EditorApi }) {
   const texty = has(els, 'text', 'rect', 'ellipse', 'diamond', 'sticky', 'arrow', 'line', 'table');
   const one = els.length === 1 ? els[0] : null;
   const locked = els.some((e) => e.locked);
-  const title = one ? (one.type === 'card' ? `${CARD_LABELS[one.card!.kind]}-Karte` : typeLabel(one.type)) : `${els.length} Elemente`;
+  const title = one ? (one.type === 'card' ? tt('{kind}-Karte', { kind: tt(CARD_LABELS[one.card!.kind]) }) : tt(typeLabel(one.type))) : tt('{n} Elemente', { n: els.length });
   return (
     <aside className={`cv-inspector cv-panel${collapsed ? ' collapsed' : ''}`} data-tour="canvas-inspector">
       <div className="cv-insp-head">
@@ -269,7 +270,7 @@ export function Inspector({ api }: { api: EditorApi }) {
                     <option value="">{tt('Eigene ({round}×{round2})', { round: Math.round(one.w), round2: Math.round(one.h) })}</option>
                     {FRAME_PRESETS.map((p) => (
                       <option key={p.key} value={p.key}>
-                        {p.label}
+                        {tt(p.label)}
                       </option>
                     ))}
                   </select>
@@ -463,7 +464,7 @@ export function LayersPanel({ api, onClose }: { api: EditorApi; onClose: () => v
   const tt = useT('x_misc');
   const els = [...api.store.ordered].reverse();
   const top = els.filter((e) => !e.frameId || !api.store.els.has(e.frameId));
-  const label = (e: CanvasElement) => (e.type === 'frame' ? e.name : e.type === 'card' ? `${CARD_LABELS[e.card!.kind]} · ${api.store.cards[cardKey(e.card!.kind, e.card!.id)]?.title ?? ''}` : e.name || e.text?.split('\n')[0] || (e.type === 'icon' ? e.icon : '')) || typeLabel(e.type);
+  const label = (e: CanvasElement) => (e.type === 'frame' ? e.name : e.type === 'card' ? `${tt(CARD_LABELS[e.card!.kind])} · ${api.store.cards[cardKey(e.card!.kind, e.card!.id)]?.title ?? ''}` : e.name || e.text?.split('\n')[0] || (e.type === 'icon' ? e.icon : '')) || tt(typeLabel(e.type));
   const row = (e: CanvasElement, depth: number): ReactNode => (
     <div key={e.id}>
       <div className={`cv-layer${api.selection.includes(e.id) ? ' on' : ''}${e.hidden ? ' hidden' : ''}`} style={{ paddingLeft: 8 + depth * 14 }} {...pressable((ev) => api.select(ev.shiftKey ? [...api.selection, e.id] : [e.id]))} onDoubleClick={() => api.zoomTo([e.id])}>

@@ -54,7 +54,7 @@ function Guide({ item, agency, onClose }: { item: Item; agency: boolean; onClose
     >
       <p style={{ marginTop: 0 }}>{item.description}</p>
       <p>
-        <Badge tone={STATUS[item.status][1]}>{STATUS[item.status][0]}</Badge> <span className="muted small">{item.detail}</span>
+        <Badge tone={STATUS[item.status][1]}>{tt(STATUS[item.status][0])}</Badge> <span className="muted small">{item.detail}</span>
       </p>
       <h3 className="integ-h">{tt('Zugangsdaten')}</h3>
       <p className="muted">{item.credentials} <SignupLink id={item.key} /></p>
@@ -156,7 +156,7 @@ export function IntegrationsCatalog({ agency, after }: { agency: boolean; after?
                   <strong>{i.name}</strong>
                   <span className="integ-sub">
                     <span className="muted small">{i.category}</span>
-                    <Badge tone={STATUS[i.status][1]}>{STATUS[i.status][0]}</Badge>
+                    <Badge tone={STATUS[i.status][1]}>{tt(STATUS[i.status][0])}</Badge>
                   </span>
                 </div>
               </div>
@@ -187,14 +187,15 @@ export function IntegrationsCatalog({ agency, after }: { agency: boolean; after?
 
 /** Agentur → Integrationen: "Katalog" (default) and "Einrichtung" (the existing settings cards). */
 export function AgencyIntegrationsHub({ children }: { children: ReactNode }) {
+  const tt = useT('x_integrations');
   const route = useRoute();
   const sub = route[2] === 'setup' ? 'setup' : 'catalog';
   return (
     <>
       <Tabs
         tabs={[
-          ['catalog', 'Katalog'],
-          ['setup', 'Einrichtung'],
+          ['catalog', tt('Katalog')],
+          ['setup', tt('Einrichtung')],
         ]}
         value={sub}
         onChange={(v) => navigate(v === 'setup' ? 'agency/integrations/setup' : 'agency/integrations')}

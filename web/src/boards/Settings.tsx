@@ -46,8 +46,8 @@ function Choice({ f, value, onChange, values }: { f: FieldDef; value: string; on
   const searchable = f.optionsFrom === 'wiki_pages';
   const query = [dep, searchable && search ? `q=${encodeURIComponent(search)}` : ''].filter(Boolean).join('&');
   const { options, error, loading } = useOptions(f.optionsFrom, query ? `?${query}` : '', !!f.optionsFrom);
-  if (!f.optionsFrom) return <Select value={value} onChange={onChange} options={f.options ?? []} />;
-  const list = options.some((o) => o.value === value) || !value ? options : [{ value, label: `${value} (aktuell gewählt)` }, ...options];
+  if (!f.optionsFrom) return <Select value={value} onChange={onChange} options={(f.options ?? []).map(([v, l]) => [v, tt(l)] as [string, string])} />;
+  const list = options.some((o) => o.value === value) || !value ? options : [{ value, label: tt('{value} (aktuell gewählt)', { value }) }, ...options];
   return (
     <>
       {searchable && <Input value={search} onChange={setSearch} placeholder={tt('Seite suchen …')} aria-label={tt('Seite suchen')} />}
@@ -128,6 +128,7 @@ function Control({ f, values, set }: { f: FieldDef; values: Values; set: (v: unk
 }
 
 function JsonControl({ value, set }: { value: unknown; set: (v: unknown) => void }) {
+  const tt = useT('x_misc');
   const [text, setText] = useState(value === null || value === undefined ? '' : JSON.stringify(value, null, 2));
   const [bad, setBad] = useState('');
   return (
@@ -144,7 +145,7 @@ function JsonControl({ value, set }: { value: unknown; set: (v: unknown) => void
             set(JSON.parse(e.target.value));
             setBad('');
           } catch {
-            setBad('Das ist kein gültiges JSON.');
+            setBad(tt('Das ist kein gültiges JSON.'));
           }
         }}
       />

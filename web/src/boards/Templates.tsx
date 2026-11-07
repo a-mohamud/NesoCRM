@@ -78,7 +78,7 @@ export function NewBoard({ catalogue, onClose, initial }: { catalogue: Catalogue
   const [scope, setScope] = useState<'personal' | 'shared'>('personal');
   const [busy, setBusy] = useState(false);
   const install = useInstall();
-  const blank: Pick = { key: '', starter: true, name: 'Leeres Board', description: 'Du fügst die Widgets selbst hinzu – oder sagst dem Board, was du sehen willst.', icon: 'boards', accent: '', widgets: 0, preview: [] };
+  const blank: Pick = { key: '', starter: true, name: tt('Leeres Board'), description: tt('Du fügst die Widgets selbst hinzu – oder sagst dem Board, was du sehen willst.'), icon: 'boards', accent: '', widgets: 0, preview: [] };
   const picks = [blank, ...(data?.starters ?? []).map(fromStarter), ...(data?.mine ?? []).map(fromTemplate)];
   const cur = picks.find((p) => p.key === key) ?? blank;
   return (
@@ -226,7 +226,7 @@ function Detail({ p, catalogue, onClose, onChanged }: { p: Pick; catalogue: Cata
           {p.description && <p>{p.description}</p>}
           {t && (
             <p className="muted small">
-              {tt('{category_label} · Version {version} · von', { category_label: t.category_label, version: t.version })} {t.author || 'unbekannt'}
+              {tt('{category_label} · Version {version} · von', { category_label: tt(t.category_label), version: t.version })} {t.author || tt('unbekannt')}
               {t.scope === 'marketplace' ? tt(' · {installs}× installiert', { installs: t.installs }) : ''}
             </p>
           )}
@@ -345,9 +345,9 @@ export function Gallery({ catalogue }: { catalogue: Catalogue | null }) {
       {loading && !data && <Spinner />}
       {data && (
         <>
-          {section('Zum Starten', data.starters.map(fromStarter))}
-          {section('Meine Vorlagen', data.mine.map(fromTemplate), 'Nur in diesem Sub-Account sichtbar – oder im Marktplatz veröffentlicht.')}
-          {section(`Aus dem ${data.names.marktplatz}`, data.marketplace.map(fromTemplate), 'Von anderen Sub-Accounts dieser Installation veröffentlicht. Vor dem Installieren siehst du, was eine Vorlage liest und zeigt.')}
+          {section(tt('Zum Starten'), data.starters.map(fromStarter))}
+          {section(tt('Meine Vorlagen'), data.mine.map(fromTemplate), tt('Nur in diesem Sub-Account sichtbar – oder im Marktplatz veröffentlicht.'))}
+          {section(tt('Aus dem {name}', { name: tt(data.names.marktplatz) }), data.marketplace.map(fromTemplate), tt('Von anderen Sub-Accounts dieser Installation veröffentlicht. Vor dem Installieren siehst du, was eine Vorlage liest und zeigt.'))}
           {none && <Empty>{tt('Keine Vorlage passt zu deiner Suche.')}</Empty>}
         </>
       )}

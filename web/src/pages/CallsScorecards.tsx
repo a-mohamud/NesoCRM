@@ -42,7 +42,7 @@ function ScoreView({ score, onChanged }: { score: any; onChanged: () => void }) 
       onChanged();
     }
   };
-  const label = (k: any, v: number | null) => (v === null || v === undefined ? 'trifft nicht zu' : k.scale === 'yesno' ? (v ? 'Ja' : 'Nein') : `${v} von 5`);
+  const label = (k: any, v: number | null) => (v === null || v === undefined ? tt('trifft nicht zu') : k.scale === 'yesno' ? (v ? tt('Ja') : tt('Nein')) : tt('{v} von 5', { v }));
   return (
     <div className="tl-score" data-tour="score-card">
       <div className="cr-line" style={{ justifyContent: 'space-between' }}>
@@ -69,7 +69,7 @@ function ScoreView({ score, onChanged }: { score: any; onChanged: () => void }) 
                   value={r.score === null ? '' : String(r.score)}
                   onChange={(v) => setRev({ ...rev, [k.id]: { ...r, score: v === '' ? null : Number(v) } })}
                   placeholder={tt('trifft nicht zu')}
-                  options={k.scale === 'yesno' ? [['1', 'Ja'], ['0', 'Nein']] : [['5', '5 – sehr gut'], ['4', '4'], ['3', '3'], ['2', '2'], ['1', '1 – schwach']]}
+                  options={k.scale === 'yesno' ? [['1', tt('Ja')], ['0', tt('Nein')]] : [['5', tt('5 – sehr gut')], ['4', '4'], ['3', '3'], ['2', '2'], ['1', tt('1 – schwach')]]}
                 />
               ) : (
                 <span>
@@ -221,7 +221,7 @@ function CardDialog({ initial, onClose, onSaved }: { initial: any | null; onClos
               <Input value={k.label} onChange={(v) => setK(i, { label: v })} maxLength={80} placeholder={tt('z. B. Bedarf erfragt')} />
             </Field>
             <Field label={tt('Bewertung')}>
-              <Select value={k.scale} onChange={(v) => setK(i, { scale: v })} options={SCALE} />
+              <Select value={k.scale} onChange={(v) => setK(i, { scale: v })} options={SCALE.map(([k, l]) => [k, tt(l)] as [string, string])} />
             </Field>
             <Field label={tt('Gewicht (1 bis 10)')}>
               <Input type="number" min={1} max={10} value={k.weight} onChange={(v) => setK(i, { weight: Number(v) })} />
@@ -252,7 +252,7 @@ function Report({ card, onClose }: { card: any; onClose: () => void }) {
   return (
     <Modal title={tt('Auswertung: {name}', { name: card.name })} wide onClose={onClose}>
       <Field label={tt('Zeitraum')}>
-        <Select value={days} onChange={setDays} options={[['7', '7 Tage'], ['30', '30 Tage'], ['90', '90 Tage'], ['365', '1 Jahr']]} />
+        <Select value={days} onChange={setDays} options={[['7', tt('7 Tage')], ['30', tt('30 Tage')], ['90', tt('90 Tage')], ['365', tt('1 Jahr')]]} />
       </Field>
       {!r ? (
         <Spinner />
@@ -340,8 +340,8 @@ export function ScorecardsDialog({ onClose }: { onClose: () => void }) {
               onClick={() => (can ? setEdit(c) : setReport(c))}
               side={
                 <>
-                  {!c.active && <Badge>aus</Badge>}
-                  <Badge tone="blue">{c.scored} bewertet</Badge>
+                  {!c.active && <Badge>{tt('aus')}</Badge>}
+                  <Badge tone="blue">{tt('{n} bewertet', { n: c.scored })}</Badge>
                   <button className="btn small secondary" onClick={(e) => (e.stopPropagation(), setReport(c))}>
                     <Icon name="gauge" size={14} /> {tt('Auswertung')}
                   </button>

@@ -7,7 +7,7 @@ import { PHASE_TONE, REASONS } from './CloudKit';
 import { CloudSettingsForm } from './CloudSettings';
 import { Slot } from '../slots';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { fmtNumber, intlLocale, useT } from '../i18n';
 
 /**
  * Agentur → Cloud: the operator console of the hosted service. Numbers (MRR, churn, trial conversion), the customer list
@@ -74,7 +74,7 @@ const PHASES: [string, string][] = [
   ['deletion_scheduled', 'Löschung geplant'],
 ];
 
-const pct = (n: number | null | undefined) => (n === null || n === undefined ? '–' : `${String(n).replace('.', ',')} %`);
+const pct = (n: number | null | undefined) => (n === null || n === undefined ? '–' : `${fmtNumber(n, { maximumFractionDigits: 1 })} %`);
 
 function Overview({ go }: { go: (t: string) => void }) {
   const tt = useT('x_agency');
@@ -83,15 +83,15 @@ function Overview({ go }: { go: (t: string) => void }) {
   if (!x) return <Spinner />;
   const h = x.health;
   const checks: [boolean, string, string?][] = [
-    [h.stripe_connected, 'Stripe ist verbunden', 'Schlüssel unter Agentur → SaaS → Einstellungen'],
-    [h.webhook_set, 'Webhook-Secret ist hinterlegt', 'ohne Webhook entstehen keine Konten nach der Zahlung'],
-    [h.signup_open, 'Anmeldung ist offen', 'Einstellungen → Anmeldung'],
-    [h.mail_ready, 'System-Mails werden wirklich verschickt (Absender mit SMTP oder Mail-Dienst, nicht „nur speichern“)', 'Einstellungen → Domain & Mail'],
-    [!h.legal_open, 'Rechtstexte sind vollständig ausgefüllt', `${h.legal_open} Dokument(e) mit offenen Platzhaltern`],
-    [!!h.cloud_domain, 'Cloud-Domain für <name>.domain gesetzt', 'optional – sonst pfadbasiert'],
-    [!h.saas_signup_open, 'Die SaaS-Anmeldeseite (/signup) ist aus', 'im Cloud-Modus laufen Anmeldungen über /start'],
-    [!!h.sites_domain, 'Eigene Domain für Kunden-Websites gesetzt (PGHL_CLOUD_SITES_DOMAIN)', 'sonst sind Kunden-Websites nur über ihre eigene, bestätigte Domain erreichbar – nie unter der Login-Adresse'],
-    [!!h.offsite_backup, 'Off-site-Backup ist eingerichtet', 'PGHL_BACKUP_S3_* und PGHL_BACKUP_KEY – Status unter Agentur → System'],
+    [h.stripe_connected, tt('Stripe ist verbunden'), tt('Schlüssel unter Agentur → SaaS → Einstellungen')],
+    [h.webhook_set, tt('Webhook-Secret ist hinterlegt'), tt('ohne Webhook entstehen keine Konten nach der Zahlung')],
+    [h.signup_open, tt('Anmeldung ist offen'), tt('Einstellungen → Anmeldung')],
+    [h.mail_ready, tt('System-Mails werden wirklich verschickt (Absender mit SMTP oder Mail-Dienst, nicht „nur speichern“)'), tt('Einstellungen → Domain & Mail')],
+    [!h.legal_open, tt('Rechtstexte sind vollständig ausgefüllt'), tt('{n} Dokument(e) mit offenen Platzhaltern', { n: h.legal_open })],
+    [!!h.cloud_domain, tt('Cloud-Domain für <name>.domain gesetzt'), tt('optional – sonst pfadbasiert')],
+    [!h.saas_signup_open, tt('Die SaaS-Anmeldeseite (/signup) ist aus'), tt('im Cloud-Modus laufen Anmeldungen über /start')],
+    [!!h.sites_domain, tt('Eigene Domain für Kunden-Websites gesetzt (PGHL_CLOUD_SITES_DOMAIN)'), tt('sonst sind Kunden-Websites nur über ihre eigene, bestätigte Domain erreichbar – nie unter der Login-Adresse')],
+    [!!h.offsite_backup, tt('Off-site-Backup ist eingerichtet'), tt('PGHL_BACKUP_S3_* und PGHL_BACKUP_KEY – Status unter Agentur → System')],
   ];
   return (
     <>
@@ -166,7 +166,7 @@ function Overview({ go }: { go: (t: string) => void }) {
                 <tr key={e.id}>
                   <td className="nowrap muted">{dt(e.at)}</td>
                   <td>{e.tenant_name || <span className="muted">{tt('gelöschtes Konto')}</span>}</td>
-                  <td>{EVENTS[e.type] ?? e.type}</td>
+                  <td>{EVENTS[e.type] ? tt(EVENTS[e.type]) : e.type}</td>
                   <td className="muted small">{e.detail}</td>
                 </tr>
               ))}
@@ -206,7 +206,7 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
           <div className="row">
             <div className="grow">
               <p>
-                <Badge tone={PHASE_TONE[x.phase] ?? 'gray'}>{x.phase_label}</Badge> {x.plan.name} · {x.plan.interval === 'year' ? tt('jährlich') : 'monatlich'} · {x.billing === 'stripe' ? 'Stripe' : tt('ohne Stripe')}
+                <Badge tone={PHASE_TONE[x.phase] ?? 'gray'}>{tt(x.phase_label)}</Badge> {x.plan.name} · {x.plan.interval === 'year' ? tt('jährlich') : tt('monatlich')} · {x.billing === 'stripe' ? 'Stripe' : tt('ohne Stripe')}
               </p>
               <p className="muted small">
                 {tt('{email} · angelegt {d}', { email: x.email, d: d(x.created_at) })}
@@ -215,11 +215,11 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
                 {x.deletion && tt(' · Löschung {d}', { d: d(x.deletion.at) })}
               </p>
               <p className="muted small">
-                {tt('{users} Nutzer', { users: x.users })}{x.entitlements.client_accounts ? tt(', {clients} Kunden-Accounts', { clients: x.clients }) : ''} {tt('· E-Mails')} {x.meters.emails.used.toLocaleString('de-DE')} {tt('· Support-Zugriff')} {x.support.active ? tt('bis {d}', { d: d(x.support.until) }) : tt('nicht freigegeben')}
+                {tt('{users} Nutzer', { users: x.users })}{x.entitlements.client_accounts ? tt(', {clients} Kunden-Accounts', { clients: x.clients }) : ''} {tt('· E-Mails')} {x.meters.emails.used.toLocaleString(intlLocale())} {tt('· Support-Zugriff')} {x.support.active ? tt('bis {d}', { d: d(x.support.until) }) : tt('nicht freigegeben')}
               </p>
               {x.cancel_reason && (
                 <p className="muted small">
-                  {tt('Kündigungsgrund: {v}', { v: REASONS.find(([k]) => k === x.cancel_reason)?.[1] ?? x.cancel_reason })}
+                  {tt('Kündigungsgrund: {v}', { v: tt(REASONS.find(([k]) => k === x.cancel_reason)?.[1] ?? x.cancel_reason) })}
                   {x.cancel_comment ? ` – „${x.cancel_comment}“` : ''}
                 </p>
               )}
@@ -231,7 +231,7 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
               disabled={!x.support.active}
               title={x.support.active ? tt('Konto im Support öffnen') : tt('Der Kunde hat den Support-Zugriff nicht freigegeben')}
               onClick={async () => {
-                const r = await act(() => api.post<{ location_id: string }>(`/api/cloud/console/tenants/${id}/open`, { reason: 'Support' }));
+                const r = await act(() => api.post<{ location_id: string }>(`/api/cloud/console/tenants/${id}/open`, { reason: 'Support' } /* i18n-ignore */));
                 if (r?.location_id) {
                   onClose();
                   session.switchLocation(r.location_id);
@@ -245,15 +245,15 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
             <Field label={tt('Testphase verlängern (Tage)')}>
               <div className="row" style={{ flexWrap: 'nowrap' }}>
                 <Input value={days} onChange={setDays} />
-                <button className="btn secondary" onClick={() => run(() => api.post(`/api/cloud/console/tenants/${id}/extend-trial`, { days: Number(days) }), 'Testphase verlängert')}>
+                <button className="btn secondary" onClick={() => run(() => api.post(`/api/cloud/console/tenants/${id}/extend-trial`, { days: Number(days) }), tt('Testphase verlängert'))}>
                   {tt('Verlängern')}
                 </button>
               </div>
             </Field>
             <Field label={tt('Tarif ändern')}>
               <div className="row" style={{ flexWrap: 'nowrap' }}>
-                <Select value={plan} onChange={setPlan} options={PLANS} />
-                <button className="btn secondary" onClick={() => run(() => api.post(`/api/cloud/console/tenants/${id}/plan`, { plan }), 'Tarif geändert')}>
+                <Select value={plan} onChange={setPlan} options={PLANS.map(([k, l]) => [k, tt(l)] as [string, string])} />
+                <button className="btn secondary" onClick={() => run(() => api.post(`/api/cloud/console/tenants/${id}/plan`, { plan }), tt('Tarif geändert'))}>
                   {tt('Ändern')}
                 </button>
               </div>
@@ -261,7 +261,7 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
             <Field label={tt('Tarif schenken (Monate, leer = unbefristet)')}>
               <div className="row" style={{ flexWrap: 'nowrap' }}>
                 <Input value={months} onChange={setMonths} placeholder={tt('z. B. 3')} />
-                <button className="btn secondary" onClick={() => run(() => api.post(`/api/cloud/console/tenants/${id}/comp`, { plan, ...(months ? { months: Number(months) } : {}) }), 'Tarif geschenkt')}>
+                <button className="btn secondary" onClick={() => run(() => api.post(`/api/cloud/console/tenants/${id}/comp`, { plan, ...(months ? { months: Number(months) } : {}) }), tt('Tarif geschenkt'))}>
                   {tt('Schenken')}
                 </button>
               </div>
@@ -269,7 +269,7 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
             <Field label={tt('Notiz (nur für dich)')}>
               <div className="row" style={{ flexWrap: 'nowrap' }}>
                 <Input value={notes ?? x.notes} onChange={setNotes} />
-                <button className="btn secondary" disabled={notes === null} onClick={() => run(() => api.patch(`/api/cloud/console/tenants/${id}`, { notes }), 'Gespeichert')}>
+                <button className="btn secondary" disabled={notes === null} onClick={() => run(() => api.patch(`/api/cloud/console/tenants/${id}`, { notes }), tt('Gespeichert'))}>
                   {tt('Speichern')}
                 </button>
               </div>
@@ -283,7 +283,7 @@ function TenantModal({ id, onClose, onChange }: { id: string; onClose: () => voi
                 {x.events.map((e: any) => (
                   <tr key={e.id}>
                     <td className="nowrap muted">{dt(e.at)}</td>
-                    <td>{EVENTS[e.type] ?? e.type}</td>
+                    <td>{EVENTS[e.type] ? tt(EVENTS[e.type]) : e.type}</td>
                     <td className="muted small">{e.detail}</td>
                   </tr>
                 ))}
@@ -336,12 +336,12 @@ function Customers() {
         </div>
         <div>
           <Field label="Status">
-            <Select value={phase} onChange={setPhase} options={PHASES} />
+            <Select value={phase} onChange={setPhase} options={PHASES.map(([k, l]) => [k, tt(l)] as [string, string])} />
           </Field>
         </div>
         <div>
           <Field label={tt('Tarif')}>
-            <Select value={plan} onChange={setPlan} options={[['', 'Alle Tarife'], ...PLANS]} />
+            <Select value={plan} onChange={setPlan} options={[['', tt('Alle Tarife')], ...PLANS.map(([k, l]) => [k, tt(l)] as [string, string])]} />
           </Field>
         </div>
         <a className="btn secondary" style={{ marginBottom: 12 }} href="/api/cloud/console/tenants.csv" download>
@@ -372,10 +372,10 @@ function Customers() {
                 </td>
                 <td>
                   {r.plan_name}
-                  <div className="muted small">{r.interval === 'year' ? tt('jährlich') : 'monatlich'}</div>
+                  <div className="muted small">{r.interval === 'year' ? tt('jährlich') : tt('monatlich')}</div>
                 </td>
                 <td>
-                  <Badge tone={PHASE_TONE[r.phase] ?? 'gray'}>{r.phase_label}</Badge> {r.cancel_at_period_end && <Badge tone="yellow">{tt('gekündigt')}</Badge>} {r.support && <Badge tone="purple">{tt('Support frei')}</Badge>}
+                  <Badge tone={PHASE_TONE[r.phase] ?? 'gray'}>{tt(r.phase_label)}</Badge> {r.cancel_at_period_end && <Badge tone="yellow">{tt('gekündigt')}</Badge>} {r.support && <Badge tone="purple">{tt('Support frei')}</Badge>}
                 </td>
                 <td className="nowrap">{r.mrr_cents ? money(r.mrr_cents) : '–'}</td>
                 <td className="nowrap">{d(r.status === 'trialing' ? r.trial_end : r.current_period_end)}</td>
@@ -499,13 +499,13 @@ export function CloudConsole() {
       <div className="saas-subtabs">
         <Tabs
           tabs={[
-            ['overview', 'Übersicht'],
-            ['customers', 'Kunden'],
-            ['settings', 'Einstellungen'],
-            ['legal', 'Rechtliches'],
-            ['signups', 'Anmeldungen'],
-            ['abuse', 'Missbrauch'],
-            ['waitlist', 'Warteliste'],
+            ['overview', tt('Übersicht')],
+            ['customers', tt('Kunden')],
+            ['settings', tt('Einstellungen')],
+            ['legal', tt('Rechtliches')],
+            ['signups', tt('Anmeldungen')],
+            ['abuse', tt('Missbrauch')],
+            ['waitlist', tt('Warteliste')],
           ]}
           value={tab}
           onChange={setTab}

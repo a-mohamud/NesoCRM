@@ -146,7 +146,7 @@ export function RoomTab({ form, set, w }: TabProps) {
             </Field>
             <div className="grid2">
               <Field label={tt('Führt zu')}>
-                <Select value={target.type} onChange={(v) => set('settings.offer.target', v === 'product' ? { type: 'product', product_id: '' } : v === 'form' ? { type: 'form', form_id: '' } : { type: 'url', url: '' })} options={[['product', 'Produkt (Kaufseite)'], ['form', 'Formular / Bestellformular'], ['url', 'Link']]} />
+                <Select value={target.type} onChange={(v) => set('settings.offer.target', v === 'product' ? { type: 'product', product_id: '' } : v === 'form' ? { type: 'form', form_id: '' } : { type: 'url', url: '' })} options={[['product', tt('Produkt (Kaufseite)')], ['form', tt('Formular / Bestellformular')], ['url', tt('Link')]]} />
               </Field>
               <Field label={target.type === 'product' ? tt('Produkt') : target.type === 'form' ? tt('Formular') : tt('Adresse')}>
                 {target.type === 'product' && <Select value={target.product_id} placeholder={tt('Produkt wählen …')} onChange={(v) => set('settings.offer.target.product_id', v)} options={(products.data ?? []).map((p: any) => [p.id, p.name] as [string, string])} />}
@@ -204,7 +204,7 @@ export function RemindersTab({ form, set }: TabProps) {
               <div className="wb-line wb-top">
                 <b>{r.offset_min === 0 ? tt('Beim Start') : tt('Vor dem Start')}</b>
                 <input type="number" min={0} value={n} aria-label={tt('Anzahl')} style={{ width: 80 }} onChange={(e) => put({ offset_min: Math.max(0, Number(e.target.value) || 0) * (UNITS.find((u) => u[0] === unit)?.[2] ?? 1) })} />
-                <Select value={unit} onChange={(u) => put({ offset_min: n * (UNITS.find((x) => x[0] === u)?.[2] ?? 1) })} options={UNITS.map(([k, l]) => [k, l] as [string, string])} />
+                <Select value={unit} onChange={(u) => put({ offset_min: n * (UNITS.find((x) => x[0] === u)?.[2] ?? 1) })} options={UNITS.map(([k, l]) => [k, tt(l)] as [string, string])} />
                 <Check checked={r.email} onChange={(v) => put({ email: v })} label="E-Mail" />
                 <Check checked={r.sms} onChange={(v) => put({ sms: v })} label="SMS" />
                 <span className="grow" />

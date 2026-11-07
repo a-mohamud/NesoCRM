@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, dt } from '../api';
 import { Icon } from '../icons';
 import { Badge, Check, Empty, Field, Input, Link, Select, Spinner, TagInput, Textarea, act, confirmAsk, useLoad } from '../ui';
-import { AdsModal, PlatformBadge, type Platform } from './AdsKit';
+import { AdsModal, PLATFORM_FULL, PLATFORM_LABEL, PlatformBadge, type Platform } from './AdsKit';
 import { MoreFields } from '../areas/fields';
 import { GoogleLeadsCard } from './GoogleLeads';
 import { useT } from '../i18n';
@@ -41,7 +41,7 @@ export function AdsAudiences() {
               <tr>
                 <th>{tt('Zielgruppe')}</th>
                 <th>{tt('Quelle')}</th>
-                <th>Status</th>
+                <th>{tt('Status')}</th>
                 <th className="num">{tt('Übertragen')}</th>
                 <th>{tt('Zuletzt')}</th>
                 <th />
@@ -72,7 +72,7 @@ export function AdsAudiences() {
                         {tt('Lookalike')}
                       </button>
                     )}
-                    <button className="btn small ghost" onClick={async () => confirmAsk(`Zielgruppe „${a.name}“ löschen${a.platform_id ? tt(' (auch bei der Plattform)') : ''}?`) && (await act(() => api.del(`/api/ads/audiences/${a.id}`), tt('Gelöscht')), reload())}>
+                    <button className="btn small ghost" onClick={async () => confirmAsk(a.platform_id ? tt('Zielgruppe „{name}“ löschen (auch bei der Plattform)?', { name: a.name }) : tt('Zielgruppe „{name}“ löschen?', { name: a.name })) && (await act(() => api.del(`/api/ads/audiences/${a.id}`), tt('Gelöscht')), reload())}>
                       {tt('Löschen')}
                     </button>
                   </td>
@@ -132,7 +132,7 @@ function AudienceModal({ sync, onClose, onDone }: { sync?: any; onClose: () => v
       {!sync && (
         <>
           <Field label={tt('Plattform')}>
-            <Select value={platform} onChange={(v) => setPlatform(v as Platform)} options={[['meta', `Meta${conns.data && !conns.data.connected.meta ? ' (nicht verbunden)' : ''}`], ['google', `Google Ads${conns.data && !conns.data.connected.google ? ' (nicht verbunden)' : ''}`]]} />
+            <Select value={platform} onChange={(v) => setPlatform(v as Platform)} options={[['meta', PLATFORM_LABEL.meta + (conns.data && !conns.data.connected.meta ? tt(' (nicht verbunden)') : '')], ['google', PLATFORM_FULL.google + (conns.data && !conns.data.connected.google ? tt(' (nicht verbunden)') : '')]]} />
           </Field>
           <Field label="Name">
             <Input value={name} onChange={setName} placeholder={tt('z. B. Bestandskunden')} />
@@ -149,7 +149,7 @@ function AudienceModal({ sync, onClose, onDone }: { sync?: any; onClose: () => v
           {preview.skipped.no_identifier > 0 && tt(' · {no_identifier} ohne E-Mail/Telefon', { no_identifier: preview.skipped.no_identifier })}.
         </p>
       )}
-      <Check checked={consent} onChange={setConsent} label={CONSENT} />
+      <Check checked={consent} onChange={setConsent} label={tt(CONSENT)} />
     </AdsModal>
   );
 }
@@ -202,7 +202,9 @@ const STANDARD: [string, string][] = [['FULL_NAME', 'Vollständiger Name'], ['EM
 
 export function LeadFormModal({ onClose, onCreated }: { onClose: () => void; onCreated: (f: any) => void }) {
   const tt = useT('x_integrations');
-  const [f, setF] = useState({ name: '', headline: '', description: '', privacy_url: '', thank_title: 'Danke!', thank_body: 'Wir melden uns bei dir.', thank_url: '' });
+  const thankTitle = tt('Danke!');
+  const thankBody = tt('Wir melden uns bei dir.');
+  const [f, setF] = useState({ name: '', headline: '', description: '', privacy_url: '', thank_title: thankTitle, thank_body: thankBody, thank_url: '' });
   const [std, setStd] = useState<string[]>(['FULL_NAME', 'EMAIL', 'PHONE']);
   const [custom, setCustom] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -251,11 +253,11 @@ export function LeadFormModal({ onClose, onCreated }: { onClose: () => void; onC
       <h3>{tt('Fragen')}</h3>
       <div className="ads-langs">
         {STANDARD.map(([k, label]) => (
-          <Check key={k} checked={std.includes(k)} onChange={(v) => setStd(v ? [...std, k] : std.filter((x) => x !== k))} label={label} />
+          <Check key={k} checked={std.includes(k)} onChange={(v) => setStd(v ? [...std, k] : std.filter((x) => x !== k))} label={tt(label)} />
         ))}
       </div>
       {/* Einfach-Modus: headline, short text, own questions and the thank-you page (good defaults) behind one toggle */}
-      <MoreFields id="ads-leadform" values={[f.headline, f.description, custom, f.thank_title !== 'Danke!', f.thank_body !== 'Wir melden uns bei dir.', f.thank_url]}>
+      <MoreFields id="ads-leadform" values={[f.headline, f.description, custom, f.thank_title !== thankTitle, f.thank_body !== thankBody, f.thank_url]}>
         <div className="grid2">
           <Field label={tt('Überschrift (optional)')}>
             <Input value={f.headline} onChange={(v) => set('headline', v)} maxLength={60} />
@@ -330,18 +332,18 @@ export function AdsLeads() {
             </Field>
             <div className="actions">
               {!s.enabled ? (
-                <button className="btn" disabled={busy || !s.page_token} onClick={() => run(async () => { const r = await api.post('/api/ads/leads/enable', { tags: tags ?? s.tags }); if (r.warning) await act(() => Promise.reject(new Error(r.warning))); return r; }, 'Lead-Import ist an')}>
+                <button className="btn" disabled={busy || !s.page_token} onClick={() => run(async () => { const r = await api.post('/api/ads/leads/enable', { tags: tags ?? s.tags }); if (r.warning) await act(() => Promise.reject(new Error(r.warning))); return r; }, tt('Lead-Import ist an'))}>
                   {tt('Lead-Import einschalten')}
                 </button>
               ) : (
                 <>
-                  <button className="btn secondary" disabled={busy || !tags} onClick={() => run(() => api.put('/api/ads/leads/settings', { tags }), 'Gespeichert')}>
+                  <button className="btn secondary" disabled={busy || !tags} onClick={() => run(() => api.put('/api/ads/leads/settings', { tags }), tt('Gespeichert'))}>
                     {tt('Tags speichern')}
                   </button>
-                  <button className="btn secondary" disabled={busy} onClick={() => run(() => api.post('/api/ads/leads/poll', {}), 'Abgeholt')}>
+                  <button className="btn secondary" disabled={busy} onClick={() => run(() => api.post('/api/ads/leads/poll', {}), tt('Abgeholt'))}>
                     <Icon name="refresh" /> {tt('Jetzt abholen')}
                   </button>
-                  <button className="btn ghost" disabled={busy} onClick={() => confirmAsk(tt('Lead-Import ausschalten?')) && run(() => api.post('/api/ads/leads/disable', {}), 'Ausgeschaltet')}>
+                  <button className="btn ghost" disabled={busy} onClick={() => confirmAsk(tt('Lead-Import ausschalten?')) && run(() => api.post('/api/ads/leads/disable', {}), tt('Ausgeschaltet'))}>
                     {tt('Ausschalten')}
                   </button>
                 </>
@@ -383,7 +385,7 @@ export function AdsLeads() {
                     <td>
                       <strong>{f.name}</strong>
                     </td>
-                    <td className="muted">{(f.spec?.questions ?? []).map((q: any) => (typeof q === 'string' ? QUESTION_LABEL[q] ?? q : q.label)).join(', ')}</td>
+                    <td className="muted">{(f.spec?.questions ?? []).map((q: any) => (typeof q === 'string' ? tt(QUESTION_LABEL[q] ?? q) : q.label)).join(', ')}</td>
                     <td className="muted">{dt(f.created_at)}</td>
                     <td className="ads-actions">
                       <button className="btn small ghost" onClick={async () => confirmAsk(tt('Formular „{name}“ archivieren?', { name: f.name })) && (await act(() => api.del(`/api/ads/leadforms/${f.id}`), tt('Archiviert')), forms.reload())}>
@@ -408,7 +410,7 @@ export function AdsLeads() {
                   <th>{tt('Zeit')}</th>
                   <th>{tt('Kontakt')}</th>
                   <th>{tt('Kampagne')}</th>
-                  <th>Status</th>
+                  <th>{tt('Status')}</th>
                 </tr>
               </thead>
               <tbody>

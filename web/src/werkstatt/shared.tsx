@@ -4,6 +4,7 @@ import { ICONS, Icon, type IconName } from '../icons';
 import { Badge } from '../ui';
 import { CARD_TOOLS, NAMES, ROUTES, SCOPE_LABELS, type PluginScope } from '../../../server/services/werkstatt/names';
 
+import { useT } from '../i18n';
 /** Shared bits of the Werkstatt and Marktplatz screens (names live in server/services/werkstatt/names.ts). */
 export { NAMES, ROUTES, SCOPE_LABELS, CARD_TOOLS };
 
@@ -16,7 +17,8 @@ export function PluginIcon({ name, size = 18 }: { name?: string; size?: number }
 export const usd = (v: number) => `${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
 export const SCOPE_TONE: Record<PluginScope, 'gray' | 'blue' | 'purple' | 'green'> = { private: 'gray', location: 'blue', agency: 'purple', marketplace: 'green' };
 export function ScopeBadge({ scope }: { scope: PluginScope }) {
-  return <Badge tone={SCOPE_TONE[scope] ?? 'gray'}>{SCOPE_LABELS[scope] ?? scope}</Badge>;
+  const tt = useT('x_ai');
+  return <Badge tone={SCOPE_TONE[scope] ?? 'gray'}>{SCOPE_LABELS[scope] ? tt(SCOPE_LABELS[scope]) : scope}</Badge>;
 }
 
 export const STATUS_TONE: Record<string, 'gray' | 'green' | 'red' | 'blue' | 'yellow'> = { planning: 'blue', planned: 'yellow', awaiting_approval: 'yellow', building: 'blue', done: 'green', failed: 'red', cancelled: 'gray', rejected: 'red', undone: 'gray' };

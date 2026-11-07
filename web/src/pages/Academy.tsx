@@ -3,7 +3,7 @@ import { Icon } from '../icons';
 import { useSession } from '../session';
 import { ProfilesCard } from '../theme/Profiles';
 import { Badge, Empty, PageHead, Spinner, act, confirmAsk, navigate } from '../ui';
-import { GROUPS, JOURNEY, MODULE_TOURS, badges, journeyStatus, searchTours, visibleTours } from '../tour/catalog';
+import { GROUPS, JOURNEY, MODULE_TOURS, badges, journeyStatus, searchTours, useTourText, visibleTours } from '../tour/catalog';
 import { DocViewer, Handbook } from '../tour/docs';
 import { accessOf, startTour } from '../tour/engine';
 import { Handover } from '../tour/handover';
@@ -30,6 +30,7 @@ function Progress({ value, label }: { value: number; label?: string }) {
 
 function TourCard({ t, p }: { t: Tour; p?: TourProgress }) {
   const tt = useT('x_tours_b');
+  useTourText();
   const at = resumeAt(p);
   return (
     <div className={`card ac-card${p?.done ? ' done' : ''}`}>
@@ -124,13 +125,15 @@ function SandboxCard() {
 
 function Overview() {
   const tt = useT('x_tours_b');
+  // tours, chapters and badges come in the active language (tour/catalog.ts); this loads their catalogs
+  useTourText();
   const session = useSession();
   const academy = useAcademy();
   const [q, setQ] = useState('');
   const access = accessOf(session);
   const admin = session.user.role === 'admin';
   const progress = academy?.tours ?? {};
-  const tours = useMemo(() => searchTours(visibleTours(access, MODULE_TOURS), q), [q, session.user]);
+  const tours = useMemo(() => searchTours(visibleTours(access, MODULE_TOURS), q), [q, session.user, tt]);
   const chapters = visibleTours(access, JOURNEY);
   const j = journeyStatus(progress, access);
   const earned = badges(progress, access);
@@ -250,7 +253,7 @@ function Overview() {
           return (
             <section key={g.id} className="ac-group">
               <h2 className="ac-group-title">
-                <Icon name={g.icon} size={18} /> {g.label}
+                <Icon name={g.icon} size={18} /> {tt(g.label)}
                 <span className="muted small">
                   {list.filter((t) => progress[t.id]?.done).length}/{list.length}
                 </span>

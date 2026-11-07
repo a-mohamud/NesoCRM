@@ -86,8 +86,8 @@ export function UmzugConnect({
     <div className="um-connect" data-tour="um-connect">
       <Tabs
         tabs={[
-          ['api', 'Mit Schlüssel verbinden'],
-          ['file', 'Export-Datei hochladen'],
+          ['api', tt('Mit Schlüssel verbinden')],
+          ['file', tt('Export-Datei hochladen')],
         ]}
         value={mode}
         onChange={(m) => onMode(m as 'api' | 'file')}
@@ -99,7 +99,7 @@ export function UmzugConnect({
             {connected ? (
               <>
                 <p>
-                  <Badge tone="green">verbunden</Badge> <strong>{conn?.label || conn?.account}</strong>
+                  <Badge tone="green">{tt('verbunden')}</Badge> <strong>{conn?.label || conn?.account}</strong>
                   {conn?.hint && <span className="muted small"> {tt('· Schlüssel {hint}', { hint: conn.hint })}</span>}
                 </p>
                 <p className="muted small">{tt('Der Schlüssel liegt verschlüsselt auf deinem Server und wird nur für den Umzug gelesen.')}</p>

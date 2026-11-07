@@ -21,8 +21,8 @@ export const EMAIL_PROVIDER_OPTIONS: [string, string][] = [
 export const SMS_PROVIDER_OPTIONS: [string, string][] = [
   ['seven', 'seven.io (Deutschland/EU)'],
   ['bird', 'Bird / MessageBird'],
-  ['vonage', 'Vonage'],
-  ['plivo', 'Plivo'],
+  ['vonage', 'Vonage'], // i18n-ignore
+  ['plivo', 'Plivo'], // i18n-ignore
 ];
 export const isApiProvider = (kind: 'mail' | 'sms', p: string) => (kind === 'mail' ? EMAIL_PROVIDER_OPTIONS : SMS_PROVIDER_OPTIONS).some(([k]) => k === p);
 
@@ -74,8 +74,8 @@ export function ProviderPanel({ kind, provider, onSaved }: { kind: 'mail' | 'sms
       <div className="row" style={{ alignItems: 'center', gap: 8 }}>
         <strong>{d.label}</strong>
         <SignupLink id={provider} />
-        {d.configured ? <Badge tone="green">eingerichtet</Badge> : <Badge>{tt('unvollständig')}</Badge>}
-        {s.data.active === provider && <Badge tone="blue">aktiv</Badge>}
+        {d.configured ? <Badge tone="green">{tt('eingerichtet')}</Badge> : <Badge>{tt('unvollständig')}</Badge>}
+        {s.data.active === provider && <Badge tone="blue">{tt('aktiv')}</Badge>}
       </div>
       <div className="grid2">
         {d.fields.secrets.map((x: any) => (
@@ -94,7 +94,7 @@ export function ProviderPanel({ kind, provider, onSaved }: { kind: 'mail' | 'sms
               <Input value={f.fromName ?? ''} onChange={(v) => set('fromName', v)} />
             </Field>
             <Field label={tt('Absender-E-Mail (beim Anbieter bestätigt)')}>
-              <Input value={f.fromEmail ?? ''} onChange={(v) => set('fromEmail', v)} placeholder="info@deine-domain.de" />
+              <Input value={f.fromEmail ?? ''} onChange={(v) => set('fromEmail', v)} placeholder={tt('info@deine-domain.de')} />
             </Field>
             <Field label={tt('Antwort an (optional)')}>
               <Input value={f.replyTo ?? ''} onChange={(v) => set('replyTo', v)} />
@@ -103,7 +103,7 @@ export function ProviderPanel({ kind, provider, onSaved }: { kind: 'mail' | 'sms
         )}
       </div>
       {d.webhook_url ? (
-        <Field label={kind === 'mail' ? (d.inbound ? tt('Webhook für Zustell-Meldungen und eingehende Mails') : tt('Webhook für Zustell-Meldungen')) : tt('Webhook für Zustellberichte und eingehende SMS')} hint={<>{tt('{v} Prüfung: {signed}.', { v: WEBHOOK_HINT[provider], signed: d.signed })}</>}>
+        <Field label={kind === 'mail' ? (d.inbound ? tt('Webhook für Zustell-Meldungen und eingehende Mails') : tt('Webhook für Zustell-Meldungen')) : tt('Webhook für Zustellberichte und eingehende SMS')} hint={<>{tt('{v} Prüfung: {signed}.', { v: tt(WEBHOOK_HINT[provider] ?? ''), signed: d.signed })}</>}>
           <CodeBox text={d.webhook_url} />
         </Field>
       ) : (

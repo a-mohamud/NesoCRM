@@ -15,6 +15,7 @@ import { useT } from '../i18n';
 
 type Json = Record<string, any>;
 
+const AUTH_HEADER = 'Authorization'; // i18n-ignore (HTTP header name)
 const AUTH: Record<string, [string, 'green' | 'blue' | 'purple' | 'gray']> = {
   none: ['ohne Anmeldung', 'gray'],
   bearer: ['Token', 'blue'],
@@ -33,7 +34,7 @@ function useMcpReturn(open: (id: string) => void) {
     const st = q.get('mcp');
     if (!st) return;
     if (st === 'ok') toast(tt('MCP-Server verbunden'));
-    else toastError(q.get('msg') || 'Verbinden fehlgeschlagen');
+    else toastError(q.get('msg') || tt('Verbinden fehlgeschlagen'));
     history.replaceState(null, '', location.pathname);
     const sid = q.get('server');
     if (sid) open(sid);
@@ -82,8 +83,8 @@ export function McpServers({ agency = false }: { agency?: boolean }) {
                     {tt('{url_hint} · {enabled_count}/{tools_count} Werkzeuge frei', { url_hint: s.url_hint, enabled_count: s.enabled_count, tools_count: s.tools_count })}{s.expose_mcp ? tt(' · über /mcp') : ''}
                   </span>
                 </div>
-                <Badge tone={AUTH[s.auth]?.[1] ?? 'gray'}>{AUTH[s.auth]?.[0] ?? s.auth}</Badge>
-                {s.connection.needed && !s.connection.connected ? <Badge tone="yellow">{tt('nicht verbunden')}</Badge> : s.status === 'error' ? <Badge tone="red">{tt('Fehler')}</Badge> : s.changed.length ? <Badge tone="yellow">{tt('geändert')}</Badge> : s.status === 'ok' ? <Badge tone="green">OK</Badge> : <Badge>neu</Badge>}
+                <Badge tone={AUTH[s.auth]?.[1] ?? 'gray'}>{tt(AUTH[s.auth]?.[0] ?? s.auth)}</Badge>
+                {s.connection.needed && !s.connection.connected ? <Badge tone="yellow">{tt('nicht verbunden')}</Badge> : s.status === 'error' ? <Badge tone="red">{tt('Fehler')}</Badge> : s.changed.length ? <Badge tone="yellow">{tt('geändert')}</Badge> : s.status === 'ok' ? <Badge tone="green">OK</Badge> : <Badge>{tt('neu')}</Badge>}
                 <button className="btn small secondary" onClick={() => setOpenId(s.id)}>
                   {tt('Öffnen')}
                 </button>
@@ -105,7 +106,7 @@ export function McpServers({ agency = false }: { agency?: boolean }) {
               <div className="cx-tk-title">
                 <strong>{p.name}</strong>
                 <span className="small">
-                  <Badge tone={AUTH[p.auth][1]}>{AUTH[p.auth][0]}</Badge> {p.alt_auth && <span className="muted">oder {AUTH[p.alt_auth][0]}</span>} {p.license && <Badge>{p.license}</Badge>}
+                  <Badge tone={AUTH[p.auth][1]}>{tt(AUTH[p.auth][0])}</Badge> {p.alt_auth && <span className="muted">{tt('oder {auth}', { auth: tt(AUTH[p.alt_auth][0]) })}</span>} {p.license && <Badge>{p.license}</Badge>}
                 </span>
               </div>
               <p className="cx-tk-desc small">{clip(p.note, 170)}</p>
@@ -116,7 +117,7 @@ export function McpServers({ agency = false }: { agency?: boolean }) {
                   </a>{' '}
                   {p.signup && <SignupLink id={p.signup} />}
                 </span>
-                <button className="btn small" onClick={() => setForm({ name: p.name.replace(/ \(.*\)$/, ''), url: p.url, auth: p.auth, transport: p.transport, header_name: p.header_name ?? 'Authorization', preset: p.id, token_hint: p.token_hint, expose_agent: true, expose_mcp: false, token_scope: 'server', share: ['*'], allow_private: false, self_hosted: p.self_hosted })}>
+                <button className="btn small" onClick={() => setForm({ name: p.name.replace(/ \(.*\)$/, ''), url: p.url, auth: p.auth, transport: p.transport, header_name: p.header_name ?? AUTH_HEADER, preset: p.id, token_hint: p.token_hint, expose_agent: true, expose_mcp: false, token_scope: 'server', share: ['*'], allow_private: false, self_hosted: p.self_hosted })}>
                   {tt('Hinzufügen')}
                 </button>
               </div>
@@ -162,7 +163,7 @@ function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl
     const body: Json = { name: f.name, url: f.url_new ?? f.url, transport: f.transport, auth: f.auth, expose_agent: !!f.expose_agent, expose_mcp: !!f.expose_mcp, preset: f.preset ?? '' };
     if (editing && !f.url_new) delete body.url;
     if (f.auth === 'bearer') {
-      body.header_name = f.header_name || 'Authorization';
+      body.header_name = f.header_name || AUTH_HEADER;
       if (f.secret) body.secret = f.secret;
     }
     if (f.auth === 'oauth') {
@@ -178,13 +179,13 @@ function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl
   };
   const scopes: [string, string][] = agency
     ? [
-        ['server', 'Ein Zugang für alle (die Agentur verbindet)'],
-        ['location', 'Je Sub-Account (jeder Sub-Account verbindet selbst)'],
-        ['user', 'Je Nutzer (nicht in Workflows)'],
+        ['server', tt('Ein Zugang für alle (die Agentur verbindet)')],
+        ['location', tt('Je Sub-Account (jeder Sub-Account verbindet selbst)')],
+        ['user', tt('Je Nutzer (nicht in Workflows)')],
       ]
     : [
-        ['server', 'Ein Zugang für diesen Sub-Account'],
-        ['user', 'Je Nutzer (nicht in Workflows)'],
+        ['server', tt('Ein Zugang für diesen Sub-Account')],
+        ['user', tt('Je Nutzer (nicht in Workflows)')],
       ];
   return (
     <Modal
@@ -207,12 +208,12 @@ function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl
         <div className="row">
           <div className="grow">
             <Field label={tt('Anmeldung')}>
-              <Select value={f.auth} onChange={(v) => set({ auth: v })} options={[['none', 'Ohne Anmeldung'], ['bearer', 'Token / API-Schlüssel'], ['oauth', 'OAuth 2.1 („Verbinden“)']]} />
+              <Select value={f.auth} onChange={(v) => set({ auth: v })} options={[['none', tt('Ohne Anmeldung')], ['bearer', tt('Token / API-Schlüssel')], ['oauth', tt('OAuth 2.1 („Verbinden“)')]]} />
             </Field>
           </div>
           <div className="grow">
             <Field label={tt('Transport')}>
-              <Select value={f.transport} onChange={(v) => set({ transport: v })} options={[['auto', 'Automatisch (HTTP, sonst SSE)'], ['http', 'Streamable HTTP'], ['sse', 'SSE (alt)']]} />
+              <Select value={f.transport} onChange={(v) => set({ transport: v })} options={[['auto', tt('Automatisch (HTTP, sonst SSE)')], ['http', tt('Streamable HTTP')], ['sse', tt('SSE (alt)')]]} />
             </Field>
           </div>
         </div>
@@ -220,7 +221,7 @@ function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl
           <div className="row">
             <div style={{ width: 200 }}>
               <Field label={tt('Header')}>
-                <Input value={f.header_name ?? 'Authorization'} onChange={(v) => set({ header_name: v })} />
+                <Input value={f.header_name ?? AUTH_HEADER} onChange={(v) => set({ header_name: v })} />
               </Field>
             </div>
             <div className="grow">
@@ -248,7 +249,7 @@ function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl
               </div>
               <div className="grow">
                 <Field label={tt('Client-Secret')}>
-                  <Input type="password" value={f.oauth_client_secret} onChange={(v) => set({ oauth_client_secret: v })} autoComplete="off" placeholder={f.oauth?.client?.secret_set ? 'gespeichert' : ''} />
+                  <Input type="password" value={f.oauth_client_secret} onChange={(v) => set({ oauth_client_secret: v })} autoComplete="off" placeholder={f.oauth?.client?.secret_set ? tt('gespeichert') : ''} />
                 </Field>
               </div>
             </div>
@@ -268,7 +269,7 @@ function ServerForm({ agency, base, initial, canInternal, locations, callbackUrl
         )}
         <Check checked={!!f.expose_agent} onChange={(v) => set({ expose_agent: v })} label={tt('Freigegebene Werkzeuge im KI-Agenten anbieten')} />
         <Check checked={!!f.expose_mcp} onChange={(v) => set({ expose_mcp: v })} label={tt('Über HyperLevels /mcp an Claude, Codex & Co. weitergeben (als ext_…)')} />
-        {canInternal && <Check checked={!!f.allow_private} onChange={(v) => set({ allow_private: v })} label={`Internes Netz erlauben (Server im LAN/Docker-Netz${f.self_hosted ? tt(' – bei selbst gehosteten Servern üblich') : ''}) – nur die Agentur`} />}
+        {canInternal && <Check checked={!!f.allow_private} onChange={(v) => set({ allow_private: v })} label={tt('Internes Netz erlauben (Server im LAN/Docker-Netz{note}) – nur die Agentur', { note: f.self_hosted ? tt(' – bei selbst gehosteten Servern üblich') : '' })} />}
       </div>
     </Modal>
   );
@@ -304,13 +305,13 @@ function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; 
     <Modal title={v.name} onClose={onClose} wide>
       <div data-tour="mcp-detail">
         <p className="small">
-          <code>{v.url_hint}</code> · <Badge tone={AUTH[v.auth]?.[1] ?? 'gray'}>{AUTH[v.auth]?.[0]}</Badge> {v.scope === 'agency' && <Badge tone="purple">{tt('Agentur-Server')}</Badge>} {v.allow_private && <Badge tone="yellow">{tt('internes Netz')}</Badge>}
+          <code>{v.url_hint}</code> · <Badge tone={AUTH[v.auth]?.[1] ?? 'gray'}>{tt(AUTH[v.auth]?.[0] ?? v.auth)}</Badge> {v.scope === 'agency' && <Badge tone="purple">{tt('Agentur-Server')}</Badge>} {v.allow_private && <Badge tone="yellow">{tt('internes Netz')}</Badge>}
           {v.server_info?.name ? ` · ${v.server_info.name} ${v.server_info.version ?? ''} (${v.server_info.transport ?? ''}${v.server_info.protocol ? `, ${v.server_info.protocol}` : ''})` : ''}
         </p>
         {v.last_error && <p className="small" style={{ color: 'var(--red)' }}>{v.last_error}</p>}
         {v.auth === 'oauth' && (
           <p className="small">
-            {conn.connected ? <Badge tone="green">verbunden</Badge> : <Badge tone="yellow">{tt('nicht verbunden')}</Badge>}{' '}
+            {conn.connected ? <Badge tone="green">{tt('verbunden')}</Badge> : <Badge tone="yellow">{tt('nicht verbunden')}</Badge>}{' '}
             {conn.per === 'location' ? tt('Jeder Sub-Account verbindet selbst.') : conn.per === 'user' ? tt('Jeder Nutzer verbindet sein eigenes Konto (nicht in Workflows).') : tt('Ein Zugang für alle.')}
             {conn.expires_at ? tt(' Token bis {dt} (wird automatisch erneuert).', { dt: dt(conn.expires_at) }) : ''}
           </p>
@@ -330,7 +331,7 @@ function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; 
             </button>
           )}
           {ownOAuth && conn.connected && (
-            <button className="btn small ghost" onClick={async () => (await run('disc', () => api.del(`${base}/${id}/oauth`), 'Getrennt')) && s.reload()}>
+            <button className="btn small ghost" onClick={async () => (await run('disc', () => api.del(`${base}/${id}/oauth`), tt('Getrennt'))) && s.reload()}>
               {tt('Trennen')}
             </button>
           )}
@@ -392,7 +393,7 @@ function ServerDetail({ agency, base, id, onClose, onEdit }: { agency: boolean; 
             <button className="btn small" disabled={!v.tools.length} onClick={async () => (await act(() => api.put(`${base}/${id}/tools`, { enabled }), tt('Freigaben gespeichert'))) && s.reload()}>
               {tt('Freigaben speichern')}
             </button>
-            <button className="btn small ghost" onClick={async () => (await run('reload', () => api.get(`${base}/${id}/tools?refresh=1`), 'Werkzeuge neu geladen')) && s.reload()}>
+            <button className="btn small ghost" onClick={async () => (await run('reload', () => api.get(`${base}/${id}/tools?refresh=1`), tt('Werkzeuge neu geladen'))) && s.reload()}>
               <Icon name="refresh" size={13} /> {tt('Neu laden')}
             </button>
             <button className="btn small ghost" onClick={() => setEnabled(v.tools.filter((t: Json) => t.annotations?.readOnlyHint).map((t: Json) => t.name))}>
@@ -485,7 +486,7 @@ export function McpToolStep({ step, set, customFields }: { step: Json; set: (p: 
   const tt = useT('x_integrations');
   const data = useLoad(() => api.get<{ servers: Json[] }>('/api/mcp-servers/tools').catch(() => ({ servers: [] as Json[] })), []);
   const map: { from: string; to: string }[] = step.map ?? [];
-  const targets: [string, string][] = [...CONTACT_TARGETS, ...customFields.map((f) => [`custom.${f.key}`, `Feld: ${f.label}`] as [string, string])];
+  const targets: [string, string][] = [...CONTACT_TARGETS.map(([k, l]) => [k, tt(l)] as [string, string]), ...customFields.map((f) => [`custom.${f.key}`, tt('Feld: {label}', { label: f.label })] as [string, string])];
   if (!data.data) return <Spinner />;
   const servers = data.data.servers;
   if (!servers.length && !step.server_id)

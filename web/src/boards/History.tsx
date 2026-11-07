@@ -43,11 +43,11 @@ export function History({ board, catalogue, canEdit, onRestore, onClose }: { boa
               <div className="bd-hist-row">
                 <span className="bd-hist-n">v{v.n}</span>
                 <div className="bd-hist-main">
-                  <b>{v.summary || KIND[v.kind] || v.kind}</b>
+                  <b>{v.summary || (KIND[v.kind] ? tt(KIND[v.kind]) : v.kind)}</b>
                   {v.prompt && <q>{v.prompt}</q>}
                   <span className="muted small">
-                    {KIND[v.kind] ?? v.kind} · {v.actor}
-                    {VIA[v.via] && v.via !== 'session' ? ` (${VIA[v.via]})` : ''} · <span title={dt(v.at)}>{ago(v.at)}</span> {tt('· {widgets} Widgets', { widgets: v.widgets })}
+                    {KIND[v.kind] ? tt(KIND[v.kind]) : v.kind} · {v.actor}
+                    {VIA[v.via] && v.via !== 'session' ? ` (${tt(VIA[v.via])})` : ''} · <span title={dt(v.at)}>{ago(v.at)}</span> {tt('· {widgets} Widgets', { widgets: v.widgets })}
                   </span>
                 </div>
                 <span className="bd-hist-tools">

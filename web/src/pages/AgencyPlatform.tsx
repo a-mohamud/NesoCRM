@@ -25,7 +25,7 @@ export function ApiAndMcp() {
             <Input value={name} onChange={setName} />
           </Field>
           <Field label={tt('Rechte')}>
-            <Select value={scope} onChange={setScope} options={[['write', 'Lesen & schreiben'], ['read', 'Nur lesen']]} />
+            <Select value={scope} onChange={setScope} options={[['write', tt('Lesen & schreiben')], ['read', tt('Nur lesen')]]} />
           </Field>
         </div>
         <button
@@ -45,9 +45,9 @@ export function ApiAndMcp() {
               {keys.data.map((k) => (
                 <tr key={k.id}>
                   <td>
-                    <strong>{k.name}</strong> <Badge tone={k.scope === 'read' ? 'gray' : 'purple'}>{k.scope === 'read' ? 'lesen' : 'schreiben'}</Badge>
+                    <strong>{k.name}</strong> <Badge tone={k.scope === 'read' ? 'gray' : 'purple'}>{k.scope === 'read' ? tt('lesen') : tt('schreiben')}</Badge>
                     <div className="muted small">
-                      {tt('{prefix}… · zuletzt', { prefix: k.prefix })} {k.last_used_at ? dt(k.last_used_at) : 'nie'}
+                      {tt('{prefix}… · zuletzt', { prefix: k.prefix })} {k.last_used_at ? dt(k.last_used_at) : tt('nie')}
                     </div>
                   </td>
                   <td className="actions">
@@ -103,7 +103,7 @@ export function AuditLog() {
     <>
       <div className="row" style={{ marginBottom: 12, maxWidth: 640 }} data-tour="audit-filter">
         <Input value={q} onChange={setQ} placeholder={tt('Suchen (Aktion, Person, Text)…')} />
-        <Select value={via} onChange={setVia} placeholder={tt('Alle Wege')} options={Object.entries(VIA).map(([k, [l]]) => [k, l])} />
+        <Select value={via} onChange={setVia} placeholder={tt('Alle Wege')} options={Object.entries(VIA).map(([k, [l]]) => [k, tt(l)])} />
       </div>
       {!log.data ? (
         <Spinner />
@@ -135,7 +135,7 @@ export function AuditLog() {
                   </td>
                   <td className="small">{e.location ?? '–'}</td>
                   <td>
-                    <Badge tone={VIA[e.via]?.[1]}>{VIA[e.via]?.[0] ?? e.via}</Badge>
+                    <Badge tone={VIA[e.via]?.[1]}>{VIA[e.via] ? tt(VIA[e.via][0]) : e.via}</Badge>
                   </td>
                 </tr>
               ))}
@@ -292,7 +292,7 @@ export function MailAccounts() {
           <Field label={tt('Regeln (erste passende gewinnt)')}>
             {edit.rules.map((r: any, i: number) => (
               <div key={i} className="list-row" style={{ gridTemplateColumns: '160px minmax(0,1fr) minmax(0,1fr) auto' }}>
-                <Select value={r.field} onChange={(v) => setEdit({ ...edit, rules: edit.rules.map((x: any, j: number) => (j === i ? { ...x, field: v } : x)) })} options={RULE_FIELDS} />
+                <Select value={r.field} onChange={(v) => setEdit({ ...edit, rules: edit.rules.map((x: any, j: number) => (j === i ? { ...x, field: v } : x)) })} options={RULE_FIELDS.map(([k, l]) => [k, tt(l)] as [string, string])} />
                 <Input value={r.value} onChange={(v) => setEdit({ ...edit, rules: edit.rules.map((x: any, j: number) => (j === i ? { ...x, value: v } : x)) })} placeholder={tt('z. B. partner-firma.de')} />
                 <Select value={r.location_id} onChange={(v) => setEdit({ ...edit, rules: edit.rules.map((x: any, j: number) => (j === i ? { ...x, location_id: v } : x)) })} placeholder={tt('→ Projekt')} options={options} />
                 <button className="btn small ghost" aria-label={tt('Regel entfernen')} onClick={() => setEdit({ ...edit, rules: edit.rules.filter((_: any, j: number) => j !== i) })}>

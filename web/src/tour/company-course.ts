@@ -16,13 +16,13 @@ export const lessonHeading = (n: number, title: string) => `Lektion ${n}: ${titl
 export function companyCourseMarkdown(brand = 'HyperLevel'): string {
   const minutes = COMPANY_TOURS.reduce((s, t) => s + t.minutes, 0);
   const out: string[] = [
-    `# Kurs: Deine Firma mit ${brand} führen`,
+    `# Kurs: Deine Firma mit ${brand} führen`, // i18n-ignore – generates docs/kurs-firma-fuehren.md (German), not shown in the app
     '',
-    `${COMPANY_TOURS.length} Lektionen für Gründerinnen und Gründer, die ihre eigene Firma mit ${brand} führen – zusammen etwa ${Math.round(minutes / 60)} Stunden. Jede Lektion endet mit einer **10-Minuten-Aufgabe** in der echten App. In ${brand} findest du den Kurs unter *Akademie → Kurs: Deine Firma führen*; dort markiert die Tour jede Stelle und wartet, bis du sie ausprobiert hast.`,
+    `${COMPANY_TOURS.length} Lektionen für Gründerinnen und Gründer, die ihre eigene Firma mit ${brand} führen – zusammen etwa ${Math.round(minutes / 60)} Stunden. Jede Lektion endet mit einer **10-Minuten-Aufgabe** in der echten App. In ${brand} findest du den Kurs unter *Akademie → Kurs: Deine Firma führen*; dort markiert die Tour jede Stelle und wartet, bis du sie ausprobiert hast.`, // i18n-ignore – generates docs/kurs-firma-fuehren.md (German), not shown in the app
     '',
-    `> Am besten arbeitest du in deinem eigenen HQ-Sub-Account mit der Vorlage **„Software- & SaaS-Firma (HQ)“** (*Agentur → Snapshots → Vorlagen*). Das Betriebs-Handbuch für die Zeit danach – Routinen, Kennzahlen, wann einstellen, wann automatisieren – ist das [Company-Playbook](company-playbook.md).`,
+    `> Am besten arbeitest du in deinem eigenen HQ-Sub-Account mit der Vorlage **„Software- & SaaS-Firma (HQ)“** (*Agentur → Snapshots → Vorlagen*). Das Betriebs-Handbuch für die Zeit danach – Routinen, Kennzahlen, wann einstellen, wann automatisieren – ist das [Company-Playbook](company-playbook.md).`, // i18n-ignore – generates docs/kurs-firma-fuehren.md (German), not shown in the app
     '',
-    '> **Hinweis:** Dieser Kurs ersetzt keine Beratung. Steuerfragen gehören zur Steuerberaterin oder zum Steuerberater, Rechtsfragen zur Anwältin oder zum Anwalt.',
+    '> **Hinweis:** Dieser Kurs ersetzt keine Beratung. Steuerfragen gehören zur Steuerberaterin oder zum Steuerberater, Rechtsfragen zur Anwältin oder zum Anwalt.', // i18n-ignore – generates docs/kurs-firma-fuehren.md (German), not shown in the app
     '',
     '**Inhalt**',
     '',
@@ -32,7 +32,7 @@ export function companyCourseMarkdown(brand = 'HyperLevel'): string {
     '',
   ];
   for (const t of COMPANY_TOURS) {
-    out.push(`## ${lessonHeading(t.chapter!, plain(t.title, brand))}`, '', `${plain(t.summary, brand)} *(ca. ${t.minutes} Minuten${t.admin ? ', nur für die Agentur' : ''})*`, '');
+    out.push(`## ${lessonHeading(t.chapter!, plain(t.title, brand))}`, '', `${plain(t.summary, brand)} *(ca. ${t.minutes} Minuten${t.admin ? ', nur für die Agentur' : ''})*`, ''); // i18n-ignore – generates docs/kurs-firma-fuehren.md (German), not shown in the app
     let place = '';
     t.steps.forEach((s, i) => {
       const here = s.route ? placeLabel(s.route) : '';
@@ -41,9 +41,9 @@ export function companyCourseMarkdown(brand = 'HyperLevel'): string {
       const extra = s.do ? ` – *So geht's:* ${plain(s.do, brand)}` : '';
       out.push(`${i + 1}. **${plain(s.title, brand)}**${where} – ${plain(s.text, brand)}${extra}`);
     });
-    out.push('', '**Das hast du gelernt:**', '');
+    out.push('', '**Das hast du gelernt:**', ''); // i18n-ignore – generates docs/kurs-firma-fuehren.md (German), not shown in the app
     for (const l of t.learned) out.push(`- ${plain(l, brand)}`);
-    if (t.docs) out.push('', `Mehr dazu: [${t.docs.label}](${t.docs.file}.md${t.docs.anchor ? `#${t.docs.anchor}` : ''})`);
+    if (t.docs) out.push('', `Mehr dazu: [${t.docs.label}](${t.docs.file}.md${t.docs.anchor ? `#${t.docs.anchor}` : ''})`); // i18n-ignore – generates docs/kurs-firma-fuehren.md (German), not shown in the app
     out.push('', '---', '');
   }
   return out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\n---\n*$/, '\n').trim() + '\n';

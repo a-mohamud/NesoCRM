@@ -136,13 +136,13 @@ export function Recycling({ job }: { job: any }) {
         {d.ai && <AiHint text={d.ai} />}
         <div className="vr-kinds">
           {d.kinds.map((k) => (
-            <label key={k.key} className={`vr-kind${k.available ? '' : ' off'}${chosen.includes(k.key) ? ' on' : ''}`} title={k.reason || undefined}>
+            <label key={k.key} className={`vr-kind${k.available ? '' : ' off'}${chosen.includes(k.key) ? ' on' : ''}`} title={k.reason ? tt(k.reason) : undefined}>
               <input type="checkbox" disabled={!k.available} checked={chosen.includes(k.key)} onChange={(e) => toggle(k.key, e.target.checked)} />
               <Icon name={ICON[k.key] ?? 'sparkles'} />
               <span>
-                {k.label}
+                {tt(k.label)}
                 {done.has(k.key) && k.available && <small className="muted">{tt('schon erzeugt')}</small>}
-                {!k.available && <small className="muted">{k.reason}</small>}
+                {!k.available && <small className="muted">{tt(k.reason)}</small>}
               </span>
             </label>
           ))}
@@ -179,7 +179,7 @@ function RecycleItem({ item, data, focus, onEdit, onChange, onRegenerate }: { it
     onRegenerate();
   };
   const del = async () => {
-    if (confirmAsk(tt('„{label}“ aus dem Recycling entfernen? Bereits Übernommenes bleibt bestehen.', { label: item.label })) && (await act(() => api.del(`/api/video-studio/recycle/${item.id}`), tt('Entfernt')))) onChange();
+    if (confirmAsk(tt('„{label}“ aus dem Recycling entfernen? Bereits Übernommenes bleibt bestehen.', { label: tt(item.label) })) && (await act(() => api.del(`/api/video-studio/recycle/${item.id}`), tt('Entfernt')))) onChange();
   };
   return (
     <div className={`card vr-item${focus ? ' focus' : ''}`} id={`item-${item.id}`}>
@@ -188,14 +188,14 @@ function RecycleItem({ item, data, focus, onEdit, onChange, onRegenerate }: { it
           <Icon name={ICON[item.kind] ?? 'sparkles'} />
         </span>
         <div className="vr-item-title">
-          <strong>{item.label}</strong>
+          <strong>{tt(item.label)}</strong>
           <span className="muted small">
             {ago(item.updated_at)}
             {item.origin && item.origin !== 'manuell' ? tt(' · über {origin}', { origin: item.origin }) : ''}
             {item.edited ? tt(' · bearbeitet') : ''}
           </span>
         </div>
-        <Badge tone={tone}>{label}</Badge>
+        <Badge tone={tone}>{tt(label)}</Badge>
       </div>
       {busy ? (
         <div className="vr-busy">
@@ -264,12 +264,12 @@ function Apply({ item, data, onDone }: { item: Item; data: RecycleData; onDone: 
   const [busy, setBusy] = useState(false);
   const [more, setMore] = useState(false);
   const go = async (body: Record<string, unknown>, ask?: string) => {
-    if (ask && !confirmAsk(ask)) return;
+    if (ask && !confirmAsk(tt(ask))) return;
     setBusy(true);
     const r = await act(() => api.post<Item>(`/api/video-studio/recycle/${item.id}/apply`, body));
     setBusy(false);
     if (r) {
-      toast(r.applied_label ?? tt('Übernommen'));
+      toast(tt(r.applied_label ?? 'Übernommen'));
       setMore(false);
       onDone();
     }
@@ -277,7 +277,7 @@ function Apply({ item, data, onDone }: { item: Item; data: RecycleData; onDone: 
   const again = item.status === 'applied';
   const btn = (text: string, onClick: () => void, disabled = false) => (
     <button className={`btn small${again ? ' secondary' : ''}`} disabled={busy || disabled} onClick={onClick}>
-      <Icon name="ok" /> {again ? tt('{text} (nochmal)', { text: text }) : text}
+      <Icon name="ok" /> {again ? tt('{text} (nochmal)', { text: tt(text) }) : tt(text)}
     </button>
   );
   let body: React.ReactNode = null;
@@ -286,7 +286,7 @@ function Apply({ item, data, onDone }: { item: Item; data: RecycleData; onDone: 
       body = t.funnels.length ? (
         <div className="vs-inline">
           <Select value={funnel} onChange={setFunnel} options={t.funnels.map((f) => [f.id, f.name] as [string, string])} />
-          <Select value={embed} onChange={setEmbed} options={[['auto', data.youtube ? 'YouTube-Video einbetten' : 'Besten Clip einbetten'], ...(data.youtube ? [['clip', 'Besten Clip einbetten'] as [string, string]] : []), ['none', 'Ohne Video']]} />
+          <Select value={embed} onChange={setEmbed} options={[['auto', data.youtube ? tt('YouTube-Video einbetten') : tt('Besten Clip einbetten')], ...(data.youtube ? [['clip', tt('Besten Clip einbetten')] as [string, string]] : []), ['none', tt('Ohne Video')]]} />
           {btn('Als Blog-Entwurf anlegen', () => go({ funnel_id: funnel, embed }), !funnel)}
         </div>
       ) : (
@@ -351,7 +351,7 @@ function Apply({ item, data, onDone }: { item: Item; data: RecycleData; onDone: 
     <div className="vr-apply">
       {again && (
         <p className="vr-done">
-          <Icon name="ok" /> {item.applied_label} · {ago(item.applied_at)}
+          <Icon name="ok" /> {item.applied_label ? tt(item.applied_label) : null} · {ago(item.applied_at)}
           {item.applied_url && <Link to={item.applied_url}>{tt('Öffnen')}</Link>}
           {!more && (
             <button type="button" className="btn small ghost vr-again" onClick={() => setMore(true)}>
@@ -381,22 +381,22 @@ function EditItem({ item, onClose, onSaved }: { item: Item; onClose: () => void;
   const [c, setC] = useState<any>(() => ({ ...item.content }));
   const set = (patch: any) => setC((x: any) => ({ ...x, ...patch }));
   const text = (key: string, label: string, rows = 0, hint?: string) => (
-    <Field label={label} hint={hint ?? (rows ? tt('{length} Zeichen', { length: String(c[key] ?? '').length }) : undefined)}>
+    <Field label={tt(label)} hint={hint ?? (rows ? tt('{length} Zeichen', { length: String(c[key] ?? '').length }) : undefined)}>
       {rows ? <Textarea value={c[key]} onChange={(v) => set({ [key]: v })} rows={rows} /> : <Input value={c[key]} onChange={(v) => set({ [key]: v })} />}
     </Field>
   );
   const listField = (key: string, label: string, rows = 4, hint = 'eine Zeile je Eintrag') => (
-    <Field label={label} hint={hint}>
+    <Field label={tt(label)} hint={tt(hint)}>
       <Textarea value={c[`_${key}`] ?? lines(c[key])} onChange={(v) => set({ [`_${key}`]: v, [key]: toLines(v) })} rows={rows} />
     </Field>
   );
   const chapters = (label = 'Kapitel') => (
-    <Field label={label} hint={tt('je Zeile „00:00 Titel“ – das erste Kapitel beginnt bei 00:00')}>
+    <Field label={tt(label)} hint={tt('je Zeile „00:00 Titel“ – das erste Kapitel beginnt bei 00:00')}>
       <Textarea value={c._chapters ?? chapterLines(c.chapters)} onChange={(v) => set({ _chapters: v, chapters: toChapters(v) })} rows={6} />
     </Field>
   );
   const tags = (key = 'hashtags', label = 'Hashtags') => (
-    <Field label={label} hint={tt('mit Leerzeichen trennen')}>
+    <Field label={tt(label)} hint={tt('mit Leerzeichen trennen')}>
       <Input value={c[`_${key}`] ?? (c[key] ?? []).join(' ')} onChange={(v) => set({ [`_${key}`]: v, [key]: v.split(/[\s,]+/).filter(Boolean) })} />
     </Field>
   );
@@ -441,7 +441,7 @@ function EditItem({ item, onClose, onSaved }: { item: Item; onClose: () => void;
       break;
     case 'linkedin':
     case 'facebook':
-      form = text('text', 'Text', 14, `${String(c.text ?? '').length} / ${item.kind === 'linkedin' ? 3000 : 5000} Zeichen`);
+      form = text('text', 'Text', 14, tt('{n} / {max} Zeichen', { n: String(c.text ?? '').length, max: item.kind === 'linkedin' ? 3000 : 5000 }));
       break;
     case 'x_thread':
       form = (
@@ -465,7 +465,7 @@ function EditItem({ item, onClose, onSaved }: { item: Item; onClose: () => void;
     case 'instagram':
       form = (
         <>
-          {text('caption', 'Caption', 10, `${String(c.caption ?? '').length} / 2200 Zeichen inkl. Hashtags`)}
+          {text('caption', 'Caption', 10, tt('{n} / 2200 Zeichen inkl. Hashtags', { n: String(c.caption ?? '').length }))}
           {tags()}
         </>
       );
@@ -514,7 +514,7 @@ function EditItem({ item, onClose, onSaved }: { item: Item; onClose: () => void;
   };
   return (
     <Modal
-      title={tt('{label} bearbeiten', { label: item.label })}
+      title={tt('{label} bearbeiten', { label: tt(item.label) })}
       wide
       onClose={onClose}
       footer={
@@ -640,7 +640,7 @@ export function Autopilot({ publicBase, layouts, subtitles }: { publicBase: bool
         <h3>{tt('Quellen')}</h3>
         {feeds.map((f, i) => (
           <div className="vr-feed" key={f.id ?? i}>
-            <Select value={f.type} onChange={(v) => setFeed(i, { type: v })} options={[['youtube', 'YouTube-Kanal'], ['podcast', 'Podcast (RSS)']]} />
+            <Select value={f.type} onChange={(v) => setFeed(i, { type: v })} options={[['youtube', tt('YouTube-Kanal')], ['podcast', tt('Podcast (RSS)')]]} />
             <Input value={f.url} onChange={(v) => setFeed(i, { url: v })} placeholder={f.type === 'podcast' ? 'https://…/feed.xml' : tt('Kanal-ID UC… oder https://www.youtube.com/channel/UC…')} />
             <Input value={f.label} onChange={(v) => setFeed(i, { label: v })} placeholder="Name" />
             <button type="button" className="btn small ghost" aria-label={tt('Quelle entfernen')} onClick={() => set({ feeds: feeds.filter((_, j) => j !== i) })}>
@@ -663,7 +663,7 @@ export function Autopilot({ publicBase, layouts, subtitles }: { publicBase: bool
             <input type="radio" name="ap-mode" checked={s.mode !== 'auto'} onChange={() => setMode('approve')} />
             <span>
               <span className="vr-mode-title">
-                <strong>{tt('Entwürfe zur Freigabe')}</strong> <Badge tone="green">empfohlen</Badge>
+                <strong>{tt('Entwürfe zur Freigabe')}</strong> <Badge tone="green">{tt('empfohlen')}</Badge>
               </span>
               <small className="muted">{tt('Alles landet als Entwurf im Social Planner; ihr gebt es in Postiz frei.')}</small>
             </span>
@@ -680,7 +680,7 @@ export function Autopilot({ publicBase, layouts, subtitles }: { publicBase: bool
         <h3>{tt('Clips')}</h3>
         <div className="grid2">
           <Field label={tt('Beste Clips je Video')}>
-            <Select value={String(s.top_n)} onChange={(v) => set({ top_n: Number(v) })} options={Array.from({ length: 11 }, (_, i) => [String(i), i === 0 ? 'keine' : String(i)] as [string, string])} />
+            <Select value={String(s.top_n)} onChange={(v) => set({ top_n: Number(v) })} options={Array.from({ length: 11 }, (_, i) => [String(i), i === 0 ? tt('keine') : String(i)] as [string, string])} />
           </Field>
           <Field label={tt('Höchstens Videos pro Tag')}>
             <Select value={String(s.max_per_day)} onChange={(v) => set({ max_per_day: Number(v) })} options={['1', '2', '3', '5', '10']} />
@@ -704,7 +704,7 @@ export function Autopilot({ publicBase, layouts, subtitles }: { publicBase: bool
               const on = (s.days ?? []).includes(k);
               return (
                 <button key={k} type="button" className={`social-chip pick${on ? ' on' : ''}`} onClick={() => toggle('days', k, !on)}>
-                  {l}
+                  {tt(l)}
                 </button>
               );
             })}
@@ -733,10 +733,10 @@ export function Autopilot({ publicBase, layouts, subtitles }: { publicBase: bool
           {kinds.map((k) => {
             const on = (s.recycle ?? []).includes(k.key);
             return (
-              <label key={k.key} className={`vr-kind${k.available ? '' : ' off'}${on ? ' on' : ''}`} title={k.reason || undefined}>
+              <label key={k.key} className={`vr-kind${k.available ? '' : ' off'}${on ? ' on' : ''}`} title={k.reason ? tt(k.reason) : undefined}>
                 <input type="checkbox" disabled={!k.available} checked={on} onChange={(e) => toggle('recycle', k.key, e.target.checked)} />
                 <Icon name={ICON[k.key] ?? 'sparkles'} />
-                <span>{k.label}</span>
+                <span>{tt(k.label)}</span>
               </label>
             );
           })}
@@ -814,7 +814,7 @@ export function RecycleStep({ step, set }: { step: any; set: (patch: any) => voi
             <label key={k} className={`vr-kind${kinds.includes(k) ? ' on' : ''}`}>
               <input type="checkbox" checked={kinds.includes(k)} onChange={(e) => set({ kinds: e.target.checked ? [...kinds, k] : kinds.filter((x) => x !== k) })} />
               <Icon name={icon} />
-              <span>{l}</span>
+              <span>{tt(l)}</span>
             </label>
           ))}
         </div>

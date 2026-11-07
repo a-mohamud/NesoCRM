@@ -143,7 +143,7 @@ export function InvoiceSettings() {
         <Check checked={!!s.attach_xrechnung} onChange={(v) => set({ attach_xrechnung: v })} label={tt('XRechnung (XML) zusätzlich anhängen')} />
         <div style={{ maxWidth: 320, marginTop: 8 }}>
           <Field label={tt('Format der XRechnung')}>
-            <Select value={s.einvoice_syntax ?? 'cii'} onChange={(v) => set({ einvoice_syntax: v })} options={[['cii', 'CII (wie ZUGFeRD / Factur-X)'], ['ubl', 'UBL 2.1 (Peppol)']]} />
+            <Select value={s.einvoice_syntax ?? 'cii'} onChange={(v) => set({ einvoice_syntax: v })} options={[['cii', tt('CII (wie ZUGFeRD / Factur-X)')], ['ubl', tt('UBL 2.1 (Peppol)')]]} />
           </Field>
         </div>
         <p className="muted small" style={{ marginBottom: 0 }}>

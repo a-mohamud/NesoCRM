@@ -40,6 +40,17 @@ const SLOTS: { key: LogoKey; title: string; hint: string; on: 'light' | 'dark'; 
   { key: 'favicon_url', title: 'Favicon', hint: 'Symbol im Browser-Tab (PNG, SVG, WebP). Ohne Favicon dient das Zeichen.', on: 'light', accept: 'image/png,image/svg+xml,image/webp' },
 ];
 
+/** The check label of a lock group for the agency ("users may change …"). */
+const LOCK_FREE: Record<LockKey, string> = {
+  theme: 'Nutzer dürfen Theme und Hell/Dunkel ändern',
+  accent: 'Nutzer dürfen die Akzentfarbe ändern',
+  dept: 'Nutzer dürfen die Bereichsfarben ändern',
+  sidebar: 'Nutzer dürfen die Seitenleiste (voll/schmal) ändern',
+  icons: 'Nutzer dürfen das Icon-Pack ändern',
+  density: 'Nutzer dürfen Dichte und Schriftgröße ändern',
+  modules: 'Nutzer dürfen die sichtbaren Bereiche ändern',
+};
+
 const readAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const fr = new FileReader();
@@ -64,12 +75,12 @@ export function LogoSet({ v, fb, set, client }: { v: Branding; fb: Partial<Brand
           const shown = own || (client ? fb[s.key] : '') || '';
           return (
             <div key={s.key} className="ap-logo-slot">
-              <h3>{s.title}</h3>
+              <h3>{tt(s.title)}</h3>
               <div className={`ap-logo-stage ${s.on}`}>{shown ? <img src={shown} alt="" /> : <span className="small" style={{ opacity: 0.6 }}>{tt('kein Bild')}</span>}</div>
-              <input type="file" accept={s.accept} aria-label={tt('{title} hochladen', { title: s.title })} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], s.key)} />
-              <Input value={own} onChange={(x) => set({ [s.key]: x })} placeholder={tt('oder Adresse https://…')} aria-label={tt('{title}: Adresse', { title: s.title })} />
+              <input type="file" accept={s.accept} aria-label={tt('{title} hochladen', { title: tt(s.title) })} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], s.key)} />
+              <Input value={own} onChange={(x) => set({ [s.key]: x })} placeholder={tt('oder Adresse https://…')} aria-label={tt('{title}: Adresse', { title: tt(s.title) })} />
               <div className="muted small">
-                {s.hint}
+                {tt(s.hint)}
                 {client && !own && fb[s.key] ? tt(' (Agentur-Bild)') : ''}
               </div>
               {own && (
@@ -86,9 +97,9 @@ export function LogoSet({ v, fb, set, client }: { v: Branding; fb: Partial<Brand
           value={v.show_name ?? ''}
           onChange={(x) => set({ show_name: x })}
           options={[
-            ...(client ? [['', 'Wie die Agentur'] as [string, string]] : []),
-            [client ? 'yes' : '', 'Anzeigen'],
-            ['no', 'Nicht anzeigen (nur das Logo)'],
+            ...(client ? [['', tt('Wie die Agentur')] as [string, string]] : []),
+            [client ? 'yes' : '', tt('Name anzeigen')],
+            ['no', tt('Nicht anzeigen (nur das Logo)')],
           ]}
         />
       </Field>
@@ -149,21 +160,22 @@ export function BrandingLook({ locationId }: { locationId?: string }) {
   const client = !!locationId;
   const inherited = look.data.agency?.defaults ?? {};
   const setD = <K extends keyof Prefs>(k: K, v: Prefs[K] | undefined) => setDraft((d) => (d ? { ...d, defaults: { ...d.defaults, [k]: v } } : d));
-  const unset = client ? 'wie Agentur' : 'nicht vorgegeben';
-  const sel = <K extends 'theme' | 'mode' | 'dept' | 'dept_palette' | 'sidebar' | 'icons' | 'density' | 'font'>(k: K, options: [string, string][]) => (
-    <Select value={(draft.defaults[k] as string) ?? ''} onChange={(x) => setD(k, (x || undefined) as Prefs[K] | undefined)} options={[['', `– ${unset}${client && inherited[k] ? `: ${options.find((o) => o[0] === inherited[k])?.[1] ?? ''}` : ''} –`], ...options]} />
-  );
+  const unset = client ? tt('wie Agentur') : tt('nicht vorgegeben');
+  const sel = <K extends 'theme' | 'mode' | 'dept' | 'dept_palette' | 'sidebar' | 'icons' | 'density' | 'font'>(k: K, raw: [string, string][]) => {
+    const options = raw.map(([v, l]) => [v, tt(l)] as [string, string]);
+    return <Select value={(draft.defaults[k] as string) ?? ''} onChange={(x) => setD(k, (x || undefined) as Prefs[K] | undefined)} options={[['', `– ${unset}${client && inherited[k] ? `: ${options.find((o) => o[0] === inherited[k])?.[1] ?? ''}` : ''} –`], ...options]} />;
+  };
   const lockState = (k: LockKey): string => (draft.locks[k] === undefined ? '' : draft.locks[k] ? 'lock' : 'free');
   const lockControl = (k: LockKey) =>
     client ? (
-      <Select value={lockState(k)} onChange={(x) => setDraft((d) => d && { ...d, locks: { ...d.locks, [k]: x === '' ? undefined : x === 'lock' } })} options={[['', 'Wie Agentur'], ['free', 'Nutzer dürfen ändern'], ['lock', 'Festgelegt']]} />
+      <Select value={lockState(k)} onChange={(x) => setDraft((d) => d && { ...d, locks: { ...d.locks, [k]: x === '' ? undefined : x === 'lock' } })} options={[['', tt('Wie Agentur')], ['free', tt('Nutzer dürfen ändern')], ['lock', tt('Festgelegt')]]} />
     ) : (
-      <Check checked={!draft.locks[k]} onChange={(v) => setDraft((d) => d && { ...d, locks: { ...d.locks, [k]: !v } })} label={tt('Nutzer dürfen {replace} ändern', { replace: LOCK_LABELS[k].replace('Sichtbare Bereiche', 'die sichtbaren Bereiche') })} />
+      <Check checked={!draft.locks[k]} onChange={(v) => setDraft((d) => d && { ...d, locks: { ...d.locks, [k]: !v } })} label={tt(LOCK_FREE[k])} />
     );
   const row = (k: LockKey, content: ReactNode) => (
     <div className="card" style={{ marginBottom: 10 }} key={k} data-tour={`look-${k}`}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3>{LOCK_LABELS[k]}</h3>
+        <h3>{tt(LOCK_LABELS[k])}</h3>
         <div style={{ minWidth: 220 }}>{lockControl(k)}</div>
       </div>
       {content}
@@ -192,7 +204,7 @@ export function BrandingLook({ locationId }: { locationId?: string }) {
       )}
       {row(
         'accent',
-        <Field label={tt('Akzentfarbe')} hint={accent ? undefined : `Ohne Vorgabe gilt ${client ? tt('die Farbe der Agentur') : tt('die Markenfarbe oben (Standard-Theme) bzw. die des gewählten Themes')}.`}>
+        <Field label={tt('Akzentfarbe')} hint={accent ? undefined : tt('Ohne Vorgabe gilt {v}.', { v: client ? tt('die Farbe der Agentur') : tt('die Markenfarbe oben (Standard-Theme) bzw. die des gewählten Themes') })}>
           <div className="actions">
             <input type="color" value={isHex(accent) ? accent : themeById(draft.defaults.theme ?? inherited.theme ?? 'gohigh').light.accent} onChange={(e) => setD('accent', e.target.value)} aria-label={tt('Standard-Akzentfarbe')} style={{ width: 54 }} />
             {accent && (
@@ -209,7 +221,7 @@ export function BrandingLook({ locationId }: { locationId?: string }) {
           <Field label={tt('Intensität')}>{sel('dept', DEPT_LEVELS.map((l) => [l, { off: 'Aus', subtle: 'Dezent', clear: 'Klar', vibrant: 'Vibrant' }[l]!]))}</Field>
           <Field label={tt('Palette')}>{sel('dept_palette', DEPT_PALETTES.map((p) => [p, { harmonic: 'Harmonisch', rainbow: 'Regenbogen', muted: 'Gedeckt' }[p]!]))}</Field>
           <Field label={tt('In Bereichsfarbe tönen')}>
-            <Select value={draft.defaults.dept_tint === undefined ? '' : draft.defaults.dept_tint ? '1' : '0'} onChange={(x) => setD('dept_tint', x === '' ? undefined : x === '1')} options={[['', `– ${unset} –`], ['1', 'Ja'], ['0', 'Nein']]} />
+            <Select value={draft.defaults.dept_tint === undefined ? '' : draft.defaults.dept_tint ? '1' : '0'} onChange={(x) => setD('dept_tint', x === '' ? undefined : x === '1')} options={[['', `– ${unset} –`], ['1', tt('Ja')], ['0', tt('Nein')]]} />
           </Field>
         </div>,
       )}
@@ -230,14 +242,14 @@ export function BrandingLook({ locationId }: { locationId?: string }) {
             <Select
               value={draft.defaults.profile ?? ''}
               onChange={(x) => setDraft((d) => d && { ...d, defaults: { ...d.defaults, profile: x || undefined, hidden: x ? hiddenForProfile(x) : undefined } })}
-              options={[['', `– ${unset} –`], ...PROFILES.map((p) => [p.id, p.label] as [string, string])]}
+              options={[['', `– ${unset} –`], ...PROFILES.map((p) => [p.id, tt(p.label)] as [string, string])]}
             />
           </Field>
           <details>
             <summary>{tt('Einzeln wählen ({size} ausgeblendet)', { size: hidden.size })}</summary>
             {MODULE_SECTIONS.map((s) => (
               <div key={s.id} className="ap-mod-sec">
-                <h3>{s.label}</h3>
+                <h3>{tt(s.label)}</h3>
                 <div className="ap-mods">
                   {s.modules.map(([id, label]) => (
                     <Check
@@ -249,7 +261,7 @@ export function BrandingLook({ locationId }: { locationId?: string }) {
                         else next.add(id);
                         setDraft((d) => d && { ...d, defaults: { ...d.defaults, hidden: [...next], profile: undefined } });
                       }}
-                      label={label}
+                      label={tt(label)}
                     />
                   ))}
                 </div>

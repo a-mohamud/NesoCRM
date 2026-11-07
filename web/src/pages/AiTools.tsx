@@ -5,7 +5,7 @@ import { useSession } from '../session';
 import { Badge, Copy, Empty, Field, Input, MergeHint, Modal, Select, Spinner, Tabs, Textarea, act, confirmAsk, toast, useLoad } from '../ui';
 import { AgencyAiProvider } from './AiProvider';
 import { SignupLink } from '../referrals';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * „KI-Werkzeuge verbinden“: Codex, Claude Code, Cursor (key + copy-paste setup), ChatGPT and Claude.ai
@@ -13,6 +13,8 @@ import { useT } from '../i18n';
  * GitHub for Codex. The same page exists for the agency (agency keys, admins only).
  */
 
+/** Option labels are German message ids – translated where they are shown. */
+const tl = (tt: (s: string) => string, list: [string, string][]): [string, string][] => list.map(([k, l]) => [k, tt(l)]);
 const TOOLS: [string, string][] = [
   ['codex', 'Codex (CLI, IDE-Erweiterung)'],
   ['claude-code', 'Claude Code'],
@@ -41,23 +43,16 @@ export function codexToml(mcpUrl: string) {
   return `# ~/.codex/config.toml\n[mcp_servers.gohigh]\nurl = "${mcpUrl}"\nbearer_token_env_var = "GOHIGH_API_KEY"`;
 }
 
+/** The AGENTS.md / CLAUDE.md snippet – one message id, so it can be translated as a whole. */
+// i18n-ignore (message id, translated in agentsMd)
+const AGENTS_MD = "## {brand} (CRM) über MCP\n\nDas CRM zu diesem Projekt läuft in {brand}. Der MCP-Server `gohigh` ({mcpUrl}) ist verbunden.\n{scope}\n\n- Projekt-Steckbrief zuerst lesen: `ghl_list_projects`, `ghl_get_project` (Ziele, Links, Repos, Kennzahlen).\n- Kontakte & Deals: `ghl_search_contacts`, `ghl_get_contact`, `ghl_upsert_contact`, `ghl_list_opportunities`, `ghl_create_opportunity`, `ghl_update_opportunity`.\n- Aufgaben: `ghl_list_tasks`, `ghl_create_task`, `ghl_complete_task`.\n- Posteingang: `ghl_list_conversations`, `ghl_get_conversation`; `ghl_send_message` verschickt echt – vorher fragen.\n- Inhalte: `ghl_create_social_post` und `ghl_create_blog_post` legen Entwürfe an.\n- Arbeit verknüpfen: diese Codex-Aufgabe bzw. Claude-Sitzung mit `ghl_update_project` (`codex_sessions` / `claude_sessions`) am Projekt eintragen.\n\nRegeln: Schreibende Werkzeuge wirken sofort und stehen im Protokoll. Den Schlüssel nie ins Repository schreiben – er liegt in der Umgebungsvariable `GOHIGH_API_KEY` (oder die Verbindung läuft per OAuth).";
+
 function agentsMd(o: { brand: string; mcpUrl: string; agency: boolean; locName?: string; locId?: string }) {
+  const tt = tr('x_ai');
   const scope = o.agency
-    ? `Die Verbindung gilt für die ganze Agentur: jedes Projekt ist ein Sub-Account – die location_id kommt aus \`ghl_list_projects\`.`
-    : `Die Verbindung gilt nur für den Sub-Account „${o.locName ?? ''}“ (location_id \`${o.locId ?? ''}\`); andere Sub-Accounts sind nicht erreichbar.`;
-  return `## ${o.brand} (CRM) über MCP
-
-Das CRM zu diesem Projekt läuft in ${o.brand}. Der MCP-Server \`gohigh\` (${o.mcpUrl}) ist verbunden.
-${scope}
-
-- Projekt-Steckbrief zuerst lesen: \`ghl_list_projects\`, \`ghl_get_project\` (Ziele, Links, Repos, Kennzahlen).
-- Kontakte & Deals: \`ghl_search_contacts\`, \`ghl_get_contact\`, \`ghl_upsert_contact\`, \`ghl_list_opportunities\`, \`ghl_create_opportunity\`, \`ghl_update_opportunity\`.
-- Aufgaben: \`ghl_list_tasks\`, \`ghl_create_task\`, \`ghl_complete_task\`.
-- Posteingang: \`ghl_list_conversations\`, \`ghl_get_conversation\`; \`ghl_send_message\` verschickt echt – vorher fragen.
-- Inhalte: \`ghl_create_social_post\` und \`ghl_create_blog_post\` legen Entwürfe an.
-- Arbeit verknüpfen: diese Codex-Aufgabe bzw. Claude-Sitzung mit \`ghl_update_project\` (\`codex_sessions\` / \`claude_sessions\`) am Projekt eintragen.
-
-Regeln: Schreibende Werkzeuge wirken sofort und stehen im Protokoll. Den Schlüssel nie ins Repository schreiben – er liegt in der Umgebungsvariable \`GOHIGH_API_KEY\` (oder die Verbindung läuft per OAuth).`;
+    ? tt('Die Verbindung gilt für die ganze Agentur: jedes Projekt ist ein Sub-Account – die location_id kommt aus `ghl_list_projects`.')
+    : tt('Die Verbindung gilt nur für den Sub-Account „{name}“ (location_id `{id}`); andere Sub-Accounts sind nicht erreichbar.', { name: o.locName ?? '', id: o.locId ?? '' });
+  return tt(AGENTS_MD, { brand: o.brand, mcpUrl: o.mcpUrl, scope });
 }
 
 /** Copy-paste setup for every tool; with a fresh key it is filled in. */
@@ -65,7 +60,7 @@ function SetupGuide({ mcpUrl, apiKey, agency, tour }: { mcpUrl: string; apiKey?:
   const tt = useT('x_ai');
   const session = useSession();
   const [tab, setTab] = useState('codex');
-  const key = apiKey || KEY_PLACEHOLDER;
+  const key = apiKey || tt(KEY_PLACEHOLDER);
   const loc = session.locations.find((l) => l.id === session.locationId);
   const brand = session.branding.name || 'HyperLevel';
   return (
@@ -110,7 +105,7 @@ function SetupGuide({ mcpUrl, apiKey, agency, tour }: { mcpUrl: string; apiKey?:
       )}
       {tab === 'chatgpt' && (
         <ol className="steps small">
-          <li>{tt('ChatGPT → Einstellungen →')} <strong>{tt('Apps & Konnektoren')}</strong> {tt('→ Erweitert →')} <strong>{tt('Entwicklermodus')}</strong> einschalten.</li>
+          <li>{tt('ChatGPT → Einstellungen →')} <strong>{tt('Apps & Konnektoren')}</strong> {tt('→ Erweitert →')} <strong>{tt('Entwicklermodus')}</strong> {tt('einschalten.')}</li>
           <li>
             {tt('„Erstellen“ (Konnektor/App): Name')} <strong>{brand}</strong>{tt(', MCP-Server-URL')} <code>{mcpUrl}</code>{tt(', Authentifizierung')} <strong>{tt('OAuth')}</strong>.
           </li>
@@ -225,7 +220,7 @@ export function AiTools({ agency = false }: { agency?: boolean }) {
           <p className="muted small">
             {agency
               ? tt('Codex, Claude Code, Cursor, ChatGPT oder Claude.ai arbeiten direkt mit {brand}: alle Projekte, Kontakte, Deals, Aufgaben, Posteingang, Berichte. Agentur-Schlüssel gelten für alle Sub-Accounts.', { brand: brand })
-              : `Codex, Claude Code, Cursor, ChatGPT oder Claude.ai arbeiten direkt mit „${loc?.name ?? tt('diesem Sub-Account')}“: Kontakte, Deals, Aufgaben, Posteingang, Inhalte – nur dieser Sub-Account. Jede Änderung steht im Protokoll.`}
+              : tt('Codex, Claude Code, Cursor, ChatGPT oder Claude.ai arbeiten direkt mit „{name}“: Kontakte, Deals, Aufgaben, Posteingang, Inhalte – nur dieser Sub-Account. Jede Änderung steht im Protokoll.', { name: loc?.name ?? tt('diesem Sub-Account') })}
           </p>
           <div className="ai-tools-url">
             <span className="muted small">{tt('MCP-Adresse')}</span>
@@ -243,7 +238,7 @@ export function AiTools({ agency = false }: { agency?: boolean }) {
           <p className="muted small">{tt('Ein Klick erzeugt einen eigenen Schlüssel je Werkzeug und Gerät – so siehst du, was wann benutzt wurde, und kannst einzeln widerrufen.')}</p>
           <div className="grid2">
             <Field label={tt('Werkzeug')}>
-              <Select value={tool} onChange={setTool} options={TOOLS} />
+              <Select value={tool} onChange={setTool} options={tl(tt, TOOLS)} />
             </Field>
             <Field label={tt('Gerät / Zweck')}>
               <Input value={label} onChange={setLabel} placeholder={tt('z. B. Laptop')} maxLength={60} />
@@ -258,7 +253,7 @@ export function AiTools({ agency = false }: { agency?: boolean }) {
             className="btn"
             data-tour="ai-tools-create"
             onClick={async () => {
-              const r = await act(() => api.post(`${base}/keys`, { tool, label: label.trim() || 'Laptop', ...(agency ? { scope } : {}) }));
+              const r = await act(() => api.post(`${base}/keys`, { tool, label: label.trim() || tt('Laptop'), ...(agency ? { scope } : {}) }));
               if (r) {
                 setCreated(r);
                 setLabel('');
@@ -297,9 +292,9 @@ export function AiTools({ agency = false }: { agency?: boolean }) {
                   {d.keys.map((k: any) => (
                     <tr key={k.id}>
                       <td>
-                        <strong>{k.name}</strong> {k.tool && <Badge tone="blue">{TOOL_LABEL[k.tool] ?? k.tool}</Badge>} {agency && <Badge tone={k.scope === 'read' ? 'gray' : 'purple'}>{k.scope === 'read' ? 'lesen' : 'schreiben'}</Badge>}
+                        <strong>{k.name}</strong> {k.tool && <Badge tone="blue">{tt(TOOL_LABEL[k.tool] ?? k.tool)}</Badge>} {agency && <Badge tone={k.scope === 'read' ? 'gray' : 'purple'}>{k.scope === 'read' ? tt('lesen') : tt('schreiben')}</Badge>}
                         <div className="muted small">
-                          <span className="mono">{k.prefix}…</span> {tt('· angelegt {dt} · zuletzt benutzt', { dt: dt(k.created_at) })} {k.last_used_at ? ago(k.last_used_at) : 'nie'}
+                          <span className="mono">{k.prefix}…</span> {tt('· angelegt {dt} · zuletzt benutzt', { dt: dt(k.created_at) })} {k.last_used_at ? ago(k.last_used_at) : tt('nie')}
                         </div>
                       </td>
                       <td className="actions">
@@ -327,7 +322,7 @@ export function AiTools({ agency = false }: { agency?: boolean }) {
                       <td>
                         <strong>{a.client_name}</strong> <Badge tone={a.access === 'read' ? 'gray' : 'purple'}>{a.access === 'read' ? tt('nur lesen') : tt('lesen & schreiben')}</Badge>
                         <div className="muted small">
-                          {tt('{v} · freigegeben von {user_name} {ago} · zuletzt benutzt', { v: a.known ?? a.redirect_host, user_name: a.user_name, ago: ago(a.created_at) })} {a.last_used_at ? ago(a.last_used_at) : 'nie'}
+                          {tt('{v} · freigegeben von {user_name} {ago} · zuletzt benutzt', { v: a.known ?? a.redirect_host, user_name: a.user_name, ago: ago(a.created_at) })} {a.last_used_at ? ago(a.last_used_at) : tt('nie')}
                         </div>
                       </td>
                       <td className="actions">

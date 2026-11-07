@@ -5,7 +5,7 @@ import { act, Badge, confirmAsk, Copy, Empty, Field, Input, Link, Modal, navigat
 import { WebinarEditor } from './WebinarEditor';
 import { fmtSession } from './WebinarKit';
 import './webinar.css';
-import { useT } from '../i18n';
+import { intlLocale, useT } from '../i18n';
 
 /**
  * Webinare: automated webinars – the video plays at the appointment, for everybody who registered. List here, the editor in
@@ -121,7 +121,7 @@ function WebinarList() {
                     <div className="muted small">{w.presenter_name || '–'}</div>
                   </td>
                   <td>{w.status === 'published' ? <Badge tone="green">{tt('Veröffentlicht')}</Badge> : <Badge>{tt('Entwurf')}</Badge>}</td>
-                  <td>{w.next_session ? fmtSession(w.next_session, '') : w.status === 'published' ? tt('Sofort / Just in time') : '–'}</td>
+                  <td>{w.next_session ? fmtSession(w.next_session, '', intlLocale()) : w.status === 'published' ? tt('Sofort / Just in time') : '–'}</td>
                   <td className="num">
                     {w.registrations}
                     {w.upcoming_registrations ? <span className="muted small"> {tt('({upcoming_registrations} offen)', { upcoming_registrations: w.upcoming_registrations })}</span> : null}

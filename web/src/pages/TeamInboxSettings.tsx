@@ -8,7 +8,7 @@ import { Badge, Check, Empty, Field, Input, Modal, Select, Spinner, TagInput, Ta
 import { when } from './TeamInboxKit';
 import { MoreFields } from '../areas/fields';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { fmtNumber, intlLocale, tr, useT } from '../i18n';
 
 /**
  * Settings of the Team-Posteingang (Einstellungen → Team-Posteingang, and from the conversation page as a dialog):
@@ -35,7 +35,10 @@ const CHANNELS: [string, string][] = [
   ['telegram', 'Telegram'],
   ['discord', 'Discord'],
 ];
-const fmtMin = (v: number | null | undefined) => (v == null ? '–' : v < 60 ? `${Math.round(v)} Min.` : v < 1440 ? `${(v / 60).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Std.` : `${(v / 1440).toLocaleString('de-DE', { maximumFractionDigits: 1 })} T.`);
+const fmtMin = (v: number | null | undefined) => {
+  const t = tr('x_comms');
+  return v == null ? '–' : v < 60 ? t('{n} Min.', { n: Math.round(v) }) : v < 1440 ? t('{n} Std.', { n: fmtNumber(v / 60, { maximumFractionDigits: 1 }) }) : t('{n} T.', { n: fmtNumber(v / 1440, { maximumFractionDigits: 1 }) });
+};
 const pct = (v: number | null | undefined) => (v == null ? '–' : `${Math.round(v)} %`);
 const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
@@ -55,9 +58,9 @@ export function TeamInboxSettings({ tab: initial, embedded }: { tab?: string; em
   const session = useSession();
   const admin = can(session, 'settings');
   const tabs: [string, string][] = [
-    ...(admin ? ([['assign', 'Zuweisung'], ['sla', 'Antwortfristen'], ['hours', 'Zeiten & Aufräumen']] as [string, string][]) : []),
-    ['people', 'Verfügbarkeit'],
-    ...(can(session, 'reports') ? ([['stats', 'Auswertung']] as [string, string][]) : []),
+    ...(admin ? ([['assign', tt('Zuweisung')], ['sla', tt('Antwortfristen')], ['hours', tt('Zeiten & Aufräumen')]] as [string, string][]) : []),
+    ['people', tt('Verfügbarkeit')],
+    ...(can(session, 'reports') ? ([['stats', tt('Auswertung')]] as [string, string][]) : []),
   ];
   const [tab, setTab] = useState(tabs.some(([k]) => k === initial) ? initial! : tabs[0][0]);
   return (
@@ -103,10 +106,10 @@ function Rules({ tab }: { tab: string }) {
         <>
           <div className="grid2">
             <Field label={tt('Neue Konversationen zuweisen')} hint={tt('Von Hand: niemand bekommt sie automatisch. Reihum: der Reihe nach. Geringste Auslastung: wer am wenigsten offene hat.')} tour="inbox-mode">
-              <Select value={a.mode} onChange={(v) => edit((d) => (d.assignment.mode = v))} options={[['manual', 'Von Hand'], ['round_robin', 'Reihum (Round Robin)'], ['least_busy', 'Geringste Auslastung']]} />
+              <Select value={a.mode} onChange={(v) => edit((d) => (d.assignment.mode = v))} options={[['manual', tt('Von Hand')], ['round_robin', tt('Reihum (Round Robin)')], ['least_busy', tt('Geringste Auslastung')]]} />
             </Field>
-            <Field label={tt('Wer ist im Topf?')} hint={loaded.data.pool_preview?.length ? tt('Aktuell {length} Person{v}', { length: loaded.data.pool_preview.length, v: loaded.data.pool_preview.length === 1 ? '' : 'en' }) : undefined}>
-              <Select value={a.pool} onChange={(v) => edit((d) => (d.assignment.pool = v))} options={[['all', 'Alle mit Zugriff auf Konversationen'], ['team', 'Ein Team'], ['users', 'Bestimmte Personen']]} />
+            <Field label={tt('Wer ist im Topf?')} hint={loaded.data.pool_preview?.length ? tt.plural(loaded.data.pool_preview.length, { one: 'Aktuell {n} Person', other: 'Aktuell {n} Personen' }) : undefined}>
+              <Select value={a.pool} onChange={(v) => edit((d) => (d.assignment.pool = v))} options={[['all', tt('Alle mit Zugriff auf Konversationen')], ['team', tt('Ein Team')], ['users', tt('Bestimmte Personen')]]} />
             </Field>
           </div>
           {a.pool === 'team' && (
@@ -153,7 +156,7 @@ function Rules({ tab }: { tab: string }) {
                   <div className="tx-chips" role="group" aria-label={tt('Kanäle')}>
                     {CHANNELS.map(([k, l]) => (
                       <button key={k} type="button" className={`tx-toggle${r.channels.includes(k) ? ' on' : ''}`} aria-pressed={r.channels.includes(k)} onClick={() => edit((d) => (d.assignment.rules[i].channels = r.channels.includes(k) ? r.channels.filter((x: string) => x !== k) : [...r.channels, k]))}>
-                        {l}
+                        {tt(l)}
                       </button>
                     ))}
                   </div>
@@ -163,7 +166,7 @@ function Rules({ tab }: { tab: string }) {
                 </Field>
                 <div className="grid3">
                   <Field label={tt('Zuweisen an')}>
-                    <Select value={r.target.type} onChange={(v) => edit((d) => (d.assignment.rules[i].target = { type: v, id: '' }))} options={[['user', 'Eine Person'], ['team', 'Ein Team'], ['pool', 'Den Topf (reihum)']]} />
+                    <Select value={r.target.type} onChange={(v) => edit((d) => (d.assignment.rules[i].target = { type: v, id: '' }))} options={[['user', tt('Eine Person')], ['team', tt('Ein Team')], ['pool', tt('Den Topf (reihum)')]]} />
                   </Field>
                   {r.target.type !== 'pool' && (
                     <Field label={r.target.type === 'user' ? tt('Person') : 'Team'}>
@@ -171,7 +174,7 @@ function Rules({ tab }: { tab: string }) {
                     </Field>
                   )}
                   <Field label={tt('Priorität setzen')}>
-                    <Select value={r.priority} onChange={(v) => edit((d) => (d.assignment.rules[i].priority = v))} options={[['', 'Unverändert'], ['low', 'Niedrig'], ['normal', 'Normal'], ['high', 'Hoch'], ['urgent', 'Dringend']]} />
+                    <Select value={r.priority} onChange={(v) => edit((d) => (d.assignment.rules[i].priority = v))} options={[['', tt('Unverändert')], ['low', tt('Niedrig')], ['normal', tt('Normal')], ['high', tt('Hoch')], ['urgent', tt('Dringend')]]} />
                   </Field>
                 </div>
               </div>
@@ -224,8 +227,8 @@ function Rules({ tab }: { tab: string }) {
               const h = draft.business_hours[k];
               return (
                 <div key={k} className="tx-hours-row">
-                  <Check checked={h.open} onChange={(v) => edit((d) => (d.business_hours[k].open = v))} label={l} />
-                  <input type="time" aria-label={tt('{l} von', { l: l })} disabled={!h.open} value={h.from} onChange={(e) => edit((d) => (d.business_hours[k].from = e.target.value))} />
+                  <Check checked={h.open} onChange={(v) => edit((d) => (d.business_hours[k].open = v))} label={tt(l)} />
+                  <input type="time" aria-label={tt('{l} von', { l: tt(l) })} disabled={!h.open} value={h.from} onChange={(e) => edit((d) => (d.business_hours[k].from = e.target.value))} />
                   <span>–</span>
                   <input type="time" aria-label={tt('{l} bis', { l: l })} disabled={!h.open} value={h.to} onChange={(e) => edit((d) => (d.business_hours[k].to = e.target.value))} />
                 </div>
@@ -262,7 +265,7 @@ function Holidays({ list, onChange }: { list: string[]; onChange: (v: string[]) 
       <div className="tx-chips">
         {list.map((d) => (
           <span key={d} className="tx-tag">
-            {new Date(`${d}T12:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
+            {new Date(`${d}T12:00:00`).toLocaleDateString(intlLocale(), { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
             <button type="button" aria-label={tt('{d} entfernen', { d: d })} onClick={() => onChange(list.filter((x) => x !== d))}>
               ✕
             </button>
@@ -289,7 +292,7 @@ function People() {
   const list = useLoad(() => api.get<any[]>('/api/team-people'), []);
   const [edit, setEdit] = useState('');
   const mayEditOthers = can(session, 'settings');
-  const state = (p: any) => (p.paused ? ['yellow', 'Pausiert'] : p.away_now ? ['red', p.back_on ? `Abwesend bis ${when(p.back_on)}` : 'Abwesend'] : ['green', 'Erreichbar']) as [any, string];
+  const state = (p: any) => (p.paused ? ['yellow', tt('Pausiert')] : p.away_now ? ['red', p.back_on ? tt('Abwesend bis {when}', { when: when(p.back_on) }) : tt('Abwesend')] : ['green', tt('Erreichbar')]) as [any, string];
   return (
     <>
       <p className="muted small">{tt('Pausierte oder abwesende Personen bekommen keine neuen Konversationen und keine Round-Robin-Termine. Genehmigte Urlaube aus dem Personal-Bereich zählen automatisch.')}</p>
@@ -362,7 +365,7 @@ function Availability({ userId, onChanged }: { userId: string; onChanged: () => 
   const hoursOn = !!hours;
   return (
     <div data-tour="inbox-availability-panel">
-      <Check checked={data.paused} onChange={(v) => put({ paused: v }, v ? 'Pausiert – keine neuen Zuweisungen' : 'Wieder erreichbar')} label={tt('Pausiert: keine neuen Konversationen und Termine')} />
+      <Check checked={data.paused} onChange={(v) => put({ paused: v }, v ? tt('Pausiert – keine neuen Zuweisungen') : tt('Wieder erreichbar'))} label={tt('Pausiert: keine neuen Konversationen und Termine')} />
       <div className="tx-label">{tt('Abwesenheit')}</div>
       {data.away.length === 0 && <p className="muted small">{tt('Keine Abwesenheit eingetragen.')}</p>}
       {data.away.map((a: any) => (
@@ -388,13 +391,13 @@ function Availability({ userId, onChanged }: { userId: string; onChanged: () => 
         </div>
       ))}
       <div className="tx-chips">
-        <button type="button" className="tx-toggle" onClick={() => addAway(new Date(), dayAt(0, 23), 'Heute abwesend')}>
+        <button type="button" className="tx-toggle" onClick={() => addAway(new Date(), dayAt(0, 23), tt('Heute abwesend'))}>
           {tt('Heute')}
         </button>
-        <button type="button" className="tx-toggle" onClick={() => addAway(dayAt(1, 0), dayAt(1, 23), 'Morgen abwesend')}>
+        <button type="button" className="tx-toggle" onClick={() => addAway(dayAt(1, 0), dayAt(1, 23), tt('Morgen abwesend'))}>
           {tt('Morgen')}
         </button>
-        <button type="button" className="tx-toggle" onClick={() => addAway(new Date(), dayAt(7, 0), 'Eine Woche abwesend')}>
+        <button type="button" className="tx-toggle" onClick={() => addAway(new Date(), dayAt(7, 0), tt('Eine Woche abwesend'))}>
           {tt('7 Tage')}
         </button>
       </div>
@@ -431,8 +434,8 @@ function Availability({ userId, onChanged }: { userId: string; onChanged: () => 
               const w = hours[k]?.[0];
               return (
                 <div key={k} className="tx-hours-row">
-                  <Check checked={!!w} onChange={(v) => setHours({ ...hours, [k]: v ? [['09:00', '17:00']] : [] })} label={l} />
-                  <input type="time" aria-label={tt('{l} von', { l: l })} disabled={!w} value={w?.[0] ?? '09:00'} onChange={(e) => setHours({ ...hours, [k]: [[e.target.value, w?.[1] ?? '17:00']] })} />
+                  <Check checked={!!w} onChange={(v) => setHours({ ...hours, [k]: v ? [['09:00', '17:00']] : [] })} label={tt(l)} />
+                  <input type="time" aria-label={tt('{l} von', { l: tt(l) })} disabled={!w} value={w?.[0] ?? '09:00'} onChange={(e) => setHours({ ...hours, [k]: [[e.target.value, w?.[1] ?? '17:00']] })} />
                   <span>–</span>
                   <input type="time" aria-label={tt('{l} bis', { l: l })} disabled={!w} value={w?.[1] ?? '17:00'} onChange={(e) => setHours({ ...hours, [k]: [[w?.[0] ?? '09:00', e.target.value]] })} />
                 </div>
@@ -473,7 +476,7 @@ function Stats() {
         <select id="tx-range" value={range} onChange={(e) => setRange(e.target.value)}>
           {[['last_7_days', 'Letzte 7 Tage'], ['last_30_days', 'Letzte 30 Tage'], ['last_90_days', 'Letzte 90 Tage'], ['this_month', 'Dieser Monat'], ['last_month', 'Letzter Monat'], ['all', 'Gesamter Zeitraum']].map(([k, l]) => (
             <option key={k} value={k}>
-              {l}
+              {tt(l)}
             </option>
           ))}
         </select>

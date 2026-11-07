@@ -53,7 +53,8 @@ export function useFeedbackMe(): FeedbackMe | undefined {
 
 export const KIND: Record<string, [string, IconName]> = { bug: ['Fehler', 'bug'], question: ['Frage', 'faq'], wish: ['Wunsch', 'idea'], auto: ['Automatisch erfasst', 'activity'] };
 export function StatusPill({ s }: { s: { label: string; tone: string } }) {
-  return <Badge tone={(s.tone as Tone) ?? 'gray'}>{s.label}</Badge>;
+  const tt = useT('shell');
+  return <Badge tone={(s.tone as Tone) ?? 'gray'}>{tt(s.label)}</Badge>;
 }
 
 /** Opens the report modal from anywhere (menu, shortcut, Meine Meldungen, Android deep link). */
@@ -264,8 +265,8 @@ function DiagnosticsView({ d, removed, setRemoved, accountName, role }: { d: Dia
         <div className="fb-diag-chips">
           {keys.map((k) => (
             <span key={k} className="fb-chip">
-              <span className="muted">{DIAG_LABEL[k]}:</span> {value[k]}
-              <button type="button" onClick={() => setRemoved(new Set([...removed, k]))} aria-label={tt('{v} entfernen', { v: DIAG_LABEL[k] })}>
+              <span className="muted">{tt(DIAG_LABEL[k])}:</span> {value[k]}
+              <button type="button" onClick={() => setRemoved(new Set([...removed, k]))} aria-label={tt('{v} entfernen', { v: tt(DIAG_LABEL[k]) })}>
                 ✕
               </button>
             </span>
@@ -286,7 +287,7 @@ export function ReportModal({ initial = 'bug', onClose }: { initial?: 'bug' | 'w
   const session = useSession();
   const me = useFeedbackMe();
   const [category, setCategory] = useState<'bug' | 'wish' | 'question'>(initial);
-  const [f, setF] = useState({ what: '', expected: '', steps: '', severity: 'mittel', title: '', area: 'Sonstiges' });
+  const [f, setF] = useState({ what: '', expected: '', steps: '', severity: 'mittel', title: '', area: 'Sonstiges' }); // i18n-ignore
   const [shot, setShot] = useState('');
   const [diag] = useState(() => collectDiagnostics());
   const [removed, setRemoved] = useState<Set<DiagKey>>(new Set());
@@ -326,7 +327,7 @@ export function ReportModal({ initial = 'bug', onClose }: { initial?: 'bug' | 'w
       <Modal title={tt('Danke!')} onClose={onClose}>
         <div className="fb-done" data-tour="fb-done">
           <Icon name="ok" size={36} />
-          <h2>{done.kind === 'wish' ? tt('Dein Wunsch steht in der Wunschliste') : `Deine ${done.kind === 'question' ? tt('Frage') : tt('Meldung')} ist angekommen`}</h2>
+          <h2>{done.kind === 'wish' ? tt('Dein Wunsch steht in der Wunschliste') : done.kind === 'question' ? tt('Deine Frage ist angekommen') : tt('Deine Meldung ist angekommen')}</h2>
           <p>
             {done.kind === 'wish' ? tt('Andere können jetzt dafür stimmen.') : tt('Ticketnummer')} <strong>#{done.number}</strong>
             {done.kind !== 'wish' && <> {tt('– du bekommst Bescheid, sobald das Team antwortet oder sich der Status ändert.')}</>}
@@ -374,7 +375,7 @@ export function ReportModal({ initial = 'bug', onClose }: { initial?: 'bug' | 'w
           ]
         ).map(([k, l]) => (
           <button key={k} type="button" role="radio" aria-checked={category === k} className={category === k ? 'on' : ''} onClick={() => setCategory(k as any)}>
-            <Icon name={KIND[k]?.[1] ?? 'bug'} size={14} /> {l}
+            <Icon name={KIND[k]?.[1] ?? 'bug'} size={14} /> {tt(l)}
           </button>
         ))}
       </div>
@@ -387,7 +388,7 @@ export function ReportModal({ initial = 'bug', onClose }: { initial?: 'bug' | 'w
             <Textarea value={f.what} onChange={set('what')} rows={4} />
           </Field>
           <Field label={tt('Bereich')}>
-            <Select value={f.area} onChange={set('area')} options={me?.areas ?? ['Sonstiges']} />
+            <Select value={f.area} onChange={set('area')} options={(me?.areas ?? ['Sonstiges']).map((a) => [a, tt(a)] as [string, string])} />
           </Field>
           <p className="muted small fb-hint">
             <Icon name="community" size={13} /> {tt('Wünsche sind für alle Nutzer sichtbar – ohne deinen Namen und ohne Sub-Account. Andere können dafür stimmen.')}
@@ -415,7 +416,7 @@ export function ReportModal({ initial = 'bug', onClose }: { initial?: 'bug' | 'w
                 </Field>
               </div>
               <Field label={tt('Wie schlimm ist es?')} tour="fb-severity">
-                <Select value={f.severity} onChange={set('severity')} options={me?.severities ?? [['mittel', 'Stört bei der Arbeit']]} />
+                <Select value={f.severity} onChange={set('severity')} options={(me?.severities ?? [['mittel', 'Stört bei der Arbeit']]).map(([k, l]) => [k, tt(l)] as [string, string])} />
               </Field>
             </>
           )}
@@ -606,7 +607,7 @@ export function MyReports() {
           ] as const
         ).map(([k, l]) => (
           <button key={k} className={`chip${filter === k ? ' on' : ''}`} onClick={() => setFilter(k)}>
-            {l}
+            {tt(l)}
           </button>
         ))}
       </div>
@@ -625,7 +626,7 @@ export function MyReports() {
                   {r.title}
                 </strong>
                 <small className="muted">
-                  {tt('{v} · aktualisiert {ago}', { v: KIND[r.kind]?.[0], ago: ago(r.updated_at) })}
+                  {tt('{v} · aktualisiert {ago}', { v: tt(KIND[r.kind]?.[0] ?? ''), ago: ago(r.updated_at) })}
                   {r.version ? tt(' · Version {version}', { version: r.version }) : ''}
                   {r.duplicate_of ? tt(' · zusammengeführt mit #{number}', { number: r.duplicate_of.number }) : ''}
                 </small>
@@ -697,7 +698,7 @@ function ReplyBox({ id, onDone, placeholder = 'Weitere Infos für das Team…' }
   const [busy, setBusy] = useState(false);
   return (
     <div className="card" data-tour="fb-reply">
-      <Textarea value={text} onChange={setText} rows={3} placeholder={placeholder} />
+      <Textarea value={text} onChange={setText} rows={3} placeholder={tt(placeholder)} />
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
         <ScreenshotPicker value={shot} onChange={setShot} compact />
         <button
@@ -748,7 +749,7 @@ export function ReportDetail({ id }: { id: string }) {
           <span className="row" style={{ gap: 8, alignItems: 'center' }}>
             <StatusPill s={r.status} />{' '}
             <span className="muted small">
-              {tt('{v} · gemeldet {dt}', { v: KIND[r.kind]?.[0], dt: dt(r.created_at) })}
+              {tt('{v} · gemeldet {dt}', { v: tt(KIND[r.kind]?.[0] ?? ''), dt: dt(r.created_at) })}
               {r.platform === 'android' ? tt(' · Android-App') : ''}
             </span>
           </span>

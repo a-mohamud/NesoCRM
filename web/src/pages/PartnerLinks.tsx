@@ -131,7 +131,7 @@ export function PartnerLinks() {
           {tt('Voreingestellt sind die Partner-Links des HyperLevel-Maintainers; die Kennzeichnung erklärt: „{PARTNER_HINT}“ Du kannst jeden durch einen eigenen Link ersetzen, einzeln oder ganz abschalten – dann erscheint die normale Anmelde-Seite. Gezählt werden nur Klicks je Anbieter über', { PARTNER_HINT: PARTNER_HINT })} <code>/go/…</code>{tt(', keine Personen, IP-Adressen oder Browser-Daten. Server-weit abschalten:')} <code>{tt('PGHL_REFERRALS_DISABLED=1')}</code>{tt('; eigene Links per Umgebung:')} <code>{tt('PGHL_REFERRALS')}</code> {tt('(JSON). Anleitung:')} <code>docs/referrals.md</code>.
         </p>
         <div className="pl-global" data-tour="partner-links-toggle">
-          <Check checked={v.enabled} onChange={(enabled) => put({ enabled }, enabled ? 'Partner-Links an' : 'Nur noch normale Anmelde-Links')} label={<b>{tt('Partner-Links verwenden')}</b>} />
+          <Check checked={v.enabled} onChange={(enabled) => put({ enabled }, enabled ? tt('Partner-Links an') : tt('Nur noch normale Anmelde-Links'))} label={<b>{tt('Partner-Links verwenden')}</b>} />
           <span className="muted small">
             {active ? tt('{partners} von {length} Anbietern mit Partner-Link', { partners: partners, length: v.providers.length }) : tt('Aus – überall die normale Anmelde-Seite')} {tt('· {total_clicks} Klicks gesamt', { total_clicks: v.total_clicks })}
           </span>
@@ -175,14 +175,14 @@ export function PartnerLinks() {
                 const offered = !!own || (r.env_url === null ? !!r.default_url : !!r.env_url);
                 return (
                   <tr key={r.id}>
-                    <td data-label="Anbieter">
+                    <td data-label={tt('Anbieter')}>
                       <b>{r.name}</b>
                       <div className="muted small">{r.category}</div>
                     </td>
-                    <td data-label="Standard" className="pl-default">
+                    <td data-label={tt('Standard')} className="pl-default">
                       <Fallback r={r} />
                     </td>
-                    <td data-label="Eigener Link">
+                    <td data-label={tt('Eigener Link')}>
                       <input
                         type="url"
                         inputMode="url"
@@ -192,23 +192,23 @@ export function PartnerLinks() {
                         aria-label={tt('Eigener Link für {name}', { name: r.name })}
                       />
                     </td>
-                    <td data-label="Partner-Link">
-                      <Check checked={!plain} onChange={(on) => setLink(r.id, on ? null : '')} label={plain ? 'aus' : offered ? 'an' : 'erlaubt'} />
+                    <td data-label={tt('Partner-Link')}>
+                      <Check checked={!plain} onChange={(on) => setLink(r.id, on ? null : '')} label={plain ? tt('aus') : offered ? tt('an') : tt('erlaubt')} />
                     </td>
-                    <td data-label="Ziel jetzt" className="pl-target">
+                    <td data-label={tt('Ziel jetzt')} className="pl-target">
                       {r.url ? (
                         <>
-                          {r.is_referral ? <span className="partner-chip">{tt('Partner-Link')}</span> : <Badge>{SOURCE[r.source ?? 'signup']}</Badge>}
-                          {r.is_referral && <span className="muted small"> {BY[r.source!]}</span>}
+                          {r.is_referral ? <span className="partner-chip">{tt('Partner-Link')}</span> : <Badge>{tt(SOURCE[r.source ?? 'signup'])}</Badge>}
+                          {r.is_referral && <span className="muted small"> {BY[r.source!] ? tt(BY[r.source!]) : ''}</span>}
                         </>
                       ) : (
                         <span className="muted small">{tt('kein Link')}</span>
                       )}
                     </td>
-                    <td data-label="Klicks" className="num">
+                    <td data-label={tt('Klicks')} className="num">
                       <b>{r.clicks}</b>
                       {r.partner_clicks > 0 && <div className="muted small">{tt('{partner_clicks} als Partner-Link', { partner_clicks: r.partner_clicks })}</div>}
-                      {r.last_click_on && <div className="muted small">zuletzt {d(r.last_click_on)}</div>}
+                      {r.last_click_on && <div className="muted small">{tt('zuletzt {dt}', { dt: d(r.last_click_on) })}</div>}
                     </td>
                   </tr>
                 );
@@ -221,7 +221,7 @@ export function PartnerLinks() {
       )}
 
       <div className="row pl-actions" data-tour="partner-links-save">
-        <button className="btn" disabled={!dirty || busy} onClick={() => put({ links }, 'Partner-Links gespeichert')}>
+        <button className="btn" disabled={!dirty || busy} onClick={() => put({ links }, tt('Partner-Links gespeichert'))}>
           {tt('Speichern')}
         </button>
         {dirty && (

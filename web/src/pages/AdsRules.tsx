@@ -53,7 +53,7 @@ export function AdsRules() {
           <ul>
             {test.hits.map((h: any, i: number) => (
               <li key={i}>
-                {tt('„{rule}“ bei', { rule: h.rule })} <PlatformBadge platform={h.platform} /> {tt('{campaign} (Wert', { campaign: h.campaign })} {h.value === null ? '–' : (h.value / 100).toLocaleString('de-DE', { maximumFractionDigits: 2 })}) → {h.action === 'pause' ? 'pausieren' : 'melden'}
+                {tt('„{rule}“ bei', { rule: h.rule })} <PlatformBadge platform={h.platform} /> {tt('{campaign} (Wert', { campaign: h.campaign })} {h.value === null ? '–' : (h.value / 100).toLocaleString('de-DE', { maximumFractionDigits: 2 })}) → {h.action === 'pause' ? tt('pausieren') : tt('melden')}
               </li>
             ))}
           </ul>
@@ -77,10 +77,10 @@ export function AdsRules() {
               {rules.map((r) => (
                 <tr key={r.id}>
                   <td>
-                    <strong>{r.name}</strong> {!r.enabled && <Badge>aus</Badge>}
+                    <strong>{r.name}</strong> {!r.enabled && <Badge>{tt('aus')}</Badge>}
                     <div className="muted small">{r.text}</div>
                   </td>
-                  <td className="muted">{r.campaign_ref ? tt('eine Kampagne') : tt('alle aktiven')} · {r.platform === 'all' ? tt('Meta & Google') : r.platform === 'meta' ? tt('Meta') : 'Google'}</td>
+                  <td className="muted">{r.campaign_ref ? tt('eine Kampagne') : tt('alle aktiven')} · {r.platform === 'all' ? tt('Meta & Google') : r.platform === 'meta' ? tt('Meta') : tt('Google')}</td>
                   <td className="muted">{r.times_triggered ? tt('{times_triggered}× · zuletzt {dt}', { times_triggered: r.times_triggered, dt: dt(r.last_triggered_at) }) : '–'}</td>
                   <td className="ads-actions">
                     <button className="btn small secondary" onClick={async () => (await act(() => api.patch(`/api/ads/rules/${r.id}`, { enabled: !r.enabled })), reload())}>
@@ -174,21 +174,21 @@ function RuleModal({ rule, onClose, onDone }: { rule: any; onClose: () => void; 
     >
       <div className="grid3">
         <Field label={tt('Wenn')}>
-          <Select value={f.metric} onChange={(v) => set('metric', v)} options={METRICS.map(([k, l]) => [k, l] as [string, string])} />
+          <Select value={f.metric} onChange={(v) => set('metric', v)} options={METRICS.map(([k, l]) => [k, tt(l)] as [string, string])} />
         </Field>
         <Field label="ist">
-          <Select value={f.op} onChange={(v) => set('op', v)} options={[['>', 'größer als'], ['<', 'kleiner als']]} />
+          <Select value={f.op} onChange={(v) => set('op', v)} options={[['>', tt('größer als')], ['<', tt('kleiner als')]]} />
         </Field>
-        <Field label={tt('Wert ({unit})', { unit: unit })}>
+        <Field label={tt('Wert ({unit})', { unit: tt(unit) })}>
           <Input inputMode="decimal" value={f.value} onChange={(v) => set('value', v)} />
         </Field>
       </div>
       <div className="grid2">
         <Field label={tt('Dann')}>
-          <Select value={f.action} onChange={(v) => set('action', v)} options={[['pause', 'Kampagne pausieren'], ['notify', 'Nur melden (Protokoll, Ereignis)']]} />
+          <Select value={f.action} onChange={(v) => set('action', v)} options={[['pause', tt('Kampagne pausieren')], ['notify', tt('Nur melden (Protokoll, Ereignis)')]]} />
         </Field>
         <Field label={tt('Für')}>
-          <Select value={f.platform} onChange={(v) => set('platform', v)} options={[['all', 'alle aktiven Kampagnen (Meta & Google)'], ['meta', 'alle aktiven Meta-Kampagnen'], ['google', 'alle aktiven Google-Kampagnen']]} />
+          <Select value={f.platform} onChange={(v) => set('platform', v)} options={[['all', tt('alle aktiven Kampagnen (Meta & Google)')], ['meta', tt('alle aktiven Meta-Kampagnen')], ['google', tt('alle aktiven Google-Kampagnen')]]} />
         </Field>
       </div>
       <Check checked={f.enabled} onChange={(v) => set('enabled', v)} label={tt('Regel ist eingeschaltet')} />

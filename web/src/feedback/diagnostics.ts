@@ -87,7 +87,7 @@ export function installDiagnostics() {
   window.addEventListener('error', (ev) => {
     const err = ev.error as Error | undefined;
     record({
-      message: err?.message ? `${err.name ?? 'Error'}: ${err.message}` : String(ev.message ?? 'Fehler'),
+      message: err?.message ? `${err.name ?? 'Error'}: ${err.message}` : String(ev.message ?? 'Fehler'), // i18n-ignore (diagnostics for the team)
       stack: err?.stack ?? '',
       source: ev.filename ?? '',
       line: ev.lineno ?? 0,
@@ -131,7 +131,7 @@ function browserInfo(ua: string): { browser: string; os: string } {
             ? 'Linux'
             : 'Unbekannt');
   const m = /(Edg|OPR|Firefox|Chrome|Version)\/([\d.]+)/.exec(ua);
-  const name = m ? (({ Edg: 'Edge', OPR: 'Opera', Version: /Safari/.test(ua) ? 'Safari' : 'Browser' } as Record<string, string>)[m[1]] ?? m[1]) : 'Browser';
+  const name = m ? (({ Edg: 'Edge', OPR: 'Opera', Version: /Safari/.test(ua) ? 'Safari' : 'Browser' } as Record<string, string>)[m[1]] ?? m[1]) : 'Browser'; // i18n-ignore (diagnostics)
   return { browser: m ? `${name} ${m[2].split('.')[0]}` : name, os };
 }
 

@@ -117,7 +117,7 @@ export function UmzugRun({ api, jobId, first, onJob, onImport, onNew }: { api: U
         <div className="um-run-head">
           <div>
             <h3>
-              {dry ? tt('Probelauf') : tt('Umzug')} aus {job.source_label} <Badge tone={tone}>{undoing ? tt('wird rückgängig gemacht') : statusText}</Badge>
+              {dry ? tt('Probelauf aus {source}', { source: job.source_label }) : tt('Umzug aus {source}', { source: job.source_label })} <Badge tone={tone}>{undoing ? tt('wird rückgängig gemacht') : tt(statusText)}</Badge>
             </h3>
             <div className="muted small">
               {tt('Gestartet {dt}', { dt: dt(job.created_at) })}
@@ -172,13 +172,13 @@ export function UmzugRun({ api, jobId, first, onJob, onImport, onNew }: { api: U
               <ul>
                 {Object.entries(job.undo.deleted).map(([k, n]) => (
                   <li key={k}>
-                    {tt('{n} {v} gelöscht', { n: n, v: EXISTING_LABELS[k] ?? k })}
+                    {tt('{n} {v} gelöscht', { n: n, v: tt(EXISTING_LABELS[k] ?? k) })}
                   </li>
                 ))}
                 {job.undo.restored > 0 && <li>{tt('{restored} Kontakte auf den alten Stand zurückgesetzt', { restored: job.undo.restored })}</li>}
                 {Object.entries(job.undo.kept).map(([k, n]) => (
                   <li key={k}>
-                    {tt('{n} {v} bleiben stehen (inzwischen verändert oder in Benutzung)', { n: n, v: EXISTING_LABELS[k] ?? k })}
+                    {tt('{n} {v} bleiben stehen (inzwischen verändert oder in Benutzung)', { n: n, v: tt(EXISTING_LABELS[k] ?? k) })}
                   </li>
                 ))}
                 {job.undo.notes.map((n) => (
@@ -259,7 +259,7 @@ export function UmzugHistory({ jobs, onOpen }: { jobs: Job[]; onOpen: (j: Job) =
               <th>{tt('Wann')}</th>
               <th>{tt('Quelle')}</th>
               <th>{tt('Art')}</th>
-              <th>Status</th>
+              <th>{tt('Status')}</th>
               <th>{tt('Ergebnis')}</th>
               <th />
             </tr>
@@ -274,7 +274,7 @@ export function UmzugHistory({ jobs, onOpen }: { jobs: Job[]; onOpen: (j: Job) =
                   <td>{j.source_label}</td>
                   <td>{j.kind === 'dry_run' ? tt('Probelauf') : j.origin === 'file' ? tt('Import (Datei)') : tt('Import')}</td>
                   <td>
-                    <Badge tone={tone}>{text}</Badge>
+                    <Badge tone={tone}>{tt(text)}</Badge>
                   </td>
                   <td className="muted small">{j.report.length ? tt('{total} Datensätze', { total: total }) : j.error ? tt('Fehler') : '–'}</td>
                   <td>

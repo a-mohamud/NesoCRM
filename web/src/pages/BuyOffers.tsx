@@ -33,7 +33,7 @@ function BuyOffersFields({ product, data, setData }: { product: any; data: any; 
   const [code, setCode] = useState({ code: '', kind: 'percent', value: '', max_uses: '', expires_at: '' });
   const set = (patch: any) => setData({ ...data, ...patch });
   const extras = (products.data ?? []).filter((p) => p.id !== product.id && !p.recurring && p.active !== 0 && p.currency === product.currency);
-  const opts = extras.map((p) => [p.id, `${p.name} (${money(p.price_cents, p.currency)}${p.tax_rate ? ' + USt.' : ''})`] as [string, string]);
+  const opts = extras.map((p) => [p.id, `${p.name} (${money(p.price_cents, p.currency)}${p.tax_rate ? tt(' + USt.') : ''})`] as [string, string]);
   const bump = extras.find((p) => p.id === data.bump_product_id);
   const upsell = extras.find((p) => p.id === data.upsell_product_id);
   const u = data.upsells ?? {};
@@ -95,7 +95,7 @@ function BuyOffersFields({ product, data, setData }: { product: any; data: any; 
             )}
             {u.offered > 0 && (
               <p className="small" style={{ margin: '4px 0 0' }}>
-                {tt('Bisher {offered}× angeboten ·', { offered: u.offered })} <Badge tone="green">{u.accepted} angenommen</Badge> · {u.declined} abgelehnt{u.fallback ? tt(' · {fallback} über Bezahlseite', { fallback: u.fallback }) : ''}
+                {tt('Bisher {offered}× angeboten ·', { offered: u.offered })} <Badge tone="green">{tt('{n} angenommen', { n: u.accepted })}</Badge> · {tt('{n} abgelehnt', { n: u.declined })}{u.fallback ? tt(' · {fallback} über Bezahlseite', { fallback: u.fallback }) : ''}
               </p>
             )}
           </>

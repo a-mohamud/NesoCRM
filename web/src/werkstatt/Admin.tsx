@@ -49,7 +49,7 @@ export function AgencyTab() {
                 {p.status !== 'active' && (
                   <>
                     {' '}
-                    <Badge tone={p.status === 'killed' ? 'red' : 'purple'}>{STATUS_LABEL[p.status] ?? p.status}</Badge>
+                    <Badge tone={p.status === 'killed' ? 'red' : 'purple'}>{tt(STATUS_LABEL[p.status] ?? p.status)}</Badge>
                   </>
                 )}
                 <div className="muted small">{p.owner?.user} {p.owner?.location ? `(${p.owner.location})` : ''}</div>
@@ -61,7 +61,7 @@ export function AgencyTab() {
               <td>{p.health.usage_30d}</td>
               <td>{p.health.errors_7d > 0 ? <Badge tone="yellow">{p.health.errors_7d}</Badge> : 0}</td>
               <td>{p.health.votes}</td>
-              <td>{p.review ? <Badge tone={VERDICT[p.review.verdict]?.tone ?? 'gray'}>{VERDICT[p.review.verdict]?.label ?? p.review.verdict}</Badge> : <span className="muted small">–</span>}</td>
+              <td>{p.review ? <Badge tone={VERDICT[p.review.verdict]?.tone ?? 'gray'}>{tt(VERDICT[p.review.verdict]?.label ?? p.review.verdict)}</Badge> : <span className="muted small">–</span>}</td>
             </tr>
           ))}
         </tbody>
@@ -104,7 +104,7 @@ function SandboxCard({ s }: { s: Sandbox }) {
       <h3>{tt('Sandbox für Skripte')}</h3>
       {s.ok ? (
         <p>
-          <Badge tone="green">bereit</Badge> {tt('Node {node} · Netzwerk:', { node: s.node })}{' '}
+          <Badge tone="green">{tt('bereit')}</Badge> {tt('Node {node} · Netzwerk:', { node: s.node })}{' '}
           {s.network === 'namespace' ? tt('eigener Netzwerk-Namensraum (stärkste Isolation)') : tt('nur durch die Sperre im Prozess (Node blockiert das Netzwerk im Rechtemodell nicht selbst)')}
         </p>
       ) : (
@@ -154,9 +154,9 @@ export function PolicyTab() {
             value={p.who}
             onChange={(v) => set({ who: v as Policy['who'] })}
             options={[
-              ['admins', 'Nur Admins (Standard)'],
-              ['team', 'Das Team (Personen mit Zugriff auf die Einstellungen)'],
-              ['everyone', 'Alle Personen eines Sub-Accounts'],
+              ['admins', tt('Nur Admins (Standard)')],
+              ['team', tt('Das Team (Personen mit Zugriff auf die Einstellungen)')],
+              ['everyone', tt('Alle Personen eines Sub-Accounts')],
             ]}
           />
         </Field>
@@ -208,9 +208,9 @@ export function PolicyTab() {
         </details>
       </div>
       <div className="card" data-tour="wk-model-policy">
-        <h3>{tt('Mindest-Modell für die {werkstatt}', { werkstatt: NAMES.werkstatt })}</h3>
+        <h3>{tt('Mindest-Modell für die {werkstatt}', { werkstatt: tt(NAMES.werkstatt) })}</h3>
         <p className="muted small">
-          {tt('Code schreiben und Code prüfen können nur Spitzenmodelle zuverlässig. Die {werkstatt} arbeitet deshalb nur mit einem der folgenden (auch hinter OpenRouter-Vorsilben wie', { werkstatt: NAMES.werkstatt })} <code>anthropic/</code>{tt('). Welches Modell dient, stellst du unter Einstellungen → KI-Anbieter → „Werkstatt“ ein.')}
+          {tt('Code schreiben und Code prüfen können nur Spitzenmodelle zuverlässig. Die {werkstatt} arbeitet deshalb nur mit einem der folgenden (auch hinter OpenRouter-Vorsilben wie', { werkstatt: tt(NAMES.werkstatt) })} <code>anthropic/</code>{tt('). Welches Modell dient, stellst du unter Einstellungen → KI-Anbieter → „Werkstatt“ ein.')}
         </p>
         <Check checked={p.model_gate.enabled} onChange={(v) => set({ model_gate: { ...p.model_gate, enabled: v } })} label={tt('Nur Spitzenmodelle zulassen (empfohlen)')} tour="wk-gate-on" />
         {p.model_gate.enabled && (
@@ -237,7 +237,7 @@ export function PolicyTab() {
           </>
         )}
         <p className="muted small">
-          {tt('Mehr Rechenzeit, bessere Ergebnisse: Die {werkstatt} fragt nie unter der Denkstufe „hoch“ an (Einstellungen → KI-Anbieter → Denkstufe). Versteht ein Modell die Stufe nicht, steht im Protokoll, was stattdessen gesendet wurde.', { werkstatt: NAMES.werkstatt })}
+          {tt('Mehr Rechenzeit, bessere Ergebnisse: Die {werkstatt} fragt nie unter der Denkstufe „hoch“ an (Einstellungen → KI-Anbieter → Denkstufe). Versteht ein Modell die Stufe nicht, steht im Protokoll, was stattdessen gesendet wurde.', { werkstatt: tt(NAMES.werkstatt) })}
         </p>
       </div>
       <div className="card">
@@ -247,9 +247,9 @@ export function PolicyTab() {
             value={p.server_logic}
             onChange={(v) => set({ server_logic: v as Policy['server_logic'] })}
             options={[
-              ['script', 'Skripte und deklarative Schritte'],
-              ['declarative', 'Nur deklarative Schritte'],
-              ['off', 'Aus'],
+              ['script', tt('Skripte und deklarative Schritte')],
+              ['declarative', tt('Nur deklarative Schritte')],
+              ['off', tt('Aus')],
             ]}
           />
         </Field>
@@ -417,7 +417,7 @@ export function FlagsTab() {
                       {tt('{length} Personen · {length2} Sub-Accounts', { length: f.users.length, length2: f.locations.length })}
                     </div>
                   </td>
-                  <td>{f.on_for_me ? <Badge tone="green">an</Badge> : <Badge tone="gray">aus</Badge>}</td>
+                  <td>{f.on_for_me ? <Badge tone="green">{tt('an')}</Badge> : <Badge tone="gray">{tt('aus')}</Badge>}</td>
                   <td>
                     <button className="btn secondary small" onClick={() => setEdit(f)}>
                       {tt('Bearbeiten')}
@@ -547,7 +547,7 @@ export function CoreTab() {
   return (
     <>
       <p className="muted">
-        {tt('Beliebte Plugins können als {stage3} vorgeschlagen werden: Die KI schreibt aus Wunsch, Plugin-Code und Nutzungsdaten eine Spezifikation, daraus wird ein GitHub-Issue für', { stage3: NAMES.stage3 })} {d.core.agent === 'claude' ? '@claude' : '@codex'}{tt('. Erscheint die Funktion im Kern, gilt das Plugin als „{inCore}“.', { inCore: NAMES.inCore })}
+        {tt('Beliebte Plugins können als {stage3} vorgeschlagen werden: Die KI schreibt aus Wunsch, Plugin-Code und Nutzungsdaten eine Spezifikation, daraus wird ein GitHub-Issue für', { stage3: tt(NAMES.stage3) })} {d.core.agent === 'claude' ? '@claude' : '@codex'}{tt('. Erscheint die Funktion im Kern, gilt das Plugin als „{inCore}“.', { inCore: tt(NAMES.inCore) })}
       </p>
       {!d.github && <div className="card notice-card">{tt('GitHub ist noch nicht eingerichtet (Einstellungen → KI-Werkzeuge → GitHub für Codex). Vorschläge entstehen trotzdem; das Issue legst du später an.')}</div>}
       {!d.proposals.length ? (
@@ -570,7 +570,7 @@ function CoreCard({ r, onChange }: { r: CoreRow; onChange: () => void }) {
   const [ship, setShip] = useState(false);
   const st = CORE_STATUS[r.status] ?? { label: r.status, tone: 'gray' as const };
   const run = async (fn: () => Promise<unknown>, ok: string) => {
-    if (await act(fn, ok)) onChange();
+    if (await act(fn, tt(ok))) onChange();
   };
   return (
     <div className="card wk-core">
@@ -581,7 +581,7 @@ function CoreCard({ r, onChange }: { r: CoreRow; onChange: () => void }) {
             {tt('Plugin')} <Link to={`werkstatt/plugins/${r.plugin_id}`}>{r.plugin}</Link> {tt('· {ago} · Flag', { ago: ago(r.created_at) })} <code>{r.flag}</code>
           </div>
         </div>
-        <Badge tone={st.tone}>{st.label}</Badge>
+        <Badge tone={st.tone}>{tt(st.label)}</Badge>
       </div>
       {r.issue_url && (
         <p className="small">
@@ -611,7 +611,7 @@ function CoreCard({ r, onChange }: { r: CoreRow; onChange: () => void }) {
             <Input value={target} onChange={setTarget} placeholder="0.0.30" />
           </Field>
           <Field label={tt('Wenn ausgeliefert')}>
-            <Select value={action} onChange={setAction} options={[['migrate', 'Plugin ausschalten, Daten behalten'], ['retire', 'Plugin und Installationen entfernen']]} />
+            <Select value={action} onChange={setAction} options={[['migrate', tt('Plugin ausschalten, Daten behalten')], ['retire', tt('Plugin und Installationen entfernen')]]} />
           </Field>
           <button className="btn secondary small" onClick={() => run(() => api.put(`/api/werkstatt/core/${r.id}`, { target_version: target, core_action: action }), 'Gespeichert')}>
             {tt('Speichern')}
@@ -703,7 +703,7 @@ export function CoreProposalModal({ plugin, onClose, onDone }: { plugin: { id: s
   const d = pol.data?.policy.core;
   return (
     <Modal
-      title={tt('„{name}“ als {stage3} vorschlagen', { name: plugin.name, stage3: NAMES.stage3 })}
+      title={tt('„{name}“ als {stage3} vorschlagen', { name: plugin.name, stage3: tt(NAMES.stage3) })}
       onClose={onClose}
       footer={
         <>
@@ -730,7 +730,7 @@ export function CoreProposalModal({ plugin, onClose, onDone }: { plugin: { id: s
           <Input value={target} onChange={setTarget} placeholder="0.0.30" />
         </Field>
         <Field label={tt('Wenn ausgeliefert')}>
-          <Select value={action} onChange={setAction} options={[['migrate', 'Plugin ausschalten, Daten behalten'], ['retire', 'Plugin und Installationen entfernen']]} />
+          <Select value={action} onChange={setAction} options={[['migrate', tt('Plugin ausschalten, Daten behalten')], ['retire', tt('Plugin und Installationen entfernen')]]} />
         </Field>
       </div>
       {gh.data && !gh.data.ready && (

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { api, dt } from '../api';
 import { Badge, Empty, Spinner, useLoad } from '../ui';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { intlLocale, tr, useT } from '../i18n';
 
 /**
  * Agentur → System: how the server is doing (event-loop lag, slow requests and queries, background jobs,
@@ -37,16 +37,17 @@ const LABELS: Record<string, string> = {
   workflow_runs: 'Automations-Läufe',
 };
 
-const uptime = (s: number) => (s >= 86400 ? `${Math.floor(s / 86400)} T ${Math.floor((s % 86400) / 3600)} h` : s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min` : `${Math.max(1, Math.floor(s / 60))} min`);
-const n = (v: number) => v.toLocaleString('de-DE');
+const uptime = (s: number) => (s >= 86400 ? tr('x_agency')('{d} T {h} h', { d: Math.floor(s / 86400), h: Math.floor((s % 86400) / 3600) }) : s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min` : `${Math.max(1, Math.floor(s / 60))} min`);
+const n = (v: number) => v.toLocaleString(intlLocale());
 const tone = (ms: number, warn: number, bad: number) => (ms >= bad ? 'red' : ms >= warn ? 'yellow' : 'green');
 
 function Stat({ label, value, sub, badge }: { label: string; value: string; sub?: string; badge?: 'green' | 'yellow' | 'red' }) {
+  const tt = useT('x_agency');
   return (
     <div className="card" style={{ padding: 14 }}>
       <div className="muted small">{label}</div>
       <div style={{ fontSize: 22, fontWeight: 600, marginTop: 2 }}>
-        {value} {badge && <Badge tone={badge}>{badge === 'green' ? 'gut' : badge === 'yellow' ? 'hoch' : 'kritisch'}</Badge>}
+        {value} {badge && <Badge tone={badge}>{badge === 'green' ? tt('gut') : badge === 'yellow' ? tt('hoch') : tt('kritisch')}</Badge>}
       </div>
       {sub && <div className="muted small">{sub}</div>}
     </div>
@@ -82,7 +83,7 @@ export function SystemHealth() {
       <div className="row" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 18 }} data-tour="system-rows">
         {Object.entries(d.database.rows).map(([k, v]) => (
           <Badge key={k}>
-            {LABELS[k] ?? k}: {n(v)}
+            {LABELS[k] ? tt(LABELS[k]) : k}: {n(v)}
           </Badge>
         ))}
       </div>

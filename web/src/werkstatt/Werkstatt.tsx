@@ -27,18 +27,18 @@ export function WerkstattPage() {
   const admin = !!me.data?.admin;
   const tab = !a ? 'builds' : TABS.includes(a) ? a : 'build';
   const tabs: [string, string][] = [
-    ['builds', 'Aufträge'],
-    ['plugins', 'Meine Plugins'],
-    ...(admin ? ([['approvals', me.data?.pending_approvals ? `Freigaben (${me.data.pending_approvals})` : 'Freigaben'], ['agency', 'Alle Plugins'], ['policy', 'Richtlinien'], ['flags', 'Funktionen'], ['core', 'Kernfeatures']] as [string, string][]) : []),
+    ['builds', tt('Aufträge')],
+    ['plugins', tt('Meine Plugins')],
+    ...(admin ? ([['approvals', me.data?.pending_approvals ? tt('Freigaben ({n})', { n: me.data.pending_approvals }) : tt('Freigaben')], ['agency', tt('Alle Plugins')], ['policy', tt('Richtlinien')], ['flags', tt('Funktionen')], ['core', tt('Kernfeatures')]] as [string, string][]) : []),
   ];
   return (
     <>
-      <PageHead title={NAMES.werkstatt} sub={tt('Hier werden Wünsche gebaut – erst nur für dich, später für alle.')}>
+      <PageHead title={tt(NAMES.werkstatt)} sub={tt('Hier werden Wünsche gebaut – erst nur für dich, später für alle.')}>
         <Link to="marktplatz" className="btn secondary">
-          <Icon name="store" size={14} /> {NAMES.marktplatz}
+          <Icon name="store" size={14} /> {tt(NAMES.marktplatz)}
         </Link>
         <button className="btn" data-tour="wk-new" onClick={() => openBuild()}>
-          <Icon name="hammer" size={14} /> {NAMES.build}
+          <Icon name="hammer" size={14} /> {tt(NAMES.build)}
         </button>
       </PageHead>
       {me.data && <MeBar me={me.data} />}
@@ -69,7 +69,7 @@ function MeBar({ me }: { me: WerkstattMe }) {
           <span style={{ width: `${pct}%` }} className={pct >= 90 ? 'hot' : ''} />
         </div>
         <span className="muted small">
-          {tt('{usd} von {usd2} verbraucht · Bauen darf:', { usd: usd(me.budget.used_usd), usd2: usd(me.budget.limit_usd) })} {{ admins: 'nur Admins', team: 'das Team', everyone: 'jede Person' }[me.who as 'admins']}
+          {tt('{usd} von {usd2} verbraucht · Bauen darf:', { usd: usd(me.budget.used_usd), usd2: usd(me.budget.limit_usd) })} {tt({ admins: 'nur Admins', team: 'das Team', everyone: 'jede Person' }[me.who as 'admins'] ?? '')}
           {me.approval ? tt(' · mit Freigabe durch einen Admin') : ''}
         </span>
       </div>
@@ -162,7 +162,7 @@ function BuildRow({ b, admin }: { b: Build; admin?: boolean }) {
       <div className="grow">
         <strong>{b.title}</strong>
         <div className="muted small">
-          {b.kind === 'change' ? tt('Änderung') : b.stage_label ? tt('Stufe {stage} · {stage_label}', { stage: b.stage, stage_label: b.stage_label }) : tt('wird analysiert')} · {ago(b.created_at)}
+          {b.kind === 'change' ? tt('Änderung') : b.stage_label ? tt('Stufe {stage} · {stage_label}', { stage: b.stage, stage_label: tt(b.stage_label) }) : tt('wird analysiert')} · {ago(b.created_at)}
           {admin && b.user ? ` · ${b.user}${b.location ? ` (${b.location})` : ''}` : ''}
         </div>
       </div>
@@ -181,7 +181,7 @@ function BuildsTab({ me }: { me?: WerkstattMe }) {
   const list = l.data ?? [];
   if (!list.length)
     return (
-      <Empty tour="wk-empty" action={<button className="btn" onClick={() => openBuild()}>{NAMES.build}</button>}>
+      <Empty tour="wk-empty" action={<button className="btn" onClick={() => openBuild()}>{tt(NAMES.build)}</button>}>
         {tt('Noch keine Aufträge. Beschreibe, was du dir wünschst – die KI schlägt einen Plan vor und baut ihn nach deiner Bestätigung.')}
         {me && !me.can_build ? ` (${me.reason})` : ''}
       </Empty>
@@ -258,7 +258,7 @@ function DecideInfo({ b, onClose }: { b: Build; onClose: () => void }) {
   const tt = useT('x_ai');
   return (
     <Modal title={tt('Schon entschieden')} onClose={onClose} footer={<button className="btn" onClick={onClose}>OK</button>}>
-      <p>{tt('Dieser Auftrag wartet nicht mehr auf eine Freigabe: {status_label}.', { status_label: b.status_label })}</p>
+      <p>{tt('Dieser Auftrag wartet nicht mehr auf eine Freigabe: {status_label}.', { status_label: tt(b.status_label) })}</p>
     </Modal>
   );
 }
@@ -339,7 +339,7 @@ function ApprovalsTab() {
                 <td>{s.location}</td>
                 <td>{usd(s.spent_usd)}</td>
                 <td>
-                  {usd(s.limit_usd)} {s.spent_usd >= s.limit_usd && <Badge tone="red">aufgebraucht</Badge>}
+                  {usd(s.limit_usd)} {s.spent_usd >= s.limit_usd && <Badge tone="red">{tt('aufgebraucht')}</Badge>}
                 </td>
               </tr>
             ))}

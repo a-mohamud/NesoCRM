@@ -36,12 +36,12 @@ function DocDialog({ doc, onClose }: { doc: (typeof DOCS)[number]; onClose: () =
   const hostedUrl = `${location.origin}/legal/${currentLocation()}/${doc.kind}`;
   const srcDoc = out ? `<!doctype html><meta charset="utf-8"><base target="_blank"><style>body{font:15px/1.55 system-ui,sans-serif;margin:16px;color:#111827}h1{font-size:22px}h2{font-size:17px;margin-top:22px}</style>${out.html}` : '';
   return (
-    <Modal title={doc.label} onClose={onClose} wide>
+    <Modal title={tt(doc.label)} onClose={onClose} wide>
       <div data-tour="legal-doc">
         <LegalNotice />
         {doc.kind === 'widerruf' && (
           <Field label={tt('Was verkaufst du?')}>
-            <Select value={opts.type} onChange={(v) => set('type', v)} options={[['digital', 'Digitale Inhalte (Downloads, Kurse, Software)'], ['service', 'Dienstleistungen'], ['physical', 'Waren (Versand)']]} />
+            <Select value={opts.type} onChange={(v) => set('type', v)} options={[['digital', tt('Digitale Inhalte (Downloads, Kurse, Software)')], ['service', tt('Dienstleistungen')], ['physical', tt('Waren (Versand)')]]} />
           </Field>
         )}
         {doc.kind === 'avv' && (
@@ -67,7 +67,7 @@ function DocDialog({ doc, onClose }: { doc: (typeof DOCS)[number]; onClose: () =
               </p>
             )}
             {out.external && !out.external.used && out.external.reason !== 'Keine externe Quelle eingerichtet' && <p className="muted small">{out.external.reason}</p>}
-            <iframe title={doc.label} sandbox="" srcDoc={srcDoc} style={{ width: '100%', height: 420, border: '1px solid var(--line)', borderRadius: 8, background: '#fff' }} />
+            <iframe title={tt(doc.label)} sandbox="" srcDoc={srcDoc} style={{ width: '100%', height: 420, border: '1px solid var(--line)', borderRadius: 8, background: '#fff' }} />
             <p className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }} data-tour="legal-downloads">
               {(['pdf', 'html', 'md', 'txt'] as const).map((f) => (
                 <a key={f} className="btn secondary small" href={`${BASE}?${query}&format=${f}&locationId=${loc}`}>
@@ -92,7 +92,7 @@ function DocDialog({ doc, onClose }: { doc: (typeof DOCS)[number]; onClose: () =
                     disabled={!funnel}
                     onClick={async () => {
                       const r = await act(() => api.post(`/api/legal/funnels/${funnel}/apply`, { kinds: [doc.kind] }));
-                      if (r) toast(r.pages.length ? tt('Übernommen: {n}', { n: r.pages.map((p: any) => (p.created ? 'angelegt' : 'aktualisiert')).join(', ') }) : tt('Nichts geändert – die Seite hat bereits eigenen Text'));
+                      if (r) toast(r.pages.length ? tt('Übernommen: {n}', { n: r.pages.map((p: any) => (p.created ? tt('angelegt') : tt('aktualisiert'))).join(', ') }) : tt('Nichts geändert – die Seite hat bereits eigenen Text'));
                     }}
                   >
                     {tt('Übernehmen')}
@@ -148,7 +148,7 @@ export function LegalWizard() {
           <Field label={tt('PLZ')}><Input value={p.zip} onChange={(v) => set({ zip: v })} /></Field>
           <Field label={tt('Ort')}><Input value={p.city} onChange={(v) => set({ city: v })} /></Field>
           <Field label={tt('Land')}><Input value={p.country} onChange={(v) => set({ country: v })} /></Field>
-          <Field label="E-Mail"><Input value={p.email} onChange={(v) => set({ email: v })} /></Field>
+          <Field label={tt('E-Mail')}><Input value={p.email} onChange={(v) => set({ email: v })} /></Field>
           <Field label={tt('Telefon')}><Input value={p.phone} onChange={(v) => set({ phone: v })} /></Field>
           <Field label={tt('Website')}><Input value={p.website} onChange={(v) => set({ website: v })} placeholder="https://…" /></Field>
           {registered && <Field label={tt('Registergericht')}><Input value={p.register_court} onChange={(v) => set({ register_court: v })} placeholder={tt('z. B. Amtsgericht München')} /></Field>}
@@ -168,7 +168,7 @@ export function LegalWizard() {
         <h3>{tt('Verbraucherstreitbeilegung')}</h3>
         <div className="grid2">
           <Field label={tt('Teilnahme')}>
-            <Select value={p.dispute} onChange={(v) => set({ dispute: v })} options={[['unwilling', 'Nicht bereit und nicht verpflichtet'], ['willing', 'Bereit, an einem Verfahren teilzunehmen'], ['none', 'Keine Verbraucher-Geschäfte (nicht angeben)']]} />
+            <Select value={p.dispute} onChange={(v) => set({ dispute: v })} options={[['unwilling', tt('Nicht bereit und nicht verpflichtet')], ['willing', tt('Bereit, an einem Verfahren teilzunehmen')], ['none', tt('Keine Verbraucher-Geschäfte (nicht angeben)')]]} />
           </Field>
           {p.dispute === 'willing' && <Field label={tt('Schlichtungsstelle (Name, Anschrift, Website)')}><Input value={p.dispute_body} onChange={(v) => set({ dispute_body: v })} /></Field>}
         </div>
@@ -192,10 +192,10 @@ export function LegalWizard() {
                 {services.data.services.map((s: any) => (
                   <tr key={s.id}>
                     <td>{s.label}</td>
-                    <td>{s.detected ? <Badge tone="green">ja</Badge> : <Badge>nein</Badge>}</td>
-                    <td>{s.active ? <Badge tone="blue">ja</Badge> : <Badge>nein</Badge>}</td>
+                    <td>{s.detected ? <Badge tone="green">{tt('ja')}</Badge> : <Badge>{tt('nein')}</Badge>}</td>
+                    <td>{s.active ? <Badge tone="blue">{tt('ja')}</Badge> : <Badge>{tt('nein')}</Badge>}</td>
                     <td>
-                      <Select value={s.override === null ? '' : s.override ? 'on' : 'off'} onChange={(v) => setOverride(s.id, v)} options={[['', 'Automatisch'], ['on', 'Immer nennen'], ['off', 'Nie nennen']]} />
+                      <Select value={s.override === null ? '' : s.override ? 'on' : 'off'} onChange={(v) => setOverride(s.id, v)} options={[['', tt('Automatisch')], ['on', tt('Immer nennen')], ['off', tt('Nie nennen')]]} />
                     </td>
                   </tr>
                 ))}
@@ -213,8 +213,8 @@ export function LegalWizard() {
         <div className="grid2">
           {DOCS.map((d) => (
             <div className="card" key={d.kind} style={{ margin: 0 }}>
-              <strong>{d.label}</strong>
-              <p className="muted small">{d.hint}</p>
+              <strong>{tt(d.label)}</strong>
+              <p className="muted small">{tt(d.hint)}</p>
               <button className="btn secondary" onClick={() => setOpen(d)} data-tour={`legal-open-${d.kind}`}>{tt('Entwurf ansehen')}</button>
             </div>
           ))}

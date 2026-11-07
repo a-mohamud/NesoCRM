@@ -36,18 +36,18 @@ function Overview({ policy }: { policy: string }) {
       <div className="muted">{label}</div>
       <div className="row small" style={{ gap: 14 }}>
         <span><Badge tone="green">{n.confirmed}</Badge> {tt('bestätigt')}</span>
-        <span><Badge tone="yellow">{n.pending}</Badge> offen</span>
-        <span><Badge tone="red">{n.revoked}</Badge> widerrufen</span>
+        <span><Badge tone="yellow">{n.pending}</Badge> {tt('offen')}</span>
+        <span><Badge tone="red">{n.revoked}</Badge> {tt('widerrufen')}</span>
         <span><Badge>{n.unknown_legacy}</Badge> {tt('Altbestand ohne Nachweis')}</span>
-        <span><Badge>{n.unknown}</Badge> abgelaufen/abgelehnt</span>
+        <span><Badge>{n.unknown}</Badge> {tt('abgelaufen/abgelehnt')}</span>
       </div>
     </div>
   );
   return (
     <>
       <div className="grid2" data-tour="consent-overview">
-        {row(`E-Mail (${data.email.total} Kontakte mit Adresse)`, data.email)}
-        {row(`SMS (${data.sms.total} Kontakte mit Nummer)`, data.sms)}
+        {row(tt('E-Mail ({total} Kontakte mit Adresse)', { total: data.email.total }), data.email)}
+        {row(tt('SMS ({total} Kontakte mit Nummer)', { total: data.sms.total }), data.sms)}
       </div>
       {data.doi_pending > 0 && <p className="muted small">{tt('{doi_pending} Bestätigungs-Mails warten auf einen Klick.', { doi_pending: data.doi_pending })}</p>}
     </>
@@ -88,8 +88,8 @@ function Basics() {
             value={s.policy}
             onChange={(v) => set({ policy: v })}
             options={[
-              ['legacy', 'Bestätigte Kontakte und Altbestand ohne Nachweis (Standard – nichts ändert sich für bestehende Listen)'],
-              ['confirmed', 'Nur Kontakte mit bestätigter Einwilligung (empfohlen)'],
+              ['legacy', tt('Bestätigte Kontakte und Altbestand ohne Nachweis (Standard – nichts ändert sich für bestehende Listen)')],
+              ['confirmed', tt('Nur Kontakte mit bestätigter Einwilligung (empfohlen)')],
             ]}
           />
         </Field>
@@ -103,7 +103,7 @@ function Basics() {
         <Field label={tt('Double-Opt-in verlangen bei')}>
           <div>
             {SOURCES.map(([k, l, h]) => (
-              <Check key={k} checked={!!doi.sources[k]} onChange={(v) => setDoi({ sources: { ...doi.sources, [k]: v } })} label={<><strong>{l}</strong> <span className="muted small">– {h}</span></>} />
+              <Check key={k} checked={!!doi.sources[k]} onChange={(v) => setDoi({ sources: { ...doi.sources, [k]: v } })} label={<><strong>{tt(l)}</strong> <span className="muted small">– {tt(h)}</span></>} />
             ))}
           </div>
         </Field>
@@ -150,7 +150,7 @@ function Basics() {
       <div className="card" data-tour="consent-log">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2>{tt('Letzte Ereignisse')}</h2>
-          <Select value={action} onChange={setAction} placeholder={tt('Alle Ereignisse')} options={Object.entries(ACTION)} />
+          <Select value={action} onChange={setAction} placeholder={tt('Alle Ereignisse')} options={Object.entries(ACTION).map(([k, l]) => [k, tt(l)] as [string, string])} />
         </div>
         {!rows.length ? (
           <Empty>{tt('Noch keine Einwilligungsereignisse.')}</Empty>
@@ -163,8 +163,8 @@ function Basics() {
                   <tr key={e.id}>
                     <td className="small" style={{ whiteSpace: 'nowrap' }}>{dt(e.created_at)}</td>
                     <td><a href={`/app/contacts/${e.contact_id}`}>{[e.first_name, e.last_name].filter(Boolean).join(' ') || e.email || e.contact_id}</a></td>
-                    <td className="small">{CHANNEL[e.channel] ?? e.channel} · {PURPOSE[e.purpose] ?? e.purpose}</td>
-                    <td><Badge tone={e.action === 'revoked' || e.action === 'expired' ? 'red' : e.action === 'granted' && e.doi_required ? 'yellow' : e.action === 'granted' || e.action === 'confirmed' ? 'green' : 'gray'}>{e.action === 'granted' && e.doi_required ? tt('Angefragt') : ACTION[e.action] ?? e.action}</Badge></td>
+                    <td className="small">{tt(CHANNEL[e.channel] ?? e.channel)} · {tt(PURPOSE[e.purpose] ?? e.purpose)}</td>
+                    <td><Badge tone={e.action === 'revoked' || e.action === 'expired' ? 'red' : e.action === 'granted' && e.doi_required ? 'yellow' : e.action === 'granted' || e.action === 'confirmed' ? 'green' : 'gray'}>{e.action === 'granted' && e.doi_required ? tt('Angefragt') : tt(ACTION[e.action] ?? e.action)}</Badge></td>
                     <td className="small">{e.source_label || e.source_kind}</td>
                   </tr>
                 ))}
@@ -202,10 +202,11 @@ function Basics() {
 }
 
 export function ConsentSettings() {
+  const tt = useT('x_integrations');
   const [tab, setTab] = useState('basics');
   return (
     <div data-tour="settings-consent">
-      <Tabs tabs={[['basics', 'Einwilligung'], ['cmp', 'Cookie-Banner'], ['legal', 'Rechtstexte'], ['checkout', 'Checkout']]} value={tab} onChange={setTab} />
+      <Tabs tabs={[['basics', tt('Einwilligung')], ['cmp', tt('Cookie-Banner')], ['legal', tt('Rechtstexte')], ['checkout', tt('Checkout')]]} value={tab} onChange={setTab} />
       {tab === 'basics' && <Basics />}
       <PageSuspense>
         {tab === 'cmp' && <CmpEditor />}

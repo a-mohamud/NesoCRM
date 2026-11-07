@@ -33,10 +33,10 @@ export function Accounting({ tab }: { tab?: string }) {
   const reload = () => void status.reload();
   if (!st.enabled) return <Setup st={st} onDone={reload} />;
   const c = st.counts ?? {};
-  const label = (k: string, l: string) => (k === 'receipts' && c.receipts_inbox ? `${l} (${c.receipts_inbox})` : k === 'bank' && c.bank_open ? `${l} (${c.bank_open})` : l);
+  const label = (k: string, l: string) => (k === 'receipts' && c.receipts_inbox ? `${tt(l)} (${c.receipts_inbox})` : k === 'bank' && c.bank_open ? `${tt(l)} (${c.bank_open})` : tt(l));
   return (
     <>
-      <PageHead title={tt('Buchhaltung')} sub={`Buchhaltung light, Vorbereitung für den Steuerberater · ${st.standard.toUpperCase()}${st.vat_mode === 'small' ? tt(' · Kleinunternehmer') : ''}`} />
+      <PageHead title={tt('Buchhaltung')} sub={tt('Buchhaltung light, Vorbereitung für den Steuerberater · {standard}', { standard: st.standard.toUpperCase() }) + (st.vat_mode === 'small' ? tt(' · Kleinunternehmer') : '')} />
       <Disclaimer compact={t !== 'overview'} text={st.disclaimer} />
       <Tabs tabs={TABS.map(([k, l]) => [k, label(k, l)])} value={t} onChange={(v) => navigate(`accounting/${v}`)} />
       <datalist id="acc-accounts">
@@ -73,10 +73,10 @@ function Setup({ st, onDone }: { st: any; onDone: () => void }) {
         </p>
         <div className="grid2">
           <Field label={tt('Kontenrahmen')} hint={tt('Frag deinen Steuerberater, womit er arbeitet. SKR03 ist in kleinen Betrieben am häufigsten.')}>
-            <Select value={standard} onChange={setStandard} options={[['skr03', 'SKR03 (Prozessgliederung)'], ['skr04', 'SKR04 (Abschlussgliederung)']]} />
+            <Select value={standard} onChange={setStandard} options={[['skr03', tt('SKR03 (Prozessgliederung)')], ['skr04', tt('SKR04 (Abschlussgliederung)')]]} />
           </Field>
           <Field label={tt('Umsatzsteuer')} hint={st.invoice_small_business ? tt('In den Rechnungs-Einstellungen ist Kleinunternehmer eingetragen.') : undefined}>
-            <Select value={vat} onChange={setVat} options={[['regular', 'Regelbesteuerung (19 % / 7 %)'], ['small', 'Kleinunternehmer (§ 19 UStG)']]} />
+            <Select value={vat} onChange={setVat} options={[['regular', tt('Regelbesteuerung (19 % / 7 %)')], ['small', tt('Kleinunternehmer (§ 19 UStG)')]]} />
           </Field>
         </div>
         <button className="btn" onClick={async () => (await act(() => api.post('/api/accounting/setup', { standard, vat_mode: vat }), tt('Buchhaltung eingerichtet'))) && onDone()}>
@@ -206,7 +206,7 @@ function Receipts({ accounts, onChange }: { accounts: any[]; onChange: () => voi
       <div className="row" style={{ marginBottom: 12, alignItems: 'center' }}>
         <FileButton label={tt('Beleg hochladen')} accept="application/pdf,image/*,.xml,text/xml" multiple secondary={false} tour="acc-upload" onFile={async (f) => (await api.post('/api/accounting/receipts', { name: f.name, data: f.data }), void list.reload(), later(), onChange())} />
         <div className="tabs" style={{ margin: 0, border: 0 }} data-tour="acc-receipt-filter">
-          {[['open', 'Offen'], ['booked', 'Gebucht'], ['discarded', 'Verworfen'], ['all', 'Alle']].map(([k, l]) => (
+          {[['open', tt('Offen')], ['booked', tt('Gebucht')], ['discarded', tt('Verworfen')], ['all', tt('Alle')]].map(([k, l]) => (
             <button key={k} className={k === filter ? 'on' : ''} onClick={() => setFilter(k)}>
               {l}
             </button>
@@ -236,7 +236,7 @@ function Receipts({ accounts, onChange }: { accounts: any[]; onChange: () => voi
               {rows.map((r) => (
                 <tr key={r.id} className="click" {...pressable(() => setOpen(r.id))}>
                   <td>
-                    <Badge tone={R_STATUS[r.status]?.[1]}>{R_STATUS[r.status]?.[0] ?? r.status}</Badge>
+                    <Badge tone={R_STATUS[r.status]?.[1]}>{tt(R_STATUS[r.status]?.[0] ?? r.status)}</Badge>
                   </td>
                   <td>
                     <strong>{r.supplier || <span className="muted">{r.doc_name}</span>}</strong>
@@ -246,7 +246,7 @@ function Receipts({ accounts, onChange }: { accounts: any[]; onChange: () => voi
                   <td className="num">{r.gross_cents === null ? '–' : money(r.gross_cents)}</td>
                   <td className="mono">{r.account || '–'}</td>
                   <td className="muted small">
-                    {{ upload: 'Upload', mobile: 'Handy', email: 'E-Mail' }[r.source as string] ?? r.source}, {d(r.created_at)}
+                    {{ upload: tt('Upload'), mobile: tt('Handy'), email: 'E-Mail' }[r.source as string] ?? r.source}, {d(r.created_at)}
                   </td>
                 </tr>
               ))}
@@ -341,8 +341,8 @@ function ReceiptEditor({ id, accounts, onClose }: { id: string; accounts: any[];
       }
     >
       <div className="row" style={{ marginBottom: 10, alignItems: 'center' }}>
-        <Badge tone={R_STATUS[x.status]?.[1]}>{R_STATUS[x.status]?.[0]}</Badge>
-        {ex.method && <Badge tone={ex.method === 'ai' ? 'yellow' : 'green'}>{METHOD[ex.method] ?? ex.method}</Badge>}
+        <Badge tone={R_STATUS[x.status]?.[1]}>{tt(R_STATUS[x.status]?.[0] ?? x.status)}</Badge>
+        {ex.method && <Badge tone={ex.method === 'ai' ? 'yellow' : 'green'}>{tt(METHOD[ex.method] ?? ex.method)}</Badge>}
         {x.document && (
           <a className="btn small secondary" href={dlHref(x.document.url)} target="_blank" rel="noreferrer">
             <Icon name="external" /> {tt('Original ansehen')}
@@ -392,13 +392,13 @@ function ReceiptEditor({ id, accounts, onClose }: { id: string; accounts: any[];
         </div>
         <div className="grid3">
           <Field label={tt('Steuersatz')}>
-            <Select value={f.vat_rate} onChange={set('vat_rate')} options={[['19', '19 %'], ['7', '7 %'], ['0', '0 % / ohne']]} />
+            <Select value={f.vat_rate} onChange={set('vat_rate')} options={[['19', '19 %'], ['7', '7 %'], ['0', tt('0 % / ohne')]]} />
           </Field>
           <Field label={tt('Konto (Aufwand / Anlage)')} hint={accountName}>
             <Input list="acc-accounts" value={f.account} onChange={set('account')} placeholder={tt('z. B. 4980')} />
           </Field>
           <Field label={tt('Bezahlt')}>
-            <Select value={f.payment} onChange={set('payment')} options={[['open', 'Noch offen (Verbindlichkeit)'], ['bank', 'Per Bank'], ['cash', 'Bar (Kasse)'], ['private', 'Privat ausgelegt']]} />
+            <Select value={f.payment} onChange={set('payment')} options={[['open', tt('Noch offen (Verbindlichkeit)')], ['bank', tt('Per Bank')], ['cash', tt('Bar (Kasse)')], ['private', tt('Privat ausgelegt')]]} />
           </Field>
         </div>
         <div className="row">
@@ -450,7 +450,7 @@ function Entries({ accounts, lockedThrough }: { accounts: any[]; lockedThrough: 
         </div>
         <div style={{ width: 150 }}>
           <Field label={tt('Quelle')}>
-            <Select value={source} onChange={setSource} placeholder={tt('Alle')} options={Object.entries(SOURCES).filter(([k]) => k !== 'storno')} />
+            <Select value={source} onChange={setSource} placeholder={tt('Alle')} options={Object.entries(SOURCES).filter(([k]) => k !== 'storno').map(([k, l]): [string, string] => [k, tt(l)])} />
           </Field>
         </div>
         <div style={{ marginLeft: 'auto', marginBottom: 12, display: 'flex', gap: 8 }}>
@@ -485,7 +485,7 @@ function Entries({ accounts, lockedThrough }: { accounts: any[]; lockedThrough: 
                   <td>
                     <strong>{e.text}</strong>
                     <div className="muted small">
-                      {SOURCES[e.source] ?? e.source}
+                      {tt(SOURCES[e.source] ?? e.source)}
                       {e.party_name ? ` · ${e.party_name}` : ''} {e.reverses_id && <Badge tone="purple">{tt('Storno')}</Badge>} {e.reversed_by && <Badge tone="red">storniert</Badge>}
                     </div>
                   </td>
@@ -587,7 +587,7 @@ function NewEntry({ accounts, lockedThrough, onClose, onDone }: { accounts: any[
                   <EuroInput value={r.amount} onChange={(v) => upd(i, 'amount', v)} />
                 </td>
                 <td>
-                  <Select value={r.tax_code} onChange={(v) => upd(i, 'tax_code', v)} options={(codes.data ?? [{ code: 'none', label: 'ohne Steuer' }]).map((c: any) => [c.code, c.label] as [string, string])} />
+                  <Select value={r.tax_code} onChange={(v) => upd(i, 'tax_code', v)} options={(codes.data ?? [{ code: 'none', label: tt('ohne Steuer') }]).map((c: any) => [c.code, tt(c.label)] as [string, string])} />
                 </td>
                 <td>
                   {rows.length > 1 && (
@@ -620,7 +620,7 @@ function EntryView({ entry, accounts, onClose }: { entry: any; accounts: any[]; 
         <p>
           <strong>{entry.text}</strong>
           <br />
-          <span className="muted">{tt('{germanDate} · Beleg', { germanDate: germanDate(entry.date) })} {entry.doc_ref || '–'} · {SOURCES[entry.source] ?? entry.source}</span>
+          <span className="muted">{tt('{germanDate} · Beleg', { germanDate: germanDate(entry.date) })} {entry.doc_ref || '–'} · {tt(SOURCES[entry.source] ?? entry.source)}</span>
         </p>
         <p className="small muted">
           {entry.reverses_id && <>{tt('Storno zu einer früheren Buchung.')}<br /></>}
@@ -675,8 +675,8 @@ function StornoModal({ entry, onClose, onDone }: { entry: any; onClose: () => vo
       footer={
         <>
           <button className="btn secondary" onClick={onClose}>{tt('Abbrechen')}</button>
-          <button className="btn danger" onClick={async () => (await act(() => api.post(`/api/accounting/entries/${entry.id}/storno`, { reason, date }), tt('Storniert'))) && onDone()}>
-            {tt('Stornieren')}
+          <button className="btn danger" onClick={async () => (await act(() => api.post(`/api/accounting/entries/${entry.id}/storno`, { reason, date }), tt('Storno gebucht'))) && onDone()}>
+            {tt('Storno buchen')}
           </button>
         </>
       }

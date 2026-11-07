@@ -3,7 +3,7 @@ import { currentLocation } from '../api';
 import { api } from '../api';
 import { Badge, Field, Input, act, useLoad } from '../ui';
 import './community-admin.css';
-import { useT } from '../i18n';
+import { fmtMoney, tr, useT } from '../i18n';
 
 /** Small pieces the lazy community tabs share (cards, key figures, copy field, sub-tabs). */
 
@@ -93,7 +93,8 @@ export const toneOf = (status: string): 'green' | 'yellow' | 'red' | 'gray' | 'b
 export const statusText: Record<string, string> = { active: 'Aktiv', trialing: 'Testphase', pending: 'Wartet auf Freigabe', awaiting_payment: 'Wartet auf Zahlung', past_due: 'Zahlung offen', canceled: 'Beendet', rejected: 'Abgelehnt' };
 
 export function StatusBadge({ status }: { status: string }) {
-  return <Badge tone={toneOf(status)}>{statusText[status] ?? status}</Badge>;
+  const tt = useT('x_community');
+  return <Badge tone={toneOf(status)}>{statusText[status] ? tt(statusText[status]) : status}</Badge>;
 }
 
 /** Search a member of the group and pick one. */
@@ -122,9 +123,9 @@ export function MemberPick({ group, onPick }: { group: any; onPick: (m: any) => 
     </>
   );
 }
-/** Runs a request, shows the toast and reloads on success. */
+/** Runs a request, shows the toast and reloads on success. `ok` is the German toast text (translated here). */
 export const run = async (fn: () => Promise<unknown>, ok: string, then?: () => void) => {
-  const r = await act(fn, ok);
+  const r = await act(fn, ok ? tr('x_community')(ok) : ok);
   if (r !== undefined) then?.();
   return r;
 };
@@ -137,4 +138,4 @@ export const toLocalInput = (iso?: string | null) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 export const fromLocalInput = (v: string) => (v ? new Date(v).toISOString() : '');
-export const euro = (cents: number, cur = 'EUR') => new Intl.NumberFormat('de-DE', { style: 'currency', currency: cur }).format((cents || 0) / 100);
+export const euro = (cents: number, cur = 'EUR') => fmtMoney(cents, cur);

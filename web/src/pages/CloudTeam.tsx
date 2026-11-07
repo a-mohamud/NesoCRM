@@ -4,7 +4,7 @@ import { Icon } from '../icons';
 import { useSession } from '../session';
 import { Badge, Check, Empty, Field, Input, Modal, Spinner, act, toast, useLoad } from '../ui';
 import { MeterBar, type CloudMe } from './CloudKit';
-import { useT } from '../i18n';
+import { intlLocale, useT } from '../i18n';
 
 /** Cloud-Konto: the team (members of the account) and – for Agentur – client accounts, white-label and login domains. */
 
@@ -50,7 +50,7 @@ function InviteModal({ me, locations, onClose, onDone }: { me: CloudMe; location
         </>
       }
     >
-      <Field label="E-Mail">
+      <Field label={tt('E-Mail')}>
         <Input type="email" value={email} onChange={setEmail} autoFocus />
       </Field>
       <Field label={tt('Name (optional)')}>
@@ -97,7 +97,7 @@ export function CloudTeam({ me, owner, reload }: { me: CloudMe; owner: boolean; 
         <thead>
           <tr>
             <th>Name</th>
-            <th>E-Mail</th>
+            <th>{tt('E-Mail')}</th>
             <th>{tt('Rolle')}</th>
             <th />
           </tr>
@@ -108,7 +108,7 @@ export function CloudTeam({ me, owner, reload }: { me: CloudMe; owner: boolean; 
               <td>{m.name}</td>
               <td>{m.email}</td>
               <td>
-                {m.role === 'owner' ? <Badge tone="blue">{tt('Inhaber:in')}</Badge> : <Badge>{tt('Mitglied')}</Badge>} {m.invited && <Badge tone="yellow">eingeladen</Badge>} {m.hr && m.role !== 'owner' && <Badge tone="purple">{tt('Personal')}</Badge>}
+                {m.role === 'owner' ? <Badge tone="blue">{tt('Inhaber:in')}</Badge> : <Badge>{tt('Mitglied')}</Badge>} {m.invited && <Badge tone="yellow">{tt('eingeladen')}</Badge>} {m.hr && m.role !== 'owner' && <Badge tone="purple">{tt('Personal')}</Badge>}
                 {!m.all_locations && <span className="muted small"> {tt('· {length} Sub-Account(s)', { length: m.locations.length })}</span>}
               </td>
               <td className="nowrap" style={{ textAlign: 'right' }}>
@@ -253,8 +253,8 @@ function Branding({ reload }: { reload: () => void }) {
       <p className="muted small" style={{ marginTop: 0 }}>{tt('Gilt für dein Konto und alle Kunden-Accounts: Name, Logo und Farbe erscheinen statt der Marke des Anbieters.')}</p>
       <div className="grid2">
         {BRAND_FIELDS.map(([k, label, ph]) => (
-          <Field key={k} label={label}>
-            <Input value={cur[k] ?? ''} placeholder={ph} onChange={(x) => setV({ ...cur, [k]: x })} />
+          <Field key={k} label={tt(label)}>
+            <Input value={cur[k] ?? ''} placeholder={ph ? tt(ph) : ''} onChange={(x) => setV({ ...cur, [k]: x })} />
           </Field>
         ))}
       </div>
@@ -302,7 +302,7 @@ function DomainModal({ c, onClose, onDone }: { c: Client; onClose: () => void; o
       }
     >
       <Field label={tt('Domain')} hint={tt('z. B. crm.kunde.de – lege bei deinem DNS-Anbieter einen CNAME-Eintrag auf die Adresse deines Anbieters an. Das Zertifikat kommt automatisch, sobald die Domain zeigt. Leer = keine eigene Domain.')}>
-        <Input value={domain} onChange={setDomain} placeholder="crm.kunde.de" autoFocus />
+        <Input value={domain} onChange={setDomain} placeholder={tt('crm.kunde.de')} autoFocus />
       </Field>
     </Modal>
   );
@@ -357,7 +357,7 @@ export function CloudClients({ me, owner, reload }: { me: CloudMe; owner: boolea
                 <td>
                   {c.name} {c.primary && <Badge tone="blue">{tt('Haupt-Konto')}</Badge>}
                 </td>
-                <td>{c.contacts.toLocaleString('de-DE')}</td>
+                <td>{c.contacts.toLocaleString(intlLocale())}</td>
                 <td>{c.users}</td>
                 <td style={{ minWidth: 150 }}>
                   <MeterBar label="" m={c.meters.emails} />

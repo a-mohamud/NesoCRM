@@ -5,7 +5,7 @@ import { Badge, Check, CodeBox, Copy, Empty, Field, Input, Modal, Select, Spinne
 import { MoreFields } from '../areas/fields';
 import { SAAS_STATUS } from './SaasBilling';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { fmtNumber, useT } from '../i18n';
 
 /**
  * Agentur → SaaS: sell sub-accounts to your own customers. Overview (MRR, statuses, churn,
@@ -52,7 +52,7 @@ export function StatusBadge({ status }: { status?: string | null }) {
   const tt = useT('x_agency');
   if (!status) return <Badge>{tt('kein Tarif')}</Badge>;
   const [label, tone] = SAAS_STATUS[status] ?? [status, 'gray'];
-  return <Badge tone={tone}>{label}</Badge>;
+  return <Badge tone={tone}>{tt(label)}</Badge>;
 }
 
 const euros = (cents: number) => (cents ? String(cents / 100).replace('.', ',') : '');
@@ -81,7 +81,7 @@ function Overview({ goSettings }: { goSettings: () => void }) {
         <Stat label={tt('Aktive Abos')} value={x.counts.active} sub={tt('{new_30d} neu in 30 Tagen', { new_30d: x.new_30d })} />
         <Stat label={tt('Testphase')} value={x.counts.trialing} sub={tt('noch ohne Umsatz')} />
         <Stat label={tt('Zahlung offen')} value={x.counts.past_due + x.counts.paused} sub={tt('{paused} davon pausiert', { paused: x.counts.paused })} />
-        <Stat label={tt('Churn (30 Tage)')} value={`${String(x.churn.rate_percent).replace('.', ',')} %`} sub={tt('{lost_30d} beendet', { lost_30d: x.churn.lost_30d })} />
+        <Stat label={tt('Churn (30 Tage)')} value={`${fmtNumber(Number(x.churn.rate_percent), { maximumFractionDigits: 1 })} %`} sub={tt('{lost_30d} beendet', { lost_30d: x.churn.lost_30d })} />
       </SortableGrid>
       <SortableGrid id="saas.cards" className="grid2 saas-grid">
         <div className="card">
@@ -130,11 +130,11 @@ function Overview({ goSettings }: { goSettings: () => void }) {
                     <td>
                       {r.name}
                       <div className="muted small">
-                        {r.plan} · {r.interval === 'year' ? tt('jährlich') : 'monatlich'}
+                        {r.plan} · {r.interval === 'year' ? tt('jährlich') : tt('monatlich')}
                       </div>
                     </td>
                     <td className="nowrap">{money(r.amount_cents, r.currency)}</td>
-                    <td>{r.ends ? <Badge tone="yellow">endet</Badge> : <StatusBadge status={r.status} />}</td>
+                    <td>{r.ends ? <Badge tone="yellow">{tt('endet')}</Badge> : <StatusBadge status={r.status} />}</td>
                   </tr>
                 ))}
               </tbody>
@@ -151,7 +151,7 @@ function Overview({ goSettings }: { goSettings: () => void }) {
             {x.events.map((e: any) => (
               <li key={e.id}>
                 <span className="muted small nowrap">{ago(e.at)}</span>
-                <strong>{EVENT_LABEL[e.type] ?? e.type}</strong>
+                <strong>{EVENT_LABEL[e.type] ? tt(EVENT_LABEL[e.type]) : e.type}</strong>
                 <span>{e.location_name ?? '–'}</span>
                 <span className="muted small">{e.detail}</span>
               </li>
@@ -197,7 +197,8 @@ function PlanEditor({ plan, settings, onClose, onSaved }: { plan?: any; settings
   const markup = f.markup_percent === '' ? settings.markup_percent : Number(f.markup_percent);
   const resale = (k: string) => {
     const c = (settings.unit_cost?.[k] ?? 0) * (1 + markup / 100);
-    return c >= 1 ? `${c.toFixed(2).replace('.', ',')} ct` : `${(c * 10).toFixed(2).replace('.', ',')} € je 1.000`;
+    const two = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+    return c >= 1 ? `${fmtNumber(c, two)} ct` : tt('{v} € je 1.000', { v: fmtNumber(c * 10, two) });
   };
   return (
     <Modal
@@ -253,8 +254,8 @@ function PlanEditor({ plan, settings, onClose, onSaved }: { plan?: any; settings
       </p>
       <div className="grid3">
         {LIMIT_LABELS.map(([k, label]) => (
-          <Field key={k} label={label}>
-            <Input type="number" min={0} value={f.limits[k]} onChange={(v) => setF({ ...f, limits: { ...f.limits, [k]: v } })} placeholder="unbegrenzt" />
+          <Field key={k} label={tt(label)}>
+            <Input type="number" min={0} value={f.limits[k]} onChange={(v) => setF({ ...f, limits: { ...f.limits, [k]: v } })} placeholder={tt('unbegrenzt')} />
           </Field>
         ))}
       </div>
@@ -262,8 +263,8 @@ function PlanEditor({ plan, settings, onClose, onSaved }: { plan?: any; settings
       <h4>{tt('Mehrverbrauch (E-Mails, SMS, KI)')}</h4>
       <div className="grid3">
         {USAGE.map(([k, label]) => (
-          <Field key={k} label={tt('{label} über dem Limit', { label: label })} hint={f.overage[k] === 'bill' ? tt('Kunde zahlt {resale} je Stück', { resale: resale(k) }) : undefined}>
-            <Select value={f.overage[k]} onChange={(v) => setF({ ...f, overage: { ...f.overage, [k]: v } })} options={[['block', 'sperren'], ['bill', 'weiterberechnen (Stripe)']]} />
+          <Field key={k} label={tt('{label} über dem Limit', { label: tt(label) })} hint={f.overage[k] === 'bill' ? tt('Kunde zahlt {resale} je Stück', { resale: resale(k) }) : undefined}>
+            <Select value={f.overage[k]} onChange={(v) => setF({ ...f, overage: { ...f.overage, [k]: v } })} options={[['block', tt('sperren')], ['bill', tt('weiterberechnen (Stripe)')]]} />
           </Field>
         ))}
       </div>
@@ -297,7 +298,7 @@ function Plans({ settings }: { settings: any }) {
               <div className="saas-plan-top">
                 <h3>{p.name}</h3>
                 <span>
-                  {!p.active && <Badge>inaktiv</Badge>} {!p.public && <Badge tone="purple">versteckt</Badge>}
+                  {!p.active && <Badge>{tt('inaktiv')}</Badge>} {!p.public && <Badge tone="purple">{tt('versteckt')}</Badge>}
                 </span>
               </div>
               <div className="saas-price">
@@ -311,7 +312,7 @@ function Plans({ settings }: { settings: any }) {
               <ul className="saas-limits">
                 {LIMIT_LABELS.filter(([k]) => p.limits?.[k] !== undefined && p.limits?.[k] !== null).map(([k, label]) => (
                   <li key={k}>
-                    {Number(p.limits[k]).toLocaleString('de-DE')} {label}
+                    {fmtNumber(Number(p.limits[k]))} {tt(label)}
                     {USAGE.some(([u]) => u === k) && p.overage?.[k] === 'bill' ? tt(' (+ Mehrverbrauch)') : ''}
                   </li>
                 ))}
@@ -393,7 +394,7 @@ function AccountEditor({ row, plans, onClose, onSaved }: { row: any; plans: any[
       {sub && (
         <p>
           {tt('Jetzt:')} <strong>{row.plan?.name}</strong> <StatusBadge status={sub.status} /> {sub.billing === 'stripe' ? <Badge tone="blue">Stripe</Badge> : <Badge>{tt('ohne Stripe')}</Badge>}
-          {sub.cancel_at_period_end ? <Badge tone="yellow">endet {d(sub.current_period_end)}</Badge> : null}
+          {sub.cancel_at_period_end ? <Badge tone="yellow">{tt('endet {d}', { d: d(sub.current_period_end) })}</Badge> : null}
         </p>
       )}
       <div className="grid2">
@@ -401,26 +402,26 @@ function AccountEditor({ row, plans, onClose, onSaved }: { row: any; plans: any[
           <Select value={f.plan_id} onChange={(v) => setF({ ...f, plan_id: v })} options={plans.map((p) => [p.id, p.name] as [string, string])} />
         </Field>
         <Field label={tt('Abrechnung')}>
-          <Select value={iv} onChange={(v) => setF({ ...f, interval: v })} options={intervals.map((i) => [i, i === 'year' ? 'jährlich' : 'monatlich'] as [string, string])} />
+          <Select value={iv} onChange={(v) => setF({ ...f, interval: v })} options={intervals.map((i) => [i, i === 'year' ? tt('jährlich') : tt('monatlich')] as [string, string])} />
         </Field>
       </div>
       {stripeLive ? (
         <>
           <p className="muted small">{tt('Läuft über Stripe: eine Tarif-Änderung stellt das Abo bei Stripe um (anteilige Verrechnung). Der Status kommt von Stripe.')}</p>
           <div className="actions">
-            <button className="btn" disabled={busy} onClick={() => run(() => api.put(`/api/saas/locations/${row.location_id}`, { plan_id: f.plan_id, interval: iv }), 'Tarif geändert')}>
+            <button className="btn" disabled={busy} onClick={() => run(() => api.put(`/api/saas/locations/${row.location_id}`, { plan_id: f.plan_id, interval: iv }), tt('Tarif geändert'))}>
               {tt('Tarif ändern')}
             </button>
             {sub.cancel_at_period_end ? (
-              <button className="btn secondary" disabled={busy} onClick={() => run(() => api.post(`/api/saas/locations/${row.location_id}/cancel`, { undo: true }), 'Kündigung zurückgenommen')}>
+              <button className="btn secondary" disabled={busy} onClick={() => run(() => api.post(`/api/saas/locations/${row.location_id}/cancel`, { undo: true }), tt('Kündigung zurückgenommen'))}>
                 {tt('Kündigung zurücknehmen')}
               </button>
             ) : (
-              <button className="btn secondary" disabled={busy} onClick={() => confirmAsk(tt('Zum Ende des Zeitraums kündigen?')) && run(() => api.post(`/api/saas/locations/${row.location_id}/cancel`, {}), 'Gekündigt')}>
+              <button className="btn secondary" disabled={busy} onClick={() => confirmAsk(tt('Zum Ende des Zeitraums kündigen?')) && run(() => api.post(`/api/saas/locations/${row.location_id}/cancel`, {}), tt('Gekündigt'))}>
                 {tt('Zum Laufzeitende kündigen')}
               </button>
             )}
-            <button className="btn ghost" disabled={busy} onClick={() => confirmAsk(tt('Abo sofort beenden? Das Konto wird nur noch lesbar.')) && run(() => api.post(`/api/saas/locations/${row.location_id}/cancel`, { now: true }), 'Beendet')}>
+            <button className="btn ghost" disabled={busy} onClick={() => confirmAsk(tt('Abo sofort beenden? Das Konto wird nur noch lesbar.')) && run(() => api.post(`/api/saas/locations/${row.location_id}/cancel`, { now: true }), tt('Beendet'))}>
               {tt('Sofort beenden')}
             </button>
           </div>
@@ -438,14 +439,14 @@ function AccountEditor({ row, plans, onClose, onSaved }: { row: any; plans: any[
           {f.mode === 'manual' ? (
             <>
               <Field label="Status" hint={tt('z. B. „pausiert“ sperrt das Konto auf nur lesen')}>
-                <Select value={f.status} onChange={(v) => setF({ ...f, status: v })} options={Object.entries(SAAS_STATUS).map(([k, [l]]) => [k, l] as [string, string])} />
+                <Select value={f.status} onChange={(v) => setF({ ...f, status: v })} options={Object.entries(SAAS_STATUS).map(([k, [l]]) => [k, tt(l)] as [string, string])} />
               </Field>
               <div className="actions">
-                <button className="btn" disabled={busy || !f.plan_id} onClick={() => run(() => api.put(`/api/saas/locations/${row.location_id}`, { plan_id: f.plan_id, interval: iv, status: f.status }), 'Tarif gespeichert')}>
+                <button className="btn" disabled={busy || !f.plan_id} onClick={() => run(() => api.put(`/api/saas/locations/${row.location_id}`, { plan_id: f.plan_id, interval: iv, status: f.status }), tt('Tarif gespeichert'))}>
                   {tt('Speichern')}
                 </button>
                 {sub && (
-                  <button className="btn ghost" disabled={busy} onClick={() => confirmAsk(tt('Tarif entfernen? Dann gelten keine Limits mehr.')) && run(() => api.del(`/api/saas/locations/${row.location_id}`), 'Tarif entfernt')}>
+                  <button className="btn ghost" disabled={busy} onClick={() => confirmAsk(tt('Tarif entfernen? Dann gelten keine Limits mehr.')) && run(() => api.del(`/api/saas/locations/${row.location_id}`), tt('Tarif entfernt'))}>
                     {tt('Tarif entfernen')}
                   </button>
                 )}
@@ -454,13 +455,13 @@ function AccountEditor({ row, plans, onClose, onSaved }: { row: any; plans: any[
           ) : (
             <>
               <Field label={tt('E-Mail des Kunden')} hint={tt('füllt Stripe Checkout vor')}>
-                <Input type="email" value={f.email} onChange={(v) => setF({ ...f, email: v })} placeholder="kunde@firma.de" />
+                <Input type="email" value={f.email} onChange={(v) => setF({ ...f, email: v })} placeholder={tt('kunde@firma.de')} />
               </Field>
               <button
                 className="btn"
                 disabled={busy || !f.plan_id}
                 onClick={async () => {
-                  const r = await run(() => api.post(`/api/saas/locations/${row.location_id}/checkout`, { plan_id: f.plan_id, interval: iv, email: f.email }), 'Link erstellt', false);
+                  const r = await run(() => api.post(`/api/saas/locations/${row.location_id}/checkout`, { plan_id: f.plan_id, interval: iv, email: f.email }), tt('Link erstellt'), false);
                   if (r?.url) setLink(r.url);
                 }}
               >
@@ -505,20 +506,20 @@ function Accounts() {
               <th>{tt('Verlängerung')}</th>
               <th>{tt('E-Mails')}</th>
               <th>SMS</th>
-              <th>KI</th>
+              <th>{tt('KI')}</th>
               <th>{tt('MRR')}</th>
               <th />
             </tr>
           </thead>
           <tbody>
             {list.map((r) => {
-              const lim = (k: string) => (r.limits?.[k] === null || r.limits?.[k] === undefined ? '' : ` / ${Number(r.limits[k]).toLocaleString('de-DE')}`);
+              const lim = (k: string) => (r.limits?.[k] === null || r.limits?.[k] === undefined ? '' : ` / ${fmtNumber(Number(r.limits[k]))}`);
               return (
                 <tr key={r.location_id}>
                   <td>{r.name}</td>
                   <td>
                     {r.plan?.name ?? <span className="muted">–</span>}
-                    {r.subscription && <div className="muted small">{r.subscription.billing === 'stripe' ? 'Stripe' : tt('ohne Stripe')} · {r.subscription.interval === 'year' ? tt('jährlich') : 'monatlich'}</div>}
+                    {r.subscription && <div className="muted small">{r.subscription.billing === 'stripe' ? 'Stripe' : tt('ohne Stripe')} · {r.subscription.interval === 'year' ? tt('jährlich') : tt('monatlich')}</div>}
                   </td>
                   <td>
                     {r.subscription ? <StatusBadge status={r.subscription.status} /> : <span className="muted">–</span>} {r.subscription?.cancel_at_period_end ? <Badge tone="yellow">{tt('gekündigt')}</Badge> : null}
@@ -526,7 +527,7 @@ function Accounts() {
                   <td className="nowrap">{r.subscription?.current_period_end ? d(r.subscription.current_period_end) : '–'}</td>
                   {['emails', 'sms', 'ai'].map((k) => (
                     <td key={k} className="nowrap small">
-                      {(r.usage?.[k] ?? 0).toLocaleString('de-DE')}
+                      {fmtNumber(r.usage?.[k] ?? 0)}
                       <span className="muted">{lim(k)}</span>
                     </td>
                   ))}
@@ -556,7 +557,7 @@ function Accounts() {
                   </td>
                   <td>{s.plan_name}</td>
                   <td>
-                    <Badge tone={s.status === 'done' ? 'green' : s.status === 'failed' ? 'red' : 'gray'}>{s.status === 'done' ? 'angelegt' : s.status === 'failed' ? tt('Fehler') : tt('wartet auf Zahlung')}</Badge>
+                    <Badge tone={s.status === 'done' ? 'green' : s.status === 'failed' ? 'red' : 'gray'}>{s.status === 'done' ? tt('angelegt') : s.status === 'failed' ? tt('Fehler') : tt('wartet auf Zahlung')}</Badge>
                     {s.error && <div className="muted small">{s.error}</div>}
                   </td>
                   <td>
@@ -605,7 +606,7 @@ function Settings({ data, onChange }: { data: any; onChange: (s: any) => void })
   const [f, setF] = useState<any>(() => ({ ...data, unit_cost: { ...data.unit_cost } }));
   const [busy, setBusy] = useState(false);
   const [check, setCheck] = useState<any>(null);
-  const save = async (body: any, ok = 'Gespeichert') => {
+  const save = async (body: any, ok = tt('Gespeichert')) => {
     setBusy(true);
     const r = await act(() => api.put('/api/saas/settings', body), ok);
     setBusy(false);
@@ -619,7 +620,7 @@ function Settings({ data, onChange }: { data: any; onChange: (s: any) => void })
     <>
       <div className="card" style={{ maxWidth: 820 }}>
         <h2 style={{ marginTop: 0 }}>
-          <Icon name="card" /> {tt('Agentur-Stripe')} {data.connected ? <Badge tone="green">verbunden</Badge> : <Badge>{tt('nicht verbunden')}</Badge>} {data.connected && <Badge tone={data.live ? 'blue' : 'yellow'}>{data.live ? tt('Live') : tt('Testmodus')}</Badge>}
+          <Icon name="card" /> {tt('Agentur-Stripe')} {data.connected ? <Badge tone="green">{tt('verbunden')}</Badge> : <Badge>{tt('nicht verbunden')}</Badge>} {data.connected && <Badge tone={data.live ? 'blue' : 'yellow'}>{data.live ? tt('Live') : tt('Testmodus')}</Badge>}
         </h2>
         <p className="muted" style={{ marginTop: 0 }}>
           {tt('Dein eigenes Stripe-Konto für die Abos deiner Kunden – getrennt vom Stripe, das ein Sub-Account für seine eigenen Rechnungen nutzt.')}
@@ -632,7 +633,7 @@ function Settings({ data, onChange }: { data: any; onChange: (s: any) => void })
         <Field label={tt('Secret Key')} hint={tt('Stripe-Dashboard → Entwickler → API-Schlüssel (zum Ausprobieren sk_test_…)')}>
           <Input type="password" value={keys.secret_key} onChange={(v) => setKeys({ ...keys, secret_key: v.trim() })} placeholder={data.key_set ? tt('gespeichert ({key_hint}) – leer lassen zum Behalten', { key_hint: data.key_hint }) : tt('sk_live_… oder sk_test_…')} autoComplete="off" />
         </Field>
-        <h3>Webhook {data.webhook_set ? <Badge tone="green">eingerichtet</Badge> : <Badge tone="yellow">fehlt</Badge>}</h3>
+        <h3>Webhook {data.webhook_set ? <Badge tone="green">{tt('eingerichtet')}</Badge> : <Badge tone="yellow">{tt('fehlt')}</Badge>}</h3>
         <MoreFields id="saas-webhook" label={tt('Webhook einrichten')} values={[data.key_set && !data.webhook_set]}>
         <ol className="steps small">
           <li>{tt('Stripe → Entwickler → Webhooks → „Endpunkt hinzufügen“')}</li>
@@ -721,8 +722,8 @@ function Settings({ data, onChange }: { data: any; onChange: (s: any) => void })
           </Field>
         </div>
         <div className="grid3">
-          {USAGE.map(([k, label]) => (
-            <Field key={k} label={`Deine Kosten je ${label === 'E-Mails' ? 'E-Mail' : label === 'KI-Aufrufe' ? tt('KI-Aufruf') : 'SMS'} (Cent)`}>
+          {USAGE.map(([k]) => (
+            <Field key={k} label={k === 'emails' ? tt('Deine Kosten je E-Mail (Cent)') : k === 'ai' ? tt('Deine Kosten je KI-Aufruf (Cent)') : tt('Deine Kosten je SMS (Cent)')}>
               <Input value={String(f.unit_cost?.[k] ?? '').replace('.', ',')} onChange={(v) => setF({ ...f, unit_cost: { ...f.unit_cost, [k]: v } })} inputMode="decimal" />
             </Field>
           ))}
@@ -764,10 +765,10 @@ export function SaasAdmin() {
       <div className="saas-subtabs" data-tour="saas-tabs">
         <Tabs
           tabs={[
-            ['overview', 'Übersicht'],
-            ['plans', 'Tarife'],
-            ['accounts', 'Kunden-Abos'],
-            ['settings', 'Einstellungen'],
+            ['overview', tt('Übersicht')],
+            ['plans', tt('Tarife')],
+            ['accounts', tt('Kunden-Abos')],
+            ['settings', tt('Einstellungen')],
           ]}
           value={tab}
           onChange={setTab}

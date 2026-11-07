@@ -32,7 +32,7 @@ export function MetaSettings() {
   const d = s.data;
   const set = (patch: Partial<typeof EMPTY_FORM>) => setF({ ...f, ...patch });
 
-  const save = async (extra: Record<string, any> = {}, ok = 'Gespeichert') => {
+  const save = async (extra: Record<string, any> = {}, ok = tt('Gespeichert')) => {
     // Empty secret fields keep what is stored.
     const body: Record<string, any> = { ...f, ...extra };
     for (const k of ['wa_token', 'page_token', 'app_secret']) if (body[k] === '') delete body[k];
@@ -60,7 +60,7 @@ export function MetaSettings() {
     const r = await act(() => api.put('/api/settings/meta', patch), tt('Getrennt'));
     if (r) (s.setData(r), setResults({}));
   };
-  const status = (on: boolean, label?: string) => (on ? <Badge tone="green">verbunden{label ? ` · ${label}` : ''}</Badge> : <Badge>{tt('nicht eingerichtet')}</Badge>);
+  const status = (on: boolean, label?: string) => (on ? <Badge tone="green">{tt('verbunden')}{label ? ` · ${label}` : ''}</Badge> : <Badge>{tt('nicht eingerichtet')}</Badge>);
 
   return (
     <div className="meta-settings">
@@ -69,7 +69,7 @@ export function MetaSettings() {
           <Icon name="webhook" size={18} /> {tt('Webhook in der Meta-App')}
         </h2>
         <p className="muted small">
-          {tt('In der App auf developers.facebook.com unter')} <b>{tt('WhatsApp → Konfiguration')}</b> bzw. <b>{tt('Messenger/Instagram → Webhooks')}</b> {tt('eintragen und das Feld')} <code>messages</code> {tt('abonnieren. Eine Schritt-für-Schritt-Anleitung steht in')} <code>docs/meta-channels.md</code>. <SignupLink id="meta" />
+          {tt('In der App auf developers.facebook.com unter')} <b>{tt('WhatsApp → Konfiguration')}</b> {tt('bzw.')} <b>{tt('Messenger/Instagram → Webhooks')}</b> {tt('eintragen und das Feld')} <code>messages</code> {tt('abonnieren. Eine Schritt-für-Schritt-Anleitung steht in')} <code>docs/meta-channels.md</code>. <SignupLink id="meta" />
         </p>
         <MoreFields id="meta-webhook" label={tt('Webhook-Angaben')} values={[!d.last_webhook_at || !d.app_secret_set || !!d.last_error]}>
         <div className="grid2">
@@ -87,7 +87,7 @@ export function MetaSettings() {
           <div className="meta-hook-state">
             {d.last_webhook_at ? <Badge tone="green">{tt('Letzter Eingang {dt}', { dt: dt(d.last_webhook_at) })}</Badge> : <Badge>{tt('Noch nichts empfangen')}</Badge>}
             {d.last_error && <div className="meta-result err">{d.last_error}</div>}
-            <button className="btn small secondary" onClick={() => confirmAsk(tt('Neuen Verify-Token erzeugen? Danach muss er in der Meta-App neu eingetragen werden.')) && save({ regenerate_verify_token: true }, 'Neuer Verify-Token')}>
+            <button className="btn small secondary" onClick={() => confirmAsk(tt('Neuen Verify-Token erzeugen? Danach muss er in der Meta-App neu eingetragen werden.')) && save({ regenerate_verify_token: true }, tt('Neuer Verify-Token'))}>
               {tt('Neuen Verify-Token erzeugen')}
             </button>
           </div>
@@ -124,7 +124,7 @@ export function MetaSettings() {
         <div className="card" style={{ flex: '1 1 380px' }} data-tour="meta-messenger">
           <h2 className="row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
             <span>
-              <ChannelIcon channel="messenger" size={18} /> Messenger <span className="muted">&amp;</span> <ChannelIcon channel="instagram" size={18} /> Instagram
+              <ChannelIcon channel="messenger" size={18} /> Messenger <span className="muted">{'&'}</span> <ChannelIcon channel="instagram" size={18} /> Instagram
             </span>
             {status(d.messenger.configured || d.instagram.configured)}
           </h2>
@@ -193,9 +193,9 @@ export function WhatsAppStep({ step, set }: { step: any; set: (p: any) => void }
           value={mode}
           onChange={(v) => set({ mode: v })}
           options={[
-            ['auto', 'Text im 24-h-Fenster, sonst Vorlage'],
-            ['text', 'Nur Text (klappt nur im 24-h-Fenster)'],
-            ['template', 'Immer Vorlage'],
+            ['auto', tt('Text im 24-h-Fenster, sonst Vorlage')],
+            ['text', tt('Nur Text (klappt nur im 24-h-Fenster)')],
+            ['template', tt('Immer Vorlage')],
           ]}
         />
       </Field>

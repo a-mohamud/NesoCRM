@@ -4,7 +4,7 @@ import { Badge, Check, Copy, Empty, Field, Input, Modal, Select, Spinner, Textar
 import { Choice, LinesEditor, Section, StatusBadge, eur, fromCents, fromDraft, sumNet, toCents, toDraft, type LineDraft } from './SalesKit';
 import { Later, lazyPages } from '../lazy';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { fmtNumber, useT } from '../i18n';
 
 // Internal approval (docs/sales.md#internal-approval): its own chunk, shown only where a rule or a request exists.
 const { QuoteApprovalPanel, QuoteApprovalInbox } = lazyPages(() => import('./QuoteApproval'), 'QuoteApprovalPanel', 'QuoteApprovalInbox');
@@ -67,7 +67,7 @@ function SendDialog({ quote, onClose, onSent }: { quote: any; onClose: () => voi
     if (r) onSent();
   };
   return (
-    <Modal title={`Angebot ${quote.number || ''} senden`.trim()} className="sales-modal" onClose={onClose} footer={<button className="btn" onClick={go} data-tour="quote-send-go">{deliver ? tt('Senden') : tt('Freigeben')}</button>}>
+    <Modal title={quote.number ? tt('Angebot {number} senden', { number: quote.number }) : tt('Angebot senden')} className="sales-modal" onClose={onClose} footer={<button className="btn" onClick={go} data-tour="quote-send-go">{deliver ? tt('Senden') : tt('Freigeben')}</button>}>
       <p className="muted">
         {tt('An')} <b>{quote.contact ? quote.contact.name : '–'}</b>
         {quote.contact?.email ? ` (${quote.contact.email})` : ''}{tt('. Der Kunde bekommt einen Link zur Angebotsseite, wählt dort und unterschreibt. Mit dem Senden bekommt das Angebot seine Nummer – danach lässt es sich nicht mehr ändern (nur eine neue Version anlegen).')}
@@ -255,11 +255,11 @@ export function QuoteEditor({ id, onClose, onChanged }: { id: string; onClose: (
         </Section>
 
         <Section title={tt('Was bei Annahme fällig wird')} tour="quote-payment">
-          <Choice name="pay" value={f.payment.mode} onChange={(v) => setP({ mode: v })} options={PAYMENT.map((p) => ({ value: p.value, label: p.label, text: p.text }))} />
+          <Choice name="pay" value={f.payment.mode} onChange={(v) => setP({ mode: v })} options={PAYMENT.map((p) => ({ value: p.value, label: tt(p.label), text: tt(p.text) }))} />
           {f.payment.mode === 'deposit' && (
             <div className="grid2">
               <Field label={tt('Anzahlung als')}>
-                <Select value={f.payment.type} onChange={(v) => setP({ type: v, value: v === 'amount' ? '0.00' : '30' })} options={[['percent', 'Prozent vom Gesamtbetrag'], ['amount', 'Festbetrag netto']]} />
+                <Select value={f.payment.type} onChange={(v) => setP({ type: v, value: v === 'amount' ? '0.00' : '30' })} options={[['percent', tt('Prozent vom Gesamtbetrag')], ['amount', tt('Festbetrag netto')]]} />
               </Field>
               <Field label={f.payment.type === 'percent' ? tt('Prozent') : tt('Betrag netto ({cur})', { cur: cur })}>
                 <Input inputMode="decimal" value={f.payment.value} onChange={(v) => setP({ value: v })} />
@@ -337,12 +337,12 @@ export function SalesQuotes() {
           <div><b>{s.open}</b><span>{tt('Warten auf Antwort')}</span></div>
           <div><b>{s.accepted}</b><span>{tt('Angenommen')}</span></div>
           <div><b>{eur(s.accepted_cents)}</b><span>{tt('Auftragswert (brutto)')}</span></div>
-          <div><b>{s.win_rate.toLocaleString('de-DE')} %</b><span>{tt('Annahmequote')}</span></div>
+          <div><b>{fmtNumber(s.win_rate)} %</b><span>{tt('Annahmequote')}</span></div>
         </SortableGrid>
       )}
       <div className="sales-bar">
         <div style={{ width: 220 }}>
-          <Select value={status} onChange={setStatus} placeholder={tt('Alle Status')} options={Object.entries<string>(s?.labels ?? { draft: 'Entwurf', sent: 'Gesendet', accepted: 'Angenommen' })} />
+          <Select value={status} onChange={setStatus} placeholder={tt('Alle Status')} options={Object.entries<string>(s?.labels ?? { draft: 'Entwurf', sent: 'Gesendet', accepted: 'Angenommen' }).map(([k, l]): [string, string] => [k, tt(l)])} />
         </div>
         <span className="grow" />
         <button className="btn" onClick={() => setPick(true)} data-tour="quote-new">
@@ -368,17 +368,17 @@ export function SalesQuotes() {
             <tbody>
               {list.data.map((x) => (
                 <tr key={x.id} className="click" tabIndex={0} onClick={() => setOpen(x.id)} onKeyDown={(e) => e.key === 'Enter' && setOpen(x.id)}>
-                  <td data-label="Angebot">
+                  <td data-label={tt('Angebot')}>
                     <b>{x.number || tt('Entwurf')}</b> {x.title}
                     <div className="muted small">{tt('Deal „{name}“', { name: x.deal?.name })}{x.revision > 1 ? tt(' · Version {revision}', { revision: x.revision }) : ''}</div>
                   </td>
-                  <td data-label="Status">
+                  <td data-label={tt('Status')}>
                     <StatusBadge status={x.status} label={x.expired && x.status !== 'expired' ? tt('Abgelaufen') : x.status_label} />
-                    {x.paid_at && <Badge tone="green">bezahlt</Badge>}
+                    {x.paid_at && <Badge tone="green">{tt('bezahlt')}</Badge>}
                   </td>
-                  <td data-label="Kontakt">{x.contact?.name ?? '–'}</td>
-                  <td className="r" data-label="Summe">{eur(x.total_cents, x.currency)}</td>
-                  <td data-label="Gültig bis">{x.valid_until ? d(`${x.valid_until}T12:00:00`) : '–'}</td>
+                  <td data-label={tt('Kontakt')}>{x.contact?.name ?? '–'}</td>
+                  <td className="r" data-label={tt('Summe')}>{eur(x.total_cents, x.currency)}</td>
+                  <td data-label={tt('Gültig bis')}>{x.valid_until ? d(`${x.valid_until}T12:00:00`) : '–'}</td>
                 </tr>
               ))}
             </tbody>

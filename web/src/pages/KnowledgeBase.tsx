@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../icons';
 import { api, dt } from '../api';
 import { act, Badge, Check, confirmAsk, Empty, Field, Input, Link, Modal, PageHead, pressable, Select, Spinner, Tabs, TagInput, Textarea, useLoad } from '../ui';
-import { useT } from '../i18n';
+import { useT, intlLocale } from '../i18n';
 
 /** Wissensdatenbank: categories and Markdown articles for the public help center. */
 
@@ -96,13 +96,13 @@ function ArticleEditor({ id, cats, onClose, onSaved }: { id?: string; cats: any[
           <TagInput value={a.tags ?? []} onChange={(v) => setA({ ...a, tags: v })} />
         </Field>
       </div>
-      <Tabs tabs={[['text', 'Text (Markdown)'], ['preview', 'Vorschau'], ['seo', 'SEO & Adresse']]} value={tab} onChange={setTab} />
+      <Tabs tabs={[['text', tt('Text (Markdown)')], ['preview', tt('Vorschau')], ['seo', tt('SEO & Adresse')]]} value={tab} onChange={setTab} />
       {tab === 'text' && (
         <Field tour="kb-body" label={tt('Text')} hint={tt('## Überschrift, **fett**, *kursiv*, - Liste, 1. Liste, [Link](https://…), ![Bild](https://…), > Hinweis, ``` Code; ein YouTube-/Vimeo-Link allein in einer Zeile wird zum Video.')}>
           <Textarea value={a.body} onChange={(v) => setA({ ...a, body: v })} rows={16} className="mono" />
         </Field>
       )}
-      {tab === 'preview' && <div className="card kb-preview prose" dangerouslySetInnerHTML={{ __html: preview || '<p class="muted">Kein Text.</p>' }} />}
+      {tab === 'preview' && <div className="card kb-preview prose" dangerouslySetInnerHTML={{ __html: preview || `<p class="muted">${tt('Kein Text.')}</p>` }} />}
       {tab === 'seo' && (
         <>
           <Field label={tt('Kurzbeschreibung')} hint={tt('Erscheint in Listen und Suchergebnissen – leer = Anfang des Textes')}>
@@ -141,7 +141,7 @@ export function KnowledgeBase() {
       <PageHead title={tt('Wissensdatenbank')} sub={tt('Hilfe-Artikel für dein öffentliches Hilfe-Center – und als Vorschläge beim Beantworten von Tickets')}>
         {info.data && (
           <a className="btn secondary" data-tour="kb-public" href={info.data.url} target="_blank" rel="noopener">
-            <Icon name="external" size={14} /> {tt('Hilfe-Center')} {info.data.enabled ? tt('öffnen') : tt('(nicht öffentlich)')}
+            <Icon name="external" size={14} /> {info.data.enabled ? tt('Hilfe-Center öffnen') : `${tt('Hilfe-Center')} ${tt('(nicht öffentlich)')}`}
           </a>
         )}
         <button className="btn secondary" data-tour="kb-new-cat" onClick={() => setModal({ kind: 'cat' })}>
@@ -181,7 +181,7 @@ export function KnowledgeBase() {
               <Input value={q} onChange={setQ} placeholder={tt('Artikel suchen…')} />
             </div>
             <div style={{ width: 170 }}>
-              <Select value={status} onChange={setStatus} placeholder={tt('Alle Status')} options={[['published', 'Veröffentlicht'], ['draft', 'Entwurf']]} />
+              <Select value={status} onChange={setStatus} placeholder={tt('Alle Status')} options={[['published', tt('Veröffentlicht')], ['draft', tt('Entwurf')]]} />
             </div>
           </div>
           {arts.loading && !arts.data ? (
@@ -211,7 +211,7 @@ export function KnowledgeBase() {
                               <>
                                 {' · '}
                                 <a href={a.url} target="_blank" rel="noopener" onClick={(e) => e.stopPropagation()}>
-                                  ansehen
+                                  {tt('ansehen')}
                                 </a>
                               </>
                             )}
@@ -219,7 +219,7 @@ export function KnowledgeBase() {
                         </td>
                         <td>{a.status === 'published' ? <Badge tone="green">{tt('Veröffentlicht')}</Badge> : <Badge>{tt('Entwurf')}</Badge>}</td>
                         <td>{a.views}</td>
-                        <td>{votes ? `${Math.round((a.helpful_yes / votes) * 100)} % (${votes})` : <span className="muted">–</span>}</td>
+                        <td>{votes ? `${Math.round((a.helpful_yes / votes) * 100)}${intlLocale().startsWith('de') ? ' %' : '%'} (${votes})` : <span className="muted">–</span>}</td>
                         <td className="muted small">{dt(a.updated_at)}</td>
                       </tr>
                     );

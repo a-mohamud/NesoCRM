@@ -71,7 +71,7 @@ export function Reviews() {
             {requests.map((r: any) => (
               <tr key={r.id}>
                 <td>{r.contact_id ? <Link to={`contacts/${r.contact_id}`}>{name(r)}</Link> : '–'}</td>
-                <td>{r.rating ? <span className="g-stars" aria-label={tt('{rating} von 5 Sternen', { rating: r.rating })}>{'★'.repeat(r.rating) + '☆'.repeat(5 - r.rating)}</span> : <span className="muted">ausstehend</span>}</td>
+                <td>{r.rating ? <span className="g-stars" aria-label={tt('{rating} von 5 Sternen', { rating: r.rating })}>{'★'.repeat(r.rating) + '☆'.repeat(5 - r.rating)}</span> : <span className="muted">{tt('ausstehend')}</span>}</td>
                 <td>{r.comment}</td>
                 <td>{r.rating ? <Check checked={!!r.public} onChange={(v) => act(() => api.patch(`/api/reviews/${r.id}`, { public: v })).then(data.reload)} label="" aria={tt('Öffentlich zeigen')} /> : null}</td>
                 <td className="muted">{dt(r.responded_at || r.created_at)}</td>

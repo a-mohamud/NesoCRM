@@ -11,6 +11,7 @@ import { useT } from '../i18n';
  */
 
 export function MessagesTab({ group, onChange }: { group: any; onChange: () => void }) {
+  const tt = useT('x_community');
   const [sub, setSub] = useState('inbox');
   const reports = useLoad(() => api.get<any[]>('/api/community/dm-reports'), []);
   return (
@@ -19,10 +20,10 @@ export function MessagesTab({ group, onChange }: { group: any; onChange: () => v
         value={sub}
         onChange={setSub}
         tabs={[
-          ['inbox', 'Postfach'],
-          ['reports', `Gemeldete Nachrichten${reports.data?.length ? ` (${reports.data.length})` : ''}`],
-          ['team', 'Admins & Moderatoren'],
-          ['features', 'Mitglieder-Funktionen'],
+          ['inbox', tt('Postfach')],
+          ['reports', `${tt('Gemeldete Nachrichten')}${reports.data?.length ? ` (${reports.data.length})` : ''}`],
+          ['team', tt('Admins & Moderatoren')],
+          ['features', tt('Mitglieder-Funktionen')],
         ]}
       />
       {sub === 'inbox' && <Inbox group={group} />}
@@ -150,7 +151,7 @@ function Reports({ list }: { list: ReturnType<typeof useLoad<any[]>> }) {
             ))}
           </div>
           <p className="small" style={{ marginBottom: 0 }}>
-            {tt('Gemeldet wurde die Nachricht von')} <strong>{r.sender.name}</strong> ({r.sender.email || 'Team'}).
+            {tt('Gemeldet wurde die Nachricht von')} <strong>{r.sender.name}</strong> ({r.sender.email || tt('Team')}).
           </p>
           <div className="cma-actions">
             <button className="btn secondary" onClick={() => settle(r, 'dismiss', 'In Ordnung')}>
@@ -210,7 +211,7 @@ function Staff({ group, onChange }: { group: any; onChange: () => void }) {
       {adding !== null && (
         <Modal title={tt('Rolle vergeben')} onClose={() => setAdding(null)}>
           <Field label={tt('Rolle')}>
-            <Select value={role} onChange={setRole} options={[['moderator', 'Moderator – Inhalte moderieren'], ['admin', 'Admin – zusätzlich Beitrittsanfragen']]} />
+            <Select value={role} onChange={setRole} options={[['moderator', tt('Moderator – Inhalte moderieren')], ['admin', tt('Admin – zusätzlich Beitrittsanfragen')]]} />
           </Field>
           <MemberPick
             group={group}

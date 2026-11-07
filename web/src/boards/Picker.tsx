@@ -82,7 +82,7 @@ export function Picker({ catalogue, onPick, onClose, full }: { catalogue: Catalo
             <p>
               {tt('Kein Widget passt zu „{q}“.', { q: q })}
             </p>
-            <button type="button" className="btn secondary" onClick={() => openBuild({ title: `Board-Widget: ${q.slice(0, 60)}`, text: `Ich hätte gern ein Widget für Living Boards: ${q}` })}>
+            <button type="button" className="btn secondary" onClick={() => openBuild({ title: `Board-Widget: ${q.slice(0, 60)}`, text: tt('Ich hätte gern ein Widget für Living Boards: {q}', { q }) })}>
               <Icon name="hammer" size={15} /> {tt('In der Werkstatt bauen lassen')}
             </button>
           </div>

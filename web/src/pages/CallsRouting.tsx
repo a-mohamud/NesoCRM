@@ -75,13 +75,13 @@ function ScheduleDialog({ initial, meta, onClose, onSaved }: { initial: any | nu
           return (
             <div className="tl-day" key={k}>
               <span className="day">
-                <Check checked={iv.length > 0} onChange={(on) => setDay(k, on ? [{ from: '09:00', to: '17:00' }] : [])} label={label} />
+                <Check checked={iv.length > 0} onChange={(on) => setDay(k, on ? [{ from: '09:00', to: '17:00' }] : [])} label={tt(label)} />
               </span>
               {iv.map((x, i) => (
                 <span className="cr-line" key={i}>
-                  <Input type="time" value={x.from} onChange={(v) => setDay(k, iv.map((y, j) => (j === i ? { ...y, from: v } : y)))} aria-label={tt('{label} von', { label: label })} />
-                  <span className="muted">bis</span>
-                  <Input type="time" value={x.to} onChange={(v) => setDay(k, iv.map((y, j) => (j === i ? { ...y, to: v } : y)))} aria-label={tt('{label} bis', { label: label })} />
+                  <Input type="time" value={x.from} onChange={(v) => setDay(k, iv.map((y, j) => (j === i ? { ...y, from: v } : y)))} aria-label={tt('{label} von', { label: tt(label) })} />
+                  <span className="muted">{tt('bis')}</span>
+                  <Input type="time" value={x.to} onChange={(v) => setDay(k, iv.map((y, j) => (j === i ? { ...y, to: v } : y)))} aria-label={tt('{label} bis', { label: tt(label) })} />
                   {iv.length > 1 && (
                     <button className="icon-btn" aria-label={tt('Zeitraum entfernen')} onClick={() => setDay(k, iv.filter((_, j) => j !== i))}>
                       ✕
@@ -127,7 +127,7 @@ function ScheduleDialog({ initial, meta, onClose, onSaved }: { initial: any | nu
         <div className="tl-holi" key={i}>
           <Input value={h.date} onChange={(v) => set({ holidays: s.holidays.map((x: any, j: number) => (j === i ? { ...x, date: v } : x)) })} placeholder={tt('24-12 oder 2026-12-24')} aria-label={tt('Datum')} />
           <Input value={h.name} onChange={(v) => set({ holidays: s.holidays.map((x: any, j: number) => (j === i ? { ...x, name: v } : x)) })} placeholder={tt('Name, z. B. Betriebsferien')} aria-label="Name" />
-          <Check checked={h.closed !== false} onChange={(on) => set({ holidays: s.holidays.map((x: any, j: number) => (j === i ? { ...x, closed: on, intervals: on ? [] : x.intervals?.length ? x.intervals : [{ from: '10:00', to: '14:00' }] } : x)) })} label="geschlossen" />
+          <Check checked={h.closed !== false} onChange={(on) => set({ holidays: s.holidays.map((x: any, j: number) => (j === i ? { ...x, closed: on, intervals: on ? [] : x.intervals?.length ? x.intervals : [{ from: '10:00', to: '14:00' }] } : x)) })} label={tt('geschlossen')} />
           <button className="icon-btn" aria-label={tt('Eintrag entfernen')} onClick={() => set({ holidays: s.holidays.filter((_: any, j: number) => j !== i) })}>
             ✕
           </button>
@@ -135,7 +135,7 @@ function ScheduleDialog({ initial, meta, onClose, onSaved }: { initial: any | nu
             <span className="cr-line" style={{ gridColumn: '1 / -1' }}>
               <span className="muted">{tt('Sonderzeit')}</span>
               <Input type="time" value={h.intervals?.[0]?.from ?? '10:00'} onChange={(v) => set({ holidays: s.holidays.map((x: any, j: number) => (j === i ? { ...x, intervals: [{ from: v, to: x.intervals?.[0]?.to ?? '14:00' }] } : x)) })} aria-label={tt('Sonderzeit von')} />
-              <span className="muted">bis</span>
+              <span className="muted">{tt('bis')}</span>
               <Input type="time" value={h.intervals?.[0]?.to ?? '14:00'} onChange={(v) => set({ holidays: s.holidays.map((x: any, j: number) => (j === i ? { ...x, intervals: [{ from: x.intervals?.[0]?.from ?? '10:00', to: v }] } : x)) })} aria-label={tt('Sonderzeit bis')} />
             </span>
           )}
@@ -192,7 +192,7 @@ function Schedules({ meta, reloadMeta }: { meta: Meta; reloadMeta: () => void })
                 <strong>{s.name}</strong>
                 <div className="cr-sub">
                   {DAYS.filter(([k]) => s.hours[k]?.length)
-                    .map(([k, l]) => `${l.slice(0, 2)} ${s.hours[k].map((x: any) => `${x.from}–${x.to}`).join(', ')}`)
+                    .map(([k, l]) => `${tt(l.slice(0, 2))} ${s.hours[k].map((x: any) => `${x.from}–${x.to}`).join(', ')}`)
                     .join(' · ') || tt('nie geöffnet')}
                 </div>
               </Item>
@@ -259,7 +259,7 @@ function GroupDialog({ initial, onClose, onSaved }: { initial: any | null; onClo
           <Input value={cur.name} onChange={(v) => set({ name: v })} maxLength={80} placeholder={tt('z. B. Support')} />
         </Field>
         <Field label={tt('Art')} hint={queue ? tt('Anrufer warten mit Musik, bis jemand frei ist.') : tt('Es klingelt einmal in der Runde, dann der Überlauf.')}>
-          <Select value={cur.kind} onChange={(v) => set({ kind: v })} options={[['queue', 'Warteschlange (Anrufer warten)'], ['group', 'Ruf-Gruppe (eine Runde)']]} />
+          <Select value={cur.kind} onChange={(v) => set({ kind: v })} options={[['queue', tt('Warteschlange (Anrufer warten)')], ['group', tt('Ruf-Gruppe (eine Runde)')]]} />
         </Field>
         <Field label={tt('Verteilung')}>
           <Select value={cur.strategy} onChange={(v) => set({ strategy: v })} options={m.strategies.map((s: any) => [s.key, s.label])} />
@@ -410,7 +410,7 @@ function Groups({ reloadMeta }: { reloadMeta: () => void }) {
                   onClick={() => setEdit(g)}
                   side={
                     <>
-                      {g.waiting > 0 && <Badge tone="yellow">{g.waiting} wartet</Badge>}
+                      {g.waiting > 0 && <Badge tone="yellow">{tt('{n} wartet', { n: g.waiting })}</Badge>}
                       <button className="btn small secondary" onClick={(e) => (e.stopPropagation(), setStats(stats === g.id ? '' : g.id))}>
                         <Icon name="gauge" size={14} /> {tt('Zahlen')}
                       </button>
@@ -486,7 +486,7 @@ function Audio({ reloadMeta }: { reloadMeta: () => void }) {
     <div className="cr-panels two">
       <Panel title={tt('Neue Audiodatei')} sub={tt('Twilio spielt MP3 und WAV ab. Ansagen für Menüs, Musik für die Warteschlange, Voicemail-Drops für den Power-Dialer.')} tour="audio-new">
         <Field label={tt('Art')}>
-          <Select value={kind} onChange={setKind} options={Object.entries(KIND)} />
+          <Select value={kind} onChange={setKind} options={Object.entries(KIND).map(([k, l]) => [k, tt(l)] as [string, string])} />
         </Field>
         <Field label="Name">
           <Input value={name} onChange={setName} maxLength={80} placeholder={tt('z. B. Begrüßung Hauptnummer')} />
@@ -521,7 +521,7 @@ function Audio({ reloadMeta }: { reloadMeta: () => void }) {
                   </button>
                 }
               >
-                <strong>{a.name}</strong> <Badge>{KIND[a.kind] ?? a.kind}</Badge> <span className="muted small">{a.duration_s} s</span>
+                <strong>{a.name}</strong> <Badge>{KIND[a.kind] ? tt(KIND[a.kind]) : a.kind}</Badge> <span className="muted small">{a.duration_s} s</span>
                 <audio controls preload="none" src={a.url} style={{ display: 'block', width: '100%', maxWidth: 380, marginTop: 6 }} />
                 {a.text && <div className="cr-sub">„{a.text.slice(0, 140)}“</div>}
               </Item>
@@ -543,7 +543,7 @@ export function CallsRouting({ tab, meta, reloadMeta }: { tab: 'schedules' | 'gr
       {tab === 'groups' && <Groups reloadMeta={reloadMeta} />}
       {tab === 'audio' && <Audio reloadMeta={reloadMeta} />}
       <Callout>
-        {tt('Welche Nummer in welches Menü, welche Gruppe oder zu welcher Person führt, stellst du unter')} <strong>{tt('Anrufe → Nummern')}</strong> ein.
+        {tt('Welche Nummer in welches Menü, welche Gruppe oder zu welcher Person führt, stellst du unter')} <strong>{tt('Anrufe → Nummern')}</strong> {tt('ein.')}
       </Callout>
     </>
   );

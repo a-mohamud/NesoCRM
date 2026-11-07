@@ -96,7 +96,7 @@ export function PropValue({ def, value, users }: { def: FieldDef; value: any; us
     case 'phone':
       return <a href={`tel:${value}`}>{value}</a>;
     case 'checkbox':
-      return value ? <Badge tone="green">ja</Badge> : <Badge>nein</Badge>;
+      return value ? <Badge tone="green">{tt('ja')}</Badge> : <Badge>{tt('nein')}</Badge>;
     case 'multiselect':
       return (
         <span className="chip-list">
@@ -178,7 +178,7 @@ export function PropInput({ def, value, onChange, users }: { def: FieldDef; valu
               <Icon name="file" size={13} /> {value.name}
             </a>
           ) : typeof value === 'string' && value ? (
-            <span className="muted small">hochgeladen</span>
+            <span className="muted small">{tt('hochgeladen')}</span>
           ) : null}
           <label className="btn small secondary" style={{ cursor: 'pointer' }}>
             <Icon name="upload" size={13} /> {busy ? tt('Lädt…') : tt('Datei wählen')}
@@ -454,7 +454,7 @@ export const refreshAssocTypes = () => void (typesCache = null);
  * "Verknüpfungen": every record linked to this one, grouped by type, with labels and the primary
  * flag. Adding and editing happen inline (no second dialog, so it also works inside a modal).
  */
-export function AssociationsPanel({ type, id, exclude = [], title = 'Verknüpfungen', onChange, compact }: { type: string; id: string; exclude?: string[]; title?: string; onChange?: () => void; compact?: boolean }) {
+export function AssociationsPanel({ type, id, exclude = [], title, onChange, compact }: { type: string; id: string; exclude?: string[]; title?: string; onChange?: () => void; compact?: boolean }) {
   const tt = useT('contacts');
   const list = useLoad(() => api.get<Linked[]>(`/api/associations?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`), [type, id]);
   const types = useAssocTypes();
@@ -471,7 +471,7 @@ export function AssociationsPanel({ type, id, exclude = [], title = 'Verknüpfun
     <div className={compact ? 'assoc compact' : 'card assoc'} data-tour="assoc">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0 }}>
-          <Icon name="link" /> {title}
+          <Icon name="link" /> {title ?? tt('Verknüpfungen')}
         </h2>
         <button className="btn small secondary" data-tour="assoc-add" onClick={() => setAdding(!adding)} aria-expanded={adding}>
           {adding ? tt('Schließen') : tt('+ Verknüpfen')}

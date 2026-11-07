@@ -97,9 +97,9 @@ function MarktList() {
   const d = l.data;
   return (
     <>
-      <PageHead title={NAMES.marktplatz} sub={tt('Plugins aus der Agentur und der Community – prüfe sie live mit Beispieldaten und installiere sie für deinen Sub-Account.')}>
+      <PageHead title={tt(NAMES.marktplatz)} sub={tt('Plugins aus der Agentur und der Community – prüfe sie live mit Beispieldaten und installiere sie für deinen Sub-Account.')}>
         <Link to="werkstatt" className="btn secondary">
-          <Icon name="hammer" size={14} /> {NAMES.werkstatt}
+          <Icon name="hammer" size={14} /> {tt(NAMES.werkstatt)}
         </Link>
       </PageHead>
       <div className="mk-bar" data-tour="mk-search">
@@ -108,9 +108,9 @@ function MarktList() {
           value={sort}
           onChange={setSort}
           options={[
-            ['popular', 'Beliebteste'],
-            ['rating', 'Beste Bewertung'],
-            ['new', 'Neueste'],
+            ['popular', tt('Beliebteste')],
+            ['rating', tt('Beste Bewertung')],
+            ['new', tt('Neueste')],
           ]}
         />
       </div>
@@ -120,7 +120,7 @@ function MarktList() {
         </button>
         {(d?.categories ?? []).map((c) => (
           <button key={c.key} className={`chip${cat === c.key ? ' on' : ''}`} onClick={() => setCat(c.key)} disabled={!c.count && cat !== c.key}>
-            {c.label} <b>{c.count}</b>
+            {tt(c.label)} <b>{c.count}</b>
           </button>
         ))}
       </div>
@@ -128,7 +128,7 @@ function MarktList() {
       {l.loading && !d ? (
         <Spinner />
       ) : !d?.plugins.length ? (
-        <Empty tour="mk-empty">{query || cat ? tt('Nichts gefunden.') : tt('Im {marktplatz} ist noch nichts veröffentlicht. Admins veröffentlichen Plugins aus der {werkstatt}, sobald sie geprüft sind.', { marktplatz: NAMES.marktplatz, werkstatt: NAMES.werkstatt })}</Empty>
+        <Empty tour="mk-empty">{query || cat ? tt('Nichts gefunden.') : tt('Im {marktplatz} ist noch nichts veröffentlicht. Admins veröffentlichen Plugins aus der {werkstatt}, sobald sie geprüft sind.', { marktplatz: tt(NAMES.marktplatz), werkstatt: tt(NAMES.werkstatt) })}</Empty>
       ) : (
         <div className="mk-grid" data-tour="mk-grid">
           {d.plugins.map((p) => (
@@ -151,20 +151,20 @@ function MarktCard({ p }: { p: Card }) {
         </span>
         <div className="grow">
           <strong>{p.name}</strong>
-          <div className="muted small">{p.category_label}</div>
+          <div className="muted small">{tt(p.category_label)}</div>
         </div>
       </div>
       <p className="mk-desc">{p.description}</p>
       <div className="mk-meta">
         <Stars value={p.rating} count={p.reviews} />
-        <span className="muted small">{tt('{installs} Installation', { installs: p.installs })}{p.installs === 1 ? '' : 'en'}</span>
+        <span className="muted small">{tt.plural(p.installs, { one: '{n} Installation', other: '{n} Installationen' })}</span>
       </div>
       <div className="wk-badges">
-        {p.installed && <Badge tone="green">installiert</Badge>}
+        {p.installed && <Badge tone="green">{tt('installiert')}</Badge>}
         {p.update_available && <Badge tone="yellow">{tt('Update')}</Badge>}
-        {p.in_core && <Badge tone="purple">{NAMES.inCore}</Badge>}
-        {p.killed && <Badge tone="red">abgeschaltet</Badge>}
-        <Badge tone={RISK[p.risk]?.tone ?? 'gray'}>{tt('Risiko {v}', { v: RISK[p.risk]?.label ?? p.risk })}</Badge>
+        {p.in_core && <Badge tone="purple">{tt(NAMES.inCore)}</Badge>}
+        {p.killed && <Badge tone="red">{tt('abgeschaltet')}</Badge>}
+        <Badge tone={RISK[p.risk]?.tone ?? 'gray'}>{tt('Risiko {v}', { v: tt(RISK[p.risk]?.label ?? p.risk) })}</Badge>
       </div>
     </Link>
   );
@@ -183,7 +183,7 @@ function MarktDetail({ id }: { id: string }) {
   const [tab, setTab] = useState('');
   const p = r.data;
   if (r.loading && !p) return <Spinner />;
-  if (!p) return <Empty action={<Link to="marktplatz">{tt('Zum {marktplatz}', { marktplatz: NAMES.marktplatz })}</Link>}>{r.error || tt('Plugin nicht gefunden.')}</Empty>;
+  if (!p) return <Empty action={<Link to="marktplatz">{tt('Zum {marktplatz}', { marktplatz: tt(NAMES.marktplatz) })}</Link>}>{r.error || tt('Plugin nicht gefunden.')}</Empty>;
   const admin = !!me.data?.admin;
   const manage = !!mgmt.data?.can_manage || admin;
   const entries = [
@@ -200,7 +200,7 @@ function MarktDetail({ id }: { id: string }) {
   return (
     <div className="mk-detail">
       <p>
-        <Link to="marktplatz">← {NAMES.marktplatz}</Link>
+        <Link to="marktplatz">← {tt(NAMES.marktplatz)}</Link>
       </p>
       <div className="mk-head">
         <span className="wk-ico big">
@@ -209,18 +209,18 @@ function MarktDetail({ id }: { id: string }) {
         <div className="grow">
           <h1 style={{ margin: 0 }}>{p.name}</h1>
           <div className="muted">
-            {tt('{category_label} · Version {version}', { category_label: p.category_label, version: p.version })}
+            {tt('{category_label} · Version {version}', { category_label: tt(p.category_label), version: p.version })}
             {p.published_at ? tt(' · veröffentlicht {dateOnly}', { dateOnly: dateOnly(p.published_at) }) : ''}
           </div>
           <div className="mk-meta">
             <Stars value={p.rating} count={p.reviews} />
-            <span className="muted small">{tt('{installs} Installation', { installs: p.installs })}{p.installs === 1 ? '' : 'en'}</span>
+            <span className="muted small">{tt.plural(p.installs, { one: '{n} Installation', other: '{n} Installationen' })}</span>
             {p.votes > 0 && <span className="muted small">{tt('{votes} Stimmen aus der Wunschliste', { votes: p.votes })}</span>}
           </div>
         </div>
         <div className="actions" data-tour="mk-install">
           {p.in_core ? (
-            <Badge tone="purple">{tt('{inCore} (ab {core_version})', { inCore: NAMES.inCore, core_version: p.core_version })}</Badge>
+            <Badge tone="purple">{tt('{inCore} (ab {core_version})', { inCore: tt(NAMES.inCore), core_version: p.core_version })}</Badge>
           ) : p.installed ? (
             <>
               <Badge tone="green">{p.installed_scope === 'private' ? tt('nur für dich installiert') : tt('im Sub-Account installiert')}</Badge>
@@ -296,7 +296,7 @@ function MarktDetail({ id }: { id: string }) {
             {p.entries.page && <li>{tt('Seite im Menü: {title}', { title: p.entries.page.title })}</li>}
             {p.entries.panels.map((x) => (
               <li key={x.id}>
-                {tt('Panel auf der')} {x.on === 'contact' ? tt('Kontakt') : tt('Deal')}{tt('-Seite: {title}', { title: x.title })}
+                {x.on === 'contact' ? tt('Panel auf der Kontakt-Seite: {title}', { title: x.title }) : tt('Panel auf der Deal-Seite: {title}', { title: x.title })}
               </li>
             ))}
             {p.entries.widgets.map((x) => (
@@ -351,8 +351,8 @@ function InstallModal({ p, canLocation, onClose, onDone }: { p: Detail; canLocat
           value={scope}
           onChange={setScope}
           options={[
-            ...(canLocation ? ([['location', 'den ganzen Sub-Account'] as [string, string]] as [string, string][]) : []),
-            ['private', 'nur mich'],
+            ...(canLocation ? ([['location', tt('den ganzen Sub-Account')] as [string, string]] as [string, string][]) : []),
+            ['private', tt('nur mich')],
           ]}
         />
       </Field>
@@ -463,7 +463,7 @@ export function RatingCard({ pluginId }: { pluginId: string }) {
       </div>
       {(l.data ?? []).length > 0 && (
         <p className="muted small">
-          {tt('{length} Bewertung', { length: (l.data ?? []).length })}{(l.data ?? []).length === 1 ? '' : 'en'}{tt(', Durchschnitt')} <Stars value={Math.round(((l.data ?? []).reduce((a, r) => a + r.rating, 0) / (l.data ?? []).length) * 10) / 10} />
+          {tt.plural((l.data ?? []).length, { one: '{n} Bewertung', other: '{n} Bewertungen' })}{tt(', Durchschnitt')} <Stars value={Math.round(((l.data ?? []).reduce((a, r) => a + r.rating, 0) / (l.data ?? []).length) * 10) / 10} />
         </p>
       )}
     </div>
@@ -475,7 +475,7 @@ function PickStars({ value, onChange }: { value: number; onChange: (n: number) =
   return (
     <span className="wk-stars pick" role="radiogroup" aria-label={tt('Bewertung')}>
       {[1, 2, 3, 4, 5].map((n) => (
-        <button key={n} type="button" role="radio" aria-checked={value === n} className={n <= value ? 'on' : ''} onClick={() => onChange(n)} aria-label={tt('{n} Stern{v}', { n: n, v: n === 1 ? '' : 'e' })}>
+        <button key={n} type="button" role="radio" aria-checked={value === n} className={n <= value ? 'on' : ''} onClick={() => onChange(n)} aria-label={tt.plural(n, { one: '{n} Stern', other: '{n} Sterne' })}>
           ★
         </button>
       ))}
@@ -554,7 +554,7 @@ export function ReviewView({ r, compact }: { r: ReviewRow; compact?: boolean }) 
         <li key={c.id} className={c.ok ? 'ok' : 'bad'}>
           <span aria-hidden>{c.ok ? '✓' : '✗'}</span>
           <span>
-            <strong>{c.label}</strong>
+            <strong>{tt(c.label)}</strong>
             <br />
             <span className="muted small">{c.note}{c.source === 'auto' ? tt(' (automatisch geprüft)') : ''}</span>
           </span>
@@ -566,7 +566,7 @@ export function ReviewView({ r, compact }: { r: ReviewRow; compact?: boolean }) 
     return (
       <div className="mk-secreview" data-tour="mk-checklist">
         <p>
-          <Badge tone={VERDICT[r.verdict].tone}>{VERDICT[r.verdict].label}</Badge> <span className="muted small">{r.model}{r.effort?.label ? tt(' · Denkstufe {label}', { label: r.effort.label }) : ''}</span>
+          <Badge tone={VERDICT[r.verdict].tone}>{tt(VERDICT[r.verdict].label)}</Badge> <span className="muted small">{r.model}{r.effort?.label ? tt(' · Denkstufe {label}', { label: r.effort.label }) : ''}</span>
         </p>
         <p className="small">{r.summary}</p>
         {r.checks.some((c) => !c.ok) && list(r.checks.filter((c) => !c.ok))}
@@ -579,7 +579,7 @@ export function ReviewView({ r, compact }: { r: ReviewRow; compact?: boolean }) 
   return (
     <div className="mk-secreview" data-tour="mk-checklist">
       <p>
-        <Badge tone={VERDICT[r.verdict].tone}>{VERDICT[r.verdict].label}</Badge> <span className="muted small">{tt('Version {version} · {ago}', { version: r.version, ago: ago(r.created_at) })}{r.model ? ` · ${r.model}` : ''}{r.effort?.label ? tt(' · Denkstufe {label}', { label: r.effort.label }) : ''}</span>
+        <Badge tone={VERDICT[r.verdict].tone}>{tt(VERDICT[r.verdict].label)}</Badge> <span className="muted small">{tt('Version {version} · {ago}', { version: r.version, ago: ago(r.created_at) })}{r.model ? ` · ${r.model}` : ''}{r.effort?.label ? tt(' · Denkstufe {label}', { label: r.effort.label }) : ''}</span>
       </p>
       <p>{r.summary}</p>
       <ul className="mk-checks">
@@ -587,7 +587,7 @@ export function ReviewView({ r, compact }: { r: ReviewRow; compact?: boolean }) 
           <li key={c.id} className={c.ok ? 'ok' : 'bad'}>
             <span aria-hidden>{c.ok ? '✓' : '✗'}</span>
             <span>
-              <strong>{c.label}</strong>
+              <strong>{tt(c.label)}</strong>
               <br />
               <span className="muted small">{c.note}{c.source === 'auto' ? tt(' (automatisch geprüft)') : ''}</span>
             </span>
@@ -611,8 +611,8 @@ function AdminCard({ p, onChange }: { p: Detail; onChange: () => void }) {
       )}
       {l.data?.[0] ? <ReviewView r={l.data[0]} /> : <p className="muted">{tt('Keine Sicherheitsprüfung gespeichert.')}</p>}
       <div className="actions">
-        <button className="btn danger small" onClick={() => confirmAsk(tt('„{name}“ aus dem {marktplatz} nehmen? Bestehende Installationen laufen weiter.', { name: p.name, marktplatz: NAMES.marktplatz })) && act(() => api.post(`/api/marktplatz/${p.id}/unpublish`), tt('Aus dem Marktplatz genommen')).then((x) => x && (onChange(), navigate('marktplatz')))}>
-          {tt('Aus dem {marktplatz} nehmen', { marktplatz: NAMES.marktplatz })}
+        <button className="btn danger small" onClick={() => confirmAsk(tt('„{name}“ aus dem {marktplatz} nehmen? Bestehende Installationen laufen weiter.', { name: p.name, marktplatz: tt(NAMES.marktplatz) })) && act(() => api.post(`/api/marktplatz/${p.id}/unpublish`), tt('Aus dem Marktplatz genommen')).then((x) => x && (onChange(), navigate('marktplatz')))}>
+          {tt('Aus dem {marktplatz} nehmen', { marktplatz: tt(NAMES.marktplatz) })}
         </button>
       </div>
     </div>
@@ -669,13 +669,13 @@ export function PublishModal({ plugin, onClose, onDone }: { plugin: { id: string
   const publish = async () => {
     if (!review) return;
     setBusy(true);
-    const r = await act(() => api.post(`/api/marktplatz/${plugin.id}/publish`, { review_id: review.id, approve: true, accept_warnings: worst === 'warn' ? warned : undefined }), tt('„{name}“ ist im {marktplatz}', { name: plugin.name, marktplatz: NAMES.marktplatz }));
+    const r = await act(() => api.post(`/api/marktplatz/${plugin.id}/publish`, { review_id: review.id, approve: true, accept_warnings: worst === 'warn' ? warned : undefined }), tt('„{name}“ ist im {marktplatz}', { name: plugin.name, marktplatz: tt(NAMES.marktplatz) }));
     setBusy(false);
     if (r) onDone();
   };
   return (
     <Modal
-      title={tt('„{name}“ im {marktplatz} veröffentlichen', { name: plugin.name, marktplatz: NAMES.marktplatz })}
+      title={tt('„{name}“ im {marktplatz} veröffentlichen', { name: plugin.name, marktplatz: tt(NAMES.marktplatz) })}
       wide
       onClose={onClose}
       footer={
@@ -726,7 +726,7 @@ export function PublishModal({ plugin, onClose, onDone }: { plugin: { id: string
               </div>
             )}
           </div>
-          {check?.comparison && <p className={check.comparison.agree ? 'muted small' : 'small'}>{check.comparison.agree ? tt('Beide Prüfungen kommen zum selben Ergebnis.') : `Die Prüfungen sehen etwas unterschiedlich: ${check.comparison.differing.length ? tt('abweichend bei {n}.', { n: check.comparison.differing.join(', ') }) : tt('unterschiedliches Urteil.')}`}</p>}
+          {check?.comparison && <p className={check.comparison.agree ? 'muted small' : 'small'}>{check.comparison.agree ? tt('Beide Prüfungen kommen zum selben Ergebnis.') : tt('Die Prüfungen sehen etwas unterschiedlich: {detail}', { detail: check.comparison.differing.length ? tt('abweichend bei {n}.', { n: check.comparison.differing.join(', ') }) : tt('unterschiedliches Urteil.') })}</p>}
           {st && !so && (
             <div className="card wk-gate ok" data-tour="mk-second-opinion">
               <strong>
@@ -747,7 +747,7 @@ export function PublishModal({ plugin, onClose, onDone }: { plugin: { id: string
           ) : (
             <>
               {worst === 'warn' && <Check checked={warned} onChange={setWarned} label={tt('Ich habe die Hinweise gelesen und nehme sie in Kauf.')} />}
-              <Check checked={approve} onChange={setApprove} label={tt('Ich gebe das Plugin für den {marktplatz} frei. Es ist danach für alle Sub-Accounts sichtbar und installierbar.', { marktplatz: NAMES.marktplatz })} />
+              <Check checked={approve} onChange={setApprove} label={tt('Ich gebe das Plugin für den {marktplatz} frei. Es ist danach für alle Sub-Accounts sichtbar und installierbar.', { marktplatz: tt(NAMES.marktplatz) })} />
             </>
           )}
         </>

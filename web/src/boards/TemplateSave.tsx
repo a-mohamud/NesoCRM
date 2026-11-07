@@ -66,7 +66,7 @@ export function TemplateSave({ board, admin, onClose, onDone }: { board: BoardFu
         <Textarea value={description} onChange={setDescription} maxLength={600} rows={3} placeholder={tt('Wofür ist das Board gut?')} />
       </Field>
       <Field label={tt('Kategorie')}>
-        <Select value={category} onChange={setCategory} options={CATEGORIES} />
+        <Select value={category} onChange={setCategory} options={CATEGORIES.map(([v, l]) => [v, tt(l)] as [string, string])} />
       </Field>
       <div className="field">
         <span>{tt('Wer darf sie benutzen?')}</span>

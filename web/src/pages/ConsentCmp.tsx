@@ -9,6 +9,7 @@ import { useT } from '../i18n';
 const CATS: [string, string][] = [['statistics', 'Statistik'], ['marketing', 'Marketing'], ['external_media', 'Externe Medien']];
 const CHOICE: Record<string, string> = { accept_all: 'Alle akzeptiert', reject_all: 'Nur notwendige', custom: 'Eigene Auswahl' };
 
+// i18n-ignore – code example, translated where shown: tt(SNIPPET)
 const SNIPPET = `<!-- Statistik: wird erst nach Zustimmung geladen -->
 <script type="text/plain" data-category="statistics" src="https://stats.example.com/script.js"></script>
 
@@ -78,7 +79,7 @@ export function CmpEditor() {
       <div className="card" data-tour="cmp-intro">
         <h2>{tt('Cookie-Banner (Einwilligungsverwaltung)')}</h2>
         <p className="muted">
-          {tt('Eigene Einwilligungsverwaltung für Funnels, Websites, Buchungsseiten, Kunden- und Community-Portale – ohne Drittanbieter. Skripte mit')} <code>{tt('type="text/plain"')}</code> und <code>data-category</code> {tt('laufen erst nach Zustimmung; eingebettete Videos und Karten werden bis dahin durch einen Platzhalter ersetzt. Der Banner ersetzt den bisherigen Hinweis der Besucher-Statistik – es gibt immer nur einen.')}
+          {tt('Eigene Einwilligungsverwaltung für Funnels, Websites, Buchungsseiten, Kunden- und Community-Portale – ohne Drittanbieter. Skripte mit')} <code>{tt('type="text/plain"')}</code> {tt('und')} <code>data-category</code> {tt('laufen erst nach Zustimmung; eingebettete Videos und Karten werden bis dahin durch einen Platzhalter ersetzt. Der Banner ersetzt den bisherigen Hinweis der Besucher-Statistik – es gibt immer nur einen.')}
         </p>
         <Check checked={s.enabled} onChange={(v) => set({ enabled: v })} label={<strong>{tt('Cookie-Banner auf allen öffentlichen Seiten anzeigen')}</strong>} tour="cmp-enabled" />
         <p className="muted small">{tt('Version {version} · Ändert sich der Wortlaut oder die Kategorien, entsteht eine neue Version und alle Besucher werden erneut gefragt.', { version: s.version })}</p>
@@ -109,8 +110,8 @@ export function CmpEditor() {
             <Field label={tt('Notwendig – Beschreibung')}><Textarea rows={2} value={s.categories.necessary.description} onChange={(v) => cat('necessary', { description: v })} /></Field>
             {CATS.map(([k, l]) => (
               <div key={k} className="grid2">
-                <Field label={tt('{l} – Name', { l: l })}><Input value={s.categories[k].label} onChange={(v) => cat(k, { label: v })} /></Field>
-                <Field label={tt('{l} – Beschreibung', { l: l })}><Textarea rows={2} value={s.categories[k].description} onChange={(v) => cat(k, { description: v })} /></Field>
+                <Field label={tt('{l} – Name', { l: tt(l) })}><Input value={s.categories[k].label} onChange={(v) => cat(k, { label: v })} /></Field>
+                <Field label={tt('{l} – Beschreibung', { l: tt(l) })}><Textarea rows={2} value={s.categories[k].description} onChange={(v) => cat(k, { description: v })} /></Field>
               </div>
             ))}
           </div>
@@ -118,14 +119,14 @@ export function CmpEditor() {
           <div className="card" data-tour="cmp-look">
             <h3>{tt('Aussehen')}</h3>
             <div className="grid2">
-              <Field label={tt('Form')}><Select value={s.layout} onChange={(v) => set({ layout: v })} options={[['box', 'Karte'], ['bar', 'Leiste unten'], ['center', 'Mitte (Dialog)']]} /></Field>
-              <Field label={tt('Position (bei Karte)')}><Select value={s.position} onChange={(v) => set({ position: v })} options={[['left', 'Unten links'], ['right', 'Unten rechts'], ['middle', 'Unten mittig']]} /></Field>
+              <Field label={tt('Form')}><Select value={s.layout} onChange={(v) => set({ layout: v })} options={[['box', tt('Karte')], ['bar', tt('Leiste unten')], ['center', tt('Mitte (Dialog)')]]} /></Field>
+              <Field label={tt('Position (bei Karte)')}><Select value={s.position} onChange={(v) => set({ position: v })} options={[['left', tt('Unten links')], ['right', tt('Unten rechts')], ['middle', tt('Unten mittig')]]} /></Field>
             </div>
             <div className="grid2">
               {([['bg', 'Hintergrund'], ['text', 'Text'], ['accent', 'Akzent (Buttons)'], ['accent_text', 'Text auf Akzent']] as [string, string][]).map(([k, l]) => (
-                <Field key={k} label={l}>
+                <Field key={k} label={tt(l)}>
                   <span className="row" style={{ gap: 8 }}>
-                    <input type="color" value={s.colors[k]} onChange={(e) => color(k, e.target.value)} aria-label={l} />
+                    <input type="color" value={s.colors[k]} onChange={(e) => color(k, e.target.value)} aria-label={tt(l)} />
                     <Input value={s.colors[k]} onChange={(v) => color(k, v)} />
                   </span>
                 </Field>
@@ -139,7 +140,7 @@ export function CmpEditor() {
             <h3>{tt('Technik')}</h3>
             <Check checked={s.consent_mode} onChange={(v) => set({ consent_mode: v })} label={tt('Google Consent Mode v2 – alles startet auf „denied“ und wird nach der Auswahl aktualisiert')} />
             <Field label={tt('Skripte ohne Kategorie')} hint={tt('Unbekannte Skripte von Dritten, die nicht mit data-category markiert sind.')}>
-              <Select value={s.unknown_scripts} onChange={(v) => set({ unknown_scripts: v })} options={[['block', 'Blockieren, bis „Marketing“ erlaubt ist (empfohlen)'], ['allow', 'Nicht eingreifen (nur markierte Skripte werden gesteuert)']]} />
+              <Select value={s.unknown_scripts} onChange={(v) => set({ unknown_scripts: v })} options={[['block', tt('Blockieren, bis „Marketing“ erlaubt ist (empfohlen)')], ['allow', tt('Nicht eingreifen (nur markierte Skripte werden gesteuert)')]]} />
             </Field>
             <Field label={tt('Auswahl gilt für … Tage')}><Input type="number" value={s.expiry_days} onChange={(v) => set({ expiry_days: Number(v) })} /></Field>
           </div>
@@ -155,7 +156,7 @@ export function CmpEditor() {
           <div className="card" data-tour="cmp-howto">
             <h3>{tt('Eigene Skripte steuern')}</h3>
             <p className="muted small">{tt('Trage Skripte so in den Head-Code der Seite oder in HTML-Blöcke ein. Statistik- und Reichweiten-Cookies von HyperLevel selbst folgen automatisch der Auswahl.')}</p>
-            <CodeBox text={SNIPPET} />
+            <CodeBox text={tt(SNIPPET)} />
           </div>
         </div>
       </div>
@@ -164,7 +165,7 @@ export function CmpEditor() {
         <h3>{tt('Nachweis der Auswahlen')}</h3>
         <p className="muted small">{tt('Jede Entscheidung wird pseudonym mit Version, Auswahl, Seite und gekürzter IP protokolliert und 3 Jahre aufbewahrt.')}</p>
         <p className="row small" style={{ gap: 14 }}>
-          {Object.keys(stats).length ? Object.entries(stats).map(([k, n]) => <span key={k}><Badge>{String(n)}</Badge> {CHOICE[k] ?? k}</span>) : <span className="muted">{tt('Letzte 30 Tage: noch keine Auswahlen')}</span>}
+          {Object.keys(stats).length ? Object.entries(stats).map(([k, n]) => <span key={k}><Badge>{String(n)}</Badge> {tt(CHOICE[k] ?? k)}</span>) : <span className="muted">{tt('Letzte 30 Tage: noch keine Auswahlen')}</span>}
         </p>
         {!log.data?.rows?.length ? (
           <Empty>{tt('Noch keine Auswahlen protokolliert.')}</Empty>
@@ -176,7 +177,7 @@ export function CmpEditor() {
                 {log.data.rows.map((r: any) => (
                   <tr key={r.id}>
                     <td className="small" style={{ whiteSpace: 'nowrap' }}>{dt(r.created_at)}</td>
-                    <td>{CHOICE[r.choice] ?? r.choice}</td>
+                    <td>{tt(CHOICE[r.choice] ?? r.choice)}</td>
                     <td>{r.statistics ? 'ja' : 'nein'}</td>
                     <td>{r.marketing ? 'ja' : 'nein'}</td>
                     <td>{r.external_media ? 'ja' : 'nein'}</td>

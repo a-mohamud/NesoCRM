@@ -1,6 +1,7 @@
 import { ApiError, api } from '../api';
 import type { IconName } from '../icons';
 import { toastError } from '../ui';
+import { intlLocale, tr } from '../i18n';
 
 /** What the journal tells the app about a change (server/services/undo-journal.ts → entryOut). */
 export interface UndoChange {
@@ -95,15 +96,14 @@ export const FILTER_TYPES: [string, string][] = Object.entries(ENTITY).filter(([
 /** Who made the change, when it was not a person in the browser. */
 export const ACTOR_BADGE: Record<string, string> = { agent: 'KI-Agent', api_key: 'API-Schlüssel', mcp: 'MCP', agency_key: 'Agentur-Schlüssel', app: 'App' };
 
-const dayFmt = new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
 export function dayLabel(iso: string, now = new Date()): string {
   const d = new Date(iso);
   const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
-  if (same(d, now)) return 'Heute';
-  if (same(d, new Date(now.getTime() - 864e5))) return 'Gestern';
-  return dayFmt.format(d);
+  if (same(d, now)) return tr('shell')('Heute');
+  if (same(d, new Date(now.getTime() - 864e5))) return tr('shell')('Gestern');
+  return new Intl.DateTimeFormat(intlLocale(), { weekday: 'long', day: '2-digit', month: '2-digit' }).format(d);
 }
-export const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+export const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' });
 export const daysLeft = (iso: string, now = Date.now()) => Math.max(0, Math.ceil((Date.parse(iso) - now) / 864e5));
 
 /** A sentence for screen readers (and the toast's live region). */

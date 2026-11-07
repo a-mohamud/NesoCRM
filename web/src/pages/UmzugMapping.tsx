@@ -49,7 +49,7 @@ function NewFieldModal({ field, initial, onSave, onClose }: { field: SourceField
         <Input value={label} onChange={setLabel} maxLength={100} autoFocus />
       </Field>
       <Field label={tt('Art des Feldes')}>
-        <Select value={type} onChange={setType} options={FIELD_TYPE_LABELS} />
+        <Select value={type} onChange={setType} options={FIELD_TYPE_LABELS.map(([k, l]) => [k, tt(l)] as [string, string])} />
       </Field>
     </Modal>
   );
@@ -101,7 +101,7 @@ export function UmzugMapping({ fields, mapping, custom, onChange, disabled }: { 
                       <optgroup label={tt('Standardfelder')}>
                         {STD_FIELDS.map(([k, l]) => (
                           <option key={k} value={k}>
-                            {l}
+                            {tt(l)}
                           </option>
                         ))}
                       </optgroup>

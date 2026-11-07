@@ -1,12 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../icons';
 import { can, useSession, type Session } from '../session';
 import { act, navigate } from '../ui';
-import { JOURNEY, TOURS, composeSteps, resumeIndex, tourById, toursForPath, type Access, type RunStep } from './catalog';
+import { JOURNEY, TOURS, composeSteps, localizeStep, localizeTour, resumeIndex, tourById, toursForPath, tourText, useTourText, type Access, type RunStep } from './catalog';
 import { academyState, clearActive, createSandbox, loadAcademy, saveProgress, useAcademy } from './progress';
 import type { Tour } from './types';
-import { useT } from '../i18n';
+import { useLocale, useT } from '../i18n';
 
 /**
  * The tour layer: a dimmed backdrop with a cut-out around the highlighted element, a card with
@@ -146,12 +146,14 @@ type Rect = { top: number; left: number; width: number; height: number };
 const PAD = 6;
 
 export function TourLayer() {
+  // re-renders on a language switch; the texts are translated in StepView, which loads the tour catalogs
+  const locale = useLocale();
   const session = useSession();
   const r = useRunState();
   const academy = useAcademy();
   const access = useMemo(() => accessOf(session), [session.user, session.saas]);
   const tour = r ? tourById(r.id) : undefined;
-  const steps = useMemo(() => (tour ? composeSteps(tour, access) : []), [tour, access]);
+  const steps = useMemo(() => (tour ? composeSteps(tour, access) : []), [tour, access, locale]);
   const index = r ? Math.min(r.index, Math.max(0, steps.length - 1)) : 0;
   const step = steps[index];
 
@@ -206,6 +208,8 @@ export function TourLayer() {
 
   if (!tour || !step || r?.resume) return null;
   return createPortal(
+    // the tour catalogs load inside this boundary, so nothing else in the shell waits for them
+    <Suspense fallback={null}>
     <StepView
       key={`${r!.nonce}-${index}`}
       tour={tour}
@@ -217,13 +221,22 @@ export function TourLayer() {
       onNext={next}
       onBack={() => go(index - 1)}
       onClose={close}
-    />,
+    />
+    </Suspense>,
     document.body,
   );
 }
 
-function StepView({ tour, steps, index, step, session, sandbox, onNext, onBack, onClose }: { tour: Tour; steps: RunStep[]; index: number; step: RunStep; session: Session; sandbox: { id: string; name: string } | null; onNext: () => void; onBack: () => void; onClose: () => void }) {
+function StepView({ tour: rawTour, steps, index, step: rawStep, session, sandbox, onNext, onBack, onClose }: { tour: Tour; steps: RunStep[]; index: number; step: RunStep; session: Session; sandbox: { id: string; name: string } | null; onNext: () => void; onBack: () => void; onClose: () => void }) {
   const tt = useT('x_tours_b');
+  useTourText();
+  // Texts in the active language – translating twice is harmless (an English text is no catalog key), so this also
+  // covers a tour that was composed before the catalogs had loaded.
+  const tour = localizeTour(rawTour);
+  const step: RunStep =
+    rawStep.special === 'outro'
+      ? { ...rawStep, title: rawTour.chapter ? tt('Kapitel {chapter} geschafft!', { chapter: rawTour.chapter }) : tt('Geschafft!'), text: tt('Das hast du gelernt:') }
+      : localizeStep(rawStep);
   const [el, setEl] = useState<HTMLElement | null>(null);
   const [rect, setRect] = useState<Rect | null>(null);
   const [missing, setMissing] = useState(false);
@@ -342,13 +355,15 @@ function StepView({ tour, steps, index, step, session, sandbox, onNext, onBack, 
       offs.push(() => clearInterval(t));
     }
     if (kind === 'wait' && step.wait?.toast) {
-      const want = step.wait.toast;
+      // the success message may already be in the active language: match the German text and its translation
+      const wants = step.wait.toast === true ? [] : [...new Set([step.wait.toast, tourText(step.wait.toast)].map((w) => w.toLowerCase()))];
       const seen = new Set(document.querySelectorAll('.toast'));
       const mo = new MutationObserver(() => {
         for (const t of Array.from(document.querySelectorAll('.toast.ok'))) {
           if (seen.has(t)) continue;
           seen.add(t);
-          if (want === true || (t.textContent ?? '').toLowerCase().includes(want.toLowerCase())) {
+          const text = (t.textContent ?? '').toLowerCase();
+          if (!wants.length || wants.some((w) => text.includes(w))) {
             setDone(true);
             window.setTimeout(advance, 700);
           }

@@ -71,7 +71,7 @@ function QuestionEditor({ q, i, n, set, move, remove }: { q: Q; i: number; n: nu
         </span>
       </div>
       <Field label={tt('Art')}>
-        <Select value={q.kind} onChange={(v) => set({ kind: v as Q['kind'] })} options={KINDS} />
+        <Select value={q.kind} onChange={(v) => set({ kind: v as Q['kind'] })} options={KINDS.map(([k, l]) => [k, tt(l)] as [string, string])} />
       </Field>
       <Field label={tt('Frage *')}>
         <Textarea value={q.text} onChange={(v) => set({ text: v })} rows={2} maxLength={1000} />
@@ -100,7 +100,7 @@ function QuestionEditor({ q, i, n, set, move, remove }: { q: Q; i: number; n: nu
       )}
       {q.kind === 'truefalse' && (
         <Field label={tt('Die Aussage ist …')}>
-          <Select value={q.correct_value ? 'true' : 'false'} onChange={(v) => set({ correct_value: v === 'true' })} options={[['true', 'wahr'], ['false', 'falsch']]} />
+          <Select value={q.correct_value ? 'true' : 'false'} onChange={(v) => set({ correct_value: v === 'true' })} options={[['true', tt('wahr')], ['false', tt('falsch')]]} />
         </Field>
       )}
       {q.kind === 'short' && (
@@ -143,7 +143,7 @@ function QuizDialog({ quiz, onClose, onSaved }: { quiz?: any; onClose: () => voi
     [next[i], next[i + d]] = [next[i + d], next[i]];
     setQuestions(next);
   };
-  const problem = !quiz && !lessonId ? 'Bitte Kurs und Lektion wählen.' : !questions.length ? 'Mindestens eine Frage.' : questions.some((q) => !q.text.trim()) ? 'Jede Frage braucht einen Text.' : '';
+  const problem = !quiz && !lessonId ? tt('Bitte Kurs und Lektion wählen.') : !questions.length ? tt('Mindestens eine Frage.') : questions.some((q) => !q.text.trim()) ? tt('Jede Frage braucht einen Text.') : '';
   const save = async () => {
     const body = { title, intro, pass_percent: Number(pass), max_attempts: Number(attempts) || 0, gate, shuffle, show_answers: show, questions: questions.map(toServer), ...(quiz ? {} : { course_id: courseId, lesson_id: lessonId }) };
     const r = await act(() => (quiz ? api.put(`/api/quizzes/${quiz.id}`, body) : api.post('/api/quizzes', body)), tt('Quiz gespeichert'));
@@ -194,7 +194,7 @@ function QuizDialog({ quiz, onClose, onSaved }: { quiz?: any; onClose: () => voi
             <Input type="number" min={0} max={50} value={attempts} onChange={setAttempts} />
           </Field>
           <Field label={tt('Lösungen zeigen')}>
-            <Select value={show} onChange={setShow} options={SHOW} />
+            <Select value={show} onChange={setShow} options={SHOW.map(([k, l]) => [k, tt(l)] as [string, string])} />
           </Field>
         </div>
         <Check checked={gate} onChange={setGate} label={tt('Die nächste Lektion bleibt gesperrt, bis das Quiz bestanden ist')} />
@@ -311,11 +311,11 @@ function QuizzesTab() {
             >
               <strong>{q.title}</strong>
               <div className="cr-sub">
-                {tt('{course_title} › {lesson_title} · {question_count} Fragen · bestanden ab {pass_percent} % ·', { course_title: q.course_title, lesson_title: q.lesson_title, question_count: q.question_count, pass_percent: q.pass_percent })} {q.max_attempts ? tt('{max_attempts} Versuche', { max_attempts: q.max_attempts }) : 'unbegrenzt'}
+                {tt('{course_title} › {lesson_title} · {question_count} Fragen · bestanden ab {pass_percent} % ·', { course_title: q.course_title, lesson_title: q.lesson_title, question_count: q.question_count, pass_percent: q.pass_percent })} {q.max_attempts ? tt('{max_attempts} Versuche', { max_attempts: q.max_attempts }) : tt('unbegrenzt')}
                 {q.gate ? tt(' · sperrt die nächste Lektion') : ''}
               </div>
               <div className="cr-sub">
-                {tt('{people} Person', { people: q.stats.people })}{q.stats.people === 1 ? '' : 'en'} {tt('· {attempts} Versuche · {passed} bestanden', { attempts: q.stats.attempts, passed: q.stats.passed })}
+                {tt.plural(q.stats.people, { one: '{n} Person', other: '{n} Personen' })} {tt('· {attempts} Versuche · {passed} bestanden', { attempts: q.stats.attempts, passed: q.stats.passed })}
               </div>
             </Item>
           ))}
@@ -343,7 +343,7 @@ export function Quizzes({ tab: tabParam }: { tab?: string }) {
       </PageHead>
       {pending > 0 && tab !== 'reviews' && (
         <Callout tone="warn" tour="quiz-pending">
-          <strong>{tt('{pending} Einreichung', { pending: pending })}{pending === 1 ? '' : 'en'} {tt('warten auf deine Prüfung.')}</strong>{' '}
+          <strong>{tt.plural(pending, { one: '{n} Einreichung wartet auf deine Prüfung.', other: '{n} Einreichungen warten auf deine Prüfung.' })}</strong>{' '}
           <button className="btn small secondary" onClick={() => setTab('reviews')}>
             {tt('Jetzt prüfen')}
           </button>
@@ -351,10 +351,10 @@ export function Quizzes({ tab: tabParam }: { tab?: string }) {
       )}
       <Tabs
         tabs={[
-          ['quizzes', 'Quizze'],
-          ['assignments', 'Aufgaben'],
-          ['reviews', `Prüfen${pending ? ` (${pending})` : ''}`],
-          ['certificates', 'Zertifikate'],
+          ['quizzes', tt('Quizze')],
+          ['assignments', tt('Aufgaben')],
+          ['reviews', `${tt('Prüfen')}${pending ? ` (${pending})` : ''}`],
+          ['certificates', tt('Zertifikate')],
         ]}
         value={tab}
         onChange={setTab}

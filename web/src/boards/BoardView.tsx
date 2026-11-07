@@ -184,7 +184,7 @@ export function BoardView({ id }: { id: string }) {
   const remove = async (w: Widget) => {
     setSettings(null);
     const next = await patch([{ op: 'remove', id: w.id }], (b) => ({ ...b, spec: { ...b.spec, widgets: b.spec.widgets.filter((x) => x.id !== w.id) } }));
-    if (next) setSnack({ text: `„${titleOf(w)}“ entfernt`, n: Date.now() });
+    if (next) setSnack({ text: tt('„{title}“ entfernt', { title: titleOf(w) }), n: Date.now() });
   };
   const toggleHome = async (on: boolean) => {
     try {
@@ -251,7 +251,7 @@ export function BoardView({ id }: { id: string }) {
         </div>
         <div className="bd-tools">
           {others.length > 0 && (
-            <span className="bd-viewers" title={tt('{n} {v} gerade zu', { n: others.map((v) => v.name).join(', '), v: others.length === 1 ? 'sieht' : 'sehen' })}>
+            <span className="bd-viewers" title={tt.plural(others.length, { one: '{names} sieht gerade zu', other: '{names} sehen gerade zu' }, { names: others.map((v) => v.name).join(', ') })}>
               {others.slice(0, 4).map((v, i) => (
                 <i key={`${v.user_id}${i}`}>{initials(v.name)}</i>
               ))}
@@ -299,7 +299,7 @@ export function BoardView({ id }: { id: string }) {
             <Icon name="plus" size={14} /> {tt('Widget hinzufügen')}
           </button>
           <span className="muted small bd-editbar-tip">
-            {bp === 'sm' ? tt('Mit den Pfeilen sortierst du die Widgets.') : tt('Am Griff ziehen, an der Ecke unten rechts die Größe ändern. Tastatur: Griff wählen, Leertaste, Pfeile (Umschalt = Größe), Leertaste.')} {tt('Du bearbeitest die Ansicht „{v}“.', { v: BP_NAME[bp] })}
+            {bp === 'sm' ? tt('Mit den Pfeilen sortierst du die Widgets.') : tt('Am Griff ziehen, an der Ecke unten rechts die Größe ändern. Tastatur: Griff wählen, Leertaste, Pfeile (Umschalt = Größe), Leertaste.')} {tt('Du bearbeitest die Ansicht „{v}“.', { v: tt(BP_NAME[bp]) })}
           </span>
           {custom && (
             <button
@@ -314,7 +314,7 @@ export function BoardView({ id }: { id: string }) {
               }}
               title={tt('Die Anordnung wieder aus der Desktop-Ansicht ableiten')}
             >
-              <Icon name="reset" size={14} /> {tt('{v}-Anordnung zurücksetzen', { v: BP_NAME[bp] })}
+              <Icon name="reset" size={14} /> {tt('{v}-Anordnung zurücksetzen', { v: tt(BP_NAME[bp]) })}
             </button>
           )}
         </div>
@@ -340,8 +340,8 @@ export function BoardView({ id }: { id: string }) {
             {canEdit && (
               <div className="chips bd-wishes">
                 {WISHES.map((w) => (
-                  <button key={w} type="button" className="chip" onClick={() => setWish({ text: w, n: Date.now() })}>
-                    „{w}“
+                  <button key={w} type="button" className="chip" onClick={() => setWish({ text: tt(w), n: Date.now() })}>
+                    „{tt(w)}“
                   </button>
                 ))}
               </div>
@@ -356,7 +356,7 @@ export function BoardView({ id }: { id: string }) {
             limits={limits}
             titleOf={titleOf}
             onCommit={commit}
-            render={(w, part) => <WidgetCard w={w} type={types.get(w.type)} data={data[w.id]} loading={loading} part={part} edit={edit} selected={settings === w.id} fresh={fresh === w.id} onSettings={() => setSettings(w.id)} onRemove={() => void remove(w)} onRefresh={() => void refresh([w.id])} moveMenu={bp !== 'sm' ? <MoveMenu what={`Widget „${titleOf(w)}“`} title={tt('Widget verschieben oder anpassen')} targets={WIDGET_MOVES} onMove={(a) => nudge(w, a)} /> : undefined} />}
+            render={(w, part) => <WidgetCard w={w} type={types.get(w.type)} data={data[w.id]} loading={loading} part={part} edit={edit} selected={settings === w.id} fresh={fresh === w.id} onSettings={() => setSettings(w.id)} onRemove={() => void remove(w)} onRefresh={() => void refresh([w.id])} moveMenu={bp !== 'sm' ? <MoveMenu what={tt('Widget „{title}“', { title: titleOf(w) })} title={tt('Widget verschieben oder anpassen')} targets={WIDGET_MOVES.map((m) => ({ ...m, label: tt(m.label), hint: m.hint && tt(m.hint) }))} onMove={(a) => nudge(w, a)} /> : undefined} />}
           />
         )}
       </div>

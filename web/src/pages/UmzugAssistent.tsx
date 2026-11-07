@@ -154,7 +154,7 @@ function Wizard({ target, targetName }: { target: string; targetName: string }) 
   if (!d) return <Spinner />;
 
   const reachable: Record<Step, boolean> = { source: true, connect: !!src, preview: !!preview, run: !!job };
-  const partDefs: PartDef[] = !preview ? [] : preview.origin === 'api' && src ? src.parts : preview.parts.map((p) => ({ key: p, label: PART_NAMES[p] ?? p }));
+  const partDefs: PartDef[] = !preview ? [] : preview.origin === 'api' && src ? src.parts : preview.parts.map((p) => ({ key: p, label: tt(PART_NAMES[p] ?? p) }));
   const counts = (preview?.counts ?? []).filter((c) => parts.includes(c.part));
   const existing = Object.entries(preview?.existing ?? {}).filter(([k, n]) => n > 0 && EXISTING_LABELS[k] !== '');
 
@@ -181,8 +181,8 @@ function Wizard({ target, targetName }: { target: string; targetName: string }) 
                   <strong>{s.label}</strong>
                   <span className="muted small">{s.tagline}</span>
                   <span className="um-source-meta">
-                    {c?.connected && <Badge tone="green">verbunden</Badge>}
-                    {n > 0 && <Badge tone="blue">{tt('{n} Datei', { n: n })}{n === 1 ? '' : 'en'}</Badge>}
+                    {c?.connected && <Badge tone="green">{tt('verbunden')}</Badge>}
+                    {n > 0 && <Badge tone="blue">{n === 1 ? tt('{n} Datei', { n: n }) : tt('{n} Dateien', { n: n })}</Badge>}
                   </span>
                 </button>
               );
@@ -266,7 +266,7 @@ function Wizard({ target, targetName }: { target: string; targetName: string }) 
             </div>
             {existing.length > 0 && (
               <p className="muted small um-existing">
-                {tt('Aus früheren Umzügen kennt HyperLevel schon:')} {existing.map(([k, n]) => `${n} ${EXISTING_LABELS[k] ?? k}`).join(', ')}{tt('. Die werden aktualisiert – nichts wird doppelt angelegt.')}
+                {tt('Aus früheren Umzügen kennt HyperLevel schon:')} {existing.map(([k, n]) => `${n} ${tt(EXISTING_LABELS[k] ?? k)}`).join(', ')}{tt('. Die werden aktualisiert – nichts wird doppelt angelegt.')}
               </p>
             )}
           </div>
@@ -308,8 +308,8 @@ function Wizard({ target, targetName }: { target: string; targetName: string }) 
                 value={options.merge}
                 onChange={(merge) => setOptions({ ...options, merge })}
                 options={[
-                  ['fill', 'Nur leere Felder auffüllen (empfohlen)'],
-                  ['overwrite', 'Vorhandene Werte überschreiben'],
+                  ['fill', tt('Nur leere Felder auffüllen (empfohlen)')],
+                  ['overwrite', tt('Vorhandene Werte überschreiben')],
                 ]}
               />
             </Field>
@@ -368,7 +368,7 @@ function Wizard({ target, targetName }: { target: string; targetName: string }) 
           <p>
             <strong>{preview.label}</strong> {tt('→ Sub-Account')} <strong>{targetName}</strong>
           </p>
-          <p>{tt('Es kommt mit:')} {parts.map((p) => PART_NAMES[p] ?? p).join(', ')}.</p>
+          <p>{tt('Es kommt mit:')} {parts.map((p) => tt(PART_NAMES[p] ?? p)).join(', ')}.</p>
           <p className="muted small">
             {tt('Der Umzug läuft im Hintergrund, du kannst ihn pausieren und später fortsetzen. Schon vorhandene Kontakte werden')} {options.merge === 'fill' ? tt('nur ergänzt') : tt('überschrieben')}{tt('. Automationen kommen immer als Entwurf. Du kannst den ganzen Umzug danach rückgängig machen.')}
           </p>

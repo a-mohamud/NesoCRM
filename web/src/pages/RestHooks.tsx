@@ -90,8 +90,8 @@ function DeliveryDetail({ id, onClose, onChange }: { id: string; onClose: () => 
         <>
           <div className="hook-facts">
             <div>
-              <span className="muted small">Status</span>
-              <Badge tone={DELIVERY[x.status]?.[1] ?? 'gray'}>{DELIVERY[x.status]?.[0] ?? x.status}</Badge>
+              <span className="muted small">{tt('Status')}</span>
+              <Badge tone={DELIVERY[x.status]?.[1] ?? 'gray'}>{tt(DELIVERY[x.status]?.[0] ?? x.status)}</Badge>
             </div>
             <div>
               <span className="muted small">{tt('Auslöser')}</span>
@@ -173,7 +173,7 @@ export function RestHooksPanel() {
                 <tr>
                   <th>{tt('Auslöser')}</th>
                   <th>{tt('Ziel')}</th>
-                  <th>Status</th>
+                  <th>{tt('Status')}</th>
                   <th />
                 </tr>
               </thead>
@@ -195,7 +195,7 @@ export function RestHooksPanel() {
                       <Badge tone="purple">{SOURCE[h.source] ?? h.source}</Badge> <span className="mono small hook-url">{h.target_url}</span>
                     </td>
                     <td>
-                      <Badge tone={HOOK_STATUS[h.status]?.[1] ?? 'gray'}>{HOOK_STATUS[h.status]?.[0] ?? h.status}</Badge>
+                      <Badge tone={HOOK_STATUS[h.status]?.[1] ?? 'gray'}>{tt(HOOK_STATUS[h.status]?.[0] ?? h.status)}</Badge>
                       <div className="muted small">{h.disabled_reason || h.last_status || tt('noch nichts gesendet')}</div>
                     </td>
                     <td className="hook-btns">
@@ -233,7 +233,7 @@ export function RestHooksPanel() {
               {tt('7 Tage: {v} zugestellt · {v2} in Wiederholung · {v3} fehlgeschlagen', { v: counts.success ?? 0, v2: counts.retrying ?? 0, v3: (counts.failed ?? 0) + (counts.gone ?? 0) })}
             </span>
             <div style={{ width: 180 }}>
-              <Select value={status} onChange={setStatus} placeholder={tt('Alle Status')} options={Object.entries(DELIVERY).map(([k, [l]]) => [k, l])} />
+              <Select value={status} onChange={setStatus} placeholder={tt('Alle Status')} options={Object.entries(DELIVERY).map(([k, [l]]) => [k, tt(l)])} />
             </div>
             <button className="btn small secondary" onClick={() => log.reload()} aria-label={tt('Aktualisieren')}>
               <Icon name="refresh" />
@@ -251,7 +251,7 @@ export function RestHooksPanel() {
                     <th>{tt('Zeit')}</th>
                     <th>{tt('Auslöser')}</th>
                     <th>{tt('Ziel')}</th>
-                    <th>Status</th>
+                    <th>{tt('Status')}</th>
                     <th className="num">{tt('Versuche')}</th>
                     <th className="num">{tt('HTTP')}</th>
                   </tr>
@@ -265,7 +265,7 @@ export function RestHooksPanel() {
                       </td>
                       <td className="mono small hook-url">{d.target_url}</td>
                       <td>
-                        <Badge tone={DELIVERY[d.status]?.[1] ?? 'gray'}>{DELIVERY[d.status]?.[0] ?? d.status}</Badge>
+                        <Badge tone={DELIVERY[d.status]?.[1] ?? 'gray'}>{tt(DELIVERY[d.status]?.[0] ?? d.status)}</Badge>
                         {d.error && <div className="muted small">{d.error}</div>}
                       </td>
                       <td className="num">{d.attempts}</td>
@@ -301,7 +301,7 @@ function ApiQuickRef() {
     <div className="card" data-tour="api-quickref">
       <h2>{tt('Schnellstart')}</h2>
       <p className="muted small" style={{ marginTop: 0 }}>
-        {tt('Fertige Verbindungen liegen im Repo unter')} <code>integrations/zapier</code>, <code>integrations/make</code> und <code>integrations/n8n</code>{tt('. OpenAPI für Postman, Insomnia oder n8n:')}
+        {tt('Fertige Verbindungen liegen im Repo unter')} <code>integrations/zapier</code>, <code>integrations/make</code> {tt('und')} <code>integrations/n8n</code>{tt('. OpenAPI für Postman, Insomnia oder n8n:')}
       </p>
       <CodeBox text={`${origin}/api/openapi.json`} />
       <pre className="hook-pre" style={{ marginTop: 10 }}>{tt('curl -X POST {origin}/api/hooks \\\n  -H "Authorization: Bearer pghl_…" -H \'content-type: application/json\' \\\n  -d \'{"target_url":"https://example.com/hook","event":"opportunity.won"}\'', { origin: origin })}</pre>

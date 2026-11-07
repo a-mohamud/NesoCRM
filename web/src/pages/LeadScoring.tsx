@@ -73,8 +73,8 @@ function RuleRow({ r, fields, events, tags, onChange, onRemove }: { r: any; fiel
         {pts}
         <span className="muted small">{tt('je Mal, höchstens')}</span>
         <Input type="number" value={r.max_points ?? ''} onChange={(v) => onChange({ ...r, max_points: v })} placeholder="∞" aria-label={tt('Höchstpunkte')} className="ls-small" />
-        <span className="muted small">in</span>
-        <Input type="number" value={r.within_days ?? ''} onChange={(v) => onChange({ ...r, within_days: v })} placeholder="allen" aria-label={tt('Zeitraum in Tagen')} className="ls-small" />
+        <span className="muted small">{tt('in')}</span>
+        <Input type="number" value={r.within_days ?? ''} onChange={(v) => onChange({ ...r, within_days: v })} placeholder={tt('allen')} aria-label={tt('Zeitraum in Tagen')} className="ls-small" />
         <span className="muted small">{tt('Tagen')}</span>
         {del}
       </div>
@@ -83,7 +83,7 @@ function RuleRow({ r, fields, events, tags, onChange, onRemove }: { r: any; fiel
   return (
     <div className="ls-rule">
       <Select value={r.field} aria={tt('Feld')} onChange={(v) => onChange({ ...r, field: v, op: v === 'tag' ? 'has' : r.op === 'has' || r.op === 'not_has' ? 'equals' : r.op })} options={fields} />
-      <Select value={r.op} onChange={(v) => onChange({ ...r, op: v })} aria={tt('Bedingung')} options={r.field === 'tag' ? OPS.filter(([k]) => k === 'has' || k === 'not_has') : OPS.filter(([k]) => k !== 'has' && k !== 'not_has')} />
+      <Select value={r.op} onChange={(v) => onChange({ ...r, op: v })} aria={tt('Bedingung')} options={(r.field === 'tag' ? OPS.filter(([k]) => k === 'has' || k === 'not_has') : OPS.filter(([k]) => k !== 'has' && k !== 'not_has')).map(([k, l]) => [k, tt(l)] as [string, string])} />
       {needsValue &&
         (r.field === 'tag' ? (
           <Select value={r.value} onChange={(v) => onChange({ ...r, value: v })} placeholder={tt('Tag wählen…')} options={tags} />
@@ -100,13 +100,14 @@ function ModelEditor({ model, meta, onSaved, onDeleted }: { model: any; meta: an
   const tt = useT('contacts');
   const [m, setM] = useState<any>(model);
   useEffect(() => setM(model), [model.id, model.updated_at]);
+  const tx = ([k, l]: [string, string]): [string, string] => [k, tt(l)];
   const fields: [string, string][] = [
-    ...CONTACT_FIELDS,
-    ...meta.custom_fields.map((f: any) => [`custom.${f.key}`, `Feld: ${f.label}`] as [string, string]),
+    ...CONTACT_FIELDS.map(tx),
+    ...meta.custom_fields.map((f: any) => [`custom.${f.key}`, tt('Feld: {label}', { label: f.label })] as [string, string]),
     ['tag', 'Tag'],
-    ...COMPANY_FIELDS,
-    ...meta.company_properties.map((p: any) => [`company.custom.${p.key}`, `Firma: ${p.label}`] as [string, string]),
-    ...ATTR_FIELDS,
+    ...COMPANY_FIELDS.map(tx),
+    ...meta.company_properties.map((p: any) => [`company.custom.${p.key}`, tt('Firma: {label}', { label: p.label })] as [string, string]),
+    ...ATTR_FIELDS.map(tx),
   ];
   const rules: any[] = m.rules ?? [];
   const setRules = (next: any[]) => setM({ ...m, rules: next });
@@ -168,7 +169,7 @@ function ModelEditor({ model, meta, onSaved, onDeleted }: { model: any; meta: an
           {(m.thresholds ?? []).map((th: any, i: number) => (
             <div key={i} className="ls-th">
               <Input value={th.label} onChange={(v) => setM({ ...m, thresholds: m.thresholds.map((x: any, j: number) => (j === i ? { ...x, label: v } : x)) })} aria-label={tt('Name der Schwelle')} />
-              <span className="muted">ab</span>
+              <span className="muted">{tt('ab')}</span>
               <Input type="number" value={th.min} onChange={(v) => setM({ ...m, thresholds: m.thresholds.map((x: any, j: number) => (j === i ? { ...x, min: Number(v) } : x)) })} aria-label={tt('Mindestpunkte')} className="ls-small" />
               <button className="icon-btn" onClick={() => setM({ ...m, thresholds: m.thresholds.filter((_: any, j: number) => j !== i) })} aria-label={tt('Schwelle entfernen')}>
                 ✕
@@ -209,7 +210,7 @@ function ModelEditor({ model, meta, onSaved, onDeleted }: { model: any; meta: an
             </div>
           ))}
           <div className="ls-dist">
-            <span className="muted">darunter</span>
+            <span className="muted">{tt('darunter')}</span>
             <div className="bar">
               <div style={{ width: `${((stats.labels[''] ?? 0) / maxCount) * 100}%`, opacity: 0.45 }} />
             </div>

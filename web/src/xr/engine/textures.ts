@@ -1,5 +1,9 @@
 import type { ListRow, NumberFormat, Tone, View } from '../../boards/types';
 import { PX_PER_M } from './geometry';
+import { intlLocale, tr } from '../../i18n';
+
+/** Texts drawn into the textures, in the language active when they are drawn. */
+const L = (text: string, vars?: Record<string, string | number>) => tr('x_misc')(text, vars);
 
 /**
  * Widgets as pictures: the simplified 2D-canvas renderer behind the floating panels.
@@ -93,7 +97,7 @@ export function wrapText(ctx: Ctx, text: string, maxW: number, maxLines: number)
   return lines.map((l) => ellipsize(ctx, l, maxW));
 }
 
-const nf = (max: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: max });
+const nf = (max: number) => new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: max });
 
 /** Numbers the way the app shows them (de-DE): 7.180 € · 12,5 % · 3 Tage. */
 export function formatValue(v: string | number | null | undefined, format?: NumberFormat): string {
@@ -101,13 +105,13 @@ export function formatValue(v: string | number | null | undefined, format?: Numb
   if (typeof v === 'string') return v;
   switch (format) {
     case 'money':
-      return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 2 }).format(v);
+      return new Intl.NumberFormat(intlLocale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 2 }).format(v);
     case 'percent':
-      return `${nf(1).format(v)} %`;
+      return L('{v} %', { v: nf(1).format(v) });
     case 'days':
-      return `${nf(1).format(v)} Tage`;
+      return L('{v} Tage', { v: nf(1).format(v) });
     case 'minutes':
-      return `${nf(1).format(v)} Min.`;
+      return L('{v} Min.', { v: nf(1).format(v) });
     default:
       return nf(Number.isInteger(v) ? 0 : 2).format(v);
   }
@@ -223,11 +227,11 @@ export function drawView(ctx: Ctx, r: Rect, view: View | undefined, loading: boo
     case 'locked':
       return quiet(ctx, inner, t, `Gesperrt – ${view.reason}`, t.muted);
     case 'embed':
-      return quiet(ctx, inner, t, 'Eingebettete Seite: in XR nicht darstellbar. Im Browser öffnen.');
+      return quiet(ctx, inner, t, L('Eingebettete Seite: in XR nicht darstellbar. Im Browser öffnen.'));
     case 'frame':
-      return quiet(ctx, inner, t, 'Plugin-Ansicht: in XR nicht darstellbar. Im Browser öffnen.');
+      return quiet(ctx, inner, t, L('Plugin-Ansicht: in XR nicht darstellbar. Im Browser öffnen.'));
     case 'actions':
-      return quiet(ctx, inner, t, 'Schnellaktionen gibt es im Browser. In XR sprichst du mit dem Board.');
+      return quiet(ctx, inner, t, L('Schnellaktionen gibt es im Browser. In XR sprichst du mit dem Board.'));
     default:
       return quiet(ctx, inner, t, 'Dieses Widget lässt sich hier nicht darstellen.');
   }
@@ -248,7 +252,7 @@ function quiet(ctx: Ctx, r: Rect, t: XrTheme, text: string, color = t.muted) {
   ctx.font = font(17, 500);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  const lines = wrapText(ctx, text, r.w - 20, 5);
+  const lines = wrapText(ctx, L(text), r.w - 20, 5);
   const lh = 24;
   const top = r.y + r.h / 2 - (lines.length * lh) / 2 + 17;
   lines.forEach((l, i) => ctx.fillText(l, r.x + r.w / 2, top + i * lh));
@@ -275,7 +279,7 @@ function bigNumber(ctx: Ctx, r: Rect, t: XrTheme, v: Extract<View, { kind: 'numb
   if (v.delta !== null && v.delta !== undefined) {
     ctx.font = font(18, 700);
     ctx.fillStyle = v.delta > 0 ? t.green : v.delta < 0 ? t.red : t.muted;
-    ctx.fillText(`${v.delta > 0 ? '▲' : v.delta < 0 ? '▼' : '='} ${nf(1).format(Math.abs(v.delta))} % zur Vorperiode`, r.x, y);
+    ctx.fillText(L('{arrow} {value} % zur Vorperiode', { arrow: v.delta > 0 ? '▲' : v.delta < 0 ? '▼' : '=', value: nf(1).format(Math.abs(v.delta)) }), r.x, y);
     y += 26;
   }
   if (v.hint) {
@@ -380,7 +384,7 @@ function list(ctx: Ctx, r: Rect, t: XrTheme, rows: ListRow[], total?: number, em
     ctx.font = font(15, 600);
     ctx.fillStyle = t.brandText;
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(`+ ${more.toLocaleString('de-DE')} weitere im Browser`, r.x, r.y + r.h - 4);
+    ctx.fillText(L('+ {n} weitere im Browser', { n: more.toLocaleString(intlLocale()) }), r.x, r.y + r.h - 4);
   }
 }
 
@@ -470,7 +474,7 @@ function agenda(ctx: Ctx, r: Rect, t: XrTheme, v: Extract<View, { kind: 'agenda'
 
 function notes(ctx: Ctx, r: Rect, t: XrTheme, text: string) {
   const lines = plainLines(text);
-  if (!lines.length) return quiet(ctx, r, t, 'Die Notiz ist noch leer.');
+  if (!lines.length) return quiet(ctx, r, t, L('Die Notiz ist noch leer.'));
   let y = r.y + 20;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -533,7 +537,7 @@ function report(ctx: Ctx, r: Rect, t: XrTheme, viz: string, result: any) {
   ctx.textBaseline = 'alphabetic';
   ctx.font = font(14, 500);
   ctx.fillStyle = t.muted;
-  ctx.fillText(ellipsize(ctx, `${measure} · höchster Wert ${formatValue(max, format)}`, r.w), r.x, r.y + 14);
+  ctx.fillText(ellipsize(ctx, L('{measure} · höchster Wert {max}', { measure, max: formatValue(max, format) }), r.w), r.x, r.y + 14);
   ctx.fillStyle = t.line;
   ctx.fillRect(left, bottom, w, 2);
   const step = w / points.length;
@@ -643,7 +647,7 @@ export function drawHud(ctx: Ctx, W: number, H: number, s: HudState, t: XrTheme)
   } else {
     ctx.font = font(16, 400);
     ctx.fillStyle = t.muted;
-    const hint = s.readOnly ? 'Nur Ansicht: du darfst dieses Board nicht ändern.' : s.mic === 'off' && s.buttons.includes('mic') ? 'Sprachsteuerung: erst unter Einstellungen → Stimme einrichten.' : s.buttons.includes('mic') ? 'Halte „Sprechen“ und sag z. B. „Zeig mir die offenen Angebote“.' : 'Panel greifen und ziehen: verschieben.';
+    const hint = L(s.readOnly ? 'Nur Ansicht: du darfst dieses Board nicht ändern.' : s.mic === 'off' && s.buttons.includes('mic') ? 'Sprachsteuerung: erst unter Einstellungen → Stimme einrichten.' : s.buttons.includes('mic') ? 'Halte „Sprechen“ und sag z. B. „Zeig mir die offenen Angebote“.' : 'Panel greifen und ziehen: verschieben.');
     wrapText(ctx, hint, w - 40, 2).forEach((l, i) => ctx.fillText(l, 20, 66 + i * 23));
   }
   // buttons
@@ -675,7 +679,7 @@ export function drawHud(ctx: Ctx, W: number, H: number, s: HudState, t: XrTheme)
     ctx.fillStyle = recording || primary ? '#ffffff' : t.text;
     ctx.font = font(18, 700);
     ctx.textAlign = 'center';
-    const label = id === 'mic' ? (s.mic === 'recording' ? 'Ich höre zu …' : s.mic === 'working' ? 'Ich schreibe mit …' : '🎤 Sprechen') : BUTTON_LABEL[id];
+    const label = L(id === 'mic' ? (s.mic === 'recording' ? 'Ich höre zu …' : s.mic === 'working' ? 'Ich schreibe mit …' : '🎤 Sprechen') : BUTTON_LABEL[id]);
     ctx.fillText(ellipsize(ctx, label, bw - 14), x + bw / 2, y + bh / 2 + 6);
     regions.push({ id, x: x * DESIGN_SCALE, y: y * DESIGN_SCALE, w: bw * DESIGN_SCALE, h: bh * DESIGN_SCALE });
     x += bw + gap;
@@ -707,7 +711,7 @@ export function drawImagePlane(ctx: Ctx, W: number, H: number, img: CanvasImageS
     ctx.font = `600 ${Math.round(H / 18)}px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(message ?? 'Canvas wird geladen …', W / 2, H / 2);
+    ctx.fillText(message ?? L('Canvas wird geladen …'), W / 2, H / 2);
   }
   ctx.restore();
 }

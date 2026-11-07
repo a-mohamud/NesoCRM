@@ -98,7 +98,7 @@ export function TransferModal({ callId, held, name, ensureHold, onAccepted, onCl
     >
       {status ? (
         <div className="phone-transfer-state" role="status">
-          <strong>{status.target_label}</strong>: {status.mode === 'cold' && status.status === 'ringing' ? tt('Der Anrufer wird weitergeleitet.') : STATE_TEXT[status.status] ?? status.status}
+          <strong>{status.target_label}</strong>: {status.mode === 'cold' && status.status === 'ringing' ? tt('Der Anrufer wird weitergeleitet.') : STATE_TEXT[status.status] ? tt(STATE_TEXT[status.status]) : status.status}
           {status.error && <div className="muted">{status.error}</div>}
           {status.status === 'ringing' && <Spinner />}
           {(status.status === 'declined' || status.status === 'failed') && <p className="small">{tt('Der Anrufer wartet weiter mit Musik. Unter „Fortsetzen“ kannst du das Gespräch wieder aufnehmen.')}</p>}
@@ -110,7 +110,7 @@ export function TransferModal({ callId, held, name, ensureHold, onAccepted, onCl
               value={to}
               onChange={(v) => (setTo(v), v && setNumber(''))}
               placeholder={tt('Eine Nummer eingeben …')}
-              options={(people.data ?? []).map((u) => [u.id, `${u.name}${u.online ? '' : ' (nicht erreichbar)'}`])}
+              options={(people.data ?? []).map((u) => [u.id, `${u.name}${u.online ? '' : ` ${tt('(nicht erreichbar)')}`}`])}
             />
           </Field>
           {!to && (
@@ -123,8 +123,8 @@ export function TransferModal({ callId, held, name, ensureHold, onAccepted, onCl
               value={mode}
               onChange={setMode}
               options={[
-                ['cold', 'Sofort weiterleiten – der Anrufer klingelt direkt dort'],
-                ['warm', 'Mit Ansage – der Anrufer wartet mit Musik, die andere Person erfährt, wer anruft, und nimmt per Taste 1 an'],
+                ['cold', tt('Sofort weiterleiten – der Anrufer klingelt direkt dort')],
+                ['warm', tt('Mit Ansage – der Anrufer wartet mit Musik, die andere Person erfährt, wer anruft, und nimmt per Taste 1 an')],
               ]}
             />
           </Field>

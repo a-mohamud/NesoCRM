@@ -51,6 +51,7 @@ function Confirm({ ask, onClose, onDone }: { ask: NonNullable<Ask>; onClose: () 
 
 export function Trash() {
   const tt = useT('x_agency');
+  const tm = useT('x_misc'); // record kinds come from undo/shared.ts (x_misc)
   const session = useSession();
   const admin = session.user.role === 'admin';
   const [q, setQ] = useState('');
@@ -88,7 +89,7 @@ export function Trash() {
           <option value="">{tt('Alle Arten')}</option>
           {FILTER_TYPES.map(([k, n]) => (
             <option key={k} value={k}>
-              {n}
+              {tm(n)}
             </option>
           ))}
         </select>
@@ -107,8 +108,8 @@ export function Trash() {
                 <div className="undo-row-body">
                   <div className="undo-row-title">{e.label.replace(/ gelöscht$/, '')}</div>
                   <div className="undo-row-meta muted small">
-                    {tt('{dayLabel}, {timeLabel} gelöscht von', { dayLabel: dayLabel(e.at), timeLabel: timeLabel(e.at) })} {e.mine ? 'dir' : e.actor}
-                    {badge && <span className="undo-badge">{badge}</span>}
+                    {tt('{dayLabel}, {timeLabel} gelöscht von', { dayLabel: dayLabel(e.at), timeLabel: timeLabel(e.at) })} {e.mine ? tt('dir') : e.actor}
+                    {badge && <span className="undo-badge">{tt(badge)}</span>}
                     <span className="trash-expiry"> {tt('· noch {daysLeft} Tage', { daysLeft: daysLeft(e.expires_at) })}</span>
                   </div>
                   {e.kids_text && <p className="small" style={{ margin: '6px 0 0' }}>{tt('Kommt mit zurück: {kids_text}', { kids_text: e.kids_text })}</p>}

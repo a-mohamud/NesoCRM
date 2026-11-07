@@ -1302,7 +1302,7 @@ export function Editor({ store, board: initial, onBack }: { store: BoardStore; b
     const ids = selected.filter((x) => (x.text ?? '').trim() && x.type !== 'card').map((x) => x.id);
     if (!ids.length) return;
     await store.flush();
-    const r = await act(() => api.post(`/api/canvas/${board.id}/convert`, { element_ids: ids, to, clientId: store.clientId }), `${ids.length === 1 ? tt('Aufgabe') : tt('{length} Aufgaben', { length: ids.length })} angelegt – als Live-Karte auf dem Board`);
+    const r = await act(() => api.post(`/api/canvas/${board.id}/convert`, { element_ids: ids, to, clientId: store.clientId }), tt.plural(ids.length, { one: 'Aufgabe angelegt – als Live-Karte auf dem Board', other: '{n} Aufgaben angelegt – als Live-Karten auf dem Board' }));
     if (r) await catchUpCreated();
   };
 
@@ -1454,8 +1454,8 @@ export function Editor({ store, board: initial, onBack }: { store: BoardStore; b
                   it[1]();
                 }}
               >
-                <span>{it[0]}</span>
-                {it[2] && <kbd>{it[2]}</kbd>}
+                <span>{tt(it[0])}</span>
+                {it[2] && <kbd>{tt(it[2])}</kbd>}
               </button>
             ) : (
               <hr key={i} />

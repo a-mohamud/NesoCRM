@@ -132,9 +132,9 @@ export function MediaDialog({ api: ed, onClose }: DialogProps) {
     <Modal title={tt('Bild einfügen')} onClose={onClose} wide>
       <Tabs
         tabs={[
-          ['upload', 'Hochladen'],
-          ['library', 'Mediathek'],
-          ['ai', 'KI-Bild'],
+          ['upload', tt('Hochladen')],
+          ['library', tt('Mediathek')],
+          ['ai', tt('KI-Bild')],
         ]}
         value={tab}
         onChange={setTab}
@@ -333,7 +333,7 @@ const CHART_KINDS: [ChartKind, string][] = [
 export function ChartDialog({ api: ed, data, onClose }: DialogProps) {
   const tt = useT('x_misc');
   const el = ed.store.els.get(data?.id);
-  const start: ChartData = el?.chart ?? { kind: 'bar', labels: ['A', 'B', 'C'], series: [{ name: 'Werte', values: [3, 5, 2] }] };
+  const start: ChartData = el?.chart ?? { kind: 'bar', labels: ['A', 'B', 'C'], series: [{ name: tt('Werte'), values: [3, 5, 2] }] };
   const [kind, setKind] = useState<ChartKind>(start.kind);
   const [title, setTitle] = useState(start.title ?? '');
   const [labels, setLabels] = useState<string[]>(start.labels);
@@ -393,7 +393,7 @@ export function ChartDialog({ api: ed, data, onClose }: DialogProps) {
           <div className="cv-chips">
             {CHART_KINDS.map(([k, l]) => (
               <button key={k} className={`cv-chip${kind === k ? ' on' : ''}`} onClick={() => setKind(k)}>
-                {l}
+                {tt(l)}
               </button>
             ))}
           </div>
@@ -460,14 +460,14 @@ export function ChartDialog({ api: ed, data, onClose }: DialogProps) {
 // --- Mermaid ------------------------------------------------------------------------------------------
 
 const MERMAID_EXAMPLES: [string, string][] = [
-  ['Flussdiagramm', 'flowchart TD\n  A([Anfrage]) --> B{Passt?}\n  B -->|Ja| C[Angebot senden]\n  B -->|Nein| D[Absage]\n  C --> E([Abschluss])'],
-  ['Mindmap', 'mindmap\n  root((Herbst-Kampagne))\n    Kanäle\n      E-Mail\n      Social\n    Inhalte\n      Blog\n      Video'],
-  ['Ablauf (Sequenz)', 'sequenceDiagram\n  Kunde->>Formular: Anfrage\n  Formular->>CRM: Kontakt anlegen\n  CRM-->>Kunde: Bestätigung'],
+  ['Flussdiagramm', 'flowchart TD\n  A([Anfrage]) --> B{Passt?}\n  B -->|Ja| C[Angebot senden]\n  B -->|Nein| D[Absage]\n  C --> E([Abschluss])'], // i18n-ignore (catalog key with line breaks, translated at use)
+  ['Mindmap', 'mindmap\n  root((Herbst-Kampagne))\n    Kanäle\n      E-Mail\n      Social\n    Inhalte\n      Blog\n      Video'], // i18n-ignore (catalog key with line breaks, translated at use)
+  ['Ablauf (Sequenz)', 'sequenceDiagram\n  Kunde->>Formular: Anfrage\n  Formular->>CRM: Kontakt anlegen\n  CRM-->>Kunde: Bestätigung'], // i18n-ignore (catalog key with line breaks, translated at use)
 ];
 
 export function MermaidDialog({ api: ed, onClose }: DialogProps) {
   const tt = useT('x_misc');
-  const [src, setSrc] = useState(MERMAID_EXAMPLES[0][1]);
+  const [src, setSrc] = useState(() => tt(MERMAID_EXAMPLES[0][1]));
   const [sketch, setSketch] = useState(!!ed.defaults.sketch);
   const built = useMemo(() => {
     if (!src.trim()) return { els: [] as CanvasElement[], error: '' };
@@ -476,7 +476,7 @@ export function MermaidDialog({ api: ed, onClose }: DialogProps) {
       const r = mermaidToElements(src, () => `m${n++}`, { x: 0, y: 0 }, { sketch });
       return { els: r.elements, error: '' };
     } catch (e) {
-      return { els: [] as CanvasElement[], error: e instanceof MermaidError ? e.message : 'Konnte nicht gelesen werden' };
+      return { els: [] as CanvasElement[], error: e instanceof MermaidError ? e.message : tt('Konnte nicht gelesen werden') };
     }
   }, [src, sketch]);
   const insert = () => {
@@ -509,8 +509,8 @@ export function MermaidDialog({ api: ed, onClose }: DialogProps) {
         <div>
           <div className="cv-chips">
             {MERMAID_EXAMPLES.map(([l, s]) => (
-              <button key={l} className="cv-chip" onClick={() => setSrc(s)}>
-                {l}
+              <button key={l} className="cv-chip" onClick={() => setSrc(tt(s))}>
+                {tt(l)}
               </button>
             ))}
           </div>

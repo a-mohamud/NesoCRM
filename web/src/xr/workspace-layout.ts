@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { XR_LIMITS, defaultWorkspace, evenSizes, isWorkspaceRoute, normalizeSizes, type WorkspaceLayout } from '../../../server/services/xr-model';
 
 /**
@@ -59,7 +60,7 @@ export const PAGES: [route: string, label: string][] = [
 export function routeLabel(route: string): string {
   const head = route.split('/')[0];
   const known = PAGES.find(([r]) => r === head)?.[1];
-  if (known) return known;
+  if (known) return tr('x_misc')(known);
   const words = head.replace(/-/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);
 }

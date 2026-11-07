@@ -32,13 +32,13 @@ export function CogneeSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (!info.data || !cfg.data || !status.data) return <Spinner />;
-  const labels: Record<string, string> = Object.fromEntries((cfg.data.catalog as Json[]).map((c) => [c.key, c.label]));
+  const labels: Record<string, string> = Object.fromEntries((cfg.data.catalog as Json[]).map((c) => [c.key, tt(c.label)]));
   return (
     <>
       <div className="card" data-tour="cognee-intro">
         <h2>{tt('Wissensgedächtnis (Cognee)')}</h2>
         <p className="muted small">
-          {tt('Ein Wissensgraph aus dem, was dieser Sub-Account freigibt – zum Fragen („Wie läuft unser Onboarding ab?“), für den KI-Agenten und für MCP-Clients wie Claude. Es wird nur geteilt, was du unten ausdrücklich einschaltest; Standard ist')} <strong>aus</strong>{tt('. Die Daten liegen auf dem Cognee-Server der Agentur, getrennt in eigenen Datasets dieses Sub-Accounts. Alles, was gesendet, durchsucht oder gelöscht wird, steht im Protokoll (nur Anzahlen, nie Inhalte).')}
+          {tt('Ein Wissensgraph aus dem, was dieser Sub-Account freigibt – zum Fragen („Wie läuft unser Onboarding ab?“), für den KI-Agenten und für MCP-Clients wie Claude. Es wird nur geteilt, was du unten ausdrücklich einschaltest; Standard ist')} <strong>{tt('aus')}</strong>{tt('. Die Daten liegen auf dem Cognee-Server der Agentur, getrennt in eigenen Datasets dieses Sub-Accounts. Alles, was gesendet, durchsucht oder gelöscht wird, steht im Protokoll (nur Anzahlen, nie Inhalte).')}
         </p>
         {!cfg.data.connection.configured && (
           <Note level="warning">
@@ -108,7 +108,7 @@ function Ask({ info }: { info: Json }) {
         </button>
       </form>
       <Check checked={answer} onChange={setAnswer} label={tt('Antwort formulieren lassen (nutzt das Sprachmodell des Cognee-Servers und kann dort Kosten verursachen)')} />
-      <p className="muted small">{tt('Durchsucht:')} {info.types.map((t: Json) => t.label).join(', ')}{tt('. Du siehst nur Treffer aus Bereichen, auf die du Zugriff hast.')}</p>
+      <p className="muted small">{tt('Durchsucht:')} {info.types.map((t: Json) => tt(t.label)).join(', ')}{tt('. Du siehst nur Treffer aus Bereichen, auf die du Zugriff hast.')}</p>
       {r?.answer && <div className="cg-answer">{r.answer}</div>}
       {r && !r.results.length && <Empty>{r.note ?? tt('Keine Treffer.')}</Empty>}
       {r && r.results.length > 0 && (
@@ -148,13 +148,13 @@ function Opt({ cfg, status, onSaved }: { cfg: Json; status: Json; onSaved: (r: J
         {(cfg.catalog as Json[]).map((c) => (
           <div key={c.key} className={`cg-type${d.enabled && d.types[c.key] ? ' on' : ''}`}>
             <div className="cg-type-head">
-              <Check checked={!!d.types[c.key]} onChange={(x) => setD({ ...d, types: { ...d.types, [c.key]: x } })} label={c.label} />
-              {c.personal && <Badge tone="yellow">personenbezogen</Badge>}
+              <Check checked={!!d.types[c.key]} onChange={(x) => setD({ ...d, types: { ...d.types, [c.key]: x } })} label={tt(c.label)} />
+              {c.personal && <Badge tone="yellow">{tt('personenbezogen')}</Badge>}
               {items[c.key] > 0 && <span className="muted small">{tt('{v} in Cognee', { v: items[c.key] })}</span>}
             </div>
             <p className="muted small" style={{ margin: '2px 0 0 26px' }}>
-              {c.description}
-              {c.warning && <> <strong>{c.warning}</strong></>}
+              {tt(c.description)}
+              {c.warning && <> <strong>{tt(c.warning)}</strong></>}
             </p>
             {d.types[c.key] && (
               <div className="cg-type-sub">
@@ -165,7 +165,7 @@ function Opt({ cfg, status, onSaved }: { cfg: Json; status: Json; onSaved: (r: J
         ))}
       </div>
       <Check checked={d.members_ask} onChange={(x) => setD({ ...d, members_ask: x })} label={tt('Mitglieder (Kunden-Logins) dürfen das Gedächtnis befragen – nur zu Bereichen, auf die sie Zugriff haben')} />
-      {d.enabled && personalOn.length > 0 && <Note level="warning">{tt('Personenbezogene Daten werden geteilt:')} {personalOn.map((c) => c.label).join(', ')}{tt('. Auftragsverarbeitung und Rechtsgrundlage sollten geklärt sein. Wird eine Person nach DSGVO gelöscht, löscht HyperLevel ihre Daten auch in Cognee.')}</Note>}
+      {d.enabled && personalOn.length > 0 && <Note level="warning">{tt('Personenbezogene Daten werden geteilt:')} {personalOn.map((c) => tt(c.label)).join(', ')}{tt('. Auftragsverarbeitung und Rechtsgrundlage sollten geklärt sein. Wird eine Person nach DSGVO gelöscht, löscht HyperLevel ihre Daten auch in Cognee.')}</Note>}
       <p className="muted small">{tt('Das Schwärzen ist eine Sicherung, keine Anonymisierung: Namen und Freitext bleiben. Wer die Schwärzung später ein- oder ausschaltet, schickt alles Betroffene neu und ersetzt die alte Fassung.')}</p>
       <button
         className="btn"
@@ -186,11 +186,11 @@ function Opt({ cfg, status, onSaved }: { cfg: Json; status: Json; onSaved: (r: J
 
 function phaseBadge(t: Json) {
   const tt = tr('x_ai');
-  if (!t.active) return t.has_data ? <Badge tone="yellow">{tt('aus – Daten liegen noch in Cognee')}</Badge> : <Badge>aus</Badge>;
+  if (!t.active) return t.has_data ? <Badge tone="yellow">{tt('aus – Daten liegen noch in Cognee')}</Badge> : <Badge>{tt('aus')}</Badge>;
   if (t.last_error) return <Badge tone="red">{tt('Fehler')}</Badge>;
   if (t.phase === 'cognify') return <Badge tone="blue">{tt('Wissensgraph wird gebaut')}</Badge>;
-  if (t.retry_at) return <Badge tone="yellow">wartet</Badge>;
-  return t.last_sync_at ? <Badge tone="green">aktuell</Badge> : <Badge tone="blue">{tt('wartet auf den ersten Abgleich')}</Badge>;
+  if (t.retry_at) return <Badge tone="yellow">{tt('wartet')}</Badge>;
+  return t.last_sync_at ? <Badge tone="green">{tt('aktuell')}</Badge> : <Badge tone="blue">{tt('wartet auf den ersten Abgleich')}</Badge>;
 }
 
 const ACTIONS: Record<string, string> = {
@@ -237,7 +237,7 @@ function Status({ status, labels, onChange, onPurge }: { status: Json; labels: R
             {(status.types as Json[]).map((t) => (
               <tr key={t.key}>
                 <td>
-                  {t.label}
+                  {tt(t.label)}
                   {t.redact && t.active && <div className="muted small">{tt('geschwärzt')}</div>}
                 </td>
                 <td>
@@ -293,7 +293,7 @@ function Status({ status, labels, onChange, onPurge }: { status: Json; labels: R
             <li key={i}>
               <time>{dt(a.at)}</time>
               <span>
-                <strong>{ACTIONS[a.action] ?? a.action}:</strong> {a.summary}
+                <strong>{tt(ACTIONS[a.action] ?? a.action)}:</strong> {a.summary}
               </span>
             </li>
           ))}

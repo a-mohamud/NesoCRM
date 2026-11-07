@@ -45,6 +45,8 @@ const MODE_TEXT: Record<string, string> = {
   book: 'Wie „Vor Änderungen fragen“ – sieht aber freie Termine nach und bucht einen freien Termin selbst (auch in der Auto-Antwort), mit Bestätigung samt Links zum Verschieben und Absagen.',
   auto: 'Ändert selbstständig. Versenden, Löschen, Zahlungen und Social-Posts brauchen trotzdem deine Bestätigung.',
 };
+/** Option labels are German message ids – translated where they are shown. */
+const tl = (tt: (s: string) => string, list: [string, string][]): [string, string][] => list.map(([k, l]) => [k, tt(l)]);
 
 export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: () => void; onSaved: (a: any) => void }) {
   const tt = useT('x_ai');
@@ -107,7 +109,7 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
 
   return (
     <Modal
-      title={agent?.id ? `${a.emoji} ${a.name || tt('Agent')} bearbeiten` : tt('Neuer KI-Agent')}
+      title={agent?.id ? tt('{name} bearbeiten', { name: `${a.emoji} ${a.name || tt('Agent')}` }) : tt('Neuer KI-Agent')}
       onClose={onClose}
       wide
       footer={
@@ -123,11 +125,11 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
     >
       <Tabs
         tabs={[
-          ['basics', 'Grundlagen'],
-          ['tools', 'Modell & Werkzeuge'],
-          ['safety', 'Sicherheit'],
-          ['knowledge', 'Wissen'],
-          ['auto', 'Automatisch'],
+          ['basics', tt('Grundlagen')],
+          ['tools', tt('Modell & Werkzeuge')],
+          ['safety', tt('Sicherheit')],
+          ['knowledge', tt('Wissen')],
+          ['auto', tt('Automatisch')],
         ]}
         value={tab}
         onChange={setTab}
@@ -158,7 +160,7 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
             <Select
               value={a.visibility}
               onChange={(v) => set({ visibility: v })}
-              options={[['private', 'Nur ich'], ...(admin ? [['team', 'Agentur-Team (alle Admins)'] as [string, string]] : []), ['location', 'Alle im Sub-Account (auch Kunden-Logins)']]}
+              options={[['private', tt('Nur ich')], ...(admin ? [['team', tt('Agentur-Team (alle Admins)')] as [string, string]] : []), ['location', tt('Alle im Sub-Account (auch Kunden-Logins)')]]}
             />
           </Field>
         </>
@@ -170,7 +172,7 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
               <Select
                 value={a.connection_id}
                 onChange={(v) => set({ connection_id: v, model: '' })}
-                options={[['', 'Standard'], ...(conns.data?.models ?? []).map((m: any) => [m.id, `${m.label}${m.model ? ` · ${m.model}` : ''}`] as [string, string]), ['bridge', 'Mein Abo über die Bridge (nur Chat, nur für mich)']]}
+                options={[['', tt('Standard')], ...(conns.data?.models ?? []).map((m: any) => [m.id, `${m.label}${m.model ? ` · ${m.model}` : ''}`] as [string, string]), ['bridge', tt('Mein Abo über die Bridge (nur Chat, nur für mich)')]]}
               />
             </Field>
             <Field label={tt('Modell (optional)')} hint={tt('Leer = Standard der Verbindung. Jede Modell-ID ist erlaubt.')}>
@@ -190,7 +192,7 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
                   <div className="agent-tool-group-head">
                     <span>{g}</span>
                     <button className="btn small ghost" onClick={() => list.forEach((t) => toggleTool(t.name, !list.every((x) => has(x.name))))}>
-                      {list.every((x) => has(x.name)) ? 'keine' : 'alle'}
+                      {list.every((x) => has(x.name)) ? tt('keine') : tt('alle')}
                     </button>
                   </div>
                   {list.map((t) => (
@@ -202,7 +204,7 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
                         <span title={t.description}>
                           {t.title}
                           {t.klass === 'write' && <span className="agent-klass k-write">{tt('ändert')}</span>}
-                          {t.klass === 'sensitive' && <span className="agent-klass k-sensitive">versendet</span>}
+                          {t.klass === 'sensitive' && <span className="agent-klass k-sensitive">{tt('versendet')}</span>}
                         </span>
                       }
                     />
@@ -220,9 +222,9 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
               <label key={m} className={a.mode === m ? 'on' : ''}>
                 <input type="radio" name="mode" checked={a.mode === m} onChange={() => set({ mode: m })} />
                 <span>
-                  <strong>{MODE_LABEL[m]}</strong>
+                  <strong>{tt(MODE_LABEL[m])}</strong>
                   <br />
-                  <span className="muted small">{MODE_TEXT[m]}</span>
+                  <span className="muted small">{tt(MODE_TEXT[m])}</span>
                 </span>
               </label>
             ))}
@@ -243,7 +245,7 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
         <>
           <div className="row">
             {KNOWLEDGE.map(([k, l]) => (
-              <Check key={k} checked={(a.knowledge.sources as string[]).includes(k)} onChange={(v) => set({ knowledge: { ...a.knowledge, sources: v ? [...a.knowledge.sources, k] : a.knowledge.sources.filter((x: string) => x !== k) } })} label={l} />
+              <Check key={k} checked={(a.knowledge.sources as string[]).includes(k)} onChange={(v) => set({ knowledge: { ...a.knowledge, sources: v ? [...a.knowledge.sources, k] : a.knowledge.sources.filter((x: string) => x !== k) } })} label={tt(l)} />
             ))}
           </div>
           <Field label={tt('Eigenes Wissen')} hint={tt('Fakten, Preise, Abläufe – der Agent nutzt sie als Daten. Keine Passwörter.')}>
@@ -277,14 +279,14 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
                   <Input value={s.prompt} onChange={(v) => up({ prompt: v })} placeholder={tt('Was ist heute wichtig?')} />
                 </Field>
                 <Field label={tt('Wann')}>
-                  <Select value={s.cadence} onChange={(v) => up({ cadence: v })} options={CADENCE} />
+                  <Select value={s.cadence} onChange={(v) => up({ cadence: v })} options={tl(tt, CADENCE)} />
                 </Field>
                 <Field label={tt('Uhrzeit')}>
                   <Input type="time" value={s.time} onChange={(v) => up({ time: v })} />
                 </Field>
                 {s.cadence === 'weekly' ? (
                   <Field label="Tag">
-                    <Select value={String(s.weekday ?? 0)} onChange={(v) => up({ weekday: Number(v) })} options={WEEKDAYS} />
+                    <Select value={String(s.weekday ?? 0)} onChange={(v) => up({ weekday: Number(v) })} options={tl(tt, WEEKDAYS)} />
                   </Field>
                 ) : s.cadence === 'monthly' ? (
                   <Field label={tt('Tag im Monat')}>
@@ -292,7 +294,7 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
                   </Field>
                 ) : (
                   <Field label={tt('Ergebnis als')}>
-                    <Select value={s.deliver} onChange={(v) => up({ deliver: v })} options={DELIVER} />
+                    <Select value={s.deliver} onChange={(v) => up({ deliver: v })} options={tl(tt, DELIVER)} />
                   </Field>
                 )}
                 <button className="icon-btn" aria-label={tt('Zeitplan entfernen')} onClick={() => set({ schedules: a.schedules.filter((_: any, j: number) => j !== i) })}>
@@ -300,7 +302,7 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
                 </button>
                 {(s.cadence === 'weekly' || s.cadence === 'monthly') && (
                   <Field label={tt('Ergebnis als')}>
-                    <Select value={s.deliver} onChange={(v) => up({ deliver: v })} options={DELIVER} />
+                    <Select value={s.deliver} onChange={(v) => up({ deliver: v })} options={tl(tt, DELIVER)} />
                   </Field>
                 )}
               </div>
@@ -319,11 +321,11 @@ export function AgentEditor({ agent, onClose, onSaved }: { agent: any; onClose: 
             <>
               <div className="row">
                 {CHANNELS.map(([k, l]) => (
-                  <Check key={k} checked={a.responder.channels.includes(k)} onChange={(v) => set({ responder: { ...a.responder, channels: v ? [...a.responder.channels, k] : a.responder.channels.filter((x: string) => x !== k) } })} label={l} />
+                  <Check key={k} checked={a.responder.channels.includes(k)} onChange={(v) => set({ responder: { ...a.responder, channels: v ? [...a.responder.channels, k] : a.responder.channels.filter((x: string) => x !== k) } })} label={tt(l)} />
                 ))}
               </div>
               <Field label={tt('Antworten als')}>
-                <Select value={a.responder.mode} onChange={(v) => set({ responder: { ...a.responder, mode: v } })} options={[['draft', 'Entwurf (das Team schickt ab)'], ['send', a.mode === 'auto' ? 'Direkt senden' : 'Direkt senden (nur im Modus „Autonom“)']]} />
+                <Select value={a.responder.mode} onChange={(v) => set({ responder: { ...a.responder, mode: v } })} options={[['draft', tt('Entwurf (das Team schickt ab)')], ['send', a.mode === 'auto' ? tt('Direkt senden') : tt('Direkt senden (nur im Modus „Autonom“)')]]} />
               </Field>
               <Check checked={!!a.responder.outside_hours} onChange={(v) => set({ responder: { ...a.responder, outside_hours: v } })} label={tt('Nur außerhalb der Geschäftszeiten (aus dem KI-Assistenten)')} />
             </>

@@ -10,7 +10,10 @@ import { useT } from '../i18n';
  */
 
 export const ymdDe = (s?: string | null) => (s ? s.slice(0, 10).split('-').reverse().join('.') : '–');
-export const SeqBadge = ({ seq, label }: { seq?: string | null; label?: string }) => (seq ? <Badge tone={seq === 'FRST' ? 'blue' : seq === 'FNAL' ? 'purple' : 'gray'}>{label ? `${seq} · ${label}` : seq}</Badge> : null);
+export const SeqBadge = ({ seq, label }: { seq?: string | null; label?: string }) => {
+  const tt = useT('x_finance');
+  return seq ? <Badge tone={seq === 'FRST' ? 'blue' : seq === 'FNAL' ? 'purple' : 'gray'}>{label ? `${seq} · ${tt(label)}` : seq}</Badge> : null;
+};
 const RUN_TONE: Record<string, 'gray' | 'green' | 'red' | 'blue' | 'yellow'> = { draft: 'yellow', submitted: 'blue', closed: 'green', cancelled: 'gray' };
 const ITEM_TONE: Record<string, 'gray' | 'green' | 'red' | 'blue' | 'yellow'> = { draft: 'yellow', submitted: 'blue', paid: 'green', returned: 'red', dropped: 'gray' };
 const download = (run: any) => openAuthed(`/api/sepa/runs/${run.id}/xml`, `SEPA-${run.kind === 'debit' ? 'Lastschrift' : 'Ueberweisung'}-${run.exec_date}.xml`);
@@ -54,7 +57,7 @@ export function CollectTab({ onCreated }: { onCreated: (runId: string) => void }
     <div className="cr-panels">
       <Panel
         title={tt('Offene Rechnungen mit Mandat')}
-        sub={`Festgeschriebene, offene Rechnungen in Euro von Kontakten mit aktivem Mandat. Vorabankündigung ${data.prenotify_days} ${data.prenotify_days === 1 ? 'Tag' : tt('Tage')} vorher.`}
+        sub={tt.plural(data.prenotify_days, { one: 'Festgeschriebene, offene Rechnungen in Euro von Kontakten mit aktivem Mandat. Vorabankündigung {n} Tag vorher.', other: 'Festgeschriebene, offene Rechnungen in Euro von Kontakten mit aktivem Mandat. Vorabankündigung {n} Tage vorher.' })}
         tour="sepa-collect"
         actions={
           ok.length > 0 && (
@@ -146,7 +149,7 @@ function ReturnDialog({ item, onClose, onDone }: { item: any; onClose: () => voi
   useEffect(() => {
     if (data?.settings.return_fee_cents) setFee(euroText(data.settings.return_fee_cents));
   }, [data]);
-  const codes: [string, string][] = Object.entries<any>(data?.return_codes ?? {}).map(([k, v]) => [k, `${k} – ${v.label}`]);
+  const codes: [string, string][] = Object.entries<any>(data?.return_codes ?? {}).map(([k, v]) => [k, `${k} – ${tt(v.label)}`]);
   const effect = data?.return_codes?.[code]?.mandate;
   const save = async () => {
     const cents = fee.trim() ? parseEuro(fee) : 0;
@@ -201,7 +204,7 @@ function RunDialog({ id, onClose, onChanged }: { id: string; onClose: () => void
   // One dialog at a time: Esc or ✕ on the return dialog leads back to the run, not out of both.
   if (ret) return <ReturnDialog item={ret} onClose={() => setRet(null)} onDone={() => (setRet(null), after())} />;
   const submit = async () => {
-    const res = await run(() => api.post(`/api/sepa/runs/${id}/submit`), 'Eingereicht – die Datei steht bereit');
+    const res = await run(() => api.post(`/api/sepa/runs/${id}/submit`), tt('Eingereicht – die Datei steht bereit'));
     if (res) {
       if (res.dropped?.length) window.alert(tt('Nicht in der Datei:\n{n}', { n: res.dropped.join('\n') }));
       void download(res);
@@ -209,13 +212,13 @@ function RunDialog({ id, onClose, onChanged }: { id: string; onClose: () => void
   };
   const cancel = () => {
     const reason = window.prompt(r.status === 'draft' ? tt('Lauf verwerfen – Grund (optional):') : tt('Lauf zurückziehen (z. B. „Bank hat die Datei abgelehnt“):'), '');
-    if (reason !== null) void run(() => api.post(`/api/sepa/runs/${id}/cancel`, { reason }), r.status === 'draft' ? 'Lauf verworfen' : 'Lauf zurückgezogen');
+    if (reason !== null) void run(() => api.post(`/api/sepa/runs/${id}/cancel`, { reason }), r.status === 'draft' ? tt('Lauf verworfen') : tt('Lauf zurückgezogen'));
   };
   const failed = r.items.filter((x: any) => x.notify_status === 'failed' && x.status === 'draft').length;
   const open = r.counts?.submitted ?? 0;
   return (
     <Modal
-      title={`${r.kind_label} ${ymdDe(r.exec_date)}`}
+      title={`${tt(r.kind_label)} ${ymdDe(r.exec_date)}`}
       wide
       onClose={onClose}
       footer={
@@ -231,12 +234,12 @@ function RunDialog({ id, onClose, onChanged }: { id: string; onClose: () => void
             </button>
           )}
           {r.status === 'submitted' && open > 0 && (
-            <button className="btn secondary" onClick={() => confirmAsk(tt('Alle {open} eingereichten Posten als bezahlt markieren?', { open: open })) && run(() => api.post(`/api/sepa/runs/${id}/paid`), 'Als bezahlt markiert')}>
+            <button className="btn secondary" onClick={() => confirmAsk(tt('Alle {open} eingereichten Posten als bezahlt markieren?', { open: open })) && run(() => api.post(`/api/sepa/runs/${id}/paid`), tt('Als bezahlt markiert'))}>
               {tt('Alle als bezahlt')}
             </button>
           )}
           {r.status === 'draft' && failed > 0 && (
-            <button className="btn secondary" onClick={() => run(() => api.post(`/api/sepa/runs/${id}/notify`), 'Vorabankündigung erneut gesendet')}>
+            <button className="btn secondary" onClick={() => run(() => api.post(`/api/sepa/runs/${id}/notify`), tt('Vorabankündigung erneut gesendet'))}>
               {tt('Vorabankündigung erneut senden')}
             </button>
           )}
@@ -250,13 +253,13 @@ function RunDialog({ id, onClose, onChanged }: { id: string; onClose: () => void
     >
       <Facts
         rows={[
-          ['Status', <Badge key="s" tone={RUN_TONE[r.status] ?? 'gray'}>{r.status_label}</Badge>],
-          [debit ? 'Fälligkeit' : 'Ausführung', ymdDe(r.exec_date)],
-          ['Posten', `${r.tx_count} · ${money(r.total_cents)}`],
-          ['Nachricht (MsgId)', r.msg_id],
-          ['Eingereicht', r.submitted_at ? dt(r.submitted_at) : 'noch nicht'],
-          ['Datei', r.xml_sha256 ? `${debit ? 'pain.008.001.08' : 'pain.001.001.09'} · SHA-256 ${r.xml_sha256.slice(0, 16)}…` : ''],
-          ['Notiz', r.note],
+          [tt('Status'), <Badge key="s" tone={RUN_TONE[r.status] ?? 'gray'}>{tt(r.status_label)}</Badge>],
+          [debit ? tt('Fälligkeit') : tt('Ausführung'), ymdDe(r.exec_date)],
+          [tt('Posten'), `${r.tx_count} · ${money(r.total_cents)}`],
+          [tt('Nachricht (MsgId)'), r.msg_id],
+          [tt('Eingereicht'), r.submitted_at ? dt(r.submitted_at) : tt('noch nicht')],
+          [tt('Datei'), r.xml_sha256 ? `${debit ? 'pain.008.001.08' : 'pain.001.001.09'} · SHA-256 ${r.xml_sha256.slice(0, 16)}…` : ''],
+          [tt('Notiz'), r.note],
         ]}
       />
       {r.status === 'draft' && <Callout>{tt('Die Vorabankündigung ist raus. Reiche den Lauf spätestens einen Bankarbeitstag vor der Fälligkeit ein: Dann entsteht die Datei, die du im Online-Banking hochlädst.')}</Callout>}
@@ -287,12 +290,12 @@ function RunDialog({ id, onClose, onChanged }: { id: string; onClose: () => void
                 <td className="num">{money(x.amount_cents)}</td>
                 {debit && <td>{x.seq}</td>}
                 <td>
-                  <Badge tone={ITEM_TONE[x.status] ?? 'gray'}>{x.status_label}</Badge>
+                  <Badge tone={ITEM_TONE[x.status] ?? 'gray'}>{tt(x.status_label)}</Badge>
                 </td>
                 <td>
                   <div className="sepa-actions">
                     {x.status === 'submitted' && (
-                      <button className="btn secondary small" onClick={() => run(() => api.post(`/api/sepa/items/${x.id}/paid`), debit ? 'Als bezahlt markiert' : 'Als ausgeführt markiert')}>
+                      <button className="btn secondary small" onClick={() => run(() => api.post(`/api/sepa/items/${x.id}/paid`), debit ? tt('Als bezahlt markiert') : tt('Als ausgeführt markiert'))}>
                         {debit ? tt('Bezahlt') : tt('Ausgeführt')}
                       </button>
                     )}
@@ -317,7 +320,7 @@ export function RunsTab({ open, setOpen, onChanged }: { open: string; setOpen: (
   const [kind, setKind] = useState('');
   const list = useLoad(() => api.get(`/api/sepa/runs${kind ? `?kind=${kind}` : ''}`), [kind]);
   return (
-    <Panel wide title={tt('Läufe')} sub={tt('Jeder Lauf ist eine Datei für die Bank. Bezahlte und zurückgegebene Lastschriften trägst du hier ein – die Rechnung folgt automatisch.')} tour="sepa-runs" actions={<Select value={kind} onChange={setKind} options={[['', 'Alle'], ['debit', 'Lastschriften'], ['transfer', 'Überweisungen']]} />}>
+    <Panel wide title={tt('Läufe')} sub={tt('Jeder Lauf ist eine Datei für die Bank. Bezahlte und zurückgegebene Lastschriften trägst du hier ein – die Rechnung folgt automatisch.')} tour="sepa-runs" actions={<Select value={kind} onChange={setKind} options={[['', tt('Alle')], ['debit', tt('Lastschriften')], ['transfer', tt('Überweisungen')]]} />}>
       {!list.data ? (
         <Spinner />
       ) : !list.data.length ? (
@@ -325,13 +328,13 @@ export function RunsTab({ open, setOpen, onChanged }: { open: string; setOpen: (
       ) : (
         <div className="cr-list">
           {list.data.map((r: any) => (
-            <Item key={r.id} onClick={() => setOpen(r.id)} side={<><strong>{money(r.total_cents)}</strong> <Badge tone={RUN_TONE[r.status] ?? 'gray'}>{r.status_label}</Badge></>}>
+            <Item key={r.id} onClick={() => setOpen(r.id)} side={<><strong>{money(r.total_cents)}</strong> <Badge tone={RUN_TONE[r.status] ?? 'gray'}>{tt(r.status_label)}</Badge></>}>
               <strong>
-                {r.kind_label} {ymdDe(r.exec_date)}
+                {tt(r.kind_label)} {ymdDe(r.exec_date)}
               </strong>{' '}
               <span className="muted small">{tt('{tx_count} Posten', { tx_count: r.tx_count })}</span>
               <div className="cr-sub">
-                angelegt {dt(r.created_at)}
+                {tt('angelegt {dt}', { dt: dt(r.created_at) })}
                 {r.submitted_at && tt(' · eingereicht {dt}', { dt: dt(r.submitted_at) })}
                 {r.note && ` · ${r.note}`}
               </div>
@@ -432,9 +435,9 @@ export function TransfersTab() {
         </Field>
         <Facts
           rows={[
-            ['Belege', `${picked.size} · ${money(fromBills)}`],
-            ['Auszahlungsliste', `${lines.length} · ${money(fromLines)}`],
-            ['Gesamt', <strong key="t">{money(fromBills + fromLines)}</strong>],
+            [tt('Belege'), `${picked.size} · ${money(fromBills)}`],
+            [tt('Auszahlungsliste'), `${lines.length} · ${money(fromLines)}`],
+            [tt('Gesamt'), <strong key="t">{money(fromBills + fromLines)}</strong>],
           ]}
         />
         <button className="btn sepa-wide" disabled={!picked.size && !lines.length} onClick={create} data-tour="sepa-transfer-create">

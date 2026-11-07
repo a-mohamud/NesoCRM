@@ -152,8 +152,8 @@ function PricingSection() {
         p="pricing.price_basis"
         label={tt('Preise sind')}
         options={[
-          ['net', 'Netto (ohne USt)'],
-          ['gross', 'Brutto (inkl. USt)'],
+          ['net', tt('Netto (ohne USt)')],
+          ['gross', tt('Brutto (inkl. USt)')],
         ]}
       />
       <p className="muted small calc-note">{tt('Pro Tarif: Grundpreis plus Stufenpreis je Einheit über den inklusiven hinaus, begrenzt durch den Deckel. Einheiten sind Standorte, Plätze oder Kunden-Accounts.')}</p>
@@ -269,7 +269,7 @@ function Methods() {
         </div>
       ))}
       <div className="calc-list-foot">
-        <button type="button" className="btn secondary small" disabled={list.length >= 8} onClick={() => update((x) => void x.costs.variable.payment.methods.push({ label: 'PayPal', share: 0, pct: 2.99, fixed: 0.39, cap: 0 }))}>
+        <button type="button" className="btn secondary small" disabled={list.length >= 8} onClick={() => update((x) => void x.costs.variable.payment.methods.push({ label: tt('PayPal'), share: 0, pct: 2.99, fixed: 0.39, cap: 0 }))}>
           {tt('+ Zahlungsart')}
         </button>
         {list.length > 0 && <span className={`small ${Math.abs(total - 100) > 0.5 ? 'calc-warn' : 'muted'}`}>{tt('Summe: {pct} %', { pct: pct(total) })}</span>}
@@ -374,9 +374,9 @@ function TaxSection() {
         p="tax.legal_form"
         label={tt('Rechtsform')}
         options={[
-          ['einzelunternehmen', 'Einzelunternehmen / Freiberufler (Einkommensteuer)'],
-          ['kapitalgesellschaft', 'GmbH / UG (Körperschaftsteuer)'],
-          ['keine', 'Keine Steuern (Ergebnis vor Steuern)'],
+          ['einzelunternehmen', tt('Einzelunternehmen / Freiberufler (Einkommensteuer)')],
+          ['kapitalgesellschaft', tt('GmbH / UG (Körperschaftsteuer)')],
+          ['keine', tt('Keine Steuern (Ergebnis vor Steuern)')],
         ]}
       />
       {form === 'einzelunternehmen' && (
@@ -420,7 +420,7 @@ function TaxSection() {
             <summary>{tt('Tarifwerte § 32a EStG bearbeiten')}</summary>
             <div className="calc-grid-f">
               {EST_FIELDS.map(([k, l]) => (
-                <N key={k} p={`tax.est.${k}`} label={l} />
+                <N key={k} p={`tax.est.${k}`} label={tt(l)} />
               ))}
             </div>
             <button type="button" className="btn ghost small" onClick={() => set('tax.est', { ...EST_YEARS[2026] })}>
@@ -469,9 +469,9 @@ function MatrixSection() {
         p="matrix.columns"
         label={tt('Spalten')}
         options={[
-          ['price', 'Grundpreise'],
-          ['factor', 'Preisfaktoren'],
-          ['plan', 'Ein Tarif je Spalte'],
+          ['price', tt('Grundpreise')],
+          ['factor', tt('Preisfaktoren')],
+          ['plan', tt('Ein Tarif je Spalte')],
         ]}
       />
       {cols === 'price' && <NumList p="matrix.prices" label={tt('Grundpreise je Monat')} max={12} />}

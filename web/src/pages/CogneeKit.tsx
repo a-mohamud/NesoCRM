@@ -50,7 +50,7 @@ export function PurgeDialog({ types, labels, url, onClose }: { types: string[]; 
               const r = await act(() => api.post<Json>(url, { types, confirm: true }));
               setBusy(false);
               if (r) {
-                toast(`Löschung angestoßen (${r.items} ${r.items === 1 ? tt('Eintrag') : tt('Einträge')})`);
+                toast(tt.plural(r.items, { one: 'Löschung angestoßen ({n} Eintrag)', other: 'Löschung angestoßen ({n} Einträge)' }));
                 onClose(true);
               }
             }}
@@ -65,7 +65,7 @@ export function PurgeDialog({ types, labels, url, onClose }: { types: string[]; 
       </p>
       <ul>
         {types.map((t) => (
-          <li key={t}>{labels[t] ?? t}</li>
+          <li key={t}>{tt(labels[t] ?? t)}</li>
         ))}
       </ul>
       <p className="muted small">{tt('„Jetzt löschen“ entfernt diese Daten dort endgültig (das jeweilige Dataset mit Wissensgraph und Vektoren). In HyperLevel bleibt alles unverändert. Bei „Später“ bleiben sie in Cognee, bis du sie über „Status“ löschst.')}</p>

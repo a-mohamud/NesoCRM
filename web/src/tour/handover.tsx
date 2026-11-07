@@ -4,7 +4,7 @@ import { Icon } from '../icons';
 import { useSession } from '../session';
 import { useAcademy } from './progress';
 import { Badge, Link, Spinner } from '../ui';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * „Übergabe-Status“: what is set up and what is still missing, who has access and what needs
@@ -24,6 +24,8 @@ interface Check {
   load: () => Promise<{ state: State; detail: string }>;
 }
 
+/** Details are built when a check runs, in the language active then. */
+const th = tr('x_tours_b');
 const ok = (detail: string) => ({ state: 'ok' as const, detail });
 const missing = (detail: string) => ({ state: 'missing' as const, detail });
 const off = (detail: string) => ({ state: 'off' as const, detail });
@@ -37,7 +39,7 @@ const CHECKS: Check[] = [
     load: async () => {
       const l = await api.get('/api/location');
       const e = l.settings?.email ?? {};
-      return e.provider && e.provider !== 'log' ? ok(`SMTP ${e.host ?? ''}`.trim()) : missing('Nur speichern – es geht keine E-Mail raus');
+      return e.provider && e.provider !== 'log' ? ok(`SMTP ${e.host ?? ''}`.trim()) : missing(th('Nur speichern – es geht keine E-Mail raus'));
     },
   },
   {
@@ -49,7 +51,7 @@ const CHECKS: Check[] = [
     load: async () => {
       const l = await api.get('/api/location');
       const p = l.settings?.sms?.provider;
-      return p && p !== 'log' ? ok(p === 'twilio' ? 'Twilio' : 'HTTP-Gateway') : off('Nur speichern');
+      return p && p !== 'log' ? ok(p === 'twilio' ? 'Twilio' : 'HTTP-Gateway') : off(th('Nur speichern'));
     },
   },
   {
@@ -60,7 +62,7 @@ const CHECKS: Check[] = [
     load: async () => {
       const l = await api.get('/api/location');
       const s = l.settings?.invoices ?? {};
-      return s.iban && (s.tax_id || s.small_business) ? ok('IBAN und Steuerangaben hinterlegt') : missing(!s.iban ? 'IBAN fehlt' : 'Steuernummer / USt-ID fehlt');
+      return s.iban && (s.tax_id || s.small_business) ? ok(th('IBAN und Steuerangaben hinterlegt')) : missing(!s.iban ? th('IBAN fehlt') : th('Steuernummer / USt-ID fehlt'));
     },
   },
   {
@@ -72,7 +74,7 @@ const CHECKS: Check[] = [
     load: async () => {
       const m = await api.get('/api/settings/meta');
       const on = [m.whatsapp?.configured && 'WhatsApp', m.messenger?.configured && 'Messenger', m.instagram?.configured && 'Instagram'].filter(Boolean);
-      return on.length ? ok(on.join(', ')) : off('Nicht verbunden');
+      return on.length ? ok(on.join(', ')) : off(th('Nicht verbunden'));
     },
   },
   {
@@ -83,7 +85,7 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const s = await api.get('/api/calls/status');
-      return s.ready ? ok((s.numbers ?? []).join(', ') || 'bereit') : off(s.missing?.length ? `Fehlt: ${s.missing.join(', ')}` : 'Nicht eingerichtet');
+      return s.ready ? ok((s.numbers ?? []).join(', ') || th('bereit')) : off(s.missing?.length ? th('Fehlt: {list}', { list: s.missing.join(', ') }) : th('Nicht eingerichtet'));
     },
   },
   {
@@ -94,7 +96,7 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const s = await api.get('/api/phone/status');
-      return s.enabled && s.ready ? ok('bereit') : off(s.enabled ? `Fehlt: ${(s.missing ?? []).join(', ')}` : 'Aus');
+      return s.enabled && s.ready ? ok(th('bereit')) : off(s.enabled ? th('Fehlt: {list}', { list: (s.missing ?? []).join(', ') }) : th('Aus'));
     },
   },
   {
@@ -105,7 +107,7 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const s = await api.get('/api/ai/status');
-      return s.enabled ? ok(s.assistant_name || 'an') : off('Aus oder kein Anthropic-Schlüssel');
+      return s.enabled ? ok(s.assistant_name || th('an')) : off(th('Aus oder kein Anthropic-Schlüssel'));
     },
   },
   {
@@ -117,7 +119,7 @@ const CHECKS: Check[] = [
     load: async () => {
       const s = await api.get('/api/voice-ai/settings');
       const mode = s.settings?.mode ?? 'off';
-      return mode !== 'off' ? (s.ai_ready && s.telephony_ready ? ok(`Modus: ${mode}`) : missing(s.ai_problem || 'Telefonie nicht bereit')) : off('Aus');
+      return mode !== 'off' ? (s.ai_ready && s.telephony_ready ? ok(th('Modus: {mode}', { mode })) : missing(s.ai_problem || th('Telefonie nicht bereit'))) : off(th('Aus'));
     },
   },
   {
@@ -128,8 +130,8 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const s = await api.get('/api/stripe');
-      if (!s.connected) return off('Nicht verbunden');
-      return s.webhook_set ? ok(`${s.account?.name ?? 'verbunden'}${s.live ? ' · Live' : ' · Testmodus'}`) : missing('Webhook-Signing-Secret fehlt – Zahlungen werden nicht verbucht');
+      if (!s.connected) return off(th('Nicht verbunden'));
+      return s.webhook_set ? ok(`${s.account?.name ?? th('verbunden')}${s.live ? ' · Live' : th(' · Testmodus')}`) : missing(th('Webhook-Signing-Secret fehlt – Zahlungen werden nicht verbucht'));
     },
   },
   {
@@ -140,8 +142,8 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const [b, p] = await Promise.all([api.get('/api/google-reviews/business').catch(() => ({})), api.get('/api/google-reviews/settings').catch(() => ({}))]);
-      if (b.connected) return b.needs_reconnect ? missing('Unternehmensprofil neu verbinden') : ok(b.location_title || 'Unternehmensprofil verbunden');
-      return p.api_key_set && p.place_id ? ok(p.place_name || 'Places API') : off('Nicht verbunden');
+      if (b.connected) return b.needs_reconnect ? missing(th('Unternehmensprofil neu verbinden')) : ok(b.location_title || th('Unternehmensprofil verbunden'));
+      return p.api_key_set && p.place_id ? ok(p.place_name || 'Places API') : off(th('Nicht verbunden'));
     },
   },
   {
@@ -152,7 +154,7 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const s = await api.get('/api/livechat');
-      return s.enabled ? ok('an') : off('Aus');
+      return s.enabled ? ok(th('an')) : off(th('Aus'));
     },
   },
   {
@@ -163,7 +165,7 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const s = await api.get('/api/social');
-      return s.configured ? (s.channels?.length ? ok(`${s.channels.length} Kanäle`) : missing('Postiz verbunden, aber keine Kanäle')) : off('Postiz nicht verbunden');
+      return s.configured ? (s.channels?.length ? ok(th('{n} Kanäle', { n: s.channels.length })) : missing(th('Postiz verbunden, aber keine Kanäle'))) : off(th('Postiz nicht verbunden'));
     },
   },
   {
@@ -176,12 +178,12 @@ const CHECKS: Check[] = [
       const [h, open] = await Promise.all([api.get('/api/helpdesk/settings'), api.get('/api/tickets?state=open&owner=none&limit=1').catch(() => ({ total: 0 }))]);
       const s = h.settings ?? {};
       const on = [
-        s.assignment?.mode && s.assignment.mode !== 'manual' && 'automatische Zuweisung',
-        s.email_to_ticket?.mode && s.email_to_ticket.mode !== 'off' && 'E-Mail → Ticket',
-        s.help_center?.enabled && 'Hilfe-Center öffentlich',
+        s.assignment?.mode && s.assignment.mode !== 'manual' && th('automatische Zuweisung'),
+        s.email_to_ticket?.mode && s.email_to_ticket.mode !== 'off' && th('E-Mail → Ticket'),
+        s.help_center?.enabled && th('Hilfe-Center öffentlich'),
       ].filter(Boolean);
-      if (open.total) return missing(`${open.total} offene Tickets ohne Zuständige`);
-      return on.length ? ok(on.join(', ')) : off('Nicht eingerichtet (Zuweisung manuell, kein Support-Postfach)');
+      if (open.total) return missing(th('{n} offene Tickets ohne Zuständige', { n: open.total }));
+      return on.length ? ok(on.join(', ')) : off(th('Nicht eingerichtet (Zuweisung manuell, kein Support-Postfach)'));
     },
   },
   {
@@ -193,10 +195,10 @@ const CHECKS: Check[] = [
     load: async () => {
       const s = await api.get('/api/import/hubspot');
       const job = s.job;
-      if (job?.status === 'running') return ok('Import läuft gerade');
-      if (job && job.status !== 'done') return missing('Import unterbrochen – unter Einstellungen → Import fortsetzen');
-      if (job) return ok(`Importiert am ${d(job.finished_at ?? job.updated_at)}${s.connection?.connected ? ' · Token noch verbunden (nach dem Umzug trennen)' : ''}`);
-      return s.connection?.connected ? missing('Verbunden, aber noch nicht importiert') : off('Kein Umzug aus HubSpot');
+      if (job?.status === 'running') return ok(th('Import läuft gerade'));
+      if (job && job.status !== 'done') return missing(th('Import unterbrochen – unter Einstellungen → Import fortsetzen'));
+      if (job) return ok(th('Importiert am {date}', { date: d(job.finished_at ?? job.updated_at) }) + (s.connection?.connected ? th(' · Token noch verbunden (nach dem Umzug trennen)') : ''));
+      return s.connection?.connected ? missing(th('Verbunden, aber noch nicht importiert')) : off(th('Kein Umzug aus HubSpot'));
     },
   },
   {
@@ -206,8 +208,8 @@ const CHECKS: Check[] = [
     to: 'agency/branding',
     load: async () => {
       const b = await api.get('/api/agency/branding');
-      const dom = b.app_domain ? `${b.app_domain}${b.app_domain_status?.status === 'active' ? '' : ' (noch nicht aktiv)'}` : 'keine eigene Domain';
-      return b.name && b.name !== 'HyperLevel' ? ok(`${b.name} · ${dom}`) : missing('Name und Logo der Agentur fehlen');
+      const dom = b.app_domain ? `${b.app_domain}${b.app_domain_status?.status === 'active' ? '' : th(' (noch nicht aktiv)')}` : th('keine eigene Domain');
+      return b.name && b.name !== 'HyperLevel' ? ok(`${b.name} · ${dom}`) : missing(th('Name und Logo der Agentur fehlen'));
     },
   },
   {
@@ -219,9 +221,9 @@ const CHECKS: Check[] = [
     load: async () => {
       const s = await api.get('/api/agency/domains');
       const list: any[] = s.domains ?? [];
-      if (!list.length) return off('Keine eingetragen');
+      if (!list.length) return off(th('Keine eingetragen'));
       const bad = list.filter((x) => x.status !== 'active');
-      return bad.length ? missing(`${bad.length} von ${list.length} nicht aktiv: ${bad.map((x) => x.domain).slice(0, 3).join(', ')}`) : ok(`${list.length} aktiv`);
+      return bad.length ? missing(th('{bad} von {total} nicht aktiv: {list}', { bad: bad.length, total: list.length, list: bad.map((x) => x.domain).slice(0, 3).join(', ') })) : ok(th('{n} aktiv', { n: list.length }));
     },
   },
   {
@@ -233,7 +235,7 @@ const CHECKS: Check[] = [
     load: async () => {
       const s = await api.get('/api/agency/oauth');
       const on = [s.google?.configured && 'Google', s.microsoft?.configured && 'Microsoft'].filter(Boolean);
-      return on.length ? ok(on.join(', ')) : off('Keine OAuth-App');
+      return on.length ? ok(on.join(', ')) : off(th('Keine OAuth-App'));
     },
   },
   {
@@ -245,7 +247,7 @@ const CHECKS: Check[] = [
     load: async () => {
       const list: any[] = await api.get('/api/agency/mail-accounts');
       const on = list.filter((m) => m.enabled);
-      return on.length ? ok(on.map((m) => m.own_address || m.username).join(', ')) : off('Kein Postfach');
+      return on.length ? ok(on.map((m) => m.own_address || m.username).join(', ')) : off(th('Kein Postfach'));
     },
   },
   {
@@ -256,7 +258,7 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const s = await api.get('/api/agency/supabase');
-      return s.enabled && s.key_set ? ok(s.url) : off('Aus');
+      return s.enabled && s.key_set ? ok(s.url) : off(th('Aus'));
     },
   },
   {
@@ -267,7 +269,7 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const s = await api.get('/api/agency/todoist');
-      return s.enabled && s.token_set ? ok(s.account?.name ?? 'an') : off('Aus');
+      return s.enabled && s.token_set ? ok(s.account?.name ?? th('an')) : off(th('Aus'));
     },
   },
   {
@@ -278,7 +280,7 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const s = await api.get('/api/saas/settings');
-      return s.connected ? (s.webhook_set ? ok(`${s.account?.name ?? 'verbunden'}${s.live ? ' · Live' : ' · Testmodus'}`) : missing('Webhook-Signing-Secret fehlt')) : off('Nicht genutzt');
+      return s.connected ? (s.webhook_set ? ok(`${s.account?.name ?? th('verbunden')}${s.live ? ' · Live' : th(' · Testmodus')}`) : missing(th('Webhook-Signing-Secret fehlt'))) : off(th('Nicht genutzt'));
     },
   },
   {
@@ -288,11 +290,11 @@ const CHECKS: Check[] = [
     to: 'settings/locations',
     load: async () => {
       const s = await api.get('/api/admin/backups');
-      if (!s.enabled) return missing('Automatische Backups sind aus (PGHL_BACKUPS=0)');
+      if (!s.enabled) return missing(th('Automatische Backups sind aus (PGHL_BACKUPS=0)'));
       const latest = (s.backups ?? [])[0];
-      if (!latest) return missing('Noch kein Backup vorhanden');
+      if (!latest) return missing(th('Noch kein Backup vorhanden'));
       const age = (Date.now() - new Date(latest.at).getTime()) / 864e5;
-      return age > 2 ? missing(`Letztes Backup vom ${d(latest.at)}`) : ok(`Letztes Backup ${d(latest.at)}`);
+      return age > 2 ? missing(th('Letztes Backup vom {date}', { date: d(latest.at) })) : ok(th('Letztes Backup {date}', { date: d(latest.at) }));
     },
   },
   {
@@ -303,7 +305,7 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const list: any[] = await api.get('/api/agency/api-keys');
-      return list.length ? ok(`${list.length} Schlüssel (${list.map((k) => k.name).slice(0, 3).join(', ')})`) : off('Keiner angelegt');
+      return list.length ? ok(th('{n} Schlüssel ({names})', { n: list.length, names: list.map((k) => k.name).slice(0, 3).join(', ') })) : off(th('Keiner angelegt'));
     },
   },
   {
@@ -314,10 +316,10 @@ const CHECKS: Check[] = [
     optional: true,
     load: async () => {
       const [release, devices] = await Promise.all([api.get('/api/mobile/app').catch(() => null), api.get('/api/mobile/devices').catch(() => [])]);
-      if (!release) return off('Die App ist noch nicht hochgeladen');
+      if (!release) return off(th('Die App ist noch nicht hochgeladen'));
       const list: any[] = Array.isArray(devices) ? devices : [];
-      const version = release.version_name ? ` · App ${release.version_name}` : '';
-      return list.length ? ok(`${list.length} ${list.length === 1 ? 'Handy' : 'Handys'} gekoppelt${version}`) : off(`Noch kein Handy gekoppelt${version}`);
+      const version = release.version_name ? th(' · App {version}', { version: release.version_name }) : '';
+      return list.length ? ok(th.plural(list.length, { one: '{n} Handy gekoppelt', other: '{n} Handys gekoppelt' }) + version) : off(th('Noch kein Handy gekoppelt') + version);
     },
   },
 ];
@@ -336,7 +338,7 @@ export function Handover() {
     setRes({});
     for (const c of CHECKS)
       c.load()
-        .catch(() => ({ state: 'unknown' as const, detail: 'Konnte nicht geprüft werden' }))
+        .catch(() => ({ state: 'unknown' as const, detail: tt('Konnte nicht geprüft werden') }))
         .then((r) => setRes((cur) => ({ ...cur, [c.key]: r })));
     api.get<any[]>('/api/users').then(setUsers).catch(() => setUsers([]));
     api.get<any[]>('/api/agency/projects').then(setProjects).catch(() => setProjects([]));
@@ -351,12 +353,12 @@ export function Handover() {
   const unread = real.reduce((s, p) => s + (p.stats?.unread ?? 0), 0);
   const required = CHECKS.filter((c) => !c.optional);
   const crit: { text: string; to: string }[] = [
-    ...no2fa.map((u) => ({ text: `${u.name} (Admin) hat keinen Zwei-Faktor-Login`, to: 'settings/account' })),
-    ...required.filter((c) => res[c.key]?.state === 'missing').map((c) => ({ text: `${c.label}: ${res[c.key].detail}`, to: c.to })),
-    ...CHECKS.filter((c) => c.optional && res[c.key]?.state === 'missing').map((c) => ({ text: `${c.label}: ${res[c.key].detail}`, to: c.to })),
-    ...down.map((p) => ({ text: `Website von „${p.name}“ ist nicht erreichbar`, to: 'agency/projects' })),
-    ...(overdue ? [{ text: `${overdue} überfällige Aufgabe${overdue === 1 ? '' : 'n'} in allen Projekten`, to: 'agency/tasks' }] : []),
-    ...(unread > 20 ? [{ text: `${unread} ungelesene Nachrichten in allen Projekten`, to: 'agency/projects' }] : []),
+    ...no2fa.map((u) => ({ text: tt('{name} (Admin) hat keinen Zwei-Faktor-Login', { name: u.name }), to: 'settings/account' })),
+    ...required.filter((c) => res[c.key]?.state === 'missing').map((c) => ({ text: `${tt(c.label)}: ${res[c.key].detail}`, to: c.to })),
+    ...CHECKS.filter((c) => c.optional && res[c.key]?.state === 'missing').map((c) => ({ text: `${tt(c.label)}: ${res[c.key].detail}`, to: c.to })),
+    ...down.map((p) => ({ text: tt('Website von „{name}“ ist nicht erreichbar', { name: p.name }), to: 'agency/projects' })),
+    ...(overdue ? [{ text: tt.plural(overdue, { one: '{n} überfällige Aufgabe in allen Projekten', other: '{n} überfällige Aufgaben in allen Projekten' }), to: 'agency/tasks' }] : []),
+    ...(unread > 20 ? [{ text: tt('{n} ungelesene Nachrichten in allen Projekten', { n: unread }), to: 'agency/projects' }] : []),
   ];
   const loc = session.locations.find((l) => l.id === session.locationId)?.name ?? '';
   const done = CHECKS.filter((c) => res[c.key]?.state === 'ok').length;
@@ -369,7 +371,7 @@ export function Handover() {
       <li className={`ho-row ${tone}`}>
         <span className="ho-ico" aria-label={st}>{r ? ICON[st] : '…'}</span>
         <span className="grow">
-          {c.label}
+          {tt(c.label)}
           <small>{r ? r.detail : tt('wird geprüft …')}</small>
         </span>
         <Link to={c.to} className="small">
@@ -422,7 +424,7 @@ export function Handover() {
                   <span className="grow">
                     {u.name} <span className="muted small">{u.email}</span>
                     <small>
-                      {u.role === 'admin' ? tt('Agentur-Admin – sieht alles') : `Mitglied · ${u.locations?.length ?? 0} Sub-Account(s) · ${u.permissions ? tt('{length} Bereiche', { length: u.permissions.length }) : tt('alle Bereiche')}`}
+                      {u.role === 'admin' ? tt('Agentur-Admin – sieht alles') : tt('Mitglied · {n} Sub-Account(s) · {areas}', { n: u.locations?.length ?? 0, areas: u.permissions ? tt('{length} Bereiche', { length: u.permissions.length }) : tt('alle Bereiche') })}
                     </small>
                   </span>
                   {u.totp_enabled ? <Badge tone="green">2FA</Badge> : <Badge tone={u.role === 'admin' ? 'red' : 'gray'}>{tt('ohne 2FA')}</Badge>}

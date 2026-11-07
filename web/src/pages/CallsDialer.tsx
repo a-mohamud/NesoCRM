@@ -60,14 +60,14 @@ function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       <h4 style={{ margin: '8px 0' }}>{tt('Anrufzeiten')}</h4>
       <div className="cr-line" style={{ marginBottom: 8 }}>
         {DAYS.map(([k, l]) => (
-          <Check key={k} checked={s.days.includes(k)} onChange={(on) => set({ days: on ? [...s.days, k] : s.days.filter((x: string) => x !== k) })} label={l} />
+          <Check key={k} checked={s.days.includes(k)} onChange={(on) => set({ days: on ? [...s.days, k] : s.days.filter((x: string) => x !== k) })} label={tt(l)} />
         ))}
       </div>
       <div className="cr-form-row">
-        <Field label="von">
+        <Field label={tt('von')}>
           <Input type="time" value={s.from} onChange={(v) => set({ from: v })} />
         </Field>
-        <Field label="bis">
+        <Field label={tt('bis')}>
           <Input type="time" value={s.to} onChange={(v) => set({ to: v })} />
         </Field>
       </div>
@@ -79,7 +79,7 @@ function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       )}
       <h4 style={{ margin: '14px 0 8px' }}>{tt('Einwilligung')}</h4>
       <Field label={tt('Wer darf angerufen werden?')} hint={data.data.consent_module ? tt('Das Einwilligungs-Modul ist aktiv.') : tt('Das Einwilligungs-Modul ist nicht aktiv: nur „Nicht stören“ zählt.')}>
-        <Select value={s.consent_policy} onChange={(v) => set({ consent_policy: v })} options={[['ledger', 'Nach der Einwilligungs-Regel des Projekts (Ledger)'], ['strict', 'Streng: nur mit bestätigter Telefon-Einwilligung']]} />
+        <Select value={s.consent_policy} onChange={(v) => set({ consent_policy: v })} options={[['ledger', tt('Nach der Einwilligungs-Regel des Projekts (Ledger)')], ['strict', tt('Streng: nur mit bestätigter Telefon-Einwilligung')]]} />
       </Field>
       <h4 style={{ margin: '14px 0 8px' }}>{tt('Versuche')}</h4>
       <div className="cr-form-row">
@@ -100,7 +100,7 @@ function SettingsDialog({ onClose, onSaved }: { onClose: () => void; onSaved: ()
             <div className="grow">
               <Input value={d.label} onChange={(v) => setDisp(i, { label: v })} aria-label={tt('Bezeichnung {key}', { key: d.key })} />
             </div>
-            <Select value={d.kind} onChange={(v) => setDisp(i, { kind: v })} options={Object.entries(KIND_LABEL)} />
+            <Select value={d.kind} onChange={(v) => setDisp(i, { kind: v })} options={Object.entries(KIND_LABEL).map(([k, l]) => [k, tt(l)] as [string, string])} />
             <Check checked={d.positive} onChange={(v) => setDisp(i, { positive: v })} label={tt('Erfolg')} />
             <Check checked={d.dnd} onChange={(v) => setDisp(i, { dnd: v })} label={tt('Nicht mehr anrufen')} />
           </div>
@@ -126,7 +126,7 @@ function ListDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (l
     else body.tags = [f.tag];
     const r = await act(() => api.post('/api/dialer/lists', body));
     if (r) {
-      toast(`${r.sync.total} Kontakte in der Liste${r.sync.no_phone ? tt(' ({no_phone} ohne Telefonnummer ausgelassen)', { no_phone: r.sync.no_phone }) : ''}`);
+      toast(`${tt('{total} Kontakte in der Liste', { total: r.sync.total })}${r.sync.no_phone ? tt(' ({no_phone} ohne Telefonnummer ausgelassen)', { no_phone: r.sync.no_phone }) : ''}`);
       onCreated(r);
       onClose();
     }
@@ -146,7 +146,7 @@ function ListDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (l
         <Input value={f.name} onChange={(v) => set({ name: v })} maxLength={100} placeholder={tt('z. B. Webinar-Teilnehmer nachfassen')} />
       </Field>
       <Field label={tt('Woher kommen die Kontakte?')}>
-        <Select value={f.source} onChange={(v) => set({ source: v })} options={[['smart_list', 'Aus einer Smart List'], ['tags', 'Aus einem Tag']]} />
+        <Select value={f.source} onChange={(v) => set({ source: v })} options={[['smart_list', tt('Aus einer Smart List')], ['tags', tt('Aus einem Tag')]]} />
       </Field>
       {f.source === 'smart_list' ? (
         <Field label={tt('Smart List')} hint={tt('Nur Kontakte mit Telefonnummer kommen in die Liste. Kontakte, die nicht angerufen werden dürfen, werden beim Durchgehen markiert.')}>
@@ -158,7 +158,7 @@ function ListDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (l
         </Field>
       )}
       <Field label={tt('Nachricht für die Mailbox (optional)')} hint={tt('Eine Aufnahme, die der Dialer bei einem Anrufbeantworter abspielt. Unter Telefonmenü → Audio als „Voicemail-Drop“ anlegen.')}>
-        <Select value={f.drop_id} onChange={(v) => set({ drop_id: v })} placeholder="keine" options={(drops.data?.audio ?? []).map((a: any) => [a.id, a.name])} />
+        <Select value={f.drop_id} onChange={(v) => set({ drop_id: v })} placeholder={tt('keine')} options={(drops.data?.audio ?? []).map((a: any) => [a.id, a.name])} />
       </Field>
       <Field label={tt('Notiz zur Liste (optional)')}>
         <Textarea value={f.notes} onChange={(v) => set({ notes: v })} rows={2} maxLength={2000} />
@@ -354,7 +354,7 @@ function Session({ list, onBack }: { list: any; onBack: () => void }) {
                 <Input type="datetime-local" value={cb.at} onChange={(v) => setCb({ ...cb, at: v })} />
               </Field>
               <Field label={tt('Rückruf übernimmt')}>
-                <Select value={cb.user} onChange={(v) => setCb({ ...cb, user: v })} placeholder="ich" options={(colleagues.data ?? []).map((u) => [u.id, u.name])} />
+                <Select value={cb.user} onChange={(v) => setCb({ ...cb, user: v })} placeholder={tt('ich')} options={(colleagues.data ?? []).map((u) => [u.id, u.name])} />
               </Field>
             </div>
             <div className="tl-dispo">
@@ -452,9 +452,9 @@ export function CallsDialer() {
                   onClick={() => setOpen(l)}
                   side={
                     <>
-                      {l.status === 'paused' && <Badge tone="yellow">pausiert</Badge>}
-                      {l.counts.callback > 0 && <Badge tone="blue">{tt('{callback} Rückruf', { callback: l.counts.callback })}{l.counts.callback > 1 ? 'e' : ''}</Badge>}
-                      {l.counts.blocked > 0 && <Badge>{l.counts.blocked} gesperrt</Badge>}
+                      {l.status === 'paused' && <Badge tone="yellow">{tt('pausiert')}</Badge>}
+                      {l.counts.callback > 0 && <Badge tone="blue">{tt.plural(l.counts.callback, { one: '{n} Rückruf', other: '{n} Rückrufe' })}</Badge>}
+                      {l.counts.blocked > 0 && <Badge>{tt('{n} gesperrt', { n: l.counts.blocked })}</Badge>}
                       <button
                         className="icon-btn"
                         aria-label={l.status === 'paused' ? tt('Liste fortsetzen') : tt('Liste pausieren')}

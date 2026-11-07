@@ -10,7 +10,7 @@ import { NAMES, PluginIcon, ScopeBadge, refreshPlugins, usd } from './shared';
 import { ConsentModal, ScopeList, scopeInfos, type ScopeInfo } from './scopes';
 import { DiffList, ProMark, SignatureNotice, VersionBadges, type DiffData, type SignatureData, type VersionBadgesData } from './badges';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /** „Meine Plugins“ (list, examples, import) and the page of one plugin (versions, rollout, health, change). */
 
@@ -101,12 +101,13 @@ const SOURCE_LABEL: Record<string, string> = { ai: 'KI', change: 'Änderung', ex
 
 export function entrySummary(e: Entries | null): string[] {
   if (!e) return [];
+  const tt = tr('x_ai');
   const out: string[] = [];
-  if (e.page) out.push(`Seite „${e.page.title}“`);
-  for (const p of e.panels ?? []) out.push(`Panel „${p.title}“ (${p.on === 'contact' ? 'Kontakt' : 'Deal'})`);
-  for (const w of e.widgets ?? []) out.push(`Widget „${w.title}“`);
-  for (const a of e.actions ?? []) out.push(`Automations-Schritt „${a.label}“`);
-  for (const j of e.jobs ?? []) out.push(`Job „${j.label}“`);
+  if (e.page) out.push(tt('Seite „{title}“', { title: e.page.title }));
+  for (const p of e.panels ?? []) out.push(p.on === 'contact' ? tt('Panel „{title}“ (Kontakt)', { title: p.title }) : tt('Panel „{title}“ (Deal)', { title: p.title }));
+  for (const w of e.widgets ?? []) out.push(tt('Widget „{title}“', { title: w.title }));
+  for (const a of e.actions ?? []) out.push(tt('Automations-Schritt „{label}“', { label: a.label }));
+  for (const j of e.jobs ?? []) out.push(tt('Job „{label}“', { label: j.label }));
   return out;
 }
 
@@ -133,8 +134,8 @@ function PluginCard({ p }: { p: PluginBrief }) {
         <div className="muted small">{p.description}</div>
         <div className="wk-badges">
           <ScopeBadge scope={p.scope} />
-          {p.status !== 'active' && <Badge tone={p.status === 'killed' ? 'red' : 'purple'}>{STATUS_LABEL[p.status] ?? p.status}</Badge>}
-          {p.active_here && !p.enabled_here && <Badge tone="gray">ausgeschaltet</Badge>}
+          {p.status !== 'active' && <Badge tone={p.status === 'killed' ? 'red' : 'purple'}>{tt(STATUS_LABEL[p.status] ?? p.status)}</Badge>}
+          {p.active_here && !p.enabled_here && <Badge tone="gray">{tt('ausgeschaltet')}</Badge>}
           {errors > 0 && <Badge tone="yellow">{tt('{errors} Fehler (7 Tage)', { errors: errors })}</Badge>}
           {entrySummary(p.entries).slice(0, 2).map((s) => (
             <span key={s} className="muted small">
@@ -346,14 +347,14 @@ export function PluginDetail({ id }: { id: string }) {
   const admin = !!me.data?.admin;
   const manage = p.can_manage;
   const done = async (fn: () => Promise<unknown>, ok: string) => {
-    if (await act(fn, ok) !== undefined) {
+    if (await act(fn, tt(ok)) !== undefined) {
       void refreshPlugins();
       void r.reload();
     }
   };
   const mf = p.manifest;
   const current = new Set(mf?.scopes ?? []);
-  const activate = (v: VersionBrief, consent?: string[]) => done(() => api.post(`/api/plugins/${p.id}/versions/${v.id}/activate`, { consent: consent ?? v.scopes }), `Version ${v.version} ist aktiv`);
+  const activate = (v: VersionBrief, consent?: string[]) => done(() => api.post(`/api/plugins/${p.id}/versions/${v.id}/activate`, { consent: consent ?? v.scopes }), tt('Version {version} ist aktiv', { version: v.version }));
   const rollTo = (v: VersionBrief) => (v.scopes.some((s) => !current.has(s)) ? setRoll(v) : void activate(v));
   const exportIt = async () => {
     const text = await act(() => api.text('GET', `/api/plugins/${p.id}/export`));
@@ -373,7 +374,7 @@ export function PluginDetail({ id }: { id: string }) {
         )}
         {manage && p.status === 'active' && (
           <button className="btn secondary" data-tour="wk-change" onClick={() => setModal('change')}>
-            <Icon name="hammer" size={14} /> {NAMES.change}
+            <Icon name="hammer" size={14} /> {tt(NAMES.change)}
           </button>
         )}
         {p.active_here && (
@@ -384,9 +385,9 @@ export function PluginDetail({ id }: { id: string }) {
       </PageHead>
       <div className="wk-badges" style={{ marginBottom: 12 }}>
         <ScopeBadge scope={p.scope} />
-        <Badge tone={p.status === 'active' ? 'green' : p.status === 'killed' ? 'red' : 'purple'}>{STATUS_LABEL[p.status] ?? p.status}</Badge>
-        <span className="muted small">{tt('Version {version} ·', { version: p.version })} {p.origin === 'ai' ? tt('von der KI gebaut') : p.origin === 'example' ? tt('Beispiel') : p.origin === 'import' ? 'importiert' : tt('von Hand')}</span>
-        {p.core_status && <Badge tone="purple">{tt('Kernfeature:')} {p.core_status === 'shipped' ? NAMES.inCore : 'vorgeschlagen'}</Badge>}
+        <Badge tone={p.status === 'active' ? 'green' : p.status === 'killed' ? 'red' : 'purple'}>{tt(STATUS_LABEL[p.status] ?? p.status)}</Badge>
+        <span className="muted small">{tt('Version {version} ·', { version: p.version })} {p.origin === 'ai' ? tt('von der KI gebaut') : p.origin === 'example' ? tt('Beispiel') : p.origin === 'import' ? tt('importiert') : tt('von Hand')}</span>
+        {p.core_status && <Badge tone="purple">{tt('Kernfeature:')} {p.core_status === 'shipped' ? tt(NAMES.inCore) : tt('vorgeschlagen')}</Badge>}
         {p.owner && <span className="muted small">von {p.owner.user} ({p.owner.location})</span>}
       </div>
       {p.status === 'killed' && (
@@ -408,7 +409,7 @@ export function PluginDetail({ id }: { id: string }) {
           )}
         </div>
       )}
-      {p.status === 'in_core' && <div className="card notice-card">{tt('Diese Funktion ist {inCore} (ab Version {core_version}). Das Plugin ist abgelöst.', { inCore: NAMES.inCore, core_version: p.core_version })}</div>}
+      {p.status === 'in_core' && <div className="card notice-card">{tt('Diese Funktion ist {inCore} (ab Version {core_version}). Das Plugin ist abgelöst.', { inCore: tt(NAMES.inCore), core_version: p.core_version })}</div>}
 
       <div className="grid2">
         <div className="card">
@@ -427,10 +428,10 @@ export function PluginDetail({ id }: { id: string }) {
           <p>
             <ScopeBadge scope={p.scope} />
           </p>
-          <p className="muted small">{tt('Privat → Sub-Account → Agentur-weit → {marktplatz}. Jede Stufe macht das Plugin für mehr Menschen verfügbar; es läuft immer mit den Rechten der jeweiligen Person.', { marktplatz: NAMES.marktplatz })}</p>
+          <p className="muted small">{tt('Privat → Sub-Account → Agentur-weit → {marktplatz}. Jede Stufe macht das Plugin für mehr Menschen verfügbar; es läuft immer mit den Rechten der jeweiligen Person.', { marktplatz: tt(NAMES.marktplatz) })}</p>
           <div className="actions">
             {manage && p.scope === 'private' && p.status === 'active' && (
-              <button className="btn secondary small" onClick={() => confirmAsk(tt('„{name}“ für alle Personen dieses Sub-Accounts freigeben?', { name: p.name })) && done(() => api.post(`/api/plugins/${p.id}/scope`, { scope: 'location' }), 'Für den Sub-Account freigegeben')}>
+              <button className="btn secondary small" onClick={() => confirmAsk(tt('„{name}“ für alle Personen dieses Sub-Accounts freigeben?', { name: p.name })) && done(() => api.post(`/api/plugins/${p.id}/scope`, { scope: 'location' }), tt('Für den Sub-Account freigegeben'))}>
                 {tt('Für den Sub-Account freigeben')}
               </button>
             )}
@@ -446,13 +447,13 @@ export function PluginDetail({ id }: { id: string }) {
             )}
             {admin && p.scope !== 'marketplace' && p.status === 'active' && (
               <button className="btn small" data-tour="wk-publish" onClick={() => setModal('publish')}>
-                <Icon name="store" size={14} /> {tt('Im {marktplatz} veröffentlichen', { marktplatz: NAMES.marktplatz })}
+                <Icon name="store" size={14} /> {tt('Im {marktplatz} veröffentlichen', { marktplatz: tt(NAMES.marktplatz) })}
                 {me.data && !me.data.license.pro && <ProMark />}
               </button>
             )}
             {p.scope === 'marketplace' && (
               <Link to={`marktplatz/${p.id}`} className="btn secondary small">
-                {tt('Im {marktplatz} ansehen', { marktplatz: NAMES.marktplatz })}
+                {tt('Im {marktplatz} ansehen', { marktplatz: tt(NAMES.marktplatz) })}
               </Link>
             )}
             {admin && p.status !== 'in_core' && (
@@ -543,7 +544,7 @@ export function PluginDetail({ id }: { id: string }) {
                 {p.versions.map((v) => (
                   <tr key={v.id}>
                     <td>
-                      <strong>{v.version}</strong> {v.active && <Badge tone="green">aktiv</Badge>}
+                      <strong>{v.version}</strong> {v.active && <Badge tone="green">{tt('aktiv')}</Badge>}
                     </td>
                     <td>
                       {v.changelog || '–'}
@@ -551,7 +552,7 @@ export function PluginDetail({ id }: { id: string }) {
                       {v.status !== 'checked' && v.issues.length > 0 && <div className="muted small">{tt('Prüfung fehlgeschlagen: {v}', { v: v.issues[0] })}</div>}
                       <VersionBadges b={v.badges} />
                     </td>
-                    <td>{SOURCE_LABEL[v.source] ?? v.source}</td>
+                    <td>{tt(SOURCE_LABEL[v.source] ?? v.source)}</td>
                     <td className="muted small">{dt(v.created_at)}</td>
                     <td>
                       {!v.active && v.status === 'checked' && p.status === 'active' && (
@@ -575,7 +576,7 @@ export function PluginDetail({ id }: { id: string }) {
           <ul className="wk-entries">
             {p.installs.map((i) => (
               <li key={i.id}>
-                {i.location} · {i.private ? tt('nur für die Autorin bzw. den Autor') : tt('ganzer Sub-Account')} {!i.enabled && <Badge tone="gray">aus</Badge>}
+                {i.location} · {i.private ? tt('nur für die Autorin bzw. den Autor') : tt('ganzer Sub-Account')} {!i.enabled && <Badge tone="gray">{tt('aus')}</Badge>}
               </li>
             ))}
           </ul>
@@ -636,7 +637,7 @@ function ChangeModal({ p, onClose }: { p: PluginFull; onClose: () => void }) {
   };
   return (
     <Modal
-      title={`${NAMES.change}: ${p.name}`}
+      title={`${tt(NAMES.change)}: ${p.name}`}
       onClose={onClose}
       footer={
         <>
@@ -671,7 +672,7 @@ function UninstallModal({ p, onClose, onDone }: { p: PluginFull; onClose: () => 
     const r = await act(() => api.post<{ removed: number; failed: number }>(`/api/plugins/${p.id}/uninstall`, { cleanup }));
     setBusy(false);
     if (r) {
-      toast(cleanup ? `Deinstalliert, ${r.removed} Einträge entfernt${r.failed ? tt(', {failed} nicht', { failed: r.failed }) : ''}` : tt('Deinstalliert'));
+      toast(cleanup ? `${tt('Deinstalliert, {removed} Einträge entfernt', { removed: r.removed })}${r.failed ? tt(', {failed} nicht', { failed: r.failed }) : ''}` : tt('Deinstalliert'));
       onDone();
     }
   };
@@ -690,7 +691,7 @@ function UninstallModal({ p, onClose, onDone }: { p: PluginFull; onClose: () => 
         </>
       }
     >
-      <p>{tt('Das Plugin verschwindet aus diesem Sub-Account. Der Code bleibt in der {werkstatt}, falls du es wieder brauchst.', { werkstatt: NAMES.werkstatt })}</p>
+      <p>{tt('Das Plugin verschwindet aus diesem Sub-Account. Der Code bleibt in der {werkstatt}, falls du es wieder brauchst.', { werkstatt: tt(NAMES.werkstatt) })}</p>
       <Check checked={cleanup} onChange={setCleanup} label={tt('Auch aufräumen: vom Plugin angelegte Datensätze ({v}) und gespeicherte Plugin-Daten entfernen', { v: p.created_count ?? 0 })} />
     </Modal>
   );
@@ -735,7 +736,7 @@ function RollbackModal({ p, onClose, onDone }: { p: PluginFull; onClose: () => v
     const r = await act(() => api.post<{ from: string; to: string; unpublished: boolean; revived: boolean }>(`/api/plugins/${p.id}/rollback`, {}));
     setBusy(false);
     if (r) {
-      toast(`Zurückgerollt: Version ${r.to} läuft wieder${r.revived ? tt(' (wieder eingeschaltet)') : ''}${r.unpublished ? tt('; aus dem {marktplatz} genommen (die ältere Version war dort nie geprüft)', { marktplatz: NAMES.marktplatz }) : ''}`);
+      toast(`${tt('Zurückgerollt: Version {to} läuft wieder', { to: r.to })}${r.revived ? tt(' (wieder eingeschaltet)') : ''}${r.unpublished ? tt('; aus dem {marktplatz} genommen (die ältere Version war dort nie geprüft)', { marktplatz: tt(NAMES.marktplatz) }) : ''}`);
       onDone();
     }
   };
@@ -757,7 +758,7 @@ function RollbackModal({ p, onClose, onDone }: { p: PluginFull; onClose: () => v
       {target ? (
         <>
           <p>
-            {tt('Version')} <strong>{p.version}</strong> {tt('wird durch die Vorversion')} <strong>{target.version}</strong> {tt('ersetzt – für dich, für alle, die das Plugin installiert haben, und im {marktplatz}. Ein abgeschaltetes Plugin läuft danach wieder.', { marktplatz: NAMES.marktplatz })}
+            {tt('Version')} <strong>{p.version}</strong> {tt('wird durch die Vorversion')} <strong>{target.version}</strong> {tt('ersetzt – für dich, für alle, die das Plugin installiert haben, und im {marktplatz}. Ein abgeschaltetes Plugin läuft danach wieder.', { marktplatz: tt(NAMES.marktplatz) })}
           </p>
           <VersionBadges b={target.badges} />
           <p className="muted small">{tt('Die jetzige Version bleibt in der Versionsliste und lässt sich jederzeit wieder aktivieren. Berechtigungen, die du schon bestätigt hast, werden nicht erneut abgefragt.')}</p>

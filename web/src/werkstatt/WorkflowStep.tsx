@@ -23,7 +23,7 @@ export function PluginActionStep({ step, set }: { step: any; set: (p: any) => vo
     <>
       {l.data && !actions.length && (
         <p className="muted small">
-          {tt('Noch kein Plugin mit Automations-Schritt ist für den ganzen Sub-Account aktiv. In der')} <Link to="werkstatt">{NAMES.werkstatt}</Link> {tt('oder im')} <Link to="marktplatz">{NAMES.marktplatz}</Link> {tt('findest du welche.')}
+          {tt('Noch kein Plugin mit Automations-Schritt ist für den ganzen Sub-Account aktiv. In der')} <Link to="werkstatt">{tt(NAMES.werkstatt)}</Link> {tt('oder im')} <Link to="marktplatz">{tt(NAMES.marktplatz)}</Link> {tt('findest du welche.')}
         </p>
       )}
       <Field label={tt('Plugin-Aktion')} hint={tt('Es laufen nur Plugins, die für den ganzen Sub-Account eingerichtet sind – nie private.')}>

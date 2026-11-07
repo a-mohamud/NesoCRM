@@ -5,7 +5,7 @@ import { Link } from '../ui';
 import { euros, fmtDuration, fmtSession, percent } from './WebinarKit';
 import type { TabProps } from './WebinarTabs';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { intlLocale, useT } from '../i18n';
 
 /** Tab "Auswertung": numbers per webinar and session, the drop-off curve, polls, registrations and questions. */
 
@@ -54,20 +54,21 @@ export function StatsTab({ form, w }: TabProps) {
   const regs = useLoad(() => api.get(`/api/webinars/${w.id}/registrations?limit=200${session ? `&session=${encodeURIComponent(session)}` : ''}${filter === 'yes' ? '&attended=1' : filter === 'no' ? '&attended=0' : ''}`), [w.id, session, filter]);
   const questions = useLoad(() => api.get<any[]>(`/api/webinars/${w.id}/questions`), [w.id]);
   const tz = w.tz || 'Europe/Berlin';
+  const loc = intlLocale();
   const s = stats.data;
   const totals = s?.totals;
-  const sessionOptions = useMemo(() => (s?.sessions ?? []).map((x: any) => [x.start, x.start === 'ondemand' ? 'Sofort gestartet (alle)' : fmtSession(x.start, tz)] as [string, string]), [s, tz]);
+  const sessionOptions = useMemo(() => (s?.sessions ?? []).map((x: any) => [x.start, x.start === 'ondemand' ? tt('Sofort gestartet (alle)') : fmtSession(x.start, tz, loc)] as [string, string]), [s, tz, tt, loc]);
   if (stats.loading && !s) return <Spinner />;
   if (!s) return <Empty>{tt('Die Auswertung konnte nicht geladen werden.')}</Empty>;
   return (
     <div data-tour="webinar-stats">
       <SortableGrid id="webinar.stats" className="stats">
         <Stat label={tt('Anmeldungen')} value={totals.registrations} sub={totals.cancelled ? tt('{cancelled} abgesagt', { cancelled: totals.cancelled }) : undefined} />
-        <Stat label={tt('Teilgenommen')} value={totals.attended} sub={tt('Show-up-Rate {percent}', { percent: percent(totals.show_up_rate) })} />
+        <Stat label={tt('Teilgenommen')} value={totals.attended} sub={tt('Show-up-Rate {percent}', { percent: percent(totals.show_up_rate, loc) })} />
         <Stat label={tt('Ø Sehdauer')} value={fmtDuration(totals.avg_watch_s)} sub={tt('{avg_watch_pct} % des Videos', { avg_watch_pct: totals.avg_watch_pct })} />
         <Stat label={tt('Klicks aufs Angebot')} value={totals.cta_clicks} sub={tt('{cta_unique} Personen', { cta_unique: totals.cta_unique })} />
-        <Stat label={tt('Käufe')} value={totals.purchases} sub={tt('Abschlussquote {percent}', { percent: percent(totals.conversion_rate) })} />
-        <Stat label={tt('Umsatz')} value={euros(totals.revenue_cents)} />
+        <Stat label={tt('Käufe')} value={totals.purchases} sub={tt('Abschlussquote {percent}', { percent: percent(totals.conversion_rate, loc) })} />
+        <Stat label={tt('Umsatz')} value={euros(totals.revenue_cents, loc)} />
         <Stat label={tt('Aufzeichnung')} value={totals.replay_views} sub={tt('Aufrufe')} />
         <Stat label={tt('Fragen')} value={totals.questions} />
       </SortableGrid>
@@ -98,18 +99,18 @@ export function StatsTab({ form, w }: TabProps) {
               {s.sessions.map((x: any) => (
                 <tr key={x.start} className="click" {...pressable(() => setSession(x.start === session ? '' : x.start))}>
                   <td>
-                    {x.start === 'ondemand' ? tt('Sofort gestartet') : fmtSession(x.start, tz)} {x.kind === 'jit' && <Badge tone="blue">{tt('Just in time')}</Badge>} {x.seats > 0 && x.registrations >= x.seats && <Badge tone="yellow">ausgebucht</Badge>}
+                    {x.start === 'ondemand' ? tt('Sofort gestartet') : fmtSession(x.start, tz, loc)} {x.kind === 'jit' && <Badge tone="blue">{tt('Just in time')}</Badge>} {x.seats > 0 && x.registrations >= x.seats && <Badge tone="yellow">{tt('ausgebucht')}</Badge>}
                   </td>
                   <td className="num">
                     {x.registrations}
                     {x.seats > 0 ? ` / ${x.seats}` : ''}
                   </td>
                   <td className="num">{x.attended}</td>
-                  <td className="num">{percent(x.show_up_rate)}</td>
+                  <td className="num">{percent(x.show_up_rate, loc)}</td>
                   <td className="num">{fmtDuration(x.avg_watch_s)}</td>
                   <td className="num">{x.cta_clicks}</td>
                   <td className="num">{x.purchases}</td>
-                  <td className="num">{euros(x.revenue_cents)}</td>
+                  <td className="num">{euros(x.revenue_cents, loc)}</td>
                 </tr>
               ))}
             </tbody>
@@ -141,7 +142,7 @@ export function StatsTab({ form, w }: TabProps) {
       <h3>{tt('Angemeldete')}</h3>
       <div className="actions" style={{ marginBottom: 10 }}>
         <Select value={session} onChange={setSession} placeholder={tt('Alle Termine')} options={sessionOptions} />
-        <Select value={filter} onChange={setFilter} placeholder={tt('Alle')} options={[['yes', 'Nur Teilnehmende'], ['no', 'Nur Nicht-Erschienene']]} />
+        <Select value={filter} onChange={setFilter} placeholder={tt('Alle')} options={[['yes', tt('Nur Teilnehmende')], ['no', tt('Nur Nicht-Erschienene')]]} />
         <span className="muted small">{regs.data ? tt('{total} Einträge', { total: regs.data.total }) : ''}</span>
       </div>
       {regs.data?.registrations.length ? (
@@ -164,10 +165,10 @@ export function StatsTab({ form, w }: TabProps) {
                     <Link to={`contacts/${r.contact_id}`}>{r.name}</Link>
                     <div className="muted small">{r.email}</div>
                   </td>
-                  <td>{r.session_kind === 'ondemand' ? tt('Sofort, {dt}', { dt: dt(r.session_start) }) : fmtSession(r.session_start, tz)}</td>
-                  <td>{r.status === 'cancelled' ? <Badge tone="red">abgesagt</Badge> : r.attended ? <Badge tone="green">dabei</Badge> : new Date(r.session_start) > new Date() ? <Badge>angemeldet</Badge> : <Badge tone="yellow">{tt('nicht erschienen')}</Badge>}</td>
-                  <td className="num">{r.attended ? `${r.watch_pct} % (${fmtDuration(r.watched_s)})` : '–'}</td>
-                  <td>{r.purchased ? <Badge tone="green">gekauft {euros(r.purchase_cents)}</Badge> : r.cta_clicked ? <Badge tone="blue">angeklickt</Badge> : '–'}</td>
+                  <td>{r.session_kind === 'ondemand' ? tt('Sofort, {dt}', { dt: dt(r.session_start) }) : fmtSession(r.session_start, tz, loc)}</td>
+                  <td>{r.status === 'cancelled' ? <Badge tone="red">{tt('abgesagt')}</Badge> : r.attended ? <Badge tone="green">{tt('dabei')}</Badge> : new Date(r.session_start) > new Date() ? <Badge>{tt('angemeldet')}</Badge> : <Badge tone="yellow">{tt('nicht erschienen')}</Badge>}</td>
+                  <td className="num">{r.attended ? `${r.watch_pct}${loc.startsWith('de') ? ' %' : '%'} (${fmtDuration(r.watched_s)})` : '–'}</td>
+                  <td>{r.purchased ? <Badge tone="green">{tt('gekauft {amount}', { amount: euros(r.purchase_cents, loc) })}</Badge> : r.cta_clicked ? <Badge tone="blue">{tt('angeklickt')}</Badge> : '–'}</td>
                   <td>{r.replay_watched ? '✓' : '–'}</td>
                 </tr>
               ))}

@@ -21,9 +21,9 @@ export function AgentStep({ step, set, customFields }: { step: any; set: (p: any
           value={target}
           onChange={(v) => set({ target: v })}
           options={[
-            ['log', 'Nur im Protokoll des Workflows'],
-            ['note', 'Als Notiz am Kontakt'],
-            ['field', 'In ein eigenes Feld schreiben'],
+            ['log', tt('Nur im Protokoll des Workflows')],
+            ['note', tt('Als Notiz am Kontakt')],
+            ['field', tt('In ein eigenes Feld schreiben')],
           ]}
         />
       </Field>

@@ -107,7 +107,7 @@ export function ByokNotice({ message }: { message?: string | null }) {
     <div className="gm-byok" data-tour="gm-byok">
       <Icon name="key" size={18} />
       <div>
-        <strong>{message || BYOK_TEXT}</strong>
+        <strong>{message || tt(BYOK_TEXT)}</strong>
         <p className="muted small" style={{ margin: '4px 0 0' }}>
           {tt('Mit eigenem Schlüssel (BYOK) nutzt du fal.ai, kie.ai, Replicate, OpenAI, Google Gemini, Stability, ElevenLabs, Runway, Luma oder jeden anderen Dienst per HTTP-Vorlage. Abgerechnet wird direkt bei deinem Anbieter.')} <Link to="settings">{tt('Zu den Einstellungen')}</Link>
         </p>
@@ -129,11 +129,12 @@ export interface PickedUpload { id: string; url: string; name: string; mime: str
 
 /** Button + modal: prompt → image → into the media library → `onPick(upload)`. */
 export function GenImageButton({ onPick, label = 'KI-Bild generieren', small = true, aspect }: { onPick: (u: PickedUpload) => void; label?: string; small?: boolean; aspect?: string }) {
+  const tt = useT('x_ai');
   const [open, setOpen] = useState(false);
   return (
     <>
       <button type="button" className={`btn secondary${small ? ' small' : ''} gm-gen-btn`} onClick={() => setOpen(true)} data-tour="gm-gen-button">
-        <Icon name="sparkles" size={14} /> {label}
+        <Icon name="sparkles" size={14} /> {tt(label)}
       </button>
       {open && (
         <GenImageModal
@@ -205,7 +206,7 @@ export function GenImageModal({ onPick, onClose, aspect }: { onPick: (u: PickedU
               <datalist id={listId}>
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.label}
+                    {tt(m.label)}
                   </option>
                 ))}
               </datalist>
@@ -263,14 +264,14 @@ export function GenMediaStep({ type, step, set, customFields }: { type: string; 
       {meta.data && !conns.length && <ByokNotice message={meta.data.message} />}
       <div className="grid2">
         <Field label={tt('KI-Verbindung')}>
-          <Select value={step.connection_id ?? ''} onChange={(v) => set({ connection_id: v || undefined })} options={[['', 'Standard des Sub-Accounts'], ...conns.map((c) => [c.id, `${c.label} (${c.provider})`] as [string, string])]} />
+          <Select value={step.connection_id ?? ''} onChange={(v) => set({ connection_id: v || undefined })} options={[['', tt('Standard des Sub-Accounts')], ...conns.map((c) => [c.id, `${c.label} (${c.provider})`] as [string, string])]} />
         </Field>
         <Field label={tt('Modell (optional)')}>
           <input list={listId} value={step.model ?? ''} onChange={(e) => set({ model: e.target.value })} placeholder={models[0]?.id ?? tt('Standard')} />
           <datalist id={listId}>
             {models.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.label}
+                {tt(m.label)}
               </option>
             ))}
           </datalist>
@@ -303,7 +304,7 @@ export function GenMediaStep({ type, step, set, customFields }: { type: string; 
         </>
       )}
       <Field label={tt('Ergebnis')}>
-        <Select value={step.target ?? 'none'} onChange={(v) => set({ target: v })} options={[['none', 'Nur im KI-Studio'], ['field', 'In ein eigenes Feld des Kontakts (Link)'], ['note', 'Als Notiz mit Anhang am Kontakt'], ...(cap !== 'audio_tts' ? [['social_draft', 'Als Social-Post-Entwurf'] as [string, string]] : [])]} />
+        <Select value={step.target ?? 'none'} onChange={(v) => set({ target: v })} options={[['none', tt('Nur im KI-Studio')], ['field', tt('In ein eigenes Feld des Kontakts (Link)')], ['note', tt('Als Notiz mit Anhang am Kontakt')], ...(cap !== 'audio_tts' ? [['social_draft', tt('Als Social-Post-Entwurf')] as [string, string]] : [])]} />
       </Field>
       {step.target === 'field' && (
         <Field label={tt('Feld')}>

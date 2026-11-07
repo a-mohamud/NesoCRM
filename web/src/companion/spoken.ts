@@ -59,8 +59,11 @@ export class SentenceSplitter {
   }
 }
 
+// Already bilingual (picked by the spoken language), not message ids.
 const FILLERS: Record<Lang, string[]> = {
+  // i18n-ignore
   de: ['Moment, ich schau nach …', 'Einen Augenblick, ich kümmere mich darum.', 'Alles klar, ich bin dran.', 'Gib mir einen Moment …', 'Mach ich – kurz Geduld.', 'Ich seh mir das gleich an.'],
+  // i18n-ignore
   en: ['One moment, let me check …', 'Right away – give me a second.', 'On it.', 'Let me look into that …', 'Certainly, just a moment.', 'I’m on it – one moment.'],
 };
 let lastFiller = -1;
@@ -79,7 +82,7 @@ export function taskLine(status: 'done' | 'failed' | 'confirm' | 'stopped', labe
   const L = (de: string, en: string) => (lang === 'en' ? en : de);
   const what = label.length > 80 ? `${label.slice(0, 79)}…` : label;
   if (status === 'done') return L(`Erledigt: ${what}.`, `Done: ${what}.`) + (detail ? ` ${detail}` : '');
-  if (status === 'confirm') return L(`Für „${what}“ brauche ich deine Bestätigung – bitte tippe auf „Ausführen“.`, `“${what}” needs your confirmation – please tap “Run”.`);
+  if (status === 'confirm') return L(`Für „${what}“ brauche ich deine Bestätigung – bitte tippe auf „Ausführen“.`, `“${what}” needs your confirmation – please tap “Run”.`); // i18n-ignore (bilingual)
   if (status === 'stopped') return L(`Angehalten: ${what}.`, `Stopped: ${what}.`);
-  return L(`Das hat nicht geklappt: ${what}.`, `That did not work: ${what}.`) + (detail ? ` ${detail}` : '');
+  return L(`Das hat nicht geklappt: ${what}.`, `That did not work: ${what}.`) + (detail ? ` ${detail}` : ''); // i18n-ignore (bilingual)
 }

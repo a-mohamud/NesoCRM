@@ -34,10 +34,10 @@ export function ContactSequences({ contactId }: { contactId: string }) {
           <div className="grow">
             <b>{e.sequence_name}</b>
             <div className="muted small">
-              {e.status === 'active' ? `Schritt ${e.step_index + 1}${e.next_at ? tt(' · weiter am {d}', { d: d(e.next_at) }) : ''}` : e.stop_label || tt('seit {d}', { d: d(e.enrolled_at) })} · {e.sent} gesendet
+              {e.status === 'active' ? tt('Schritt {n}', { n: e.step_index + 1 }) + (e.next_at ? tt(' · weiter am {d}', { d: d(e.next_at) }) : '') : e.stop_label ? tt(e.stop_label) : tt('seit {d}', { d: d(e.enrolled_at) })} · {tt('{n} gesendet', { n: e.sent })}
             </div>
           </div>
-          <Badge tone={TONE[e.status] ?? 'gray'}>{LABEL[e.status] ?? e.status}</Badge>
+          <Badge tone={TONE[e.status] ?? 'gray'}>{LABEL[e.status] ? tt(LABEL[e.status]) : e.status}</Badge>
           {(e.status === 'active' || e.status === 'paused') && (
             <button className="icon-btn" aria-label={tt('Sequenz für diese Person beenden')} title={tt('Beenden')} onClick={async () => confirmAsk(tt('Sequenz für diese Person beenden?')) && (await act(() => api.post(`/api/sequence-enrollments/${e.id}/stop`, {}), tt('Beendet'))) && list.reload()}>
               ✕

@@ -6,7 +6,7 @@ import { Badge, Check, Copy, Empty, Field, Input, Link, MergeHint, Modal, PageHe
 import { ChannelAvatar } from './Social';
 import { Autopilot, Recycling, captureThumb } from './VideoRecycle';
 import { SignupLink } from '../referrals';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * Video-Studio (Marketing): long video → AI-picked 9:16 shorts via OpenShorts → review → Social
@@ -39,6 +39,8 @@ const FRAMINGS: [string, string][] = [
   ['track', 'Person verfolgen (Zuschnitt)'],
   ['auto', 'Automatisch'],
 ];
+/** Option labels are German message ids – translate them where they are shown. */
+const tl = (tt: (s: string) => string, list: [string, string][]): [string, string][] => list.map(([k, l]) => [k, tt(l)]);
 
 interface Studio {
   configured: boolean;
@@ -64,7 +66,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const localInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const mediaSrc = (url: string, extra = '') => `${url}?locationId=${encodeURIComponent(currentLocation())}${extra}`;
 const scoreTone = (s: number | null) => (s === null ? 'none' : s >= 80 ? 'hot' : s >= 60 ? 'good' : 'low');
-const hours = (h: number) => (h >= 48 && h % 24 === 0 ? `${h / 24} Tage` : `${h} Std.`);
+const hours = (h: number) => (h >= 48 && h % 24 === 0 ? tr('x_ai')('{n} Tage', { n: h / 24 }) : tr('x_ai')('{n} Std.', { n: h }));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Re-load while something runs on the OpenShorts side. */
@@ -93,7 +95,7 @@ function putChunk(uploadId: string, offset: number, part: Blob, onLoaded: (n: nu
         /* not JSON */
       }
       if (x.status >= 200 && x.status < 300) resolve(data);
-      else reject(new ApiError(x.status, data?.error ?? `Fehler ${x.status}`));
+      else reject(new ApiError(x.status, data?.error ?? tr('x_ai')('Fehler {status}', { status: x.status })));
     };
     x.onerror = () => reject(new ApiError(0, 'Verbindung unterbrochen'));
     x.send(part);
@@ -128,7 +130,7 @@ function DropZone({ file, onFile, maxMb }: { file: File | null; onFile: (f: File
   const [over, setOver] = useState(false);
   const take = (f?: File | null) => {
     if (!f) return;
-    if (f.size > maxMb * 1024 * 1024) return toastError(`Datei größer als ${maxMb} MB`);
+    if (f.size > maxMb * 1024 * 1024) return toastError(tt('Datei größer als {maxMb} MB', { maxMb }));
     onFile(f);
   };
   return (
@@ -202,8 +204,8 @@ export function VideoStudio({ path = [] }: { path?: string[] }) {
   const tab = sub === 'youtube' || sub === 'ugc' || sub === 'autopilot' ? sub : 'jobs';
   const jobId = sub && tab === 'jobs' ? sub : undefined;
   // YouTube-Studio also shows the descriptions taken over from Content-Recycling.
-  const tabs: [string, string][] = [['jobs', 'Shorts aus Videos'], ['autopilot', 'Autopilot'], ['youtube', 'YouTube-Studio']];
-  if (s.features.ai_shorts) tabs.push(['ugc', 'KI-Shorts']);
+  const tabs: [string, string][] = [['jobs', tt('Shorts aus Videos')], ['autopilot', tt('Autopilot')], ['youtube', tt('YouTube-Studio')]];
+  if (s.features.ai_shorts) tabs.push(['ugc', tt('KI-Shorts')]);
   return (
     <>
       {head}
@@ -216,7 +218,7 @@ export function VideoStudio({ path = [] }: { path?: string[] }) {
           {tab === 'jobs' && <Jobs studio={s} />}
           {tab === 'youtube' && <YoutubeStudio studio={s} />}
           {tab === 'ugc' && <UgcStudio studio={s} />}
-          {tab === 'autopilot' && <Autopilot publicBase={s.public_base} layouts={LAYOUTS} subtitles={SUBTITLES} />}
+          {tab === 'autopilot' && <Autopilot publicBase={s.public_base} layouts={tl(tt, LAYOUTS)} subtitles={tl(tt, SUBTITLES)} />}
         </>
       )}
     </>
@@ -337,7 +339,7 @@ function NewJob({ studio, onCreated }: { studio: Studio; onCreated: () => void }
       </Field>
       <div className="grid2">
         <Field label={tt('Anzahl Clips')}>
-          <Select value={o.clips} onChange={(v) => set({ clips: v })} options={[['', 'KI entscheidet'], ...Array.from({ length: 10 }, (_, i) => [String(i + 1), String(i + 1)] as [string, string])]} />
+          <Select value={o.clips} onChange={(v) => set({ clips: v })} options={[['', tt('KI entscheidet')], ...Array.from({ length: 10 }, (_, i) => [String(i + 1), String(i + 1)] as [string, string])]} />
         </Field>
         <Field label={tt('Untertitel')}>
           <Select value={o.subtitles} onChange={(v) => set({ subtitles: v })} options={Object.entries(studio.subtitle_styles).map(([k, l]) => [k, l])} />
@@ -367,7 +369,7 @@ function NewJob({ studio, onCreated }: { studio: Studio; onCreated: () => void }
           <Check checked={o.hook} onChange={(v) => set({ hook: v })} label={tt('Hook-Text in den ersten Sekunden einblenden')} />
           {studio.dubbing ? (
             <Field label={tt('KI-Vertonung (ElevenLabs)')} hint={tt('Die Sprache des Videos erkennt OpenShorts selbst; vertont wird danach in die gewählte Sprache.')}>
-              <Select value={o.dub_language} onChange={(v) => set({ dub_language: v })} options={[['', 'Keine – Originalton'], ...Object.entries(studio.languages).map(([k, l]) => [k, l] as [string, string])]} />
+              <Select value={o.dub_language} onChange={(v) => set({ dub_language: v })} options={[['', tt('Keine – Originalton')], ...Object.entries(studio.languages).map(([k, l]) => [k, l] as [string, string])]} />
             </Field>
           ) : (
             <p className="muted small">{tt('Sprache: erkennt OpenShorts automatisch. KI-Vertonung gibt es mit einem ElevenLabs-Schlüssel (Agentur → Integrationen).')}</p>
@@ -442,7 +444,7 @@ function JobDetail({ id, studio }: { id: string; studio: Studio }) {
               )}
               {' · '}
               {ago(j.created_at)}
-              {j.kind === 'clips' && ` · ${LAYOUTS.find((l) => l[0] === opts.layout)?.[1] ?? tt('Automatisch')} · Untertitel: ${SUBTITLES.find((l) => l[0] === opts.subtitles)?.[1] ?? tt('Standard')}`}
+              {j.kind === 'clips' && tt(' · {layout} · Untertitel: {subtitles}', { layout: tt(LAYOUTS.find((l) => l[0] === opts.layout)?.[1] ?? 'Automatisch'), subtitles: tt(SUBTITLES.find((l) => l[0] === opts.subtitles)?.[1] ?? 'Standard') })}
               {opts.dub_language ? tt(' · vertont: {dub_language}', { dub_language: opts.dub_language }) : ''}
             </div>
           </div>
@@ -564,7 +566,7 @@ function EditClip({ clip, job, studio, onClose, onSaved }: { clip: any; job: any
     if (await act(() => api.patch(`/api/video-studio/clips/${clip.id}`, { title, description: desc, hashtags: tags }), tt('Gespeichert'))) onSaved();
   };
   const op = async (body: any, ok: string) => {
-    if (await act(() => api.post(`/api/video-studio/clips/${clip.id}/edit`, body), ok)) onSaved();
+    if (await act(() => api.post(`/api/video-studio/clips/${clip.id}/edit`, body), tt(ok))) onSaved();
   };
   return (
     <Modal
@@ -598,7 +600,7 @@ function EditClip({ clip, job, studio, onClose, onSaved }: { clip: any; job: any
               {studio.features.subtitles && (
                 <div className="vs-op">
                   <Icon name="captions" />
-                  <Select value={preset} onChange={setPreset} options={SUBTITLES.filter((s) => s[0] !== 'off')} />
+                  <Select value={preset} onChange={setPreset} options={tl(tt, SUBTITLES.filter((s) => s[0] !== 'off'))} />
                   <button className="btn small secondary" onClick={() => op({ op: 'subtitles', preset }, 'Untertitel werden neu gesetzt')}>
                     {tt('Untertitel setzen')}
                   </button>
@@ -616,7 +618,7 @@ function EditClip({ clip, job, studio, onClose, onSaved }: { clip: any; job: any
               {studio.features.rerender && (
                 <div className="vs-op">
                   <Icon name="crop" />
-                  <Select value={framing} onChange={setFraming} options={FRAMINGS} />
+                  <Select value={framing} onChange={setFraming} options={tl(tt, FRAMINGS)} />
                   <button className="btn small secondary" onClick={() => op({ op: 'framing', framing }, 'Bildausschnitt wird geändert')}>
                     {tt('Ausschnitt ändern')}
                   </button>
@@ -702,7 +704,7 @@ function PlanClip({ clip, studio, onClose, onDone }: { clip: any; studio: Studio
           </Field>
           <div className="grid2">
             <Field label={tt('Wann')}>
-              <Select value={mode} onChange={(v) => setMode(v as any)} options={[['schedule', 'Planen'], ['now', 'Sofort veröffentlichen'], ['draft', 'Als Entwurf (in Postiz freigeben)']]} />
+              <Select value={mode} onChange={(v) => setMode(v as any)} options={[['schedule', tt('Planen')], ['now', tt('Sofort veröffentlichen')], ['draft', tt('Als Entwurf (in Postiz freigeben)')]]} />
             </Field>
             {mode === 'schedule' && (
               <Field label={tt('Zeitpunkt')}>
@@ -775,7 +777,7 @@ function TaskList({ tasks, sel, onSel }: { tasks: any[]; sel?: string; onSel: (i
         <button key={t.id} type="button" className={`vs-task${sel === t.id ? ' on' : ''}`} onClick={() => onSel(t.id)}>
           <span className="vs-task-title">{t.title}</span>
           <span className="muted small">
-            {ago(t.created_at)} · {t.status === 'analyzing' ? tt('analysiert …') : t.status === 'failed' ? 'fehlgeschlagen' : t.busy ? tt('arbeitet …') : 'fertig'}
+            {ago(t.created_at)} · {t.status === 'analyzing' ? tt('analysiert …') : t.status === 'failed' ? tt('fehlgeschlagen') : t.busy ? tt('arbeitet …') : tt('fertig')}
           </span>
         </button>
       ))}
@@ -824,7 +826,7 @@ function YoutubeTask({ t, studio, reload }: { t: any; studio: Studio; reload: ()
     if (!title && r.titles?.length) setTitle(r.recommended?.[0] || r.titles[0]);
   }, [r.titles?.length]);
   const run = async (path: string, body: any, ok: string) => {
-    if (await act(() => api.post(`/api/video-studio/youtube/${t.id}/${path}`, body), ok)) reload();
+    if (await act(() => api.post(`/api/video-studio/youtube/${t.id}/${path}`, body), tt(ok))) reload();
   };
   const del = async () => {
     if (confirmAsk(tt('Analyse löschen?')) && (await act(() => api.del(`/api/video-studio/tasks/${t.id}`), tt('Gelöscht')))) reload();
@@ -855,7 +857,7 @@ function YoutubeTask({ t, studio, reload }: { t: any; studio: Studio; reload: ()
         </p>
       )}
       {t.error && <p className="vs-error-text">{t.error}</p>}
-      {t.busy && <Progress value={60} label={{ titles: 'Neue Titel …', description: 'Beschreibung wird geschrieben …', thumbnails: 'Thumbnails werden gemalt …' }[t.busy as string] ?? tt('Arbeitet …')} />}
+      {t.busy && <Progress value={60} label={tt({ titles: 'Neue Titel …', description: 'Beschreibung wird geschrieben …', thumbnails: 'Thumbnails werden gemalt …' }[t.busy as string] ?? 'Arbeitet …')} />}
       <h3>{tt('Titel')}</h3>
       <div className="vs-titles">
         {(r.titles ?? []).map((x: string) => (
@@ -955,14 +957,14 @@ function UgcStudio({ studio }: { studio: Studio }) {
           <Textarea value={f.description} onChange={(v) => setF({ ...f, description: v })} rows={3} placeholder={tt('Was ihr anbietet, für wen, was es besonders macht')} />
         </Field>
         <div className="grid2">
-          <Field label={tt('Sprache')}>
-            <Select value={f.language} onChange={(v) => setF({ ...f, language: v })} options={[['en', 'Englisch'], ['es', 'Spanisch']]} />
+          <Field label={tt('Sprache des Videos')}>
+            <Select value={f.language} onChange={(v) => setF({ ...f, language: v })} options={[['en', tt('Englisch')], ['es', tt('Spanisch')]]} />
           </Field>
           <Field label={tt('Stil')}>
-            <Select value={f.style} onChange={(v) => setF({ ...f, style: v })} options={[['ugc', 'Echt (UGC)'], ['educational', 'Erklärend'], ['shock', 'Überraschung'], ['story', 'Geschichte'], ['comparison', 'Vorher/Nachher']]} />
+            <Select value={f.style} onChange={(v) => setF({ ...f, style: v })} options={[['ugc', tt('Echt (UGC)')], ['educational', tt('Erklärend')], ['shock', tt('Überraschung')], ['story', tt('Geschichte')], ['comparison', tt('Vorher/Nachher')]]} />
           </Field>
           <Field label={tt('Darsteller')}>
-            <Select value={f.actor_gender} onChange={(v) => setF({ ...f, actor_gender: v })} options={[['female', 'Frau'], ['male', 'Mann']]} />
+            <Select value={f.actor_gender} onChange={(v) => setF({ ...f, actor_gender: v })} options={[['female', tt('Frau')], ['male', tt('Mann')]]} />
           </Field>
           <Field label={tt('Skripte')}>
             <Select value={f.num_scripts} onChange={(v) => setF({ ...f, num_scripts: v })} options={['1', '2', '3']} />
@@ -1010,7 +1012,7 @@ function UgcTask({ t, studio, reload }: { t: any; studio: Studio; reload: () => 
             </div>
           )}
           <div className="vs-inline">
-            <Select value={modeOf[i] ?? 'lowcost'} onChange={(v) => setModeOf({ ...modeOf, [i]: v })} options={[['lowcost', 'Günstig (ca. 0,65 $)'], ['premium', 'Premium (ca. 2 $)']]} />
+            <Select value={modeOf[i] ?? 'lowcost'} onChange={(v) => setModeOf({ ...modeOf, [i]: v })} options={[['lowcost', tt('Günstig (ca. 0,65 $)')], ['premium', tt('Premium (ca. 2 $)')]]} />
             <button className="btn small" disabled={!studio.ai_shorts} onClick={() => generate(i)}>
               <Icon name="sparkles" /> {tt('Video erzeugen')}
             </button>
@@ -1158,12 +1160,12 @@ export function OpenShortsSetup() {
           ) : i ? (
             <>
               <p>
-                <Badge tone="green">verbunden</Badge> <span className="small">{i.mode === 'hosted' ? `openshorts.app${i.plan ? tt(' · Tarif {plan}', { plan: i.plan }) : ''}${i.minutes_remaining !== null && i.minutes_remaining !== undefined ? tt(' · {minutes_remaining} Minuten übrig', { minutes_remaining: i.minutes_remaining }) : ''}` : `Selbst gehostet${i.local_llm ? tt(' · eigenes LLM {local_llm}', { local_llm: i.local_llm }) : ''}`}</span>
+                <Badge tone="green">{tt('verbunden')}</Badge> <span className="small">{i.mode === 'hosted' ? `openshorts.app${i.plan ? tt(' · Tarif {plan}', { plan: i.plan }) : ''}${i.minutes_remaining !== null && i.minutes_remaining !== undefined ? tt(' · {minutes_remaining} Minuten übrig', { minutes_remaining: i.minutes_remaining }) : ''}` : `${tt('Selbst gehostet')}${i.local_llm ? tt(' · eigenes LLM {local_llm}', { local_llm: i.local_llm }) : ''}`}</span>
               </p>
               <div className="vs-feats">
                 {FEATURE_LABELS.map(([k, l]) => (
                   <span key={k} className={i.features?.[k] ? 'on' : ''}>
-                    {i.features?.[k] ? '✓' : '–'} {l}
+                    {i.features?.[k] ? '✓' : '–'} {tt(l)}
                   </span>
                 ))}
               </div>
@@ -1196,16 +1198,16 @@ export function ShortsStep({ step, set }: { step: any; set: (patch: any) => void
       </Field>
       <div className="grid2">
         <Field label={tt('Anzahl Clips')}>
-          <Select value={String(step.clips ?? '')} onChange={(v) => set({ clips: v ? Number(v) : undefined })} options={[['', 'KI entscheidet'], ...Array.from({ length: 10 }, (_, i) => [String(i + 1), String(i + 1)] as [string, string])]} />
+          <Select value={String(step.clips ?? '')} onChange={(v) => set({ clips: v ? Number(v) : undefined })} options={[['', tt('KI entscheidet')], ...Array.from({ length: 10 }, (_, i) => [String(i + 1), String(i + 1)] as [string, string])]} />
         </Field>
         <Field label={tt('Layout')}>
-          <Select value={step.layout ?? 'auto'} onChange={(v) => set({ layout: v })} options={LAYOUTS} />
+          <Select value={step.layout ?? 'auto'} onChange={(v) => set({ layout: v })} options={tl(tt, LAYOUTS)} />
         </Field>
         <Field label={tt('Untertitel')}>
-          <Select value={step.subtitles ?? 'default'} onChange={(v) => set({ subtitles: v })} options={SUBTITLES} />
+          <Select value={step.subtitles ?? 'default'} onChange={(v) => set({ subtitles: v })} options={tl(tt, SUBTITLES)} />
         </Field>
         <div className="field">
-          <span>&nbsp;</span>
+          <span>&nbsp;</span>{/* i18n-ignore */}
           <Check checked={step.hook !== false} onChange={(v) => set({ hook: v })} label={tt('Hook-Text einblenden')} />
         </div>
       </div>

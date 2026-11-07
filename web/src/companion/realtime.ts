@@ -1,4 +1,5 @@
 import { api } from '../api';
+import { tr } from '../i18n';
 import { downsample, floatToPcm16, pcm16ToFloat, pcmBytes } from './pcm';
 
 /**
@@ -64,11 +65,11 @@ export class GeminiLiveEngine implements RealtimeEngine {
       return this.fail((e as Error).message);
     }
     const Ctx: typeof AudioContext | undefined = (window as any).AudioContext ?? (window as any).webkitAudioContext;
-    if (!Ctx || !navigator.mediaDevices?.getUserMedia || typeof WebSocket === 'undefined') return this.fail('Dieser Browser kann keine Echtzeit-Stimme.');
+    if (!Ctx || !navigator.mediaDevices?.getUserMedia || typeof WebSocket === 'undefined') return this.fail(tr('x_ai')('Dieser Browser kann keine Echtzeit-Stimme.'));
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
     } catch {
-      return this.fail('Der Browser darf das Mikrofon nicht benutzen.');
+      return this.fail(tr('x_ai')('Der Browser darf das Mikrofon nicht benutzen.'));
     }
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}${session.path}`);
@@ -76,7 +77,7 @@ export class GeminiLiveEngine implements RealtimeEngine {
     this.ws = ws;
     ws.onmessage = (ev) => (typeof ev.data === 'string' ? this.onJson(ev.data) : this.play(new Uint8Array(ev.data as ArrayBuffer)));
     ws.onclose = () => {
-      if (this.alive && !this.ending) this.fail('Die Echtzeit-Verbindung ist abgebrochen.');
+      if (this.alive && !this.ending) this.fail(tr('x_ai')('Die Echtzeit-Verbindung ist abgebrochen.'));
       else this.cleanup();
     };
     ws.onerror = () => undefined;

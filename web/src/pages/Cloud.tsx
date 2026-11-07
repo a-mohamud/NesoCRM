@@ -4,7 +4,7 @@ import { Icon } from '../icons';
 import { useSession } from '../session';
 import { Badge, Empty, Field, Modal, Select, Spinner, Tabs, Textarea, act, navigate, toast, useLoad } from '../ui';
 import { CloudClients, CloudTeam } from './CloudTeam';
-import { MeterBar, PHASE_TONE, REASONS, type CloudMe, type Tenant } from './CloudKit';
+import { MeterBar, PHASE_TONE, REASONS, legalDocName, type CloudMe, type Tenant } from './CloudKit';
 import { CloudData } from './CloudData';
 import { useT } from '../i18n';
 
@@ -29,7 +29,7 @@ function Checklist() {
   return (
     <div className="card cloud-check" data-tour="cloud-checklist">
       <h3 style={{ marginTop: 0 }}>
-        {tt('Los geht’s')} <span className="muted small">{x.done} von {x.total} erledigt</span>
+        {tt('Los geht’s')} <span className="muted small">{tt('{done} von {total} erledigt', { done: x.done, total: x.total })}</span>
       </h3>
       <ul>
         {x.items.map((i) => (
@@ -54,7 +54,7 @@ function Checklist() {
 function Overview({ me, owner, onTab }: { me: CloudMe; owner: boolean; onTab: (t: string) => void }) {
   const tt = useT('x_agency');
   const t = me.tenant;
-  const every = t.plan.interval === 'year' ? 'Jahr' : 'Monat';
+  const every = t.plan.interval === 'year' ? tt('Jahr') : tt('Monat');
   return (
     <>
       <div className="card" data-tour="cloud-plan">
@@ -62,12 +62,12 @@ function Overview({ me, owner, onTab }: { me: CloudMe; owner: boolean; onTab: (t
           <div>
             <div className="muted small">{tt('Dein Tarif')}</div>
             <h2>
-              {t.plan.name} <Badge tone={PHASE_TONE[t.phase] ?? 'gray'}>{t.phase_label}</Badge> {t.cancel_at_period_end && <Badge tone="yellow">{tt('gekündigt')}</Badge>}
+              {t.plan.name} <Badge tone={PHASE_TONE[t.phase] ?? 'gray'}>{tt(t.phase_label)}</Badge> {t.cancel_at_period_end && <Badge tone="yellow">{tt('gekündigt')}</Badge>}
             </h2>
             <p className="muted">{t.plan.key === 'solo' ? tt('Eine Person, alle Funktionen.') : t.plan.key === 'team' ? tt('Unbegrenzt Nutzer, alle Funktionen.') : tt('Unbegrenzt Nutzer und Kunden-Accounts, White-Label inklusive.')}</p>
           </div>
           <div className="saas-price">
-            {t.comped ? 'geschenkt' : money(t.plan.price_cents, t.plan.currency)}
+            {t.comped ? tt('geschenkt') : money(t.plan.price_cents, t.plan.currency)}
             {!t.comped && <span className="muted"> / {every}</span>}
           </div>
         </div>
@@ -95,7 +95,7 @@ function Overview({ me, owner, onTab }: { me: CloudMe; owner: boolean; onTab: (t
         <p className="muted small" style={{ marginTop: 0 }}>{tt('Alle Funktionen sind in jedem Tarif frei. Nur teure Ressourcen haben Grenzen, pro Sub-Account und Monat.')}</p>
         <div className="saas-meters">
           {METERS.map(([k, l, u]) => (
-            <MeterBar key={k} label={l} m={t.meters[k]} unit={u} />
+            <MeterBar key={k} label={tt(l)} m={t.meters[k]} unit={u} />
           ))}
         </div>
         <p className="muted small" style={{ marginBottom: 0 }}>{tt('Mit eigenem KI-Schlüssel (Einstellungen → KI-Anbieter) rechnest du KI direkt mit deinem Anbieter ab.')}</p>
@@ -150,7 +150,7 @@ function CancelModal({ t, onClose, onDone }: { t: Tenant; onClose: () => void; o
         {tt('Dein Abo „{name}“ läuft bis', { name: t.plan.name })} {d(t.current_period_end ?? t.trial_end) || tt('zum Ende des Zeitraums')} {tt('weiter, danach ist das Konto schreibgeschützt. Du kannst die Kündigung bis dahin zurücknehmen und jederzeit alle Daten exportieren.')}
       </p>
       <Field label={tt('Warum kündigst du? (hilft uns, besser zu werden)')}>
-        <Select value={reason} onChange={setReason} options={REASONS} />
+        <Select value={reason} onChange={setReason} options={REASONS.map(([k, l]) => [k, tt(l)] as [string, string])} />
       </Field>
       <Field label={tt('Möchtest du etwas ergänzen? (optional)')}>
         <Textarea value={comment} onChange={setComment} maxLength={1000} />
@@ -167,11 +167,11 @@ function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
   const [interval, setInterval] = useState<'month' | 'year'>(t.plan.interval);
   const [cancel, setCancel] = useState(false);
   if (!plans.data) return <Spinner />;
-  const note = plans.data.price_note === 'net' ? 'zzgl. USt.' : plans.data.price_note === 'gross' ? 'inkl. USt.' : '';
+  const note = plans.data.price_note === 'net' ? tt('zzgl. USt.') : plans.data.price_note === 'gross' ? tt('inkl. USt.') : '';
   const choose = async (c: Card) => {
     if (t.billing === 'stripe' && !t.read_only) {
       if (c.key === t.plan.key && interval === t.plan.interval) return;
-      if (!window.confirm(`Auf „${c.name}“ (${interval === 'year' ? tt('jährlich') : 'monatlich'}) wechseln? Der Preis wird anteilig verrechnet.`)) return;
+      if (!window.confirm(tt('Auf „{name}“ ({interval}) wechseln? Der Preis wird anteilig verrechnet.', { name: c.name, interval: interval === 'year' ? tt('jährlich') : tt('monatlich') }))) return;
       if (await act(() => api.post('/api/cloud/plan', { plan: c.key, interval }), tt('Tarif geändert'))) reload();
     } else if (t.billing === 'manual' && !t.read_only && t.status !== 'canceled' && t.stripe === false && t.phase !== 'comped') {
       // Trial without payment data: switch the plan first, paying is the next step.
@@ -202,7 +202,7 @@ function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
           return (
             <div key={c.key} className={`card cloud-plan${current ? ' current' : ''}`}>
               <h3>
-                {c.name} {current && <Badge tone="blue">aktuell</Badge>}
+                {c.name} {current && <Badge tone="blue">{tt('aktuell')}</Badge>}
               </h3>
               <p className="muted small">{c.tagline}</p>
               <div className="cloud-price">
@@ -272,7 +272,7 @@ function PlanTab({ me, reload }: { me: CloudMe; reload: () => void }) {
                   <td>{i.number || '–'}</td>
                   <td>{d(i.created)}</td>
                   <td>{money(i.amount_cents, i.currency)}</td>
-                  <td>{i.status === 'paid' ? <Badge tone="green">bezahlt</Badge> : i.status === 'open' ? <Badge tone="yellow">offen</Badge> : <Badge>{i.status}</Badge>}</td>
+                  <td>{i.status === 'paid' ? <Badge tone="green">{tt('bezahlt')}</Badge> : i.status === 'open' ? <Badge tone="yellow">{tt('offen')}</Badge> : <Badge>{i.status}</Badge>}</td>
                   <td className="nowrap">
                     {i.hosted_url && (
                       <a href={i.hosted_url} target="_blank" rel="noopener noreferrer">
@@ -326,11 +326,11 @@ export function CloudAccount({ fallback }: { fallback?: ReactNode }) {
   const t = m.tenant;
   const owner = m.role === 'owner';
   const tabs: [string, string][] = [
-    ['overview', 'Übersicht'],
-    ...(owner ? ([['plan', 'Tarif & Rechnungen']] as [string, string][]) : []),
-    ['team', 'Team'],
-    ...(t.entitlements.client_accounts ? ([['clients', 'Kunden & White-Label']] as [string, string][]) : []),
-    ...(owner ? ([['data', 'Daten & Konto']] as [string, string][]) : []),
+    ['overview', tt('Übersicht')],
+    ...(owner ? ([['plan', tt('Tarif & Rechnungen')]] as [string, string][]) : []),
+    ['team', tt('Team')],
+    ...(t.entitlements.client_accounts ? ([['clients', tt('Kunden & White-Label')]] as [string, string][]) : []),
+    ...(owner ? ([['data', tt('Daten & Konto')]] as [string, string][]) : []),
   ];
   const reload = () => {
     void me.reload();
@@ -361,7 +361,7 @@ export function CloudAccount({ fallback }: { fallback?: ReactNode }) {
       {owner && !!m.legal.pending.length && (
         <div className="saas-banner info" role="status">
           <Icon name="shield" size={18} />
-          <span className="grow">{tt('Unsere Bedingungen wurden aktualisiert (')}{m.legal.pending.map((p) => p.doc.toUpperCase()).join(', ')}{tt('). Bitte sieh sie dir an und bestätige.')}</span>
+          <span className="grow">{tt('Unsere Bedingungen wurden aktualisiert (')}{m.legal.pending.map((p) => legalDocName(tt, p.doc)).join(', ')}{tt('). Bitte sieh sie dir an und bestätige.')}</span>
           <a href="/cloud/legal/agb" target="_blank" rel="noopener noreferrer">
             {tt('Lesen')}
           </a>

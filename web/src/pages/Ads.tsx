@@ -119,8 +119,8 @@ export function AdsReport({ range, setRange }: { range: { from: string; to: stri
               value={model}
               onChange={setModel}
               options={[
-                ['last', 'Letztem Kontakt'],
-                ['first', 'Erstem Kontakt'],
+                ['last', tt('Letztem Kontakt')],
+                ['first', tt('Erstem Kontakt')],
               ]}
             />
           </Field>
@@ -233,7 +233,7 @@ function AccountCard({ a, onChange }: { a: any; onChange: () => void }) {
     <div className="card" data-tour="ads-account">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0 }}>{a.platform === 'meta' ? tt('Meta Ads (Facebook & Instagram)') : tt('Google Ads')} {a.platform === 'meta' && <SignupLink id="meta" />}</h2>
-        {a.connected ? <Badge tone={a.last_error ? 'red' : 'green'}>{a.last_error ? tt('Fehler') : 'verbunden'}</Badge> : <Badge>{tt('nicht verbunden')}</Badge>}
+        {a.connected ? <Badge tone={a.last_error ? 'red' : 'green'}>{a.last_error ? tt('Fehler') : tt('verbunden')}</Badge> : <Badge>{tt('nicht verbunden')}</Badge>}
       </div>
       <p className="muted small">
         {a.last_sync_at ? tt('Zuletzt abgerufen {dt} · {campaigns} Kampagnen', { dt: dt(a.last_sync_at), campaigns: a.campaigns }) : tt('Nur lesender Zugriff: Ausgaben, Impressionen, Klicks und Leads je Kampagne, täglich.')}
@@ -241,7 +241,7 @@ function AccountCard({ a, onChange }: { a: any; onChange: () => void }) {
       </p>
       <div className="grid2">
         {FIELDS[a.platform].map(([k, label, secret, hint]) => (
-          <Field key={k} label={label} hint={hint}>
+          <Field key={k} label={tt(label)} hint={hint ? tt(hint) : undefined}>
             {secret ? (
               <Input type="password" autoComplete="off" value={f[k] ?? ''} onChange={(v) => set(k, v)} placeholder={a.secrets[k] ? tt('•••••• gespeichert') : ''} />
             ) : (
@@ -310,7 +310,7 @@ export function AdsAccounts() {
                 <tr>
                   <th>{tt('Zeit')}</th>
                   <th>{tt('Ereignis')}</th>
-                  <th>Status</th>
+                  <th>{tt('Status')}</th>
                 </tr>
               </thead>
               <tbody>

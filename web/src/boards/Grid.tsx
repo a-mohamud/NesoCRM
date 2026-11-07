@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { reading, limitsAt, type Bp, type Cell, type Limits, type Placed } from '../../../server/services/boards-layout';
 import { Icon } from '../icons';
-import { GAP, ROW_H, arrange, cellPx, cellsOf, colWidth, describeCell, heightPx, rowsPx, stackStep } from './layout';
+import { GAP, ROW_H, arrange, cellPx, cellsOf, colWidth, heightPx, rowsPx, stackStep } from './layout';
 import type { Widget } from './types';
 import { useT } from '../i18n';
 
@@ -48,6 +48,8 @@ const scrollParent = (el: HTMLElement | null): HTMLElement | null => {
 
 export function Grid({ widgets, bp, width, edit, limits, titleOf, onCommit, render }: { widgets: Widget[]; bp: Bp; width: number; edit: boolean; limits: (type: string) => Limits; titleOf: (w: Widget) => string; onCommit: (ops: Record<string, unknown>[], cells: Placed[]) => void; render: (w: Widget, part: CardPart) => ReactNode }) {
   const tt = useT('x_misc');
+  /** Where a widget sits, for screen readers (layout.ts describeCell, in the active language). */
+  const describeCell = (c: Cell, at: Bp) => (at === 'sm' ? tt('Platz {n}', { n: c.y + 1 }) : tt('Spalte {x}, Zeile {y}, {w} Spalten breit, {h} Zeilen hoch', { x: c.x + 1, y: c.y + 1, w: c.w, h: c.h }));
   const rootRef = useRef<HTMLDivElement>(null);
   const base = useMemo(() => cellsOf(widgets, bp), [widgets, bp]);
   const colW = colWidth(width, bp);
@@ -164,7 +166,7 @@ export function Grid({ widgets, bp, width, edit, limits, titleOf, onCommit, rend
         e.preventDefault();
         const cell = live.current.base.find((c) => c.id === id)!;
         set({ id, mode: 'move', kb: true, origin: cell, dx: 0, dy: 0, target: cell, cursor: cell, cells: live.current.base });
-        say(id, `aufgenommen. Pfeiltasten verschieben, Umschalt und Pfeiltasten ändern die Größe, Leertaste legt ab, Escape bricht ab. Jetzt ${describeCell(cell, b)}.`);
+        say(id, tt('aufgenommen. Pfeiltasten verschieben, Umschalt und Pfeiltasten ändern die Größe, Leertaste legt ab, Escape bricht ab. Jetzt {where}.', { where: describeCell(cell, b) }));
       }
       return;
     }
@@ -179,7 +181,7 @@ export function Grid({ widgets, bp, width, edit, limits, titleOf, onCommit, rend
       e.preventDefault();
       set(null);
       commit(d);
-      say(id, `abgelegt. ${describeCell(d.target, b)}.`);
+      say(id, tt('abgelegt. {where}.', { where: describeCell(d.target, b) }));
       return;
     }
     const dir = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, number[]>)[e.key];
@@ -221,7 +223,7 @@ export function Grid({ widgets, bp, width, edit, limits, titleOf, onCommit, rend
         const next = stackStep(cells, w.id, dir);
         if (next === cells) return;
         live.current.onCommit([{ op: 'move', id: w.id, y: i + dir, bp: 'sm' }], next);
-        say(w.id, `Platz ${i + dir + 1} von ${order.length}`);
+        say(w.id, tt('Platz {n} von {total}', { n: i + dir + 1, total: order.length }));
       };
       return (
         <span className="bd-stackbtns">

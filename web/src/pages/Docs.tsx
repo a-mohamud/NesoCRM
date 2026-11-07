@@ -29,7 +29,7 @@ function DocRow({ d, actions }: { d: any; actions?: React.ReactNode }) {
   // Codex tasks are sessions too, with their own icon.
   const codex = d.source === 'Codex' || /chatgpt\.com\/codex/.test(d.url);
   const icon: IconName = codex ? 'codex' : kindIcon;
-  const label = codex && d.kind === 'session' ? 'Codex-Aufgabe' : kindLabel;
+  const label = codex && d.kind === 'session' ? tt('Codex-Aufgabe') : tt(kindLabel);
   return (
     <div className="doc-row">
       <Icon name={icon} size={17} />

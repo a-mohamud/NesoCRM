@@ -101,10 +101,10 @@ export function ExportDialog({ api: ed, data, onClose }: DialogProps) {
             <Select
               value={scope}
               onChange={(v) => setScope(v as Scope)}
-              options={[['board', 'Ganzes Board'], ...(hasSel ? ([['selection', `Auswahl (${ed.selection.length})`]] as [string, string][]) : []), ...(frames.length ? ([['frame', 'Ein Rahmen / Artboard']] as [string, string][]) : [])]}
+              options={[['board', tt('Ganzes Board')], ...(hasSel ? ([['selection', tt('Auswahl ({n})', { n: ed.selection.length })]] as [string, string][]) : []), ...(frames.length ? ([['frame', tt('Ein Rahmen / Artboard')]] as [string, string][]) : [])]}
             />
           </Field>
-          {scope === 'frame' && <Select value={frameId} onChange={setFrameId} options={frames.map((f) => [f.id, `${f.name ?? 'Rahmen'} (${Math.round(f.w)}×${Math.round(f.h)})`] as [string, string])} />}
+          {scope === 'frame' && <Select value={frameId} onChange={setFrameId} options={frames.map((f) => [f.id, `${f.name ?? tt('Rahmen')} (${Math.round(f.w)}×${Math.round(f.h)})`] as [string, string])} />}
           {format === 'png' && (
             <Field label={tt('Größe')}>
               <div className="cv-seg">
@@ -148,10 +148,10 @@ function UseDialog({ ed, media, onClose, onBack }: { ed: EditorApi; media: { id:
       </div>
       <Tabs
         tabs={[
-          ['link', 'Link'],
-          ['social', 'Social-Post'],
-          ['email', 'E-Mail'],
-          ['funnel', 'Funnel-Seite'],
+          ['link', tt('Link')],
+          ['social', tt('Social-Post')],
+          ['email', tt('E-Mail')],
+          ['funnel', tt('Funnel-Seite')],
         ]}
         value={tab}
         onChange={setTab}
@@ -272,7 +272,7 @@ function UseFunnel({ media, board, onDone }: { media: { url: string; name: strin
           />
         </Field>
         <Field label={tt('Seite')}>
-          <Select value={page} onChange={setPage} options={[['new', 'Neue Seite'], ...pages.map((p) => [p.id, `Unten an „${p.name}“`] as [string, string])]} />
+          <Select value={page} onChange={setPage} options={[['new', tt('Neue Seite')], ...pages.map((p) => [p.id, tt('Unten an „{name}“', { name: p.name })] as [string, string])]} />
         </Field>
       </div>
       <button
@@ -321,8 +321,8 @@ export function ShareDialog({ api: ed, onClose }: DialogProps) {
     <Modal title={tt('Teilen')} onClose={onClose} wide>
       <Tabs
         tabs={[
-          ['team', 'Team'],
-          ['link', 'Öffentlicher Link'],
+          ['team', tt('Team')],
+          ['link', tt('Öffentlicher Link')],
         ]}
         value={tab}
         onChange={setTab}
@@ -334,9 +334,9 @@ export function ShareDialog({ api: ed, onClose }: DialogProps) {
               value={team}
               onChange={(v) => void ed.saveBoard({ team_access: v as 'edit' | 'view' | 'none' })}
               options={[
-                ['edit', 'dürfen bearbeiten'],
-                ['view', 'dürfen ansehen und kommentieren'],
-                ['none', 'haben keinen Zugriff (privat)'],
+                ['edit', tt('dürfen bearbeiten')],
+                ['view', tt('dürfen ansehen und kommentieren')],
+                ['none', tt('haben keinen Zugriff (privat)')],
               ]}
             />
           </Field>
@@ -363,12 +363,12 @@ export function ShareDialog({ api: ed, onClose }: DialogProps) {
                     }}
                     aria-label={tt('Rolle von {name}', { name: p.name })}
                   >
-                    <option value="default">{tt('wie Team (')}{team === 'edit' ? 'bearbeiten' : team === 'view' ? 'ansehen' : tt('kein Zugriff')})</option>
-                    <option value="edit">bearbeiten</option>
+                    <option value="default">{tt('wie Team ({access})', { access: team === 'edit' ? tt('bearbeiten') : team === 'view' ? tt('ansehen') : tt('kein Zugriff') })}</option>
+                    <option value="edit">{tt('bearbeiten')}</option>
                     <option value="view">{tt('nur ansehen')}</option>
                   </select>
                 ) : (
-                  <span className="muted small">{p.owner ? tt('Besitz') : (p.member ?? 'Team')}</span>
+                  <span className="muted small">{p.owner ? tt('Besitz') : (p.member === 'edit' ? tt('bearbeiten') : p.member === 'view' ? tt('nur ansehen') : tt('Team'))}</span>
                 )}
               </div>
             ))}
@@ -571,9 +571,9 @@ export function SettingsDialog({ api: ed, onClose }: DialogProps) {
             value={grid}
             onChange={(v) => setGrid(v as typeof grid)}
             options={[
-              ['dots', 'Punkte'],
-              ['lines', 'Linien'],
-              ['none', 'Kein Raster'],
+              ['dots', tt('Punkte')],
+              ['lines', tt('Linien')],
+              ['none', tt('Kein Raster')],
             ]}
           />
         </Field>

@@ -54,7 +54,7 @@ function ChatPanel({ channel, contact, st, onSent }: { channel: string; contact:
     setBusy(false);
     if (!r) return;
     if (r.status === 'failed') toast(tt('Nicht gesendet: {error}', { error: r.error }));
-    else toast(tt('Per {v} gesendet', { v: MORE_LABELS[channel] }));
+    else toast(tt('Per {v} gesendet', { v: tt(MORE_LABELS[channel] ?? channel) }));
     setBody('');
     setFile('');
     onSent();
@@ -62,10 +62,10 @@ function ChatPanel({ channel, contact, st, onSent }: { channel: string; contact:
   return (
     <div data-tour={`composer-${channel}`}>
       <div className="muted small chan-to">
-        <Icon name={channelIcon(channel)} size={13} /> an {st.handle || tt('den Kontakt')}
+        <Icon name={channelIcon(channel)} size={13} /> {tt('an {name}', { name: st.handle || tt('den Kontakt') })}
         {channel === 'discord' && <> · {st.where === 'channel' ? tt('Antwort im Kanal') : tt('Direktnachricht')}</>}
       </div>
-      <Textarea value={body} onChange={setBody} rows={4} placeholder={`${MORE_LABELS[channel]}-Nachricht an ${contact.first_name || tt('den Kontakt')}`} />
+      <Textarea value={body} onChange={setBody} rows={4} placeholder={tt('{channel}-Nachricht an {name}', { channel: tt(MORE_LABELS[channel] ?? channel), name: contact.first_name || tt('den Kontakt') })} />
       {channel === 'telegram' && showFile && <Input value={file} onChange={setFile} placeholder={tt('https://… (Bild, PDF, Audio oder Video)')} aria-label={tt('Datei-Link')} />}
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <small className="muted">

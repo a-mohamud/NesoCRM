@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ApiError, api, d } from '../api';
 import { Badge, Check, Empty, Modal, Spinner, act, navigate, toast, toastError, useLoad } from '../ui';
-import { useT } from '../i18n';
+import { fmtNumber, useT } from '../i18n';
 
 /**
  * Dubletten-Assistent: doppelte Kontakte finden, beide nebeneinander ansehen, Feld für Feld wählen und zusammenführen – Aktivitäten,
@@ -147,7 +147,7 @@ export function SalesDupes() {
   return (
     <div data-tour="dupe-list">
       <div className="sales-bar">
-        <span className="muted">{data ? `${data.scanned.toLocaleString('de-DE')} Kontakte geprüft · ${data.total} mögliche ${data.total === 1 ? tt('Dublette') : tt('Dubletten')}` : ''}</span>
+        <span className="muted">{data ? tt.plural(data.total, { one: '{scanned} Kontakte geprüft · {n} mögliche Dublette', other: '{scanned} Kontakte geprüft · {n} mögliche Dubletten' }, { scanned: fmtNumber(data.scanned) }) : ''}</span>
         <span className="grow" />
         <Check checked={min === 'high'} onChange={(v) => setMin(v ? 'high' : '')} label={tt('Nur sichere (E-Mail, Telefon, Name + Firma)')} />
       </div>
@@ -161,7 +161,7 @@ export function SalesDupes() {
           return (
             <div className="dupe" key={g.key}>
               <div className="dupe-head">
-                <Badge tone={CONF[g.confidence][1]}>{CONF[g.confidence][0]}</Badge>
+                <Badge tone={CONF[g.confidence][1]}>{tt(CONF[g.confidence][0])}</Badge>
                 <span className="muted small">{g.reasons.map((r: string) => data.reasons[r]).join(' · ')}</span>
                 <span style={{ flex: 1 }} />
                 <button className="btn small secondary" onClick={async () => (await act(() => api.post('/api/contact-duplicates/ignore', { contact_ids: g.contacts.map((c: any) => c.id) }), tt('Nicht mehr vorgeschlagen'))) && list.reload()}>

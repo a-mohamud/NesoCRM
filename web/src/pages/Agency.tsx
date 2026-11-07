@@ -41,6 +41,7 @@ const { UmzugAssistent } = lazyPages(() => import('./UmzugAssistent'), 'UmzugAss
 
 
 export function DomainBadge({ status }: { status?: { status: string; message?: string } }) {
+  const tt = useT('x_agency');
   if (!status) return null;
   const map: Record<string, [string, any]> = {
     active: ['HTTPS aktiv', 'green'],
@@ -52,7 +53,7 @@ export function DomainBadge({ status }: { status?: { status: string; message?: s
   const [label, tone] = map[status.status] ?? [status.status, 'gray'];
   return (
     <span title={status.message}>
-      <Badge tone={tone}>{label}</Badge>
+      <Badge tone={tone}>{tt(label)}</Badge>
     </span>
   );
 }
@@ -105,7 +106,7 @@ function NewClient({ snapshots, onClose, onDone }: { snapshots: any[]; onClose: 
         </div>
       </MoreFields>
       <Field label={tt('Startpaket (Snapshot)')} hint={tt('Kopiert Websites (mit Blog), Funnels, Formulare, Kalender, Workflows, Pipelines, Vorlagen, Kurse und Community-Gruppen – keine Kontakte, Teilnehmer oder Beiträge.')}>
-        <Select value={f.snapshot_id} onChange={(v) => setF({ ...f, snapshot_id: v })} placeholder={tt('– leer starten –')} options={snapshots.map((s) => [s.id, `${s.name} (${s.summary.funnels} Seiten-Projekte, ${s.summary.workflows} Workflows)`])} />
+        <Select value={f.snapshot_id} onChange={(v) => setF({ ...f, snapshot_id: v })} placeholder={tt('– leer starten –')} options={snapshots.map((s) => [s.id, tt('{name} ({funnels} Seiten-Projekte, {workflows} Workflows)', { name: s.name, funnels: s.summary.funnels, workflows: s.summary.workflows })])} />
       </Field>
       {f.snapshot_id && <Check checked={f.activate_workflows} onChange={(v) => setF({ ...f, activate_workflows: v })} label={tt('Workflows gleich aktivieren (sonst als Entwurf)')} />}
       <hr />
@@ -113,7 +114,7 @@ function NewClient({ snapshots, onClose, onDone }: { snapshots: any[]; onClose: 
       {login && (
         <>
           <div className="grid3">
-            <Field label="E-Mail">
+            <Field label={tt('E-Mail')}>
               <Input value={u.email} onChange={(v) => setU({ ...u, email: v })} />
             </Field>
             <Field label="Name">
@@ -178,10 +179,10 @@ function Clients() {
                   {l.unread > 0 && (
                     <>
                       {' '}
-                      <Badge tone="blue">{l.unread} ungelesen</Badge>
+                      <Badge tone="blue">{tt('{n} ungelesen', { n: l.unread })}</Badge>
                     </>
                   )}
-                  <div className="muted small">seit {d(l.created_at)}</div>
+                  <div className="muted small">{tt('seit {d}', { d: d(l.created_at) })}</div>
                 </td>
                 <td>{l.contacts}</td>
                 <td>
@@ -209,7 +210,7 @@ function Clients() {
                   <button
                     className="btn small secondary"
                     onClick={async () => {
-                      const r = await act(() => api.post('/api/snapshots', { location_id: l.id, name: `${l.name} – Vorlage` }), tt('Snapshot erstellt'));
+                      const r = await act(() => api.post('/api/snapshots', { location_id: l.id, name: tt('{name} – Vorlage', { name: l.name }) }), tt('Snapshot erstellt'));
                       if (r) snapshots.reload();
                     }}
                   >
@@ -373,7 +374,7 @@ function Snapshots() {
               onClick={async () => {
                 const r = await act(() => api.post(`/api/snapshots/${apply.id}/apply`, { location_id: target, activate_workflows: activate, translate_to: lang }));
                 if (r) {
-                  const k = hasKnowledge(apply) ? `, ${r.knowledge_agents ?? 0} KI-Agenten, ${r.knowledge_wiki ?? 0} Wiki-Seiten${r.translated ? `, ${r.translated} Texte übersetzt` : ''}` : '';
+                  const k = hasKnowledge(apply) ? tt(', {agents} KI-Agenten, {wiki} Wiki-Seiten', { agents: r.knowledge_agents ?? 0, wiki: r.knowledge_wiki ?? 0 }) + (r.translated ? tt(', {n} Texte übersetzt', { n: r.translated }) : '') : '';
                   toast(tt('Kopiert: {length} Websites/Funnels, {length2} Formulare, {length3} Workflows{k}', { length: r.funnels.length, length2: r.forms.length, length3: r.workflows.length, k: k }));
                   setApply(null);
                 }
@@ -390,7 +391,7 @@ function Snapshots() {
           <Check checked={activate} onChange={setActivate} label={tt('Workflows gleich aktivieren')} />
           {hasKnowledge(apply) && (
             <Field label={tt('Wissen übersetzen in')} hint={tt('Agenten-Anweisungen, Notizen, Wiki, Hilfe-Artikel und Learnings – mit dem KI-Assistenten des Ziel-Sub-Accounts (kostet KI-Guthaben). Leer: unverändert übernehmen.')}>
-              <Select value={lang} onChange={setLang} options={[['', '– nicht übersetzen –'], ['Englisch', 'Englisch'], ['Französisch', 'Französisch'], ['Spanisch', 'Spanisch'], ['Italienisch', 'Italienisch'], ['Niederländisch', 'Niederländisch'], ['Polnisch', 'Polnisch'], ['Deutsch', 'Deutsch']]} />
+              <Select value={lang} onChange={setLang} options={[['', tt('– nicht übersetzen –')], ...(['Englisch', 'Französisch', 'Spanisch', 'Italienisch', 'Niederländisch', 'Polnisch', 'Deutsch'] /* i18n-ignore: values are sent to the server */).map((l) => [l, tt(l)] as [string, string])]} />
             </Field>
           )}
         </Modal>
@@ -409,9 +410,9 @@ function Domains() {
       <div className="card" data-tour="domains-howto">
         <h2>{tt('So kommt eine Kundendomain online')}</h2>
         <ol>
-          <li>{tt('Beim Kunden unter Funnels & Websites → Einstellungen & Domain die Domain eintragen (z. B.')} <code>malerbetrieb-meier.de</code>).</li>
+          <li>{tt('Beim Kunden unter Funnels & Websites → Einstellungen & Domain die Domain eintragen (z. B.')} <code>{tt('malerbetrieb-meier.de')}</code>).</li>
           <li>
-            {tt('Beim Domain-Anbieter einen')} <strong>{tt('A-Record')}</strong> auf <code>{server_ip || tt('die Server-IP')}</code> {tt('setzen – für')} <code>@</code> und <code>www</code>.
+            {tt('Beim Domain-Anbieter einen')} <strong>{tt('A-Record')}</strong> {tt('auf')} <code>{server_ip || tt('die Server-IP')}</code> {tt('setzen – für')} <code>@</code> {tt('und')} <code>www</code>.
           </li>
           <li>{tt('Fertig: Innerhalb weniger Minuten richtet der Domain-Agent nginx und das SSL-Zertifikat ein. Der Status steht unten.')}</li>
         </ol>
@@ -509,11 +510,11 @@ function BrandingSettings({ locationId, onSaved }: { locationId?: string; onSave
           hint={
             locationId ? (
               <>
-                {tt('z. B.')} <code>crm.kunde.de</code> {tt('– A-Record auf')} <code>{info.data?.server_ip || tt('die Server-IP')}</code>{tt('. Die Login-Seite dort zeigt das Branding des Kunden.')}
+                {tt('z. B.')} <code>{tt('crm.kunde.de')}</code> {tt('– A-Record auf')} <code>{info.data?.server_ip || tt('die Server-IP')}</code>{tt('. Die Login-Seite dort zeigt das Branding des Kunden.')}
               </>
             ) : (
               <>
-                {tt('z. B.')} <code>app.deine-agentur.de</code> {tt('– A-Record auf')} <code>{info.data?.server_ip || tt('die Server-IP')}</code>{tt('. Kunden loggen sich dann dort ein, und Links in Mails (Buchung, Rechnung) nutzen diese Domain, sobald HTTPS aktiv ist.')}
+                {tt('z. B.')} <code>{tt('app.deine-agentur.de')}</code> {tt('– A-Record auf')} <code>{info.data?.server_ip || tt('die Server-IP')}</code>{tt('. Kunden loggen sich dann dort ein, und Links in Mails (Buchung, Rechnung) nutzen diese Domain, sobald HTTPS aktiv ist.')}
               </>
             )
           }
@@ -562,7 +563,7 @@ function Integrations() {
         <h2>{tt('Postiz (Social Planner)')} <SignupLink id="postiz" /></h2>
         <p className="muted small">{tt('Postiz veröffentlicht die Posts. Deine Kunden planen im Social Planner, ohne Postiz zu sehen.')}</p>
         <Field label={tt('Adresse')}>
-          <Input value={url ?? v.url} onChange={setUrl} placeholder="https://postiz.deine-domain.de" />
+          <Input value={url ?? v.url} onChange={setUrl} placeholder={tt('https://postiz.deine-domain.de')} />
         </Field>
         <Field label={tt('API-Schlüssel')} hint={tt('Postiz → Einstellungen → Public API')}>
           <Input type="password" value={key} onChange={setKey} placeholder={v.key_set ? tt('•••••••• (gespeichert)') : ''} autoComplete="off" />
@@ -577,7 +578,7 @@ function Integrations() {
           >
             {tt('Speichern & testen')}
           </button>{' '}
-          {v.key_set && (v.connected ? <Badge tone="green">verbunden</Badge> : <Badge tone="red">{v.error || tt('nicht erreichbar')}</Badge>)}
+          {v.key_set && (v.connected ? <Badge tone="green">{tt('verbunden')}</Badge> : <Badge tone="red">{v.error || tt('nicht erreichbar')}</Badge>)}
         </p>
       </div>
       {v.connected && (
@@ -642,28 +643,28 @@ export function Agency({ tab = 'projects' }: { tab?: string }) {
       {tab === 'projects' && <AcademyWelcome />}
       <AgencyTabs
         tabs={[
-          ['projects', 'Projekte'],
-          ['contacts', 'Kontakte'],
-          ['deals', 'Deals'],
-          ['tasks', 'Aufgaben'],
-          ['docs', 'Dokumente'],
-          ['clients', 'Kunden'],
-          ['saas', 'SaaS'],
-          ...(cloud ? ([['cloud', 'Cloud']] as [string, string][]) : []),
-          ['snapshots', 'Snapshots'],
-          ['umzug', 'Umzug'],
-          ['domains', 'Domains'],
-          ['branding', 'White-Label'],
-          ['login', 'Anmeldung'],
-          ['integrations', 'Integrationen'],
-          ['partner-links', 'Partner-Links'],
-          ['api', 'API & MCP'],
-          ['mcp-servers', 'MCP-Server'],
-          ['ai-tools', 'KI-Werkzeuge'],
-          ['ai-providers', 'KI-Anbieter (BYOK)'],
-          ['feedback', 'Fehler & Wünsche'],
-          ['audit', 'Protokoll'],
-          ['system', 'System'],
+          ['projects', tt('Projekte')],
+          ['contacts', tt('Kontakte')],
+          ['deals', tt('Deals')],
+          ['tasks', tt('Aufgaben')],
+          ['docs', tt('Dokumente')],
+          ['clients', tt('Kunden')],
+          ['saas', tt('SaaS')],
+          ...(cloud ? ([['cloud', tt('Cloud')]] as [string, string][]) : []),
+          ['snapshots', tt('Snapshots')],
+          ['umzug', tt('Umzug')],
+          ['domains', tt('Domains')],
+          ['branding', tt('White-Label')],
+          ['login', tt('Anmeldung')],
+          ['integrations', tt('Integrationen')],
+          ['partner-links', tt('Partner-Links')],
+          ['api', tt('API & MCP')],
+          ['mcp-servers', tt('MCP-Server')],
+          ['ai-tools', tt('KI-Werkzeuge')],
+          ['ai-providers', tt('KI-Anbieter (BYOK)')],
+          ['feedback', tt('Fehler & Wünsche')],
+          ['audit', tt('Protokoll')],
+          ['system', tt('System')],
         ]}
         value={tab}
         onChange={(t) => navigate(`agency/${t}`)}

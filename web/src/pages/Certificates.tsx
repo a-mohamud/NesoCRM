@@ -56,19 +56,19 @@ function TemplateDialog({ template, onClose, onSaved }: { template?: any; onClos
   const courses = useLoad(() => api.get<any[]>('/api/courses'), []);
   const quizzes = useLoad(() => api.get<any[]>('/api/quizzes'), []);
   const [t, setT] = useState({
-    name: template?.name ?? 'Teilnahmezertifikat',
+    name: template?.name ?? tt('Teilnahmezertifikat'),
     course_id: template?.course_id ?? '',
     issue_on: template?.issue_on ?? 'completion',
     quiz_id: template?.quiz_id ?? '',
     enabled: template ? !!template.enabled : true,
   });
   const [c, setC] = useState<any>(
-    template?.config ?? { title: 'Zertifikat', subtitle: 'Hiermit wird bestätigt, dass', body: 'den Kurs „{{course}}“ am {{date}} erfolgreich abgeschlossen hat.', color: '#1e3a8a', accent: '#b45309', bg: '#ffffff', logo_upload_id: '', signature_upload_id: '', signer_name: '', signer_title: '', issuer: '', footer: '', orientation: 'landscape', show_score: false, number_prefix: 'ZERT', send_email: true },
+    template?.config ?? { title: tt('Zertifikat'), subtitle: tt('Hiermit wird bestätigt, dass'), body: tt('den Kurs „{{course}}“ am {{date}} erfolgreich abgeschlossen hat.'), color: '#1e3a8a', accent: '#b45309', bg: '#ffffff', logo_upload_id: '', signature_upload_id: '', signer_name: '', signer_title: '', issuer: '', footer: '', orientation: 'landscape', show_score: false, number_prefix: 'ZERT', send_email: true },
   );
   const set = (p: any) => setT({ ...t, ...p });
   const cfg = (p: any) => setC({ ...c, ...p });
   const courseQuizzes = (quizzes.data ?? []).filter((q) => !t.course_id || q.course_id === t.course_id);
-  const problem = t.issue_on === 'quiz' && !t.quiz_id ? 'Bitte das Quiz wählen.' : '';
+  const problem = t.issue_on === 'quiz' && !t.quiz_id ? tt('Bitte das Quiz wählen.') : '';
   const body = () => ({ ...t, course_id: t.course_id || null, quiz_id: t.issue_on === 'quiz' ? t.quiz_id : null, config: c });
   const save = async () => {
     if (await act(() => (template ? api.patch(`/api/certificates/templates/${template.id}`, body()) : api.post('/api/certificates/templates', body())), tt('Vorlage gespeichert'))) {
@@ -106,7 +106,7 @@ function TemplateDialog({ template, onClose, onSaved }: { template?: any; onClos
       </div>
       <div className="cr-form-row" data-tour="cert-issue-on">
         <Field label={tt('Ausstellen')}>
-          <Select value={t.issue_on} onChange={(v) => set({ issue_on: v })} options={ISSUE_ON} />
+          <Select value={t.issue_on} onChange={(v) => set({ issue_on: v })} options={ISSUE_ON.map(([k, l]) => [k, tt(l)] as [string, string])} />
         </Field>
         {t.issue_on === 'quiz' && (
           <Field label={tt('Quiz')}>
@@ -146,7 +146,7 @@ function TemplateDialog({ template, onClose, onSaved }: { template?: any; onClos
           <Input type="color" value={c.accent} onChange={(v) => cfg({ accent: v })} />
         </Field>
         <Field label={tt('Format')}>
-          <Select value={c.orientation} onChange={(v) => cfg({ orientation: v })} options={[['landscape', 'Querformat'], ['portrait', 'Hochformat']]} />
+          <Select value={c.orientation} onChange={(v) => cfg({ orientation: v })} options={[['landscape', tt('Querformat')], ['portrait', tt('Hochformat')]]} />
         </Field>
         <Field label={tt('Nummernkreis')}>
           <Input value={c.number_prefix} onChange={(v) => cfg({ number_prefix: v.replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase() })} />
@@ -266,7 +266,7 @@ export function CertificatesTab() {
                 onClick={() => setEditing(t)}
                 side={
                   <>
-                    {!t.enabled && <Badge tone="gray">aus</Badge>}
+                    {!t.enabled && <Badge tone="gray">{tt('aus')}</Badge>}
                     <button
                       className="btn small ghost danger-text"
                       onClick={(e) => {
@@ -281,7 +281,7 @@ export function CertificatesTab() {
               >
                 <strong>{t.name}</strong>
                 <div className="cr-sub">
-                  {t.course_title || tt('alle Kurse')} · {ISSUE_ON.find((o) => o[0] === t.issue_on)?.[1]} · {t.issued} ausgestellt
+                  {t.course_title || tt('alle Kurse')} · {tt(ISSUE_ON.find((o) => o[0] === t.issue_on)?.[1] ?? '')} · {tt('{issued} ausgestellt', { issued: t.issued })}
                 </div>
               </Item>
             ))}

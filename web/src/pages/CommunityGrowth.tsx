@@ -11,6 +11,7 @@ import { useT } from '../i18n';
  */
 
 export function GrowthTab({ group, onChange }: { group: any; onChange: () => void }) {
+  const tt = useT('x_community');
   const [sub, setSub] = useState('welcome');
   return (
     <div className="cma" data-tour="community-growth">
@@ -18,9 +19,9 @@ export function GrowthTab({ group, onChange }: { group: any; onChange: () => voi
         value={sub}
         onChange={setSub}
         tabs={[
-          ['welcome', 'Willkommen'],
-          ['broadcast', 'Rundschreiben'],
-          ['partner', 'Partner-Programm'],
+          ['welcome', tt('Willkommen')],
+          ['broadcast', tt('Rundschreiben')],
+          ['partner', tt('Partner-Programm')],
         ]}
       />
       {sub === 'welcome' && <Welcome group={group} />}
@@ -108,7 +109,7 @@ function Welcome({ group }: { group: any }) {
               <div className="grow">
                 <Input value={it.label} maxLength={120} onChange={(v) => setItems(items.map((x, n) => (n === i ? { ...x, label: v } : x)))} aria-label={tt('Punkt {v}', { v: i + 1 })} />
                 <div style={{ marginTop: 6 }}>
-                  <Select value={it.kind} onChange={(v) => setItems(items.map((x, n) => (n === i ? { ...x, kind: v } : x)))} options={KINDS} />
+                  <Select value={it.kind} onChange={(v) => setItems(items.map((x, n) => (n === i ? { ...x, kind: v } : x)))} options={KINDS.map(([k, l]) => [k, tt(l)] as [string, string])} />
                 </div>
               </div>
               <button className="btn small ghost" aria-label={tt('Punkt {v} entfernen', { v: i + 1 })} onClick={() => setItems(items.filter((_, n) => n !== i))}>
@@ -150,7 +151,9 @@ function Broadcast({ group }: { group: any }) {
   const preview = async () => setCount(await act(() => api.post(`/api/community/groups/${group.id}/broadcasts/preview`, { segment: segment() })));
   const send = async () => {
     const n = (await api.post<any>(`/api/community/groups/${group.id}/broadcasts/preview`, { segment: segment() }).catch(() => null)) ?? null;
-    if (!(await confirmAsk(`Rundschreiben${f.scheduled_at ? ' einplanen' : tt(' jetzt senden')}?${n ? ` Es erreicht ${n.members} Mitglieder${has('email') ? tt(' ({email} per E-Mail)', { email: n.email }) : ''}.` : ''}`))) return;
+    const question = f.scheduled_at ? tt('Rundschreiben einplanen?') : tt('Rundschreiben jetzt senden?');
+    const reach = n ? ` ${tt('Es erreicht {members} Mitglieder', { members: n.members })}${has('email') ? tt(' ({email} per E-Mail)', { email: n.email }) : ''}.` : '';
+    if (!(await confirmAsk(`${question}${reach}`))) return;
     await run(() => api.post(`/api/community/groups/${group.id}/broadcasts`, { subject: f.subject, body: f.body, channels: f.channels, segment: segment(), scheduled_at: f.scheduled_at ? fromLocalInput(f.scheduled_at) : undefined }), f.scheduled_at ? 'Eingeplant' : 'Gesendet', () => (setF(blank), setCount(null), void hist.reload()));
   };
   return (
@@ -164,7 +167,7 @@ function Broadcast({ group }: { group: any }) {
         </Field>
         <Field label={tt('Wohin')}>
           <div className="cma-chips">
-            {[['email', 'E-Mail'], ['push', 'Push aufs Handy'], ['bell', 'Glocke in der Community']].map(([k, l]) => (
+            {[['email', tt('E-Mail')], ['push', tt('Push aufs Handy')], ['bell', tt('Glocke in der Community')]].map(([k, l]) => (
               <label key={k} className={`cma-chip${has(k) ? ' on' : ''}`}>
                 <input type="checkbox" checked={has(k)} onChange={() => toggle(k)} /> {l}
               </label>
@@ -220,7 +223,7 @@ function Broadcast({ group }: { group: any }) {
                     <strong>{b.subject}</strong> <Badge tone={b.status === 'sent' ? 'green' : b.status === 'scheduled' ? 'yellow' : 'gray'}>{b.status === 'sent' ? tt('Gesendet') : b.status === 'scheduled' ? tt('Geplant') : tt('Zurückgenommen')}</Badge>
                   </div>
                   <div className="muted small">
-                    {b.status === 'scheduled' ? tt('für {dt}', { dt: dt(b.scheduled_at) }) : dt(b.sent_at ?? b.created_at)} {tt('· {recipients} Empfänger ·', { recipients: b.recipients })} {b.channels.map((c: string) => hist.data.channels[c]).join(', ')}
+                    {b.status === 'scheduled' ? tt('für {dt}', { dt: dt(b.scheduled_at) }) : dt(b.sent_at ?? b.created_at)} {tt('· {recipients} Empfänger ·', { recipients: b.recipients })} {b.channels.map((c: string) => tt(hist.data.channels[c] ?? c)).join(', ')}
                     {b.push_devices ? tt(' · {push_devices} Geräte', { push_devices: b.push_devices }) : ''}
                   </div>
                 </div>

@@ -138,7 +138,7 @@ export function ReplySettingsPanel({ cfg, onSaved }: { cfg: ReplyCfg | null | un
           <Select value={v.tone} onChange={(x) => set({ tone: x })} options={cfg.tones.map((t) => [t.id, `${t.label} – ${t.hint}`] as [string, string])} />
         </Field>
         <Field label={tt('Anrede')}>
-          <Select value={v.formality} onChange={(x) => set({ formality: x as 'sie' | 'du' })} options={[['sie', 'Sie (förmlich)'], ['du', 'du (persönlich)']]} />
+          <Select value={v.formality} onChange={(x) => set({ formality: x as 'sie' | 'du' })} options={[['sie', tt('Sie (förmlich)')], ['du', tt('du (persönlich)')]]} />
         </Field>
       </div>
       <Field label={tt('Eigene Hinweise (optional)')} hint={tt('z. B. „Nenne nie Preise.“ oder „Bei Kritik immer den Rückruf anbieten.“')}>

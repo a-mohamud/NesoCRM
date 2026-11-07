@@ -78,14 +78,15 @@ export function useBuild(id: string | undefined) {
 
 /** What the build is doing right now – with step names, updated by polling. */
 export function Progress({ b }: { b: Pick<Build, 'progress' | 'status'> }) {
+  const tt = useT('x_ai');
   const p = b.progress;
   if (!p?.label || !['planning', 'building'].includes(b.status)) return null;
   const pct = p.total && p.total > 1 ? Math.round(((p.current ?? 0) / p.total) * 100) : 0;
   return (
     <div className="wk-progress" role="status" aria-live="polite" data-tour="wk-progress">
       <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-        <Spinner /> <strong>{p.label}</strong>
-        {p.total && p.total > 1 ? <span className="muted small">{p.current} von {p.total}</span> : null}
+        <Spinner /> <strong>{tt(p.label)}</strong>
+        {p.total && p.total > 1 ? <span className="muted small">{tt('{current} von {total}', { current: p.current ?? 0, total: p.total })}</span> : null}
       </div>
       {pct > 0 && (
         <div className="wk-meter" aria-hidden>
@@ -99,7 +100,8 @@ export function Progress({ b }: { b: Pick<Build, 'progress' | 'status'> }) {
 const BLOCK_LABEL: Record<string, string> = { object_type: 'Objekt', workflow: 'Automation', custom_field: 'Kontaktfeld', property: 'Feld', report: 'Bericht', dashboard: 'Dashboard', agent: 'KI-Agent', template: 'Vorlage', form: 'Formular', pipeline: 'Pipeline', tag: 'Tag' };
 
 export function StatusBadge({ b }: { b: Pick<Build, 'status' | 'status_label'> }) {
-  return <Badge tone={STATUS_TONE[b.status] ?? 'gray'}>{b.status_label}</Badge>;
+  const tt = useT('x_ai');
+  return <Badge tone={STATUS_TONE[b.status] ?? 'gray'}>{tt(b.status_label)}</Badge>;
 }
 
 export function LogView({ log }: { log: NonNullable<Build['log']> }) {
@@ -122,11 +124,14 @@ export function LogView({ log }: { log: NonNullable<Build['log']> }) {
 function ManifestSummary({ m }: { m: any }) {
   const tt = useT('x_ai');
   const parts: string[] = [];
-  if (m.entries?.page) parts.push(`Seite im Menü: „${m.entries.page.title}“`);
-  for (const p of m.entries?.panels ?? []) parts.push(`Panel auf der ${p.on === 'contact' ? 'Kontakt' : 'Deal'}-Seite: „${p.title}“`);
-  for (const w of m.entries?.widgets ?? []) parts.push(`Dashboard-Widget: „${w.title}“`);
-  for (const a of m.entries?.actions ?? []) parts.push(`Automations-Schritt: „${a.label}“`);
-  for (const j of m.entries?.jobs ?? []) parts.push(`Geplanter Job: „${j.label}“ (${{ hourly: 'stündlich', daily: 'täglich', weekly: 'wöchentlich' }[j.every as 'daily']}${j.at ? ` um ${j.at}` : ''})`);
+  if (m.entries?.page) parts.push(tt('Seite im Menü: „{title}“', { title: m.entries.page.title }));
+  for (const p of m.entries?.panels ?? []) parts.push(p.on === 'contact' ? tt('Panel auf der Kontakt-Seite: „{title}“', { title: p.title }) : tt('Panel auf der Deal-Seite: „{title}“', { title: p.title }));
+  for (const w of m.entries?.widgets ?? []) parts.push(tt('Dashboard-Widget: „{title}“', { title: w.title }));
+  for (const a of m.entries?.actions ?? []) parts.push(tt('Automations-Schritt: „{label}“', { label: a.label }));
+  for (const j of m.entries?.jobs ?? []) {
+    const every = tt({ hourly: 'stündlich', daily: 'täglich', weekly: 'wöchentlich' }[j.every as 'daily'] ?? String(j.every));
+    parts.push(j.at ? tt('Geplanter Job: „{label}“ ({every} um {at})', { label: j.label, every, at: j.at }) : tt('Geplanter Job: „{label}“ ({every})', { label: j.label, every }));
+  }
   return (
     <div className="wk-manifest">
       <strong>{m.name}</strong>
@@ -158,7 +163,7 @@ export function PlanView({ b, me, onChange }: { b: Build; me?: WerkstattMe; onCh
   return (
     <div className="wk-plan" data-tour="wk-plan">
       <div className="row" style={{ alignItems: 'baseline', gap: 8 }}>
-        <Badge tone={b.stage === 2 ? 'purple' : 'blue'}>{b.stage === 2 ? tt('Stufe 2 · {stage2}', { stage2: NAMES.stage2 }) : tt('Stufe 1 · {stage1}', { stage1: NAMES.stage1 })}</Badge>
+        <Badge tone={b.stage === 2 ? 'purple' : 'blue'}>{b.stage === 2 ? tt('Stufe 2 · {stage2}', { stage2: tt(NAMES.stage2) }) : tt('Stufe 1 · {stage1}', { stage1: tt(NAMES.stage1) })}</Badge>
         <h3 style={{ margin: 0 }}>{plan.title ?? b.title}</h3>
       </div>
       <p>{plan.summary}</p>
@@ -253,7 +258,7 @@ export function ResultView({ b, onChange }: { b: Build; onChange: () => void }) 
           <ul className="wk-created">
             {b.created!.map((c, i) => (
               <li key={i} className={c.undone ? 'undone' : ''}>
-                {c.url && !c.undone ? <Link to={c.url}>{c.name}</Link> : c.name} <span className="muted small">· {BLOCK_LABEL[c.block] ?? c.block}{c.undone ? tt(' · rückgängig gemacht') : ''}</span>
+                {c.url && !c.undone ? <Link to={c.url}>{c.name}</Link> : c.name} <span className="muted small">· {tt(BLOCK_LABEL[c.block] ?? c.block)}{c.undone ? tt(' · rückgängig gemacht') : ''}</span>
               </li>
             ))}
           </ul>
@@ -290,7 +295,7 @@ export function BuildView({ b, me, onChange }: { b: Build; me?: WerkstattMe; onC
             <Spinner /> <strong>{tt('Die KI analysiert deinen Wunsch …')}</strong>
           </div>
         )}
-        <p className="muted small">{tt('Das dauert meist eine halbe Minute. Du kannst das Fenster schließen – der Auftrag steht danach in der {werkstatt}.', { werkstatt: NAMES.werkstatt })}</p>
+        <p className="muted small">{tt('Das dauert meist eine halbe Minute. Du kannst das Fenster schließen – der Auftrag steht danach in der {werkstatt}.', { werkstatt: tt(NAMES.werkstatt) })}</p>
         <LogView log={b.log ?? []} />
       </>
     );
@@ -299,7 +304,7 @@ export function BuildView({ b, me, onChange }: { b: Build; me?: WerkstattMe; onC
     <>
       {b.status !== 'planned' && b.plan?.title && (
         <p>
-          <strong>{b.plan.title}</strong> <span className="muted small">· {b.stage_label} · {dt(b.created_at)}</span>
+          <strong>{b.plan.title}</strong> <span className="muted small">· {tt(b.stage_label)} · {dt(b.created_at)}</span>
         </p>
       )}
       {b.status === 'planned' ? <PlanView b={b} me={me} onChange={onChange} /> : <ResultView b={b} onChange={onChange} />}
@@ -345,14 +350,14 @@ function BuildModal({ init, onClose }: { init: { wishId?: string; title?: string
   const m = me.data;
   return (
     <Modal
-      title={`${NAMES.build} – ${NAMES.werkstatt}`}
+      title={`${tt(NAMES.build)} – ${tt(NAMES.werkstatt)}`}
       wide
       onClose={onClose}
       footer={
         b ? (
           <>
             <button className="btn secondary" onClick={() => (onClose(), navigate(`werkstatt/${b.id}`))}>
-              {tt('In der {werkstatt} öffnen', { werkstatt: NAMES.werkstatt })}
+              {tt('In der {werkstatt} öffnen', { werkstatt: tt(NAMES.werkstatt) })}
             </button>
             <button className="btn" onClick={onClose}>
               {tt('Schließen')}
@@ -381,7 +386,7 @@ function BuildModal({ init, onClose }: { init: { wishId?: string; title?: string
           {m?.can_build && !m.ai_problem && m.budget_problem && <div className="card notice-card">{m.budget_problem}</div>}
           {m?.can_build && !m.ai_problem && !m.budget_problem && <p className="muted small">{tt('KI: {label} · {model}', { label: m.ai.label, model: m.ai.model })}{m.needs_approval ? tt(' · Ein Admin gibt den Bau nach deiner Bestätigung frei.') : ''}</p>}
           <p className="muted small">
-            {tt('Alles gilt nur für diesen Sub-Account. Ein Wunsch wird zuerst ein privates Plugin, das nur du siehst – später kann es für den Sub-Account, die ganze Agentur oder den {marktplatz} freigegeben werden.', { marktplatz: NAMES.marktplatz })}
+            {tt('Alles gilt nur für diesen Sub-Account. Ein Wunsch wird zuerst ein privates Plugin, das nur du siehst – später kann es für den Sub-Account, die ganze Agentur oder den {marktplatz} freigegeben werden.', { marktplatz: tt(NAMES.marktplatz) })}
           </p>
         </>
       ) : (
@@ -410,14 +415,14 @@ export function WishBuilds({ wishId }: { wishId: string }) {
     <div className="card wk-wish" data-tour="wish-build">
       <div className="row" style={{ alignItems: 'center' }}>
         <div className="grow">
-          <h2 style={{ margin: 0 }}>{NAMES.build}</h2>
+          <h2 style={{ margin: 0 }}>{tt(NAMES.build)}</h2>
           <p className="muted small" style={{ margin: '4px 0 0' }}>
             {tt('Die KI schlägt einen Plan vor und baut ihn nach deiner Bestätigung – zuerst nur für dich.')}
           </p>
         </div>
         {me.data.can_build && (
           <button className="btn" onClick={() => openBuild({ wishId })}>
-            <Icon name="hammer" size={14} /> {NAMES.build}
+            <Icon name="hammer" size={14} /> {tt(NAMES.build)}
           </button>
         )}
       </div>
@@ -436,6 +441,7 @@ export function WishBuilds({ wishId }: { wishId: string }) {
 
 /** Done screen of a new wish: build it right away. */
 export function BuildHint({ wishId, onBefore }: { wishId: string; onBefore: () => void }) {
+  const tt = useT('x_ai');
   const me = useWerkstattMe();
   if (!me.data?.can_build) return null;
   return (
@@ -447,7 +453,7 @@ export function BuildHint({ wishId, onBefore }: { wishId: string; onBefore: () =
         openBuild({ wishId });
       }}
     >
-      <Icon name="hammer" size={14} /> {NAMES.build}
+      <Icon name="hammer" size={14} /> {tt(NAMES.build)}
     </button>
   );
 }

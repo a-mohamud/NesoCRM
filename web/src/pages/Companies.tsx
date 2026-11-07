@@ -26,7 +26,7 @@ import { MoreFields, useSimple } from '../areas/fields';
 import { COMPANY_COLUMNS, defaultColumns } from '../areas/easy-core';
 import '../areas/easy-core.css';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { useT, type TFn } from '../i18n';
 
 /** Firmen: list with filters, columns and saved views; company page with everything linked to it. */
 
@@ -54,6 +54,10 @@ const COMPUTED: FieldDef[] = [
   { key: 'updated_at', label: 'Geändert', type: 'datetime' },
 ];
 const VIEW_KEY = 'pghl_companies_view';
+
+/** Built-in field definitions with their labels (and option labels) in the UI language. */
+export const trFields = (tt: TFn, fs: FieldDef[]): FieldDef[] =>
+  fs.map((f) => ({ ...f, label: tt(f.label), ...(f.optionLabels ? { optionLabels: Object.fromEntries(Object.entries(f.optionLabels).map(([k, v]) => [k, tt(v)])) } : {}) }));
 
 function useCompanySchema() {
   const meta = useLoad(() => api.get<any>('/api/properties?object=company'), []);
@@ -174,7 +178,7 @@ export function Companies() {
     const t = setTimeout(() => setDebounced(q), 250);
     return () => clearTimeout(t);
   }, [q]);
-  const fields: FieldDef[] = [...COMPANY_STANDARD, ...COMPUTED, ...schema.custom.map((p) => ({ ...p, key: `custom.${p.key}` }))];
+  const fields: FieldDef[] = [...trFields(tt, [...COMPANY_STANDARD, ...COMPUTED]), ...schema.custom.map((p) => ({ ...p, key: `custom.${p.key}` }))];
   const active = cleanFilters(filters);
   const qs = `q=${encodeURIComponent(debounced)}&sort=${encodeURIComponent(sort)}${active.length ? `&filters=${encodeURIComponent(JSON.stringify(active))}` : ''}`;
   const list = useLoad(() => api.get<any>(`/api/companies?${qs}&limit=50&offset=${page * 50}`), [qs, page]);
@@ -195,7 +199,7 @@ export function Companies() {
           {r.domain && <div className="muted small">{r.domain}</div>}
         </>
       );
-    if (f.key === 'lifecycle_stage') return r.lifecycle_stage ? <Badge tone={stageTone(r.lifecycle_stage) as any}>{LIFECYCLE[r.lifecycle_stage] ?? r.lifecycle_stage}</Badge> : <span className="muted">–</span>;
+    if (f.key === 'lifecycle_stage') return r.lifecycle_stage ? <Badge tone={stageTone(r.lifecycle_stage) as any}>{tt(LIFECYCLE[r.lifecycle_stage] ?? r.lifecycle_stage)}</Badge> : <span className="muted">–</span>;
     if (f.key === 'owner_id') return r.owner_name ?? <span className="muted">–</span>;
     if (f.key === 'updated_at' || f.key === 'created_at') return <span className="muted">{d(r[f.key])}</span>;
     if (f.key.startsWith('custom.')) return <PropValue def={f} value={r.custom?.[f.key.slice(7)]} users={users} />;
@@ -319,7 +323,7 @@ export function CompanyDetail({ id }: { id: string }) {
   if (!c.data) return c.error ? <Empty>{c.error}</Empty> : <Spinner />;
   const co = c.data;
   const values = { ...co, ...Object.fromEntries(Object.entries(co.custom ?? {}).map(([k, v]) => [`custom.${k}`, v])) };
-  const fields: FieldDef[] = [...COMPANY_STANDARD, ...schema.custom.map((p) => ({ ...p, key: `custom.${p.key}` }))];
+  const fields: FieldDef[] = [...trFields(tt, COMPANY_STANDARD), ...schema.custom.map((p) => ({ ...p, key: `custom.${p.key}` }))];
   const save = async (v: Record<string, any>) => {
     const body: any = { custom: {} };
     for (const [k, val] of Object.entries(v)) {
@@ -343,7 +347,7 @@ export function CompanyDetail({ id }: { id: string }) {
               </a>
             )}
             {co.domain ? ' · ' : ''}
-            {co.lifecycle_stage && <Badge tone={stageTone(co.lifecycle_stage) as any}>{LIFECYCLE[co.lifecycle_stage]}</Badge>} {tt('Angelegt {dt}', { dt: dt(co.created_at) })}
+            {co.lifecycle_stage && <Badge tone={stageTone(co.lifecycle_stage) as any}>{tt(LIFECYCLE[co.lifecycle_stage] ?? co.lifecycle_stage)}</Badge>} {tt('Angelegt {dt}', { dt: dt(co.created_at) })}
             {co.source ? tt(' · Quelle: {source}', { source: co.source }) : ''}
           </>
         }
@@ -383,9 +387,9 @@ export function CompanyDetail({ id }: { id: string }) {
             <div style={{ padding: '6px 14px 0' }}>
               <Tabs
                 tabs={[
-                  ['activity', 'Aktivität'],
-                  ['notes', `Notizen (${co.notes.length})`],
-                  ['tasks', `Aufgaben (${openTasks})`],
+                  ['activity', tt('Aktivität')],
+                  ['notes', tt('Notizen ({n})', { n: co.notes.length })],
+                  ['tasks', tt('Aufgaben ({n})', { n: openTasks })],
                 ]}
                 value={tab}
                 onChange={setTab}

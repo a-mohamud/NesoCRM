@@ -37,6 +37,8 @@ import { MEMORY_TOURS } from './content/memory';
 import { CALLS_TOURS } from './content/calls';
 import { SALES_TOURS } from './content/sales';
 import { COMPANY_TOURS } from './content/company';
+import { getLocale, tr, useT } from '../i18n';
+import { SOURCE_LOCALE } from '../i18n/registry';
 
 /** All tours: the big journey („Firma übernehmen“, in chapters) and one tour per area. Pure data – no React. */
 export { JOURNEY };
@@ -95,7 +97,66 @@ export const GROUPS: { id: TourGroup; label: string; icon: IconName }[] = [
   { id: 'agency', label: 'Agentur & Betrieb', icon: 'agency' },
 ];
 
-export const tourById = (id: string) => TOURS.find((t) => t.id === id);
+// --- language ---------------------------------------------------------------------------------
+// Tour texts are module-level data in German (the message ids). They are translated where they are read: every
+// function below that hands tours to the screen returns them in the active language (x_tours_a, x_tours_b, core).
+const tA = tr('x_tours_a');
+const tB = tr('x_tours_b');
+const german = () => getLocale() === SOURCE_LOCALE;
+
+/** A German tour text (title, step text, keyword …) in the active language; unknown texts stay German. */
+export function tourText(s: string): string;
+export function tourText(s: string | undefined): string | undefined;
+export function tourText(s: string | undefined): string | undefined {
+  if (!s || german()) return s;
+  const a = tA(s);
+  return a !== s ? a : tB(s);
+}
+
+/** Loads both tour catalogs (suspends inside the page's Suspense boundary) and re-renders on a language switch. */
+export function useTourText() {
+  useT('x_tours_a');
+  useT('x_tours_b');
+  return tourText;
+}
+
+/** A step with its texts in the active language. `demo.fill` changes only when it is a translated sample text. */
+export function localizeStep<S extends TourStep>(s: S): S {
+  if (german()) return s;
+  const demo = s.demo ? { ...s.demo, label: tourText(s.demo.label), fill: tourText(s.demo.fill) } : undefined;
+  return { ...s, title: tourText(s.title), text: tourText(s.text), do: tourText(s.do), missing: tourText(s.missing), demo };
+}
+
+const localized = new WeakMap<Tour, { l: string; probe: string; out: Tour }>();
+/** A tour with every text in the active language (cached per language; renewed once a catalog has loaded). */
+export function localizeTour(t: Tour): Tour {
+  if (german()) return t;
+  const l = getLocale();
+  const probe = `${tourText(t.title)}|${tourText(t.steps[0]?.text ?? '')}`;
+  const hit = localized.get(t);
+  if (hit && hit.l === l && hit.probe === probe) return hit.out;
+  const out: Tour = {
+    ...t,
+    title: tourText(t.title),
+    summary: tourText(t.summary),
+    keywords: t.keywords && tourText(t.keywords),
+    learned: t.learned.map((x) => tourText(x)),
+    docs: t.docs && { ...t.docs, label: tourText(t.docs.label) },
+    steps: t.steps.map(localizeStep),
+  };
+  localized.set(t, { l, probe, out });
+  return out;
+}
+const localizeAll = (list: Tour[]) => (german() ? list : list.map(localizeTour));
+const rawById = new Map(TOURS.map((t) => [t.id, t]));
+
+/** A group's label in the active language. */
+export const groupLabel = (g: { label: string }) => tB(g.label);
+
+export const tourById = (id: string) => {
+  const t = rawById.get(id) ?? TOURS.find((x) => x.id === id);
+  return t && localizeTour(t);
+};
 
 /** Who is looking: agency admin or a (possibly restricted) member. */
 export interface Access {
@@ -105,7 +166,7 @@ export interface Access {
 
 export const tourVisible = (t: Pick<Tour, 'admin' | 'perm'>, a: Access) => (!t.admin || a.admin) && (!t.perm || a.can(t.perm));
 export const stepVisible = (s: TourStep, a: Access) => (!s.admin || a.admin) && (!s.perm || a.can(s.perm));
-export const visibleTours = (a: Access, list: Tour[] = TOURS) => list.filter((t) => tourVisible(t, a));
+export const visibleTours = (a: Access, list: Tour[] = TOURS) => localizeAll(list.filter((t) => tourVisible(t, a)));
 
 /** Tours the „?“ button offers on a page (`settings/telephony`, `contacts/123` …), most specific first. */
 export function toursForPath(path: string, a: Access): Tour[] {
@@ -123,7 +184,10 @@ export function searchTours(list: Tour[], q: string): Tour[] {
   const words = norm(q).split(/\s+/).filter(Boolean);
   if (!words.length) return list;
   return list.filter((t) => {
-    const hay = norm([t.title, t.summary, t.keywords ?? '', ...t.steps.map((s) => s.title)].join(' '));
+    // German and translated texts both count, so a search in either language finds the tour.
+    const raw = rawById.get(t.id);
+    const texts = (x: Tour) => [x.title, x.summary, x.keywords ?? '', ...x.steps.map((s) => s.title)];
+    const hay = norm([...texts(t), ...(raw && raw !== t ? texts(raw) : []), ...(german() ? [] : texts(localizeTour(raw ?? t)))].join(' '));
     return words.every((w) => hay.includes(w));
   });
 }
@@ -146,27 +210,28 @@ export interface Badge {
 
 /** Small rewards for finished tours. Group badges only count when the person can see that group. */
 export function badges(progress: Record<string, TourProgress>, a: Access): Badge[] {
+  const tb = tr('x_tours_b');
   const done = (t: Tour) => !!progress[t.id]?.done;
   const mods = visibleTours(a, MODULE_TOURS);
   const group = (g: TourGroup) => mods.filter((t) => t.group === g);
   const all = (list: Tour[]) => list.length > 0 && list.every(done);
   const out: Badge[] = [
-    { id: 'first', label: 'Erste Tour', hint: 'Eine Tour bis zum Ende gemacht', icon: 'flag', earned: visibleTours(a).some(done) },
-    { id: 'start', label: 'Orientiert', hint: 'Alle Touren unter „Erste Schritte“', icon: 'academy', earned: all(group('start')) },
-    { id: 'company', label: 'Firma im Griff', hint: 'Alle Lektionen des Kurses „Deine Firma führen“', icon: 'trophy', earned: all(group('company')) },
-    { id: 'crm', label: 'CRM-Profi', hint: 'Alle Touren zu Kunden & Tagesgeschäft', icon: 'contacts', earned: all(group('crm')) },
-    { id: 'marketing', label: 'Marketing-Profi', hint: 'Alle Marketing-Touren', icon: 'campaigns', earned: all(group('marketing')) },
-    { id: 'sites', label: 'Seiten-Baumeister', hint: 'Alle Touren zu Websites, Kursen & Community', icon: 'website', earned: all(group('sites')) },
-    { id: 'revenue', label: 'Umsatz-Profi', hint: 'Alle Umsatz-Touren', icon: 'invoices', earned: all(group('revenue')) },
-    { id: 'reputation', label: 'Gut bewertet', hint: 'Alle Touren zu Bewertungen und Google', icon: 'reviews', earned: all(group('reputation')) },
-    { id: 'service', label: 'Service-Held', hint: 'Alle Touren zu Service & Support', icon: 'service', earned: all(group('service')) },
-    { id: 'ai', label: 'KI-Pionier', hint: 'Alle KI-Touren', icon: 'ai', earned: all(group('ai')) },
-    { id: 'settings', label: 'Einstellungs-Kenner', hint: 'Alle Touren zu Einstellungen & Kanälen', icon: 'settings', earned: all(group('settings')) },
+    { id: 'first', label: tb('Erste Tour'), hint: tb('Eine Tour bis zum Ende gemacht'), icon: 'flag', earned: visibleTours(a).some(done) },
+    { id: 'start', label: tb('Orientiert'), hint: tb('Alle Touren unter „Erste Schritte“'), icon: 'academy', earned: all(group('start')) },
+    { id: 'company', label: tb('Firma im Griff'), hint: tb('Alle Lektionen des Kurses „Deine Firma führen“'), icon: 'trophy', earned: all(group('company')) },
+    { id: 'crm', label: tb('CRM-Profi'), hint: tb('Alle Touren zu Kunden & Tagesgeschäft'), icon: 'contacts', earned: all(group('crm')) },
+    { id: 'marketing', label: tb('Marketing-Profi'), hint: tb('Alle Marketing-Touren'), icon: 'campaigns', earned: all(group('marketing')) },
+    { id: 'sites', label: tb('Seiten-Baumeister'), hint: tb('Alle Touren zu Websites, Kursen & Community'), icon: 'website', earned: all(group('sites')) },
+    { id: 'revenue', label: tb('Umsatz-Profi'), hint: tb('Alle Umsatz-Touren'), icon: 'invoices', earned: all(group('revenue')) },
+    { id: 'reputation', label: tb('Gut bewertet'), hint: tb('Alle Touren zu Bewertungen und Google'), icon: 'reviews', earned: all(group('reputation')) },
+    { id: 'service', label: tb('Service-Held'), hint: tb('Alle Touren zu Service & Support'), icon: 'service', earned: all(group('service')) },
+    { id: 'ai', label: tb('KI-Pionier'), hint: tb('Alle KI-Touren'), icon: 'ai', earned: all(group('ai')) },
+    { id: 'settings', label: tb('Einstellungs-Kenner'), hint: tb('Alle Touren zu Einstellungen & Kanälen'), icon: 'settings', earned: all(group('settings')) },
   ];
-  if (a.admin) out.push({ id: 'agency', label: 'Agentur-Chef', hint: 'Alle Agentur-Touren', icon: 'agency', earned: all(group('agency')) });
+  if (a.admin) out.push({ id: 'agency', label: tb('Agentur-Chef'), hint: tb('Alle Agentur-Touren'), icon: 'agency', earned: all(group('agency')) });
   const j = visibleTours(a, JOURNEY);
-  out.push({ id: 'journey', label: 'Firma übernommen', hint: 'Alle Kapitel von „Firma übernehmen“', icon: 'trophy', earned: all(j) });
-  out.push({ id: 'all', label: 'Absolvent', hint: 'Wirklich alle Touren der Akademie', icon: 'award', earned: all(visibleTours(a)) });
+  out.push({ id: 'journey', label: tb('Firma übernommen'), hint: tb('Alle Kapitel von „Firma übernehmen“'), icon: 'trophy', earned: all(j) });
+  out.push({ id: 'all', label: tb('Absolvent'), hint: tb('Wirklich alle Touren der Akademie'), icon: 'award', earned: all(visibleTours(a)) });
   // Groups this person cannot see at all give no badge.
   return out.filter((b) => !(['start', 'company', 'crm', 'marketing', 'sites', 'revenue', 'reputation', 'service', 'ai', 'settings', 'agency'] as string[]).includes(b.id) || group(b.id as TourGroup).length > 0);
 }
@@ -188,8 +253,9 @@ export function composeSteps(tour: Tour, a: Access): RunStep[] {
       if (s.kind === 'click' || s.kind === 'navigate' || s.kind === 'wait') page = undefined;
       return out;
     });
-  const intro: RunStep[] = tour.practice && a.admin ? [{ special: 'context', title: 'Wo möchtest du üben?', text: 'In dieser Tour legst du selbst etwas an. Am besten übst du in der **Übungs-Firma** – dort sind alle Kunden erfunden und nichts wird verschickt.' }] : [];
-  return [...intro, ...steps, { special: 'outro', title: tour.chapter ? `Kapitel ${tour.chapter} geschafft!` : 'Geschafft!', text: 'Das hast du gelernt:' }];
+  const tb = tr('x_tours_b');
+  const intro: RunStep[] = tour.practice && a.admin ? [{ special: 'context', title: tb('Wo möchtest du üben?'), text: tb('In dieser Tour legst du selbst etwas an. Am besten übst du in der **Übungs-Firma** – dort sind alle Kunden erfunden und nichts wird verschickt.') }] : [];
+  return [...intro, ...steps, { special: 'outro', title: tour.chapter ? tb('Kapitel {chapter} geschafft!', { chapter: tour.chapter }) : tb('Geschafft!'), text: tb('Das hast du gelernt:') }];
 }
 
 /** Where a resumed tour starts: the step itself, or the last one before it that opens its own page. */

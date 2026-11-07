@@ -8,7 +8,7 @@ import { Link, toastError } from '../ui';
 import { PluginFrame } from '../werkstatt/PluginFrame';
 import { ActionButtons } from './Actions';
 import type { ListRow, NumberFormat, Tone, View } from './types';
-import { useT } from '../i18n';
+import { intlLocale, useT } from '../i18n';
 
 /**
  * Draws the standard views a widget returns (server/services/boards-widgets.ts). A widget written by a module author
@@ -48,7 +48,7 @@ function NumberView({ v }: { v: Extract<View, { kind: 'number' }> }) {
         {v.label && <span className="bd-num-label">{v.label}</span>}
         {d !== null && d !== undefined && (
           <span className={`bd-delta ${d > 0 ? 'up' : d < 0 ? 'down' : ''}`} title={tt('Veränderung zur Vorperiode')}>
-            {d > 0 ? '▲' : d < 0 ? '▼' : '='} {Math.abs(d).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %
+            {d > 0 ? '▲' : d < 0 ? '▼' : '='} {tt('{v} %', { v: Math.abs(d).toLocaleString(intlLocale(), { maximumFractionDigits: 1 }) })}
           </span>
         )}
         {v.hint && <span className="bd-hint">{v.hint}</span>}
@@ -125,7 +125,7 @@ function ListView({ v }: { v: Extract<View, { kind: 'list' }> }) {
       </ul>
       {v.total !== undefined && v.total > v.rows.length && (
         <Go url={v.url} className="bd-more">
-          {tt('Alle')} {v.total.toLocaleString('de-DE')} ansehen
+          {tt('Alle {n} ansehen', { n: v.total.toLocaleString(intlLocale()) })}
         </Go>
       )}
     </div>
@@ -161,7 +161,7 @@ function TableView({ v }: { v: Extract<View, { kind: 'table' }> }) {
       </table>
       {v.total !== undefined && v.total > v.rows.length && (
         <Go url={v.url} className="bd-more">
-          {tt('Alle')} {v.total.toLocaleString('de-DE')} ansehen
+          {tt('Alle {n} ansehen', { n: v.total.toLocaleString(intlLocale()) })}
         </Go>
       )}
     </div>

@@ -1,5 +1,6 @@
 import type { CanvasXrLayout, Pose } from '../../../../server/services/xr-model';
 import { api, currentLocation } from '../../api';
+import { tr } from '../../i18n';
 import { CANVAS_POSE, fitPlane, HUD_POSE } from './geometry';
 import type { Scene } from './scene';
 import { drawImagePlane, type HudButton, type HudState } from './textures';
@@ -30,7 +31,7 @@ export interface CanvasXrOptions {
 export const EXPORT_SCALES = [1.5, 0.8, 0.4];
 
 export async function fetchCanvasImage(canvasId: string, dark: boolean, fetcher: typeof fetch = fetch): Promise<{ bitmap: ImageBitmap; w: number; h: number }> {
-  let last = 'Das Canvas lässt sich nicht als Bild laden.';
+  let last = tr('x_misc')('Das Canvas lässt sich nicht als Bild laden.');
   for (const scale of EXPORT_SCALES) {
     const r = await fetcher(`/api/canvas/${canvasId}/export?format=png&scale=${scale}&theme=${dark ? 'dark' : 'light'}`, { credentials: 'same-origin', headers: { 'x-pghl': '1', ...(currentLocation() ? { 'x-location-id': currentLocation() } : {}) } });
     if (r.ok) {
@@ -64,7 +65,7 @@ export async function openCanvasXr(o: CanvasXrOptions): Promise<CanvasXr> {
   };
 
   const hud = () =>
-    scene.setHud({ title: o.name, live: 'Live', mic: 'off', message: message || 'Ziehen verschiebt das Canvas. Daumenstick: näher, ferner, größer, kleiner.', messageTone: tone, buttons: ['refresh', 'theme', 'exit'] }, HUD_POSE);
+    scene.setHud({ title: o.name, live: 'Live', mic: 'off', message: message || tr('x_misc')('Ziehen verschiebt das Canvas. Daumenstick: näher, ferner, größer, kleiner.'), messageTone: tone, buttons: ['refresh', 'theme', 'exit'] }, HUD_POSE);
   const say = (text: string, t: HudState['messageTone'] = 'normal') => {
     message = text;
     tone = t;
@@ -102,7 +103,7 @@ export async function openCanvasXr(o: CanvasXrOptions): Promise<CanvasXr> {
     if (!p) return;
     plane = { ...p, curve: plane.curve };
     if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = later(() => api.put(`/api/canvas/${canvasId}/xr-layout`, { layout: { v: 1, plane } }).catch((e: Error) => o.onError(`Anordnung nicht gespeichert: ${e.message}`)), 800);
+    saveTimer = later(() => api.put(`/api/canvas/${canvasId}/xr-layout`, { layout: { v: 1, plane } }).catch((e: Error) => o.onError(tr('x_misc')('Anordnung nicht gespeichert: {message}', { message: e.message }))), 800);
   };
 
   // changes by anybody (or the agent) redraw the picture – at most every 2 s

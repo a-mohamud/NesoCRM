@@ -22,9 +22,9 @@ export function useOAuthReturn(onOk?: () => void) {
     const state = q.get('oauth');
     if (!state) return;
     if (state === 'ok') {
-      toast(`${LABEL[q.get('provider') ?? ''] ?? tt('Konto')} verbunden`);
+      toast(tt('{label} verbunden', { label: LABEL[q.get('provider') ?? ''] ?? tt('Konto') }));
       onOk?.();
-    } else toastError(q.get('msg') || 'Verbinden fehlgeschlagen');
+    } else toastError(q.get('msg') || tt('Verbinden fehlgeschlagen'));
     history.replaceState(null, '', location.pathname);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -55,7 +55,7 @@ export function OAuthApps() {
   const count = (p: string, purpose: string) => s.data.connections.find((c: any) => c.provider === p && c.purpose === purpose)?.n ?? 0;
   const status = (p: string) =>
     s.data[p].configured ? (
-      <Badge tone="green">eingerichtet{s.data[p].from_env ? tt(' (Umgebung)') : ''}</Badge>
+      <Badge tone="green">{tt('eingerichtet')}{s.data[p].from_env ? tt(' (Umgebung)') : ''}</Badge>
     ) : (
       <Badge>{tt('nicht eingerichtet')}</Badge>
     );

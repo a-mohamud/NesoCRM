@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { Month, Projection, Step, Tornado } from '../../../server/services/calc-engine';
 import { money } from '../../../server/services/calc-engine';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * Hand-made SVG charts of the Gewinnrechner (no chart library): waterfall, tornado and the projection lines.
@@ -37,8 +37,9 @@ const eur = (v: number) => money(v).replace(/^-/, '−');
 export function axisLabel(v: number): string {
   const a = Math.abs(v);
   const f = (x: number, d: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: d }).format(x).replace(/^-/, '−');
-  if (a >= 1e6) return `${f(v / 1e6, 1)} Mio.`;
-  if (a >= 1e4) return `${f(v / 1e3, 0)} Tsd.`;
+  const tt = tr('x_finance');
+  if (a >= 1e6) return tt('{v} Mio.', { v: f(v / 1e6, 1) });
+  if (a >= 1e4) return tt('{v} Tsd.', { v: f(v / 1e3, 0) });
   return f(v, a < 10 && !Number.isInteger(v) ? 1 : 0);
 }
 
@@ -70,7 +71,9 @@ function Figure({ title, caption, children, tour }: { title: string; caption?: s
 // --- waterfall ---------------------------------------------------------------------------------------------------------------
 
 /** From payments to net profit: one row per step, bars float on the running total. */
-export function Waterfall({ steps, title, caption }: { steps: Step[]; title: string; caption?: string }) {
+export function Waterfall({ steps: rawSteps, title, caption }: { steps: Step[]; title: string; caption?: string }) {
+  const tt = useT('x_finance');
+  const steps = rawSteps.map((s) => ({ ...s, label: tt(s.label) }));
   const [ref, w] = useWidth<HTMLDivElement>();
   const narrow = w < 520;
   const labelW = narrow ? Math.min(150, Math.round(w * 0.42)) : 224;
@@ -142,7 +145,7 @@ export function TornadoChart({ t, title, caption }: { t: Tornado; title: string;
   const labelW = narrow ? Math.min(130, Math.round(w * 0.36)) : 196;
   const pad = narrow ? 48 : 70;
   const rowH = 28;
-  const bars = t.bars.slice(0, 10);
+  const bars = t.bars.slice(0, 10).map((b) => ({ ...b, label: tt(b.label) }));
   const H = bars.length * rowH + 30;
   const spans = bars.map((b) => ({ b, lo: Math.min(b.low, b.high), hi: Math.max(b.low, b.high), lowIsMinus: b.low <= b.high }));
   const lo = Math.min(t.base, ...spans.map((s) => s.lo));
@@ -151,7 +154,7 @@ export function TornadoChart({ t, title, caption }: { t: Tornado; title: string;
   const x0 = labelW + pad;
   const x1 = w - pad;
   const x = (v: number) => x0 + ((v - lo) / span) * (x1 - x0);
-  const alt = bars.map((b) => `${b.label}: ${eur(Math.min(b.low, b.high))} bis ${eur(Math.max(b.low, b.high))}`).join('; ');
+  const alt = bars.map((b) => tt('{label}: {low} bis {high}', { label: b.label, low: eur(Math.min(b.low, b.high)), high: eur(Math.max(b.low, b.high)) })).join('; ');
   if (!bars.length) return <p className="muted small">{tt('Keine Hebel mit Wirkung – es gibt nichts zu vergleichen.')}</p>;
   return (
     <Figure title={title} caption={caption} tour="calc-tornado">
@@ -187,7 +190,7 @@ export function TornadoChart({ t, title, caption }: { t: Tornado; title: string;
           })}
         </svg>
       </div>
-      <Legend items={[['var(--red)', 'schlechter als die Basis'], ['var(--viz-3)', 'besser als die Basis']]} />
+      <Legend items={[['var(--red)', tt('schlechter als die Basis')], ['var(--viz-3)', tt('besser als die Basis')]]} />
     </Figure>
   );
 }
@@ -215,6 +218,7 @@ interface LineSeries {
 }
 
 function LineChart({ title, caption, series, months, marker, readout, tour }: { title: string; caption?: string; series: LineSeries[]; months: number[]; marker?: { x: number; label: string } | null; readout: (i: number) => string; tour?: string }) {
+  const tt = useT('x_finance');
   const [ref, w] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const H = 210;
@@ -233,7 +237,7 @@ function LineChart({ title, caption, series, months, marker, readout, tour }: { 
     const f = (e.clientX - r.left - m.l) / Math.max(1, r.width - m.l - m.r);
     setHover(Math.min(n - 1, Math.max(0, Math.round(f * (n - 1)))));
   };
-  const alt = `${title}. ${series.map((s) => `${s.label}: Monat 1 ${eur(s.values[0])}, Monat ${n} ${eur(s.values[n - 1])}`).join('; ')}`;
+  const alt = `${title}. ${series.map((s) => tt('{label}: Monat 1 {first}, Monat {n} {last}', { label: s.label, first: eur(s.values[0]), n, last: eur(s.values[n - 1]) })).join('; ')}`;
   return (
     <Figure title={title} caption={caption} tour={tour}>
       <div className="calc-readout" aria-live="polite">
@@ -297,18 +301,18 @@ export function ProjectionCharts({ p }: { p: Projection }) {
         tour="calc-projection"
         months={t}
         series={[
-          { key: 'mrr', label: 'Wiederkehrender Umsatz (MRR)', color: 'var(--viz-1)', values: ms.map((x) => x.mrr) },
-          { key: 'net', label: 'Nettogewinn im Monat', color: 'var(--viz-3)', values: ms.map((x) => x.net_profit) },
+          { key: 'mrr', label: tt('Wiederkehrender Umsatz (MRR)'), color: 'var(--viz-1)', values: ms.map((x) => x.mrr) },
+          { key: 'net', label: tt('Nettogewinn im Monat'), color: 'var(--viz-3)', values: ms.map((x) => x.net_profit) },
         ]}
-        readout={(i) => `Monat ${ms[i].t}: ${de(ms[i].customers)} Kunden · MRR ${eur(ms[i].mrr)} · Nettogewinn ${eur(ms[i].net_profit)}`}
+        readout={(i) => tt('Monat {t}: {customers} Kunden · MRR {mrr} · Nettogewinn {net}', { t: ms[i].t, customers: de(ms[i].customers), mrr: eur(ms[i].mrr), net: eur(ms[i].net_profit) })}
       />
       <LineChart
         title={tt('Gewinn kumuliert')}
         caption={tt('inklusive einmaliger Investition')}
         months={t}
-        marker={p.breakeven_month ? { x: p.breakeven_month, label: `im Plus ab Monat ${p.breakeven_month}` } : null}
-        series={[{ key: 'cum', label: 'Gewinn seit Start', color: 'var(--viz-2)', values: ms.map((x) => x.cum_net) }]}
-        readout={(i) => `Monat ${ms[i].t}: seit Start ${eur(ms[i].cum_net)} · EBIT im Monat ${eur(ms[i].ebit)}`}
+        marker={p.breakeven_month ? { x: p.breakeven_month, label: tt('im Plus ab Monat {n}', { n: p.breakeven_month }) } : null}
+        series={[{ key: 'cum', label: tt('Gewinn seit Start'), color: 'var(--viz-2)', values: ms.map((x) => x.cum_net) }]}
+        readout={(i) => tt('Monat {t}: seit Start {cum} · EBIT im Monat {ebit}', { t: ms[i].t, cum: eur(ms[i].cum_net), ebit: eur(ms[i].ebit) })}
       />
     </>
   );

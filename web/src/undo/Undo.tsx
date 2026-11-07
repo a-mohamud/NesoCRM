@@ -5,7 +5,7 @@ import { useSession } from '../session';
 import { Check, Modal, Spinner, navigate, toastError } from '../ui';
 import { ACTOR_BADGE, FILTER_TYPES, dayLabel, entityIcon, requestUndo, say, timeLabel, type UndoChange, type UndoConflict, type UndoEntry, type UndoneInfo } from './shared';
 import './undo.css';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * "Rückgängig" everywhere (docs/undo.md):
@@ -178,7 +178,7 @@ function Row({ e, onDone }: { e: UndoEntry; onDone: () => void }) {
   const tt = useT('shell');
   const [busy, setBusy] = useState(false);
   const badge = ACTOR_BADGE[e.actor_kind];
-  const verb = e.is_redo ? 'Wiederholen' : 'Wiederherstellen';
+  const verb = e.is_redo ? tt('Wiederholen') : tt('Wiederherstellen');
   return (
     <li className={`undo-row${e.undone_at ? ' undone' : ''}`} data-tour="history-entry">
       <span className="undo-ico">
@@ -187,8 +187,8 @@ function Row({ e, onDone }: { e: UndoEntry; onDone: () => void }) {
       <div className="undo-row-body">
         <div className="undo-row-title">{e.label}</div>
         <div className="undo-row-meta muted small">
-          {timeLabel(e.at)} · {e.mine ? 'du' : e.actor}
-          {badge && <span className="undo-badge">{badge}</span>}
+          {timeLabel(e.at)} · {e.mine ? tt('du') : e.actor}
+          {badge && <span className="undo-badge">{tt(badge)}</span>}
           {e.count > 1 && <span className="undo-badge">{tt('{count} Einträge', { count: e.count })}</span>}
           {e.undone_at && <span className="undo-badge gray">{tt('rückgängig gemacht')}</span>}
         </div>
@@ -224,6 +224,7 @@ function Row({ e, onDone }: { e: UndoEntry; onDone: () => void }) {
 
 function HistoryPanel({ onClose }: { onClose: () => void }) {
   const tt = useT('shell');
+  const tm = useT('x_misc'); // record kinds come from undo/shared.ts (x_misc)
   const session = useSession();
   const admin = session.user.role === 'admin';
   const [q, setQ] = useState('');
@@ -291,7 +292,7 @@ function HistoryPanel({ onClose }: { onClose: () => void }) {
           <option value="">{tt('Alle Arten')}</option>
           {FILTER_TYPES.map(([k, n]) => (
             <option key={k} value={k}>
-              {n}
+              {tm(n)}
             </option>
           ))}
         </select>
@@ -369,12 +370,12 @@ export function UndoLayer(): ReactNode {
     const onEntry = (e: Event) => {
       const d = (e as CustomEvent<{ id: string; label: string; notice?: string }>).detail;
       push({ entryId: d.id, text: d.label, notice: d.notice || undefined, tone: 'change' });
-      setLive(`${d.label}. ${MOD}+Z macht das rückgängig.${d.notice ? ` ${d.notice}` : ''}`);
+      setLive(`${d.label}. ${tr('shell')('{mod}+Z macht das rückgängig.', { mod: isMac ? '⌘' : tr('shell')('Strg') })}${d.notice ? ` ${d.notice}` : ''}`);
     };
     const onUndone = (e: Event) => {
       const d = (e as CustomEvent<UndoneInfo>).detail;
       push({ entryId: d.redo_id ?? undefined, text: d.label, notice: d.notices?.[0], tone: 'undone' });
-      setLive(`Rückgängig gemacht: ${d.label}.${d.notices?.[0] ? ` ${d.notices[0]}` : ''}`);
+      setLive(`${tr('shell')('Rückgängig gemacht: {label}.', { label: d.label })}${d.notices?.[0] ? ` ${d.notices[0]}` : ''}`);
     };
     const onConflict = (e: Event) => setConflict((e as CustomEvent<UndoConflict>).detail);
     const onSay = (e: Event) => setLive(String((e as CustomEvent<string>).detail));
@@ -413,7 +414,7 @@ export function UndoLayer(): ReactNode {
         const last = await api.get<{ undo: UndoEntry | null; redo: UndoEntry | null }>('/api/undo/last');
         const entry = redo ? last.redo : last.undo;
         if (!entry) {
-          const msg = redo ? 'Nichts zu wiederholen.' : 'Nichts zum Rückgängigmachen.';
+          const msg = redo ? tr('shell')('Nichts zu wiederholen.') : tr('shell')('Nichts zum Rückgängigmachen.');
           push({ text: msg, tone: 'undone' });
           say(msg);
         } else await requestUndo(entry);

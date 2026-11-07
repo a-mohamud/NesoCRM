@@ -59,14 +59,14 @@ export function ShortcutsDialog({ onClose }: DialogProps) {
       <div className="cv-keys">
         {SECTIONS.map((s) => (
           <section key={s.title}>
-            <h3>{s.title}</h3>
+            <h3>{tt(s.title)}</h3>
             <dl>
               {s.rows.map(([k, v]) => (
                 <div key={k}>
                   <dt>
-                    <kbd>{k}</kbd>
+                    <kbd>{tt(k)}</kbd>
                   </dt>
-                  <dd>{v}</dd>
+                  <dd>{tt(v)}</dd>
                 </div>
               ))}
             </dl>

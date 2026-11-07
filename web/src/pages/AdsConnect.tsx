@@ -3,7 +3,7 @@ import { api, money } from '../api';
 import { Badge, Check, CodeBox, Field, Input, Link, Select, Spinner, act, confirmAsk, toast, toastError, useLoad } from '../ui';
 import { useSession } from '../session';
 import { fromCents, toCents } from './AdsKit';
-import { useT } from '../i18n';
+import { fmtDate, tr, useT } from '../i18n';
 
 /** Verbindungen: Meta and Google Ads per login, choice of the ad account, the daily budget limit, and the agency's apps. */
 
@@ -17,7 +17,7 @@ export function AdsConnections() {
     const p = new URLSearchParams(location.search);
     const r = p.get('oauth');
     if (!r) return;
-    if (r === 'ok') toast(`${p.get('platform') === 'google' ? tt('Google Ads') : tt('Meta')} verbunden – jetzt Konto wählen`);
+    if (r === 'ok') toast(tt('{platform} verbunden – jetzt Konto wählen', { platform: p.get('platform') === 'google' ? tt('Google Ads') : tt('Meta') }));
     else toastError(new Error(p.get('msg') || tt('Verbinden fehlgeschlagen')));
     history.replaceState(null, '', location.pathname);
     void reload();
@@ -41,12 +41,13 @@ export function AdsConnections() {
 const expires = (iso: string | null) => {
   if (!iso) return null;
   const days = Math.round((Date.parse(iso) - Date.now()) / 864e5);
-  return days < 0 ? 'abgelaufen' : days <= 14 ? `läuft in ${days} Tagen ab (wird automatisch verlängert)` : `gültig bis ${new Date(iso).toLocaleDateString('de-DE')}`;
+  const tt = tr('x_integrations');
+  return days < 0 ? tt('abgelaufen') : days <= 14 ? tt('läuft in {days} Tagen ab (wird automatisch verlängert)', { days }) : tt('gültig bis {date}', { date: fmtDate(iso) });
 };
 
 function StatusLine({ c }: { c: any }) {
   const tt = useT('x_integrations');
-  return c.connected ? <Badge tone={c.last_error ? 'red' : 'green'}>{c.last_error ? tt('Fehler') : 'verbunden'}</Badge> : c.needs_selection ? <Badge tone="yellow">{tt('Konto wählen')}</Badge> : <Badge>{tt('nicht verbunden')}</Badge>;
+  return c.connected ? <Badge tone={c.last_error ? 'red' : 'green'}>{c.last_error ? tt('Fehler') : tt('verbunden')}</Badge> : c.needs_selection ? <Badge tone="yellow">{tt('Konto wählen')}</Badge> : <Badge>{tt('nicht verbunden')}</Badge>;
 }
 
 function MetaCard({ c, reload }: { c: any; reload: () => void }) {
@@ -79,7 +80,7 @@ function MetaCard({ c, reload }: { c: any; reload: () => void }) {
             )}
             <span className="muted">
               {' '}
-              · {c.via === 'oauth' ? `angemeldet als ${c.account_email || tt('Meta-Login')}` : tt('Token von Hand')}
+              · {c.via === 'oauth' ? tt('angemeldet als {account_email}', { account_email: c.account_email || tt('Meta-Login') }) : tt('Token von Hand')}
               {expires(c.token_expires_at) ? ` · ${expires(c.token_expires_at)}` : ''}
             </span>
           </p>
@@ -193,7 +194,7 @@ function GoogleCard({ c, reload }: { c: any; reload: () => void }) {
             <strong>
               {' '}
               {tt('Dafür fehlt noch:')} {!c.agency.oauth_app && tt('die Google-App (Agentur → Integrationen)')}
-              {!c.agency.oauth_app && !c.agency.developer_token && ' und '}
+              {!c.agency.oauth_app && !c.agency.developer_token && tt(' und ')}
               {!c.agency.developer_token && tt('der Developer-Token (unten, „Agentur“)')}.
             </strong>
           )}

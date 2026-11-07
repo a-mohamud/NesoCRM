@@ -3,7 +3,7 @@ import { api, dt } from '../api';
 import { Badge, CodeBox, Empty, Field, Input, Modal, Select, Spinner, act, confirmAsk, navigate, useLoad } from '../ui';
 import { DOMAIN_STATUS } from './umzug-format';
 import './umzug.css';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * E-Mail-Zustellung prüfen: Domain eintragen → SPF, DKIM, DMARC und MX werden per DNS geprüft → die fehlenden Einträge zum Kopieren
@@ -53,7 +53,7 @@ interface Overview {
 
 const statusBadge = (s: string) => {
   const [text, tone] = DOMAIN_STATUS[s] ?? [s, 'gray' as const];
-  return <Badge tone={tone}>{text}</Badge>;
+  return <Badge tone={tone}>{tr('x_integrations')(text)}</Badge>;
 };
 
 function Records({ records }: { records: DnsRec[] }) {
@@ -225,7 +225,7 @@ function DomainCard({ d, providers, onChanged }: { d: DomainBrief; providers: Ov
         <div className="um-pills" data-tour="dl-badges">
           {d.checks.map((c) => (
             <span key={c.key} className={`um-pill ${c.status}`} title={c.summary}>
-              {c.label}: {(DOMAIN_STATUS[c.status] ?? [c.status])[0]}
+              {c.label}: {tt((DOMAIN_STATUS[c.status] ?? [c.status])[0])}
             </span>
           ))}
         </div>

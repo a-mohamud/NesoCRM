@@ -34,15 +34,15 @@ export function BankTab({ accounts, onChange }: { accounts: any[]; onChange: () 
           tour="acc-bank-import"
           onFile={async (f) => {
             const r = await api.post('/api/accounting/bank/import', { name: f.name, data: f.data });
-            toast(`${r.added} neue Umsätze, ${r.duplicates} schon bekannt, ${r.matched} zugeordnet${r.skipped ? tt(', {skipped} übersprungen', { skipped: r.skipped }) : ''}`);
+            toast(tt('{added} neue Umsätze, {duplicates} schon bekannt, {matched} zugeordnet', { added: r.added, duplicates: r.duplicates, matched: r.matched }) + (r.skipped ? tt(', {skipped} übersprungen', { skipped: r.skipped }) : ''));
             refresh();
           }}
         />
-        <button className="btn secondary" onClick={() => run(() => api.post('/api/accounting/bank/rematch'), 'Neu zugeordnet')}>
+        <button className="btn secondary" onClick={() => run(() => api.post('/api/accounting/bank/rematch'), tt('Neu zugeordnet'))}>
           <Icon name="refresh" /> {tt('Neu zuordnen')}
         </button>
         <div className="tabs" style={{ margin: 0, border: 0 }} data-tour="acc-bank-filter">
-          {[['todo', `Zu erledigen${list.data ? ` (${list.data.todo})` : ''}`], ['booked', 'Gebucht'], ['ignored', 'Ignoriert'], ['all', 'Alle']].map(([k, l]) => (
+          {[['todo', list.data ? tt('Zu erledigen ({n})', { n: list.data.todo }) : tt('Zu erledigen')], ['booked', tt('Gebucht')], ['ignored', tt('Ignoriert')], ['all', tt('Alle')]].map(([k, l]) => (
             <button key={k} className={k === filter ? 'on' : ''} onClick={() => setFilter(k)}>
               {l}
             </button>
@@ -81,7 +81,7 @@ export function BankTab({ accounts, onChange }: { accounts: any[]; onChange: () 
                   </td>
                   <td className="num">{signedMoney(t.amount_cents)}</td>
                   <td>
-                    <Badge tone={T_STATUS[t.status]?.[1]}>{T_STATUS[t.status]?.[0] ?? t.status}</Badge>
+                    <Badge tone={T_STATUS[t.status]?.[1]}>{tt(T_STATUS[t.status]?.[0] ?? t.status)}</Badge>
                     {t.match && (
                       <div className="small">
                         {t.match.kind === 'invoice' ? tt('Rechnung') : tt('Beleg')} <strong>{t.match.ref}</strong> {t.match.party ? `· ${t.match.party}` : ''}
@@ -93,7 +93,7 @@ export function BankTab({ accounts, onChange }: { accounts: any[]; onChange: () 
                     {['open', 'matched'].includes(t.status) && (
                       <>
                         {t.match && (
-                          <button className="btn small" onClick={() => run(() => api.post(`/api/accounting/bank/txns/${t.id}/confirm`, {}), 'Gebucht')}>
+                          <button className="btn small" onClick={() => run(() => api.post(`/api/accounting/bank/txns/${t.id}/confirm`, {}), tt('Gebucht'))}>
                             {tt('Bestätigen')}
                           </button>
                         )}{' '}
@@ -198,7 +198,7 @@ function BookModal({ txn, accounts, onClose, onDone }: { txn: any; accounts: any
         <Input list="acc-accounts" value={account} onChange={setAccount} placeholder={tt('z. B. 4970 für Bankgebühren')} />
       </Field>
       <Field label={tt('Steuer')} hint={tt('Bei Umsatz-/Vorsteuer-Schlüsseln ist der Bankbetrag brutto; die Steuer wird herausgerechnet.')}>
-        <Select value={tax} onChange={setTax} options={(codes.data ?? [{ code: 'none', label: 'ohne Steuer' }]).map((c: any) => [c.code, c.label] as [string, string])} />
+        <Select value={tax} onChange={setTax} options={(codes.data ?? [{ code: 'none', label: tt('ohne Steuer') }]).map((c: any) => [c.code, tt(c.label)] as [string, string])} />
       </Field>
       <Field label={tt('Buchungstext (optional)')}>
         <Input value={text} onChange={setText} />
@@ -224,7 +224,7 @@ export function ReportsTab() {
   const [to, setTo] = useState(`${thisYear()}-12-31`);
   return (
     <>
-      <Tabs tabs={REPORTS} value={rep} onChange={setRep} />
+      <Tabs tabs={REPORTS.map(([k, l]): [string, string] => [k, tt(l)])} value={rep} onChange={setRep} />
       {['euer', 'susa', 'bwa'].includes(rep) && (
         <div className="row" style={{ alignItems: 'flex-end' }} data-tour="acc-range">
           <div style={{ width: 150 }}>
@@ -256,7 +256,7 @@ function Euer({ from, to }: { from: string; to: string }) {
   if (!x) return r.error ? <p style={{ color: 'var(--red)' }}>{r.error}</p> : <Spinner />;
   const block = (title: string, b: any, extra: [string, number][]) => (
     <div className="card" style={{ marginBottom: 14 }}>
-      <h2>{title}</h2>
+      <h2>{tt(title)}</h2>
       <table className="t">
         <tbody>
           {b.groups.map((g: any) => (
@@ -270,7 +270,7 @@ function Euer({ from, to }: { from: string; to: string }) {
           ))}
           <tr className="total">
             <td colSpan={2}>
-              <strong>{tt('Summe {toLowerCase}', { toLowerCase: title.toLowerCase() })}</strong>
+              <strong>{tt('Summe {toLowerCase}', { toLowerCase: tt(title).toLowerCase() })}</strong>
             </td>
             <td className="num">
               <strong>{money(b.total_cents)}</strong>
@@ -282,9 +282,9 @@ function Euer({ from, to }: { from: string; to: string }) {
   );
   return (
     <div data-tour="acc-euer">
-      <p className="muted small">{x.method} · {x.vat_mode === 'small' ? tt('Kleinunternehmer (ohne Umsatzsteuer)') : tt('Regelbesteuerung: Umsatzsteuer und Vorsteuer sind Einnahmen bzw. Ausgaben')}</p>
-      {block('Betriebseinnahmen', x.income, [['Vereinnahmte Umsatzsteuer', x.income.vat_collected_cents], ['Erstattete Umsatzsteuer', x.income.vat_refunded_cents]])}
-      {block('Betriebsausgaben', x.expenses, [['Gezahlte Vorsteuer', x.expenses.vat_paid_cents], ['An das Finanzamt gezahlte Umsatzsteuer', x.expenses.vat_to_tax_office_cents]])}
+      <p className="muted small">{tt(x.method)} · {x.vat_mode === 'small' ? tt('Kleinunternehmer (ohne Umsatzsteuer)') : tt('Regelbesteuerung: Umsatzsteuer und Vorsteuer sind Einnahmen bzw. Ausgaben')}</p>
+      {block('Betriebseinnahmen', x.income, [[tt('Vereinnahmte Umsatzsteuer'), x.income.vat_collected_cents], [tt('Erstattete Umsatzsteuer'), x.income.vat_refunded_cents]])}
+      {block('Betriebsausgaben', x.expenses, [[tt('Gezahlte Vorsteuer'), x.expenses.vat_paid_cents], [tt('An das Finanzamt gezahlte Umsatzsteuer'), x.expenses.vat_to_tax_office_cents]])}
       <SortableGrid id="accounting-more.stats" className="stats">
         <div className="card stat">
           <div className="muted">{tt('Gewinn / Verlust')}</div>
@@ -307,12 +307,13 @@ function Euer({ from, to }: { from: string; to: string }) {
 }
 
 function GroupRows({ label, cents, accounts }: { label: string; cents: number; accounts: { account: string; name: string; cents: number }[] }) {
+  const tt = useT('x_finance');
   const [open, setOpen] = useState(false);
   return (
     <>
       <tr className="click" {...pressable(() => setOpen(!open))}>
         <td colSpan={2}>
-          {open ? '▾' : '▸'} <strong>{label}</strong>
+          {open ? '▾' : '▸'} <strong>{tt(label)}</strong>
         </td>
         <td className="num">
           <strong>{money(cents)}</strong>
@@ -344,7 +345,7 @@ function Ustva() {
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div style={{ width: 150 }}>
           <Field label={tt('Zeitraum')}>
-            <Select value={kind} onChange={setKind} options={[['month', 'Monat'], ['quarter', 'Quartal'], ['year', 'Jahr']]} />
+            <Select value={kind} onChange={setKind} options={[['month', tt('Monat')], ['quarter', tt('Quartal')], ['year', tt('Jahr')]]} />
           </Field>
         </div>
         <div style={{ width: 100 }}>
@@ -371,7 +372,7 @@ function Ustva() {
         r.error ? <p style={{ color: 'var(--red)' }}>{r.error}</p> : <Spinner />
       ) : (
         <>
-          <p className="muted small">{x.label} · {x.method}{x.small_business ? tt(' · Kleinunternehmer: keine Umsatzsteuer-Voranmeldung nötig') : ''}</p>
+          <p className="muted small">{String(x.label).replace(/^(\d)\. Quartal (\d{4})$/, (_m: string, q: string, y: string) => tt('{q}. Quartal {y}', { q, y }))} · {tt(x.method)}{x.small_business ? tt(' · Kleinunternehmer: keine Umsatzsteuer-Voranmeldung nötig') : ''}</p>
           <div className="table-wrap">
             <table className="t">
               <thead>
@@ -386,7 +387,7 @@ function Ustva() {
                 {x.lines.map((l: any) => (
                   <tr key={l.kz}>
                     <td className="mono">{l.kz}</td>
-                    <td>{l.label}</td>
+                    <td>{tt(l.label)}</td>
                     <td className="num">{l.base_cents === undefined ? '' : money(l.base_cents)}</td>
                     <td className="num">{l.tax_cents === undefined ? '' : money(l.tax_cents)}</td>
                   </tr>
@@ -507,11 +508,11 @@ function OpenItems() {
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div style={{ width: 200 }}>
           <Field label={tt('Art')}>
-            <Select value={type} onChange={setType} options={[['receivable', 'Forderungen (Kunden)'], ['payable', 'Verbindlichkeiten (Lieferanten)']]} />
+            <Select value={type} onChange={setType} options={[['receivable', tt('Forderungen (Kunden)')], ['payable', tt('Verbindlichkeiten (Lieferanten)')]]} />
           </Field>
         </div>
         <div style={{ width: 150 }}>
-          <Field label={tt('Stand')}>
+          <Field label={tt('Stichtag')}>
             <Input type="date" value={asof} onChange={setAsof} />
           </Field>
         </div>
@@ -678,7 +679,7 @@ export function AccountsTab({ onChange }: { onChange: () => void }) {
         </div>
         <div style={{ width: 160 }}>
           <Field label={tt('Art')}>
-            <Select value={type} onChange={setType} placeholder={tt('Alle')} options={Object.entries(A_TYPE)} />
+            <Select value={type} onChange={setType} placeholder={tt('Alle')} options={Object.entries(A_TYPE).map(([k, l]): [string, string] => [k, tt(l)])} />
           </Field>
         </div>
         <div style={{ marginLeft: 'auto', marginBottom: 12 }}>
@@ -709,7 +710,7 @@ export function AccountsTab({ onChange }: { onChange: () => void }) {
                   <td>
                     {a.name} {a.custom ? <Badge tone="blue">eigenes</Badge> : null} {a.kind ? <Badge>{a.kind}</Badge> : null}
                   </td>
-                  <td>{A_TYPE[a.type] ?? a.type}</td>
+                  <td>{tt(A_TYPE[a.type] ?? a.type)}</td>
                   <td className="muted small">{a.grp}</td>
                   <td className="num">{a.lines}</td>
                   <td>
@@ -745,7 +746,7 @@ function AddAccount({ onClose, onDone }: { onClose: () => void; onDone: () => vo
           <Input value={f.number} onChange={(v) => setF({ ...f, number: v })} />
         </Field>
         <Field label={tt('Art')}>
-          <Select value={f.type} onChange={(v) => setF({ ...f, type: v })} options={Object.entries(A_TYPE)} />
+          <Select value={f.type} onChange={(v) => setF({ ...f, type: v })} options={Object.entries(A_TYPE).map(([k, l]): [string, string] => [k, tt(l)])} />
         </Field>
       </div>
       <Field label="Name">
@@ -784,10 +785,10 @@ export function SettingsTab({ onChange }: { onChange: () => void }) {
         <p className="muted small">{tt('Kontenrahmen:')} <strong>{s.data.standard.toUpperCase()}</strong> {tt('(nach der ersten Buchung nicht mehr änderbar).')}</p>
         <div className="grid3">
           <Field label={tt('Umsatzsteuer')}>
-            <Select value={f.vat_mode} onChange={(v) => set('vat_mode', v)} options={[['regular', 'Regelbesteuerung'], ['small', 'Kleinunternehmer (§ 19)']]} />
+            <Select value={f.vat_mode} onChange={(v) => set('vat_mode', v)} options={[['regular', tt('Regelbesteuerung')], ['small', tt('Kleinunternehmer (§ 19)')]]} />
           </Field>
           <Field label={tt('Versteuerung')} hint={tt('Soll: nach Rechnungsdatum. Ist: erst bei Zahlung.')}>
-            <Select value={f.vat_method} onChange={(v) => set('vat_method', v)} options={[['soll', 'Soll-Versteuerung'], ['ist', 'Ist-Versteuerung']]} />
+            <Select value={f.vat_method} onChange={(v) => set('vat_method', v)} options={[['soll', tt('Soll-Versteuerung')], ['ist', tt('Ist-Versteuerung')]]} />
           </Field>
           <Field label={tt('Wirtschaftsjahr beginnt im')}>
             <Select value={f.fy_start_month} onChange={(v) => set('fy_start_month', v)} options={Array.from({ length: 12 }, (_, i) => [String(i + 1), new Date(2000, i, 1).toLocaleDateString('de-DE', { month: 'long' })] as [string, string])} />

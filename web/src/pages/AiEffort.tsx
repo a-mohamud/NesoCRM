@@ -22,7 +22,7 @@ export function AiEffort({ agency = false }: { agency?: boolean }) {
   const save = async (body: Record<string, unknown>) => {
     if (await act(() => api.put('/api/ai-effort', { scope, ...body }), tt('Gespeichert'))) void data.reload();
   };
-  const levels: [string, string][] = d.efforts.map((e: any) => [e.id, e.label]);
+  const levels: [string, string][] = d.efforts.map((e: any) => [e.id, tt(e.label)]);
   const eff = (id: string) => levels.find(([k]) => k === id)?.[1] ?? id;
   return (
     <div className="card" data-tour="aic-effort">
@@ -30,7 +30,7 @@ export function AiEffort({ agency = false }: { agency?: boolean }) {
         <h2 style={{ margin: 0 }}>{tt('Denkstufe')}</h2>
         {admin && !agency && (
           <div style={{ minWidth: 200 }}>
-            <Select value={scope} onChange={(v) => setScope(v as any)} options={[['location', 'Dieser Sub-Account'], ['agency', 'Agentur-Standard']]} />
+            <Select value={scope} onChange={(v) => setScope(v as any)} options={[['location', tt('Dieser Sub-Account')], ['agency', tt('Agentur-Standard')]]} />
           </div>
         )}
       </div>
@@ -40,7 +40,7 @@ export function AiEffort({ agency = false }: { agency?: boolean }) {
           <strong>{tt('Denkstufe (Standard)')}</strong>
         </label>
         <span id="effort-default">
-          <Select value={own.default ?? ''} onChange={(v) => void save({ default: v })} options={[['', `Vorgabe: ${eff(scope === 'location' && d.agency.default ? d.agency.default : d.builtin_default)}`], ...levels]} />
+          <Select value={own.default ?? ''} onChange={(v) => void save({ default: v })} options={[['', tt('Vorgabe: {v}', { v: eff(scope === 'location' && d.agency.default ? d.agency.default : d.builtin_default) })], ...levels]} />
         </span>
       </div>
       <table className="aic-routing">
@@ -57,10 +57,10 @@ export function AiEffort({ agency = false }: { agency?: boolean }) {
             return (
               <tr key={c.id}>
                 <td>
-                  {c.label} {c.strict && <Badge>{tt('mind. hoch')}</Badge>}
+                  {tt(c.label)} {c.strict && <Badge>{tt('mind. hoch')}</Badge>}
                 </td>
                 <td>
-                  <Select value={value} onChange={(v) => void save({ caps: { [c.id]: v } })} options={[['', 'Wie Standard'], ...levels.filter(([k]) => !c.strict || k === 'high' || k === 'xhigh')]} />
+                  <Select value={value} onChange={(v) => void save({ caps: { [c.id]: v } })} options={[['', tt('Wie Standard')], ...levels.filter(([k]) => !c.strict || k === 'high' || k === 'xhigh')]} />
                 </td>
                 <td className="small">
                   {eff(c.effective)} <span className="muted">· {c.source === 'location' ? tt('Sub-Account') : c.source === 'agency' ? tt('Agentur') : tt('Vorgabe')}</span>

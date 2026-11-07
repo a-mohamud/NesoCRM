@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { currentLocation } from '../api';
 import { Badge, toastError } from '../ui';
 import './creator.css';
-import { tr } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * Small shared parts of the Creator & Commerce pages (Ratenzahlung, Mahnwesen, Quiz & Zertifikate, Kommentar-zu-DM): euro input,
@@ -119,8 +119,9 @@ export const STATUS: Record<string, [string, 'gray' | 'green' | 'red' | 'blue' |
 };
 
 export function StatusBadge({ status }: { status: string }) {
+  const tt = useT('x_community');
   const [label, tone] = STATUS[status] ?? [status, 'gray'];
-  return <Badge tone={tone}>{label}</Badge>;
+  return <Badge tone={tone}>{STATUS[status] ? tt(label) : label}</Badge>;
 }
 
 export const ACCESS_LABEL: Record<string, string> = { active: 'Zugang aktiv', paused: 'Zugang pausiert', revoked: 'Zugang entzogen' };

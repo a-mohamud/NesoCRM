@@ -7,6 +7,7 @@ import { ShareLink } from '../QrCode';
 import { MoreFields } from '../areas/fields';
 import { useT } from '../i18n';
 
+import { parseDecimal } from '../numparse';
 /**
  * The Team-Kalender part of the calendar editor – type and team, questions of the booking page, payment (Stripe), video link and
  * rules – and the routing forms ("Wobei können wir helfen?" → calendar). One draft per calendar, one save.
@@ -25,7 +26,7 @@ export const TEAM_TABS: [string, string][] = [['team', 'Typ & Team'], ['question
 
 const centsText = (c: number) => (c ? (c / 100).toFixed(2).replace('.', ',') : '');
 const toCents = (t: string) => {
-  const n = Number(t.replace(/\./g, '').replace(',', '.'));
+  const n = parseDecimal(t);
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
 };
 
@@ -39,13 +40,14 @@ function Money({ cents, onChange, label, hint }: { cents: number; onChange: (c: 
 }
 
 function Stepper({ value, onChange, min = 1, max = 10, label }: { value: number; onChange: (v: number) => void; min?: number; max?: number; label: string }) {
+  const tt = useT('x_comms');
   return (
     <div className="tc-step" role="group" aria-label={label}>
-      <button type="button" className="tx-btn" aria-label="weniger" disabled={value <= min} onClick={() => onChange(value - 1)}>
+      <button type="button" className="tx-btn" aria-label={tt('weniger')} disabled={value <= min} onClick={() => onChange(value - 1)}>
         −
       </button>
       <strong aria-live="polite">{value}</strong>
-      <button type="button" className="tx-btn" aria-label="mehr" disabled={value >= max} onClick={() => onChange(value + 1)}>
+      <button type="button" className="tx-btn" aria-label={tt('mehr')} disabled={value >= max} onClick={() => onChange(value + 1)}>
         +
       </button>
     </div>
@@ -60,10 +62,10 @@ function HoursGrid({ value, onChange }: { value: Record<string, string[][]>; onC
         const w = value[k]?.[0];
         return (
           <div key={k} className="tx-hours-row">
-            <Check checked={!!w} onChange={(v) => onChange({ ...value, [k]: v ? [['09:00', '17:00']] : [] })} label={l} />
-            <input type="time" aria-label={tt('{l} von', { l: l })} disabled={!w} value={w?.[0] ?? '09:00'} onChange={(e) => onChange({ ...value, [k]: [[e.target.value, w?.[1] ?? '17:00']] })} />
+            <Check checked={!!w} onChange={(v) => onChange({ ...value, [k]: v ? [['09:00', '17:00']] : [] })} label={tt(l)} />
+            <input type="time" aria-label={tt('{l} von', { l: tt(l) })} disabled={!w} value={w?.[0] ?? '09:00'} onChange={(e) => onChange({ ...value, [k]: [[e.target.value, w?.[1] ?? '17:00']] })} />
             <span>–</span>
-            <input type="time" aria-label={tt('{l} bis', { l: l })} disabled={!w} value={w?.[1] ?? '17:00'} onChange={(e) => onChange({ ...value, [k]: [[w?.[0] ?? '09:00', e.target.value]] })} />
+            <input type="time" aria-label={tt('{l} bis', { l: tt(l) })} disabled={!w} value={w?.[1] ?? '17:00'} onChange={(e) => onChange({ ...value, [k]: [[w?.[0] ?? '09:00', e.target.value]] })} />
           </div>
         );
       })}
@@ -112,8 +114,8 @@ export function TeamEditor({ cal, tab, saveRef }: { cal: { id: string; name: str
           <div className="tc-kinds" role="radiogroup" aria-label={tt('Typ des Kalenders')} data-tour="team-kind">
             {KINDS.map(([k, label, text]) => (
               <button key={k} type="button" role="radio" aria-checked={c.kind === k} className={`tc-kind${c.kind === k ? ' on' : ''}`} onClick={() => set({ kind: k })}>
-                <strong>{label}</strong>
-                <span>{text}</span>
+                <strong>{tt(label)}</strong>
+                <span>{tt(text)}</span>
               </button>
             ))}
           </div>
@@ -131,10 +133,10 @@ export function TeamEditor({ cal, tab, saveRef }: { cal: { id: string; name: str
           {c.kind === 'round_robin' && (
             <div className="tc-opts">
               <Field label={tt('Wann ist eine Zeit buchbar?')} hint={tt('Verfügbarkeit: jede Zeit, zu der mindestens eine Person frei ist. Gleichmäßig: nur solange die freie Person nicht deutlich vor den anderen liegt.')}>
-                <Select value={c.strategy} onChange={(v) => set({ strategy: v })} options={[['availability', 'Maximale Verfügbarkeit'], ['equal', 'Gleichmäßig verteilen']]} />
+                <Select value={c.strategy} onChange={(v) => set({ strategy: v })} options={[['availability', tt('Maximale Verfügbarkeit')], ['equal', tt('Gleichmäßig verteilen')]]} />
               </Field>
               <Field label={tt('Verteilung')} hint={tt('Gewichtet: wer mehr Gewicht hat, bekommt entsprechend mehr Termine.')}>
-                <Select value={c.distribution} onChange={(v) => set({ distribution: v })} options={[['even', 'Gleich'], ['weighted', 'Nach Gewicht']]} />
+                <Select value={c.distribution} onChange={(v) => set({ distribution: v })} options={[['even', tt('Gleich')], ['weighted', tt('Nach Gewicht')]]} />
               </Field>
             </div>
           )}
@@ -172,7 +174,7 @@ export function TeamEditor({ cal, tab, saveRef }: { cal: { id: string; name: str
             </div>
           )}
           <Field label={tt('Zahlung bei Buchung')} tour="team-payment">
-            <Select value={c.payment.mode} onChange={(v) => setPay({ mode: v })} options={[['none', 'Keine – Termin ist kostenlos'], ['full', 'Voller Preis vorab'], ['deposit', 'Anzahlung vorab']]} />
+            <Select value={c.payment.mode} onChange={(v) => setPay({ mode: v })} options={[['none', tt('Keine – Termin ist kostenlos')], ['full', tt('Voller Preis vorab')], ['deposit', tt('Anzahlung vorab')]]} />
           </Field>
           {c.payment.mode !== 'none' && (
             <>
@@ -194,7 +196,7 @@ export function TeamEditor({ cal, tab, saveRef }: { cal: { id: string; name: str
                   <Input type="number" min={30} max={1440} value={c.payment.hold_minutes} onChange={(v) => setPay({ hold_minutes: Number(v) })} />
                 </Field>
                 <Field label={tt('Absage – Erstattung')} hint={tt('Gilt, wenn der Kunde innerhalb der Absagefrist (Tab „Video & Regeln“) absagt.')}>
-                  <Select value={c.payment.refund} onChange={(v) => setPay({ refund: v })} options={[['auto', 'Automatisch über Stripe erstatten'], ['manual', 'Manuell – das Team bekommt Bescheid'], ['none', 'Keine Erstattung']]} />
+                  <Select value={c.payment.refund} onChange={(v) => setPay({ refund: v })} options={[['auto', tt('Automatisch über Stripe erstatten')], ['manual', tt('Manuell – das Team bekommt Bescheid')], ['none', tt('Keine Erstattung')]]} />
                 </Field>
               </div>
               <p className="muted small">{tt('Der Termin gilt erst nach der Zahlung. Danach entsteht eine bezahlte Rechnung im Rechnungs-Bereich. Den Text zur Absage und Erstattung schreibst du im Tab „Video & Regeln“.')}</p>
@@ -205,7 +207,7 @@ export function TeamEditor({ cal, tab, saveRef }: { cal: { id: string; name: str
       {tab === 'video' && (
         <>
           <Field label={tt('Video-Link')} tour="team-video">
-            <Select value={c.video} onChange={(v) => set({ video: v })} options={[['none', 'Kein Video-Link'], ['meet', 'Google Meet'], ['zoom', 'Zoom'], ['teams', 'Microsoft Teams'], ['static', 'Fester Ort oder Link (aus „Allgemein“)']]} />
+            <Select value={c.video} onChange={(v) => set({ video: v })} options={[['none', tt('Kein Video-Link')], ['meet', 'Google Meet'], ['zoom', 'Zoom'], ['teams', 'Microsoft Teams'], ['static', tt('Fester Ort oder Link (aus „Allgemein“)')]]} />
           </Field>
           <VideoHint video={c.video} meta={meta.data} members={draft.members} />
           <h3 className="tx-h">{tt('Absagen und Verschieben')}</h3>
@@ -409,7 +411,7 @@ function Questions({ list, onChange }: { list: any[]; onChange: (q: any[]) => vo
         <div key={q.id || i} className="tc-question">
           <div className="tc-question-head">
             <Input value={q.label} aria-label={tt('Frage')} placeholder={tt('Frage')} onChange={(v) => upd(i, { label: v })} />
-            <Select value={q.type} onChange={(v) => upd(i, { type: v })} options={QTYPES} />
+            <Select value={q.type} onChange={(v) => upd(i, { type: v })} options={QTYPES.map(([k, l]) => [k, tt(l)] as [string, string])} />
           </div>
           {(q.type === 'choice' || q.type === 'multi') && (
             <Field label={tt('Antwortmöglichkeiten (eine pro Zeile)')}>
@@ -453,19 +455,19 @@ function QuestionCondition({ q, earlier, onChange }: { q: any; earlier: any[]; o
   const tt = useT('x_comms');
   const refs = earlier.filter((x) => x.id && ['choice', 'multi', 'checkbox'].includes(x.type));
   const ref = refs.find((x) => x.id === q.show_if?.id);
-  const answers: string[] = ref ? (ref.type === 'checkbox' ? ['Ja', 'Nein'] : (Array.isArray(ref.options) ? ref.options : []).filter(Boolean)) : [];
+  const answers: string[] = ref ? (ref.type === 'checkbox' ? ['Ja', 'Nein'] /* stored answer values, shown via tt() */ : (Array.isArray(ref.options) ? ref.options : []).filter(Boolean)) : [];
   const values: string[] = q.show_if?.values ?? [];
   return (
     <MoreFields id={`tc-q-cond-${q.id || 'neu'}`} values={[q.show_if?.id]} label={tt('Bedingung')}>
       {refs.length ? (
         <>
           <Field label={tt('Nur fragen, wenn diese Frage …')} hint={tt('Neue Auswahlfragen erst speichern, dann hier wählen.')}>
-            <Select value={ref?.id ?? ''} onChange={(v) => onChange(v ? { id: v, values: [] } : undefined)} options={[['', 'Immer fragen'], ...refs.map((x) => [x.id, x.label || 'Frage'] as [string, string])]} />
+            <Select value={ref?.id ?? ''} onChange={(v) => onChange(v ? { id: v, values: [] } : undefined)} options={[['', tt('Immer fragen')], ...refs.map((x) => [x.id, x.label || tt('Frage')] as [string, string])]} />
           </Field>
           {ref && (
             <Field label={tt('… so beantwortet wurde')}>
               {answers.map((a) => (
-                <Check key={a} checked={values.includes(a)} onChange={(on) => onChange({ id: ref.id, values: on ? [...values, a] : values.filter((x) => x !== a) })} label={a} />
+                <Check key={a} checked={values.includes(a)} onChange={(on) => onChange({ id: ref.id, values: on ? [...values, a] : values.filter((x) => x !== a) })} label={tt(a)} />
               ))}
             </Field>
           )}
@@ -489,7 +491,7 @@ export function RoutingForms({ calendars }: { calendars: any[] }) {
         {tt('Ein Routing-Formular stellt eine Frage – „Wobei können wir helfen?“ – und führt jeden zum passenden Kalender. Die Antwort steht danach im Termin.')}
       </p>
       <div className="actions">
-        <button className="tx-btn primary" disabled={!calendars.length} onClick={() => setEdit({ name: '', question: 'Wobei können wir helfen?', intro: '', color: '#2563eb', options: [{ label: '', calendar_id: calendars[0]?.id ?? '' }, { label: '', calendar_id: calendars[0]?.id ?? '' }] })}>
+        <button className="tx-btn primary" disabled={!calendars.length} onClick={() => setEdit({ name: '', question: tt('Wobei können wir helfen?'), intro: '', color: '#2563eb', options: [{ label: '', calendar_id: calendars[0]?.id ?? '' }, { label: '', calendar_id: calendars[0]?.id ?? '' }] })}>
           {tt('+ Routing-Formular')}
         </button>
       </div>
@@ -503,7 +505,7 @@ export function RoutingForms({ calendars }: { calendars: any[] }) {
             <div className="row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <h2 style={{ margin: 0 }}>
-                  {r.name} {!r.active && <Badge>inaktiv</Badge>}
+                  {r.name} {!r.active && <Badge>{tt('inaktiv')}</Badge>}
                 </h2>
                 <span className="muted">
                   {tt('„{question}“ · {length} Antworten', { question: r.question, length: r.options.length })}

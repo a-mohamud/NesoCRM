@@ -34,7 +34,7 @@ function PropertyModal({ object, prop, groups, contact, onClose, onSaved }: { ob
           <Input value={p.key} onChange={(v) => setP({ ...p, key: v })} disabled={!!prop} placeholder="vertragsende" className="mono" />
         </Field>
         <Field label={tt('Typ')} tour="prop-type">
-          <Select value={p.type} onChange={(v) => setP({ ...p, type: v })} options={types.map((t) => [t, TYPE_LABELS[t]] as [string, string])} />
+          <Select value={p.type} onChange={(v) => setP({ ...p, type: v })} options={types.map((t) => [t, tt(TYPE_LABELS[t] ?? t)] as [string, string])} />
         </Field>
         <Field label={tt('Gruppe')} tour="prop-group">
           <Select value={p.group_key} onChange={(v) => setP({ ...p, group_key: v })} placeholder={tt('ohne Gruppe')} options={groups.map((g) => [g.key, g.label] as [string, string])} />
@@ -90,7 +90,7 @@ function AssocLabels({ object, objects }: { object: string; objects: any[] }) {
   const mine = (all.data ?? []).filter((l) => l.a_type === object || l.b_type === object);
   const [other, setOther] = useState('');
   const [name, setName] = useState('');
-  const label = (t: string) => types.find((x) => x.type === t)?.label ?? objects.find((o) => o.key === t)?.label ?? t;
+  const label = (t: string) => tt(types.find((x) => x.type === t)?.label ?? objects.find((o) => o.key === t)?.label ?? t);
   return (
     <div className="card" data-tour="props-labels">
       <h2>
@@ -104,7 +104,7 @@ function AssocLabels({ object, objects }: { object: string; objects: any[] }) {
         return (
           <div key={l.id} className="assoc-row">
             <div className="grow">
-              <Badge tone="purple">{l.name}</Badge> <span className="muted small">mit {label(o)}</span>
+              <Badge tone="purple">{l.name}</Badge> <span className="muted small">{tt('mit {label}', { label: label(o) })}</span>
             </div>
             <button className="icon-btn" aria-label={tt('Label {name} löschen', { name: l.name })} onClick={() => confirmAsk(tt('Label „{name}“ löschen? Es verschwindet von allen Verknüpfungen.', { name: l.name })) && act(() => api.del(`/api/association-labels/${l.id}`)).then(all.reload)}>
               ✕
@@ -115,7 +115,7 @@ function AssocLabels({ object, objects }: { object: string; objects: any[] }) {
       {!mine.length && <p className="muted small">{tt('Noch keine Labels.')}</p>}
       <div className="row" style={{ marginTop: 8 }}>
         <div style={{ width: 130 }}>
-          <Select value={other} onChange={setOther} placeholder="mit…" options={types.filter((t) => t.type !== 'task').map((t) => [t.type, t.label] as [string, string])} />
+          <Select value={other} onChange={setOther} placeholder={tt('mit…')} options={types.filter((t) => t.type !== 'task').map((t) => [t.type, tt(t.label)] as [string, string])} />
         </div>
         <div className="grow">
           <Input value={name} onChange={setName} placeholder={tt('Label, z. B. Entscheider')} />
@@ -151,7 +151,7 @@ export function Properties({ object: initial }: { object?: string }) {
           <Icon name="objects" /> {tt('Objekte')}
         </Link>
       </PageHead>
-      <Tabs tabs={objects.map((o) => [o.key, o.plural] as [string, string])} value={obj.key} onChange={(k) => (setObject(k), navigate(`properties/${k}`))} />
+      <Tabs tabs={objects.map((o) => [o.key, tt(o.plural)] as [string, string])} value={obj.key} onChange={(k) => (setObject(k), navigate(`properties/${k}`))} />
       <div className="row props-layout">
         <div className="grow" style={{ flex: '3 1 520px' }}>
           <div className="row list-tools" data-tour="props-tools">
@@ -185,7 +185,7 @@ export function Properties({ object: initial }: { object?: string }) {
                 {!props.length && !groups.length && (
                   <tr>
                     <td colSpan={5}>
-                      <Empty>{tt('Noch keine eigenen Eigenschaften für {plural}.', { plural: obj.plural })}</Empty>
+                      <Empty>{tt('Noch keine eigenen Eigenschaften für {plural}.', { plural: tt(obj.plural) })}</Empty>
                     </td>
                   </tr>
                 )}
@@ -201,7 +201,7 @@ export function Properties({ object: initial }: { object?: string }) {
                     <tr key={s.key} className="std-row">
                       <td>{s.label}</td>
                       <td className="mono muted">{s.key}</td>
-                      <td>{TYPE_LABELS[s.type] ?? s.type}</td>
+                      <td>{tt(TYPE_LABELS[s.type] ?? s.type)}</td>
                       <td>
                         <Badge>{tt('Standard')}</Badge>
                       </td>
@@ -215,7 +215,7 @@ export function Properties({ object: initial }: { object?: string }) {
         <div style={{ flex: '1 1 300px', minWidth: 0 }}>
           <div className="card obj-info" data-tour="props-object">
             <h2>
-              <Icon name={objIcon(obj.icon)} /> {obj.plural}
+              <Icon name={objIcon(obj.icon)} /> {tt(obj.plural)}
             </h2>
             <p className="muted small" style={{ marginTop: 0 }}>
               {obj.builtin ? tt('Standard-Objekt') : tt('Eigenes Objekt · interner Name {key}', { key: obj.key })}
@@ -224,7 +224,7 @@ export function Properties({ object: initial }: { object?: string }) {
             </p>
             {obj.key === 'contact' && <p className="small">{tt('Werte stehen auf der Kontaktseite und in Platzhaltern')} {'{{contact.custom.…}}'}.</p>}
             {obj.key === 'opportunity' && <p className="small">{tt('Werte bearbeitest du im Deal-Dialog der Pipeline.')}</p>}
-            {!obj.builtin && <Link to={`objects/${obj.key}`}>{tt('Zu den {plural} →', { plural: obj.plural })}</Link>}
+            {!obj.builtin && <Link to={`objects/${obj.key}`}>{tt('Zu den {plural} →', { plural: tt(obj.plural) })}</Link>}
             {obj.key === 'company' && <Link to="companies">{tt('Zu den Firmen →')}</Link>}
           </div>
           <AssocLabels object={obj.key} objects={objects} />
@@ -263,7 +263,7 @@ function PropSection({ group, list, contact, onEdit, onEditGroup, reload }: { gr
           </td>
           <td className="mono muted">{p.key}</td>
           <td>
-            {TYPE_LABELS[p.type] ?? p.type}
+            {tt(TYPE_LABELS[p.type] ?? p.type)}
             {p.options?.length ? <span className="muted small"> {tt('· {length} Optionen', { length: p.options.length })}</span> : null}
           </td>
           <td>

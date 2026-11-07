@@ -59,7 +59,7 @@ export function WebinarEditor({ id, tab = 'basics' }: { id: string; tab?: string
   };
   const save = async (extra: Record<string, unknown> = {}, ok = 'Gespeichert') => {
     setBusy(true);
-    const r = await act(() => api.patch(`/api/webinars/${id}`, { ...(extra.status === 'draft' ? {} : form), ...extra }), ok);
+    const r = await act(() => api.patch(`/api/webinars/${id}`, { ...(extra.status === 'draft' ? {} : form), ...extra }), tt(ok));
     setBusy(false);
     if (r) apply(r);
     return r;
@@ -111,7 +111,7 @@ export function WebinarEditor({ id, tab = 'basics' }: { id: string; tab?: string
           <span className="muted small">{tt('Das Video und die Termine speicherst du in den Tabs „Grunddaten“ und „Termine“.')}</span>
         </div>
       )}
-      <Tabs tabs={TABS} value={tab} onChange={(t) => navigate(`webinars/${id}/${t}`)} />
+      <Tabs tabs={TABS.map(([k, l]) => [k, tt(l)] as [string, string])} value={tab} onChange={(t) => navigate(`webinars/${id}/${t}`)} />
       <div className="wb-tab">
         {tab === 'basics' && <BasicsTab {...props} reload={reloadVideo} />}
         {tab === 'schedule' && <ScheduleTab {...props} />}

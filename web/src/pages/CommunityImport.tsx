@@ -23,10 +23,10 @@ export function ImportModal({ group, onClose, onDone }: { group: any; onClose: (
           value={tab}
           onChange={setTab}
           tabs={[
-            ['members', 'Mitglieder importieren'],
-            ['posts', 'Beiträge importieren'],
-            ['export', 'Exportieren'],
-            ['skool', 'Umzug von Skool'],
+            ['members', tt('Mitglieder importieren')],
+            ['posts', tt('Beiträge importieren')],
+            ['export', tt('Exportieren')],
+            ['skool', tt('Umzug von Skool')],
           ]}
         />
         {tab === 'members' && <Members group={group} onDone={onDone} />}
@@ -96,7 +96,7 @@ function Members({ group, onDone }: { group: any; onDone: () => void }) {
         </button>
         {plan && (
           <div style={{ width: 230 }}>
-            <Select value={dateOrder} onChange={(v) => (setDateOrder(v), setPlan(null))} options={[['auto', 'Datum: automatisch erkennen'], ['dmy', 'Datum: Tag/Monat/Jahr'], ['mdy', 'Datum: Monat/Tag/Jahr']]} />
+            <Select value={dateOrder} onChange={(v) => (setDateOrder(v), setPlan(null))} options={[['auto', tt('Datum: automatisch erkennen')], ['dmy', tt('Datum: Tag/Monat/Jahr')], ['mdy', tt('Datum: Monat/Tag/Jahr')]]} />
           </div>
         )}
       </div>
@@ -117,7 +117,7 @@ function Members({ group, onDone }: { group: any; onDone: () => void }) {
           <h4 style={{ margin: '4px 0 0' }}>{tt('Zuordnung der Spalten')}</h4>
           <div className="cma-two">
             {['email', 'name', 'first_name', 'last_name', 'joined', 'tier', 'points'].map((f) => (
-              <Field key={f} label={FIELD_LABEL[f]}>
+              <Field key={f} label={tt(FIELD_LABEL[f] ?? f)}>
                 <Select
                   value={mapping[f] ?? plan.columns[f] ?? ''}
                   onChange={(v) => {
@@ -150,8 +150,8 @@ function Members({ group, onDone }: { group: any; onDone: () => void }) {
               <thead>
                 <tr>
                   <th>{tt('Zeile')}</th>
-                  <th>Name</th>
-                  <th>E-Mail</th>
+                  <th>{tt('Name')}</th>
+                  <th>{tt('E-Mail')}</th>
                   <th>{tt('Seit')}</th>
                   <th>{tt('Stufe')}</th>
                   <th>Status</th>
@@ -166,7 +166,7 @@ function Members({ group, onDone }: { group: any; onDone: () => void }) {
                     <td>{i.joined_at ? d(i.joined_at) : '–'}</td>
                     <td>{plan.tiers.find((t: any) => t.id === i.tier_id)?.name ?? '–'}</td>
                     <td>
-                      <Badge tone={STATE[i.state][1]}>{STATE[i.state][0]}</Badge>
+                      <Badge tone={STATE[i.state][1]}>{tt(STATE[i.state][0])}</Badge>
                       {i.reason && <div className="muted small">{i.reason}</div>}
                     </td>
                   </tr>
@@ -311,7 +311,7 @@ function SkoolGuide({ onStart }: { onStart: () => void }) {
         </li>
         <li>{tt('Ordne die Skool-Stufen deinen Stufen zu und entscheide, ob die Mitglieder eine E-Mail mit dem Link bekommen.')}</li>
         <li>
-          {tt('Beiträge, die du behalten willst, kopierst du als Markdown-Dateien (eine pro Beitrag, mit')} <code>title</code> und <code>date</code> {tt('oben) und importierst sie unter')} <strong>{tt('Beiträge importieren')}</strong>.
+          {tt('Beiträge, die du behalten willst, kopierst du als Markdown-Dateien (eine pro Beitrag, mit')} <code>title</code> {tt('und')} <code>date</code> {tt('oben) und importierst sie unter')} <strong>{tt('Beiträge importieren')}</strong>.
         </li>
         <li>{tt('Zahlende Mitglieder legen ihr Abo bei dir neu an – dafür schickst du ihnen den Einladungs-Link der Beitrittsseite. Zahlungsdaten lassen sich nicht aus Skool mitnehmen.')}</li>
       </ol>

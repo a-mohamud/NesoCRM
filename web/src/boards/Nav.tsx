@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, currentLocation } from '../api';
 import { Icon, type IconName } from '../icons';
 import { Link } from '../ui';
+import { useT } from '../i18n';
 
 interface Item {
   id: string;
@@ -13,6 +14,7 @@ let cache: { loc: string; items: Item[] } | null = null;
 
 /** Sidebar: the person's boards below "Boards" – only while a boards page is open, so everybody else pays nothing for it. */
 export function BoardsNav({ cur }: { cur: string[] }) {
+  const t = useT('shell');
   const on = cur[0] === 'boards';
   const [items, setItems] = useState<Item[]>(cache?.loc === currentLocation() ? cache.items : []);
   useEffect(() => {
@@ -43,7 +45,7 @@ export function BoardsNav({ cur }: { cur: string[] }) {
         </Link>
       ))}
       <Link to="boards/vorlagen" className={cur[1] === 'vorlagen' ? 'on' : ''}>
-        <Icon name="template" size={15} /> Vorlagen
+        <Icon name="template" size={15} /> {t('Vorlagen')}
       </Link>
     </div>
   );

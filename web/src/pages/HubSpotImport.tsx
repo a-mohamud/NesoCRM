@@ -85,7 +85,7 @@ export function HubSpotImport() {
 
       {s.connection.connected ? (
         <div className="row hs-conn">
-          <Badge tone="green">verbunden</Badge>
+          <Badge tone="green">{tt('verbunden')}</Badge>
           <span>
             {tt('HubSpot-Portal')} <strong>{s.connection.portal_id}</strong> {tt('· Token {token_hint}', { token_hint: s.connection.token_hint })}
             {s.connection.time_zone ? ` · ${s.connection.time_zone}` : ''}
@@ -110,7 +110,7 @@ export function HubSpotImport() {
       <h3 className="integ-h">{tt('Was soll mit?')}</h3>
       <div className="hs-parts" data-tour="hs-parts">
         {s.parts.map((p: any) => (
-          <Check key={p.key} checked={parts.includes(p.key)} onChange={(on) => setParts(on ? [...parts, p.key] : parts.filter((x) => x !== p.key))} label={p.label} />
+          <Check key={p.key} checked={parts.includes(p.key)} onChange={(on) => setParts(on ? [...parts, p.key] : parts.filter((x) => x !== p.key))} label={tt(p.label)} />
         ))}
       </div>
       <p className="muted small">
@@ -143,7 +143,7 @@ export function HubSpotImport() {
                 {dry.result.map((r: any) => (
                   <tr key={r.object}>
                     <td>
-                      {r.label}
+                      {tt(r.label)}
                       {r.error && <div className="small hs-err">{r.error}</div>}
                     </td>
                     <td className="num">{r.hubspot ?? '–'}</td>
@@ -163,7 +163,7 @@ export function HubSpotImport() {
         <div className="hs-job" data-tour="hs-job">
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>
-              {tt('Import')} <Badge tone={JOB_STATUS[job.status]?.[1] ?? 'blue'}>{JOB_STATUS[job.status]?.[0] ?? job.status}</Badge>
+              {tt('Import')} <Badge tone={JOB_STATUS[job.status]?.[1] ?? 'blue'}>{tt(JOB_STATUS[job.status]?.[0] ?? job.status)}</Badge>
             </strong>
             <div className="row" style={{ gap: 6 }}>
               {job.status === 'running' && (
@@ -193,7 +193,7 @@ export function HubSpotImport() {
               const n = job.progress?.counts?.[x === 'properties' ? 'custom_fields' : x];
               return (
                 <span key={x} className={`hs-step${isDone ? ' done' : ''}${current ? ' now' : ''}`}>
-                  {isDone ? '✓' : current ? '…' : '·'} {STEP_LABELS[x] ?? x}
+                  {isDone ? '✓' : current ? '…' : '·'} {tt(STEP_LABELS[x] ?? x)}
                   {n !== undefined ? ` ${n}` : current && job.progress?.processed ? ` ${job.progress.processed}${totals[x] ? `/${totals[x]}` : ''}` : ''}
                 </span>
               );

@@ -8,7 +8,7 @@ import { lazyPages } from '../lazy';
 import { MoreFields } from '../areas/fields';
 import { communityMoreValues } from '../areas/marketing-fields';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 const { JoinTab } = lazyPages(() => import('./CommunityJoin'), 'JoinTab');
 const { StatsTab } = lazyPages(() => import('./CommunityStats'), 'StatsTab');
@@ -37,10 +37,11 @@ const fromLocalInput = (v: string) => (v ? new Date(v).toISOString() : '');
 
 function accessText(g: any, courses: any[]) {
   const a = g.access ?? {};
-  if (a.mode === 'courses') return `Kurse: ${(a.course_ids ?? []).map((id: string) => courses.find((c) => c.id === id)?.title ?? '?').join(', ') || '–'}`;
+  const t = tr('x_community');
+  if (a.mode === 'courses') return `${t('Kurse:')} ${(a.course_ids ?? []).map((id: string) => courses.find((c) => c.id === id)?.title ?? '?').join(', ') || '–'}`;
   if (a.mode === 'tags') return `Tags: ${(a.tags ?? []).join(', ') || '–'}`;
-  if (a.mode === 'join') return MODE_LABEL.join;
-  return MODE_LABEL.all;
+  if (a.mode === 'join') return t(MODE_LABEL.join);
+  return t(MODE_LABEL.all);
 }
 
 // --- list page ------------------------------------------------------------------------------
@@ -116,7 +117,7 @@ export function Community({ tab: initial }: { tab?: string }) {
           {tt('+ Neue Gruppe')}
         </button>
       </PageHead>
-      <Tabs tabs={[['groups', 'Gruppen'], ['reports', `Meldungen${open ? ` (${open})` : ''}`], ['settings', 'Einstellungen']]} value={tab} onChange={setTab} />
+      <Tabs tabs={[['groups', tt('Gruppen')], ['reports', `${tt('Meldungen')}${open ? ` (${open})` : ''}`], ['settings', tt('Einstellungen')]]} value={tab} onChange={setTab} />
       {tab === 'reports' ? (
         <Reports onChange={groups.reload} />
       ) : tab === 'settings' ? (
@@ -170,7 +171,7 @@ function Reports({ groupId, onChange }: { groupId?: string; onChange?: () => voi
     <>
       <div className="row" style={{ marginBottom: 12, alignItems: 'center' }}>
         <div style={{ width: 200 }}>
-          <Select value={status} onChange={setStatus} options={[['open', 'Offen'], ['resolved', 'Erledigt'], ['dismissed', 'Verworfen'], ['all', 'Alle']]} />
+          <Select value={status} onChange={setStatus} options={[['open', tt('Offen')], ['resolved', tt('Erledigt')], ['dismissed', tt('Verworfen')], ['all', tt('Alle')]]} />
         </div>
         <span className="muted small">{tt('Mitglieder melden Beiträge und Kommentare im Mitgliederbereich. Ab der eingestellten Zahl an Meldungen wird automatisch ausgeblendet, bis du entscheidest.')}</span>
       </div>
@@ -185,7 +186,7 @@ function Reports({ groupId, onChange }: { groupId?: string; onChange?: () => voi
                 {r.kind === 'post' ? tt('Beitrag') : tt('Kommentar')} {tt('in „{group_name}“', { group_name: r.group_name })}
               </strong>
               <Badge tone={r.status === 'open' ? 'red' : 'gray'}>{r.status === 'open' ? 'offen' : r.status === 'resolved' ? 'erledigt' : 'verworfen'}</Badge>
-              {r.target?.status === 'hidden' && <Badge tone="yellow">ausgeblendet</Badge>}
+              {r.target?.status === 'hidden' && <Badge tone="yellow">{tt('ausgeblendet')}</Badge>}
             </div>
             <p className="muted small" style={{ margin: '6px 0' }}>
               {tt('Gemeldet von')} {r.contact_id ? <Link to={`contacts/${r.contact_id}`}>{name(r)}</Link> : tt('gelöschtem Kontakt')} · {ago(r.created_at)}
@@ -281,8 +282,8 @@ function PostModal({ postId, onClose, onChanged }: { postId: string; onClose: ()
     <div key={c.id} className={`cm-admin-comment${c.status === 'hidden' ? ' hidden' : ''}${c.parent_id ? ' reply' : ''}`}>
       <div className="row" style={{ alignItems: 'center', gap: 6 }}>
         <strong>{c.author_name}</strong>
-        {!c.contact_id && <Badge tone="blue">Team</Badge>}
-        {c.status === 'hidden' && <Badge tone="yellow">ausgeblendet</Badge>}
+        {!c.contact_id && <Badge tone="blue">{tt('Team')}</Badge>}
+        {c.status === 'hidden' && <Badge tone="yellow">{tt('ausgeblendet')}</Badge>}
         <span className="muted small grow">{dt(c.created_at)}{c.like_count ? ` · ♥ ${c.like_count}` : ''}</span>
         {!c.parent_id && (
           <button className="btn small ghost" onClick={() => setParent(c.id)}>
@@ -361,7 +362,7 @@ function Posts({ group, onChange }: { group: any; onChange: () => void }) {
           <Select value={f.channel_id} onChange={(v) => setF({ ...f, channel_id: v })} placeholder={tt('Alle Kanäle')} options={group.channels.map((c: any) => [c.id, c.name])} />
         </div>
         <div style={{ width: 160 }}>
-          <Select value={f.status} onChange={(v) => setF({ ...f, status: v })} placeholder={tt('Alle')} options={[['visible', 'Sichtbar'], ['hidden', 'Ausgeblendet']]} />
+          <Select value={f.status} onChange={(v) => setF({ ...f, status: v })} placeholder={tt('Alle')} options={[['visible', tt('Sichtbar')], ['hidden', tt('Ausgeblendet')]]} />
         </div>
         <div className="grow" style={{ maxWidth: 280 }}>
           <Input value={f.q} onChange={(v) => setF({ ...f, q: v })} placeholder={tt('Suchen…')} />
@@ -374,7 +375,7 @@ function Posts({ group, onChange }: { group: any; onChange: () => void }) {
           <div key={p.id} className={`card cm-admin-post${p.status === 'hidden' ? ' hidden' : ''}`}>
             <div className="row" style={{ alignItems: 'center', gap: 8 }}>
               <strong>{p.author_name}</strong>
-              {p.by_team ? <Badge tone="blue">Team</Badge> : p.contact && <Link to={`contacts/${p.contact.id}`}>{tt('Kontakt')}</Link>}
+              {p.by_team ? <Badge tone="blue">{tt('Team')}</Badge> : p.contact && <Link to={`contacts/${p.contact.id}`}>{tt('Kontakt')}</Link>}
               <span className="muted small grow">
                 {p.channel_name} · {ago(p.created_at)}
               </span>
@@ -393,10 +394,10 @@ function Posts({ group, onChange }: { group: any; onChange: () => void }) {
               <button className="btn small secondary" onClick={() => setView(p.id)}>
                 {tt('Öffnen')}
               </button>
-              <button className="btn small ghost" onClick={() => patch(p, { pinned: !p.pinned }, p.pinned ? 'Gelöst' : 'Angeheftet')}>
+              <button className="btn small ghost" onClick={() => patch(p, { pinned: !p.pinned }, p.pinned ? tt('Gelöst') : tt('Angeheftet'))}>
                 {p.pinned ? tt('Lösen') : tt('Anheften')}
               </button>
-              <button className="btn small ghost" onClick={() => patch(p, { status: p.status === 'hidden' ? 'visible' : 'hidden' }, p.status === 'hidden' ? 'Wieder sichtbar' : 'Ausgeblendet')}>
+              <button className="btn small ghost" onClick={() => patch(p, { status: p.status === 'hidden' ? 'visible' : 'hidden' }, p.status === 'hidden' ? tt('Wieder sichtbar') : tt('Ausgeblendet'))}>
                 {p.status === 'hidden' ? tt('Einblenden') : tt('Ausblenden')}
               </button>
               <button className="btn small ghost" onClick={() => del(p)}>
@@ -584,7 +585,7 @@ function Members({ group, onChange }: { group: any; onChange: () => void }) {
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     {m.banned_at ? (
                       <>
-                        <Badge tone="red">gesperrt{m.ban_reason ? `: ${m.ban_reason}` : ''}</Badge>{' '}
+                        <Badge tone="red">{tt('gesperrt')}{m.ban_reason ? `: ${m.ban_reason}` : ''}</Badge>{' '}
                         <button className="btn small secondary" onClick={() => unban(m)}>
                           {tt('Entsperren')}
                         </button>
@@ -634,9 +635,9 @@ function Leaderboard({ group }: { group: any }) {
     <div className="card">
       <div className="seg" style={{ marginBottom: 12 }}>
         {[
-          ['week', '7 Tage'],
-          ['month', '30 Tage'],
-          ['all', 'Gesamt'],
+          ['week', tt('7 Tage')],
+          ['month', tt('30 Tage')],
+          ['all', tt('Gesamt')],
         ].map(([k, l]) => (
           <button key={k} className={period === k ? 'on' : ''} onClick={() => setPeriod(k)}>
             {l}
@@ -804,13 +805,13 @@ function GroupSettings({ group, onSaved }: { group: any; onSaved: () => void }) 
           <ImagePicker value={g.cover_image} onChange={(v) => setG({ ...g, cover_image: v })} />
         </Field>
         <Field label="Status">
-          <Select value={g.status} onChange={(v) => setG({ ...g, status: v })} options={[['active', 'Aktiv'], ['archived', 'Archiviert (für Mitglieder unsichtbar)']]} />
+          <Select value={g.status} onChange={(v) => setG({ ...g, status: v })} options={[['active', tt('Aktiv')], ['archived', tt('Archiviert (für Mitglieder unsichtbar)')]]} />
         </Field>
       </div>
       <div className="card">
         <h2>{tt('Zugang')}</h2>
         <Field label={tt('Wer sieht die Gruppe?')}>
-          <Select value={a.mode} onChange={(v) => setA({ mode: v })} options={Object.entries(MODE_LABEL)} />
+          <Select value={a.mode} onChange={(v) => setA({ mode: v })} options={Object.entries(MODE_LABEL).map(([k, v]) => [k, tt(v)] as [string, string])} />
         </Field>
         {a.mode === 'join' && <p className="muted small">{tt('Mitglieder kommen über die öffentliche Seite herein. Stufen, Preise, Fragen und Freigabe stellst du im Tab „Beitritt“ ein.')}</p>}
         {a.mode === 'courses' && (
@@ -838,7 +839,7 @@ function GroupSettings({ group, onSaved }: { group: any; onSaved: () => void }) 
             <TagInput value={s.word_filter} onChange={(v) => setS({ word_filter: v })} placeholder={tt('Wort + Enter')} />
           </Field>
           <Field label={tt('Treffer')}>
-            <Select value={s.filter_mode} onChange={(v) => setS({ filter_mode: v })} options={[['mask', 'Mit *** ersetzen'], ['block', 'Beitrag ablehnen']]} />
+            <Select value={s.filter_mode} onChange={(v) => setS({ filter_mode: v })} options={[['mask', tt('Mit *** ersetzen')], ['block', tt('Beitrag ablehnen')]]} />
           </Field>
           <div className="grid3">
             <Field label={tt('Beiträge / Stunde')} hint={tt('je Mitglied, 0 = frei')}>
@@ -937,18 +938,18 @@ export function CommunityGroup({ id }: { id: string }) {
       </PageHead>
       <Tabs
         tabs={[
-          ['posts', 'Beiträge'],
-          ['reports', `Meldungen${group.open_reports ? ` (${group.open_reports})` : ''}`],
-          ['channels', 'Kanäle'],
-          ['members', `Mitglieder (${group.members})`],
-          ['events', 'Termine'],
-          ['leaderboard', 'Rangliste'],
-          ['join', 'Beitritt'],
-          ['stats', 'Zahlen'],
-          ['growth', 'Wachstum'],
-          ['engage', 'Aktivierung'],
-          ['messages', 'Nachrichten'],
-          ['settings', 'Einstellungen'],
+          ['posts', tt('Beiträge')],
+          ['reports', `${tt('Meldungen')}${group.open_reports ? ` (${group.open_reports})` : ''}`],
+          ['channels', tt('Kanäle')],
+          ['members', `${tt('Mitglieder')} (${group.members})`],
+          ['events', tt('Termine')],
+          ['leaderboard', tt('Rangliste')],
+          ['join', tt('Beitritt')],
+          ['stats', tt('Zahlen')],
+          ['growth', tt('Wachstum')],
+          ['engage', tt('Aktivierung')],
+          ['messages', tt('Nachrichten')],
+          ['settings', tt('Einstellungen')],
         ]}
         value={tab}
         onChange={setTab}

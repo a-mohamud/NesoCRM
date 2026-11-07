@@ -39,7 +39,7 @@ export const SETTINGS_GROUPS: readonly TabGroup[] = [
 /** What people type when they look for a setting, beyond the section's (translated) label. */
 export const SETTINGS_KEYWORDS: Readonly<Record<string, string>> = {
   company: 'Firma Logo Adresse Zeitzone Impressum Webseite Telefon company address logo timezone',
-  messaging: 'SMTP Absender Postfach Gmail Outlook Tracking Öffnungen Klicks SMS Twilio Gateway Test eingehend sender mailbox',
+  messaging: 'SMTP Absender Postfach Gmail Outlook Tracking Öffnungen Klicks SMS Twilio Gateway Test eingehend sender mailbox email opens clicks inbound', // i18n-ignore (search keywords)
   deliverability: 'SPF DKIM DMARC DNS Domain Zustellbarkeit Spam deliverability',
   channels: 'WhatsApp Facebook Instagram Messenger Meta',
   'more-channels': 'Telegram Discord Slack LinkedIn TikTok Google Business',
@@ -53,19 +53,19 @@ export const SETTINGS_KEYWORDS: Readonly<Record<string, string>> = {
   helpdesk: 'Service Tickets SLA Wissensdatenbank Kundenportal helpdesk',
   inbox: 'Team-Posteingang Zuweisung Round Robin SLA inbox',
   fields: 'Eigene Felder Tags Eigenschaften custom fields',
-  'custom-values': 'Platzhalter Variablen Custom Values',
+  'custom-values': 'Platzhalter Variablen Custom Values placeholders variables', // i18n-ignore (search keywords)
   consent: 'DSGVO Einwilligung Datenschutz Double-Opt-in Recht GDPR consent privacy',
-  api: 'API-Schlüssel Webhooks Zapier Make n8n Signatur REST keys',
-  'ai-providers': 'KI-Anbieter OpenAI Anthropic Claude Gemini Ollama OpenRouter Schlüssel BYOK Modell model key',
+  api: 'API-Schlüssel Webhooks Zapier Make n8n Signatur REST keys signature', // i18n-ignore (search keywords)
+  'ai-providers': 'KI-Anbieter OpenAI Anthropic Claude Gemini Ollama OpenRouter Schlüssel BYOK Modell model key AI providers', // i18n-ignore (search keywords)
   voice: 'Stimme Sprachausgabe TTS ElevenLabs voice',
-  memory: 'Gedächtnis Cognee Wissen memory',
-  import: 'Import HubSpot GoHighLevel CSV',
+  memory: 'Gedächtnis Cognee Wissen memory knowledge', // i18n-ignore (search keywords)
+  import: 'Import HubSpot GoHighLevel CSV', // i18n-ignore (search keywords)
   umzug: 'Umzug Wechsel Migration GoHighLevel move',
   team: 'Benutzer Mitarbeiter Rollen Rechte 2FA users roles',
-  locations: 'Sub-Accounts Kunden Backups clients',
+  locations: 'Sub-Accounts Kunden Backups clients', // i18n-ignore (search keywords)
   subscription: 'Abo Tarif Cloud Plan subscription',
-  appearance: 'Darstellung Theme Farbe Dunkel Einfach-Modus Profi Ziele Menü appearance dark',
-  account: 'Passwort 2FA Geräte Sprache Kalender Push password devices language',
+  appearance: 'Darstellung Theme Farbe Dunkel Einfach-Modus Profi Ziele Menü appearance dark colour color simple mode goals menu', // i18n-ignore (search keywords)
+  account: 'Passwort 2FA Geräte Sprache Kalender Push password devices language calendar', // i18n-ignore (search keywords)
 };
 
 // --- Agentur ---------------------------------------------------------------------------------------------------------
@@ -82,27 +82,27 @@ export const AGENCY_GROUPS: readonly TabGroup[] = [
 ];
 
 export const AGENCY_KEYWORDS: Readonly<Record<string, string>> = {
-  projects: 'Projekte Sub-Accounts Übersicht projects',
-  contacts: 'Alle Kontakte contacts',
-  deals: 'Alle Deals Opportunities',
-  tasks: 'Alle Aufgaben tasks',
-  docs: 'Dokumente Artefakte docs',
-  clients: 'Kunden Sub-Account anlegen Branding clients',
+  projects: 'Projekte Sub-Accounts Übersicht projects overview', // i18n-ignore (search keywords)
+  contacts: 'Alle Kontakte contacts all', // i18n-ignore (search keywords)
+  deals: 'Alle Deals Opportunities all', // i18n-ignore (search keywords)
+  tasks: 'Alle Aufgaben tasks all', // i18n-ignore (search keywords)
+  docs: 'Dokumente Artefakte docs documents artifacts', // i18n-ignore (search keywords)
+  clients: 'Kunden Sub-Account anlegen Branding clients create', // i18n-ignore (search keywords)
   saas: 'SaaS Tarife Abo Preise Rebilling plans',
-  cloud: 'Cloud Konsole',
-  snapshots: 'Snapshots Vorlagen Startpaket templates',
-  umzug: 'Umzug Migration GoHighLevel',
-  domains: 'Domains DNS SSL HTTPS',
+  cloud: 'Cloud Konsole console', // i18n-ignore (search keywords)
+  snapshots: 'Snapshots Vorlagen Startpaket templates starter pack', // i18n-ignore (search keywords)
+  umzug: 'Umzug Migration GoHighLevel switch over', // i18n-ignore (search keywords)
+  domains: 'Domains DNS SSL HTTPS', // i18n-ignore (search keywords)
   branding: 'White-Label Logo Farbe Login-Seite Favicon branding',
   login: 'Anmeldung SSO OIDC Google Microsoft Passkey 2FA login',
   integrations: 'Integrationen Postiz Google Microsoft OAuth Supabase Todoist Nango Composio',
-  'partner-links': 'Partner-Links Affiliate',
-  api: 'API MCP Schlüssel keys',
-  'mcp-servers': 'MCP-Server Werkzeuge',
-  'ai-tools': 'KI-Werkzeuge tools',
-  'ai-providers': 'KI-Anbieter OpenAI Anthropic Claude Gemini Ollama BYOK Schlüssel',
-  feedback: 'Fehler Wünsche Feedback bugs',
-  audit: 'Protokoll Audit Log',
+  'partner-links': 'Partner-Links Affiliate partner links', // i18n-ignore (search keywords)
+  api: 'API MCP Schlüssel keys', // i18n-ignore (search keywords)
+  'mcp-servers': 'MCP-Server Werkzeuge servers tools', // i18n-ignore (search keywords)
+  'ai-tools': 'KI-Werkzeuge tools AI', // i18n-ignore (search keywords)
+  'ai-providers': 'KI-Anbieter OpenAI Anthropic Claude Gemini Ollama BYOK Schlüssel AI providers keys', // i18n-ignore (search keywords)
+  feedback: 'Fehler Wünsche Feedback bugs wishes', // i18n-ignore (search keywords)
+  audit: 'Protokoll Audit Log', // i18n-ignore (search keywords)
   system: 'System Gesundheit Backups Updates health',
 };
 

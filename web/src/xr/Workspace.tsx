@@ -140,8 +140,8 @@ function PagePicker({ current, onPick, onClose }: { current: string; onPick: (ro
         {PAGES.map(([route, label]) => (
           <button key={route} type="button" role="listitem" className={`ws-page${route === head ? ' on' : ''}`} onClick={() => (onPick(route), onClose())}>
             <Icon name={(route === 'agent' ? 'bot' : route === 'conversations' ? 'conversations' : route === 'opportunities' ? 'opportunities' : route === 'pm' ? 'gantt' : route === 'dashboard' ? 'dashboard' : route === 'contacts' ? 'contacts' : route === 'boards' ? 'boards' : route === 'calendars' ? 'calendars' : route === 'tasks' ? 'tasks' : route === 'canvas' ? 'canvas' : 'columns3') as any} size={18} />
-            <span>{label}</span>
-            {route === head && <span className="small muted">aktuell</span>}
+            <span>{tt(label)}</span>
+            {route === head && <span className="small muted">{tt('aktuell')}</span>}
           </button>
         ))}
       </div>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import { Check, Field, Input, Link, Select, Textarea, useLoad } from '../ui';
 import './quickwins.css';
-import { useT } from '../i18n';
+import { fmtDate, useT } from '../i18n';
 
 /** Calendar editor parts for Calendly-style booking rules: limits, date-specific hours, several reminders, follow-up and no-show messages. All of it lives in the calendar's settings. */
 
@@ -44,14 +44,14 @@ export function OverridesEditor({ s, setS }: { s: any; setS: SetS }) {
         const closed = w.length === 0;
         return (
           <div className="override-row" key={d}>
-            <strong>{new Date(`${d}T12:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>
-            <Select value={closed ? 'closed' : 'hours'} onChange={(v) => set({ ...ov, [d]: v === 'closed' ? [] : [['09:00', '17:00']] })} options={[['closed', 'Geschlossen (z. B. Feiertag)'], ['hours', 'Andere Zeiten']]} />
+            <strong>{fmtDate(`${d}T12:00:00`, { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>
+            <Select value={closed ? 'closed' : 'hours'} onChange={(v) => set({ ...ov, [d]: v === 'closed' ? [] : [['09:00', '17:00']] })} options={[['closed', tt('Geschlossen (z. B. Feiertag)')], ['hours', tt('Andere Zeiten')]]} />
             {!closed && (
               <span className="override-windows">
                 {w.map((win, i) => (
                   <span className="row" key={i} style={{ alignItems: 'center', gap: 4 }}>
-                    <input type="time" value={win[0]} aria-label="von" onChange={(e) => set({ ...ov, [d]: w.map((x, j) => (j === i ? [e.target.value, x[1]] : x)) })} />–
-                    <input type="time" value={win[1]} aria-label="bis" onChange={(e) => set({ ...ov, [d]: w.map((x, j) => (j === i ? [x[0], e.target.value] : x)) })} />
+                    <input type="time" value={win[0]} aria-label={tt('von')} onChange={(e) => set({ ...ov, [d]: w.map((x, j) => (j === i ? [e.target.value, x[1]] : x)) })} />–
+                    <input type="time" value={win[1]} aria-label={tt('bis')} onChange={(e) => set({ ...ov, [d]: w.map((x, j) => (j === i ? [x[0], e.target.value] : x)) })} />
                     <button type="button" className="icon-btn" disabled={w.length < 2} aria-label={tt('Zeitfenster entfernen')} onClick={() => set({ ...ov, [d]: w.filter((_, j) => j !== i) })}>
                       ✕
                     </button>
@@ -105,7 +105,7 @@ export function RemindersEditor({ s, setS }: { s: any; setS: SetS }) {
             <input type="number" min={0.25} max={720} step={0.25} value={r.hours} aria-label={tt('Stunden vorher')} onChange={(e) => set(list.map((x, j) => (j === i ? { ...x, hours: Number(e.target.value) } : x)))} />
             <span>{tt('Std. vorher')}</span>
           </span>
-          <Check checked={!!r.email} onChange={(v) => set(list.map((x, j) => (j === i ? { ...x, email: v } : x)))} label="E-Mail" />
+          <Check checked={!!r.email} onChange={(v) => set(list.map((x, j) => (j === i ? { ...x, email: v } : x)))} label={tt('E-Mail')} />
           <Check checked={!!r.sms} onChange={(v) => set(list.map((x, j) => (j === i ? { ...x, sms: v } : x)))} label={smsReady ? 'SMS' : tt('SMS (kein Anbieter)')} />
           <button type="button" className="icon-btn" aria-label={tt('Erinnerung entfernen')} onClick={() => set(list.filter((_, j) => j !== i))}>
             ✕
@@ -139,6 +139,7 @@ const AFTER = {
     title: 'Nachfassen nach dem Termin',
     hint: 'Eine Danke-Nachricht einige Stunden nach dem Ende – für bestätigte und als „erschienen“ markierte Termine, nicht für abgesagte oder verpasste. Gilt erst für Termine, die nach dem Einschalten enden. „Nicht stören“ wird beachtet.',
     subject: 'Danke für den Termin: {{calendar.name}}',
+    // i18n-ignore – multi-line text, translated via tt(d.body) (catalog key keeps the line breaks)
     body: 'Hallo {{contact.first_name|du}},\n\nvielen Dank für unseren Termin „{{calendar.name}}“ am {{appointment.start_text}}. Wenn du Fragen hast, antworte einfach auf diese Nachricht.\n\n{{location.name}}',
     sms: 'Danke für den Termin „{{calendar.name}}“ am {{appointment.start_text}}. Bei Fragen melde dich gern. {{location.name}}',
   },
@@ -146,6 +147,7 @@ const AFTER = {
     title: 'Nicht erschienen',
     hint: 'Geht sofort raus, wenn du einen Termin auf „nicht erschienen“ setzt – einmal je Termin, mit dem Link für eine neue Buchung ({{appointment.booking_url}}). „Nicht stören“ wird beachtet.',
     subject: 'Schade, wir haben dich vermisst',
+    // i18n-ignore – multi-line text, translated via tt(d.body) (catalog key keeps the line breaks)
     body: 'Hallo {{contact.first_name|du}},\n\nbei deinem Termin „{{calendar.name}}“ am {{appointment.start_text}} haben wir dich leider nicht erreicht. Hier kannst du einen neuen Termin buchen: {{appointment.booking_url}}\n\n{{location.name}}',
     sms: 'Wir haben dich beim Termin am {{appointment.start_text}} vermisst. Neuen Termin buchen: {{appointment.booking_url}} – {{location.name}}',
   },
@@ -159,8 +161,8 @@ export function AfterEditor({ kind, s, setS }: { kind: 'followup' | 'noshow'; s:
   const set = (patch: Record<string, any>) => setS({ [kind]: { ...v, ...patch } });
   return (
     <div className="qw-box" data-tour={`calendar-${kind}`}>
-      <h3>{d.title}</h3>
-      <p className="muted small">{d.hint}</p>
+      <h3>{tt(d.title)}</h3>
+      <p className="muted small">{tt(d.hint)}</p>
       <Check checked={!!v.enabled} onChange={(x) => set({ enabled: x })} label={kind === 'followup' ? tt('Nachfass-Nachricht senden') : tt('Nachricht an Kontakte senden, die nicht erschienen sind')} />
       {v.enabled && (
         <>
@@ -170,18 +172,18 @@ export function AfterEditor({ kind, s, setS }: { kind: 'followup' | 'noshow'; s:
             </Field>
           )}
           <div className="row" style={{ gap: 16 }}>
-            <Check checked={v.email !== false} onChange={(x) => set({ email: x })} label="E-Mail" />
+            <Check checked={v.email !== false} onChange={(x) => set({ email: x })} label={tt('E-Mail')} />
             <Check checked={!!v.sms} onChange={(x) => set({ sms: x })} label={tt('SMS (nur mit eingerichtetem SMS-Anbieter und Telefonnummer)')} />
           </div>
           <Field label={tt('E-Mail: Betreff')}>
-            <Input value={v.subject} onChange={(x) => set({ subject: x })} placeholder={d.subject} />
+            <Input value={v.subject} onChange={(x) => set({ subject: x })} placeholder={tt(d.subject)} />
           </Field>
           <Field label={tt('E-Mail: Text')}>
-            <Textarea value={v.body} onChange={(x) => set({ body: x })} rows={5} placeholder={d.body} />
+            <Textarea value={v.body} onChange={(x) => set({ body: x })} rows={5} placeholder={tt(d.body)} />
           </Field>
           {v.sms && (
             <Field label={tt('SMS: Text')}>
-              <Textarea value={v.sms_body} onChange={(x) => set({ sms_body: x })} rows={2} maxLength={480} placeholder={d.sms} />
+              <Textarea value={v.sms_body} onChange={(x) => set({ sms_body: x })} rows={2} maxLength={480} placeholder={tt(d.sms)} />
             </Field>
           )}
         </>

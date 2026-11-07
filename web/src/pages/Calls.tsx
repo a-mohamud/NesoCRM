@@ -151,7 +151,7 @@ export function Calls({ tab, item }: { tab?: string; item?: string }) {
         )}
       </PageHead>
       <div style={{ margin: '0 0 12px' }} data-tour="calls-tabs">
-        <Tabs tabs={tops.map(([k, l]) => [k, l])} value={cur} onChange={(k) => navigate(k === 'log' ? 'calls' : `calls/${k}`)} />
+        <Tabs tabs={tops.map(([k, l]) => [k, tt(l)])} value={cur} onChange={(k) => navigate(k === 'log' ? 'calls' : `calls/${k}`)} />
       </div>
       {cur === 'log' && <CallLog />}
       {cur === 'ivr' && <CallsFlows />}
@@ -196,7 +196,7 @@ function CallLog() {
         </SortableGrid>
       )}
       <div className="row" style={{ alignItems: 'center', marginBottom: 10 }}>
-        <Tabs tabs={TABS} value={tab} onChange={setTab} />
+        <Tabs tabs={TABS.map(([k, l]) => [k, tt(l)] as [string, string])} value={tab} onChange={setTab} />
         <div style={{ width: 260, marginLeft: 'auto' }} data-tour="calls-search">
           <Input value={q} onChange={setQ} placeholder={tt('Nummer, Name, Transkription…')} />
         </div>
@@ -223,7 +223,7 @@ function CallLog() {
                 const number = c.direction === 'in' ? c.from_number : c.to_number;
                 return (
                   <tr key={c.id} className={c.missed ? 'missed' : ''}>
-                    <td title={c.direction === 'in' ? 'eingehend' : 'ausgehend'}>
+                    <td title={c.direction === 'in' ? tt('eingehend') : tt('ausgehend')}>
                       <Icon name={callIcon(c)} />
                     </td>
                     <td>
@@ -232,7 +232,7 @@ function CallLog() {
                       <CallMeta c={c} />
                     </td>
                     <td>
-                      <Badge tone={tone}>{label}</Badge>
+                      <Badge tone={tone}>{tt(label)}</Badge>
                       {String(c.reason).startsWith('ai') && (
                         <>
                           {' '}
@@ -362,7 +362,7 @@ export function TelephonySettings() {
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     {n.connected ? (
-                      <Badge tone="green">verbunden</Badge>
+                      <Badge tone="green">{tt('verbunden')}</Badge>
                     ) : (
                       <button
                         className="btn small"
@@ -418,9 +418,9 @@ export function TelephonySettings() {
             value={s.hours_mode}
             onChange={(v) => set({ hours_mode: v })}
             options={[
-              ['hours', 'Zu Geschäftszeiten weiterleiten, sonst Voicemail'],
-              ['always', 'Immer weiterleiten'],
-              ['never', 'Nie weiterleiten – immer Voicemail'],
+              ['hours', tt('Zu Geschäftszeiten weiterleiten, sonst Voicemail')],
+              ['always', tt('Immer weiterleiten')],
+              ['never', tt('Nie weiterleiten – immer Voicemail')],
             ]}
           />
         </Field>
@@ -431,10 +431,10 @@ export function TelephonySettings() {
             </div>
             {DAYS.map(([k, l]) => (
               <div key={k} className="hours-row">
-                <Check checked={!!s.hours[k]?.open} onChange={(v) => setDay(k, { open: v })} label={l} />
-                <Input type="time" value={s.hours[k]?.from} onChange={(v) => setDay(k, { from: v })} disabled={!s.hours[k]?.open} aria-label={tt('{l} von', { l: l })} />
-                <span className="muted">bis</span>
-                <Input type="time" value={s.hours[k]?.to} onChange={(v) => setDay(k, { to: v })} disabled={!s.hours[k]?.open} aria-label={tt('{l} bis', { l: l })} />
+                <Check checked={!!s.hours[k]?.open} onChange={(v) => setDay(k, { open: v })} label={tt(l)} />
+                <Input type="time" value={s.hours[k]?.from} onChange={(v) => setDay(k, { from: v })} disabled={!s.hours[k]?.open} aria-label={tt('{l} von', { l: tt(l) })} />
+                <span className="muted">{tt('bis')}</span>
+                <Input type="time" value={s.hours[k]?.to} onChange={(v) => setDay(k, { to: v })} disabled={!s.hours[k]?.open} aria-label={tt('{l} bis', { l: tt(l) })} />
               </div>
             ))}
           </div>

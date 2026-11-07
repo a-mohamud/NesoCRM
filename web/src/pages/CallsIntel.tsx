@@ -6,7 +6,7 @@ import { Callout, Item, Panel } from './CreatorKit';
 import { Tl, dur, pct, uploadRaw, useCanSettings } from './CallsKit';
 import { Scores, ScorecardsDialog } from './CallsScorecards';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * "Gespräche": the analysis of calls and uploaded meeting recordings – transcript (per speaker when the recording has two channels),
@@ -21,7 +21,10 @@ const STATUS_TEXT: Record<string, string> = { queued: 'wartet', transcribing: 'w
 const TONE: Record<string, 'green' | 'red' | 'gray' | 'yellow'> = { positiv: 'green', negativ: 'red', neutral: 'gray', gemischt: 'yellow' };
 const SPEAKER: Record<string, string> = { agent: 'Mitarbeiter', customer: 'Gegenüber' };
 
-const sentimentBadge = (s: any) => (s?.overall ? <Badge tone={TONE[s.overall] ?? 'gray'}>{s.overall}</Badge> : null);
+const sentimentBadge = (s: any) => {
+  const t = tr('x_comms');
+  return s?.overall ? <Badge tone={TONE[s.overall] ?? 'gray'}>{t(s.overall)}</Badge> : null;
+};
 
 // --- settings ---------------------------------------------------------------------------------------------------------------------
 
@@ -76,7 +79,7 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
       <Check checked={s.auto_tasks} onChange={(v) => set({ auto_tasks: v })} label={tt('Aufgaben der eigenen Seite sofort als Aufgabe anlegen')} />
       <Check checked={s.channel_swap} onChange={(v) => set({ channel_swap: v })} label={tt('Mitarbeiter und Gegenüber vertauschen (falls die Zuordnung der Tonspuren bei dir umgekehrt ist)')} />
       <Field label={tt('Standard-Scorecard')} hint={tt('Wird nach jeder Auswertung automatisch von der KI vorbewertet.')}>
-        <Select value={s.default_scorecard_id} onChange={(v) => set({ default_scorecard_id: v })} placeholder="keine" options={d.scorecards.map((c: any) => [c.id, c.name])} />
+        <Select value={s.default_scorecard_id} onChange={(v) => set({ default_scorecard_id: v })} placeholder={tt('keine')} options={d.scorecards.map((c: any) => [c.id, c.name])} />
       </Field>
       <Field label={tt('Eigene Füllwörter')} hint={tt('Kommen zur eingebauten Liste (äh, ähm, also, quasi …) dazu.')}>
         <TagInput value={s.fillers} onChange={(v) => set({ fillers: v })} placeholder={tt('Wort + Enter')} />
@@ -126,7 +129,7 @@ function UploadDialog({ onClose, onDone }: { onClose: () => void; onDone: (id: s
       }
     >
       <Field label={tt('Was hast du?')}>
-        <Select value={mode} onChange={setMode} options={[['audio', 'Eine Aufnahme (MP3, WAV, M4A, WebM …)'], ['text', 'Ein fertiges Transkript (Teams, Zoom, Meet)']]} />
+        <Select value={mode} onChange={setMode} options={[['audio', tt('Eine Aufnahme (MP3, WAV, M4A, WebM …)')], ['text', tt('Ein fertiges Transkript (Teams, Zoom, Meet)')]]} />
       </Field>
       <Field label={tt('Titel (optional)')}>
         <Input value={title} onChange={setTitle} maxLength={120} placeholder={tt('z. B. Erstgespräch Müller GmbH')} />
@@ -179,7 +182,7 @@ function Detail({ id, onClose, ready }: { id: string; onClose: () => void; ready
   return (
     <Modal title={d.title || tt('Gespräch')} wide onClose={onClose}>
       <div className="cr-line" style={{ marginBottom: 10 }}>
-        <Badge tone="blue">{SOURCE[d.source] ?? d.source}</Badge>
+        <Badge tone="blue">{SOURCE[d.source] ? tt(SOURCE[d.source]) : d.source}</Badge>
         {d.contact_id && (
           <Link to={`contacts/${d.contact_id}`} className="btn small secondary">
             {d.contact_name || tt('Kontakt')}
@@ -195,7 +198,7 @@ function Detail({ id, onClose, ready }: { id: string; onClose: () => void; ready
       </div>
       {running && (
         <p>
-          <Spinner /> {STATUS_TEXT[d.status]}
+          <Spinner /> {tt(STATUS_TEXT[d.status] ?? '')}
         </p>
       )}
       {d.status === 'failed' && (
@@ -295,7 +298,7 @@ function Detail({ id, onClose, ready }: { id: string; onClose: () => void; ready
             )}
             {d.sentiment?.score !== undefined && (
               <p className="muted small">
-                {tt('Stimmung: {overall} (', { overall: d.sentiment.overall })}{d.sentiment.score > 0 ? '+' : ''}
+                {tt('Stimmung: {overall} (', { overall: tt(d.sentiment.overall) })}{d.sentiment.score > 0 ? '+' : ''}
                 {Math.round(d.sentiment.score * 100) / 100}){d.sentiment.customer ? tt(' · Gegenüber {customer}', { customer: d.sentiment.customer }) : ''}
                 {d.sentiment.agent ? tt(' · Mitarbeiter {agent}', { agent: d.sentiment.agent }) : ''}
               </p>
@@ -307,7 +310,7 @@ function Detail({ id, onClose, ready }: { id: string; onClose: () => void; ready
                 <div className="tl-action" key={i}>
                   <Check checked={a.done} onChange={(on) => done(i, on)} label="" />
                   <span className="grow" style={a.done ? { textDecoration: 'line-through' } : undefined}>
-                    {a.title} <span className="muted small">· {a.owner === 'agent' ? 'wir' : a.owner === 'customer' ? tt('Gegenüber') : 'andere'}{a.due ? tt(' · bis {slice}.{slice2}.', { slice: a.due.slice(8), slice2: a.due.slice(5, 7) }) : ''}</span>
+                    {a.title} <span className="muted small">· {a.owner === 'agent' ? tt('wir') : a.owner === 'customer' ? tt('Gegenüber') : tt('andere')}{a.due ? tt(' · bis {slice}.{slice2}.', { slice: a.due.slice(8), slice2: a.due.slice(5, 7) }) : ''}</span>
                   </span>
                   {a.task_id ? (
                     <Badge tone="green">{tt('als Aufgabe angelegt')}</Badge>
@@ -330,7 +333,7 @@ function Detail({ id, onClose, ready }: { id: string; onClose: () => void; ready
               <div className="tl-transcript">
                 {d.utterances.map((u: any, i: number) => (
                   <div key={i}>
-                    <strong>{SPEAKER[u.speaker] ?? u.speaker}:</strong> {u.text}
+                    <strong>{SPEAKER[u.speaker] ? tt(SPEAKER[u.speaker]) : u.speaker}:</strong> {u.text}
                   </div>
                 ))}
               </div>
@@ -395,15 +398,15 @@ export function CallsIntel({ open }: { open?: string }) {
           <Stat label={tt('Ausgewertet (30 Tage)')} value={st.analysed} sub={st.open ? tt('{open} laufen', { open: st.open }) : st.failed ? tt('{failed} fehlgeschlagen', { failed: st.failed }) : undefined} />
           <Stat label={tt('Redeanteil Mitarbeiter')} value={st.avg_agent_talk_pct === null ? '–' : `${Math.round(st.avg_agent_talk_pct)} %`} sub={tt('Richtwert: unter 50 %')} />
           <Stat label={tt('Füllwörter je 100 Wörter')} value={st.avg_fillers_per_100 ?? '–'} />
-          <Stat label={tt('Stimmung')} value={Object.entries(st.sentiment as Record<string, number>).map(([k, n]) => `${n} ${k}`).join(' · ') || '–'} />
+          <Stat label={tt('Stimmung')} value={Object.entries(st.sentiment as Record<string, number>).map(([k, n]) => `${n} ${tt(k)}`).join(' · ') || '–'} />
         </SortableGrid>
       )}
       <div className="tl-bar">
         <div className="grow" data-tour="intel-search">
           <Input value={q} onChange={setQ} placeholder={tt('Suchen in Titel, Zusammenfassung, Transkript …')} aria-label={tt('Suchen')} />
         </div>
-        <Select value={sentiment} onChange={setSentiment} placeholder={tt('Jede Stimmung')} options={['positiv', 'neutral', 'negativ', 'gemischt']} />
-        <Select value={source} onChange={setSource} placeholder={tt('Jede Quelle')} options={Object.entries(SOURCE)} />
+        <Select value={sentiment} onChange={setSentiment} placeholder={tt('Jede Stimmung')} options={['positiv', 'neutral', 'negativ', 'gemischt'].map((k) => [k, tt(k)] as [string, string])} />
+        <Select value={source} onChange={setSource} placeholder={tt('Jede Quelle')} options={Object.entries(SOURCE).map(([k, l]) => [k, tt(l)] as [string, string])} />
         <button className="btn" onClick={() => setUpload(true)} data-tour="intel-upload">
           <Icon name="upload" size={14} /> {tt('Aufnahme oder Transkript')}
         </button>
@@ -426,8 +429,8 @@ export function CallsIntel({ open }: { open?: string }) {
               onClick={() => show(r.id)}
               side={
                 <>
-                  {RUNNING.includes(r.status) || r.status === 'failed' ? <Badge tone={r.status === 'failed' ? 'red' : 'blue'}>{STATUS_TEXT[r.status]}</Badge> : sentimentBadge(r.sentiment)}
-                  <Badge>{SOURCE[r.source] ?? r.source}</Badge>
+                  {RUNNING.includes(r.status) || r.status === 'failed' ? <Badge tone={r.status === 'failed' ? 'red' : 'blue'}>{tt(STATUS_TEXT[r.status] ?? '')}</Badge> : sentimentBadge(r.sentiment)}
+                  <Badge>{SOURCE[r.source] ? tt(SOURCE[r.source]) : r.source}</Badge>
                 </>
               }
             >

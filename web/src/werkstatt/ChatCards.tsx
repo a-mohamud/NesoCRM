@@ -105,7 +105,7 @@ function BuildCard({ buildId, cardId, onNavigate }: { buildId: string; cardId: s
       </div>
     );
   return (
-    <div className="wk-chat" data-tour="agent-wk-card" aria-label={`${NAMES.werkstatt}: ${b.title}`}>
+    <div className="wk-chat" data-tour="agent-wk-card" aria-label={`${tt(NAMES.werkstatt)}: ${b.title}`}>
       <CardBody b={b} me={me.data} reload={() => void build.reload()} onNavigate={onNavigate} onNested={setNested} />
       {nested && <BuildCard buildId={nested} cardId={`${cardId}:nested`} onNavigate={onNavigate} />}
     </div>
@@ -118,8 +118,9 @@ function CardBody({ b, me, reload, onNavigate, onNested }: { b: Build; me?: Werk
     return (
       <>
         <div className="head">
-          <Icon name="hammer" size={15} /> <strong>{tt('{werkstatt}: Plan wird erstellt', { werkstatt: NAMES.werkstatt })}</strong>
+          <Icon name="hammer" size={15} /> <strong>{tt('{werkstatt}: Plan wird erstellt', { werkstatt: tt(NAMES.werkstatt) })}</strong>
         </div>
+        {/* i18n-ignore – Progress translates its label */}
         {b.progress?.label ? <Progress b={b} /> : <Progress b={{ ...b, progress: { label: 'Die KI analysiert den Wunsch …' } }} />}
         <Steps b={b} />
       </>
@@ -297,7 +298,7 @@ function PluginPreview({ pluginId, onNavigate, onNested, onChanged, showBadges }
     <>
       <p className="small" style={{ margin: '6px 0 0' }}>
         {tt('{name} · Version {version}', { name: p.name, version: p.version })}
-        {p.status !== 'active' && <> · <Badge tone="red">{p.status === 'killed' ? 'abgeschaltet' : p.status}</Badge></>}
+        {p.status !== 'active' && <> · <Badge tone="red">{p.status === 'killed' ? tt('abgeschaltet') : p.status}</Badge></>}
       </p>
       {showBadges && <VersionBadges b={active?.badges} />}
       {entry && p.active_here && p.status === 'active' ? (
@@ -306,7 +307,7 @@ function PluginPreview({ pluginId, onNavigate, onNested, onChanged, showBadges }
         </div>
       ) : (
         <p className="muted small">
-          {entry ? tt('Das Plugin ist gerade nicht aktiv.') : `Dieses Plugin hat keine Oberfläche – es läuft als ${[...(e?.actions ?? []).map((a) => `Automations-Schritt „${a.label}“`), ...(e?.jobs ?? []).map((j) => `Job „${j.label}“`)].join(', ') || tt('Hintergrund-Logik')}.`}
+          {entry ? tt('Das Plugin ist gerade nicht aktiv.') : tt('Dieses Plugin hat keine Oberfläche – es läuft als {what}.', { what: [...(e?.actions ?? []).map((a) => tt('Automations-Schritt „{label}“', { label: a.label })), ...(e?.jobs ?? []).map((j) => tt('Job „{label}“', { label: j.label }))].join(', ') || tt('Hintergrund-Logik') })}
         </p>
       )}
       <div className="actions" data-tour="agent-wk-actions">
@@ -315,7 +316,7 @@ function PluginPreview({ pluginId, onNavigate, onNested, onChanged, showBadges }
         </button>
         {p.can_manage && p.status === 'active' && (
           <button className="btn secondary small" aria-expanded={change} onClick={() => setChange(!change)}>
-            <Icon name="hammer" size={14} /> {NAMES.change}
+            <Icon name="hammer" size={14} /> {tt(NAMES.change)}
           </button>
         )}
         {p.can_manage && p.versions.filter((v) => v.status === 'checked').length > 1 && (

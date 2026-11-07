@@ -4,7 +4,7 @@ import { api, dt } from '../api';
 import { Badge, Check, Empty, Field, Input, Link, Modal, PageHead, Select, Spinner, Stat, TagInput, Textarea, act, confirmAsk, useLoad } from '../ui';
 import { Callout, Fold, Item, Panel, StatusBadge } from './CreatorKit';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * Kommentar-zu-DM: someone comments a keyword under a post or reel (Instagram, Facebook) or answers a story with one – HyperLevel
@@ -45,7 +45,10 @@ type Rule = {
   once_per_person: boolean;
   enabled: boolean;
 };
-const blank = (): Rule => ({ name: '', kind: 'comment', platform: 'instagram', scope: 'all', media_id: '', media_label: '', keywords: [], match_mode: 'contains', public_replies: ['Schau in deine Nachrichten – ich habe dir den Link geschickt!'], dm_text: '', link_url: '', link_label: 'Jetzt öffnen', buttons: [], tags: [], workflow_id: '', max_per_hour: 60, once_per_person: true, enabled: true });
+const blank = (): Rule => {
+  const t = tr('x_comms');
+  return { name: '', kind: 'comment', platform: 'instagram', scope: 'all', media_id: '', media_label: '', keywords: [], match_mode: 'contains', public_replies: [t('Schau in deine Nachrichten – ich habe dir den Link geschickt!')], dm_text: '', link_url: '', link_label: t('Jetzt öffnen'), buttons: [], tags: [], workflow_id: '', max_per_hour: 60, once_per_person: true, enabled: true };
+};
 
 function RuleDialog({ rule, onClose, onSaved }: { rule?: any; onClose: () => void; onSaved: () => void }) {
   const tt = useT('x_comms');
@@ -66,11 +69,11 @@ function RuleDialog({ rule, onClose, onSaved }: { rule?: any; onClose: () => voi
   };
   const problem =
     r.match_mode !== 'any' && !r.keywords.length
-      ? 'Mindestens ein Stichwort – oder „jeder Kommentar“ wählen.'
+      ? tt('Mindestens ein Stichwort – oder „jeder Kommentar“ wählen.')
       : !r.dm_text.trim() && !r.link_url.trim() && !r.buttons.length
-        ? 'Die Direktnachricht braucht einen Text, einen Link oder Buttons.'
+        ? tt('Die Direktnachricht braucht einen Text, einen Link oder Buttons.')
         : r.scope === 'post' && !r.media_id.trim()
-          ? 'Bitte den Beitrag wählen oder seine ID eintragen.'
+          ? tt('Bitte den Beitrag wählen oder seine ID eintragen.')
           : '';
   const save = async () => {
     const body = { ...r, public_replies: r.public_replies.map((x) => x.trim()).filter(Boolean), buttons: r.buttons.filter((b) => b.title.trim()) };
@@ -101,18 +104,18 @@ function RuleDialog({ rule, onClose, onSaved }: { rule?: any; onClose: () => voi
           <Input value={r.name} onChange={(v) => set({ name: v })} maxLength={120} placeholder={tt('Stichwort „Guide“')} />
         </Field>
         <Field label={tt('Auslöser')}>
-          <Select value={r.kind} onChange={(v) => set({ kind: v as Rule['kind'], ...(v === 'story_reply' ? { platform: 'instagram', scope: 'all' as const } : {}) })} options={[['comment', 'Kommentar unter einem Beitrag oder Reel'], ['story_reply', 'Antwort auf eine Instagram-Story']]} />
+          <Select value={r.kind} onChange={(v) => set({ kind: v as Rule['kind'], ...(v === 'story_reply' ? { platform: 'instagram', scope: 'all' as const } : {}) })} options={[['comment', tt('Kommentar unter einem Beitrag oder Reel')], ['story_reply', tt('Antwort auf eine Instagram-Story')]]} />
         </Field>
       </div>
       <div className="cr-form-row" data-tour="igc-where">
         {!story && (
           <Field label={tt('Plattform')}>
-            <Select value={r.platform} onChange={(v) => set({ platform: v, media_id: '', media_label: '' })} options={PLATFORM} />
+            <Select value={r.platform} onChange={(v) => set({ platform: v, media_id: '', media_label: '' })} options={PLATFORM.map(([k, l]) => [k, tt(l)] as [string, string])} />
           </Field>
         )}
         {!story && (
           <Field label={tt('Welcher Beitrag?')}>
-            <Select value={r.scope} onChange={(v) => set({ scope: v as Rule['scope'] })} options={[['all', 'Alle Beiträge und Reels'], ['post', 'Nur ein bestimmter Beitrag']]} />
+            <Select value={r.scope} onChange={(v) => set({ scope: v as Rule['scope'] })} options={[['all', tt('Alle Beiträge und Reels')], ['post', tt('Nur ein bestimmter Beitrag')]]} />
           </Field>
         )}
       </div>
@@ -142,7 +145,7 @@ function RuleDialog({ rule, onClose, onSaved }: { rule?: any; onClose: () => voi
       )}
       <div className="cr-form-row" data-tour="igc-keywords">
         <Field label={tt('Das Stichwort …')}>
-          <Select value={r.match_mode} onChange={(v) => set({ match_mode: v })} options={MODE} />
+          <Select value={r.match_mode} onChange={(v) => set({ match_mode: v })} options={MODE.map(([k, l]) => [k, tt(l)] as [string, string])} />
         </Field>
       </div>
       {r.match_mode !== 'any' && (
@@ -185,7 +188,7 @@ function RuleDialog({ rule, onClose, onSaved }: { rule?: any; onClose: () => voi
         <div className="cr-lines">
           {r.buttons.map((b, i) => (
             <div className="cr-line" key={i}>
-              <Select value={b.type} onChange={(v) => setBtn(i, { type: v as 'reply' | 'url' })} options={[['reply', 'Antwort'], ['url', 'Link']]} />
+              <Select value={b.type} onChange={(v) => setBtn(i, { type: v as 'reply' | 'url' })} options={[['reply', tt('Antwort')], ['url', tt('Link')]]} />
               <Input value={b.title} className="grow" onChange={(v) => setBtn(i, { title: v })} maxLength={20} placeholder={tt('Beschriftung')} />
               <Input value={b.value} className="grow" onChange={(v) => setBtn(i, { value: v })} placeholder={b.type === 'url' ? 'https://…' : tt('Antworttext (leer = Beschriftung)')} />
               <button type="button" className="btn small ghost" aria-label={tt('Button entfernen')} onClick={() => set({ buttons: r.buttons.filter((_, j) => j !== i) })}>
@@ -326,7 +329,7 @@ export function CommentDm() {
                   onClick={() => setEditing(r)}
                   side={
                     <>
-                      <Badge tone={r.enabled ? 'green' : 'gray'}>{r.enabled ? 'aktiv' : 'aus'}</Badge>
+                      <Badge tone={r.enabled ? 'green' : 'gray'}>{r.enabled ? tt('aktiv') : tt('aus')}</Badge>
                       <button
                         className="btn small secondary"
                         onClick={(e) => {
@@ -366,11 +369,11 @@ export function CommentDm() {
         <TestBox rules={rules.data?.length ?? 0} />
         <Panel title={tt('Verbindung zu Meta')} sub={tt('Kommentare kommen über den Webhook deiner Meta-App an.')} tour="igc-connection">
           <div className="cr-list">
-            <Item side={<Badge tone={s?.instagram.configured ? 'green' : 'gray'}>{s?.instagram.configured ? 'verbunden' : tt('nicht verbunden')}</Badge>}>
+            <Item side={<Badge tone={s?.instagram.configured ? 'green' : 'gray'}>{s?.instagram.configured ? tt('verbunden') : tt('nicht verbunden')}</Badge>}>
               <strong>Instagram</strong>
               <div className="cr-sub">{s?.instagram.username ? `@${s.instagram.username}` : s?.instagram.account_id || '–'}</div>
             </Item>
-            <Item side={<Badge tone={s?.facebook.configured ? 'green' : 'gray'}>{s?.facebook.configured ? 'verbunden' : tt('nicht verbunden')}</Badge>}>
+            <Item side={<Badge tone={s?.facebook.configured ? 'green' : 'gray'}>{s?.facebook.configured ? tt('verbunden') : tt('nicht verbunden')}</Badge>}>
               <strong>{tt('Facebook-Seite')}</strong>
               <div className="cr-sub">{s?.facebook.page_name || s?.facebook.page_id || '–'}</div>
             </Item>
@@ -417,8 +420,8 @@ export function CommentDm() {
                   <strong>{e.from_username ? `@${e.from_username}` : e.from_name || tt('Unbekannt')}</strong> · „{String(e.text).slice(0, 90)}“
                   <div className="cr-sub">
                     {e.rule_name || tt('Regel gelöscht')} · {e.platform === 'facebook' ? 'Facebook' : 'Instagram'}
-                    {e.kind === 'story_reply' ? tt(' (Story)') : ''} {tt('· {dt} · DM:', { dt: dt(e.created_at) })} {e.dm_status === 'sent' ? 'gesendet' : e.dm_status === 'skipped' ? tt('schon erhalten') : e.dm_status === 'failed' ? tt('Fehler') : '–'}
-                    {e.public_status ? ` · Antwort: ${e.public_status === 'sent' ? 'gesendet' : tt('Fehler')}` : ''}
+                    {e.kind === 'story_reply' ? tt(' (Story)') : ''} {tt('· {dt} · DM:', { dt: dt(e.created_at) })} {e.dm_status === 'sent' ? tt('gesendet') : e.dm_status === 'skipped' ? tt('schon erhalten') : e.dm_status === 'failed' ? tt('Fehler') : '–'}
+                    {e.public_status ? tt(' · Antwort: {status}', { status: e.public_status === 'sent' ? tt('gesendet') : tt('Fehler') }) : ''}
                   </div>
                   {e.error && <div className="cr-sub" style={{ color: 'var(--red)' }}>{e.error}</div>}
                 </Item>

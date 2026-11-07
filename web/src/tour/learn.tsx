@@ -23,7 +23,7 @@ export function LearnLink({ tour, label = 'tour', className = 'btn small seconda
   const tt = useT('x_tours_b');
   return (
     <button type="button" className={`${className} learn-link`} data-tour="learn" onClick={() => learn(tour)} title={tt('Geführte Tour zu diesem Bereich – direkt in der echten Oberfläche')}>
-      <Icon name="academy" size={14} /> {LABELS[label]}
+      <Icon name="academy" size={14} /> {tt(LABELS[label])}
     </button>
   );
 }

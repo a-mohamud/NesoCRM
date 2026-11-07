@@ -33,7 +33,7 @@ function Card({ b, catalogue, first }: { b: BoardItem; catalogue: ReturnType<typ
           {b.viewers.length > 0 && <span className="bd-badge tone-purple">{b.viewers.length} live</span>}
         </span>
         <span className="muted small">
-          {tt('{widgets} Widgets ·', { widgets: b.widgets })} {b.mine ? tt('von dir') : tt('von {v}', { v: b.owner_name || 'unbekannt' })} · {ago(b.updated_at)}
+          {tt('{widgets} Widgets ·', { widgets: b.widgets })} {b.mine ? tt('von dir') : tt('von {v}', { v: b.owner_name || tt('unbekannt') })} · {ago(b.updated_at)}
         </span>
       </span>
     </Link>

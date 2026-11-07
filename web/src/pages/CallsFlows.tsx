@@ -5,7 +5,7 @@ import { lazyPages } from '../lazy';
 import { Badge, Check, Empty, Field, Input, Modal, Select, Spinner, Tabs, Textarea, act, confirmAsk, useLoad } from '../ui';
 import { Callout, Item, Panel } from './CreatorKit';
 import { Tl, splitList, useCanSettings } from './CallsKit';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * Telefonmenü-Baukasten: the menu a caller walks through (greeting, keys, business hours and holidays, ring group or queue, voicemail,
@@ -42,10 +42,11 @@ const TYPE: Record<string, { icon: IconName; short: string }> = {
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '*', '#'];
 
 const blank = (type: string, id: string): Node => {
-  const base = { id, type, label: TYPE[type].short };
+  const t = tr('x_comms');
+  const base = { id, type, label: t(TYPE[type].short) };
   switch (type) {
     case 'menu':
-      return { ...base, say: 'Für … drücken Sie die 1, für … die 2.', audio_id: '', options: {}, option_labels: {}, on_timeout: '', on_invalid: '', retries: 2, timeout: 6 };
+      return { ...base, say: t('Für … drücken Sie die 1, für … die 2.'), audio_id: '', options: {}, option_labels: {}, on_timeout: '', on_invalid: '', retries: 2, timeout: 6 };
     case 'schedule':
       return { ...base, schedule_id: '', open: '', closed: '', holiday: '' };
     case 'say':
@@ -68,50 +69,52 @@ const freeId = (flow: Flow) => {
 
 /** The ways out of a step: where each leads (empty target = the normal flow takes over). */
 function edgesOf(n: Node): { label: ReactNode; to: string }[] {
+  const t = tr('x_comms');
   switch (n.type) {
     case 'menu':
       return [
         ...Object.keys(n.options ?? {})
           .sort()
           .map((k) => ({ label: <><b>{k}</b> {n.option_labels?.[k] || ''}</>, to: n.options[k] })),
-        { label: 'keine Eingabe', to: n.on_timeout },
-        { label: 'falsche Taste', to: n.on_invalid },
+        { label: t('keine Eingabe'), to: n.on_timeout },
+        { label: t('falsche Taste'), to: n.on_invalid },
       ];
     case 'schedule':
       return [
-        { label: 'geöffnet', to: n.open },
-        { label: 'geschlossen', to: n.closed },
-        { label: 'Feiertag', to: n.holiday },
+        { label: t('geöffnet'), to: n.open },
+        { label: t('geschlossen'), to: n.closed },
+        { label: t('Feiertag'), to: n.holiday },
       ];
     case 'say':
-      return [{ label: 'danach', to: n.next }];
+      return [{ label: t('danach'), to: n.next }];
     case 'forward':
     case 'group':
     case 'ai':
-      return [{ label: 'niemand erreichbar', to: n.on_fail }];
+      return [{ label: t('niemand erreichbar'), to: n.on_fail }];
     default:
       return [];
   }
 }
 
 function summary(n: Node, meta: Meta): string {
+  const t = tr('x_comms');
   switch (n.type) {
     case 'menu':
-      return n.say || 'Aufgenommene Ansage';
+      return n.say || t('Aufgenommene Ansage');
     case 'schedule':
-      return n.schedule_id ? (meta.schedules.find((s) => s.id === n.schedule_id)?.name ?? 'Zeitplan (gelöscht)') : 'Öffnungszeiten aus den Telefonie-Einstellungen';
+      return n.schedule_id ? (meta.schedules.find((s) => s.id === n.schedule_id)?.name ?? t('Zeitplan (gelöscht)')) : t('Öffnungszeiten aus den Telefonie-Einstellungen');
     case 'say':
-      return n.say || 'Aufgenommene Ansage';
+      return n.say || t('Aufgenommene Ansage');
     case 'forward':
-      return [...(n.numbers ?? []), ...(n.users ?? []).map((u: string) => meta.users.find((x) => x.id === u)?.name ?? 'Person')].join(', ') || 'Noch kein Ziel';
+      return [...(n.numbers ?? []), ...(n.users ?? []).map((u: string) => meta.users.find((x) => x.id === u)?.name ?? t('Person'))].join(', ') || t('Noch kein Ziel');
     case 'group':
-      return meta.groups.find((g) => g.id === n.group_id)?.name ?? 'Noch keine Gruppe gewählt';
+      return meta.groups.find((g) => g.id === n.group_id)?.name ?? t('Noch keine Gruppe gewählt');
     case 'voicemail':
-      return `Postfach „${n.box || n.label}“`;
+      return t('Postfach „{voicemail_box}“', { voicemail_box: n.box || n.label });
     case 'ai':
-      return 'Nimmt das Gespräch an, wenn der KI-Telefonagent eingerichtet ist';
+      return t('Nimmt das Gespräch an, wenn der KI-Telefonagent eingerichtet ist');
     default:
-      return n.say || 'Beendet den Anruf';
+      return n.say || t('Beendet den Anruf');
   }
 }
 
@@ -128,7 +131,7 @@ function FlowTree({ flow, meta, issues, onOpen }: { flow: Flow; meta: Meta; issu
           {n.label} {n.id === flow.start && <Badge tone="green">{tt('Start')}</Badge>}
         </strong>
         <span>
-          {TYPE[n.type]?.short}: {summary(n, meta)}
+          {tt(TYPE[n.type]?.short ?? '')}: {summary(n, meta)}
         </span>
       </span>
       <Icon name="edit" size={16} />
@@ -192,13 +195,13 @@ function Target({ value, flow, self, onChange, required }: { value: string; flow
         .filter((n) => n.id !== self)
         .map((n) => (
           <option key={n.id} value={n.id}>
-            {n.label} ({TYPE[n.type]?.short})
+            {n.label} ({tt(TYPE[n.type]?.short ?? '')})
           </option>
         ))}
       <optgroup label={tt('Neuer Schritt')}>
         {Object.entries(TYPE).map(([k, t]) => (
           <option key={k} value={`__new:${k}`}>
-            ＋ {t.short}
+            ＋ {tt(t.short)}
           </option>
         ))}
       </optgroup>
@@ -247,7 +250,7 @@ function NodeEditor({ flowIn, nodeId, meta, onCommit, onClose }: { flowIn: Flow;
   if (!n) return null;
   const isStart = flow.start === nodeId;
   const T = (field: string, label: string, required?: boolean) => (
-    <Field label={label}>
+    <Field label={tt(label)}>
       <Target value={n[field]} flow={flow} self={nodeId} onChange={(v) => link(field, v)} required={required} />
     </Field>
   );
@@ -255,7 +258,7 @@ function NodeEditor({ flowIn, nodeId, meta, onCommit, onClose }: { flowIn: Flow;
   const freeKeys = KEYS.filter((k) => !(k in opts));
   return (
     <Modal
-      title={`${TYPE[n.type].short}: ${n.label}`}
+      title={`${tt(TYPE[n.type].short)}: ${n.label}`}
       wide
       onClose={onClose}
       footer={
@@ -396,7 +399,7 @@ function NodeEditor({ flowIn, nodeId, meta, onCommit, onClose }: { flowIn: Flow;
             <AudioSelect value={n.audio_id} meta={meta} onChange={(v) => set({ audio_id: v })} />
           </Field>
           <Field label={tt('Rückruf-Aufgabe für')} hint={tt('Zu jeder Nachricht entsteht eine Aufgabe für diese Person.')}>
-            <Select value={n.assign_user} onChange={(v) => set({ assign_user: v })} placeholder="niemanden" options={meta.users.map((u) => [u.id, u.name])} />
+            <Select value={n.assign_user} onChange={(v) => set({ assign_user: v })} placeholder={tt('niemanden')} options={meta.users.map((u) => [u.id, u.name])} />
           </Field>
         </>
       )}
@@ -466,7 +469,7 @@ function Simulator({ id, dirty }: { id: string; dirty: boolean }) {
             ))}
           </ol>
           <p className="small" style={{ marginTop: 10 }}>
-            <strong>{tt('Ergebnis:')}</strong> {END_TEXT[res.end] ?? res.end}
+            <strong>{tt('Ergebnis:')}</strong> {END_TEXT[res.end] ? tt(END_TEXT[res.end]) : res.end}
           </p>
         </>
       )}
@@ -537,7 +540,7 @@ function FlowEditor({ id, meta, onBack }: { id: string; meta: Meta; onBack: () =
           sub={tt('Klicke einen Schritt, um ihn zu bearbeiten. Die Linien zeigen, wohin welche Taste oder Bedingung führt.')}
           wide
           actions={
-            <Select value="" onChange={(t) => t && add(t)} placeholder={tt('＋ Schritt hinzufügen')} options={Object.entries(TYPE).map(([k, t]) => [k, t.short])} />
+            <Select value="" onChange={(t) => t && add(t)} placeholder={tt('＋ Schritt hinzufügen')} options={Object.entries(TYPE).map(([k, t]) => [k, tt(t.short)])} />
           }
         >
           <FlowTree flow={flow} meta={meta} issues={data.data.issues} onOpen={setOpen} />
@@ -664,10 +667,10 @@ export function CallsFlows({ sub }: { sub?: string }) {
     <Tl name="flows">
       <Tabs
         tabs={[
-          ['menus', 'Menüs'],
-          ['schedules', 'Zeitpläne'],
-          ['groups', 'Gruppen & Warteschlangen'],
-          ['audio', 'Audio'],
+          ['menus', tt('Menüs')],
+          ['schedules', tt('Zeitpläne')],
+          ['groups', tt('Gruppen & Warteschlangen')],
+          ['audio', tt('Audio')],
         ]}
         value={tab}
         onChange={(t) => (setTab(t), setFlowId(''))}

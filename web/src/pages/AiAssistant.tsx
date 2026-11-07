@@ -29,6 +29,9 @@ const MODES: [string, string][] = [
 ];
 const STATUS: Record<string, [string, 'green' | 'red' | 'yellow']> = { ok: ['ok', 'green'], error: ['Fehler', 'red'], blocked: ['Limit', 'yellow'] };
 
+/** Option labels are German message ids – translated where they are shown. */
+const tl = (tt: (s: string) => string, list: [string, string][]): [string, string][] => list.map(([k, l]) => [k, tt(l)]);
+
 const usd = (v: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: v > 0 && v < 0.1 ? 4 : 2 }).format(v || 0);
 const n = (v: number) => new Intl.NumberFormat('de-DE').format(v || 0);
 
@@ -91,11 +94,11 @@ export function AiSettings() {
       <div className="card ai-status" data-tour="ai-status">
         <Icon name="ai" size={20} />
         <div className="grow">
-          <strong>{tt('KI-Assistent')} {d.settings.enabled ? <Badge tone="green">an</Badge> : <Badge>aus</Badge>}</strong>
+          <strong>{tt('KI-Assistent')} {d.settings.enabled ? <Badge tone="green">{tt('an')}</Badge> : <Badge>{tt('aus')}</Badge>}</strong>
           <div className="muted small">
             {d.settings.enabled
-              ? `${savedOpenai ? tt('OpenAI · {model}', { model: d.provider.model }) : (d.models.find((m: any) => m.id === d.settings.model)?.label ?? d.settings.model)} · Live-Chat-Bot: ${MODES.find(([k]) => k === d.settings.bot_mode)?.[1]}${d.settings.bot_mode !== 'off' ? (d.bot_active_now ? tt(' (antwortet gerade)') : tt(' (schweigt gerade)')) : ''}`
-              : `Vorschläge, Zusammenfassungen und Chat-Bot mit ${savedOpenai ? tt('OpenAI (GPT)') : 'Claude'} – mit deinem eigenen ${savedOpenai ? 'OpenAI' : 'Anthropic'}-Schlüssel.`}
+              ? `${savedOpenai ? tt('OpenAI · {model}', { model: d.provider.model }) : (d.models.find((m: any) => m.id === d.settings.model)?.label ?? d.settings.model)}${tt(' · Live-Chat-Bot: {mode}', { mode: tt(MODES.find(([k]) => k === d.settings.bot_mode)?.[1] ?? '') })}${d.settings.bot_mode !== 'off' ? (d.bot_active_now ? tt(' (antwortet gerade)') : tt(' (schweigt gerade)')) : ''}`
+              : tt('Vorschläge, Zusammenfassungen und Chat-Bot mit {model} – mit deinem eigenen {provider}-Schlüssel.', { model: savedOpenai ? tt('OpenAI (GPT)') : 'Claude', provider: savedOpenai ? 'OpenAI' : 'Anthropic' })}
           </div>
         </div>
         <div className="ai-usage-mini">
@@ -109,10 +112,10 @@ export function AiSettings() {
       </div>
       <Tabs
         tabs={[
-          ['setup', 'Einrichtung'],
-          ['knowledge', 'Wissen'],
-          ['bot', 'Live-Chat-Bot'],
-          ['usage', 'Nutzung & Limit'],
+          ['setup', tt('Einrichtung')],
+          ['knowledge', tt('Wissen')],
+          ['bot', tt('Live-Chat-Bot')],
+          ['usage', tt('Nutzung & Limit')],
         ]}
         value={tab}
         onChange={setTab}
@@ -204,7 +207,7 @@ export function AiSettings() {
           <Field label={tt('Weiteres Wissen (Freitext)')} hint={tt('Abläufe, Bedingungen, Lieferzeiten, Garantie, Datenschutz-Hinweise … Keine Passwörter oder Zugangsdaten eintragen.')}>
             <Textarea value={s.knowledge_text} onChange={(v) => set({ knowledge_text: v })} rows={8} />
           </Field>
-          <Check checked={s.use_project_profile} onChange={(v) => set({ use_project_profile: v })} label={<>{tt('Projekt-Steckbrief mitschicken')} {d.sources.profile ? <Badge tone="green">vorhanden</Badge> : <Badge>leer</Badge>}</>} />
+          <Check checked={s.use_project_profile} onChange={(v) => set({ use_project_profile: v })} label={<>{tt('Projekt-Steckbrief mitschicken')} {d.sources.profile ? <Badge tone="green">{tt('vorhanden')}</Badge> : <Badge>{tt('leer')}</Badge>}</>} />
           <Check checked={s.use_faq_blocks} onChange={(v) => set({ use_faq_blocks: v })} label={<>{tt('FAQ-Blöcke aus Funnels & Websites mitschicken')} <Badge tone={d.sources.faq_count ? 'green' : 'gray'}>{tt('{faq_count} Fragen', { faq_count: d.sources.faq_count })}</Badge></>} />
           <p className="muted small">{tt('Kontaktdaten, die letzten 20 Nachrichten und dieses Wissen gehen bei jeder Anfrage an Claude; Schlüssel, Passwörter, Kartennummern und IBANs werden vorher entfernt. Das Wissen wird zwischengespeichert (Prompt-Caching), wiederholte Anfragen kosten dafür nur einen Bruchteil.')}</p>
           {saveBtn}
@@ -226,7 +229,7 @@ function BotSettings({ s, set, d, saveBtn }: { s: any; set: (p: any) => void; d:
   return (
     <div className="card">
       <Field label={tt('Website-Chat')} hint={<>{tt('Der Bot antwortet im Live-Chat (Einstellungen → Live-Chat). Seine Nachrichten sind im Posteingang lila markiert und beginnen mit 🤖.')}</>}>
-        <Select value={s.bot_mode} onChange={(v) => set({ bot_mode: v })} options={MODES} />
+        <Select value={s.bot_mode} onChange={(v) => set({ bot_mode: v })} options={tl(tt, MODES)} />
       </Field>
       {s.bot_mode !== 'off' && (
         <p className="small">
@@ -239,10 +242,10 @@ function BotSettings({ s, set, d, saveBtn }: { s: any; set: (p: any) => void; d:
       <div className="ai-hours">
         {DAYS.map(([k, l]) => (
           <div key={k} className="ai-hours-row">
-            <Check checked={hours[k]?.open} onChange={(v) => setDay(k, { open: v })} label={l} />
-            <input type="time" value={hours[k]?.from ?? '09:00'} disabled={!hours[k]?.open} onChange={(e) => setDay(k, { from: e.target.value })} aria-label={tt('{l} von', { l: l })} />
-            <span className="muted">bis</span>
-            <input type="time" value={hours[k]?.to ?? '17:00'} disabled={!hours[k]?.open} onChange={(e) => setDay(k, { to: e.target.value })} aria-label={tt('{l} bis', { l: l })} />
+            <Check checked={hours[k]?.open} onChange={(v) => setDay(k, { open: v })} label={tt(l)} />
+            <input type="time" value={hours[k]?.from ?? '09:00'} disabled={!hours[k]?.open} onChange={(e) => setDay(k, { from: e.target.value })} aria-label={tt('{l} von', { l: tt(l) })} />
+            <span className="muted">{tt('bis')}</span>
+            <input type="time" value={hours[k]?.to ?? '17:00'} disabled={!hours[k]?.open} onChange={(e) => setDay(k, { to: e.target.value })} aria-label={tt('{l} bis', { l: tt(l) })} />
           </div>
         ))}
       </div>
@@ -280,7 +283,7 @@ function BotSettings({ s, set, d, saveBtn }: { s: any; set: (p: any) => void; d:
         </div>
       )}
       <Check checked={s.create_task} onChange={(v) => set({ create_task: v })} label={tt('Bei Kaufinteresse eine Aufgabe „Chat-Lead nachfassen“ anlegen')} />
-      <h2 style={{ marginTop: 16 }}>E-Mail</h2>
+      <h2 style={{ marginTop: 16 }}>{tt('E-Mail')}</h2>
       <Check checked={s.email_drafts} onChange={(v) => set({ email_drafts: v })} label={tt('Für eingehende E-Mails einen Antwort-Entwurf anlegen')} />
       <p className="muted small">{tt('E-Mails verschickt der Assistent nie selbst – Entwürfe erscheinen in der Konversation zum Prüfen, Senden oder Verwerfen (höchstens 30 pro Stunde).')}</p>
       {saveBtn}
@@ -352,7 +355,7 @@ function Usage({ s, set, saveBtn }: { s: any; set: (p: any) => void; saveBtn: Re
                 <th>{tt('Zeit')}</th>
                 <th>{tt('Zweck')}</th>
                 <th>{tt('Modell')}</th>
-                <th>Status</th>
+                <th>{tt('Status')}</th>
                 <th>{tt('Ein / Aus / Cache')}</th>
                 <th>{tt('Kosten')}</th>
                 <th>{tt('Hinweis')}</th>
@@ -375,7 +378,7 @@ function Usage({ s, set, saveBtn }: { s: any; set: (p: any) => void; saveBtn: Re
                   </td>
                   <td className="small mono">{r.model}</td>
                   <td>
-                    <Badge tone={STATUS[r.status]?.[1] ?? 'gray'}>{STATUS[r.status]?.[0] ?? r.status}</Badge>
+                    <Badge tone={STATUS[r.status]?.[1] ?? 'gray'}>{tt(STATUS[r.status]?.[0] ?? r.status)}</Badge>
                   </td>
                   <td className="small">
                     {n(r.input_tokens)} / {n(r.output_tokens)} / {n(r.cache_read_tokens + r.cache_write_tokens)}
@@ -445,7 +448,7 @@ export function AiPanel({ conversationId, refreshKey }: { conversationId: string
           <div className="muted small">{tt('Live-Chat-Bot')}</div>
           {d.bot_status === 'active' && (
             <p>
-              <Badge tone="green">aktiv</Badge> <span className="small muted">{tt('{bot_replies} Antworten', { bot_replies: d.bot_replies })}</span>
+              <Badge tone="green">{tt('aktiv')}</Badge> <span className="small muted">{tt('{bot_replies} Antworten', { bot_replies: d.bot_replies })}</span>
             </p>
           )}
           {d.bot_status === 'handoff' && (
@@ -459,7 +462,7 @@ export function AiPanel({ conversationId, refreshKey }: { conversationId: string
           )}
           {d.bot_status === 'paused' && (
             <p>
-              <Badge>pausiert</Badge>
+              <Badge>{tt('pausiert')}</Badge>
             </p>
           )}
           {d.bot_status === 'active' ? (
@@ -550,15 +553,15 @@ export function AiTextStep({ step, set, customFields }: { step: any; set: (p: an
           value={target}
           onChange={(v) => set({ target: v })}
           options={[
-            ['field', 'In ein Feld schreiben'],
-            ['email_draft', 'Als E-Mail-Entwurf ablegen (wird nicht gesendet)'],
-            ['note', 'Als Notiz speichern'],
+            ['field', tt('In ein Feld schreiben')],
+            ['email_draft', tt('Als E-Mail-Entwurf ablegen (wird nicht gesendet)')],
+            ['note', tt('Als Notiz speichern')],
           ]}
         />
       </Field>
       {target === 'field' && (
         <Field label={tt('Feld')} hint={tt('Danach z. B. in E-Mails mit {{contact.custom.<feld>}} nutzen.')}>
-          <Select value={step.field} onChange={(v) => set({ field: v })} placeholder={tt('wählen…')} options={[...customFields.map((f: any) => [`custom.${f.key}`, `Feld: ${f.label}`] as [string, string]), ...TEXT_FIELDS]} />
+          <Select value={step.field} onChange={(v) => set({ field: v })} placeholder={tt('wählen…')} options={[...customFields.map((f: any) => [`custom.${f.key}`, tt('Feld: {label}', { label: f.label })] as [string, string]), ...tl(tt, TEXT_FIELDS)]} />
         </Field>
       )}
       {target === 'email_draft' && (

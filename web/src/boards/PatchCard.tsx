@@ -68,7 +68,7 @@ export function PatchCard({ result, board, catalogue, busy, onApply, onReject }:
           )}
         </div>
       )}
-      {risk && <p className={`bd-risk ${risk.cls}`}>{risk.text}</p>}
+      {risk && <p className={`bd-risk ${risk.cls}`}>{tt(risk.text)}</p>}
       {stale && <p className="bd-risk normal">{tt('Das Board wurde inzwischen geändert. Die Änderung wird auf den aktuellen Stand angewendet.')}</p>}
       {unsupported.length > 0 && (
         <div className="bd-callout">
@@ -81,7 +81,7 @@ export function PatchCard({ result, board, catalogue, busy, onApply, onReject }:
               </li>
             ))}
           </ul>
-          <button type="button" className="btn secondary small" onClick={() => openBuild({ title: `Board-Widget: ${unsupported[0].need.slice(0, 60)}`, text: `Für Living Boards fehlt mir ein Widget: ${unsupported.map((u) => `${u.need}${u.reason ? ` (${u.reason})` : ''}`).join('; ')}` })}>
+          <button type="button" className="btn secondary small" onClick={() => openBuild({ title: `Board-Widget: ${unsupported[0].need.slice(0, 60)}`, text: tt('Für Living Boards fehlt mir ein Widget: {list}', { list: unsupported.map((u) => `${u.need}${u.reason ? ` (${u.reason})` : ''}`).join('; ') }) })}>
             <Icon name="hammer" size={14} /> {tt('In der Werkstatt bauen lassen')}
           </button>
         </div>

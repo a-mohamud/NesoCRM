@@ -3,8 +3,9 @@ import { api, currentLocation, d as day, money } from '../api';
 import { Icon } from '../icons';
 import { act, Badge, Check, CodeBox, confirmAsk, Copy, Empty, Field, Input, Modal, navigate, PageHead, pressable, Select, Spinner, Stat, Tabs, Textarea, toast, useLoad } from '../ui';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { fmtNumber, intlLocale, tr, useT } from '../i18n';
 
+import { parseDecimal } from '../numparse';
 /** Affiliate manager: programs, affiliates, commissions (pending → approved → paid) and payouts. */
 
 const STATUS: Record<string, [string, 'green' | 'yellow' | 'red' | 'gray' | 'blue']> = {
@@ -21,9 +22,12 @@ const C_STATUS: Record<string, [string, 'green' | 'yellow' | 'red' | 'gray' | 'b
 };
 const KIND: Record<string, string> = { sale: 'Verkauf', recurring: 'Abo-Verlängerung', clawback: 'Rückbuchung', manual: 'Gutschrift' };
 const euroIn = (cents: number) => String((cents || 0) / 100).replace('.', ',');
-const toCents = (v: string) => Math.round(Number(String(v).replace(/\./g, '').replace(',', '.')) * 100) || 0;
-const terms = (p: any) =>
-  `${p.commission_type === 'fixed' ? money(p.commission_value) : `${String(p.commission_value).replace('.', ',')} %`} · ${p.attribution === 'first' ? 'erster' : 'letzter'} Klick · ${p.cookie_days} Tage${p.recurring ? ' · auch Abo-Verlängerungen' : ''} · Auszahlung ab ${money(p.payout_threshold_cents)}`;
+const toCents = (v: string) => Math.round(parseDecimal(v) * 100) || 0;
+const terms = (p: any) => {
+  const t = tr('x_agency');
+  const value = p.commission_type === 'fixed' ? money(p.commission_value) : `${fmtNumber(Number(p.commission_value), { maximumFractionDigits: 2 })} %`;
+  return [value, p.attribution === 'first' ? t('erster Klick') : t('letzter Klick'), t('{n} Tage', { n: p.cookie_days }), ...(p.recurring ? [t('auch Abo-Verlängerungen')] : []), t('Auszahlung ab {money}', { money: money(p.payout_threshold_cents) })].join(' · ');
+};
 
 export function Affiliates({ tab }: { tab?: string }) {
   const tt = useT('x_agency');
@@ -35,10 +39,10 @@ export function Affiliates({ tab }: { tab?: string }) {
       <PageHead title="Affiliates" sub={tt('Partner empfehlen dich mit eigenem Link (?ref=…), du zahlst Provision auf Verkäufe.')} />
       <Tabs
         tabs={[
-          ['affiliates', 'Affiliates'],
-          ['programs', `Programme (${programs.data.length})`],
-          ['commissions', 'Provisionen'],
-          ['payouts', 'Auszahlungen'],
+          ['affiliates', tt('Affiliates')],
+          ['programs', tt('Programme ({n})', { n: programs.data.length })],
+          ['commissions', tt('Provisionen')],
+          ['payouts', tt('Auszahlungen')],
         ]}
         value={t}
         onChange={(v) => navigate(`affiliates/${v}`)}
@@ -70,7 +74,7 @@ function AffiliateList({ programs }: { programs: any[] }) {
       {o && (
         <SortableGrid id="affiliates.stats" className="stats">
           <Stat label={tt('Aktive Affiliates')} value={o.affiliates} sub={o.pending_affiliates ? tt('{pending_affiliates} warten auf Freigabe', { pending_affiliates: o.pending_affiliates }) : tt('alle freigeschaltet')} />
-          <Stat label={tt('Klicks')} value={o.clicks.toLocaleString('de-DE')} sub={tt('{leads} Leads', { leads: o.leads })} />
+          <Stat label={tt('Klicks')} value={o.clicks.toLocaleString(intlLocale())} sub={tt('{leads} Leads', { leads: o.leads })} />
           <Stat label={tt('Verkäufe')} value={o.sales} sub={tt('Umsatz {money} netto', { money: money(o.revenue_cents) })} />
           <Stat label={tt('Provision offen')} value={money(o.pending_cents)} sub={tt('freigegeben {money}', { money: money(o.approved_cents) })} />
           <Stat label={tt('Ausgezahlt')} value={money(o.paid_cents)} />
@@ -114,7 +118,7 @@ function AffiliateList({ programs }: { programs: any[] }) {
                     </div>
                   </td>
                   <td>
-                    <Badge tone={STATUS[a.status]?.[1]}>{STATUS[a.status]?.[0] ?? a.status}</Badge>
+                    <Badge tone={STATUS[a.status]?.[1]}>{STATUS[a.status] ? tt(STATUS[a.status][0]) : a.status}</Badge>
                   </td>
                   <td className="num">{a.clicks}</td>
                   <td className="num">{a.leads}</td>
@@ -202,7 +206,7 @@ function AffiliateModal({ programs, affiliate, onClose, onSaved }: { programs: a
           <Field label={tt('Programm')}>
             <Select value={f.program_id} onChange={(v) => set('program_id', v)} options={programs.map((p) => [p.id, p.name] as [string, string])} />
           </Field>
-          <Field label="E-Mail">
+          <Field label={tt('E-Mail')}>
             <Input type="email" value={f.email} onChange={(v) => set('email', v)} />
           </Field>
         </>
@@ -215,14 +219,14 @@ function AffiliateModal({ programs, affiliate, onClose, onSaved }: { programs: a
           <Input value={f.code} onChange={(v) => set('code', v.toLowerCase())} />
         </Field>
         <Field label="Status">
-          <Select value={f.status} onChange={(v) => set('status', v)} options={Object.entries(STATUS).map(([k, [l]]) => [k, l] as [string, string])} />
+          <Select value={f.status} onChange={(v) => set('status', v)} options={Object.entries(STATUS).map(([k, [l]]) => [k, tt(l)] as [string, string])} />
         </Field>
         <Field label={tt('Auszahlung per')}>
           <Select
             value={f.payout_method}
             onChange={(v) => set('payout_method', v)}
             options={[
-              ['sepa', 'Überweisung (SEPA)'],
+              ['sepa', tt('Überweisung (SEPA)')],
               ['paypal', 'PayPal'],
             ]}
           />
@@ -265,7 +269,7 @@ function Programs({ list, reload }: { list: any[]; reload: () => void }) {
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h2 style={{ marginBottom: 2 }}>
-                  {p.name} {!p.active && <Badge>pausiert</Badge>}
+                  {p.name} {!p.active && <Badge>{tt('pausiert')}</Badge>}
                 </h2>
                 <div className="muted small">
                   {terms(p)} · {p.affiliates} Affiliates
@@ -364,8 +368,8 @@ function ProgramModal({ p, onClose, onSaved }: { p: any; onClose: () => void; on
             value={f.commission_type}
             onChange={(v) => set('commission_type', v)}
             options={[
-              ['percent', 'Prozent vom Nettoumsatz'],
-              ['fixed', 'Festbetrag je Verkauf'],
+              ['percent', tt('Prozent vom Nettoumsatz')],
+              ['fixed', tt('Festbetrag je Verkauf')],
             ]}
           />
         </Field>
@@ -377,8 +381,8 @@ function ProgramModal({ p, onClose, onSaved }: { p: any; onClose: () => void; on
             value={f.attribution}
             onChange={(v) => set('attribution', v)}
             options={[
-              ['last', 'letzte Klick'],
-              ['first', 'erste Klick'],
+              ['last', tt('letzte Klick')],
+              ['first', tt('erste Klick')],
             ]}
           />
         </Field>
@@ -423,17 +427,17 @@ function Commissions() {
             value={status}
             onChange={(v) => (setStatus(v), setSel([]))}
             options={[
-              ['pending', 'Offen'],
-              ['approved', 'Freigegeben'],
-              ['paid', 'Ausgezahlt'],
-              ['reversed', 'Storniert'],
-              ['', 'Alle'],
+              ['pending', tt('Offen')],
+              ['approved', tt('Freigegeben')],
+              ['paid', tt('Ausgezahlt')],
+              ['reversed', tt('Storniert')],
+              ['', tt('Alle')],
             ]}
           />
         </div>
         {sel.length > 0 && (
           <button className="btn" onClick={async () => (await act(() => api.post('/api/affiliates/commissions/approve', { ids: sel }), tt('{length} freigegeben', { length: sel.length }))) && reload()}>
-            {sel.length} freigeben
+            {tt('{n} freigeben', { n: sel.length })}
           </button>
         )}
         <button className="btn secondary" onClick={() => setAdding(true)}>
@@ -472,13 +476,13 @@ function Commissions() {
                     {[c.first_name, c.last_name].filter(Boolean).join(' ') || c.customer_email || '–'}
                     <div className="muted small">{c.note}</div>
                   </td>
-                  <td>{KIND[c.kind] ?? c.kind}</td>
+                  <td>{KIND[c.kind] ? tt(KIND[c.kind]) : c.kind}</td>
                   <td className="num">{c.base_cents ? money(c.base_cents, c.currency) : '–'}</td>
                   <td className="num">
                     <strong>{money(c.amount_cents, c.currency)}</strong>
                   </td>
                   <td>
-                    <Badge tone={C_STATUS[c.status]?.[1]}>{C_STATUS[c.status]?.[0] ?? c.status}</Badge>
+                    <Badge tone={C_STATUS[c.status]?.[1]}>{C_STATUS[c.status] ? tt(C_STATUS[c.status][0]) : c.status}</Badge>
                     {c.payout_id && c.status === 'approved' ? <span className="muted small"> {tt('in Auszahlung')}</span> : null}
                   </td>
                   <td>
@@ -602,7 +606,7 @@ function Payouts() {
                     <strong>{money(o.amount_cents, o.currency)}</strong>
                   </td>
                   <td>
-                    <Badge tone={C_STATUS[o.status]?.[1]}>{o.status === 'paid' ? tt('ausgezahlt {day}', { day: day(o.paid_at) }) : 'offen'}</Badge>
+                    <Badge tone={C_STATUS[o.status]?.[1]}>{o.status === 'paid' ? tt('ausgezahlt {day}', { day: day(o.paid_at) }) : tt('offen')}</Badge>
                   </td>
                   <td>
                     {o.status === 'open' && (

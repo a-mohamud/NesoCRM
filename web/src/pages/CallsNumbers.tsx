@@ -52,7 +52,7 @@ function NumberDialog({ n, reg, onClose, onSaved }: { n: any; reg: any; onClose:
         <Input value={s.label} onChange={(v) => set({ label: v })} maxLength={80} />
       </Field>
       <Field label={tt('Art')} hint={tt('Eine Tracking-Nummer gehört fest zu einer Kampagne (Flyer, Anzeige). Pool-Nummern wechselt die Website je Besucher.')}>
-        <Select value={s.kind} onChange={(v) => set({ kind: v })} options={Object.entries(KIND)} />
+        <Select value={s.kind} onChange={(v) => set({ kind: v })} options={Object.entries(KIND).map(([k, l]) => [k, tt(l)] as [string, string])} />
       </Field>
       {s.kind === 'tracking' && (
         <div className="cr-form-row">
@@ -122,7 +122,7 @@ function BuyDialog({ reg, onClose, onBought }: { reg: any; onClose: () => void; 
   };
   const buy = async () => {
     setBusy(true);
-    const r = await act(() => api.post('/api/telephony/numbers/buy', { phone_number: pick.phone_number, country: pick.country, type: q.type, price: price?.pricing?.prices?.[q.type] ? `${price.pricing.prices[q.type]} ${price.pricing.currency}/Monat` : '', ...f, confirm: true }), tt('Nummer gekauft'));
+    const r = await act(() => api.post('/api/telephony/numbers/buy', { phone_number: pick.phone_number, country: pick.country, type: q.type, price: price?.pricing?.prices?.[q.type] ? tt('{monthly} {currency}/Monat', { monthly: price.pricing.prices[q.type], currency: price.pricing.currency }) : '', ...f, confirm: true }), tt('Nummer gekauft'));
     setBusy(false);
     if (r) {
       onBought();
@@ -139,7 +139,7 @@ function BuyDialog({ reg, onClose, onBought }: { reg: any; onClose: () => void; 
           <Input value={q.country} onChange={(v) => setQ({ ...q, country: v.toUpperCase().slice(0, 2) })} maxLength={2} />
         </Field>
         <Field label={tt('Art')}>
-          <Select value={q.type} onChange={(v) => setQ({ ...q, type: v })} options={TYPES} />
+          <Select value={q.type} onChange={(v) => setQ({ ...q, type: v })} options={TYPES.map(([k, l]) => [k, tt(l)] as [string, string])} />
         </Field>
         <Field label={tt('Vorwahl')} hint={tt('z. B. 30 für Berlin')}>
           <Input value={q.area_code} onChange={(v) => setQ({ ...q, area_code: v.replace(/\D/g, '') })} inputMode="numeric" />
@@ -178,7 +178,7 @@ function BuyDialog({ reg, onClose, onBought }: { reg: any; onClose: () => void; 
       {pick && (
         <div style={{ marginTop: 8 }}>
           <h4 style={{ margin: '4px 0 8px' }}>
-            {phoneText(pick.phone_number)} einrichten
+            {tt('{phone} einrichten', { phone: phoneText(pick.phone_number) })}
           </h4>
           {!regu ? (
             <Spinner />
@@ -186,7 +186,7 @@ function BuyDialog({ reg, onClose, onBought }: { reg: any; onClose: () => void; 
             <>
               {(regu.rule?.address || regu.addresses.length > 0) && (
                 <Field label={tt('Adresse')} hint={regu.rule?.address && !regu.addresses.length ? tt('In diesem Twilio-Konto gibt es noch keine Adresse für dieses Land.') : tt('Die Adresse, die Twilio für diese Nummer nachweist.')}>
-                  <Select value={f.address_sid} onChange={(v) => set({ address_sid: v })} placeholder={tt('— keine —')} options={regu.addresses.map((a: any) => [a.sid, `${a.name || a.street}, ${a.postal_code} ${a.city}${a.verified ? '' : ' (nicht bestätigt)'}`])} />
+                  <Select value={f.address_sid} onChange={(v) => set({ address_sid: v })} placeholder={tt('— keine —')} options={regu.addresses.map((a: any) => [a.sid, `${a.name || a.street}, ${a.postal_code} ${a.city}${a.verified ? '' : ` ${tt('(nicht bestätigt)')}`}`])} />
                 </Field>
               )}
               {(regu.rule?.bundle || regu.bundles.length > 0) && (
@@ -222,7 +222,7 @@ function BuyDialog({ reg, onClose, onBought }: { reg: any; onClose: () => void; 
               <Input value={f.label} onChange={(v) => set({ label: v })} maxLength={80} placeholder={tt('z. B. Hauptnummer')} />
             </Field>
             <Field label={tt('Verwendung')}>
-              <Select value={f.kind} onChange={(v) => set({ kind: v })} options={Object.entries(KIND)} />
+              <Select value={f.kind} onChange={(v) => set({ kind: v })} options={Object.entries(KIND).map(([k, l]) => [k, tt(l)] as [string, string])} />
             </Field>
             {f.kind === 'pool' && (
               <Field label={tt('Pool')}>
@@ -239,11 +239,11 @@ function BuyDialog({ reg, onClose, onBought }: { reg: any; onClose: () => void; 
                 <Input value={f.medium} onChange={(v) => set({ medium: v })} placeholder="cpc" />
               </Field>
               <Field label={tt('Kampagne')}>
-                <Input value={f.campaign} onChange={(v) => set({ campaign: v })} placeholder="herbst-aktion" />
+                <Input value={f.campaign} onChange={(v) => set({ campaign: v })} placeholder={tt('herbst-aktion')} />
               </Field>
             </div>
           )}
-          <Check checked={f.confirm} onChange={(v) => set({ confirm: v })} label={`Ich kaufe ${phoneText(pick.phone_number)} bei Twilio${monthly ? tt(' für {monthly} {currency} im Monat', { monthly: monthly, currency: price.pricing.currency }) : tt(' (monatliche Gebühr laut Twilio-Preisliste)')}.`} />
+          <Check checked={f.confirm} onChange={(v) => set({ confirm: v })} label={`${tt('Ich kaufe {phone} bei Twilio', { phone: phoneText(pick.phone_number) })}${monthly ? tt(' für {monthly} {currency} im Monat', { monthly: monthly, currency: price.pricing.currency }) : tt(' (monatliche Gebühr laut Twilio-Preisliste)')}.`} />
           <p>
             <button className="btn" disabled={busy || !f.confirm || (f.kind === 'pool' && !f.pool_id)} onClick={buy} data-tour="number-buy">
               {tt('Nummer kaufen')}
@@ -308,7 +308,7 @@ function PoolDialog({ initial, reg, onClose, onSaved }: { initial: any | null; r
           <Input type="number" min={0} max={1440} value={p.attribution_minutes} onChange={(v) => set({ attribution_minutes: Number(v) })} />
         </Field>
         <Field label={tt('Wenn alle Nummern vergeben sind')}>
-          <Select value={p.exhausted} onChange={(v) => set({ exhausted: v })} options={[['fallback', 'Ersatznummer zeigen'], ['oldest', 'Älteste Nummer mitbenutzen']]} />
+          <Select value={p.exhausted} onChange={(v) => set({ exhausted: v })} options={[['fallback', tt('Ersatznummer zeigen')], ['oldest', tt('Älteste Nummer mitbenutzen')]]} />
         </Field>
       </div>
       <Field label={tt('Nur im Bereich (CSS-Selektor, optional)')} hint={tt('Zum Beispiel header oder .kontakt – leer: die ganze Seite.')}>
@@ -357,8 +357,8 @@ function Pools({ reg, reload }: { reg: any; reload: () => void }) {
                 onClick={() => setEdit(p)}
                 side={
                   <>
-                    {!p.enabled && <Badge>aus</Badge>}
-                    <Badge tone="blue">{tt('{length} Nummer', { length: p.numbers.length })}{p.numbers.length === 1 ? '' : 'n'}</Badge>
+                    {!p.enabled && <Badge>{tt('aus')}</Badge>}
+                    <Badge tone="blue">{tt.plural(p.numbers.length, { one: '{n} Nummer', other: '{n} Nummern' })}</Badge>
                     <button
                       className="icon-btn"
                       aria-label={tt('{name} löschen', { name: p.name })}
@@ -386,7 +386,7 @@ function Pools({ reg, reload }: { reg: any; reload: () => void }) {
           <Empty>{tt('Noch kein Pool. Lege einen an, kaufe Pool-Nummern und baue das Snippet in deine Website ein.')}</Empty>
         )}
         <p className="muted small" style={{ marginTop: 10 }}>
-          {tt('Das Snippet kommt in den')} <code>&lt;head&gt;</code> {tt('deiner Website. Auf Funnels und Landingpages dieses Projekts wird es automatisch eingebaut, wenn du das oben nicht abschaltest. Besucher ohne Kampagnenherkunft sehen weiter die normale Nummer.')}
+          {tt('Das Snippet kommt in den')} <code>{'<head>'}</code> {tt('deiner Website. Auf Funnels und Landingpages dieses Projekts wird es automatisch eingebaut, wenn du das oben nicht abschaltest. Besucher ohne Kampagnenherkunft sehen weiter die normale Nummer.')}
         </p>
       </Panel>
       {edit && <PoolDialog initial={edit === 'new' ? null : edit} reg={reg} onClose={() => setEdit(null)} onSaved={done} />}
@@ -415,9 +415,9 @@ function Report() {
     >
       <Tabs
         tabs={[
-          ['source', 'Quelle'],
-          ['campaign', 'Kampagne'],
-          ['number', 'Nummer'],
+          ['source', tt('Quelle')],
+          ['campaign', tt('Kampagne')],
+          ['number', tt('Nummer')],
         ]}
         value={group}
         onChange={setGroup}
@@ -506,7 +506,7 @@ export function CallsNumbers() {
                   onClick={() => setEdit(n)}
                   side={
                     <>
-                      <Badge tone={n.kind === 'main' ? 'blue' : 'purple'}>{KIND[n.kind] ?? n.kind}</Badge>
+                      <Badge tone={n.kind === 'main' ? 'blue' : 'purple'}>{KIND[n.kind] ? tt(KIND[n.kind]) : n.kind}</Badge>
                       {n.calls_30d > 0 && <Badge>{tt('{calls_30d} Anrufe / 30 Tage', { calls_30d: n.calls_30d })}</Badge>}
                       {n.managed && (
                         <button className="icon-btn" aria-label={tt('{number} freigeben', { number: n.number })} title={tt('An Twilio zurückgeben')} onClick={(e) => (e.stopPropagation(), void release(n))}>

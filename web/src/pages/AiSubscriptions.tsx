@@ -4,7 +4,7 @@ import { useSession } from '../session';
 import { Badge, Check, Modal, Spinner, act, confirmAsk, toast, useLoad } from '../ui';
 import './AiGallery.css';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * Einstellungen → KI-Anbieter, top: "Mit deinem Abo". Two big cards:
@@ -23,13 +23,14 @@ const OPENAI_POLICY_URL = 'https://developers.openai.com/siwc/token-sharing-open
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) : '–');
 const day = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('de-DE', { dateStyle: 'medium' }) : '–');
 export function ago(iso?: string | null, nowMs = Date.now()) {
-  if (!iso) return 'noch nie';
+  const tt = tr('x_ai');
+  if (!iso) return tt('noch nie');
   const s = Math.max(0, Math.round((nowMs - Date.parse(iso)) / 1000));
-  if (s < 10) return 'gerade eben';
-  if (s < 90) return `vor ${s} s`;
-  if (s < 5400) return `vor ${Math.round(s / 60)} Min`;
-  if (s < 129_600) return `vor ${Math.round(s / 3600)} Std`;
-  return `vor ${Math.round(s / 86_400)} Tagen`;
+  if (s < 10) return tt('gerade eben');
+  if (s < 90) return tt('vor {n} s', { n: s });
+  if (s < 5400) return tt('vor {n} Min', { n: Math.round(s / 60) });
+  if (s < 129_600) return tt('vor {n} Std', { n: Math.round(s / 3600) });
+  return tt('vor {n} Tagen', { n: Math.round(s / 86_400) });
 }
 
 function CopyBtn({ text, label = 'Kopieren' }: { text: string; label?: string }) {
@@ -39,7 +40,7 @@ function CopyBtn({ text, label = 'Kopieren' }: { text: string; label?: string })
     <button
       type="button"
       className="btn secondary aisub-btn"
-      aria-label={`${label}: ${text.slice(0, 40)}`}
+      aria-label={`${tt(label)}: ${text.slice(0, 40)}`}
       onClick={async () => {
         try {
           await navigator.clipboard?.writeText(text);
@@ -50,7 +51,7 @@ function CopyBtn({ text, label = 'Kopieren' }: { text: string; label?: string })
         }
       }}
     >
-      {done ? tt('Kopiert ✓') : label}
+      {done ? tt('Kopiert ✓') : tt(label)}
     </button>
   );
 }
@@ -139,7 +140,7 @@ function ChatGptConnect({ onClose, onDone, again }: { onClose: () => void; onDon
                       {tt('ChatGPT öffnen ↗')}
                     </a>
                     <CopyBtn text={url} label={tt('Link kopieren')} />
-                    <span className="aisub-note">{tt('Gültig bis')} {new Date(expires).toLocaleTimeString('de-DE', { timeStyle: 'short' })} {tt('Uhr.')}</span>
+                    <span className="aisub-note">{tt('Gültig bis {time} Uhr.', { time: new Date(expires).toLocaleTimeString('de-DE', { timeStyle: 'short' }) })}</span>
                   </div>
                 )}
               </div>
@@ -204,7 +205,7 @@ function ChatGptCard({ data, reload, onBridge, open, setOpen }: { data: any; rel
     const value = c[key] ?? '';
     return (
       <label>
-        {label}
+        {tt(label)}
         {models ? (
           <select value={value} onChange={(e) => void patch({ [key]: e.target.value })}>
             {key === 'werkstatt_model' && <option value="">{tt('wie oben')}</option>}
@@ -278,7 +279,7 @@ function ChatGptCard({ data, reload, onBridge, open, setOpen }: { data: any; rel
           </div>
           <div className="aisub-uses" role="group" aria-label={tt('Wofür darf dein Abo genutzt werden?')}>
             {data.uses.map((u: any) => (
-              <Check key={u.id} checked={!!c.uses[u.id]} onChange={(v) => void patch({ uses: { [u.id]: v } })} label={<span title={u.hint}>{u.label}</span>} />
+              <Check key={u.id} checked={!!c.uses[u.id]} onChange={(v) => void patch({ uses: { [u.id]: v } })} label={<span title={tt(u.hint)}>{tt(u.label)}</span>} />
             ))}
           </div>
           <div className="aisub-row">
@@ -435,7 +436,7 @@ export function BridgeConnect({ cli, onClose }: { cli: 'claude' | 'codex'; onClo
                       {code.code}
                     </div>
                     <div className="aisub-note">
-                      noch {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')} {tt('gültig · nur einmal benutzbar')}
+                      {tt('noch {time} gültig · nur einmal benutzbar', { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` })}
                     </div>
                   </div>
                   <img alt={tt('QR-Code des Koppel-Befehls')} src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(code.qr_svg)}`} />
@@ -458,7 +459,7 @@ export function BridgeConnect({ cli, onClose }: { cli: 'claude' | 'codex'; onClo
         </li>
         <li className={devices.some((d) => d.online) ? 'done' : ''}>
           <div>
-            <h4>Status</h4>
+            <h4>{tt('Status')}</h4>
             {st.loading && !st.data ? (
               <Spinner />
             ) : !devices.length ? (

@@ -20,15 +20,15 @@ export function ProfilePreview({ profile }: { profile: Profile }) {
   return (
     <div data-tour="profile-preview">
       <p className="muted small" style={{ margin: '4px 0' }}>
-        <b>{profile.label}</b>{tt(': {kept} Bereiche bleiben sichtbar, {size} werden ausgeblendet. Dashboard und Einstellungen bleiben immer.', { kept: kept, size: hidden.size })}
+        <b>{tt(profile.label)}</b>{tt(': {kept} Bereiche bleiben sichtbar, {size} werden ausgeblendet. Dashboard und Einstellungen bleiben immer.', { kept: kept, size: hidden.size })}
       </p>
       {MODULE_SECTIONS.map((s) => (
         <div key={s.id} className="ap-mod-sec">
-          <h3>{s.label}</h3>
+          <h3>{tt(s.label)}</h3>
           <div className="ap-keep">
             {s.modules.map(([id, label]) => (
               <span key={id} className={hidden.has(id) ? 'off' : ''}>
-                {label}
+                {tt(label)}
               </span>
             ))}
           </div>
@@ -44,8 +44,8 @@ export function ProfileGrid({ value, onPick, disabled }: { value: string; onPick
     <div className="ap-profiles" role="radiogroup" aria-label={tt('Starter-Profil')}>
       {PROFILES.map((p) => (
         <button key={p.id} className={`ap-profile${value === p.id ? ' on' : ''}`} onClick={() => onPick(p)} disabled={disabled} role="radio" aria-checked={value === p.id} data-tour={`profile-${p.id}`}>
-          <b>{p.label}</b>
-          <span className="muted small">{p.text}</span>
+          <b>{tt(p.label)}</b>
+          <span className="muted small">{tt(p.text)}</span>
         </button>
       ))}
     </div>
@@ -121,7 +121,7 @@ export function ProfilesCard() {
         <Icon name="eyeOff" size={18} /> {tt('Menü zuschneiden')}
       </h2>
       <p className="muted small" style={{ marginTop: 0 }}>
-        {tt('Du brauchst nicht alles? Wähle ein Starter-Profil (Agentur, Coach & Kurse, Handwerk, E-Commerce, Vertrieb) und blende ungenutzte Bereiche aus.')} {current ? tt('Aktuell: {label}.', { label: current.label }) : ''}
+        {tt('Du brauchst nicht alles? Wähle ein Starter-Profil (Agentur, Coach & Kurse, Handwerk, E-Commerce, Vertrieb) und blende ungenutzte Bereiche aus.')} {current ? tt('Aktuell: {label}.', { label: tt(current.label) }) : ''}
       </p>
       <button className="btn small" onClick={() => setOpen(true)}>
         {tt('Profil wählen')}

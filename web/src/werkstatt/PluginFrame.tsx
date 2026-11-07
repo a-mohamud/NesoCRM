@@ -4,7 +4,7 @@ import { Icon } from '../icons';
 import { Empty, Link, PageHead, Spinner, navigate, toast, toastError, useRoute } from '../ui';
 import { PluginIcon, useActivePlugins, type ActivePlugin } from './shared';
 import { SortableGrid } from '../sortable/lazy';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * Shows a plugin's interface: our trusted host page (/plugin-host/<id>) in an iframe, which in turn embeds the
@@ -36,7 +36,7 @@ export function PluginFrame({ pluginId, entry, entity, height, demo, title, fill
       if (m.type === 'resize' && !height && !fill) setH(Math.max(60, Math.min(1600, Number(m.height) || 0)));
       else if (m.type === 'toast') (m.kind === 'error' ? toastError(String(m.text ?? '')) : toast(String(m.text ?? '')));
       else if (m.type === 'navigate' && typeof m.path === 'string' && NAV.test(m.path)) navigate(m.path);
-      else if (m.type === 'dead') setDead(String(m.message ?? 'Das Plugin wurde beendet.'));
+      else if (m.type === 'dead') setDead(String(m.message ?? tr('x_ai')('Das Plugin wurde beendet.')));
     };
     window.addEventListener('message', on);
     return () => window.removeEventListener('message', on);

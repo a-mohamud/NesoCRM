@@ -33,14 +33,14 @@ function RuleBox({ info, rules, onChange, inherit }: { info: any; rules: RuleSet
           return (
             <tr key={e.key}>
               <td>
-                <b>{e.label}</b>
+                <b>{tt(e.label)}</b>
               </td>
               <td>
-                <select aria-label={tt('Sichtbarkeit {label}', { label: e.label })} value={rules.levels[e.key] ?? ''} onChange={(ev) => onChange({ ...rules, levels: { ...rules.levels, [e.key]: ev.target.value } })}>
+                <select aria-label={tt('Sichtbarkeit {label}', { label: tt(e.label) })} value={rules.levels[e.key] ?? ''} onChange={(ev) => onChange({ ...rules, levels: { ...rules.levels, [e.key]: ev.target.value } })}>
                   {inherit && <option value="">{tt('wie Standard')}</option>}
                   {info.levels.map((l: any) => (
                     <option key={l.key} value={l.key}>
-                      {l.label}
+                      {tt(l.label)}
                     </option>
                   ))}
                 </select>
@@ -50,7 +50,7 @@ function RuleBox({ info, rules, onChange, inherit }: { info: any; rules: RuleSet
                   {e.hideable.map((h: any) => (
                     <label className="chip" key={h.key} style={{ minHeight: 44 }}>
                       <input type="checkbox" checked={hidden.includes(h.key)} onChange={(ev) => onChange({ ...rules, hidden: { ...rules.hidden, [e.key]: ev.target.checked ? [...hidden, h.key] : hidden.filter((x) => x !== h.key) } })} />
-                      {h.label}
+                      {tt(h.label)}
                     </label>
                   ))}
                   {custom.length > 0 && hidden.includes('custom') === false && (
@@ -119,7 +119,7 @@ function TeamEditor({ team, people, onClose, onSaved }: { team?: any; people: an
             <Check checked={!!has(p.id)} onChange={(v) => setMembers(v ? [...members, { user_id: p.id, role: 'member' }] : members.filter((m) => m.user_id !== p.id))} label={`${p.name}`} />
             {has(p.id) && (
               <div style={{ width: 150 }}>
-                <Select value={has(p.id)!.role} onChange={(role) => setMembers(members.map((m) => (m.user_id === p.id ? { ...m, role } : m)))} options={[['member', 'Mitglied'], ['lead', 'Teamleitung']]} />
+                <Select value={has(p.id)!.role} onChange={(role) => setMembers(members.map((m) => (m.user_id === p.id ? { ...m, role } : m)))} options={[['member', tt('Mitglied')], ['lead', tt('Teamleitung')]]} />
               </div>
             )}
           </div>

@@ -94,7 +94,7 @@ export function LinesEditor({ lines, onChange, products, currency = 'EUR', defau
           <div className="line-main">
             {products.length > 0 && (
               <select aria-label={tt('Produkt aus dem Katalog')} value={l.product_id ?? ''} onChange={(e) => pick(i, e.target.value)} className="line-product">
-                <option value="">{tt('Freie {label}', { label: label })}</option>
+                <option value="">{label === 'Position' ? tt('Freie Position') : tt('Freie {label}', { label })}</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} · {eur(p.price_cents, p.currency || currency)}
@@ -102,7 +102,7 @@ export function LinesEditor({ lines, onChange, products, currency = 'EUR', defau
                 ))}
               </select>
             )}
-            <input className="line-name" aria-label={tt('{label}: Name', { label: label })} placeholder="Name" value={l.name} onChange={(e) => set(i, { name: e.target.value })} />
+            <input className="line-name" aria-label={label === 'Position' ? tt('Position: Name') : tt('{label}: Name', { label })} placeholder={tt('Name')} value={l.name} onChange={(e) => set(i, { name: e.target.value })} />
           </div>
           <div className="line-nums">
             <label>
@@ -166,7 +166,10 @@ export function LinesEditor({ lines, onChange, products, currency = 'EUR', defau
 export const sumNet = (lines: LineDraft[]) => lines.filter((l) => !l.optional).reduce((n, l) => n + rowNet(l), 0);
 
 export const QUOTE_TONE: Record<string, 'gray' | 'green' | 'red' | 'blue' | 'yellow' | 'purple'> = { draft: 'gray', sent: 'blue', viewed: 'purple', accepted: 'green', declined: 'red', expired: 'yellow', void: 'gray' };
-export const StatusBadge = ({ status, label }: { status: string; label: string }) => <Badge tone={QUOTE_TONE[status] ?? 'gray'}>{label}</Badge>;
+export const StatusBadge = ({ status, label }: { status: string; label: string }) => {
+  const tt = useT('x_finance');
+  return <Badge tone={QUOTE_TONE[status] ?? 'gray'}>{tt(label)}</Badge>;
+};
 
 /** A share of a whole as a bar. */
 export function Bar({ pct, tone }: { pct: number | null; tone?: string }) {

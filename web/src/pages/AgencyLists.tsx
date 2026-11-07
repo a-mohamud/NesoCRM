@@ -97,10 +97,10 @@ export function AllDeals() {
       <div className="row" style={{ marginBottom: 4, alignItems: 'center' }}>
         <Tabs
           tabs={[
-            ['open', 'Offen'],
-            ['won', 'Gewonnen'],
-            ['lost', 'Verloren'],
-            ['all', 'Alle'],
+            ['open', tt('Offen')],
+            ['won', tt('Gewonnen')],
+            ['lost', tt('Verloren')],
+            ['all', tt('Alle')],
           ]}
           value={status}
           onChange={setStatus}

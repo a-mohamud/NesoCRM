@@ -72,9 +72,9 @@ export function InboundWebhookTrigger({ workflowId }: { workflowId: string }) {
   if (!c || !mapping || !tags) return <Spinner />;
   const cap = c.captures[Math.min(capture, c.captures.length - 1)];
   const fields: { path: string; sample: string }[] = cap?.fields ?? [];
-  const targets: [string, string][] = [...TARGETS, ...c.custom_fields.map((f: any) => [`custom.${f.key}`, `Eigenes Feld: ${f.label}`] as [string, string])];
-  const save = async (patch: any, ok = 'Gespeichert') => {
-    const r = await act(() => api.put(`/api/inbound-webhooks/${workflowId}`, patch), ok);
+  const targets: [string, string][] = [...TARGETS.map(([k, l]) => [k, tt(l)] as [string, string]), ...c.custom_fields.map((f: any) => [`custom.${f.key}`, tt('Eigenes Feld: {label}', { label: f.label })] as [string, string])];
+  const save = async (patch: any, ok?: string) => {
+    const r = await act(() => api.put(`/api/inbound-webhooks/${workflowId}`, patch), ok ?? tt('Gespeichert'));
     if (r) cfg.setData(r);
     return r;
   };
@@ -91,14 +91,14 @@ export function InboundWebhookTrigger({ workflowId }: { workflowId: string }) {
       </Field>
       <div className="row inbound-meta">
         <span className="muted small">
-          {c.hits ? `${c.hits} ${c.hits === 1 ? tt('Aufruf') : tt('Aufrufe')} · zuletzt ${dt(c.last_at)}: ${c.last_status}` : tt('Noch nicht aufgerufen')}
+          {c.hits ? (c.hits === 1 ? tt('{n} Aufruf · zuletzt {dt}: {status}', { n: c.hits, dt: dt(c.last_at), status: c.last_status }) : tt('{n} Aufrufe · zuletzt {dt}: {status}', { n: c.hits, dt: dt(c.last_at), status: c.last_status })) : tt('Noch nicht aufgerufen')}
         </span>
         <button className="btn small ghost" onClick={() => confirmAsk(tt('Neue URL erzeugen? Die alte funktioniert dann nicht mehr.')) && act(() => api.post(`/api/inbound-webhooks/${workflowId}/rotate`, {}), tt('Neue URL')).then((r) => r && cfg.setData(r))}>
           {tt('Neue URL')}
         </button>
       </div>
       {!c.active && <p className="inbound-warn small">{tt('Der Workflow ist nicht aktiv: Anfragen werden nur als Test-Daten gespeichert (Antwort 409).')}</p>}
-      <Check checked={c.capture} onChange={(v) => save({ capture: v }, v ? 'Testmodus an' : 'Testmodus aus')} label={tt('Testmodus – nur Test-Daten speichern, Workflow nicht starten')} />
+      <Check checked={c.capture} onChange={(v) => save({ capture: v }, v ? tt('Testmodus an') : tt('Testmodus aus'))} label={tt('Testmodus – nur Test-Daten speichern, Workflow nicht starten')} />
 
       <div className="inbound-box" data-tour="inbound-test">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
@@ -187,7 +187,7 @@ export function InboundWebhookTrigger({ workflowId }: { workflowId: string }) {
           <Field label={tt('HMAC-Signatur')}>
             {c.signature.enabled ? (
               <div>
-                <Badge tone="green">verlangt</Badge> <small className="muted">Secret {c.signature.hint}</small>
+                <Badge tone="green">{tt('verlangt')}</Badge> <small className="muted">Secret {c.signature.hint}</small>
               </div>
             ) : (
               <div className="muted small">{tt('aus – jeder mit der URL darf senden')}</div>
@@ -201,7 +201,7 @@ export function InboundWebhookTrigger({ workflowId }: { workflowId: string }) {
           </>
         )}
         <p className="muted small">
-          {tt('Header')} <code>{tt('X-Signature-256: sha256=<HMAC-SHA256 des Rohtexts als Hex>')}</code> {tt('(auch')} <code>{tt('X-Hub-Signature-256')}</code> oder <code>{tt('X-Pghl-Hmac')}</code>).
+          {tt('Header')} <code>{tt('X-Signature-256: sha256=<HMAC-SHA256 des Rohtexts als Hex>')}</code> {tt('(auch')} <code>{tt('X-Hub-Signature-256')}</code> {tt('oder')} <code>{tt('X-Pghl-Hmac')}</code>).
         </p>
         <div className="row" style={{ gap: 6 }}>
           <button className="btn small secondary" onClick={() => act(() => api.post(`/api/inbound-webhooks/${workflowId}/secret`, {}), tt('Secret erzeugt')).then((r) => r && (setSecret(r.secret), cfg.setData(r)))}>

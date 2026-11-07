@@ -7,12 +7,12 @@ import { SignupLink } from '../referrals';
 import { ShareLink } from '../QrCode';
 import { DraftOnly, ReplySettingsPanel, useReplyCfg } from './ReviewReplies';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { fmtNumber, intlLocale, useT } from '../i18n';
 
 /** Google reviews: panel on the Bewertungen page and the connection settings. */
 
 const stars = (n: number) => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
-const de = (n: number, digits = 1) => n.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+const de = (n: number, digits = 1) => n.toLocaleString(intlLocale(), { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 /** Small trend line: history in the muted ink, the latest value in the accent; every point has a hover title. */
 function Sparkline({ points, label, format }: { points: { day: string; v: number }[]; label: string; format: (v: number) => string }) {
@@ -41,13 +41,14 @@ function Sparkline({ points, label, format }: { points: { day: string; v: number
 }
 
 function Delta({ value, unit, since, digits = 0 }: { value: number | undefined; unit: string; since?: string; digits?: number }) {
+  const tt = useT('x_comms');
   if (value === undefined || since === undefined) return null;
   const up = value > 0;
   const flat = value === 0;
   return (
     <span className={`delta ${flat ? '' : up ? 'up' : 'down'}`}>
       {!flat && <Icon name={up ? 'trendUp' : 'trendDown'} size={13} />} {up ? '+' : ''}
-      {de(value, digits)} {unit} seit {day(since)}
+      {de(value, digits)} {unit} {tt('seit {day}', { day: day(since) })}
     </span>
   );
 }
@@ -92,7 +93,7 @@ export function GoogleReviewsPanel() {
               setBusy(true);
               const r = await act(() => api.post('/api/google-reviews/sync'));
               setBusy(false);
-              if (r) toast(r.new ? tt('{new} neue Bewertung{v}', { new: r.new, v: r.new === 1 ? '' : 'en' }) : tt('Aktuell – nichts Neues'));
+              if (r) toast(r.new ? tt.plural(r.new, { one: '{n} neue Bewertung', other: '{n} neue Bewertungen' }) : tt('Aktuell – nichts Neues'));
               void data.reload();
             }}
           >
@@ -212,7 +213,7 @@ export function GoogleReviewSettings() {
     if (!r) return;
     data.setData(r);
     if (r.sync?.error) toast(tt('Gespeichert, aber der Abruf klappte nicht: {error}', { error: r.sync.error }));
-    else if (r.sync) toast(tt('Verbunden: {replace} ★ aus {v} Bewertungen', { replace: String(r.sync.rating ?? '–').replace('.', ','), v: r.sync.total ?? 0 }));
+    else if (r.sync) toast(tt('Verbunden: {replace} ★ aus {v} Bewertungen', { replace: r.sync.rating == null ? '–' : fmtNumber(Number(r.sync.rating), { maximumFractionDigits: 1 }), v: r.sync.total ?? 0 }));
     else toast(tt('Gespeichert'));
   };
   return (

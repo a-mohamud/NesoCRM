@@ -3,7 +3,7 @@ import { Icon, channelIcon } from '../icons';
 import { api, currentLocation } from '../api';
 import { Input, Link, Select, Spinner, Textarea, act, confirmAsk, toast, useLoad } from '../ui';
 import { ChannelMedia, useMoreChannels } from './ChannelInbox';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 import { DraftOffer, finishDraft, useDraftFill, type ComposerDraft } from './MsgDrafts';
 
 /**
@@ -16,7 +16,8 @@ export const CHANNEL_LABELS: Record<string, string> = { email: 'E-Mail', sms: 'S
 
 /** Channel icon in the platform's colour. */
 export function ChannelIcon({ channel, size = 14 }: { channel: string; size?: number }) {
-  return <Icon name={channelIcon(channel)} size={size} className={`ico chan-ico chan-${channel}`} aria-label={CHANNEL_LABELS[channel] ?? channel} />;
+  const t = useT('inbox');
+  return <Icon name={channelIcon(channel)} size={size} className={`ico chan-ico chan-${channel}`} aria-label={CHANNEL_LABELS[channel] ? t(CHANNEL_LABELS[channel]) : channel} />;
 }
 
 const FILTERS: [string, string][] = [['', 'Alle'], ['email', ''], ['sms', ''], ['chat', ''], ['call', ''], ['whatsapp', ''], ['messenger', ''], ['instagram', ''], ['telegram', ''], ['discord', ''], ['comment', '']];
@@ -115,7 +116,8 @@ export function useMetaComposer(contact: any, messages: any[] | undefined) {
 function left(ends: string) {
   const ms = new Date(ends).getTime() - Date.now();
   const h = Math.floor(ms / 3600_000);
-  return h >= 1 ? `noch ${h} Std.` : `noch ${Math.max(1, Math.round(ms / 60_000))} Min.`;
+  const t = tr('inbox');
+  return h >= 1 ? t('noch {h} Std.', { h }) : t('noch {m} Min.', { m: Math.max(1, Math.round(ms / 60_000)) });
 }
 
 /** Shows whether free text is allowed right now. */
@@ -129,7 +131,7 @@ export function WindowState({ channel, st }: { channel: string; st: any }) {
       </div>
     );
   }
-  const label = CHANNEL_LABELS[channel];
+  const label = tt(CHANNEL_LABELS[channel] ?? channel);
   return (
     <div className={`win-state ${channel === 'whatsapp' ? 'tpl' : 'closed'}`}>
       <Icon name="pending" size={14} />{' '}
@@ -217,7 +219,7 @@ function MetaComposerPanel({ channel, contact, st, onSent, draft }: { channel: s
     if (!r) return;
     if (r.status === 'failed') toast(tt('Nicht gesendet: {error}', { error: r.error }));
     else {
-      toast(tt('Per {v} gesendet', { v: CHANNEL_LABELS[channel] }));
+      toast(tt('Per {v} gesendet', { v: tt(CHANNEL_LABELS[channel] ?? channel) }));
       if (draft && mode === 'text') await finishDraft(draft.id);
     }
     setBody('');
@@ -252,7 +254,7 @@ function MetaComposerPanel({ channel, contact, st, onSent, draft }: { channel: s
           onChange={setBody}
           rows={4}
           disabled={!open}
-          placeholder={open ? `${CHANNEL_LABELS[channel]}-Nachricht an ${contact.first_name || tt('den Kontakt')}` : channel === 'whatsapp' ? tt('Freier Text erst wieder nach einer Nachricht des Kontakts – bitte „Vorlage“ wählen') : tt('Freier Text erst wieder nach einer Nachricht des Kontakts')}
+          placeholder={open ? tt('{channel}-Nachricht an {name}', { channel: tt(CHANNEL_LABELS[channel] ?? channel), name: contact.first_name || tt('den Kontakt') }) : channel === 'whatsapp' ? tt('Freier Text erst wieder nach einer Nachricht des Kontakts – bitte „Vorlage“ wählen') : tt('Freier Text erst wieder nach einer Nachricht des Kontakts')}
         />
       ) : !st.templates ? (
         <p className="muted small">
@@ -270,7 +272,7 @@ function MetaComposerPanel({ channel, contact, st, onSent, draft }: { channel: s
             value={tpl}
             onChange={(v) => (setTpl(v), setValues({}))}
             placeholder={tt('Vorlage wählen…')}
-            options={templates.data.map((t) => [`${t.name}|${t.language}`, `${t.name} (${t.language}, ${t.category === 'MARKETING' ? 'Marketing' : t.category === 'UTILITY' ? 'Service' : t.category === 'AUTHENTICATION' ? 'Code' : t.category})${t.supported ? '' : ' – nicht unterstützt'}`])}
+            options={templates.data.map((t) => [`${t.name}|${t.language}`, `${t.name} (${t.language}, ${t.category === 'MARKETING' ? tt('Marketing') : t.category === 'UTILITY' ? tt('Service') : t.category === 'AUTHENTICATION' ? tt('Code') : t.category})${t.supported ? '' : tt(' – nicht unterstützt')}`])}
           />
           {chosen && !chosen.supported && <p className="muted small">{chosen.reason}</p>}
           {chosen?.supported && (

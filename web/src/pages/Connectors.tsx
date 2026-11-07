@@ -22,7 +22,7 @@ export function DirectConnectors() {
     const st = q.get('sheets');
     if (!st) return;
     if (st === 'ok') toast(tt('Google Sheets verbunden'));
-    else toastError(q.get('msg') || 'Verbinden fehlgeschlagen');
+    else toastError(q.get('msg') || tt('Verbinden fehlgeschlagen'));
     history.replaceState(null, '', location.pathname);
   }, []);
   if (list.error) return <Empty>{list.error}</Empty>;
@@ -44,7 +44,7 @@ function ConnectorCard({ def, onChange }: { def: Json; onChange: () => void }) {
   useEffect(() => setValues(def.values), [def]);
   const dirty = JSON.stringify(values) !== JSON.stringify(def.values);
   const tone = !def.configured ? 'gray' : def.last_ok === false ? 'red' : def.last_ok ? 'green' : 'blue';
-  const label = !def.configured ? 'nicht eingerichtet' : def.last_ok === false ? 'Test fehlgeschlagen' : def.last_ok ? 'verbunden' : 'gespeichert';
+  const label = !def.configured ? tt('nicht eingerichtet') : def.last_ok === false ? tt('Test fehlgeschlagen') : def.last_ok ? tt('verbunden') : tt('gespeichert');
   return (
     <div className="card cx-conn-card" data-tour={`connector-${def.key}`}>
       <div className="cx-tk-head">
@@ -132,7 +132,7 @@ function SheetsPanel({ def }: { def: Json }) {
           <strong>{def.name}</strong>
           <span className="muted small">{def.category} <SignupLink id="google_workspace" /></span>
         </div>
-        {v.connected ? <Badge tone="green">verbunden</Badge> : v.oauth_ready ? <Badge tone="blue">bereit</Badge> : <Badge>{tt('OAuth-App fehlt')}</Badge>}
+        {v.connected ? <Badge tone="green">{tt('verbunden')}</Badge> : v.oauth_ready ? <Badge tone="blue">{tt('bereit')}</Badge> : <Badge>{tt('OAuth-App fehlt')}</Badge>}
       </div>
       <p className="small">{def.description}</p>
       {!v.oauth_ready ? (

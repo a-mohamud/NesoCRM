@@ -66,9 +66,9 @@ export interface CompanionState {
 
 const DEFAULTS: CompanionState = {
   prefs: { agent_id: null, name: '', wake_phrase: '', shortcut: true, read_aloud: null, voice_reply: true, browser_voice: '', tts_provider: 'google_speech', tts_connection_id: '', tts_voice: 'auto', tz: '', checkin: { mode: 'off', minutes: 60, times: ['08:30'], quiet_from: '20:00', quiet_to: '08:00', weekdays_only: false, only_changed: true, speak: false }, conversation_window: 8, barge_in: true, voice_engine: 'classic', live_connection_id: '', initiative: 'balanced', events: { on: true, unanswered_minutes: 30, triggers: {} }, role: 'business_developer', growth: { daily: false, time: '08:00', weekly: true } },
-  name: 'Jarvis',
-  wake_phrase: 'Hey Jarvis',
-  agent: { id: null, name: 'HyperLevel Agent', emoji: '✨' },
+  name: 'Jarvis', // i18n-ignore (assistant name)
+  wake_phrase: 'Hey Jarvis', // i18n-ignore (matched against speech)
+  agent: { id: null, name: 'HyperLevel Agent', emoji: '✨' }, // i18n-ignore (product name)
   agent_missing: false,
   tz: '',
   intervals: [5, 10, 15, 20, 30, 45, 60, 120, 180, 240],

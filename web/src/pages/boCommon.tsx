@@ -14,7 +14,7 @@ export function Disclaimer({ text, compact }: { text?: string; compact?: boolean
   return (
     <div className={`bo-note${compact ? ' compact' : ''}`} role="note" data-tour="acc-disclaimer">
       <Icon name="shield" size={16} />
-      <span>{compact ? tt('Buchhaltung light – Vorbereitung für den Steuerberater. Keine zertifizierte Software, keine GoBD-Zertifizierung, kein ELSTER.') : text || DISCLAIMER}</span>
+      <span>{compact ? tt('Buchhaltung light – Vorbereitung für den Steuerberater. Keine zertifizierte Software, keine GoBD-Zertifizierung, kein ELSTER.') : tt(text || DISCLAIMER)}</span>
     </div>
   );
 }

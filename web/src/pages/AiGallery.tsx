@@ -4,7 +4,7 @@ import { Badge, Modal, Spinner, act } from '../ui';
 import { SignupLink } from '../referrals';
 import { FILTERS, PINNED, SUB_PRESETS, filterPresets } from './ai-gallery-filter';
 import './AiGallery.css';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * The provider gallery of Einstellungen → KI-Anbieter: search, filters (EU-Hosting, günstig, schnell, lokal, Abo-Anmeldung) and the
@@ -21,7 +21,7 @@ const KINDS: [string, string][] = [
   ['custom', 'Eigene'],
 ];
 const usd = (v?: number) => (v === undefined || v === null ? '–' : `$${v.toLocaleString('de-DE', { minimumFractionDigits: v < 1 ? 2 : 2, maximumFractionDigits: 4 })}`);
-const tokens = (n?: number) => (n ? (n >= 1_000_000 ? `${(n / 1_000_000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mio.` : `${Math.round(n / 1000).toLocaleString('de-DE')} Tsd.`) : '–');
+const tokens = (n?: number) => (n ? (n >= 1_000_000 ? tr('x_ai')('{n} Mio.', { n: (n / 1_000_000).toLocaleString('de-DE', { maximumFractionDigits: 1 }) }) : tr('x_ai')('{n} Tsd.', { n: Math.round(n / 1000).toLocaleString('de-DE') })) : '–');
 
 export function Gallery({ presets, capLabels, onPick, onSubscription }: { presets: any[]; capLabels: Record<string, string>; onPick: (p: any) => void; onSubscription: (kind: 'chatgpt' | 'claude') => void }) {
   const tt = useT('x_ai');
@@ -40,7 +40,7 @@ export function Gallery({ presets, capLabels, onPick, onSubscription }: { preset
         <span className="lbl">{tt('Filter')}</span>
         {FILTERS.map(([k, l]) => (
           <button key={k} type="button" className={`aig-chip${k === 'eu' ? ' eu' : ''}`} aria-pressed={tags.includes(k)} onClick={() => toggle(k)} data-tour={k === 'eu' ? 'aig-eu' : undefined}>
-            {l}
+            {tt(l)}
           </button>
         ))}
       </div>
@@ -48,7 +48,7 @@ export function Gallery({ presets, capLabels, onPick, onSubscription }: { preset
         <span className="lbl">{tt('Art')}</span>
         {KINDS.map(([k, l]) => (
           <button key={k} type="button" className="aig-chip" aria-pressed={kind === k} onClick={() => setKind(k)}>
-            {l}
+            {tt(l)}
           </button>
         ))}
       </div>
@@ -95,9 +95,9 @@ export function Gallery({ presets, capLabels, onPick, onSubscription }: { preset
                     </span>
                   )}
                   {SUB_PRESETS.has(p.id) && <span className="aig-badge sub">{tt('Abo möglich')}</span>}
-                  {p.local && <span className="aig-badge">lokal</span>}
+                  {p.local && <span className="aig-badge">{tt('lokal')}</span>}
                   {(p.tags ?? []).includes('cheap') && <span className="aig-badge">{tt('günstig')}</span>}
-                  {(p.tags ?? []).includes('fast') && <span className="aig-badge">schnell</span>}
+                  {(p.tags ?? []).includes('fast') && <span className="aig-badge">{tt('schnell')}</span>}
                   {(p.tags ?? []).includes('gateway') && <span className="aig-badge">{tt('Gateway')}</span>}
                   {(p.realtime?.audio_tts || p.realtime?.stt) && <span className="aig-badge">{tt('Live')}</span>}
                 </span>

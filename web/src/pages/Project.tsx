@@ -7,7 +7,7 @@ import { ClaudeButton, CodexButton, refreshProjects } from '../nav';
 import { ProjectDocs } from './Docs';
 import { Slot } from '../slots';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { fmtNumber, useT } from '../i18n';
 
 export const STATUS: Record<string, [string, any]> = {
   idee: ['Idee', 'gray'],
@@ -25,8 +25,8 @@ export function UptimeDot({ uptime }: { uptime: any }) {
   return (
     <span className="small" title={tt('HTTP {v} · {ms} ms · {ago}', { v: last.status || '–', ms: last.ms, ago: ago(last.at) })}>
       <span className={`dot ${last.ok ? 'up' : 'down'}`} />
-      {last.ok ? 'online' : 'offline'}
-      {uptime.week_pct !== null ? ` · ${String(uptime.week_pct).replace('.', ',')} % (7 T.)` : ''}
+      {last.ok ? tt('online') : tt('offline')}
+      {uptime.week_pct !== null ? tt(' · {pct} % (7 T.)', { pct: fmtNumber(Number(uptime.week_pct), { maximumFractionDigits: 2 }) }) : ''}
     </span>
   );
 }
@@ -38,7 +38,7 @@ function ListEditor({ items, onChange, fields }: { items: any[]; onChange: (v: a
       {items.map((it, i) => (
         <div key={i} className="list-row" style={{ gridTemplateColumns: `${fields.map(() => 'minmax(0, 1fr)').join(' ')} auto` }}>
           {fields.map(([k, ph]) => (
-            <Input key={k} value={typeof it === 'string' ? it : it[k]} onChange={(v) => onChange(items.map((x, j) => (j === i ? (fields.length === 1 && typeof x === 'string' ? v : { ...x, [k]: v }) : x)))} placeholder={ph} />
+            <Input key={k} value={typeof it === 'string' ? it : it[k]} onChange={(v) => onChange(items.map((x, j) => (j === i ? (fields.length === 1 && typeof x === 'string' ? v : { ...x, [k]: v }) : x)))} placeholder={tt(ph)} />
           ))}
           <button className="btn small ghost" aria-label={tt('Entfernen')} onClick={() => onChange(items.filter((_, j) => j !== i))}>
             ✕
@@ -66,7 +66,7 @@ export function Project() {
   return (
     <>
       <PageHead title={loc?.name ?? tt('Projekt')} sub={v.tagline || tt('Projekt-Steckbrief')}>
-        <Badge tone={STATUS[v.status]?.[1]}>{STATUS[v.status]?.[0] ?? v.status}</Badge>
+        <Badge tone={STATUS[v.status]?.[1]}>{STATUS[v.status] ? tt(STATUS[v.status][0]) : v.status}</Badge>
         <ClaudeButton sessions={p.data.claude_sessions} />
         <CodexButton sessions={p.data.codex_sessions} />
         {v.website && (
@@ -91,7 +91,7 @@ export function Project() {
         <div className="card" style={{ flex: '2 1 460px' }}>
           <div className="grid2">
             <Field label="Status" tour="project-status">
-              <Select value={v.status} onChange={(x) => set({ status: x })} options={Object.entries(STATUS).map(([k, [l]]) => [k, l])} />
+              <Select value={v.status} onChange={(x) => set({ status: x })} options={Object.entries(STATUS).map(([k, [l]]) => [k, tt(l)])} />
             </Field>
             <Field label={tt('Kategorie')}>
               <Input value={v.category} onChange={(x) => set({ category: x })} placeholder={tt('z. B. App, Spiel, Marktplatz')} />
@@ -170,7 +170,7 @@ export function ProjectsOverview() {
   return (
     <>
       <div className="row" style={{ marginBottom: 12, maxWidth: 360 }}>
-        <Select value={filter} onChange={setFilter} placeholder={tt('Alle Status')} options={Object.entries(STATUS).map(([k, [l]]) => [k, l])} />
+        <Select value={filter} onChange={setFilter} placeholder={tt('Alle Status')} options={Object.entries(STATUS).map(([k, [l]]) => [k, tt(l)])} />
       </div>
       {/* in the order the person dragged them into (web/src/sortable); new projects join at the end, a status filter keeps the rest's order */}
       <SortableGrid id="agency.projects" className="proj-grid" data-tour="agency-projects">
@@ -185,7 +185,7 @@ export function ProjectsOverview() {
               <span className="actions">
                 <ClaudeButton sessions={l.profile.claude_sessions} compact />
                 <CodexButton sessions={l.profile.codex_sessions} compact />
-                <Badge tone={STATUS[l.profile.status]?.[1]}>{STATUS[l.profile.status]?.[0]}</Badge>
+                <Badge tone={STATUS[l.profile.status]?.[1]}>{STATUS[l.profile.status] ? tt(STATUS[l.profile.status][0]) : l.profile.status}</Badge>
               </span>
             </div>
             {l.profile.tagline && <div className="muted small">{l.profile.tagline}</div>}

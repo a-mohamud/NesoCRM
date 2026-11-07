@@ -72,7 +72,7 @@ function AgentList() {
               <span className="agent-card-avatar">{d.emoji}</span>
               <div>
                 <h3>{d.name}</h3>
-                <span className="muted small">{tt('Eingebaut · {v}', { v: MODE_LABEL[d.mode] })}</span>
+                <span className="muted small">{tt('Eingebaut · {v}', { v: tt(MODE_LABEL[d.mode]) })}</span>
               </div>
             </div>
             <div className="agent-card-desc">{d.description}</div>
@@ -92,14 +92,14 @@ function AgentList() {
               <div style={{ minWidth: 0 }}>
                 <h3>{a.name}</h3>
                 <span className="muted small">
-                  {MODE_LABEL[a.mode]} · {VIS[a.visibility]}
+                  {tt(MODE_LABEL[a.mode])} · {tt(VIS[a.visibility])}
                   {a.owner_id !== undefined && !a.can_edit ? tt(' · von {owner}', { owner: a.owner }) : ''}
                 </span>
               </div>
             </div>
             <div className="agent-card-desc">{a.description || <span className="muted">{tt('Keine Rolle beschrieben.')}</span>}</div>
             <div className="row small muted">
-              {a.schedules?.length ? <Badge tone="blue">{tt('{length} Zeitplan', { length: a.schedules.length })}</Badge> : null}
+              {a.schedules?.length ? <Badge tone="blue">{tt.plural(a.schedules.length, { one: '{n} Zeitplan', other: '{n} Zeitpläne' })}</Badge> : null}
               {a.responder?.enabled ? <Badge tone="purple">{tt('Auto-Antwort:')} {a.responder.channels.join(', ')}</Badge> : null}
               {a.tools ? <Badge>{tt('{length} Werkzeuge', { length: a.tools.length })}</Badge> : <Badge>{tt('alle Werkzeuge')}</Badge>}
             </div>
@@ -211,7 +211,7 @@ function Templates() {
               <span className="agent-card-avatar">{t.emoji}</span>
               <div>
                 <h3>{t.name}</h3>
-                <span className="muted small">{MODE_LABEL[t.mode]}</span>
+                <span className="muted small">{tt(MODE_LABEL[t.mode])}</span>
               </div>
             </div>
             <div className="agent-card-desc">{t.description}</div>
@@ -294,7 +294,7 @@ function ConnectInfo() {
       <div className="card" data-tour="agent-connector">
         <h2>{tt('1. HyperLevel als Werkzeug in ChatGPT oder Claude (empfohlen)')}</h2>
         <p>
-          {tt('Du chattest in')} <strong>ChatGPT</strong> oder <strong>{tt('Claude.ai')}</strong> {tt('mit deinem eigenen Abo – HyperLevel ist dort ein Konnektor (MCP, Anmeldung per OAuth). Die Einrichtung steht auf der Seite')}{' '}
+          {tt('Du chattest in')} <strong>ChatGPT</strong> {tt('oder')} <strong>{tt('Claude.ai')}</strong> {tt('mit deinem eigenen Abo – HyperLevel ist dort ein Konnektor (MCP, Anmeldung per OAuth). Die Einrichtung steht auf der Seite')}{' '}
           <a href={`/app/${i.ai_tools_page}`} onClick={(e) => (e.preventDefault(), navigate(i.ai_tools_page))}>
             {tt('KI-Werkzeuge')}
           </a>
@@ -332,7 +332,7 @@ function ConnectInfo() {
           <table className="agent-table-plain" style={{ marginTop: 10 }}>
             <thead>
               <tr>
-                <th>Name</th>
+                <th>{tt('Name')}</th>
                 <th>{tt('Werkzeuge')}</th>
                 <th>{tt('Rechte')}</th>
                 <th>{tt('Zuletzt')}</th>
@@ -406,7 +406,7 @@ function ConnectInfo() {
           {tt('Experimentell: Die')} <a href="/app/agents/bridge" onClick={(e) => (e.preventDefault(), navigate('agents/bridge'))}>{tt('lokale Bridge')}</a> {tt('startet Codex CLI (ChatGPT-Abo) oder Claude Code (Claude-Abo) auf deinem Rechner und streamt die Antwort in diesen Chat.')}
         </p>
       </div>
-      <p className="agent-legal">{LEGAL}</p>
+      <p className="agent-legal">{tt(LEGAL)}</p>
       {session.user.role === 'admin' && <AgencySwitches />}
     </>
   );
@@ -486,9 +486,9 @@ function Bridge() {
             {!st.data.devices.length && <p className="muted small">{tt('Noch kein Gerät gekoppelt.')}</p>}
             {st.data.devices.map((d: any) => (
               <div key={d.id} className="row" style={{ alignItems: 'center', marginBottom: 6 }}>
-                <Badge tone={d.online ? 'green' : 'gray'}>{d.online ? 'verbunden' : 'offline'}</Badge>
+                <Badge tone={d.online ? 'green' : 'gray'}>{d.online ? tt('verbunden') : tt('offline')}</Badge>
                 <strong>{d.name}</strong>
-                <span className="muted small">zuletzt {d.last_seen_at ? ago(d.last_seen_at) : '–'}</span>
+                <span className="muted small">{tt('zuletzt {ago}', { ago: d.last_seen_at ? ago(d.last_seen_at) : '–' })}</span>
                 <Select value={d.cli} onChange={async (v) => (await act(() => api.patch(`/api/agent/bridge/devices/${d.id}`, { cli: v }))) && st.reload()} options={[['claude', 'Claude Code'], ['codex', 'Codex CLI']]} />
                 <button className="btn small ghost" onClick={async () => confirmAsk(tt('Gerät entfernen?')) && (await act(() => api.del(`/api/agent/bridge/devices/${d.id}`))) && st.reload()}>
                   {tt('Entfernen')}
@@ -498,7 +498,7 @@ function Bridge() {
           </>
         )}
       </div>
-      <p className="agent-legal">{LEGAL}</p>
+      <p className="agent-legal">{tt(LEGAL)}</p>
     </>
   );
 }
@@ -557,7 +557,7 @@ function Usage() {
           <h3>{tt('Einstellungen für diesen Sub-Account')}</h3>
           <Check checked={s.data.enabled !== false} onChange={(v) => void saveSettings({ enabled: v })} label={tt('KI-Agent im Sub-Account einschalten')} />
           <Field label={tt('Modus des eingebauten HyperLevel Agent')}>
-            <Select value={s.data.default_mode} onChange={(v) => void saveSettings({ default_mode: v })} options={Object.entries(MODE_LABEL)} />
+            <Select value={s.data.default_mode} onChange={(v) => void saveSettings({ default_mode: v })} options={Object.entries(MODE_LABEL).map(([k, v]) => [k, tt(v)] as [string, string])} />
           </Field>
           <Check checked={!!s.data.web_fetch} onChange={(v) => void saveSettings({ web_fetch: v })} label={tt('HyperLevel Agent darf öffentliche Webseiten lesen')} />
         </div>
@@ -570,7 +570,7 @@ function Usage() {
               <th>{tt('Wann')}</th>
               <th>{tt('Agent')}</th>
               <th>{tt('Weg')}</th>
-              <th>Status</th>
+              <th>{tt('Status')}</th>
               <th>{tt('Schritte')}</th>
               <th>{tt('Kosten')}</th>
             </tr>
@@ -597,13 +597,13 @@ export function AgentsPage({ tab = 'agents' }: { tab?: string }) {
   const tt = useT('x_ai');
   const session = useSession();
   const tabs: [string, string][] = [
-    ['agents', 'Agenten'],
-    ['templates', 'Vorlagen'],
-    ['approvals', 'Freigaben'],
-    ['connect', 'In ChatGPT & Claude'],
-    ['bridge', 'Mit deinem Abo'],
-    ...(can(session, 'settings') ? ([['models', 'Modelle'], ['tests', 'Prompt-Tests']] as [string, string][]) : []),
-    ['usage', 'Nutzung'],
+    ['agents', tt('Agenten')],
+    ['templates', tt('Vorlagen')],
+    ['approvals', tt('Freigaben')],
+    ['connect', tt('In ChatGPT & Claude')],
+    ['bridge', tt('Mit deinem Abo')],
+    ...(can(session, 'settings') ? ([['models', tt('Modelle')], ['tests', tt('Prompt-Tests')]] as [string, string][]) : []),
+    ['usage', tt('Nutzung')],
   ];
   return (
     <>

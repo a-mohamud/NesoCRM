@@ -26,7 +26,7 @@ export function Sales({ tab }: { tab?: string }) {
   return (
     <div className="sales" data-tour="sales-page">
       <PageHead title={tt('Vertrieb')} sub={tt('Sequenzen, Angebote, Quoten, Dubletten und wer welche Datensätze sieht')} />
-      <Tabs tabs={TABS} value={cur} onChange={(v) => navigate(`sales/${v}`)} />
+      <Tabs tabs={TABS.map(([k, l]): [string, string] => [k, tt(l)])} value={cur} onChange={(v) => navigate(`sales/${v}`)} />
       <div style={{ marginTop: 14 }}>
         {cur === 'sequenzen' && <SalesSequences />}
         {cur === 'angebote' && <SalesQuotes />}

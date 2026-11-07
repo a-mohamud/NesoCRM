@@ -42,11 +42,11 @@ function CaseDialog({ id, onClose, onChanged }: { id: string; onClose: () => voi
       footer={
         live ? (
           <>
-            <button className="btn secondary" onClick={() => run('remind', 'Erinnerung gesendet')} data-tour="case-remind">
+            <button className="btn secondary" onClick={() => run('remind', tt('Erinnerung gesendet'))} data-tour="case-remind">
               {tt('Erinnerung senden')}
             </button>
             {c.stripe_invoice && (
-              <button className="btn secondary" onClick={() => run('retry', 'Zahlung erneut versucht')}>
+              <button className="btn secondary" onClick={() => run('retry', tt('Zahlung erneut versucht'))}>
                 {tt('Jetzt erneut einziehen')}
               </button>
             )}
@@ -59,7 +59,7 @@ function CaseDialog({ id, onClose, onChanged }: { id: string; onClose: () => voi
               className="btn secondary"
               onClick={() => {
                 const reason = window.prompt(tt('Warum schließt du den Fall? (z. B. „hat per Überweisung bezahlt“)'), '');
-                if (reason !== null) void run('close', 'Fall geschlossen', { reason });
+                if (reason !== null) void run('close', tt('Fall geschlossen'), { reason });
               }}
             >
               {tt('Fall schließen')}
@@ -70,24 +70,24 @@ function CaseDialog({ id, onClose, onChanged }: { id: string; onClose: () => voi
     >
       <Facts
         rows={[
-          ['Kontakt', c.contact?.id ? <Link to={`contacts/${c.contact.id}`}>{c.contact.name || tt('Kontakt öffnen')}</Link> : 'nicht zugeordnet'],
-          ['Produkt', c.product_name],
-          ['Betrag', money(c.amount_cents, c.currency)],
-          ['Status', <StatusBadge key="s" status={c.status} />],
-          ['Versuche', c.attempts],
-          ['Erster Fehlschlag', dt(c.first_failed_at)],
-          ['Nächster Versuch', c.next_attempt_at ? dt(c.next_attempt_at) : ''],
-          ['Zugang', c.access_paused ? 'pausiert' : 'aktiv'],
-          ['Grund', c.reason],
-          ['Wieder bezahlt', c.recovered_at ? dt(c.recovered_at) : ''],
-          ['Geschlossen', c.closed_reason],
+          [tt('Kontakt'), c.contact?.id ? <Link to={`contacts/${c.contact.id}`}>{c.contact.name || tt('Kontakt öffnen')}</Link> : tt('nicht zugeordnet')],
+          [tt('Produkt'), c.product_name],
+          [tt('Betrag'), money(c.amount_cents, c.currency)],
+          [tt('Status'), <StatusBadge key="s" status={c.status} />],
+          [tt('Versuche'), c.attempts],
+          [tt('Erster Fehlschlag'), dt(c.first_failed_at)],
+          [tt('Nächster Versuch'), c.next_attempt_at ? dt(c.next_attempt_at) : ''],
+          [tt('Zugang'), c.access_paused ? tt('pausiert') : tt('aktiv')],
+          [tt('Grund'), c.reason],
+          [tt('Wieder bezahlt'), c.recovered_at ? dt(c.recovered_at) : ''],
+          [tt('Geschlossen'), c.closed_reason],
         ]}
       />
       <h4 style={{ margin: '16px 0 8px' }}>{tt('Verlauf')}</h4>
       <div className="cr-list">
         {c.events.map((e: any, i: number) => (
           <Item key={i}>
-            <strong>{EVENT_LABEL[e.kind] ?? e.kind}</strong> <span className="muted small">{dt(e.at)}</span>
+            <strong>{tt(EVENT_LABEL[e.kind] ?? e.kind)}</strong> <span className="muted small">{dt(e.at)}</span>
             {e.detail && <div className="cr-sub">{e.detail}</div>}
           </Item>
         ))}
@@ -152,7 +152,7 @@ function BillingLinkDialog({ onClose }: { onClose: () => void }) {
               <p>
                 <span className="cr-code">{link.url}</span> <Copy text={link.url} />
               </p>
-              <p className="small muted">{tt('Gültig bis {d}.', { d: d(link.expires_at) })}{link.sent ? tt(' Gesendet per {v}.', { v: link.sent === 'email' ? 'E-Mail' : 'SMS' }) : ''}</p>
+              <p className="small muted">{tt('Gültig bis {d}.', { d: d(link.expires_at) })}{link.sent ? tt(' Gesendet per {v}.', { v: link.sent === 'email' ? tt('E-Mail') : 'SMS' }) : ''}</p>
             </Callout>
           )}
         </>
@@ -190,7 +190,7 @@ function CasesTab({ overview, reloadOverview }: { overview: any; reloadOverview:
         tour="dunning-cases"
         actions={
           <>
-            <Select value={status} onChange={setStatus} options={[['live', 'Offen und gescheitert'], ['recovered', 'Wieder bezahlt'], ['closed', 'Geschlossen'], ['all', 'Alle']]} />
+            <Select value={status} onChange={setStatus} options={[['live', tt('Offen und gescheitert')], ['recovered', tt('Wieder bezahlt')], ['closed', tt('Geschlossen')], ['all', tt('Alle')]]} />
             <button className="btn secondary" data-tour="dunning-link" onClick={() => setLinking(true)}>
               <Icon name="link" /> {tt('Abo-Link erzeugen')}
             </button>
@@ -215,7 +215,7 @@ function CasesTab({ overview, reloadOverview }: { overview: any; reloadOverview:
               >
                 <strong>{c.contact?.name || tt('Kontakt unbekannt')}</strong> · {c.product_name || tt('Abo')} · {money(c.amount_cents, c.currency)}
                 <div className="cr-sub">
-                  {tt('Seit {d} · {attempts} Versuch', { d: d(c.first_failed_at), attempts: c.attempts })}{c.attempts === 1 ? '' : 'e'}
+                  {tt.plural(c.attempts, { one: 'Seit {d} · {n} Versuch', other: 'Seit {d} · {n} Versuche' }, { d: d(c.first_failed_at) })}
                   {c.next_attempt_at ? tt(' · nächster {dt}', { dt: dt(c.next_attempt_at) }) : ''}
                   {c.reason ? ` · ${c.reason}` : ''}
                 </div>
@@ -279,18 +279,18 @@ function NoticeDialog({ notice, onClose, onChanged }: { notice: any; onClose: ()
     >
       <Facts
         rows={[
-          ['Kontakt', notice.contact?.name],
-          ['Status', <StatusBadge key="s" status={notice.status} />],
-          ['Rechnung', money(notice.principal_cents, notice.currency)],
-          ['Mahngebühren früherer Schreiben', notice.prior_fee_cents ? money(notice.prior_fee_cents, notice.currency) : ''],
-          ['Mahngebühr', notice.fee_cents ? money(notice.fee_cents, notice.currency) : ''],
-          ['Verzugszinsen', notice.interest_cents ? `${money(notice.interest_cents, notice.currency)} (${String(notice.interest_rate).replace('.', ',')} % p. a.)` : ''],
-          ['Pauschale (§ 288 Abs. 5 BGB)', notice.flat_fee_cents ? money(notice.flat_fee_cents, notice.currency) : ''],
-          ['Gesamt', <strong key="t">{money(notice.total_cents, notice.currency)}</strong>],
-          ['Zahlungsfrist', notice.deadline_at ? d(notice.deadline_at) : ''],
-          ['Tage überfällig', notice.days_overdue],
-          ['Gesendet', notice.sent_at ? dt(notice.sent_at) : ''],
-          ['Fehler', notice.error],
+          [tt('Kontakt'), notice.contact?.name],
+          [tt('Status'), <StatusBadge key="s" status={notice.status} />],
+          [tt('Rechnung'), money(notice.principal_cents, notice.currency)],
+          [tt('Mahngebühren früherer Schreiben'), notice.prior_fee_cents ? money(notice.prior_fee_cents, notice.currency) : ''],
+          [tt('Mahngebühr'), notice.fee_cents ? money(notice.fee_cents, notice.currency) : ''],
+          [tt('Verzugszinsen'), notice.interest_cents ? `${money(notice.interest_cents, notice.currency)} (${String(notice.interest_rate).replace('.', ',')} % p. a.)` : ''],
+          [tt('Pauschale (§ 288 Abs. 5 BGB)'), notice.flat_fee_cents ? money(notice.flat_fee_cents, notice.currency) : ''],
+          [tt('Gesamt'), <strong key="t">{money(notice.total_cents, notice.currency)}</strong>],
+          [tt('Zahlungsfrist'), notice.deadline_at ? d(notice.deadline_at) : ''],
+          [tt('Tage überfällig'), notice.days_overdue],
+          [tt('Gesendet'), notice.sent_at ? dt(notice.sent_at) : ''],
+          [tt('Fehler'), notice.error],
         ]}
       />
       <Field label={tt('Betreff')}>
@@ -410,7 +410,7 @@ function InvoicesTab({ overview, reloadOverview, goSettings }: { overview: any; 
                     {tt('{days_overdue} Tage überfällig ·', { days_overdue: inv.days_overdue })}{' '}
                     {inv.last_status === 'pending'
                       ? tt('{level_label} wartet auf Freigabe', { level_label: inv.level_label })
-                      : `Stand: ${inv.level_label}${inv.next_label ? tt(' · als Nächstes {next_label} ({money})', { next_label: inv.next_label, money: money(inv.next_total_cents, inv.currency) }) : tt(' · alle Stufen durch')}`}
+                      : tt('Stand: {level}', { level: inv.level_label }) + (inv.next_label ? tt(' · als Nächstes {next_label} ({money})', { next_label: inv.next_label, money: money(inv.next_total_cents, inv.currency) }) : tt(' · alle Stufen durch'))}
                     {inv.held ? tt(' · Mahnstopp') : ''}
                   </div>
                 </Item>
@@ -491,7 +491,7 @@ function BillingTab() {
                   <Check checked={p.allow_cancel} onChange={(v) => save(p, { allow_cancel: v })} label={tt('Kündigen erlaubt')} />
                   <Check checked={p.allow_pause} onChange={(v) => save(p, { allow_pause: v })} label={tt('Pausieren erlaubt')} />
                   <Field label={tt('Kündigung wirkt')}>
-                    <Select value={p.cancel_mode} onChange={(v) => save(p, { cancel_mode: v })} options={[['period_end', 'zum Ende der bezahlten Zeit'], ['now', 'sofort']]} />
+                    <Select value={p.cancel_mode} onChange={(v) => save(p, { cancel_mode: v })} options={[['period_end', tt('zum Ende der bezahlten Zeit')], ['now', tt('sofort')]]} />
                   </Field>
                 </div>
                 {products.data!.length > 1 && (
@@ -552,7 +552,7 @@ function SettingsTab() {
         <Panel title={tt('Abo- und Raten-Zahlungen')} sub={tt('Was passiert, wenn eine Zahlung nicht durchgeht.')} tour="dunning-settings-sub" actions={<button className="btn small secondary" onClick={() => reset('sub')}>{tt('Standard')}</button>}>
           <Check checked={sub.enabled} onChange={(v) => setSub({ enabled: v })} label={tt('Mahnwesen für Abo-Zahlungen aktiv')} />
           <Field label={tt('Wiederholte Einzugsversuche')} hint={sub.retry_mode === 'stripe' ? tt('Stripe wiederholt selbst (Smart Retries). Stelle Anzahl und Zeitraum im Stripe-Dashboard unter Einstellungen → Abos und E-Mails → Fehlgeschlagene Zahlungen ein.') : tt('HyperLevel zieht die offene Rechnung an den angegebenen Tagen selbst erneut ein. Schalte dann die Stripe-Wiederholungen aus.')}>
-            <Select value={sub.retry_mode} onChange={(v) => setSub({ retry_mode: v })} options={[['stripe', 'Stripe (Smart Retries)'], ['own', 'HyperLevel (eigene Tage)']]} />
+            <Select value={sub.retry_mode} onChange={(v) => setSub({ retry_mode: v })} options={[['stripe', tt('Stripe (Smart Retries)')], ['own', tt('HyperLevel (eigene Tage)')]]} />
           </Field>
           {sub.retry_mode === 'own' && (
             <Field label={tt('Versuche an Tag … nach dem Fehlschlag')} hint={tt('Zahlen mit Komma, z. B. 1, 3, 5, 7')}>
@@ -568,13 +568,13 @@ function SettingsTab() {
               <Input type="number" min={0} max={90} value={sub.final_after_days} onChange={(v) => setSub({ final_after_days: Math.max(0, Number(v) || 0) })} />
             </Field>
             <Field label={tt('Wenn endgültig gescheitert')}>
-              <Select value={sub.access_on_final} onChange={(v) => setSub({ access_on_final: v })} options={[['pause', 'Zugang pausieren'], ['keep', 'Zugang behalten']]} />
+              <Select value={sub.access_on_final} onChange={(v) => setSub({ access_on_final: v })} options={[['pause', tt('Zugang pausieren')], ['keep', tt('Zugang behalten')]]} />
             </Field>
           </div>
           <Check checked={sub.cancel_on_final} onChange={(v) => setSub({ cancel_on_final: v })} label={tt('Abo dann auch bei Stripe kündigen')} />
           <div className="cr-form-row">
             <Field label={tt('Karte aktualisieren über')}>
-              <Select value={sub.billing_method} onChange={(v) => setSub({ billing_method: v })} options={[['setup', 'HyperLevel-Seite + Stripe Checkout'], ['portal', 'Stripe-Kundenportal']]} />
+              <Select value={sub.billing_method} onChange={(v) => setSub({ billing_method: v })} options={[['setup', tt('HyperLevel-Seite + Stripe Checkout')], ['portal', tt('Stripe-Kundenportal')]]} />
             </Field>
             <Field label={tt('Link gültig (Tage)')}>
               <Input type="number" min={1} max={90} value={sub.link_days} onChange={(v) => setSub({ link_days: Math.max(1, Number(v) || 30) })} />
@@ -584,9 +584,9 @@ function SettingsTab() {
             <p className="cr-hint">{tt('Platzhalter:')} {'{{dunning.url}}'}, {'{{dunning.amount}}'}, {'{{dunning.product}}'}, {'{{dunning.days_left}}'}, {'{{contact.first_name|}}'}, {'{{location.name}}'}</p>
             {(
               [
-                ['email', 'Erste Nachricht'],
-                ['reminder', 'Erinnerung'],
-                ['final', 'Zugang pausiert'],
+                ['email', tt('Erste Nachricht')],
+                ['reminder', tt('Erinnerung')],
+                ['final', tt('Zugang pausiert')],
               ] as const
             ).map(([k, label]) => (
               <div key={k}>
@@ -605,7 +605,7 @@ function SettingsTab() {
         </Panel>
         <Panel title={tt('Rechnungen: Erinnerung und Mahnungen')} sub={tt('Stufen, Gebühren und Verzugszinsen für überfällige Rechnungen.')} tour="dunning-settings-inv" actions={<button className="btn small secondary" onClick={() => reset('inv')}>{tt('Standard')}</button>}>
           <Field label={tt('Betrieb')} hint={tt('Start mit Freigabe: nichts geht raus, ohne dass du es gesehen hast.')}>
-            <Select value={inv.mode} onChange={(v) => setInv({ mode: v })} options={[['off', 'Aus'], ['approval', 'Mit Freigabe'], ['auto', 'Automatisch senden']]} />
+            <Select value={inv.mode} onChange={(v) => setInv({ mode: v })} options={[['off', tt('Aus')], ['approval', tt('Mit Freigabe')], ['auto', tt('Automatisch senden')]]} />
           </Field>
           <div className="cr-form-row">
             <Field label={tt('Mindestabstand zwischen zwei Schreiben (Tage)')}>
@@ -618,7 +618,7 @@ function SettingsTab() {
           <Check checked={inv.sms} onChange={(v) => setInv({ sms: v })} label={tt('Zusätzlich per SMS hinweisen')} />
           <h4 style={{ margin: '14px 0 8px' }}>{tt('Stufen')}</h4>
           {inv.levels.map((l: any, i: number) => (
-            <Fold key={l.key} title={`${i + 1}. ${l.label} – ${l.days} Tage nach Fälligkeit${l.fee_cents ? tt(', {money} Gebühr', { money: money(l.fee_cents) }) : ''}`}>
+            <Fold key={l.key} title={tt('{i}. {label} – {days} Tage nach Fälligkeit', { i: i + 1, label: l.label, days: l.days }) + (l.fee_cents ? tt(', {money} Gebühr', { money: money(l.fee_cents) }) : '')}>
               <Field label={tt('Bezeichnung')}>
                 <Input value={l.label} onChange={(v) => setLevel(i, { label: v })} maxLength={80} />
               </Field>
@@ -660,7 +660,7 @@ function SettingsTab() {
               </div>
               <div className="cr-form-row">
                 <Field label={tt('Kunde gilt als')}>
-                  <Select value={inv.interest.customer_type} onChange={(v) => setInv({ interest: { ...inv.interest, customer_type: v } })} options={[['auto', 'automatisch (Firma am Kontakt = Unternehmen)'], ['b2c', 'immer Verbraucher'], ['b2b', 'immer Unternehmen']]} />
+                  <Select value={inv.interest.customer_type} onChange={(v) => setInv({ interest: { ...inv.interest, customer_type: v } })} options={[['auto', tt('automatisch (Firma am Kontakt = Unternehmen)')], ['b2c', tt('immer Verbraucher')], ['b2b', tt('immer Unternehmen')]]} />
                 </Field>
                 <Field label={tt('Zinsen ab Stufe')}>
                   <Select value={String(inv.interest.from_level)} onChange={(v) => setInv({ interest: { ...inv.interest, from_level: Number(v) } })} options={inv.levels.map((l: any, i: number) => [String(i + 1), `${i + 1}. ${l.label}`] as [string, string])} />
@@ -702,10 +702,10 @@ export function Dunning({ tab: tabParam }: { tab?: string }) {
       </PageHead>
       <Tabs
         tabs={[
-          ['cases', 'Zahlungsausfälle'],
-          ['invoices', `Rechnungen${pending ? ` (${pending})` : ''}`],
-          ['billing', 'Abo-Verwaltung'],
-          ['settings', 'Einstellungen'],
+          ['cases', tt('Zahlungsausfälle')],
+          ['invoices', pending ? tt('Rechnungen ({n})', { n: pending }) : tt('Rechnungen')],
+          ['billing', tt('Abo-Verwaltung')],
+          ['settings', tt('Einstellungen')],
         ]}
         value={tab}
         onChange={setTab}

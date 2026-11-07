@@ -49,17 +49,18 @@ export function setIn<T>(obj: T, path: string, value: unknown): T {
 }
 export const getIn = (obj: any, path: string): any => path.split('.').reduce((cur, k) => (cur === null || cur === undefined ? undefined : cur[k]), obj);
 
-export const percent = (v: number | null | undefined) => (v === null || v === undefined ? '–' : `${new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(v * 100)} %`);
-export const euros = (cents: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format((cents || 0) / 100);
+/** `locale`: the Intl locale of the UI language (intlLocale()); German by default. */
+export const percent = (v: number | null | undefined, locale = 'de-DE') => (v === null || v === undefined ? '–' : `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(v * 100)}${locale.startsWith('de') ? ' %' : '%'}`);
+export const euros = (cents: number, locale = 'de-DE') => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format((cents || 0) / 100);
 
 /** "Mo., 9. Nov., 19:00 MEZ" – a session start in a time zone. */
-export function fmtSession(startIso: string, tz: string): string {
+export function fmtSession(startIso: string, tz: string, locale = 'de-DE'): string {
   const d = new Date(startIso);
   if (Number.isNaN(d.getTime())) return startIso;
   try {
-    return new Intl.DateTimeFormat('de-DE', { timeZone: tz || undefined, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(d);
+    return new Intl.DateTimeFormat(locale, { timeZone: tz || undefined, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(d);
   } catch {
-    return d.toLocaleString('de-DE');
+    return d.toLocaleString(locale);
   }
 }
 
@@ -74,11 +75,11 @@ export function zones(): string[] {
   }
 }
 
-/** The label of a stored video source for the editor. */
-export function videoLabel(v: any): string {
+/** The label of a stored video source for the editor; `t` translates the German words (identity by default). */
+export function videoLabel(v: any, t: (s: string) => string = (s) => s): string {
   switch (v?.type) {
     case 'upload':
-      return `Hochgeladene Datei${v.name ? `: ${v.name}` : ''}`;
+      return `${t('Hochgeladene Datei')}${v.name ? `: ${v.name}` : ''}`;
     case 'url':
       return `Link: ${v.url}`;
     case 'youtube':
@@ -86,11 +87,11 @@ export function videoLabel(v: any): string {
     case 'vimeo':
       return `Vimeo: ${v.id}`;
     case 'studio_clip':
-      return `Video-Studio-Clip${v.title ? `: ${v.title}` : ''}`;
+      return `${t('Video-Studio-Clip')}${v.title ? `: ${v.title}` : ''}`;
     case 'studio_upload':
-      return `Video-Studio-Upload${v.name ? `: ${v.name}` : ''}`;
+      return `${t('Video-Studio-Upload')}${v.name ? `: ${v.name}` : ''}`;
     default:
-      return 'Noch kein Video';
+      return t('Noch kein Video');
   }
 }
 

@@ -94,7 +94,7 @@ describe('Einstellungen in Einfach-Modus: which sections are in the tab bar', ()
 describe('Agentur in Einfach-Modus', () => {
   const file = readFileSync(join(__dirname, '../web/src/pages/Agency.tsx'), 'utf8');
   const block = file.slice(file.indexOf('<AgencyTabs'), file.indexOf('value={tab}', file.indexOf('<AgencyTabs')));
-  const AGENCY = [...block.matchAll(/\['([a-z-]+)', '/g)].map((m) => m[1]);
+  const AGENCY = [...block.matchAll(/\['([a-z-]+)', (?:tt\()?'/g)].map((m) => m[1]);
 
   it('reads the real tab list of Agency.tsx', () => {
     expect(AGENCY.length).toBeGreaterThan(15);

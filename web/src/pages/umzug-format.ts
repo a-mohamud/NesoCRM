@@ -4,6 +4,8 @@
  * files, and German labels.
  */
 
+import { tr } from '../i18n';
+
 export class UmzugApiError extends Error {
   constructor(
     public status: number,
@@ -23,7 +25,7 @@ async function call<T>(target: string, method: string, path: string, body?: unkn
   const data: any = (r.headers.get('content-type') ?? '').includes('json') ? await r.json() : await r.text();
   if (!r.ok) {
     if (r.status === 401) window.dispatchEvent(new Event('pghl:logout'));
-    throw new UmzugApiError(r.status, data?.error || `Fehler ${r.status}`);
+    throw new UmzugApiError(r.status, data?.error || tr('x_integrations')('Fehler {status}', { status: r.status }));
   }
   return data as T;
 }
@@ -41,7 +43,7 @@ export function umzugApi(target: string) {
       const q = new URLSearchParams({ source, name: file.name, ...(kind ? { kind } : {}) });
       const r = await fetch(`/api/umzug/files?${q}`, { method: 'POST', headers: { 'x-pghl': '1', 'x-location-id': target, 'content-type': 'application/octet-stream' }, body: file, credentials: 'same-origin' });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new UmzugApiError(r.status, data?.error || `Fehler ${r.status}`);
+      if (!r.ok) throw new UmzugApiError(r.status, data?.error || tr('x_integrations')('Fehler {status}', { status: r.status }));
       return data;
     },
   };
@@ -86,16 +88,18 @@ export const STD_FIELDS: [string, string][] = [
 
 /** What a mapping target means, in words. */
 export function targetLabel(t: string, custom: { key: string; label: string }[] = []): string {
-  if (!t) return 'Überspringen';
+  const tt = tr('x_integrations');
+  if (!t) return tt('Überspringen');
   const std = STD_FIELDS.find(([k]) => k === t);
-  if (std) return std[1];
-  if (t === 'tag') return 'Als Tag';
-  if (t.startsWith('tag:')) return `Als Tag „${t.slice(4)}…“`;
-  if (t === 'note') return 'Als Notiz';
-  if (t.startsWith('custom:')) return `Eigenes Feld: ${custom.find((c) => c.key === t.slice(7))?.label ?? t.slice(7)}`;
+  if (std) return tt(std[1]);
+  if (t === 'tag') return tt('Als Tag');
+  if (t.startsWith('tag:')) return tt('Als Tag „{name}…“', { name: t.slice(4) });
+  if (t === 'note') return tt('Als Notiz');
+  if (t.startsWith('custom:')) return tt('Eigenes Feld: {label}', { label: custom.find((c) => c.key === t.slice(7))?.label ?? t.slice(7) });
   if (t.startsWith('new:')) {
     const [, type, ...label] = t.split(':');
-    return `Neues Feld: ${label.join(':')} (${FIELD_TYPE_LABELS.find(([k]) => k === type)?.[1] ?? type})`;
+    const typeLabel = FIELD_TYPE_LABELS.find(([k]) => k === type)?.[1];
+    return tt('Neues Feld: {label} ({type})', { label: label.join(':'), type: typeLabel ? tt(typeLabel) : type });
   }
   return t;
 }

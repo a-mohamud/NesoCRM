@@ -28,11 +28,11 @@ export interface XrHints {
 }
 
 export const XR_LABELS: Record<XrDevice, string> = {
-  visionos: 'Apple Vision Pro',
-  quest: 'Meta Quest',
-  pico: 'Pico',
-  'android-xr': 'Android XR',
-  wolvic: 'Wolvic',
+  visionos: 'Apple Vision Pro', // i18n-ignore (product name)
+  quest: 'Meta Quest', // i18n-ignore (product name)
+  pico: 'Pico', // i18n-ignore (product name)
+  'android-xr': 'Android XR', // i18n-ignore (product name)
+  wolvic: 'Wolvic', // i18n-ignore (product name)
 };
 
 const found = (device: XrDevice, by: XrDetection['by'] = 'user-agent'): XrDetection => ({ device, label: XR_LABELS[device], by });

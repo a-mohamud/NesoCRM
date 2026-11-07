@@ -6,7 +6,7 @@ import { api, currentLocation } from '../api';
 import { useTags } from '../tags';
 import { Check, CodeBox, Field, Input, Select, TagInput, Textarea, Badge, toast, toastError, useLoad } from '../ui';
 import { Section, WEEKDAYS, fileDuration, fmtDuration, fmtSession, parseDuration, videoLabel, zones } from './WebinarKit';
-import { useT } from '../i18n';
+import { intlLocale, useT } from '../i18n';
 
 /** The editor tabs Grunddaten, Termine and Anmeldung. They edit `form` (the webinar as the editor holds it) through `set(path, value)`. */
 
@@ -60,7 +60,7 @@ function VideoPicker({ form, set, w, reload }: TabProps & { reload: () => void }
   return (
     <div data-tour="webinar-video">
       <Field label={tt('Videoquelle')} hint={tt('Das Video läuft zum Termin ab – für alle Angemeldeten zur gleichen Zeit, niemand kann vorspulen.')}>
-        <Select value={kind} onChange={(k) => (setKind(k), k !== kindOf(v) && set('video', { type: 'none' }))} options={SOURCES} />
+        <Select value={kind} onChange={(k) => (setKind(k), k !== kindOf(v) && set('video', { type: 'none' }))} options={SOURCES.map(([k, l]) => [k, tt(l)] as [string, string])} />
       </Field>
       {kind === 'upload' && (
         <Field label={tt('Videodatei')} hint={tt('MP4, MOV, WebM, MKV oder Ogg. Große Dateien werden in Teilen hochgeladen.')}>
@@ -68,7 +68,7 @@ function VideoPicker({ form, set, w, reload }: TabProps & { reload: () => void }
             <input ref={file} type="file" accept="video/*,.mkv" disabled={progress !== null} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
             {progress !== null && <progress value={progress} max={1} style={{ width: 160 }} aria-label={tt('Fortschritt')} />}
           </div>
-          {v.type === 'upload' && <small className="muted">{tt('Aktuell: {videoLabel}', { videoLabel: videoLabel(v) })}</small>}
+          {v.type === 'upload' && <small className="muted">{tt('Aktuell: {videoLabel}', { videoLabel: videoLabel(v, tt) })}</small>}
         </Field>
       )}
       {kind === 'url' && (
@@ -163,7 +163,7 @@ function WeekdayChips({ value, onChange }: { value: string[]; onChange: (v: stri
     <div className="chips" role="group" aria-label={tt('Wochentage')}>
       {WEEKDAYS.map(([k, l]) => (
         <button key={k} type="button" className={`chip${value.includes(k) ? ' on' : ''}`} aria-pressed={value.includes(k)} onClick={() => onChange(value.includes(k) ? value.filter((d) => d !== k) : [...value, k])}>
-          {l}
+          {tt(l)}
         </button>
       ))}
     </div>
@@ -183,7 +183,7 @@ function ListEditor({ items, onChange, render, blank, add }: { items: string[]; 
         </div>
       ))}
       <button type="button" className="btn small secondary" onClick={() => onChange([...items, blank])}>
-        {add}
+        {tt(add)}
       </button>
     </div>
   );
@@ -201,7 +201,7 @@ export function ScheduleTab({ form, set, w }: TabProps) {
       return [];
     }
   }, [s, tz]);
-  const kindLabel: Record<string, string> = { fixed: 'fester Termin', date: 'Einzeltermin', jit: 'Just in time', ondemand: 'sofort' };
+  const kindLabel: Record<string, string> = { fixed: tt('fester Termin'), date: tt('Einzeltermin'), jit: tt('Just in time'), ondemand: tt('sofort') };
   return (
     <>
       <div data-tour="webinar-schedule">
@@ -222,14 +222,14 @@ export function ScheduleTab({ form, set, w }: TabProps) {
           )}
         </Section>
         <Section title={tt('Einzeltermine')} hint={tt('Bestimmte Tage, zusätzlich oder statt fester Zeiten.')}>
-          <ListEditor items={s.dates} onChange={(v) => set('schedule.dates', v)} blank={`${new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)}T19:00`} add="+ Termin" render={(v, c) => <input type="datetime-local" value={v} onChange={(e) => c(e.target.value)} aria-label={tt('Datum und Uhrzeit')} />} />
+          <ListEditor items={s.dates} onChange={(v) => set('schedule.dates', v)} blank={`${new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)}T19:00`} add="+ Einzeltermin" render={(v, c) => <input type="datetime-local" value={v} onChange={(e) => c(e.target.value)} aria-label={tt('Datum und Uhrzeit')} />} />
         </Section>
       </div>
       {/* Einfach-Modus: further kinds of dates, time zone, blackout days and seats behind one toggle */}
       <MoreFields id="webinar-schedule" label={tt('Weitere Terminarten, Zeitzone & Plätze')} values={webinarMoreValues(form, DEFAULT_SCHEDULE).schedule}>
         <Section title={tt('Zeitzone')} hint={tt('In dieser Zeitzone gelten die Uhrzeiten unten. Besucher:innen sehen ihre Termine automatisch in ihrer eigenen Zeitzone.')}>
           <Field label={tt('Zeitzone der Termine')}>
-            <Select value={s.tz} onChange={(v) => set('schedule.tz', v)} placeholder={`wie der Sub-Account (${w.tz ?? tt('Europe/Berlin')})`} options={all} />
+            <Select value={s.tz} onChange={(v) => set('schedule.tz', v)} placeholder={tt('wie der Sub-Account ({tz})', { tz: w.tz ?? 'Europe/Berlin' })} options={all} />
           </Field>
         </Section>
         <Section title={tt('Just in time')} hint={tt('Der nächste Start ist immer in wenigen Minuten – zum Beispiel alle 15 Minuten zwischen 9 und 21 Uhr.')}>
@@ -238,7 +238,7 @@ export function ScheduleTab({ form, set, w }: TabProps) {
             <>
               <div className="grid3">
                 <Field label={tt('Alle … Minuten')}>
-                  <Select value={String(s.jit.every_min)} onChange={(v) => set('schedule.jit.every_min', Number(v))} options={['5', '10', '15', '20', '30', '45', '60', '90', '120'].map((m) => [m, `${m} Minuten`] as [string, string])} />
+                  <Select value={String(s.jit.every_min)} onChange={(v) => set('schedule.jit.every_min', Number(v))} options={['5', '10', '15', '20', '30', '45', '60', '90', '120'].map((m) => [m, tt('{m} Minuten', { m })] as [string, string])} />
                 </Field>
                 <Field label={tt('Von')}>
                   <input type="time" value={s.jit.from} onChange={(e) => set('schedule.jit.from', e.target.value)} />
@@ -267,7 +267,7 @@ export function ScheduleTab({ form, set, w }: TabProps) {
               return (
                 <span className="row" style={{ alignItems: 'center', gap: 6 }}>
                   <input type="date" value={a} onChange={(e) => c(z ? `${e.target.value}..${z}` : e.target.value)} aria-label={tt('Von')} />
-                  <span className="muted small">bis</span>
+                  <span className="muted small">{tt('bis')}</span>
                   <input type="date" value={z ?? ''} min={a} onChange={(e) => c(e.target.value ? `${a}..${e.target.value}` : a)} aria-label={tt('Bis (optional)')} />
                 </span>
               );
@@ -284,12 +284,12 @@ export function ScheduleTab({ form, set, w }: TabProps) {
                 value={String(s.late_join_min)}
                 onChange={(v) => set('schedule.late_join_min', Number(v))}
                 options={[
-                  ['0', 'nur pünktlich'],
-                  ['5', 'bis 5 Minuten nach Beginn'],
-                  ['15', 'bis 15 Minuten nach Beginn'],
-                  ['30', 'bis 30 Minuten nach Beginn'],
-                  ['60', 'bis 60 Minuten nach Beginn'],
-                  ['9999', 'bis zum Ende'],
+                  ['0', tt('nur pünktlich')],
+                  ['5', tt('bis {n} Minuten nach Beginn', { n: 5 })],
+                  ['15', tt('bis {n} Minuten nach Beginn', { n: 15 })],
+                  ['30', tt('bis {n} Minuten nach Beginn', { n: 30 })],
+                  ['60', tt('bis {n} Minuten nach Beginn', { n: 60 })],
+                  ['9999', tt('bis zum Ende')],
                 ]}
               />
             </Field>
@@ -301,7 +301,7 @@ export function ScheduleTab({ form, set, w }: TabProps) {
           <ul className="wb-sessions">
             {preview.map((p) => (
               <li key={p.start}>
-                <b>{p.kind === 'ondemand' ? tt('Jetzt starten') : fmtSession(p.start, tz)}</b> <Badge tone={p.kind === 'ondemand' ? 'purple' : p.kind === 'jit' ? 'blue' : 'gray'}>{kindLabel[p.kind]}</Badge>
+                <b>{p.kind === 'ondemand' ? tt('Jetzt starten') : fmtSession(p.start, tz, intlLocale())}</b> <Badge tone={p.kind === 'ondemand' ? 'purple' : p.kind === 'jit' ? 'blue' : 'gray'}>{kindLabel[p.kind]}</Badge>
               </li>
             ))}
           </ul>
@@ -322,11 +322,11 @@ export function RegistrationTab({ form, set, w }: TabProps) {
   const forms = useLoad(() => api.get<any[]>('/api/forms').catch(() => []), []);
   const t = form.settings.tags;
   const TAGS: [string, string][] = [
-    ['attended', 'Im Webinar erschienen'],
-    ['missed', 'Webinar verpasst'],
-    ['cta', 'Angebot angeklickt'],
-    ['purchased', 'Nach dem Angebot gekauft'],
-    ['replay', 'Aufzeichnung angesehen'],
+    ['attended', tt('Im Webinar erschienen')],
+    ['missed', tt('Webinar verpasst')],
+    ['cta', tt('Angebot angeklickt')],
+    ['purchased', tt('Nach dem Angebot gekauft')],
+    ['replay', tt('Aufzeichnung angesehen')],
   ];
   const more = webinarMoreValues(form, DEFAULT_SCHEDULE);
   return (

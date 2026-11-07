@@ -2,7 +2,7 @@ import { api, d, money } from '../api';
 import { Icon } from '../icons';
 import { useSession } from '../session';
 import { Badge, Link, Spinner, act, confirmAsk, useLoad } from '../ui';
-import { useT } from '../i18n';
+import { fmtNumber, useT } from '../i18n';
 
 /**
  * SaaS mode, sub-account side: the plan state the shell needs (hidden areas, billing banner)
@@ -109,8 +109,8 @@ function Meter({ label, used, limit, billed }: { label: string; used: number; li
       <div className="saas-meter-head">
         <span>{label}</span>
         <strong>
-          {used.toLocaleString('de-DE')}
-          <span className="muted"> / {unlimited ? 'unbegrenzt' : limit!.toLocaleString('de-DE')}</span>
+          {fmtNumber(used)}
+          <span className="muted"> / {unlimited ? tt('unbegrenzt') : fmtNumber(limit!)}</span>
         </strong>
       </div>
       {!unlimited && (
@@ -136,7 +136,7 @@ export function SubscriptionSettings() {
     await session.reload();
   };
   const [label, tone] = SAAS_STATUS[a.status ?? 'active'];
-  const every = a.plan.interval === 'year' ? 'Jahr' : 'Monat';
+  const every = a.plan.interval === 'year' ? tt('Jahr') : tt('Monat');
   const cancel = async () => {
     if (!confirmAsk(tt('Abo „{name}“ zum Ende des Zeitraums{v} kündigen? Bis dahin läuft alles weiter.', { name: a.plan!.name, v: a.current_period_end ? ` (${d(a.current_period_end)})` : '' }))) return;
     if (await act(() => api.post('/api/saas/account/cancel'), tt('Gekündigt'))) await refresh();
@@ -148,7 +148,7 @@ export function SubscriptionSettings() {
           <div>
             <div className="muted small">{tt('Dein Tarif')}</div>
             <h2>
-              {a.plan.name} <Badge tone={tone}>{label}</Badge> {a.cancel_at_period_end && <Badge tone="yellow">{tt('gekündigt')}</Badge>}
+              {a.plan.name} <Badge tone={tone}>{tt(label)}</Badge> {a.cancel_at_period_end && <Badge tone="yellow">{tt('gekündigt')}</Badge>}
             </h2>
             {a.plan.description && <p className="muted">{a.plan.description}</p>}
           </div>
@@ -201,7 +201,7 @@ export function SubscriptionSettings() {
         <h3 style={{ marginTop: 0 }}>{tt('Verbrauch & Limits')}</h3>
         <div className="saas-meters">
           {METERS.filter(([k]) => (k === 'funnels' || k === 'courses' ? a.plan!.features.includes(k) : true)).map(([k, l, monthly]) => (
-            <Meter key={k} label={l} used={(monthly ? a.usage?.[k] : a.counts?.[k]) ?? 0} limit={a.plan!.limits[k]} billed={a.plan!.overage[k] === 'bill'} />
+            <Meter key={k} label={tt(l)} used={(monthly ? a.usage?.[k] : a.counts?.[k]) ?? 0} limit={a.plan!.limits[k]} billed={a.plan!.overage[k] === 'bill'} />
           ))}
         </div>
       </div>
@@ -217,7 +217,7 @@ export function SubscriptionSettings() {
             ))}
           </div>
           <p className="muted small" style={{ marginBottom: 0 }}>
-            {tt('Für diese Bereiche')} {a.support_email ? <a href={`mailto:${a.support_email}?subject=${encodeURIComponent('Tarif-Upgrade')}`}>{tt('frag nach einem größeren Tarif')}</a> : tt('frag deine Agentur nach einem größeren Tarif')}.
+            {tt('Für diese Bereiche')} {a.support_email ? <a href={`mailto:${a.support_email}?subject=${encodeURIComponent(tt('Tarif-Upgrade'))}`}>{tt('frag nach einem größeren Tarif')}</a> : tt('frag deine Agentur nach einem größeren Tarif')}.
           </p>
         </div>
       )}

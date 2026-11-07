@@ -5,7 +5,7 @@ import { Badge, Check, Empty, Field, Input, Modal, PageHead, Select, Spinner, St
 import { dlHref, germanDate, qty, ymdLocal } from './boCommon';
 import { HrAbsences, HrChecklists, HrEmployees, HrWorkingTime } from './HrAdmin';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * Personal (HR basics): employees, absences with approval, team calendar, vacation accounts, checklists, working-time overview.
@@ -14,10 +14,12 @@ import { useT } from '../i18n';
  */
 
 export const ABS_TYPES: [string, string][] = [['vacation', 'Urlaub'], ['sick', 'Krankmeldung'], ['other', 'Sonstiges']];
-export const absLabel = (a: { type: string; label?: string }) => (a.type === 'other' && a.label ? a.label : ABS_TYPES.find(([k]) => k === a.type)?.[1] ?? a.type);
+export const absLabel = (a: { type: string; label?: string }) => (a.type === 'other' && a.label ? a.label : tr('x_finance')(ABS_TYPES.find(([k]) => k === a.type)?.[1] ?? a.type));
+/** ABS_TYPES with translated labels, for selects. */
+export const absTypeOptions = (): [string, string][] => ABS_TYPES.map(([k, l]) => [k, tr('x_finance')(l)]);
 export const ABS_STATUS: Record<string, [string, 'gray' | 'green' | 'red' | 'blue' | 'yellow']> = { requested: ['Beantragt', 'yellow'], approved: ['Genehmigt', 'green'], rejected: ['Abgelehnt', 'red'], cancelled: ['Zurückgezogen', 'gray'] };
 export const period = (a: { start_date: string; end_date: string }) => (a.start_date === a.end_date ? germanDate(a.start_date) : `${germanDate(a.start_date)} – ${germanDate(a.end_date)}`);
-export const days = (n: number) => `${qty(n)} ${n === 1 ? 'Tag' : 'Tage'}`;
+export const days = (n: number) => tr('x_finance').plural(n, { one: '{qty} Tag', other: '{qty} Tage' }, { qty: qty(n) });
 
 const HR_TABS: [string, string][] = [
   ['overview', 'Übersicht'],
@@ -36,7 +38,7 @@ export function Hr({ tab }: { tab?: string }) {
   const me = useLoad(() => api.get('/api/me/hr'), []);
   const m = me.data;
   if (!m) return me.error ? <p style={{ color: 'var(--red)' }}>{me.error}</p> : <Spinner />;
-  const tabs = m.is_hr ? HR_TABS : [['me', 'Mein Bereich']];
+  const tabs = (m.is_hr ? HR_TABS : ([['me', 'Mein Bereich']] as [string, string][])).map(([k, l]): [string, string] => [k, tt(l)]);
   const t = tabs.some(([k]) => k === tab) ? tab! : m.is_hr ? 'overview' : 'me';
   return (
     <>
@@ -179,7 +181,7 @@ function MyArea({ me, onChange }: { me: any; onChange: () => void }) {
             <table className="t">
               <tbody>
                 <tr><td className="muted">{tt('Eintritt')}</td><td>{germanDate(e.start_date)}</td></tr>
-                <tr><td className="muted">{tt('Wochenstunden')}</td><td>{qty(e.weekly_hours)} ({e.work_days.map((x: number) => ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][x - 1]).join(', ')})</td></tr>
+                <tr><td className="muted">{tt('Wochenstunden')}</td><td>{qty(e.weekly_hours)} ({e.work_days.map((x: number) => [tt('Mo'), tt('Di'), tt('Mi'), tt('Do'), tt('Fr'), tt('Sa'), tt('So')][x - 1]).join(', ')})</td></tr>
                 <tr><td className="muted">{tt('Vorgesetzte/r')}</td><td>{e.manager || '–'}</td></tr>
                 <tr><td className="muted">{tt('Feiertage in')}</td><td>{me.states[e.state] ?? e.state}</td></tr>
               </tbody>
@@ -213,7 +215,7 @@ function MyArea({ me, onChange }: { me: any; onChange: () => void }) {
                     <td>{period(a)}</td>
                     <td className="num">{days(a.days)}</td>
                     <td>
-                      <Badge tone={ABS_STATUS[a.status]?.[1]}>{ABS_STATUS[a.status]?.[0]}</Badge>
+                      <Badge tone={ABS_STATUS[a.status]?.[1]}>{tt(ABS_STATUS[a.status]?.[0] ?? a.status)}</Badge>
                       {a.decision_note && <div className="muted small">{a.decision_note}</div>}
                     </td>
                     <td style={{ textAlign: 'right' }}>
@@ -294,7 +296,7 @@ export function BalanceBlock({ b }: { b: any }) {
           <tr><td>{tt('Beantragt, noch offen')}</td><td className="num">− {qty(b.pending)}</td></tr>
           <tr className="total">
             <td><strong>{tt('Noch verfügbar')}</strong></td>
-            <td className="num"><strong className={b.available < 0 ? 'bo-neg' : undefined}>{tt('{qty} Tage', { qty: qty(b.available) })}</strong></td>
+            <td className="num"><strong className={b.available < 0 ? 'bo-neg' : undefined}>{days(b.available)}</strong></td>
           </tr>
         </tbody>
       </table>
@@ -390,7 +392,7 @@ export function AbsenceModal({ mode, employees, employeeId, onClose, onDone }: {
       )}
       <div className="grid2">
         <Field label={tt('Art')}>
-          <Select value={f.type} onChange={set('type')} options={ABS_TYPES} />
+          <Select value={f.type} onChange={set('type')} options={absTypeOptions()} />
         </Field>
         {f.type === 'other' && (
           <Field label={tt('Bezeichnung')}>
@@ -486,7 +488,7 @@ export function TeamCalendar({ compact }: { compact?: boolean }) {
                     const a = cell(id, day);
                     const date = `${ym.y}-${pad(ym.m + 1)}-${pad(day)}`;
                     return (
-                      <td key={day} className={`${[0, 6].includes(dow(day)) ? 'we' : ''}${hol.has(date) ? ' hol' : ''}${a ? ` abs ${a.type}${a.status === 'requested' ? ' req' : ''}` : ''}`} title={a ? `${name}: ${a.label || { vacation: 'Urlaub', sick: 'Krank', other: 'Sonstiges', away: 'Abwesend' }[a.type as string]}${a.status === 'requested' ? tt(' (beantragt)') : ''}` : undefined} />
+                      <td key={day} className={`${[0, 6].includes(dow(day)) ? 'we' : ''}${hol.has(date) ? ' hol' : ''}${a ? ` abs ${a.type}${a.status === 'requested' ? ' req' : ''}` : ''}`} title={a ? `${name}: ${a.label || { vacation: tt('Urlaub'), sick: tt('Krank'), other: tt('Sonstiges'), away: tt('Abwesend') }[a.type as string]}${a.status === 'requested' ? tt(' (beantragt)') : ''}` : undefined} />
                     );
                   })}
                 </tr>

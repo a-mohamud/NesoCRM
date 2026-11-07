@@ -19,8 +19,9 @@ const CHANNELS: [string, string][] = [['email', 'E-Mail'], ['sms', 'SMS'], ['wha
 const CHANNEL: Record<string, string> = { email: 'E-Mail', sms: 'SMS', whatsapp: 'WhatsApp', phone: 'Telefon', tracking: 'Tracking' };
 
 export function StatusBadge({ status }: { status: string }) {
+  const tt = useT('x_integrations');
   const [label, tone] = STATUS[status] ?? STATUS.unknown;
-  return <Badge tone={tone}>{label}</Badge>;
+  return <Badge tone={tone}>{tt(label)}</Badge>;
 }
 
 function RecordDialog({ contact, onClose, onDone, mode }: { contact: any; onClose: () => void; onDone: () => void; mode: 'granted' | 'revoked' }) {
@@ -54,12 +55,12 @@ function RecordDialog({ contact, onClose, onDone, mode }: { contact: any; onClos
     >
       <div className="grid2">
         <Field label={tt('Kanal')}>
-          <Select value={channel} onChange={(v) => (setChannel(v), setPurposes([]))} options={give ? CHANNELS.map(([k, l]) => [k, l]) : [['all', 'Alle Kanäle'], ...CHANNELS]} />
+          <Select value={channel} onChange={(v) => (setChannel(v), setPurposes([]))} options={give ? CHANNELS.map(([k, l]) => [k, tt(l)]) : [['all', tt('Alle Kanäle')], ...CHANNELS.map(([k, l]) => [k, tt(l)] as [string, string])]} />
         </Field>
         <Field label={tt('Zweck')} hint={give ? undefined : tt('Nichts angehakt = alle Zwecke')}>
           <div>
             {(channel === 'all' ? [] : options).map((p) => (
-              <Check key={p} checked={purposes.includes(p)} onChange={(v) => setPurposes(v ? [...purposes, p] : purposes.filter((x) => x !== p))} label={PURPOSE[p]} />
+              <Check key={p} checked={purposes.includes(p)} onChange={(v) => setPurposes(v ? [...purposes, p] : purposes.filter((x) => x !== p))} label={tt(PURPOSE[p] ?? p)} />
             ))}
           </div>
         </Field>
@@ -96,7 +97,7 @@ export function ContactConsent({ contactId }: { contactId: string }) {
       <div className="row" style={{ marginBottom: 10 }}>
         <div className="grow muted small">
           {tt('Versandregel:')} {data.policy === 'confirmed' ? tt('nur bestätigte Einwilligungen') : tt('Bestätigte und Altbestand ohne Nachweis')}.
-          {email.status === 'unknown' && email.legacy && <> {tt('Zu diesem Kontakt gibt es keinen Nachweis (Quelle:')} {data.contact.source || 'unbekannt'}).</>}
+          {email.status === 'unknown' && email.legacy && <> {tt('Zu diesem Kontakt gibt es keinen Nachweis (Quelle:')} {data.contact.source || tt('unbekannt')}).</>}
         </div>
         <div className="actions">
           <button className="btn small" onClick={() => setModal('granted')} data-tour="consent-record">
@@ -126,7 +127,7 @@ export function ContactConsent({ contactId }: { contactId: string }) {
                 .filter(([p, x]) => p !== 'transactional' && (x.status !== 'unknown' || ch === 'email'))
                 .map(([p, x]) => (
                   <div key={p}>
-                    {PURPOSE[p]}: <StatusBadge status={x.status} />
+                    {tt(PURPOSE[p] ?? p)}: <StatusBadge status={x.status} />
                   </div>
                 ))}
             </div>
@@ -137,7 +138,7 @@ export function ContactConsent({ contactId }: { contactId: string }) {
       {data.contact.dnd && (
         <p className="muted small" style={{ marginTop: 8 }}>
           {tt('„Nicht stören“ ist aktiv – das gilt als Widerruf für alle Kanäle.')}{' '}
-          <a href="#" onClick={async (e) => (e.preventDefault(), (await act(() => api.post(base, { action: 'reset', note: 'Sperre vom Team aufgehoben' }), tt('Sperre aufgehoben'))) && reload())}>
+          <a href="#" onClick={async (e) => (e.preventDefault(), (await act(() => api.post(base, { action: 'reset', note: tt('Sperre vom Team aufgehoben') }), tt('Sperre aufgehoben'))) && reload())}>
             {tt('Sperre aufheben (Status: unbekannt)')}
           </a>
         </p>
@@ -183,11 +184,11 @@ export function ContactConsent({ contactId }: { contactId: string }) {
           {data.events.map((e: any) => (
             <li key={e.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
               <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
-                <Badge tone={e.action === 'revoked' || e.action === 'expired' ? 'red' : e.action === 'granted' && e.doi_required ? 'yellow' : e.action === 'granted' || e.action === 'confirmed' ? 'green' : 'gray'}>{e.action === 'granted' && e.doi_required ? tt('Angefragt (Double-Opt-in)') : ACTION[e.action] ?? e.action}</Badge>
+                <Badge tone={e.action === 'revoked' || e.action === 'expired' ? 'red' : e.action === 'granted' && e.doi_required ? 'yellow' : e.action === 'granted' || e.action === 'confirmed' ? 'green' : 'gray'}>{e.action === 'granted' && e.doi_required ? tt('Angefragt (Double-Opt-in)') : tt(ACTION[e.action] ?? e.action)}</Badge>
                 <span className="muted small">{dt(e.created_at)}</span>
               </div>
               <div className="small" style={{ marginTop: 4 }}>
-                {CHANNEL[e.channel] ?? e.channel} · {PURPOSE[e.purpose] ?? e.purpose} – {SOURCE[e.source_kind] ?? e.source_kind}
+                {tt(CHANNEL[e.channel] ?? e.channel)} · {tt(PURPOSE[e.purpose] ?? e.purpose)} – {tt(SOURCE[e.source_kind] ?? e.source_kind)}
                 {e.source_label ? `: ${e.source_label}` : ''}
               </div>
               <div className="small muted">

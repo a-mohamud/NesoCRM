@@ -39,7 +39,7 @@ const NO_DRAG = 'input, textarea, select, option, [contenteditable=""], [content
 const FOCUSABLE = 'a[href], button, input, select, textarea, summary, iframe, [tabindex]:not([tabindex="-1"]), [contenteditable=""], [contenteditable="true"]';
 /** Inside a tile, but never a drag: data tables (their text is selected and copied, also on touch). */
 const TEXT_BLOCK = 'table';
-const ARROWS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+const ARROWS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']; // i18n-ignore (key names)
 const MOVE_PX = 6;
 const TOUCH_SLOP = 8;
 const LONG_PRESS_MS = 350;

@@ -30,6 +30,8 @@ const AUTH: [string, string][] = [
   ['query', 'Als URL-Parameter (?name=<Schlüssel>)'],
   ['none', 'Ohne Schlüssel'],
 ];
+/** Option labels are German message ids – translated where they are shown. */
+const tl = (tt: (s: string) => string, list: [string, string][]): [string, string][] => list.map(([k, l]) => [k, tt(l)]);
 
 function Caps({ caps, labels, on, onToggle }: { caps: string[]; labels: Record<string, string>; on?: string[]; onToggle?: (c: string) => void }) {
   return (
@@ -90,7 +92,7 @@ function ConnectionForm({ preset, conn, meta, agency, onClose, onSaved }: { pres
   const tt = useT('x_ai');
   const session = useSession();
   const admin = session.user.role === 'admin';
-  const capLabels = Object.fromEntries(meta.capabilities.map((c: any) => [c.id, c.label]));
+  const capLabels = Object.fromEntries(meta.capabilities.map((c: any) => [c.id, tt(c.label)]));
   const [f, setF] = useState<any>(() => ({
     scope: conn?.scope ?? (agency ? 'agency' : 'location'),
     label: conn?.label && conn.label !== preset.label ? conn.label : '',
@@ -161,7 +163,7 @@ function ConnectionForm({ preset, conn, meta, agency, onClose, onSaved }: { pres
         </Field>
         {!conn && admin ? (
           <Field label={tt('Gilt für')}>
-            <Select value={f.scope} onChange={(v) => set({ scope: v })} options={[['location', 'Diesen Sub-Account'], ['agency', 'Alle Sub-Accounts (Agentur)']]} />
+            <Select value={f.scope} onChange={(v) => set({ scope: v })} options={[['location', tt('Diesen Sub-Account')], ['agency', tt('Alle Sub-Accounts (Agentur)')]]} />
           </Field>
         ) : (
           <div />
@@ -207,7 +209,7 @@ function ConnectionForm({ preset, conn, meta, agency, onClose, onSaved }: { pres
         <div className="card" style={{ marginTop: 8 }}>
           <div className="grid2">
             <Field label={tt('Anmeldung')}>
-              <Select value={f.auth_style} onChange={(v) => set({ auth_style: v })} options={AUTH.filter(([k]) => k !== 'query' || preset.wire === 'http')} />
+              <Select value={f.auth_style} onChange={(v) => set({ auth_style: v })} options={tl(tt, AUTH.filter(([k]) => k !== 'query' || preset.wire === 'http'))} />
             </Field>
             {(f.auth_style === 'header' || f.auth_style === 'query') && (
               <Field label={f.auth_style === 'query' ? tt('Name des URL-Parameters') : tt('Header-Name')}>
@@ -216,7 +218,7 @@ function ConnectionForm({ preset, conn, meta, agency, onClose, onSaved }: { pres
             )}
           </div>
           {preset.wire === 'http' && (
-            <Field label={tt('Webhook-Geheimnis (optional)')} hint={`${conn?.webhook_secret_set ? tt('Hinterlegt – leer lassen, um es zu behalten. ') : ''}Damit prüft HyperLevel die Signatur von Rückmeldungen des Anbieters (bei kie.ai der „webhookHmacKey“). Verschlüsselt gespeichert, nie wieder angezeigt.`}>
+            <Field label={tt('Webhook-Geheimnis (optional)')} hint={`${conn?.webhook_secret_set ? tt('Hinterlegt – leer lassen, um es zu behalten. ') : ''}${tt('Damit prüft HyperLevel die Signatur von Rückmeldungen des Anbieters (bei kie.ai der „webhookHmacKey“). Verschlüsselt gespeichert, nie wieder angezeigt.')}`}>
               <Input type="password" autoComplete="off" value={f.webhook_secret} onChange={(v) => set({ webhook_secret: v })} />
             </Field>
           )}
@@ -281,7 +283,7 @@ function Routing({ data, meta, agency, onChange }: { data: any; meta: any; agenc
     <div className="card" data-tour="aic-routing">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0 }}>{tt('Wofür welches Modell?')}</h2>
-        {admin && !agency && <Select value={scope} onChange={(v) => setScope(v as any)} options={[['location', 'Dieser Sub-Account'], ['agency', 'Agentur-Standard']]} />}
+        {admin && !agency && <Select value={scope} onChange={(v) => setScope(v as any)} options={[['location', tt('Dieser Sub-Account')], ['agency', tt('Agentur-Standard')]]} />}
       </div>
       <p className="muted small">{tt('„Automatisch“ nimmt die erste passende Verbindung (Sub-Account vor Agentur). Schnelle KI-Texte und Zusammenfassungen bleiben ohne Zuordnung beim Anbieter des KI-Assistenten.')}</p>
       <table className="aic-routing">
@@ -300,9 +302,9 @@ function Routing({ data, meta, agency, onChange }: { data: any; meta: any; agenc
             const eff = data.routing.effective[u.id];
             return (
               <tr key={u.id}>
-                <td>{u.label}</td>
+                <td>{tt(u.label)}</td>
                 <td>
-                  <Select value={r?.connection_id ?? ''} onChange={(v) => void save(u.id, v)} options={[['', 'Automatisch'], ...options.map((c: any) => [c.id, `${c.label}${c.scope === 'agency' && scope === 'location' ? ' (Agentur)' : ''}`] as [string, string])]} />
+                  <Select value={r?.connection_id ?? ''} onChange={(v) => void save(u.id, v)} options={[['', tt('Automatisch')], ...options.map((c: any) => [c.id, `${c.label}${c.scope === 'agency' && scope === 'location' ? tt(' (Agentur)') : ''}`] as [string, string])]} />
                 </td>
                 <td>
                   {r?.connection_id ? <input key={`${r.connection_id}:${r.model ?? ''}`} defaultValue={r.model ?? ''} placeholder={tt('Standard der Verbindung')} onBlur={(e) => e.target.value.trim() !== (r.model ?? '') && void save(u.id, r.connection_id, e.target.value.trim())} /> : <span className="muted small">–</span>}
@@ -320,7 +322,7 @@ function Routing({ data, meta, agency, onChange }: { data: any; meta: any; agenc
                     </MoreFields>
                   )}
                 </td>
-                <td className="small">{eff ? `${eff.label} · ${eff.model || '–'}` : <span className="muted">keine</span>}</td>
+                <td className="small">{eff ? `${eff.label} · ${eff.model || '–'}` : <span className="muted">{tt('keine')}</span>}</td>
               </tr>
             );
           })}
@@ -343,7 +345,7 @@ export function AiConnections({ agency = false }: { agency?: boolean }) {
     return () => window.removeEventListener('pghl:ai-connections', on);
   }, []);
   if (!meta.data || !data.data) return <Spinner />;
-  const capLabels = Object.fromEntries(meta.data.capabilities.map((c: any) => [c.id, c.label]));
+  const capLabels = Object.fromEntries(meta.data.capabilities.map((c: any) => [c.id, tt(c.label)]));
   const presetOf = (id: string) => meta.data.presets.find((p: any) => p.id === id);
   const conns = data.data.connections.filter((c: any) => (agency ? c.scope === 'agency' : true));
   const usd = (v: number) => `${(v ?? 0).toLocaleString('de-DE', { maximumFractionDigits: 4 })} $`;
@@ -369,7 +371,7 @@ export function AiConnections({ agency = false }: { agency?: boolean }) {
                     {c.implicit ? tt(' · aus dem KI-Assistenten') : ''}
                   </div>
                 </div>
-                {!c.enabled ? <Badge>aus</Badge> : c.status === 'ok' ? <Badge tone="green">{tt('geprüft')}</Badge> : c.status === 'error' ? <Badge tone="red">{tt('Fehler')}</Badge> : c.status === 'warning' ? <Badge tone="yellow">{tt('Hinweis')}</Badge> : null}
+                {!c.enabled ? <Badge>{tt('aus')}</Badge> : c.status === 'ok' ? <Badge tone="green">{tt('geprüft')}</Badge> : c.status === 'error' ? <Badge tone="red">{tt('Fehler')}</Badge> : c.status === 'warning' ? <Badge tone="yellow">{tt('Hinweis')}</Badge> : null}
               </div>
               <Caps caps={c.capabilities} labels={capLabels} />
               <div className="small">

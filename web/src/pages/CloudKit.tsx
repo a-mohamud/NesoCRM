@@ -1,4 +1,4 @@
-import { useT } from '../i18n';
+import { intlLocale, useT, type TFn } from '../i18n';
 /** Shared by the customer's account area (Cloud*.tsx): the shapes the API returns and the fair-use meter. */
 
 export interface Meter {
@@ -52,6 +52,8 @@ export const REASONS: [string, string][] = [
   ['other', 'Anderer Grund'],
 ];
 
+/** Short name of a legal document the customer agreed to (agb / avv / datenschutz). */
+export const legalDocName = (tt: TFn, doc: string) => ({ agb: tt('AGB'), avv: tt('AVV'), datenschutz: tt('DATENSCHUTZ') })[doc] ?? doc.toUpperCase();
 export const PHASE_TONE: Record<string, 'green' | 'blue' | 'yellow' | 'red' | 'gray' | 'purple'> = { active: 'green', trial: 'blue', comped: 'purple', past_due: 'yellow', read_only: 'red', canceled: 'gray', deletion_scheduled: 'red' };
 
 export function MeterBar({ label, m, unit = '' }: { label: string; m: Meter; unit?: string }) {
@@ -64,9 +66,9 @@ export function MeterBar({ label, m, unit = '' }: { label: string; m: Meter; uni
       <div className="saas-meter-head">
         <span>{label}</span>
         <strong>
-          {m.used.toLocaleString('de-DE')}
+          {m.used.toLocaleString(intlLocale())}
           {unit}
-          <span className="muted"> / {unlimited ? 'unbegrenzt' : passThrough ? tt('zum Selbstkostenpreis') : `${m.limit!.toLocaleString('de-DE')}${unit}`}</span>
+          <span className="muted"> / {unlimited ? tt('unbegrenzt') : passThrough ? tt('zum Selbstkostenpreis') : `${m.limit!.toLocaleString(intlLocale())}${unit}`}</span>
         </strong>
       </div>
       {!unlimited && !passThrough && (

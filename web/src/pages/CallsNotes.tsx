@@ -61,7 +61,7 @@ export function CallNotes({ callId, compact }: { callId: string; compact?: boole
 export function CallNotesModal({ call, onClose }: { call: { id: string; contact_name?: string; from_number?: string; to_number?: string }; onClose: () => void }) {
   const tt = useT('x_comms');
   return (
-    <Modal title={`Notizen: ${call.contact_name || call.from_number || call.to_number || tt('Anruf')}`} onClose={onClose}>
+    <Modal title={tt('Notizen: {name}', { name: call.contact_name || call.from_number || call.to_number || tt('Anruf') })} onClose={onClose}>
       <CallNotes callId={call.id} />
     </Modal>
   );
@@ -76,14 +76,14 @@ export function CallMeta({ c }: { c: any }) {
   if (!c.route_kind && !attr && !c.voicemail_box && !c.wait_seconds && !c.consent_announced) return null;
   return (
     <div className="muted small">
-      {c.route_path ? <div>{c.route_path}</div> : c.route_kind && c.route_kind !== 'default' ? <div>{ROUTE[c.route_kind] ?? c.route_kind}</div> : null}
+      {c.route_path ? <div>{c.route_path}</div> : c.route_kind && c.route_kind !== 'default' ? <div>{ROUTE[c.route_kind] ? tt(ROUTE[c.route_kind]) : c.route_kind}</div> : null}
       {c.voicemail_box && <div>{tt('Postfach „{voicemail_box}“', { voicemail_box: c.voicemail_box })}</div>}
       {attr && (
         <div title={tt('Aus welcher Kampagne der Anrufer kam')}>
           <Icon name="attribution" size={12} /> {attr}
         </div>
       )}
-      {c.wait_seconds > 0 && <div>wartete {dur(c.wait_seconds)}</div>}
+      {c.wait_seconds > 0 && <div>{tt('wartete {dur}', { dur: dur(c.wait_seconds) })}</div>}
       {c.consent_announced ? <div title={tt('Vor der Aufzeichnung wurde der Hinweis gesprochen')}>{tt('Aufzeichnungshinweis gespielt')}</div> : null}
     </div>
   );
@@ -112,7 +112,7 @@ export function CallActions({ c, onChanged }: { c: any; onChanged: () => void })
         {c.notes_count > 0 && <span className="small"> {c.notes_count}</span>}
       </button>
       {c.intel_id ? (
-        <button className="icon-btn" title={`Auswertung öffnen (${c.intel_status === 'done' ? 'fertig' : c.intel_status === 'failed' ? 'fehlgeschlagen' : tt('läuft')})`} aria-label={tt('Auswertung öffnen')} onClick={() => navigate(`calls/intel/${c.intel_id}`)}>
+        <button className="icon-btn" title={tt('Auswertung öffnen ({status})', { status: c.intel_status === 'done' ? tt('fertig') : c.intel_status === 'failed' ? tt('fehlgeschlagen') : tt('läuft') })} aria-label={tt('Auswertung öffnen')} onClick={() => navigate(`calls/intel/${c.intel_id}`)}>
           <Icon name="sparkles" size={16} />
           {c.intel_status !== 'done' && <Badge tone={c.intel_status === 'failed' ? 'red' : 'blue'}>{c.intel_status === 'failed' ? '!' : '…'}</Badge>}
         </button>

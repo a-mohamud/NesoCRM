@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { tr } from '../i18n';
 
 /** What the user is looking at – sent with every message (the agent's `ui_context` tool reads it). */
 export interface UiContext {
@@ -75,13 +76,14 @@ export function useUiContext(route: string, enabled: boolean): UiContext {
   const [ctx, setCtx] = useState<UiContext>({ route });
   useEffect(() => {
     const [page, id] = route.split('/');
-    const base: UiContext = { route, label: PAGE_LABELS[page] ?? page, entity: null };
+    const tt = tr('x_ai');
+    const base: UiContext = { route, label: tt(PAGE_LABELS[page] ?? page), entity: null };
     setCtx(base);
     if (!enabled || !id || !WITH_ENTITY.has(page)) return;
     let alive = true;
     api
       .get(`/api/agent/context?route=${encodeURIComponent(route)}`)
-      .then((r) => alive && r?.entity && setCtx({ ...base, label: r.label ?? base.label, entity: r.entity }))
+      .then((r) => alive && r?.entity && setCtx({ ...base, label: r.label ? tt(r.label) : base.label, entity: r.entity }))
       .catch(() => {});
     return () => {
       alive = false;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Badge, Modal } from '../ui';
+import { useT } from '../i18n';
 
 /** Shared pieces of the ads manager pages: types, labels and a modal that gives focus back when it closes. */
 
@@ -40,8 +41,9 @@ export const STATUS: Record<string, [string, 'gray' | 'green' | 'red' | 'blue' |
 };
 
 export function StatusBadge({ status }: { status: string }) {
+  const tt = useT('x_integrations');
   const [label, tone] = STATUS[status] ?? STATUS.other;
-  return <Badge tone={tone}>{label}</Badge>;
+  return <Badge tone={tone}>{tt(label)}</Badge>;
 }
 
 export function PlatformBadge({ platform }: { platform: string }) {

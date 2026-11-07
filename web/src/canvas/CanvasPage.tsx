@@ -66,9 +66,9 @@ function NewBoard({ onClose }: { onClose: () => void }) {
             value={team}
             onChange={(v) => setTeam(v as typeof team)}
             options={[
-              ['edit', 'Alle dürfen bearbeiten'],
-              ['view', 'Alle dürfen ansehen'],
-              ['none', 'Nur ich (privat)'],
+              ['edit', tt('Alle dürfen bearbeiten')],
+              ['view', tt('Alle dürfen ansehen')],
+              ['none', tt('Nur ich (privat)')],
             ]}
           />
         </Field>
@@ -137,7 +137,7 @@ function BoardList() {
       </div>
       {!!list.data?.mentions && (
         <p className="cv-mention-note" data-tour="canvas-mentions">
-          <Icon name="chat" /> {tt('Du wurdest in {mentions} offenen Kommentar', { mentions: list.data.mentions })}{list.data.mentions === 1 ? '' : 'en'} {tt('erwähnt.')}
+          <Icon name="chat" /> {tt.plural(list.data.mentions, { one: 'Du wurdest in {n} offenen Kommentar erwähnt.', other: 'Du wurdest in {n} offenen Kommentaren erwähnt.' })}
         </p>
       )}
       {list.loading && !list.data ? (
@@ -176,7 +176,7 @@ function BoardList() {
                   {b.updated_by ? ` · ${b.updated_by}` : ''}
                 </span>
                 <span className="cv-board-tags">
-                  <Badge tone={b.access === 'owner' ? 'blue' : b.access === 'edit' ? 'green' : 'gray'}>{ACCESS_LABEL[b.access]}</Badge>
+                  <Badge tone={b.access === 'owner' ? 'blue' : b.access === 'edit' ? 'green' : 'gray'}>{tt(ACCESS_LABEL[b.access])}</Badge>
                   {b.team_access === 'none' && <Badge tone="purple">{tt('Privat')}</Badge>}
                   {b.watching > 0 && <Badge tone="green">{b.watching} live</Badge>}
                 </span>

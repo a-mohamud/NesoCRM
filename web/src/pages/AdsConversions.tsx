@@ -54,7 +54,7 @@ export function GoogleConversions() {
     <div className="card gconv" data-tour="ads-gconv">
       <div className="gconv-head">
         <h2 style={{ margin: 0 }}>{tt('Google Ads: Offline-Conversions')}</h2>
-        {!s.google.connected ? <Badge>{tt('Google Ads nicht verbunden')}</Badge> : s.enabled ? <Badge tone={s.last_error ? 'red' : 'green'}>{s.last_error ? tt('Fehler') : 'aktiv'}</Badge> : <Badge>aus</Badge>}
+        {!s.google.connected ? <Badge>{tt('Google Ads nicht verbunden')}</Badge> : s.enabled ? <Badge tone={s.last_error ? 'red' : 'green'}>{s.last_error ? tt('Fehler') : tt('aktiv')}</Badge> : <Badge>{tt('aus')}</Badge>}
       </div>
       <p className="muted small">
         {tt('Gewonnene Deals, Formulare, Termine und bezahlte Rechnungen gehen als Conversion an Google zurück – mit der Klick-ID (gclid, gbraid, wbraid) des Kontakts und auf Wunsch als erweiterte Conversions für Leads (E-Mail und Telefon nur als SHA-256-Hash).')} <strong>{tt('Nur Kontakte mit Einwilligung für Marketing')}</strong> {tt('(Einwilligungen → Tracking & Cookies) werden hochgeladen.')}
@@ -71,13 +71,13 @@ export function GoogleConversions() {
           const ev = f.events[e.key];
           return (
             <div key={e.key} className="gconv-event">
-              <Check checked={!!ev.enabled} onChange={(v) => setEvent(e.key, { enabled: v })} label={e.label} />
+              <Check checked={!!ev.enabled} onChange={(v) => setEvent(e.key, { enabled: v })} label={tt(e.label)} />
               <div className="grid2">
                 <Field label={tt('Conversion-Aktion')} hint={tt('customers/{v}/conversionActions/… oder nur die ID', { v: s.google.customer_id || '1234567890' })}>
                   <Input value={ev.action} onChange={(v) => setEvent(e.key, { action: v })} placeholder={tt('z. B. 987654321')} />
                 </Field>
                 {(e.key === 'form_submitted' || e.key === 'booking') && (
-                  <Field label={tt('Wert (optional)')} hint={HINT[e.key]}>
+                  <Field label={tt('Wert (optional)')} hint={HINT[e.key] ? tt(HINT[e.key]) : undefined}>
                     <Input value={ev.value || ''} onChange={(v) => setEvent(e.key, { value: v })} inputMode="decimal" placeholder="0" />
                   </Field>
                 )}
@@ -87,7 +87,7 @@ export function GoogleConversions() {
                   </Field>
                 )}
               </div>
-              {(e.key === 'deal_won' || e.key === 'invoice_paid') && <p className="muted small">{HINT[e.key]}</p>}
+              {(e.key === 'deal_won' || e.key === 'invoice_paid') && <p className="muted small">{tt(HINT[e.key])}</p>}
             </div>
           );
         })}
@@ -127,7 +127,7 @@ export function GoogleConversions() {
                   <th>{tt('Zeit')}</th>
                   <th>{tt('Ereignis')}</th>
                   <th>{tt('Kontakt')}</th>
-                  <th>Status</th>
+                  <th>{tt('Status')}</th>
                   <th />
                 </tr>
               </thead>
@@ -142,11 +142,11 @@ export function GoogleConversions() {
                     </td>
                     <td>{l.contact_name || '–'}</td>
                     <td>
-                      <Badge tone={STATUS[l.status]?.[1] ?? 'gray'}>{STATUS[l.status]?.[0] ?? l.status}</Badge> <span className="muted small">{l.error}</span>
+                      <Badge tone={STATUS[l.status]?.[1] ?? 'gray'}>{tt(STATUS[l.status]?.[0] ?? l.status)}</Badge> <span className="muted small">{l.error}</span>
                     </td>
                     <td>
                       {['failed', 'retry', 'blocked', 'skipped'].includes(l.status) && (
-                        <button className="btn secondary" disabled={!!busy} onClick={async () => (await run(`r${l.id}`, () => api.post(`/api/ads/conversions/${l.id}/retry`), 'Neuer Versuch')) && log.reload()}>
+                        <button className="btn secondary" disabled={!!busy} onClick={async () => (await run(`r${l.id}`, () => api.post(`/api/ads/conversions/${l.id}/retry`), tt('Neuer Versuch'))) && log.reload()}>
                           {tt('Erneut')}
                         </button>
                       )}

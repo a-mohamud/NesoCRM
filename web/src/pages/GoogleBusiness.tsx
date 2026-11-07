@@ -50,7 +50,7 @@ export function GoogleBusinessSettings() {
   return (
     <div className="card" style={{ maxWidth: 720 }} data-tour="google-business">
       <h2>
-        <Icon name="place" size={18} /> {tt('Google-Unternehmensprofil')} {v.ready ? <Badge tone="green">verbunden</Badge> : v.connected ? <Badge tone="yellow">{tt('Standort wählen')}</Badge> : null}
+        <Icon name="place" size={18} /> {tt('Google-Unternehmensprofil')} {v.ready ? <Badge tone="green">{tt('verbunden')}</Badge> : v.connected ? <Badge tone="yellow">{tt('Standort wählen')}</Badge> : null}
       </h2>
       <p className="muted small">
         {tt('Mit dem Google-Konto, das dein Unternehmensprofil verwaltet: alle Bewertungen samt Antworten abrufen, direkt hier antworten (auch ändern und löschen) und Beiträge veröffentlichen – auch per Workflow. Ohne Verbindung nutzt die App den API-Schlüssel unten (Places API).')}
@@ -254,7 +254,7 @@ export function GooglePostsPanel() {
           <Input value={f.image_url} onChange={(v) => setF({ ...f, image_url: v })} placeholder="https://…/bild.jpg" />
         </Field>
         <Field label={tt('Button')}>
-          <Select value={f.cta_type} onChange={(v) => setF({ ...f, cta_type: v })} placeholder={tt('kein Button')} options={CTA} />
+          <Select value={f.cta_type} onChange={(v) => setF({ ...f, cta_type: v })} placeholder={tt('kein Button')} options={CTA.map(([k, l]) => [k, tt(l)] as [string, string])} />
         </Field>
         {f.cta_type && f.cta_type !== 'CALL' && (
           <Field label={tt('Button-Link')}>
@@ -277,12 +277,12 @@ export function GooglePostsPanel() {
                   {p.summary.length > 140 ? `${p.summary.slice(0, 140)}…` : p.summary}
                   <div className="muted small">
                     {p.source}
-                    {p.cta_type ? tt(' · Button: {v}', { v: CTA.find(([k]) => k === p.cta_type)?.[1] ?? p.cta_type }) : ''}
+                    {p.cta_type ? tt(' · Button: {v}', { v: tt(CTA.find(([k]) => k === p.cta_type)?.[1] ?? p.cta_type) }) : ''}
                     {p.image_url ? tt(' · mit Bild') : ''}
                   </div>
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <Badge tone={p.state === 'LIVE' ? 'green' : p.state === 'REJECTED' ? 'red' : 'gray'}>{p.state === 'LIVE' ? 'online' : p.state === 'REJECTED' ? 'abgelehnt' : p.state || 'gesendet'}</Badge>{' '}
+                  <Badge tone={p.state === 'LIVE' ? 'green' : p.state === 'REJECTED' ? 'red' : 'gray'}>{p.state === 'LIVE' ? tt('online') : p.state === 'REJECTED' ? tt('abgelehnt') : p.state || tt('gesendet')}</Badge>{' '}
                   {p.search_url && (
                     <a className="btn small ghost" href={p.search_url} target="_blank" rel="noopener noreferrer" aria-label={tt('Auf Google ansehen')}>
                       <Icon name="external" size={14} />
@@ -316,7 +316,7 @@ export function GooglePostStep({ step, set }: { step: any; set: (patch: any) => 
       </Field>
       <div className="grid2">
         <Field label={tt('Button')}>
-          <Select value={step.cta_type ?? ''} onChange={(v) => set({ cta_type: v })} placeholder={tt('kein Button')} options={CTA} />
+          <Select value={step.cta_type ?? ''} onChange={(v) => set({ cta_type: v })} placeholder={tt('kein Button')} options={CTA.map(([k, l]) => [k, tt(l)] as [string, string])} />
         </Field>
         {step.cta_type && step.cta_type !== 'CALL' && (
           <Field label={tt('Button-Link (Platzhalter erlaubt)')}>

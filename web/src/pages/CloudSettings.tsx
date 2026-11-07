@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Icon } from '../icons';
 import { Check, Field, Input, Select, Spinner, Textarea, act, toast, useLoad } from '../ui';
-import { useT } from '../i18n';
+import { fmtMoney, useT } from '../i18n';
 
 /**
  * Agentur → Cloud → Einstellungen: everything the operator decides about the hosted service – prices and trial, fair use,
@@ -120,7 +120,7 @@ export function CloudSettingsForm() {
     const disc = Number(f.yearly_discount_percent) || 0;
     if (!Number.isFinite(m) || m <= 0) return '–';
     const y = Math.round((m * 12 * (1 - disc / 100)) / 100);
-    return `${euro(m)} € im Monat · ${y.toLocaleString('de-DE')} € im Jahr (${euro(Math.round((y * 100) / 12))} € je Monat)`;
+    return tt('{m} im Monat · {y} im Jahr ({pm} je Monat)', { m: fmtMoney(m), y: fmtMoney(y * 100), pm: fmtMoney(Math.round((y * 100) / 12)) });
   };
   const copy = (t: string) => {
     void navigator.clipboard?.writeText(t).then(() => toast(tt('Kopiert')), () => undefined);
@@ -135,7 +135,7 @@ export function CloudSettingsForm() {
         </p>
         <div className="grid3">
           {PLANS.map(([k, label]) => (
-            <Field key={k} label={tt('Cloud {label} (€ pro Monat)', { label: label })} hint={preview(k)}>
+            <Field key={k} label={tt('Cloud {label} (€ pro Monat)', { label: tt(label) })} hint={preview(k)}>
               <Input value={f.prices[k]} onChange={(v) => set({ prices: { ...f.prices, [k]: v } })} inputMode="decimal" />
             </Field>
           ))}
@@ -152,9 +152,9 @@ export function CloudSettingsForm() {
               value={f.price_note}
               onChange={text('price_note')}
               options={[
-                ['net', 'zzgl. MwSt.'],
-                ['gross', 'inkl. MwSt.'],
-                ['none', 'ohne Hinweis'],
+                ['net', tt('zzgl. MwSt.')],
+                ['gross', tt('inkl. MwSt.')],
+                ['none', tt('ohne Hinweis')],
               ]}
             />
           </Field>
@@ -177,7 +177,7 @@ export function CloudSettingsForm() {
               <tr>
                 <th>{tt('Grenze')}</th>
                 {PLANS.map(([k, label]) => (
-                  <th key={k}>{label}</th>
+                  <th key={k}>{tt(label)}</th>
                 ))}
               </tr>
             </thead>
@@ -185,12 +185,12 @@ export function CloudSettingsForm() {
               {FAIR.map(([m, label, hint]) => (
                 <tr key={m}>
                   <td>
-                    {label}
-                    <div className="muted small">{hint}</div>
+                    {tt(label)}
+                    <div className="muted small">{tt(hint)}</div>
                   </td>
                   {PLANS.map(([k, pl]) => (
                     <td key={k}>
-                      <Input aria-label={`${label}, ${pl}`} value={f.fair_use[k][m]} onChange={(v) => set({ fair_use: { ...f.fair_use, [k]: { ...f.fair_use[k], [m]: v } } })} inputMode="numeric" placeholder="unbegrenzt" />
+                      <Input aria-label={`${tt(label)}, ${tt(pl)}`} value={f.fair_use[k][m]} onChange={(v) => set({ fair_use: { ...f.fair_use, [k]: { ...f.fair_use[k], [m]: v } } })} inputMode="numeric" placeholder={tt('unbegrenzt')} />
                     </td>
                   ))}
                 </tr>
@@ -202,17 +202,17 @@ export function CloudSettingsForm() {
         <div className="grid3">
           {METRICS.map(([m, label]) => (
             <div key={m}>
-              <Field label={label}>
+              <Field label={tt(label)}>
                 <Select
                   value={f.overage[m]}
                   onChange={(v) => set({ overage: { ...f.overage, [m]: v } })}
                   options={[
-                    ['block', 'Sperren und Hinweis zeigen'],
-                    ['bill', 'Zum Selbstkostenpreis weiterberechnen'],
+                    ['block', tt('Sperren und Hinweis zeigen')],
+                    ['bill', tt('Zum Selbstkostenpreis weiterberechnen')],
                   ]}
                 />
               </Field>
-              <Field label={tt('Deine Kosten je {label} (Cent)', { label: label })}>
+              <Field label={m === 'emails' ? tt('Deine Kosten je E-Mail (Cent)') : m === 'ai' ? tt('Deine Kosten je KI-Aufruf (Cent)') : tt('Deine Kosten je SMS (Cent)')}>
                 <Input value={f.unit_cost[m]} onChange={(v) => set({ unit_cost: { ...f.unit_cost, [m]: v } })} inputMode="decimal" />
               </Field>
             </div>
@@ -247,7 +247,7 @@ export function CloudSettingsForm() {
 
       <div className="card" data-tour="cloud-stripe">
         <h3 style={{ marginTop: 0 }}>
-          Stripe {der.stripe_connected ? <span className="cloud-ok">verbunden</span> : <span className="cloud-todo">{tt('nicht verbunden')}</span>}
+          Stripe {der.stripe_connected ? <span className="cloud-ok">{tt('verbunden')}</span> : <span className="cloud-todo">{tt('nicht verbunden')}</span>}
         </h3>
         <p className="muted small">
           {tt('Den geheimen Schlüssel und das Webhook-Secret trägst du unter Agentur → SaaS → Einstellungen ein oder setzt sie als Umgebungsvariablen (')}<code>{tt('PGHL_CLOUD_STRIPE_SECRET_KEY')}</code>, <code>{tt('PGHL_CLOUD_STRIPE_WEBHOOK_SECRET')}</code>{tt('). Preise legt HyperLevel bei Stripe selbst an – du musst keine Produkte vorbereiten.')}
@@ -302,10 +302,10 @@ export function CloudSettingsForm() {
             <Input value={f.cloud_domain} onChange={text('cloud_domain')} placeholder="cloud.example.com" />
           </Field>
           <Field label={tt('Absender der System-Mails')} hint={tt('Aus diesem Sub-Account gehen Bestätigungs-, Willkommens- und Zahlungs-Mails raus.')}>
-            <Select value={f.mail_location_id} onChange={text('mail_location_id')} options={[['', 'Automatisch'], ...(der.locations as { id: string; name: string }[]).map((l) => [l.id, l.name] as [string, string])]} />
+            <Select value={f.mail_location_id} onChange={text('mail_location_id')} options={[['', tt('Automatisch')], ...(der.locations as { id: string; name: string }[]).map((l) => [l.id, l.name] as [string, string])]} />
           </Field>
           <Field label={tt('Startinhalte neuer Konten')} hint={tt('Ein Snapshot mit deinen Vorlagen. Leer = Standard-Pipeline und -Vorlagen.')}>
-            <Select value={f.default_snapshot_id} onChange={text('default_snapshot_id')} options={[['', 'Standard'], ...(der.snapshots as { id: string; name: string }[]).map((l) => [l.id, l.name] as [string, string])]} />
+            <Select value={f.default_snapshot_id} onChange={text('default_snapshot_id')} options={[['', tt('Standard')], ...(der.snapshots as { id: string; name: string }[]).map((l) => [l.id, l.name] as [string, string])]} />
           </Field>
           <Field label={tt('Support-E-Mail')}>
             <Input value={f.support_email} onChange={text('support_email')} type="email" />
@@ -324,7 +324,7 @@ export function CloudSettingsForm() {
         <p className="muted small">{tt('Diese Angaben füllen die Platzhalter in AGB, AVV, Datenschutzerklärung und Impressum (Reiter Rechtliches).')}</p>
         <div className="grid2">
           {OPERATOR.map(([k, label]) => (
-            <Field key={k} label={label}>
+            <Field key={k} label={tt(label)}>
               <Input value={f.operator[k]} onChange={(v) => set({ operator: { ...f.operator, [k]: v } })} />
             </Field>
           ))}

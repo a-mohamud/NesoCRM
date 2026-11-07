@@ -5,7 +5,7 @@ import { Icon, type IconName } from '../icons';
 import { type CardKind, CARD_KINDS, CARD_LABELS, CARD_SIZE, createElement } from '../../../server/services/canvas-model';
 import { newId } from './store';
 import type { DialogProps } from './dialogs';
-import { useT } from '../i18n';
+import { intlLocale, tr, useT } from '../i18n';
 
 /** CRM on the board: live cards, notes → tasks/deals, workflows as diagrams, flowcharts as workflows, frames as funnel pages. */
 
@@ -27,7 +27,7 @@ interface Row {
   sub?: string;
 }
 
-const fullName = (c: any) => [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.email || c?.phone || 'Unbekannt';
+const fullName = (c: any) => [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.email || c?.phone || tr('x_misc')('Unbekannt');
 const list = (r: any, ...keys: string[]): any[] => (Array.isArray(r) ? r : (keys.map((k) => r?.[k]).find(Array.isArray) ?? []));
 
 /** Records of one kind for the picker (the caller's own rights apply: the API answers 403 for areas they lack). */
@@ -49,23 +49,23 @@ async function load(kind: CardKind, q: string): Promise<Row[]> {
       return list(await api.get('/api/tasks?status=all'))
         .filter((t) => match(t.title))
         .slice(0, 40)
-        .map((t) => ({ id: t.id, title: t.title, sub: t.done ? 'erledigt' : t.due_at ? `fällig ${new Date(t.due_at).toLocaleDateString('de-DE')}` : '' }));
+        .map((t) => ({ id: t.id, title: t.title, sub: t.done ? tr('x_misc')('erledigt') : t.due_at ? tr('x_misc')('fällig {date}', { date: new Date(t.due_at).toLocaleDateString(intlLocale()) }) : '' }));
     case 'ticket':
       return list(await api.get(`/api/tickets?limit=25&q=${enc}`), 'tickets', 'items', 'rows').map((t) => ({ id: t.id, title: `#${t.number} ${t.subject}`, sub: t.status_kind }));
     case 'appointment':
       return list(await api.get('/api/appointments'))
         .filter((a) => match(a.title, fullName(a)))
         .slice(0, 40)
-        .map((a) => ({ id: a.id, title: a.title, sub: `${new Date(a.start_at).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} · ${a.calendar_name ?? ''}` }));
+        .map((a) => ({ id: a.id, title: a.title, sub: `${new Date(a.start_at).toLocaleString(intlLocale(), { dateStyle: 'short', timeStyle: 'short' })} · ${a.calendar_name ?? ''}` }));
     case 'report':
       return list(await api.get('/api/reports/library'))
         .filter((r) => match(r.name))
         .slice(0, 40)
         .map((r) => ({ id: r.id, title: r.name, sub: r.description ?? '' }));
     case 'pipeline':
-      return list(await api.get('/api/pipelines')).map((p) => ({ id: p.id, title: p.name, sub: `${p.open_count ?? 0} offene Deals` }));
+      return list(await api.get('/api/pipelines')).map((p) => ({ id: p.id, title: p.name, sub: tr('x_misc')('{n} offene Deals', { n: p.open_count ?? 0 }) }));
     case 'project':
-      return [{ id: 'current', title: 'Dieses Projekt', sub: 'Kennzahlen des Sub-Accounts' }];
+      return [{ id: 'current', title: tr('x_misc')('Dieses Projekt'), sub: tr('x_misc')('Kennzahlen des Sub-Accounts') }];
   }
 }
 
@@ -133,11 +133,11 @@ export function CrmDialog({ api: ed, onClose }: DialogProps) {
               setQ('');
             }}
           >
-            <Icon name={KIND_ICON[k]} size={16} /> {CARD_LABELS[k]}
+            <Icon name={KIND_ICON[k]} size={16} /> {tt(CARD_LABELS[k])}
           </button>
         ))}
       </div>
-      {kind !== 'project' && ['contact', 'company', 'deal', 'task', 'ticket', 'appointment', 'report'].includes(kind) && <Input value={q} onChange={setQ} placeholder={tt('{v} suchen …', { v: CARD_LABELS[kind] })} autoFocus aria-label={tt('Suchen')} />}
+      {kind !== 'project' && ['contact', 'company', 'deal', 'task', 'ticket', 'appointment', 'report'].includes(kind) && <Input value={q} onChange={setQ} placeholder={tt('{v} suchen …', { v: tt(CARD_LABELS[kind]) })} autoFocus aria-label={tt('Suchen')} />}
       <div className="cv-pick-list">
         {rows === null && <p className="muted">{tt('Lädt …')}</p>}
         {error && <p className="cv-error">{error}</p>}
@@ -358,7 +358,7 @@ export function WorkflowDraftDialog({ api: ed, onClose }: DialogProps) {
   const hasSel = ed.selection.length > 1;
   const [scope, setScope] = useState<'selection' | 'frame' | 'board'>(hasSel ? 'selection' : frames.length ? 'frame' : 'board');
   const [frame, setFrame] = useState(frames[0]?.id ?? '');
-  const [name, setName] = useState(`${ed.board.name} (aus Canvas)`);
+  const [name, setName] = useState(() => tt('{name} (aus Canvas)', { name: ed.board.name }));
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<any>(null);
   const go = async () => {
@@ -375,7 +375,7 @@ export function WorkflowDraftDialog({ api: ed, onClose }: DialogProps) {
     return (
       <Modal title={tt('Workflow-Entwurf angelegt')} onClose={onClose} footer={<button className="btn" onClick={() => (onClose(), navigate(res.url))}>{tt('Workflow öffnen')}</button>}>
         <p>
-          <b>{res.workflow_name}</b> {tt('mit {steps} Schritt', { steps: res.steps })}{res.steps === 1 ? '' : 'en'} {tt('ist als')} <b>{tt('Entwurf')}</b> {tt('gespeichert – gestartet wird erst, wenn du ihn im Editor prüfst und einschaltest.')}
+          <b>{res.workflow_name}</b> {tt.plural(res.steps, { one: 'mit {n} Schritt ist als', other: 'mit {n} Schritten ist als' })} <b>{tt('Entwurf')}</b> {tt('gespeichert – gestartet wird erst, wenn du ihn im Editor prüfst und einschaltest.')}
         </p>
         {res.notes?.length > 0 && (
           <ul className="cv-notes">
@@ -409,7 +409,7 @@ export function WorkflowDraftDialog({ api: ed, onClose }: DialogProps) {
         <Select
           value={scope}
           onChange={(v) => setScope(v as typeof scope)}
-          options={[...(hasSel ? ([['selection', `Auswahl (${ed.selection.length})`]] as [string, string][]) : []), ...(frames.length ? ([['frame', 'Ein Rahmen']] as [string, string][]) : []), ['board', 'Ganzes Board']]}
+          options={[...(hasSel ? ([['selection', tt('Auswahl ({n})', { n: ed.selection.length })]] as [string, string][]) : []), ...(frames.length ? ([['frame', tt('Ein Rahmen')]] as [string, string][]) : []), ['board', tt('Ganzes Board')]]}
         />
       </Field>
       {scope === 'frame' && <Select value={frame} onChange={setFrame} options={frames.map((f) => [f.id, f.name ?? 'Rahmen'] as [string, string])} />}
@@ -440,7 +440,7 @@ export function FunnelDialog({ api: ed, data, onClose }: DialogProps) {
   if (res)
     return (
       <Modal title={tt('Funnel-Seiten angelegt')} onClose={onClose} footer={<button className="btn" onClick={() => (onClose(), navigate(res.url))}>{tt('Funnel öffnen')}</button>}>
-        <p>{tt('{length} Seite', { length: res.pages.length })}{res.pages.length === 1 ? '' : 'n'} {tt('aus den Rahmen erzeugt. Überschriften, Texte, Bilder und Buttons wurden übernommen – Feinschliff im Funnel-Editor.')}</p>
+        <p>{tt.plural(res.pages.length, { one: '{n} Seite', other: '{n} Seiten' })} {tt('aus den Rahmen erzeugt. Überschriften, Texte, Bilder und Buttons wurden übernommen – Feinschliff im Funnel-Editor.')}</p>
         <ul className="cv-notes">
           {res.pages.map((p: any) => (
             <li key={p.page_id}>{p.name}</li>
@@ -481,7 +481,7 @@ export function FunnelDialog({ api: ed, data, onClose }: DialogProps) {
           </div>
           <div className="grid2">
             <Field label={tt('Ziel')}>
-              <Select value={target} onChange={setTarget} options={[['new', 'Neuer Funnel'], ...(funnels.data ?? []).map((f) => [f.id, `In „${f.name}“ ergänzen`] as [string, string])]} />
+              <Select value={target} onChange={setTarget} options={[['new', tt('Neuer Funnel')], ...(funnels.data ?? []).map((f) => [f.id, tt('In „{name}“ ergänzen', { name: f.name })] as [string, string])]} />
             </Field>
             {target === 'new' && (
               <Field label={tt('Name des Funnels')}>

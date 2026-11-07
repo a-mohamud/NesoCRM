@@ -3,7 +3,7 @@ import { api, d } from '../api';
 import { Icon } from '../icons';
 import { act, Badge, Check, confirmAsk, Empty, Field, Input, Modal, pressable, Select, Spinner, Tabs, Textarea, toast, useLoad } from '../ui';
 import { ContactPick, EuroInput, dlHref, euroText, germanDate, parseEuro, qty, ymdLocal } from './boCommon';
-import { ABS_STATUS, ABS_TYPES, AbsenceModal, BalanceBlock, DecideModal, absLabel, days, period } from './Hr';
+import { ABS_STATUS, absTypeOptions, AbsenceModal, BalanceBlock, DecideModal, absLabel, days, period } from './Hr';
 import { useT } from '../i18n';
 
 /** HR staff screens: employees (with the sealed sensitive block), absences, working-time overview, checklists. */
@@ -30,7 +30,7 @@ export function HrEmployees({ canSensitive, defaultState, states }: { canSensiti
         </div>
         <div style={{ width: 170 }}>
           <Field label="Status">
-            <Select value={status} onChange={setStatus} options={[['active', 'Aktiv'], ['inactive', 'Ausgeschieden'], ['all', 'Alle']]} />
+            <Select value={status} onChange={setStatus} options={[['active', tt('Aktiv')], ['inactive', tt('Ausgeschieden')], ['all', tt('Alle')]]} />
           </Field>
         </div>
         <div style={{ marginLeft: 'auto', marginBottom: 12 }}>
@@ -63,7 +63,7 @@ export function HrEmployees({ canSensitive, defaultState, states }: { canSensiti
                     <div className="muted small">{[e.position, e.department].filter(Boolean).join(' · ')}</div>
                   </td>
                   <td>
-                    {EMPLOYMENT.find(([k]) => k === e.employment_type)?.[1]} <span className="muted small">{tt('{qty} Std.', { qty: qty(e.weekly_hours) })}</span>
+                    {tt(EMPLOYMENT.find(([k]) => k === e.employment_type)?.[1] ?? '')} <span className="muted small">{tt('{qty} Std.', { qty: qty(e.weekly_hours) })}</span>
                   </td>
                   <td>{germanDate(e.start_date)}</td>
                   <td className="num">{e.vacation ? `${qty(e.vacation.available)} / ${qty(e.vacation.entitlement + e.vacation.carryover)}` : '–'}</td>
@@ -86,7 +86,7 @@ function EmployeeModal({ employee, canSensitive, defaultState, states, onClose }
   const [tab, setTab] = useState('data');
   const [created, setCreated] = useState<any>();
   const emp = created ?? employee;
-  const tabs: [string, string][] = emp ? [['data', 'Stammdaten'], ['vacation', 'Urlaub'], ['docs', 'Unterlagen'], ['sensitive', 'Gehalt & sensible Daten'], ['lists', 'Checklisten']] : [['data', 'Stammdaten']];
+  const tabs: [string, string][] = emp ? [['data', tt('Stammdaten')], ['vacation', tt('Urlaub')], ['docs', tt('Unterlagen')], ['sensitive', tt('Gehalt & sensible Daten')], ['lists', tt('Checklisten')]] : [['data', tt('Stammdaten')]];
   return (
     <Modal wide title={emp ? emp.name : tt('Neuer Mitarbeiter')} onClose={onClose}>
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
@@ -122,7 +122,7 @@ function EmployeeData({ employee, defaultState, states, onSaved }: { employee?: 
     status: e.status ?? 'active',
     user_id: e.user_id ?? '',
     manager_user_id: e.manager_user_id ?? '',
-    contact: e.contact_id ? { id: e.contact_id, name: 'Verknüpfter Kontakt' } : null,
+    contact: e.contact_id ? { id: e.contact_id, name: tt('Verknüpfter Kontakt') } : null,
     notes: e.notes ?? '',
   });
   const set = (k: string) => (v: any) => setF((s: any) => ({ ...s, [k]: v }));
@@ -132,10 +132,10 @@ function EmployeeData({ employee, defaultState, states, onSaved }: { employee?: 
       <div className="grid3">
         <Field label={tt('Vorname')}><Input value={f.first_name} onChange={set('first_name')} /></Field>
         <Field label={tt('Nachname')}><Input value={f.last_name} onChange={set('last_name')} /></Field>
-        <Field label="Status"><Select value={f.status} onChange={set('status')} options={[['active', 'Aktiv'], ['inactive', 'Ausgeschieden']]} /></Field>
-        <Field label="E-Mail"><Input type="email" value={f.email} onChange={set('email')} /></Field>
+        <Field label="Status"><Select value={f.status} onChange={set('status')} options={[['active', tt('Aktiv')], ['inactive', tt('Ausgeschieden')]]} /></Field>
+        <Field label={tt('E-Mail')}><Input type="email" value={f.email} onChange={set('email')} /></Field>
         <Field label={tt('Telefon')}><Input value={f.phone} onChange={set('phone')} /></Field>
-        <Field label={tt('Beschäftigung')}><Select value={f.employment_type} onChange={set('employment_type')} options={EMPLOYMENT} /></Field>
+        <Field label={tt('Beschäftigung')}><Select value={f.employment_type} onChange={set('employment_type')} options={EMPLOYMENT.map(([k, l]): [string, string] => [k, tt(l)])} /></Field>
         <Field label={tt('Position')}><Input value={f.position} onChange={set('position')} /></Field>
         <Field label={tt('Abteilung')}><Input value={f.department} onChange={set('department')} /></Field>
         <Field label={tt('Kündigungsfrist')}><Input value={f.notice_period} onChange={set('notice_period')} placeholder={tt('z. B. 4 Wochen zum Monatsende')} /></Field>
@@ -151,7 +151,7 @@ function EmployeeData({ employee, defaultState, states, onSaved }: { employee?: 
       <Field label={tt('Arbeitstage')}>
         <div className="row">
           {WEEKDAYS.map((w, i) => (
-            <Check key={w} checked={f.work_days.includes(i + 1)} onChange={(v) => set('work_days')(v ? [...f.work_days, i + 1].sort() : f.work_days.filter((x: number) => x !== i + 1))} label={w} />
+            <Check key={w} checked={f.work_days.includes(i + 1)} onChange={(v) => set('work_days')(v ? [...f.work_days, i + 1].sort() : f.work_days.filter((x: number) => x !== i + 1))} label={tt(w)} />
           ))}
         </div>
       </Field>
@@ -243,7 +243,7 @@ function EmployeeVacation({ employee }: { employee: any }) {
                 <td>{period(a)}</td>
                 <td className="num">{days(a.days)}</td>
                 <td>
-                  <Badge tone={ABS_STATUS[a.status]?.[1]}>{ABS_STATUS[a.status]?.[0]}</Badge>
+                  <Badge tone={ABS_STATUS[a.status]?.[1]}>{tt(ABS_STATUS[a.status]?.[0] ?? a.status)}</Badge>
                 </td>
               </tr>
             ))}
@@ -281,13 +281,13 @@ function EmployeeDocs({ employee, canSensitive }: { employee: any; canSensitive:
       setBusy(false);
     }
   };
-  const VIS: Record<string, string> = { hr: 'nur Personal', employee: 'Mitarbeiter sieht es', sensitive: 'vertraulich' };
+  const VIS: Record<string, string> = { hr: tt('nur Personal'), employee: tt('Mitarbeiter sieht es'), sensitive: 'vertraulich' };
   return (
     <>
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div style={{ width: 170 }}>
           <Field label={tt('Art')}>
-            <Select value={cat} onChange={setCat} options={[['vertrag', 'Vertrag'], ['zeugnis', 'Zeugnis'], ['bescheinigung', 'Bescheinigung'], ['abrechnung', 'Abrechnung'], ['sonstiges', 'Sonstiges']]} />
+            <Select value={cat} onChange={setCat} options={[['vertrag', tt('Vertrag')], ['zeugnis', tt('Zeugnis')], ['bescheinigung', tt('Bescheinigung')], ['abrechnung', tt('Abrechnung')], ['sonstiges', tt('Sonstiges')]]} />
           </Field>
         </div>
         <div style={{ width: 210 }}>
@@ -361,8 +361,8 @@ function EmployeeSensitive({ employee, canSensitive, onDeleted }: { employee: an
         <Field label={tt('Gehalt (€)')}>
           <EuroInput value={f.salary} onChange={set('salary')} />
         </Field>
-        <Field label="je">
-          <Select value={f.salary_period} onChange={set('salary_period')} options={[['month', 'Monat'], ['year', 'Jahr'], ['hour', 'Stunde']]} />
+        <Field label={tt('je')}>
+          <Select value={f.salary_period} onChange={set('salary_period')} options={[['month', tt('Monat')], ['year', tt('Jahr')], ['hour', tt('Stunde')]]} />
         </Field>
         <Field label={tt('Geburtsdatum')}>
           <Input type="date" value={f.birth_date} onChange={set('birth_date')} />
@@ -416,7 +416,7 @@ function EmployeeLists({ employee }: { employee: any }) {
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div style={{ width: 280 }}>
           <Field label={tt('Checkliste starten')}>
-            <Select value={t} onChange={setT} placeholder={tt('Vorlage wählen')} options={(tpl.data?.templates ?? []).map((x: any) => [x.id, `${x.kind === 'onboarding' ? 'Onboarding' : 'Offboarding'}: ${x.name}`] as [string, string])} />
+            <Select value={t} onChange={setT} placeholder={tt('Vorlage wählen')} options={(tpl.data?.templates ?? []).map((x: any) => [x.id, `${x.kind === 'onboarding' ? tt('Onboarding') : tt('Offboarding')}: ${x.name}`] as [string, string])} />
           </Field>
         </div>
         <button className="btn" style={{ marginBottom: 12 }} disabled={!t} onClick={async () => (await act(() => api.post('/api/hr/checklists', { employee_id: employee.id, template_id: t }), tt('Gestartet'))) && (setT(''), void lists.reload())}>
@@ -448,7 +448,7 @@ export function HrAbsences() {
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div style={{ width: 170 }}>
           <Field label="Status">
-            <Select value={status} onChange={setStatus} options={[['requested', 'Beantragt'], ['approved', 'Genehmigt'], ['rejected', 'Abgelehnt'], ['cancelled', 'Zurückgezogen'], ['all', 'Alle']]} />
+            <Select value={status} onChange={setStatus} options={[['requested', tt('Beantragt')], ['approved', tt('Genehmigt')], ['rejected', tt('Abgelehnt')], ['cancelled', tt('Zurückgezogen')], ['all', tt('Alle')]]} />
           </Field>
         </div>
         <div style={{ width: 220 }}>
@@ -458,7 +458,7 @@ export function HrAbsences() {
         </div>
         <div style={{ width: 170 }}>
           <Field label={tt('Art')}>
-            <Select value={type} onChange={setType} placeholder={tt('Alle')} options={ABS_TYPES} />
+            <Select value={type} onChange={setType} placeholder={tt('Alle')} options={absTypeOptions()} />
           </Field>
         </div>
         <div style={{ marginLeft: 'auto', marginBottom: 12 }}>
@@ -495,7 +495,7 @@ export function HrAbsences() {
                   <td>{period(a)}</td>
                   <td className="num">{days(a.days)}</td>
                   <td>
-                    <Badge tone={ABS_STATUS[a.status]?.[1]}>{ABS_STATUS[a.status]?.[0]}</Badge>
+                    <Badge tone={ABS_STATUS[a.status]?.[1]}>{tt(ABS_STATUS[a.status]?.[0] ?? a.status)}</Badge>
                     {a.decision_note && <div className="muted small">{a.decision_note}</div>}
                   </td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -548,7 +548,7 @@ function EditAbsence({ a, onClose, onDone }: { a: any; onClose: () => void; onDo
       }
     >
       <div className="grid2">
-        <Field label={tt('Art')}><Select value={f.type} onChange={set('type')} options={ABS_TYPES} /></Field>
+        <Field label={tt('Art')}><Select value={f.type} onChange={set('type')} options={absTypeOptions()} /></Field>
         {f.type === 'other' && <Field label={tt('Bezeichnung')}><Input value={f.label} onChange={set('label')} /></Field>}
         <Field label={tt('Von')}><Input type="date" value={f.start_date} onChange={set('start_date')} /></Field>
         <Field label={tt('Bis')}><Input type="date" value={f.end_date} onChange={set('end_date')} /></Field>
@@ -654,7 +654,7 @@ function ChecklistCard({ c, onChange }: { c: any; onChange: () => void }) {
       {c.items.map((i: any) => (
         <label key={i.id} className="check">
           <input type="checkbox" checked={i.done} onChange={async (ev) => (await act(() => api.post(`/api/hr/checklists/${c.id}/items/${i.id}`, { done: ev.target.checked }))) && onChange()} /> {i.title}
-          <span className="muted small"> · {ASSIGNEE[i.assignee] ?? i.assignee}{i.due ? tt(', bis {germanDate}', { germanDate: germanDate(i.due) }) : ''}{i.done && i.done_by ? tt(', erledigt von {done_by}', { done_by: i.done_by }) : ''}</span>
+          <span className="muted small"> · {tt(ASSIGNEE[i.assignee] ?? i.assignee)}{i.due ? tt(', bis {germanDate}', { germanDate: germanDate(i.due) }) : ''}{i.done && i.done_by ? tt(', erledigt von {done_by}', { done_by: i.done_by }) : ''}</span>
         </label>
       ))}
     </div>
@@ -735,7 +735,7 @@ function TemplateModal({ t, onClose, onDone }: { t: any; onClose: () => void; on
     >
       <div className="grid2">
         <Field label="Name"><Input value={f.name} onChange={(v) => setF({ ...f, name: v })} /></Field>
-        <Field label={tt('Art')}><Select value={f.kind} onChange={(v) => setF({ ...f, kind: v })} options={[['onboarding', 'Onboarding (ab Eintritt)'], ['offboarding', 'Offboarding (ab Austritt)']]} /></Field>
+        <Field label={tt('Art')}><Select value={f.kind} onChange={(v) => setF({ ...f, kind: v })} options={[['onboarding', tt('Onboarding (ab Eintritt)')], ['offboarding', tt('Offboarding (ab Austritt)')]]} /></Field>
       </div>
       <table className="t">
         <thead>
@@ -750,7 +750,7 @@ function TemplateModal({ t, onClose, onDone }: { t: any; onClose: () => void; on
           {f.items.map((i, idx) => (
             <tr key={idx}>
               <td><Input value={i.title} onChange={(v) => upd(idx, 'title', v)} /></td>
-              <td><Select value={i.assignee} onChange={(v) => upd(idx, 'assignee', v)} options={Object.entries(ASSIGNEE)} /></td>
+              <td><Select value={i.assignee} onChange={(v) => upd(idx, 'assignee', v)} options={Object.entries(ASSIGNEE).map(([k, l]): [string, string] => [k, tt(l)])} /></td>
               <td><Input value={i.due_days} onChange={(v) => upd(idx, 'due_days', v)} inputMode="numeric" /></td>
               <td>
                 {f.items.length > 1 && (

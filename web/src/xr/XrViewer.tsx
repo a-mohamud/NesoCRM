@@ -49,7 +49,7 @@ export default function XrViewer({ kind, id, name, onClose }: { kind: 'board' | 
   const tt = useT('x_misc');
   const canvas = useRef<HTMLCanvasElement>(null);
   const runtime = useRef<Runtime | null>(null);
-  const [status, setStatus] = useState('Lädt …');
+  const [status, setStatus] = useState(() => tt('Lädt …'));
   const [error, setError] = useState('');
   const [support, setSupport] = useState<XrSupport>({ vr: false, ar: false });
   const [inSession, setInSession] = useState(false);
@@ -140,7 +140,7 @@ export default function XrViewer({ kind, id, name, onClose }: { kind: 'board' | 
             </button>
           )}
           {kind === 'board' && canRecord() && (
-            <button type="button" className="btn secondary" onClick={async () => setMic((await warmUpMicrophone()) ?? 'Mikrofon ist erlaubt.')} title={tt('Für die Sprachsteuerung im Headset: den Browser jetzt fragen, nicht erst im Raum')}>
+            <button type="button" className="btn secondary" onClick={async () => setMic((await warmUpMicrophone()) ?? tt('Mikrofon ist erlaubt.'))} title={tt('Für die Sprachsteuerung im Headset: den Browser jetzt fragen, nicht erst im Raum')}>
               <Icon name="mic" size={16} /> {tt('Mikrofon erlauben')}
             </button>
           )}

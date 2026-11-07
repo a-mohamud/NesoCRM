@@ -29,7 +29,7 @@ function AssignmentDialog({ assignment, onClose, onSaved }: { assignment?: any; 
   const [kind, setKind] = useState(assignment?.kind ?? 'both');
   const [passRequired, setPassRequired] = useState(assignment ? !!assignment.pass_required : true);
   const [gate, setGate] = useState(assignment ? !!assignment.gate : true);
-  const problem = !assignment && !lessonId ? 'Bitte Kurs und Lektion wählen.' : '';
+  const problem = !assignment && !lessonId ? tt('Bitte Kurs und Lektion wählen.') : '';
   const save = async () => {
     const body = { title, instructions, kind, pass_required: passRequired, gate, ...(assignment ? {} : { course_id: courseId, lesson_id: lessonId }) };
     if (await act(() => (assignment ? api.put(`/api/assignments/${assignment.id}`, body) : api.post('/api/assignments', body)), tt('Aufgabe gespeichert'))) {
@@ -69,7 +69,7 @@ function AssignmentDialog({ assignment, onClose, onSaved }: { assignment?: any; 
         <Textarea value={instructions} onChange={setInstructions} rows={7} maxLength={10000} />
       </Field>
       <Field label={tt('Abgabe')}>
-        <Select value={kind} onChange={setKind} options={KIND} />
+        <Select value={kind} onChange={setKind} options={KIND.map(([k, l]) => [k, tt(l)] as [string, string])} />
       </Field>
       <Check checked={passRequired} onChange={setPassRequired} label={tt('Die Lektion gilt erst als abgeschlossen, wenn die Abgabe bestanden ist')} />
       <Check checked={gate} onChange={setGate} label={tt('Die nächste Lektion bleibt gesperrt, bis die Aufgabe bestanden ist')} />
@@ -96,7 +96,7 @@ function ReviewBox({ s, onDone }: { s: any; onDone: () => void }) {
       <div className="actions">
         {RESULT.map(([k, label, tone]) => (
           <button key={k} className={`btn${tone === 'red' ? ' danger' : tone === 'green' ? '' : ' secondary'}`} disabled={busy} onClick={() => decide(k)}>
-            {label}
+            {tt(label)}
           </button>
         ))}
       </div>
@@ -198,7 +198,7 @@ export function AssignmentsTab() {
             >
               <strong>{a.title}</strong>
               <div className="cr-sub">
-                {a.course_title} › {a.lesson_title} · {KIND.find((k) => k[0] === a.kind)?.[1]}
+                {a.course_title} › {a.lesson_title} · {tt(KIND.find((k) => k[0] === a.kind)?.[1] ?? '')}
                 {a.gate ? tt(' · sperrt die nächste Lektion') : ''}
               </div>
               <div className="cr-sub">

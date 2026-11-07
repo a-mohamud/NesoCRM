@@ -151,7 +151,7 @@ function WorkflowDialog({ action, onClose, onDone }: { action: ActionView; onClo
             onClick={async () => {
               const r = await act(() => api.post(`/api/workflows/${action.target}/enroll`, { contact_ids: picked.map((c) => c.id) }));
               if (r) {
-                toast(r.enrolled ? `Automation für ${r.enrolled} ${r.enrolled === 1 ? tt('Kontakt') : tt('Kontakte')} gestartet` : tt('Niemand wurde aufgenommen (läuft die Automation für diesen Kontakt schon?)'));
+                toast(r.enrolled ? tt.plural(r.enrolled, { one: 'Automation für {n} Kontakt gestartet', other: 'Automation für {n} Kontakte gestartet' }) : tt('Niemand wurde aufgenommen (läuft die Automation für diesen Kontakt schon?)'));
                 onDone?.();
                 onClose();
               }

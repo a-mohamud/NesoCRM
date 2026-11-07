@@ -36,7 +36,7 @@ export function SpatialCard({ p }: { p: Prefs }) {
   return (
     <div className="card ap-section" data-tour="appearance-spatial">
       <h2>
-        {tt('Raum-Modus')} <span className="badge blue">{on ? 'aktiv' : 'aus'}</span>
+        {tt('Raum-Modus')} <span className="badge blue">{on ? tt('aktiv') : tt('aus')}</span>
       </h2>
       <p className="muted small" style={{ marginTop: -4 }}>
         {tt('Für Brillen und Headsets: bedienbar mit Blick und Pinch oder mit Controllern. Ziele von mindestens 60 px, mehr Abstand, größere Schrift, ein sanftes Leuchten beim Anschauen, nichts ist nur beim Darüberfahren erreichbar – und Glasflächen, deren Text lesbar bleibt (Kontrast AA).')}
@@ -44,11 +44,11 @@ export function SpatialCard({ p }: { p: Prefs }) {
       <div className="ap-seg" role="radiogroup" aria-label={tt('Raum-Modus')}>
         {SPATIAL_MODES.map((m) => (
           <button key={m} role="radio" aria-checked={p.spatial === m} className={p.spatial === m ? 'on' : ''} onClick={() => void update({ spatial: m })} data-tour={`spatial-${m}`}>
-            {LABEL[m][0]}
+            {tt(LABEL[m][0])}
           </button>
         ))}
       </div>
-      <p className="muted small">{LABEL[p.spatial][1]}</p>
+      <p className="muted small">{tt(LABEL[p.spatial][1])}</p>
       <ul className="sp-facts small">
         <li>
           <Icon name="glasses" size={14} /> {tt('Dieses Gerät:')} {device ? <b>{device.label}</b> : tt('kein XR-Gerät erkannt')}
@@ -56,7 +56,7 @@ export function SpatialCard({ p }: { p: Prefs }) {
         </li>
         <li>
           <Icon name="sparkles" size={14} /> {tt('WebXR-Sitzung:')}{' '}
-          {support === null ? tt('wird geprüft …') : support.vr || support.ar ? <b>{[support.vr && 'VR', support.ar && 'AR'].filter(Boolean).join(' und ')} {tt('möglich')}</b> : tt('nicht verfügbar – Boards und Canvas zeigen die 3D-Vorschau im Browser') + (hasWebGL2() ? '' : tt(' (dieser Browser kann auch kein WebGL2)'))}
+          {support === null ? tt('wird geprüft …') : support.vr || support.ar ? <b>{[support.vr && 'VR', support.ar && 'AR'].filter(Boolean).join(tt(' und '))} {tt('möglich')}</b> : tt('nicht verfügbar – Boards und Canvas zeigen die 3D-Vorschau im Browser') + (hasWebGL2() ? '' : tt(' (dieser Browser kann auch kein WebGL2)'))}
         </li>
       </ul>
       <div className="actions" style={{ marginTop: 10 }}>
@@ -71,10 +71,10 @@ export function SpatialCard({ p }: { p: Prefs }) {
         <summary>{tt('App auf dem Headset installieren')}</summary>
         {(mine ? [mine, ...INSTALL_HINTS.filter((h) => h.id !== mine.id)] : INSTALL_HINTS).map((h) => (
           <div key={h.id} className={`sp-install-item${h === mine ? ' mine' : ''}`}>
-            <b>{h.title}</b>
+            <b>{tt(h.title)}</b>
             <ol>
               {h.steps.map((s) => (
-                <li key={s}>{s}</li>
+                <li key={s}>{tt(s)}</li>
               ))}
             </ol>
           </div>

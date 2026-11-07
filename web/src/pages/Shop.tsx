@@ -7,6 +7,7 @@ import { lazyPages } from '../lazy';
 import './shop.css';
 import { SortableGrid } from '../sortable/Sortable';
 
+import { parseDecimal } from '../numparse';
 const { ShopAbandoned } = lazyPages(() => import('./ShopAbandoned'), 'ShopAbandoned');
 
 /**
@@ -16,9 +17,8 @@ const { ShopAbandoned } = lazyPages(() => import('./ShopAbandoned'), 'ShopAbando
  */
 
 export const parseCents = (s: string): number | null => {
-  const v = String(s ?? '').replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
-  if (!v) return null;
-  const n = Math.round(Number(v) * 100);
+  if (!String(s ?? '').trim()) return null;
+  const n = Math.round(parseDecimal(s) * 100);
   return Number.isFinite(n) && n >= 0 ? n : null;
 };
 export const euro = (c: number | null | undefined) => (c === null || c === undefined ? '' : (c / 100).toFixed(2).replace('.', ','));

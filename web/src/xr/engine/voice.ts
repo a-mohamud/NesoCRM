@@ -1,5 +1,6 @@
 import { canRecord, micError, startRecording, transcribe, type RecordingHandle } from '../../agent/voice';
 import { api } from '../../api';
+import { tr } from '../../i18n';
 
 /**
  * Push-to-talk inside XR: the same recording and speech recognition as the board's prompt bar (the sub-account's own speech to
@@ -90,7 +91,7 @@ export class PushToTalk {
       if (!blob) return this.set('idle');
       const said = (await transcribe(blob)).text.trim();
       if (!said) {
-        this.onError('Ich habe nichts verstanden – bitte noch einmal sprechen.');
+        this.onError(tr('x_misc')('Ich habe nichts verstanden – bitte noch einmal sprechen.'));
         return this.set('idle');
       }
       this.set('idle');

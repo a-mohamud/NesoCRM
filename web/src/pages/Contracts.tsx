@@ -13,6 +13,7 @@ const STATUS: Record<string, [string, any]> = {
   void: ['storniert', 'red'],
 };
 
+// i18n-ignore – starter content, translated with tt(STARTER) when a record is created (key in en/x_finance.ts)
 const STARTER = `# Dienstleistungsvertrag
 
 zwischen **{{location.name}}** (Auftragnehmer) und **{{contact.full_name}}**{{contact.company| }} (Auftraggeber).
@@ -43,7 +44,7 @@ export function Contracts() {
           data-tour="contracts-new"
           onClick={async () => {
             if (kind === 'template') {
-              const r = await act(() => api.post('/api/contracts', { kind: 'template', title: 'Neue Vorlage', content: STARTER }));
+              const r = await act(() => api.post('/api/contracts', { kind: 'template', title: tt('Neue Vorlage'), content: tt(STARTER) }));
               if (r) navigate(`contracts/${r.id}`);
             } else setModal(true);
           }}
@@ -51,7 +52,7 @@ export function Contracts() {
           + {kind === 'template' ? tt('Vorlage') : tt('Vertrag')}
         </button>
       </PageHead>
-      <Tabs tabs={[['contract', 'Verträge'], ['template', 'Vorlagen']]} value={kind} onChange={setKind} />
+      <Tabs tabs={[['contract', tt('Verträge')], ['template', tt('Vorlagen')]]} value={kind} onChange={setKind} />
       {!list.data ? (
         <Spinner />
       ) : list.data.length ? (
@@ -74,7 +75,7 @@ export function Contracts() {
                   {kind === 'contract' && <td>{c.contact_id ? name(c) : <span className="muted">–</span>}</td>}
                   {kind === 'contract' && (
                     <td>
-                      <Badge tone={STATUS[c.status]?.[1]}>{STATUS[c.status]?.[0] ?? c.status}</Badge>
+                      <Badge tone={STATUS[c.status]?.[1]}>{tt(STATUS[c.status]?.[0] ?? c.status)}</Badge>
                     </td>
                   )}
                   <td className="muted">{d(c.updated_at)}</td>
@@ -102,7 +103,7 @@ function NewContract({ templates, onClose }: { templates: any[]; onClose: () => 
         <button
           className="btn"
           onClick={async () => {
-            const r = await act(() => api.post('/api/contracts', tpl ? { template_id: tpl } : { title: 'Vertrag', content: STARTER }));
+            const r = await act(() => api.post('/api/contracts', tpl ? { template_id: tpl } : { title: tt('Vertrag'), content: tt(STARTER) }));
             if (r) navigate(`contracts/${r.id}`);
           }}
         >
@@ -167,7 +168,7 @@ export function ContractEditor({ id }: { id: string }) {
   return (
     <>
       <PageHead title={v.title} sub={<Link to="contracts">← {template ? tt('Vorlagen') : tt('Verträge')}</Link>}>
-        {!template && <Badge tone={STATUS[v.status]?.[1]}>{STATUS[v.status]?.[0]}</Badge>}
+        {!template && <Badge tone={STATUS[v.status]?.[1]}>{tt(STATUS[v.status]?.[0] ?? v.status)}</Badge>}
         {!locked && (
           <button className="btn secondary" onClick={save}>
             {tt('Speichern')}
@@ -252,8 +253,8 @@ export function ContractEditor({ id }: { id: string }) {
 function SendContract({ contract, onClose, onSent }: { contract: any; onClose: () => void; onSent: () => void }) {
   const tt = useT('x_finance');
   const [channel, setChannel] = useState('email');
-  const [subject, setSubject] = useState('Bitte unterschreiben: {{contract.title}}');
-  const [body, setBody] = useState('Hallo {{contact.first_name|}},\n\nhier ist der Vertrag „{{contract.title}}“ zum Lesen und Unterschreiben:\n{{contract.url}}\n\nViele Grüße\n{{location.name}}');
+  const [subject, setSubject] = useState(() => tt('Bitte unterschreiben: {{contract.title}}'));
+  const [body, setBody] = useState(() => tt('Hallo {{contact.first_name|}},\n\nhier ist der Vertrag „{{contract.title}}“ zum Lesen und Unterschreiben:\n{{contract.url}}\n\nViele Grüße\n{{location.name}}'));
   return (
     <Modal
       title={tt('Vertrag senden')}

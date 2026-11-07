@@ -10,7 +10,7 @@ import { AgentMarkdown } from './markdown';
 import { fileToBase64, streamPost, type AgentEvent } from './stream';
 import { canRecord, micError, onPlaying, speak, speakableText, startRecording, stopSpeaking, transcribe, type RecordingHandle } from './voice';
 import './agent.css';
-import { useT } from '../i18n';
+import { tr, useT } from '../i18n';
 
 /**
  * The HyperLevel Agent on every page: a right drawer (full screen on phones and on demand), opened with
@@ -115,7 +115,7 @@ export function applyEvent(items: Item[], e: AgentEvent): Item[] {
       found = true;
       blocks[i] = { kind: 'tools', tools: b.tools.map((t) => (t.id === e.id ? { ...t, status: e.status, links: e.links ?? t.links, preview: e.preview ?? t.preview, error: e.error ?? t.error, undo: e.undo ?? t.undo } : t)) };
     }
-    if (!found && e.status) blocks.push({ kind: 'tools', tools: [{ id: e.id, name: e.name ?? 'werkzeug', title: e.name ?? 'Werkzeug', status: e.status, error: e.error, links: e.links, preview: e.preview, undo: e.undo }] });
+    if (!found && e.status) blocks.push({ kind: 'tools', tools: [{ id: e.id, name: e.name ?? 'werkzeug', title: e.name ?? tr('shell')('Werkzeug'), status: e.status, error: e.error, links: e.links, preview: e.preview, undo: e.undo }] });
   }
   out[out.length - 1] = { role: 'assistant', blocks };
   return out;
@@ -124,12 +124,13 @@ export function applyEvent(items: Item[], e: AgentEvent): Item[] {
 function StatusIcon({ status }: { status: string }) {
   const tt = useT('shell');
   if (status === 'running') return <LoaderCircle size={15} className="agent-spin" aria-label={tt('läuft')} />;
-  if (status === 'ok') return <Check size={15} aria-label="erledigt" />;
-  if (status === 'blocked') return <Lock size={15} aria-label="gesperrt" />;
-  if (status === 'deferred' || status === 'pending') return <Clock size={15} aria-label="wartet" />;
+  if (status === 'ok') return <Check size={15} aria-label={tt('erledigt')} />;
+  if (status === 'blocked') return <Lock size={15} aria-label={tt('gesperrt')} />;
+  if (status === 'deferred' || status === 'pending') return <Clock size={15} aria-label={tt('wartet')} />;
   return <CircleX size={15} aria-label={tt('nicht ausgeführt')} />;
 }
 
+const SOURCE_LABEL: Record<string, string> = { workflow: 'Workflow', schedule: 'Zeitplan', inbound: 'Auto-Antwort', mobile: 'App', mcp: 'MCP', focus: 'Fokus' };
 const STATUS_TEXT: Record<string, string> = { running: 'läuft …', ok: 'erledigt', error: 'Fehler', blocked: 'gesperrt (Nur lesen)', rejected: 'abgelehnt', deferred: 'zur Freigabe', pending: 'offen' };
 
 /** "query: Max · limit: 5" – the first few argument values. */
@@ -152,7 +153,7 @@ export function ToolCardView({ t, onNavigate }: { t: ToolCard; onNavigate: (to: 
           <StatusIcon status={t.status} />
         </span>
         <span className="agent-tool-title">{t.title}</span>
-        <span className="agent-tool-sum">{t.error && t.status !== 'ok' ? t.error : argSummary(t.args) || STATUS_TEXT[t.status]}</span>
+        <span className="agent-tool-sum">{t.error && t.status !== 'ok' ? t.error : argSummary(t.args) || (STATUS_TEXT[t.status] ? tt(STATUS_TEXT[t.status]) : undefined)}</span>
         {openDetail ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
       </button>
       {!!t.links?.length && (
@@ -178,7 +179,7 @@ export function ToolCardView({ t, onNavigate }: { t: ToolCard; onNavigate: (to: 
       {openDetail && (
         <div className="agent-tool-detail">
           <div className="muted small">
-            {t.name} · {STATUS_TEXT[t.status] ?? t.status}
+            {t.name} · {STATUS_TEXT[t.status] ? tt(STATUS_TEXT[t.status]) : t.status}
           </div>
           {t.args && (
             <>
@@ -359,13 +360,13 @@ export function AgentPanel() {
   const onEvent = useCallback((e: AgentEvent) => {
     if (e.type === 'start') {
       if (e.conversation_id) setConvId(e.conversation_id);
-      if (e.bridge) setStatus('Bridge: wird gestartet …');
+      if (e.bridge) setStatus(tt('Bridge: wird gestartet …'));
     } else if (e.type === 'confirm') setConfirm(e as unknown as Confirm);
     else if (e.type === 'navigate' && typeof e.to === 'string') {
       navigate(e.to);
       toast(tt('Geöffnet: {v}', { v: e.label || e.to }));
-    } else if (e.type === 'error') setError(String(e.message ?? 'Fehler'));
-    else if (e.type === 'bridge') setStatus(e.status === 'queued' ? `Bridge: wartet auf ${e.device ?? 'deinen Rechner'} …` : e.status === 'running' ? `Bridge: läuft auf ${e.device ?? 'deinem Rechner'} (dein Abo)` : String(e.text ?? ''));
+    } else if (e.type === 'error') setError(String(e.message ?? tt('Fehler')));
+    else if (e.type === 'bridge') setStatus(e.status === 'queued' ? tt('Bridge: wartet auf {device} …', { device: String(e.device ?? tt('deinen Rechner')) }) : e.status === 'running' ? tt('Bridge: läuft auf {device} (dein Abo)', { device: String(e.device ?? tt('deinem Rechner')) }) : String(e.text ?? ''));
     else if (e.type === 'step') setStatus('');
     else if (e.type === 'done') {
       setStatus('');
@@ -616,10 +617,10 @@ export function AgentPanel() {
   };
 
   const modelLabel = (() => {
-    if (modelId === 'bridge') return 'Mein Abo (Bridge)';
+    if (modelId === 'bridge') return tt('Mein Abo (Bridge)');
     const m = (boot?.models ?? []).find((x: any) => x.id === modelId);
     if (m) return `${m.label}${m.model ? ` · ${m.model}` : ''}`;
-    return boot?.connection ? `${boot.connection.label} · ${boot.connection.model}` : 'kein Modell';
+    return boot?.connection ? `${boot.connection.label} · ${boot.connection.model}` : tt('kein Modell');
   })();
 
   if (!open) return null;
@@ -679,7 +680,7 @@ export function AgentPanel() {
           </a>
         )}
         <span className={`agent-mode m-${agent?.mode ?? 'ask'}`} title={tt('Sicherheitsmodus')}>
-          {MODE_LABEL[agent?.mode ?? 'ask']}
+          {tt(MODE_LABEL[agent?.mode ?? 'ask'])}
         </span>
       </div>
       {ui.route && (
@@ -702,7 +703,7 @@ export function AgentPanel() {
                   <span>{c.title}</span>
                   <span className="muted small">
                     {ago(c.updated_at)}
-                    {c.source !== 'chat' ? ` · ${{ workflow: 'Workflow', schedule: 'Zeitplan', inbound: 'Auto-Antwort', mobile: 'App', mcp: 'MCP', focus: 'Fokus' }[c.source as string] ?? c.source}` : ''}
+                    {c.source !== 'chat' ? ` · ${SOURCE_LABEL[c.source as string] ? tt(SOURCE_LABEL[c.source as string]) : c.source}` : ''}
                     {c.status === 'awaiting' ? tt(' · wartet auf dich') : ''}
                   </span>
                 </button>
@@ -796,7 +797,7 @@ export function AgentPanel() {
             ref={inputRef}
             value={input}
             rows={1}
-            placeholder={confirm ? tt('Oder schreib etwas anderes …') : `Frag ${agent?.name ?? tt('den Agenten')} oder gib einen Auftrag …`}
+            placeholder={confirm ? tt('Oder schreib etwas anderes …') : tt('Frag {name} oder gib einen Auftrag …', { name: agent?.name ?? tt('den Agenten') })}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {

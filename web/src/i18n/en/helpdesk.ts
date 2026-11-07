@@ -2,7 +2,7 @@ import type { Catalog } from '../registry';
 
 /**
  * English – helpdesk: tickets (list, board, dashboard, workload, detail with timeline and replies), helpdesk settings
- * (SLA, business hours, pipelines, teams, canned replies, email to ticket, CSAT, portal, help center, health score), the
+ * (SLA, business hours, pipelines, teams, canned replies, email to ticket, CSAT, portal, help centre, health score), the
  * ticket workflow step and trigger filter, tickets from forms and calls (pages/Tickets.tsx, HelpdeskSettings.tsx).
  * Pipeline, stage, team and category names are the account's own data.
  */
@@ -270,7 +270,7 @@ export default {
   'SLA & Zeiten': 'SLA & hours',
   'Teams & Zuweisung': 'Teams & assignment',
   'E-Mail → Ticket': 'Email → ticket',
-  'Portal & Hilfe-Center': 'Portal & help center',
+  'Portal & Hilfe-Center': 'Portal & help centre',
   'Health-Score': 'Health score',
   'SLA-Ziele je Priorität': 'SLA targets per priority',
   'SLA-Zeiten für neue Tickets messen': 'Measure SLA times for new tickets',
@@ -316,7 +316,7 @@ export default {
   Samstag: 'Saturday',
   Sonntag: 'Sunday',
 
-  // email → ticket, auto reply, CSAT, portal, help center
+  // email → ticket, auto reply, CSAT, portal, help centre
   'E-Mails automatisch als Ticket': 'Emails as tickets automatically',
   'Support-Postfach': 'Support mailbox',
   'Leite deine Support-Adresse (z. B. support@firma.de) per Weiterleitung (Cloudflare Email Workers, ImprovMX, Mailgun …) an diese URL – jede Mail wird zum Ticket bzw. landet im offenen Ticket.':
@@ -349,11 +349,11 @@ export default {
   'Im Mitgliederbereich anzeigen (Liste, neue Anfrage, antworten, Status)': 'Show in the members’ area (list, new request, reply, status)',
   'Jeder Kontakt mit E-Mail darf sich anmelden (sonst nur mit Ticket oder Kurs)': 'Every contact with an email may sign in (otherwise only with a ticket or course)',
   'Der Mitgliederbereich liegt unter /portal/… (Kurse → Mitgliederbereich). Interne Notizen sieht der Kunde nie.': 'The members’ area is at /portal/… (Courses → Members’ area). The customer never sees internal notes.',
-  'Öffentliches Hilfe-Center': 'Public help center',
-  'Hilfe-Center öffentlich schalten': 'Make the help center public',
+  'Öffentliches Hilfe-Center': 'Public help centre',
+  'Hilfe-Center öffentlich schalten': 'Make the help centre public',
   'Adresse (/help/…)': 'Address (/help/…)',
   firma: 'company',
-  'Firma Hilfe-Center': 'Company help center',
+  'Firma Hilfe-Center': 'Company help centre',
   Begrüßung: 'Greeting',
   'Hinweis unten („Nichts gefunden?“)': 'Note at the bottom (“Nothing found?”)',
   'Schreib uns – wir helfen gern weiter.': 'Write to us – we are happy to help.',
@@ -362,7 +362,7 @@ export default {
   'Beschreibung für Google': 'Description for Google',
   'Eigene Domain (optional)': 'Custom domain (optional)',
   'z. B. hilfe.firma.de – CNAME auf diesen Server. Auf verbundenen Website-Domains erscheint das Hilfe-Center automatisch unter /help.':
-    'e.g. help.company.com – CNAME to this server. On connected website domains the help center appears automatically under /help.',
+    'e.g. help.company.com – CNAME to this server. On connected website domains the help centre appears automatically under /help.',
 
   // health score
   'Kunden-Health-Score': 'Customer health score',

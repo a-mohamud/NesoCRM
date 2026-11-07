@@ -93,7 +93,7 @@ export function AdsWizard({ draftId }: { draftId?: string }) {
         {STEPS.map((s, i) => (
           <li key={s} className={i === step ? 'on' : i < step ? 'done' : ''}>
             <button type="button" onClick={() => setStep(i)}>
-              <span>{i + 1}</span> {s}
+              <span>{i + 1}</span> {tt(s)}
             </button>
           </li>
         ))}
@@ -143,9 +143,9 @@ function StepGoal({ spec, setSpec, set, ov }: { spec: Spec; setSpec: (f: (s: Spe
   const kinds: [string, string][] =
     spec.platform === 'meta'
       ? spec.goal === 'leads'
-        ? [['lead_form', 'Sofortformular (Lead-Anzeige) – Formular direkt in Facebook/Instagram'], ['website', 'Link zur Website (Pixel nötig)']]
-        : [['website', 'Anzeige mit Link zur Website']]
-      : [['search', 'Suchnetzwerk – Responsive Suchanzeige mit Keywords'], ['pmax', 'Performance Max – Google verteilt auf alle Kanäle']];
+        ? [['lead_form', tt('Sofortformular (Lead-Anzeige) – Formular direkt in Facebook/Instagram')], ['website', tt('Link zur Website (Pixel nötig)')]]
+        : [['website', tt('Anzeige mit Link zur Website')]]
+      : [['search', tt('Suchnetzwerk – Responsive Suchanzeige mit Keywords')], ['pmax', tt('Performance Max – Google verteilt auf alle Kanäle')]];
   return (
     <div className="card" data-tour="ads-step-goal">
       <div className="ads-plat">
@@ -168,8 +168,8 @@ function StepGoal({ spec, setSpec, set, ov }: { spec: Spec; setSpec: (f: (s: Spe
           const off = k === 'reach' && spec.platform === 'google';
           return (
             <button key={k} type="button" disabled={off} className={`ads-opt${spec.goal === k ? ' on' : ''}`} onClick={() => set({ goal: k, kind: spec.platform === 'meta' ? (k === 'leads' ? 'lead_form' : 'website') : spec.kind })}>
-              <strong>{label}</strong>
-              <small className="muted">{off ? tt('Nur bei Meta') : hint}</small>
+              <strong>{tt(label)}</strong>
+              <small className="muted">{off ? tt('Nur bei Meta') : tt(hint)}</small>
             </button>
           );
         })}
@@ -179,7 +179,7 @@ function StepGoal({ spec, setSpec, set, ov }: { spec: Spec; setSpec: (f: (s: Spe
       </Field>
       {spec.platform === 'meta' && (spec.goal === 'conversions' || (spec.goal === 'leads' && spec.kind === 'website')) && (
         <Field label={tt('Ereignis, auf das optimiert wird')} hint={ov?.meta.pixel_id ? tt('Pixel {pixel_id}', { pixel_id: ov.meta.pixel_id }) : tt('Dafür braucht es ein Meta-Pixel (Verbindungen).')}>
-          <Select value={spec.conversion_event ?? (spec.goal === 'leads' ? 'LEAD' : 'PURCHASE')} onChange={(v) => set({ conversion_event: v })} options={[['PURCHASE', 'Kauf'], ['LEAD', 'Lead'], ['COMPLETE_REGISTRATION', 'Registrierung'], ['ADD_TO_CART', 'In den Warenkorb'], ['INITIATE_CHECKOUT', 'Kasse gestartet'], ['SCHEDULE', 'Termin'], ['CONTACT', 'Kontakt']]} />
+          <Select value={spec.conversion_event ?? (spec.goal === 'leads' ? 'LEAD' : 'PURCHASE')} onChange={(v) => set({ conversion_event: v })} options={[['PURCHASE', tt('Kauf')], ['LEAD', tt('Lead')], ['COMPLETE_REGISTRATION', tt('Registrierung')], ['ADD_TO_CART', tt('In den Warenkorb')], ['INITIATE_CHECKOUT', tt('Kasse gestartet')], ['SCHEDULE', tt('Termin')], ['CONTACT', tt('Kontakt')]]} />
         </Field>
       )}
     </div>
@@ -197,7 +197,7 @@ function StepBudget({ spec, set, ov, currency }: { spec: Spec; set: (p: Partial<
     <div className="card" data-tour="ads-budget">
       <div className="grid2">
         <Field label={tt('Budget')}>
-          <Select value={spec.budget.type} onChange={(v) => set({ budget: { ...spec.budget, type: v as 'daily' | 'lifetime' } })} options={[['daily', 'Tagesbudget'], ['lifetime', 'Gesamtbudget (mit Enddatum)']]} />
+          <Select value={spec.budget.type} onChange={(v) => set({ budget: { ...spec.budget, type: v as 'daily' | 'lifetime' } })} options={[['daily', tt('Tagesbudget')], ['lifetime', tt('Gesamtbudget (mit Enddatum)')]]} />
         </Field>
         <Field label={tt('Betrag ({currency})', { currency: currency })} hint={limit ? tt('Tageslimit dieses Sub-Accounts: {money} – änderbar unter Verbindungen.', { money: money(limit) }) : undefined}>
           <Input inputMode="decimal" value={amount} onChange={(v) => (setAmount(v), set({ budget: { ...spec.budget, amount_cents: toCents(v) } }))} placeholder="20" />
@@ -317,11 +317,11 @@ function StepAudience({ spec, setAud }: { spec: Spec; setAud: (p: Partial<Spec['
           <Field label={tt('Alter von')}>
             <Select value={String(a.age_min ?? 18)} onChange={(v) => setAud({ age_min: Number(v) })} options={Array.from({ length: 48 }, (_, i) => String(18 + i))} />
           </Field>
-          <Field label="bis">
+          <Field label={tt('bis')}>
             <Select value={String(a.age_max ?? 65)} onChange={(v) => setAud({ age_max: Number(v) })} options={Array.from({ length: 48 }, (_, i) => String(18 + i))} />
           </Field>
           <Field label={tt('Geschlecht')}>
-            <Select value={a.genders?.length === 1 ? a.genders[0] : ''} onChange={(v) => setAud({ genders: v ? [v] : [] })} options={[['', 'Alle'], ['female', 'Frauen'], ['male', 'Männer']]} />
+            <Select value={a.genders?.length === 1 ? a.genders[0] : ''} onChange={(v) => setAud({ genders: v ? [v] : [] })} options={[['', tt('Alle')], ['female', tt('Frauen')], ['male', tt('Männer')]]} />
           </Field>
         </div>
         <MoreFields id="ads-audience-meta" label={tt('Interessen & eigene Zielgruppen')} values={[a.interests, a.audience_ids, a.exclude_audience_ids]}>
@@ -343,7 +343,7 @@ function StepAudience({ spec, setAud }: { spec: Spec; setAud: (p: Partial<Spec['
       <Chips items={(a.locations ?? []).map((l) => ({ key: l.key, label: l.name }))} onRemove={(k) => setAud({ locations: (a.locations ?? []).filter((l) => l.key !== k) })} />
       <div className="ads-langs">
         {LANGS.map(([k, label]) => (
-          <Check key={k} checked={(a.languages ?? []).includes(k)} onChange={(v) => setAud({ languages: v ? [...(a.languages ?? []), k] : (a.languages ?? []).filter((x) => x !== k) })} label={label} />
+          <Check key={k} checked={(a.languages ?? []).includes(k)} onChange={(v) => setAud({ languages: v ? [...(a.languages ?? []), k] : (a.languages ?? []).filter((x) => x !== k) })} label={tt(label)} />
         ))}
       </div>
       {spec.kind === 'search' && (
@@ -502,7 +502,7 @@ function StepCreative({ spec, set, setCre, ov }: { spec: Spec; set: (p: Partial<
                 <Counter value={c.description} max={30} />
               </Field>
               <Field label={tt('Button')}>
-                <Select value={c.cta ?? (spec.kind === 'lead_form' ? 'SIGN_UP' : 'LEARN_MORE')} onChange={(v) => setCre({ cta: v })} options={CTAS} />
+                <Select value={c.cta ?? (spec.kind === 'lead_form' ? 'SIGN_UP' : 'LEARN_MORE')} onChange={(v) => setCre({ cta: v })} options={CTAS.map(([k, l]) => [k, tt(l)] as [string, string])} />
               </Field>
               {spec.kind === 'lead_form' && (
                 <Field label={tt('Sofortformular')}>
@@ -593,7 +593,7 @@ function Suggest({ spec, onUse }: { spec: Spec; onUse: (p: Partial<Spec['creativ
   return (
     <div className="ads-ai">
       <button type="button" className="btn small secondary" data-tour="ads-ai" onClick={() => setOpen(!open)}>
-        <Icon name="sparkles" size={14} /> {tt('KI-Vorschläge')} {open ? 'ausblenden' : 'holen'}
+        <Icon name="sparkles" size={14} /> {open ? tt('KI-Vorschläge ausblenden') : tt('KI-Vorschläge holen')}
       </button>
       {open && (
         <div className="ads-ai-box">

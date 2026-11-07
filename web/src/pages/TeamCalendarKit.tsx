@@ -3,7 +3,7 @@ import './teamtools.css';
 import { Icon } from '../icons';
 import { api, money } from '../api';
 import { Badge, Field, Modal, Spinner, Textarea, act, toast, useLoad } from '../ui';
-import { useT } from '../i18n';
+import { intlLocale, useT } from '../i18n';
 
 /**
  * Team-Kalender in the appointment list and the calendar cards: who hosts, the video link, what was paid, the answers of the
@@ -21,8 +21,9 @@ const PAY_STATUS: Record<string, [string, 'green' | 'blue' | 'yellow' | 'red' | 
 };
 
 export function KindBadge({ t }: { t?: any }) {
+  const tt = useT('x_comms');
   if (!t || t.kind === 'single') return null;
-  return <Badge tone="purple">{KIND_TEXT[t.kind] ?? t.kind}</Badge>;
+  return <Badge tone="purple">{KIND_TEXT[t.kind] ? tt(KIND_TEXT[t.kind]) : t.kind}</Badge>;
 }
 
 /** What the team cares about besides the time: hosts, video, payment, answers. */
@@ -65,7 +66,7 @@ export function ApptDetails({ a }: { a: any }) {
       )}
       {pay && PAY_STATUS[pay.status] && (
         <span className={`tc-chip pay-${PAY_STATUS[pay.status][1]}`}>
-          <Icon name="card" size={12} /> {PAY_STATUS[pay.status][0]}
+          <Icon name="card" size={12} /> {tt(PAY_STATUS[pay.status][0])}
           {pay.amount_cents ? ` · ${money(pay.mode === 'deposit' ? (pay.due_cents ?? pay.amount_cents) : pay.amount_cents, pay.currency)}${pay.mode === 'deposit' ? tt(' Anzahlung') : ''}` : ''}
         </span>
       )}
@@ -86,7 +87,7 @@ export function ApptDetails({ a }: { a: any }) {
   );
 }
 
-const when = (iso: string) => new Date(iso).toLocaleString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => new Date(iso).toLocaleString(intlLocale(), { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
 
 /** Cancel an appointment: reason, and – when it was paid – whether the money goes back. */
 export function CancelModal({ a, onClose, onDone }: { a: any; onClose: () => void; onDone: () => void }) {
@@ -169,7 +170,7 @@ export function MoveModal({ a, onClose, onDone }: { a: any; onClose: () => void;
         <div className="tc-slots" role="group" aria-label={tt('Freie Zeiten')}>
           {list.map((s) => (
             <button key={s.start} type="button" className="tc-slot" onClick={() => move(s.start)}>
-              <strong>{new Date(s.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: tz })}</strong>
+              <strong>{new Date(s.start).toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit', timeZone: tz })}</strong>
               {s.hosts?.length > 0 && <small>{s.hosts.map((h) => h.name).join(', ')}</small>}
             </button>
           ))}

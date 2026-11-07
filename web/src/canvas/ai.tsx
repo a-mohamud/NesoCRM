@@ -66,12 +66,12 @@ export function AiBar({ api: ed, open, setOpen }: { api: EditorApi; open: boolea
             <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label={tt('Art')} disabled={!!busy}>
               {KINDS.map(([k, l]) => (
                 <option key={k} value={k}>
-                  {l}
+                  {tt(l)}
                 </option>
               ))}
             </select>
             <button className="btn small" onClick={() => void run('draw')} disabled={!!busy || !prompt.trim()}>
-              {busy || tt('Zeichnen')}
+              {busy ? tt(busy) : tt('Zeichnen')}
             </button>
             <button className="icon-btn" onClick={() => setOpen(false)} aria-label={tt('Schließen')}>
               ✕
@@ -94,8 +94,8 @@ export function AiBar({ api: ed, open, setOpen }: { api: EditorApi; open: boolea
             ) : (
               <>
                 {IDEAS.slice(0, 3).map((i) => (
-                  <button key={i} className="cv-chip" onClick={() => setPrompt(i)} disabled={!!busy}>
-                    {i}
+                  <button key={i} className="cv-chip" onClick={() => setPrompt(tt(i))} disabled={!!busy}>
+                    {tt(i)}
                   </button>
                 ))}
                 <button className="cv-chip" onClick={() => void run('tidy')} disabled={!!busy} title={tt('Ordnet verbundene Formen automatisch an')}>

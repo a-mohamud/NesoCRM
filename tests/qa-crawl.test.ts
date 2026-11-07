@@ -133,7 +133,7 @@ describe('open items of the crawl (fix/polish)', () => {
     expect(contrast(dark, '#121a2e')).toBeGreaterThanOrEqual(4.5);
     expect(css).toMatch(/:root:not\(\[data-theme='light'\]\) \{[^}]*--star-text: #fbbf24/);
     expect(read('pages/Reviews.tsx')).not.toContain('#f59e0b');
-    expect(read('pages/Reviews.tsx')).toMatch(/className="g-stars" aria-label=\{`\$\{r\.rating\} von 5 Sternen`\}/);
+    expect(read('pages/Reviews.tsx')).toMatch(/className="g-stars" aria-label=\{tt\('\{rating\} von 5 Sternen', \{ rating: r\.rating \}\)\}/);
     for (const [file, sel] of [['styles.css', '.g-stars'], ['styles.css', '.wk-stars'], ['pages/CourseDepth.css', '.cd-stars']] as const) {
       expect(noComments(read(file)), `${file} ${sel}`).toMatch(new RegExp(`${sel.replace('.', '\\.')} \\{ color: var\\(--star-text, #b45309\\)`));
     }
@@ -144,15 +144,15 @@ describe('open items of the crawl (fix/polish)', () => {
     const thumb = /\.cv-thumb \.muted \{ color: (#[0-9a-f]{6}); \}/.exec(css)![1];
     expect(contrast(thumb, '#ffffff')).toBeGreaterThanOrEqual(4.5);
     expect(contrast(/\.cv-preview \{[^}]*color: (#[0-9a-f]{6})/.exec(css)![1], '#ffffff')).toBeGreaterThanOrEqual(4.5);
-    expect(read('canvas/CanvasPage.tsx')).toContain('<span className="muted">Leer</span>');
+    expect(read('canvas/CanvasPage.tsx')).toContain(`<span className="muted">{tt('Leer')}</span>`);
   });
 
   it('community group: channel inputs and the Markdown text areas have accessible names', () => {
     const src = read('pages/Community.tsx');
-    for (const what of ['Emoji', 'Name', 'Kategorie', 'Beschreibung']) expect(src).toContain(`aria-label={\`${what} Kanal \${i + 1}\`}`);
+    for (const what of ['Emoji', 'Name', 'Kategorie', 'Beschreibung']) expect(src).toContain(`aria-label={tt('${what} Kanal {v}', { v: i + 1 })}`);
     // A <Field> label around the editor names its first toolbar button, not the text area.
     expect(read('pages/ContentKit.tsx')).toMatch(/className="md-area" aria-label=\{label\}/);
     expect(read('pages/ContentKit.tsx')).toMatch(/label = 'Text \(Markdown\)'/);
-    expect(read('pages/CommunityJoin.tsx')).toMatch(/<MarkdownEditor value=\{f\.about\}.* label="Über uns \(Markdown\)" \/>/);
+    expect(read('pages/CommunityJoin.tsx')).toMatch(/<MarkdownEditor value=\{f\.about\}.* label=\{tt\('Über uns \(Markdown\)'\)\} \/>/);
   });
 });

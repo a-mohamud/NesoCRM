@@ -140,7 +140,7 @@ export async function startPhone() {
     if (gen !== generation) return;
     const d = new DeviceClass(tok.token, {
       edge: tok.edge,
-      closeProtection: 'Ein Anruf läuft – die Seite wirklich verlassen?',
+      closeProtection: tr('x_comms')('Ein Anruf läuft – die Seite wirklich verlassen?'),
       codecPreferences: ['opus', 'pcmu'],
       logLevel: 'error',
       appName: 'gohigh',
@@ -239,7 +239,7 @@ function onIncoming(call: Call) {
   if (current || ringing) return call.reject();
   ringing = call;
   const p = call.customParameters;
-  setState({ incoming: { number: p.get('from') || call.parameters?.From || 'Unbekannt', name: p.get('name') || '', callId: p.get('callId') || '', transfer: p.get('transfer') || undefined } });
+  setState({ incoming: { number: p.get('from') || call.parameters?.From || tr('x_comms')('Unbekannt'), name: p.get('name') || '', callId: p.get('callId') || '', transfer: p.get('transfer') || undefined } });
   const clear = () => {
     if (ringing !== call) return;
     ringing = null;
@@ -481,7 +481,7 @@ function PhonePanel() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [devices, transfer]);
-  const status = p.status === 'error' ? p.error : !p.incomingAllowed ? 'Nur ausgehend' : p.registered ? 'Erreichbar' : p.available ? 'Verbindet…' : 'Nicht erreichbar';
+  const status = p.status === 'error' ? p.error : !p.incomingAllowed ? tt('Nur ausgehend') : p.registered ? tt('Erreichbar') : p.available ? tt('Verbindet…') : tt('Nicht erreichbar');
   return (
     <div className="phone-panel" role="dialog" aria-label={tt('Telefon')}>
       <div className="phone-head">
@@ -619,7 +619,7 @@ function DevicesModal({ onClose }: { onClose: () => void }) {
       toastError(message(e));
     }
   };
-  const opts = (list: MediaDeviceInfo[]) => list.map((d, i): [string, string] => [d.deviceId, d.label || `Gerät ${i + 1}`]);
+  const opts = (list: MediaDeviceInfo[]) => list.map((d, i): [string, string] => [d.deviceId, d.label || tt('Gerät {n}', { n: i + 1 })]);
   return (
     <Modal title={tt('Mikrofon & Lautsprecher')} onClose={onClose}>
       {err && <p className="voice-warn small">{err}</p>}
@@ -686,7 +686,7 @@ export function BrowserPhoneSettings() {
         <h2>
           <Icon name="headset" size={18} /> {tt('Browser-Telefon')}
         </h2>
-        {!d.enabled ? <Badge>aus</Badge> : d.ready ? <Badge tone="green">{tt('Bereit')}</Badge> : <Badge tone="yellow">{tt('Es fehlt:')} {d.missing.join(', ')}</Badge>}
+        {!d.enabled ? <Badge>{tt('aus')}</Badge> : d.ready ? <Badge tone="green">{tt('Bereit')}</Badge> : <Badge tone="yellow">{tt('Es fehlt:')} {d.missing.join(', ')}</Badge>}
       </div>
       <p className="muted small">
         {tt('Telefonieren direkt im Browser über Twilio (Headset empfohlen); eingehende Anrufe klingeln bei allen, die erreichbar sind. Braucht HTTPS und Mikrofon-Freigabe.')}
@@ -704,7 +704,7 @@ export function BrowserPhoneSettings() {
           <Input value={s.twiml_app_sid} onChange={(v) => set({ twiml_app_sid: v })} placeholder={tt('AP…')} autoComplete="off" />
         </Field>
         <Field label={tt('Twilio-Standort')}>
-          <Select value={s.edge} onChange={(v) => set({ edge: v })} options={d.edges.map((e: string) => [e, EDGE_LABEL[e] ?? e])} />
+          <Select value={s.edge} onChange={(v) => set({ edge: v })} options={d.edges.map((e: string) => [e, EDGE_LABEL[e] ? tt(EDGE_LABEL[e]) : e])} />
         </Field>
       </div>
       <Field label={tt('TwiML App → Voice Request URL (POST)')}>
@@ -733,7 +733,7 @@ export function BrowserPhoneSettings() {
         </button>
       </div>
       <Field label={tt('Eingehende Anrufe')}>
-        <Select value={s.incoming} onChange={(v) => set({ incoming: v })} options={INCOMING} />
+        <Select value={s.incoming} onChange={(v) => set({ incoming: v })} options={INCOMING.map(([k, l]) => [k, tt(l)] as [string, string])} />
       </Field>
       <p>
         <button className="btn" onClick={save}>

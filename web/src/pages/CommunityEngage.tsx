@@ -12,6 +12,7 @@ import { useT } from '../i18n';
  */
 
 export function EngageTab({ group, onChange }: { group: any; onChange: () => void }) {
+  const tt = useT('x_community');
   const [sub, setSub] = useState('badges');
   return (
     <div className="cma" data-tour="community-engage">
@@ -19,11 +20,11 @@ export function EngageTab({ group, onChange }: { group: any; onChange: () => voi
         value={sub}
         onChange={setSub}
         tabs={[
-          ['badges', 'Abzeichen'],
-          ['perks', 'Vorteile & Freischaltungen'],
-          ['challenges', 'Challenges'],
-          ['live', 'Live-Calls'],
-          ['points', 'Punkte & Rangliste'],
+          ['badges', tt('Abzeichen')],
+          ['perks', tt('Vorteile & Freischaltungen')],
+          ['challenges', tt('Challenges')],
+          ['live', tt('Live-Calls')],
+          ['points', tt('Punkte & Rangliste')],
         ]}
       />
       {sub === 'badges' && <Badges group={group} />}
@@ -48,7 +49,7 @@ function Badges({ group }: { group: any }) {
         {r.data.badges.map((b: any) => (
           <Sec key={b.id} title={`${b.emoji || '🏅'} ${b.name}`} lead={b.description || undefined}>
             <div className="cma-chips">
-              <Badge tone={b.rule.type === 'manual' ? 'gray' : 'blue'}>{b.rule.type === 'manual' ? tt('Von Hand') : `${r.data.rules[b.rule.type]}: ${b.rule.value}`}</Badge>
+              <Badge tone={b.rule.type === 'manual' ? 'gray' : 'blue'}>{b.rule.type === 'manual' ? tt('Von Hand') : `${tt(r.data.rules[b.rule.type] ?? b.rule.type)}: ${b.rule.value}`}</Badge>
               {b.points > 0 && <Badge tone="green">{tt('+{points} Punkte', { points: b.points })}</Badge>}
               <Badge>{b.awarded} vergeben</Badge>
             </div>
@@ -127,7 +128,7 @@ function BadgeEditor({ group, badge, rules, onClose, onDone }: { group: any; bad
           <NumberField label={tt('Bonuspunkte')} min={0} max={1000} value={f.points} onChange={(v) => set({ points: v ?? 0 })} />
         </div>
         <Field label={tt('Wie bekommt man es?')}>
-          <Select value={f.rule.type} onChange={(v) => (set({ rule: { type: v, value: v === 'manual' ? 0 : f.rule.value || 1 } }), setPreview(null))} options={Object.entries(rules)} />
+          <Select value={f.rule.type} onChange={(v) => (set({ rule: { type: v, value: v === 'manual' ? 0 : f.rule.value || 1 } }), setPreview(null))} options={Object.entries(rules).map(([k, v]) => [k, tt(String(v))] as [string, string])} />
         </Field>
         {f.rule.type !== 'manual' && (
           <>
@@ -256,7 +257,7 @@ function Perks({ group }: { group: any }) {
                     )}
                   </div>
                   <div style={{ width: 150 }}>
-                    <Select value={String(c.min_level)} onChange={(v) => saveRule(c, { min_level: Number(v) })} options={unlocks.data!.map((l) => [String(l.level), l.level === 1 ? 'Von Anfang an' : `Ab Level ${l.level}`])} />
+                    <Select value={String(c.min_level)} onChange={(v) => saveRule(c, { min_level: Number(v) })} options={unlocks.data!.map((l) => [String(l.level), l.level === 1 ? tt('Von Anfang an') : tt('Ab Level {level}', { level: l.level })])} />
                   </div>
                 </li>
               ))}
@@ -315,7 +316,7 @@ function PerkEditor({ group, perk, levels, onClose, onDone }: { group: any; perk
       <div className="cma">
         <div className="cma-two">
           <Field label={tt('Art')}>
-            <Select value={f.kind} onChange={(v) => set({ kind: v })} options={PERK_KINDS} />
+            <Select value={f.kind} onChange={(v) => set({ kind: v })} options={PERK_KINDS.map(([k, l]) => [k, tt(l)] as [string, string])} />
           </Field>
           <Field label={tt('Freigeschaltet ab')}>
             <Select value={String(f.level)} onChange={(v) => set({ level: Number(v) })} options={levels.map((l) => [String(l.level), `Level ${l.level}: ${l.name}`])} />
@@ -368,7 +369,7 @@ function Challenges({ group }: { group: any }) {
     <>
       <div className="cma-grid">
         {list.data.map((c) => (
-          <Sec key={c.id} title={`${c.emoji || '🔥'} ${c.title}`} lead={`${d(c.starts_on)} – ${d(c.ends_on)} · ${c.days} Tage · Ziel: ${c.goal_days} Check-ins`}>
+          <Sec key={c.id} title={`${c.emoji || '🔥'} ${c.title}`} lead={tt('{from} – {to} · {days} Tage · Ziel: {goal} Check-ins', { from: d(c.starts_on), to: d(c.ends_on), days: c.days, goal: c.goal_days })}>
             <div className="cma-chips">
               <Badge tone={c.status === 'active' ? 'green' : c.status === 'draft' ? 'gray' : 'blue'}>{c.status === 'active' ? tt('Offen') : c.status === 'draft' ? tt('Entwurf') : tt('Archiviert')}</Badge>
               <Badge tone={c.phase === 'running' ? 'yellow' : 'gray'}>{c.phase === 'running' ? tt('Läuft') : c.phase === 'upcoming' ? tt('Startet bald') : tt('Vorbei')}</Badge>
@@ -463,7 +464,7 @@ function ChallengeEditor({ group, challenge, badges, onClose, onDone }: { group:
           </Field>
           <NumberField label={tt('Ziel: so viele Check-ins')} min={1} max={days} value={f.goal_days} onChange={(v) => set({ goal_days: v })} hint={tt('Leer = alle Tage')} />
           <Field label="Status">
-            <Select value={f.status} onChange={(v) => set({ status: v })} options={[['draft', 'Entwurf (Mitglieder sehen nichts)'], ['active', 'Offen'], ['archived', 'Archiviert']]} />
+            <Select value={f.status} onChange={(v) => set({ status: v })} options={[['draft', tt('Entwurf (Mitglieder sehen nichts)')], ['active', tt('Offen')], ['archived', tt('Archiviert')]]} />
           </Field>
         </div>
         <div className="cma-two">
@@ -528,7 +529,7 @@ function Participants({ challenge, onClose }: { challenge: any; onClose: () => v
                   <td>{p.streak}</td>
                   <td>{p.best_streak}</td>
                   <td className="muted">{d(p.joined_at)}</td>
-                  <td>{p.completed_at && <Badge tone="green">geschafft</Badge>}</td>
+                  <td>{p.completed_at && <Badge tone="green">{tt('geschafft')}</Badge>}</td>
                 </tr>
               ))}
             </tbody>
@@ -652,7 +653,7 @@ function NewLive({ group, f: init, onClose, onDone }: { group: any; f: any; onCl
 
 function Recording({ group, event, onClose, onDone }: { group: any; event: any; onClose: () => void; onDone: () => void }) {
   const tt = useT('x_community');
-  const [f, setF] = useState({ video_url: '', title: `Aufzeichnung: ${event.title}`, notify: true, channel_id: '' });
+  const [f, setF] = useState({ video_url: '', title: tt('Aufzeichnung: {title}', { title: event.title }), notify: true, channel_id: '' });
   return (
     <Modal
       title={tt('Aufzeichnung: {title}', { title: event.title })}

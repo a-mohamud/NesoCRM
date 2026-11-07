@@ -209,4 +209,5 @@ export default {
   'Verschoben auf Position {n} von {total}': 'Moved to position {n} of {total}',
   'Pfeiltasten wechseln die Kachel, Alt+Umschalt+Pfeiltasten verschieben sie.': 'Arrow keys switch tiles, Alt+Shift+arrow keys move this one.',
   'Reihenfolge zurücksetzen': 'Reset order',
+  'Alle Bereiche': 'All areas',
 } satisfies Catalog;
