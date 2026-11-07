@@ -13,7 +13,7 @@ import type { Tool } from './mcp.js';
 const phpString = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 
 export function pluginPhp(o: { base: string; locationId: string; brand: string; version: string }): string {
-  const brand = o.brand.replace(/[^\p{L}\p{N} .&-]/gu, '').slice(0, 40) || 'HyperLevel';
+  const brand = o.brand.replace(/[^\p{L}\p{N} .&-]/gu, '').slice(0, 40) || 'Neso CRM';
   return `<?php
 /*
 Plugin Name: ${brand}
@@ -88,7 +88,7 @@ export const wordpressPluginModule: Module = {
   name: 'wordpress-plugin',
   register(app: App) {
     const { db, router } = app;
-    const brandOf = () => getBranding(app).name || 'HyperLevel';
+    const brandOf = () => getBranding(app).name || 'Neso CRM';
 
     router.get('/api/wordpress-plugin', 'location', (ctx) => ({
       download_url: `/api/wordpress-plugin.zip?locationId=${encodeURIComponent(ctx.locationId)}`,
@@ -96,7 +96,7 @@ export const wordpressPluginModule: Module = {
       calendars: db.all<any>('SELECT name, slug FROM calendars WHERE location_id = ? AND active = 1 ORDER BY name LIMIT 50', ctx.locationId).map((c) => ({ name: c.name, shortcode: `[hyperlevel_calendar slug="${c.slug}"]` })),
     }));
     router.get('/api/wordpress-plugin.zip', 'location', (ctx) => {
-      const php = pluginPhp({ base: app.baseUrl(), locationId: ctx.locationId, brand: brandOf() || 'HyperLevel', version: '1.0.0' });
+      const php = pluginPhp({ base: app.baseUrl(), locationId: ctx.locationId, brand: brandOf() || 'Neso CRM', version: '1.0.0' });
       const readme = `=== HyperLevel ===\nStable tag: 1.0.0\n\nFormulare: [hyperlevel_form id="…"]\nTermine: [hyperlevel_calendar slug="…"]\nLive-Chat und Attribution: Einstellungen → HyperLevel.\n`;
       const zip = zipStore([
         { name: 'hyperlevel/hyperlevel.php', data: php },

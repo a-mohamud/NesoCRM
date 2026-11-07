@@ -161,8 +161,8 @@ export async function seedDemo(app: App, opts: DemoSeedOptions = {}): Promise<De
   };
 
   // Agency branding for the demo (PGHL_DEMO_BRAND names a public demo, e.g. "HyperLevel" → "HyperLevel Demo"; it survives the nightly reset).
-  const brand = String(process.env.PGHL_DEMO_BRAND ?? '').trim().slice(0, 60) || 'HyperLevel';
-  await run('', 'PATCH', '/api/agency/branding', { name: `${brand} Demo`, color: '#2563eb', login_title: `${brand} – Live-Demo`, login_text: 'Alles hier ist erfunden. Daten werden täglich zurückgesetzt.' });
+  const brand = String(process.env.PGHL_DEMO_BRAND ?? '').trim().slice(0, 60) || 'Neso CRM';
+  await run('', 'PATCH', '/api/agency/branding', { name: `${brand} Demo`, color: '#0a6cf0', login_title: `${brand} – Live-Demo`, login_text: 'Alles hier ist erfunden. Daten werden täglich zurückgesetzt.' });
 
   for (const [pi, plan] of PLANS.entries()) {
     const loc = createLocation(app.db, plan.name, 'Europe/Berlin', { email: plan.email, address: plan.address, website: plan.website, phone: demoPhone(900 + pi * 10) });

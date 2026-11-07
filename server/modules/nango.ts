@@ -365,7 +365,7 @@ export const nangoModule: Module = {
       const integ = (await integrations(cfg)).find((i) => i.key === integration);
       if (!integ) throw bad('Diese Integration ist in Nango nicht eingerichtet (die Agentur legt sie im Nango-Dashboard an).');
       const loc = app.location(ctx.locationId)!;
-      const session = await call(() => c.createConnectSession({ endUserId: endUserFor(loc.id), displayName: loc.name, organizationId: 'gohigh', organizationName: app.services.brandName?.() ?? 'HyperLevel', integration }));
+      const session = await call(() => c.createConnectSession({ endUserId: endUserFor(loc.id), displayName: loc.name, organizationId: 'gohigh', organizationName: app.services.brandName?.() ?? 'Neso CRM', integration }));
       // OAuth apps without extra fields: straight to the provider (plain redirects, no window). Everything
       // else (API keys, subdomains …) through Nango's hosted Connect UI.
       let mode: 'oauth' | 'connect_ui' = 'connect_ui';

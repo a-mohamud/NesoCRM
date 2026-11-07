@@ -9,7 +9,7 @@ import { getBranding } from './agency.js';
 export const openApiModule: Module = {
   name: 'openapi',
   register(app) {
-    const brand = () => getBranding(app).name || 'HyperLevel';
+    const brand = () => getBranding(app).name || 'Neso CRM';
     app.router.get('/api/openapi.json', 'public', () => ({
       __raw: true,
       status: 200,

@@ -206,7 +206,7 @@ export const slackBridgeModule: Module = {
     router.post('/api/settings/channels/slack/test', 'location', async (ctx) => {
       const a = getAccount(app, ctx.locationId, CH);
       if (!ready(a)) throw bad('Slack ist noch nicht vollständig eingerichtet');
-      const text = `:white_check_mark: Test von ${slackEscape(app.location(ctx.locationId)?.name ?? 'HyperLevel')}: Neue Nachrichten aus dem Posteingang erscheinen hier.`;
+      const text = `:white_check_mark: Test von ${slackEscape(app.location(ctx.locationId)?.name ?? 'Neso CRM')}: Neue Nachrichten aus dem Posteingang erscheinen hier.`;
       try {
         if (mode(a) === 'webhook') await postWebhook(a, text);
         else await api(a, 'chat.postMessage', { channel: a.config.channel, text });

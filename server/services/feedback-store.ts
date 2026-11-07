@@ -100,7 +100,7 @@ export function ensureSupport(app: App): { locationId: string; pipelineId: strin
   let loc = s.support_location_id && app.location(s.support_location_id) ? s.support_location_id : '';
   let created = false;
   if (!loc) {
-    const brand = getBranding(app).name || 'HyperLevel';
+    const brand = getBranding(app).name || 'Neso CRM';
     const row = createLocation(app.db, `${brand} Support`, 'Europe/Berlin');
     loc = row.id;
     created = true;
@@ -455,7 +455,7 @@ export async function notifyUsers(app: App, f: FeedbackRow, userIds: string[], n
   await Promise.resolve(app.services.pushNotify?.({ userIds: users.map((u) => u.id), kind: 'feedback', title: n.title, body: n.body ?? '', url: n.url, tag: `feedback-${f.id}` })).catch((e: Error) => console.error('[feedback] push', e.message));
   if (n.email) {
     const loc = app.location(f.support_location_id);
-    const brand = getBranding(app).name || 'HyperLevel';
+    const brand = getBranding(app).name || 'Neso CRM';
     const send = app.services.feedbackMailer ?? deliverEmail;
     for (const u of users) {
       if (!u.email || n.skipEmail?.includes(u.id)) continue;

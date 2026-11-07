@@ -71,7 +71,7 @@ export const opsAlertsModule: Module = {
       return prevError?.(e, ctx, route);
     };
 
-    const brand = () => getBranding(app).name || 'HyperLevel';
+    const brand = () => getBranding(app).name || 'Neso CRM';
     const admins = () => db.all<{ id: string; email: string }>(`SELECT id, email FROM users WHERE role = 'admin' ORDER BY created_at`);
     const recipients = () => {
       const env = String(process.env.PGHL_ALERT_EMAIL ?? '').split(/[\s,;]+/).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));

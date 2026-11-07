@@ -26,7 +26,8 @@ export interface LookInput {
 export function resolveAccent(look: LookInput, dark: boolean): string {
   if (isHex(look.accent)) return look.accent.toLowerCase();
   const t = themeById(look.theme);
-  if (look.theme === 'gohigh' && isHex(look.brandColor) && look.brandColor.toLowerCase() !== THEMES.gohigh.light.accent) return look.brandColor.toLowerCase();
+  // '#2563eb' is the former default colour that older installs stored with their branding: not a chosen colour.
+  if (look.theme === 'gohigh' && isHex(look.brandColor) && ![THEMES.gohigh.light.accent, '#2563eb'].includes(look.brandColor.toLowerCase())) return look.brandColor.toLowerCase();
   return (dark ? t.dark : t.light).accent;
 }
 

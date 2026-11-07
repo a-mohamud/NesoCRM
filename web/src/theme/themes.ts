@@ -40,10 +40,10 @@ const m = (bg: string, panel: string, text: string, muted: string, line: string,
 export const THEMES: Record<ThemeId, ThemeDef> = {
   gohigh: {
     id: 'gohigh',
-    name: 'HyperLevel Standard',
-    blurb: 'Klar, blau, dunkle Seitenleiste – so kennst du HyperLevel.',
-    light: m('#f4f6fa', '#ffffff', '#111827', '#5d6677', '#e5e7eb', '#0f172a', '#cbd5e1', '#2563eb'),
-    dark: m('#0b1020', '#121a2e', '#e5e7eb', '#94a3b8', '#233049', '#070b16', '#cbd5e1', '#2563eb'),
+    name: 'Neso',
+    blurb: 'Neso-Blau auf ruhigem, neutralem Grund mit dunkler Seitenleiste – der Standard-Look.',
+    light: m('#f5f6f8', '#ffffff', '#101828', '#5b6474', '#e4e7ec', '#0a1020', '#c3cbd9', '#0a6cf0'),
+    dark: m('#0b0f17', '#111723', '#e6e9ef', '#98a2b3', '#1f2735', '#080b12', '#c3cbd9', '#3d8eff'),
   },
   nordlicht: {
     id: 'nordlicht',

@@ -414,7 +414,7 @@ function StepView({ tour: rawTour, steps, index, step: rawStep, session, sandbox
     setPos((old) => (old && Math.abs(old.top - p.top) < 1 && Math.abs(old.left - p.left) < 1 && old.place === place ? old : { ...p, place }));
   }, [rect, missing, done, busy]);
 
-  const brand = session.branding.name || 'HyperLevel';
+  const brand = session.branding.name || 'Neso CRM';
   const last = index === steps.length - 1;
   const inSandbox = !!sandbox && session.locationId === sandbox.id;
   const waiting = !done && (kind === 'click' || kind === 'navigate' || kind === 'fill' || kind === 'wait');

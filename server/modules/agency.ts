@@ -32,14 +32,14 @@ export interface Branding {
 }
 
 const DEFAULT_BRANDING: Branding = {
-  name: 'HyperLevel',
+  name: 'Neso CRM',
   logo_url: '',
   logo_dark_url: '',
   mark_url: '',
   mark_dark_url: '',
   favicon_url: '',
   show_name: '',
-  color: '#2563eb',
+  color: '#0a6cf0',
   login_title: '',
   login_text: '',
   support_email: '',

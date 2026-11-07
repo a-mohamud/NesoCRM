@@ -542,7 +542,7 @@ export const mcpClientModule: Module = {
         }
         const d = oauth.discovery!;
         if (!oauth.client || (!oauth.client.manual && oauth.client.redirect_uri !== redirectUri())) {
-          const brand = app.services.brandName?.() ?? 'HyperLevel';
+          const brand = app.services.brandName?.() ?? 'Neso CRM';
           const c = await registerClient(d.as, { redirectUri: redirectUri(), clientName: `${brand} (${new URL(app.baseUrl()).host})`, scope: oauth.scope || d.scopes.join(' ') || undefined }, fetcher(), allowPrivate);
           oauth.client = { client_id: c.client_id, ...(c.client_secret ? { client_secret: sealSecret(app, c.client_secret) } : {}), auth_method: c.auth_method, redirect_uri: redirectUri() };
         }

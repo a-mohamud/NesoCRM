@@ -20,6 +20,6 @@ function readPackage(): { name: string; version: string } {
 
 const pkg = readPackage();
 
-export const APP_NAME = 'HyperLevel';
+export const APP_NAME = 'Neso CRM';
 export const APP_PACKAGE = pkg.name;
 export const APP_VERSION = pkg.version;

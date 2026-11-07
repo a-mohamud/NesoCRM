@@ -113,7 +113,7 @@ export const wikiExtrasModule: Module = {
       const language = str(b.language, 'Sprache', { max: 40 }) || 'Englisch';
       const task = action === 'rewrite' ? `Schreibe ${selection ? 'die Auswahl' : 'den Text'} neu: ${instruction || 'klarer, kürzer und freundlich im Ton'}. Gib ${selection ? 'nur den neuen Text der Auswahl' : 'den ganzen neuen Text'} aus.` : action === 'translate' ? `Übersetze ${selection ? 'die Auswahl' : 'den Text'} ins ${language}, Formatierung und Verweise bleiben unverändert.` : `${AI_ACTIONS[action]}${instruction ? ` Zusätzlich: ${instruction}` : ''}`;
       const text = await ai(ctx, {
-        system: SYSTEM(app.location(ctx.locationId)?.name ?? 'HyperLevel'),
+        system: SYSTEM(app.location(ctx.locationId)?.name ?? 'Neso CRM'),
         user: `${task}\n\n<seite titel="${page.title.replace(/"/g, "'")}">\n${page.body.slice(0, 60_000)}\n</seite>${selection ? `\n\n<auswahl>\n${selection}\n</auswahl>` : ''}`,
       });
       return { action, text: unfence(text), page_id: page.id, selection: !!selection };
@@ -124,7 +124,7 @@ export const wikiExtrasModule: Module = {
       const prompt = str(b.prompt, 'Auftrag', { required: true, max: 2000 });
       const { space } = loadSpace(app, ctx, str(b.space_id, 'Bereich', { required: true, max: 40 }), 'edit');
       const raw = await ai(ctx, {
-        system: `${SYSTEM(app.location(ctx.locationId)?.name ?? 'HyperLevel')} Du schreibst eine neue Wiki-Seite zu der Aufgabe des Nutzers (Titel und Text getrennt ausgeben).`,
+        system: `${SYSTEM(app.location(ctx.locationId)?.name ?? 'Neso CRM')} Du schreibst eine neue Wiki-Seite zu der Aufgabe des Nutzers (Titel und Text getrennt ausgeben).`,
         user: `Schreibe eine Wiki-Seite zu dieser Aufgabe:\n<auftrag>\n${prompt}\n</auftrag>`,
         schema: CREATE_SCHEMA,
         maxTokens: 4000,

@@ -110,7 +110,7 @@ export function LogoSet({ v, fb, set, client }: { v: Branding; fb: Partial<Brand
 /** Live mock of the sidebar (full and narrow) with the logos and the name as they will appear. */
 export function LogoPreview({ shown }: { shown: Branding }) {
   const tt = useT('x_misc');
-  const name = shown.name || 'HyperLevel';
+  const name = shown.name || 'Neso CRM';
   const wide = shown.logo_dark_url || shown.logo_url;
   const mark = shown.mark_dark_url || shown.mark_url;
   // No logo yet: the HyperLevel icon, as in the real sidebar (never an initial).

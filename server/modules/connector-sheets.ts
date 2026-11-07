@@ -196,7 +196,7 @@ export const connectorSheetsModule: Module = {
         idOut = sheetId;
         url = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
       } else {
-        const created = await sheets(loc, 'POST', SHEETS, { properties: { title: `${app.location(loc)?.name ?? 'HyperLevel'} – ${tab}` }, sheets: [{ properties: { title: tab } }] });
+        const created = await sheets(loc, 'POST', SHEETS, { properties: { title: `${app.location(loc)?.name ?? 'Neso CRM'} – ${tab}` }, sheets: [{ properties: { title: tab } }] });
         idOut = String(created?.spreadsheetId ?? '');
         if (!idOut) throw new HttpError(502, 'Google hat keine Tabelle angelegt.');
         url = String(created?.spreadsheetUrl ?? `https://docs.google.com/spreadsheets/d/${idOut}/edit`);

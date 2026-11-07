@@ -105,7 +105,7 @@ export default {
   'Text unter dem Code': 'Text below the code',
   'Druckblatt drucken': 'Print the sheet',
   // referrals.tsx – "Konto anlegen ↗" next to provider key fields
-  'Über diesen Link unterstützt du die Entwicklung von HyperLevel – für dich ändert sich nichts.': 'Using this link supports the development of HyperLevel – nothing changes for you.',
+  'Über diesen Link unterstützt du die Entwicklung von HyperLevel – für dich ändert sich nichts.': 'Using this link supports the development of Neso CRM – nothing changes for you.',
   'Partner-Link des Betreibers dieser Installation – für dich ändert sich nichts.': 'Partner link of the operator of this installation – nothing changes for you.',
   'Partner-Link: {hint}': 'Partner link: {hint}',
   'Partner-Link': 'Partner link',

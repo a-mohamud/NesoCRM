@@ -251,7 +251,7 @@ export default {
   'Geöffnet: {v}': 'Opened: {v}',
   'Hier ist gerade nichts.': 'Nothing here right now.',
   'Hinweis: Das gewählte Modell kann keine Bilder sehen.': 'Note: the selected model can\'t see images.',
-  'HyperLevel Agent': 'HyperLevel Agent',
+  'HyperLevel Agent': 'Neso Agent',
   'Ich habe nichts verstanden – bitte noch einmal sprechen.': 'I didn\'t catch that – please say it again.',
   'Im Verlauf suchen': 'Search history',
   'In „Meine Meldungen“ ansehen': 'View in “My reports”',

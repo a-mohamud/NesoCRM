@@ -87,7 +87,7 @@ export const boardsComposeModule: Module = {
       const tz = app.location(ctx.locationId)?.timezone || 'Europe/Berlin';
       const state = stateOf(board);
       const context = await viewerContext(ctx);
-      const system = SYSTEM.replace('{brand}', String(app.services.brandName?.() ?? 'HyperLevel'));
+      const system = SYSTEM.replace('{brand}', String(app.services.brandName?.() ?? 'Neso CRM'));
       const today = `${ymdInTz(new Date(), tz)}, ${week(new Date())}`;
       const base = { today, tz, person: ctx.user?.name ?? 'Unbekannt', catalogue: reg.catalogue(), context, state, version: board.head, reg, request };
       let previous: string | undefined;

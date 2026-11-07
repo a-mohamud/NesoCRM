@@ -46,7 +46,7 @@ export function UmzugAssistent({ embedded }: { embedded?: boolean }) {
   const session = useSession();
   const [target, setTarget] = useState(session.locationId);
   const targetName = session.locations.find((l) => l.id === target)?.name ?? '';
-  const brand = session.branding?.name || 'HyperLevel';
+  const brand = session.branding?.name || 'Neso CRM';
   return (
     <div className="um-page" data-tour="um-page">
       {embedded ? (

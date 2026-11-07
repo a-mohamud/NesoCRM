@@ -411,7 +411,7 @@ export const aiSubscriptionsModule: Module = {
       if (recent >= 12) throw new HttpError(429, 'Zu viele Anmeldeversuche – bitte in einer Stunde noch einmal.');
       let url: string;
       try {
-        url = await buildAuthorizeUrl(http(), { clientId: prev?.client_id || undefined, hostId: hostId(), appName: String(app.services.brandName?.() ?? 'HyperLevel'), pkce, loginHint: prev?.email || undefined, reconsent: prev?.status === 'plan_disabled' });
+        url = await buildAuthorizeUrl(http(), { clientId: prev?.client_id || undefined, hostId: hostId(), appName: String(app.services.brandName?.() ?? 'Neso CRM'), pkce, loginHint: prev?.email || undefined, reconsent: prev?.status === 'plan_disabled' });
       } catch (e) {
         return wrap(e);
       }

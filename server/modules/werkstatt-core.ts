@@ -224,7 +224,7 @@ export const werkstattCoreModule: Module = {
       } else db.run('UPDATE plugin_installs SET enabled = 0, updated_at = ? WHERE plugin_id = ?', now(), p.id);
       db.run(`UPDATE plugins SET status = 'in_core', core_status = 'shipped', core_version = ?, updated_at = ? WHERE id = ?`, version, now(), p.id);
       set(r.id, { status: 'shipped', shipped_version: version, core_action: action });
-      if (people.length) void Promise.resolve(app.services.pushNotify?.({ userIds: people, kind: 'plugin', title: `„${p.name}“ ist jetzt ${NAMES.inCore}`, body: `Ab Version ${version} gehört die Funktion fest zu ${app.services.brandName?.() ?? 'HyperLevel'}.${action === 'migrate' ? ' Das Plugin ist abgeschaltet, die Daten bleiben erhalten.' : ''}`, url: '/app/marktplatz', tag: `plugin-core-${p.id}` })).catch(() => {});
+      if (people.length) void Promise.resolve(app.services.pushNotify?.({ userIds: people, kind: 'plugin', title: `„${p.name}“ ist jetzt ${NAMES.inCore}`, body: `Ab Version ${version} gehört die Funktion fest zu ${app.services.brandName?.() ?? 'Neso CRM'}.${action === 'migrate' ? ' Das Plugin ist abgeschaltet, die Daten bleiben erhalten.' : ''}`, url: '/app/marktplatz', tag: `plugin-core-${p.id}` })).catch(() => {});
     };
     router.post('/api/werkstatt/core/:id/ship', 'admin', (ctx) => {
       const r = get(ctx.params.id);

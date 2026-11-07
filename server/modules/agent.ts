@@ -221,7 +221,7 @@ export const agentModule: Module = {
       return s;
     };
     const tzOf = (locId: string) => app.location(locId)?.timezone || 'Europe/Berlin';
-    const brand = () => (app.services.brandName?.() as string | undefined) ?? 'HyperLevel';
+    const brand = () => (app.services.brandName?.() as string | undefined) ?? 'Neso CRM';
 
     // --- model (BYOK registry, modules/ai-connections.ts) ----------------------------------------------------
     /** The text connection for a run: the agent's own → routing "agent" → … (see aiConnections.resolve). */

@@ -66,7 +66,7 @@ export const wikiPublicModule: Module = {
   name: 'wiki-public',
   register(app) {
     const { db, router } = app;
-    const brand = () => String(app.services.brandName?.() ?? 'HyperLevel');
+    const brand = () => String(app.services.brandName?.() ?? 'Neso CRM');
 
     /** The share and its page for a token (revoked, unknown or trashed → undefined). */
     const shared = (tok: string) => {

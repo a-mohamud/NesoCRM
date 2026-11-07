@@ -630,7 +630,7 @@ export const reportsModule: Module = {
       }
       // The period the schedule reports on (fixed-range widgets keep theirs, e.g. "open invoices").
       const period = s.report_id ? (widgets[0]?.result?.range ?? resolveRange(range, tzOf(app, s.location_id)).current) : resolveRange(range, tzOf(app, s.location_id)).current;
-      const brand = effectiveBranding(app, s.location_id).name || 'HyperLevel';
+      const brand = effectiveBranding(app, s.location_id).name || 'Neso CRM';
       const mail = renderReportEmail({ title, rangeLabel: `${period.label} · ${period.dates}`, link, brand, widgets });
       return { subject: s.subject || `${title} – ${period.label}`, ...mail };
     };

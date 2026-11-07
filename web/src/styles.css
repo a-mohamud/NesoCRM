@@ -1,12 +1,12 @@
 :root {
-  --bg: #f4f6fa;
+  --bg: #f5f6f8;
   --panel: #ffffff;
-  --text: #111827;
-  --muted: #5d6677;
-  --line: #e5e7eb;
-  --brand: #2563eb;
+  --text: #101828;
+  --muted: #5b6474;
+  --line: #e4e7ec;
+  --brand: #0a6cf0;
   --brand-soft: #eff6ff;
-  --side: #0f172a;
+  --side: #0a1020;
   --side-text: #cbd5e1;
   /* status colours as text (≥ 4.5:1 – theme/css.ts makes them readable on every theme); the -fill ones carry white text */
   --green: #047857;

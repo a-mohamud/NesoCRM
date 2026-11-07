@@ -13,7 +13,7 @@ const plain = (s: string, brand: string) => s.replace(/\{brand\}/g, brand).repla
 
 export const lessonHeading = (n: number, title: string) => `Lektion ${n}: ${title}`;
 
-export function companyCourseMarkdown(brand = 'HyperLevel'): string {
+export function companyCourseMarkdown(brand = 'Neso CRM'): string {
   const minutes = COMPANY_TOURS.reduce((s, t) => s + t.minutes, 0);
   const out: string[] = [
     `# Kurs: Deine Firma mit ${brand} führen`, // i18n-ignore – generates docs/kurs-firma-fuehren.md (German), not shown in the app

@@ -172,7 +172,7 @@ export interface Target {
 }
 
 export const homeId = (cfg: TodoistConfig, st: TodoistState) => cfg.home_project_id || st.parent_project_id || null;
-export const homeName = (cfg: TodoistConfig) => cfg.home_project_name || cfg.parent_name || 'HyperLevel';
+export const homeName = (cfg: TodoistConfig) => cfg.home_project_name || cfg.parent_name || 'Neso CRM';
 
 export function targets(app: App, cfg = getConfig(app), state = getState(app)): Target[] {
   const rows = new Map(app.db.all('SELECT * FROM todoist_projects').map((r) => [r.location_id, r]));

@@ -78,7 +78,7 @@ export async function tell(app: App, t: Tell): Promise<void> {
   const loc = app.location(supportLoc && app.location(supportLoc) ? supportLoc : (t.locationId ?? ''));
   if (!loc) return;
   const send = (app.services.feedbackMailer as typeof deliverEmail | undefined) ?? deliverEmail;
-  const brand = getBranding(app).name || 'HyperLevel';
+  const brand = getBranding(app).name || 'Neso CRM';
   const base = app.baseUrl();
   for (const u of ids) {
     const user = db.get<{ name: string; email: string }>('SELECT name, email FROM users WHERE id = ?', u);

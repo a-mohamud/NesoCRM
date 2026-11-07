@@ -204,7 +204,7 @@ export default {
   'Payments API: iDEAL, SEPA-Überweisung, Karten, Klarna, Bancontact … – beliebt in DACH und den Niederlanden. Den API-Schlüssel (test_… oder live_…) findest du im Mollie-Dashboard unter Entwickler.': 'Payments API: iDEAL, SEPA bank transfer, cards, Klarna, Bancontact … – popular in the DACH region and the Netherlands. The API key (test_… or live_…) is in the Mollie dashboard under Developers.',
   'API-Schlüssel': 'API key',
   'Zahlungsarten (keine gewählt = alle, die im Mollie-Dashboard aktiv sind)': 'Payment methods (none chosen = all that are active in the Mollie dashboard)',
-  'Mollie meldet Zahlungen an {url} – die Adresse schickt HyperLevel bei jeder Zahlung mit, du musst sie nicht eintragen.': 'Mollie reports payments to {url} – HyperLevel sends the address with every payment, there is nothing to enter.',
+  'Mollie meldet Zahlungen an {url} – die Adresse schickt HyperLevel bei jeder Zahlung mit, du musst sie nicht eintragen.': 'Mollie reports payments to {url} – Neso CRM sends the address with every payment, there is nothing to enter.',
   'Mollie trennen? Der API-Schlüssel wird gelöscht.': 'Disconnect Mollie? The API key is deleted.',
   'Weitere Zahlungsanbieter': 'More payment providers',
   'Rechnungen, Kauf-Links, Terminbuchungen und der Online-Shop bieten jeden verbundenen Anbieter an. Gutscheine lassen sich auf der Bezahlseite einlösen.': 'Invoices, buy links, bookings and the online store offer every connected provider. Gift cards can be redeemed on the pay page.',

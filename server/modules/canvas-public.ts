@@ -74,7 +74,7 @@ export const canvasPublicModule: Module = {
   name: 'canvas-public',
   register(app) {
     const { db, router } = app;
-    const brand = () => String(app.services.brandName?.() ?? 'HyperLevel');
+    const brand = () => String(app.services.brandName?.() ?? 'Neso CRM');
 
     /** The share and its board for a token (revoked or unknown → undefined). */
     const shared = (tok: string) => {

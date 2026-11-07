@@ -634,7 +634,7 @@ export const mcpModule: Module = {
               result = {
                 protocolVersion: PROTOCOL_VERSIONS.includes(wanted) ? wanted : PROTOCOL_VERSIONS[0],
                 capabilities: { tools: { listChanged: false } },
-                serverInfo: { name: 'gohigh', title: app.services.brandName?.() ?? 'HyperLevel', version: APP_VERSION },
+                serverInfo: { name: 'gohigh', title: app.services.brandName?.() ?? 'Neso CRM', version: APP_VERSION },
                 instructions: c.agency
                   ? 'Agentur-CRM: Jedes Projekt ist ein Sub-Account (location_id). Starte mit ghl_list_projects. Schreibende Tools wirken sofort und landen im Protokoll. Social-Posts standardmäßig als Entwurf anlegen; ghl_send_message verschickt echt.'
                   : `CRM eines einzelnen Sub-Accounts (location_id ${c.locationId}) – andere Sub-Accounts sind mit dieser Verbindung nicht erreichbar. Starte mit ghl_list_projects. Schreibende Tools wirken sofort und landen im Protokoll. Social-Posts standardmäßig als Entwurf anlegen; ghl_send_message verschickt echt.`,

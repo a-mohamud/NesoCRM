@@ -104,7 +104,7 @@ export const cloudWaitlistModule: Module = {
     if (!cloudEnabled(app) && !landingEnabled()) return;
     const { db, router } = app;
     const enabled = () => cloudWaitlist(app);
-    const brand = () => getBranding(app).name || 'HyperLevel';
+    const brand = () => getBranding(app).name || 'Neso CRM';
 
     // --- time token and throttles ----------------------------------------------------------------------------------------
     const mac = (ts: string) => createHmac('sha256', app.config.secret).update(`${MAC_LABEL}:${ts}`).digest('hex').slice(0, 32);

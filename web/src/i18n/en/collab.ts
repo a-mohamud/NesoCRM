@@ -377,7 +377,7 @@ export default {
   '{n} Antworten': { one: '{n} reply', other: '{n} replies' },
   'Aufgabe anlegen – „… morgen @Person“': 'Create a task – “… tomorrow @person”',
   'Kontakt als Karte teilen': 'Share a contact as a card',
-  'HyperLevel Agent fragen': 'Ask the HyperLevel agent',
+  'HyperLevel Agent fragen': 'Ask the Neso CRM agent',
   'Höchstens 10 Dateien je Nachricht.': 'At most 10 files per message.',
   'Der Agent antwortet gleich im Kanal.': 'The agent will reply in the channel shortly.',
   'Du liest mit. Tritt dem Kanal bei, um zu schreiben und Benachrichtigungen zu bekommen.': 'You are reading along. Join the channel to write and get notifications.',

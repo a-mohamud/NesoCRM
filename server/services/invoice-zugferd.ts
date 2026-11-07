@@ -51,7 +51,7 @@ export function zugferdOf(app: App, inv: Inv, profile: FxProfile = 'en16931'): Z
     profile,
     meta: {
       title,
-      author: doc.seller.name || 'HyperLevel',
+      author: doc.seller.name || 'Neso CRM',
       subject: `${title} an ${doc.buyer.company || doc.buyer.name || 'Kunde'}`,
       creator: 'HyperLevel Rechnungen',
       producer: `HyperLevel (ZUGFeRD 2.3 / Factur-X 1.07, ${fx.conformance})`,

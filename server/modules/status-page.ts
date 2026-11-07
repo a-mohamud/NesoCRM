@@ -91,7 +91,7 @@ export const statusPageModule: Module = {
     router.get('/status', 'public', () => {
       if (!enabled(app)) throw notFound();
       const v = view();
-      const page = renderStatusPage({ brand: getBranding(app).name || 'HyperLevel', now: Date.now(), ...v, abuseUrl: app.config.cloudMode ? '/abuse' : undefined });
+      const page = renderStatusPage({ brand: getBranding(app).name || 'Neso CRM', now: Date.now(), ...v, abuseUrl: app.config.cloudMode ? '/abuse' : undefined });
       const r = html(page);
       r.headers['cache-control'] = 'no-store';
       r.headers['content-security-policy'] = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";

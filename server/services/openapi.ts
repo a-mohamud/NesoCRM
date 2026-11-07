@@ -474,7 +474,7 @@ function example(baseUrl: string, method: string, path: string, op: any, spec: a
   return `curl -X ${method.toUpperCase()} "${url}"${auth}${data}`;
 }
 
-export function renderDocsHtml(spec: ReturnType<typeof buildOpenApi>, brand = 'HyperLevel'): string {
+export function renderDocsHtml(spec: ReturnType<typeof buildOpenApi>, brand = 'Neso CRM'): string {
   const base = spec.servers[0].url;
   const byTag = new Map<string, { method: string; path: string; op: any }[]>();
   for (const [path, ops] of Object.entries(spec.paths)) for (const [method, op] of Object.entries<any>(ops)) (byTag.get(op.tags[0]) ?? byTag.set(op.tags[0], []).get(op.tags[0])!).push({ method, path, op });

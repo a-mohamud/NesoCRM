@@ -46,7 +46,7 @@ export interface PushInfo {
 
 /** The document the apps read (Android, iOS, desktop): name, images, colours, where the API is, how push works. */
 export function appConfig(b: BrandInput, base: string, push: PushInfo, iconKey = '') {
-  const name = String(b.name ?? '').trim().slice(0, 60) || 'HyperLevel';
+  const name = String(b.name ?? '').trim().slice(0, 60) || 'Neso CRM';
   const primary = HEX.test(b.color ?? '') ? String(b.color).toLowerCase() : '#2563eb';
   const v = iconKey ? `?v=${iconKey}` : '';
   return {

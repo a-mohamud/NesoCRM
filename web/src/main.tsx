@@ -2,6 +2,7 @@ import { Suspense, useEffect, useMemo, useState, type ComponentType, type ReactN
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './theme/theme.css';
+import './neso.css';
 import { api, currentLocation, name, setLocation } from './api';
 import { BASE, ConfirmHost, Toasts, navigate, useFocusLayer, useRoute } from './ui';
 // UI language (docs/translating.md): German texts are the message ids; the English catalogs are chunks of their own.

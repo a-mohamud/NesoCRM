@@ -250,7 +250,7 @@ export const PHASE_LABEL: Record<Phase, string> = { trial: 'Testphase', active: 
 
 // --- links and mails ------------------------------------------------------------------------------------------------
 
-export const cloudBrand = (app: App) => getBranding(app).name || 'HyperLevel';
+export const cloudBrand = (app: App) => getBranding(app).name || 'Neso CRM';
 export const cloudSupport = (app: App) => cloudSettings(app).support_email || getBranding(app).support_email || cloudSettings(app).operator.email || '';
 export const appLink = (app: App, path = '') => `${app.baseUrl()}${path}`;
 export const billingLink = (app: App) => appLink(app, '/app/settings/cloud');

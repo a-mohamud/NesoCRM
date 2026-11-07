@@ -139,7 +139,7 @@ export const mcpOAuthModule: Module = {
       const host = String(ctx.req.headers.host ?? '').toLowerCase();
       return origins().find((o) => new URL(o).host === host) ?? app.baseUrl();
     };
-    const brandName = () => getBranding(app).name || 'HyperLevel';
+    const brandName = () => getBranding(app).name || 'Neso CRM';
     app.services.brandName = brandName;
     /** `resource` (RFC 8707) must name our MCP endpoint on one of our hosts. */
     const resourceOk = (ctx: Ctx, r: unknown) => {

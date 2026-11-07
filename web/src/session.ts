@@ -42,7 +42,7 @@ export function can(s: Pick<Session, 'user'> & { saas?: Session['saas']; hr?: Se
   return s.user.role === 'admin' || !s.user.permissions || s.user.permissions.includes(perm);
 }
 
-export const DEFAULT_BRANDING: Branding = { name: 'HyperLevel', logo_url: '', logo_dark_url: '', mark_url: '', mark_dark_url: '', show_name: '', favicon_url: '', color: '#2563eb', login_title: '', login_text: '', support_email: '' };
+export const DEFAULT_BRANDING: Branding = { name: 'Neso CRM', logo_url: '', logo_dark_url: '', mark_url: '', mark_dark_url: '', show_name: '', favicon_url: '', color: '#0a6cf0', login_title: '', login_text: '', support_email: '' };
 
 /** Puts the agency's name, colour and icon on the page. */
 export function applyBranding(b: Branding) {

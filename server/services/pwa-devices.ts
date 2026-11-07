@@ -3,7 +3,7 @@
  * (scripts/vite-ios-head.ts) pulls this file into vite.config.ts, the server draws the pictures (pwa-ios.ts).
  */
 
-export const DEFAULT_NAME = 'HyperLevel';
+export const DEFAULT_NAME = 'Neso CRM';
 export type Scheme = 'light' | 'dark';
 export const SCHEMES: Scheme[] = ['light', 'dark'];
 /** Launch image background = the app's own page background, so launch → app has no flash. */

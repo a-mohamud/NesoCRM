@@ -62,7 +62,7 @@ function SetupGuide({ mcpUrl, apiKey, agency, tour }: { mcpUrl: string; apiKey?:
   const [tab, setTab] = useState('codex');
   const key = apiKey || tt(KEY_PLACEHOLDER);
   const loc = session.locations.find((l) => l.id === session.locationId);
-  const brand = session.branding.name || 'HyperLevel';
+  const brand = session.branding.name || 'Neso CRM';
   return (
     <div data-tour={tour ? 'ai-tools-setup' : undefined}>
       <Tabs
@@ -210,7 +210,7 @@ export function AiTools({ agency = false }: { agency?: boolean }) {
   if (!data.data) return data.error ? <Empty>{data.error}</Empty> : <Spinner />;
   const d = data.data;
   const loc = session.locations.find((l) => l.id === session.locationId);
-  const brand = session.branding.name || 'HyperLevel';
+  const brand = session.branding.name || 'Neso CRM';
   return (
     <div className="ai-tools">
       <div className="card ai-tools-intro" data-tour="ai-tools-intro">

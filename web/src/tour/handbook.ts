@@ -158,7 +158,7 @@ function chapter(raw: Tour, brand: string): string {
   return out.join('\n');
 }
 
-export function handbookMarkdown(brand = 'HyperLevel'): string {
+export function handbookMarkdown(brand = 'Neso CRM'): string {
   const tb = tr('x_tours_b');
   const minutes = JOURNEY.reduce((s, t) => s + t.minutes, 0);
   const out: string[] = [

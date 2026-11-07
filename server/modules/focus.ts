@@ -139,7 +139,7 @@ export const focusModule: Module = {
           const tz = app.location(ctx.locationId)?.timezone || 'Europe/Berlin';
           const types = focusTypes(reg);
           const prompt = focusPrompt({ today: ymdInTz(new Date(), tz), tz, person: ctx.user?.name ?? 'Unbekannt', lang: input.lang, catalogue: types.map((d) => reg.describe(d)), context: await viewerContext(ctx), history: input.history, request: input.text });
-          const system = FOCUS_SYSTEM.replace('{brand}', String(app.services.brandName?.() ?? 'HyperLevel')).replace('{lang}', input.lang === 'en' ? 'Englisch' : 'Deutsch');
+          const system = FOCUS_SYSTEM.replace('{brand}', String(app.services.brandName?.() ?? 'Neso CRM')).replace('{lang}', input.lang === 'en' ? 'Englisch' : 'Deutsch');
           const r = await app.services.aiRun({ locationId: ctx.locationId, purpose: 'focus', user: prompt, system: [{ text: system }], schema: focusSchema(types.map((d) => d.type)), maxTokens: 1500, timeoutMs: 45_000, userId: ctx.user?.id ?? null });
           const a = parseFocusAnswer(String(r?.text ?? ''));
           const checked = a ? validateTiles(a.tiles, reg, env, input.text, { fromModel: true }).tiles : [];

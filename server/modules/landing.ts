@@ -170,7 +170,7 @@ export const landingModule: Module = {
 
     const brand = () => {
       const n = getBranding(app).name;
-      return n && n !== 'HyperLevel' ? n : PRODUCT;
+      return n && n !== 'Neso CRM' ? n : PRODUCT;
     };
     const prices = () => {
       const s = cloudEnabled(app) ? cloudSettings(app) : defaultSettings({});

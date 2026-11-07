@@ -96,7 +96,7 @@ export function TodoistSync() {
   };
   const counts = st.counts ? COUNT_LABELS.filter(([k]) => st.counts[k]).map(([k, l]) => `${st.counts[k]} ${tt(l)}`) : [];
   const homeOptions: [string, string][] = [
-    ['', tt('Automatisch: „{name}“', { name: v.parent_name || 'HyperLevel' })],
+    ['', tt('Automatisch: „{name}“', { name: v.parent_name || 'Neso CRM' })],
     ...(projects ?? (v.home.picked ? [{ id: v.home.id, name: v.home.name }] : [])).map((p: Pick) => [p.id, p.inbox ? tt('{name} (Eingang)', { name: p.name }) : p.name] as [string, string]),
     ...(projects ? [] : [[LOAD, tt('Vorhandenes Projekt wählen …')] as [string, string]]),
   ];
@@ -177,7 +177,7 @@ export function TodoistSync() {
             )}
             {bySections && !v.home.picked && (
               <Field label={tt('Projektname')} hint={v.home.id ? tt('Ein neuer Name benennt das Projekt in Todoist um') : undefined}>
-                <Input value={parent ?? v.parent_name} onChange={setParent} onBlur={async () => parent !== null && parent !== v.parent_name && (await save({ parent_name: parent || 'HyperLevel' })) && setParent(null)} placeholder="HyperLevel" />
+                <Input value={parent ?? v.parent_name} onChange={setParent} onBlur={async () => parent !== null && parent !== v.parent_name && (await save({ parent_name: parent || 'Neso CRM' })) && setParent(null)} placeholder="HyperLevel" />
               </Field>
             )}
             {bySections && (

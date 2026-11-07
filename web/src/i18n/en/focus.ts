@@ -32,7 +32,7 @@ export default {
   '„{question}“': '“{question}”',
   Vorlesen: 'Read aloud',
   'Vorlesen anhalten': 'Stop reading',
-  'Das ist eine Aufgabe – Fokus zeigt nur an und ändert nichts. Der HyperLevel Agent kann sie für dich erledigen.': 'That is a task – Focus only shows things and never changes anything. The HyperLevel Agent can do it for you.',
+  'Das ist eine Aufgabe – Fokus zeigt nur an und ändert nichts. Der HyperLevel Agent kann sie für dich erledigen.': 'That is a task – Focus only shows things and never changes anything. The Neso Agent can do it for you.',
   'Im Agent fortsetzen': 'Continue in Agent',
   'Von der KI zusammengestellt': 'Put together by AI',
   'Nach festen Regeln zusammengestellt': 'Put together by fixed rules',
