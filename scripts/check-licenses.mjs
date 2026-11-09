@@ -25,7 +25,9 @@ const args = new Set(process.argv.slice(2));
 /** Packages the browser bundle includes although package.json lists them as devDependencies. */
 export const WEB_BUNDLED = ['react', 'react-dom', 'lucide-react'];
 
-const PERMISSIVE = new Set(['MIT', 'MIT-0', 'ISC', 'BSD-2-Clause', 'BSD-3-Clause', '0BSD', 'Apache-2.0', 'CC0-1.0', 'Unlicense', 'BlueOak-1.0.0', 'Python-2.0', 'Zlib', 'CC-BY-3.0', 'CC-BY-4.0', 'WTFPL']);
+const PERMISSIVE = new Set(['MIT', 'MIT-0', 'ISC', 'BSD-2-Clause', 'BSD-3-Clause', '0BSD', 'Apache-2.0', 'CC0-1.0', 'Unlicense', 'BlueOak-1.0.0', 'Python-2.0', 'Zlib', 'CC-BY-3.0', 'CC-BY-4.0', 'WTFPL',
+  // Neso fork: the Inter typeface (SIL Open Font License) – fonts under OFL may be bundled with software of any licence.
+  'OFL-1.1']);
 const WEAK_COPYLEFT = new Set(['MPL-2.0', 'LGPL-2.1-or-later', 'LGPL-3.0-only', 'LGPL-3.0-or-later', 'EPL-2.0', 'EUPL-1.2', 'EUPL-1.1+']);
 const STRONG_COMPATIBLE = new Set(['GPL-3.0-only', 'GPL-3.0-or-later', 'GPL-2.0-or-later', 'AGPL-3.0-only', 'AGPL-3.0-or-later']);
 const INCOMPATIBLE = [/^GPL-2\.0(-only)?$/, /SSPL/i, /BUSL/i, /Commons-Clause/i, /NC/, /^JSON$/, /UNLICENSED/i, /proprietary/i, /Elastic/i];
