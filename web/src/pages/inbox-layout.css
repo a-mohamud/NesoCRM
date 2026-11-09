@@ -1,0 +1,80 @@
+/*
+ * Neso fork – Conversations layout (loaded by pages/Conversations.tsx, after styles.css, teamtools.css and ios.css).
+ * The message history always keeps most of the height and is the only thing that scrolls: the header, the team bar
+ * and the composer stay compact and in place (chat pattern), on desktop and on phones.
+ */
+
+/* ---------- every width ---------- */
+/* the inbox fills the window below the page header (no page scroll on top of the pane scrolls) */
+.main:has(> .content > .inbox) > .content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding-bottom: 16px; }
+.main:has(> .content > .inbox) > .content > .inbox { flex: 1 1 auto; height: auto; min-height: 460px; }
+.inbox { min-height: 460px; }
+.inbox .thread { min-height: 0; overflow: hidden; }
+.inbox .thread > :not(.msgs) { flex-shrink: 0; }
+.inbox .msgs {
+  flex: 1 1 0;
+  min-height: 160px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+/* long links and unbroken text wrap inside the bubble instead of widening it */
+.inbox .msgs .bubble { overflow-wrap: anywhere; }
+
+/* thread header: one row; actions scroll sideways instead of wrapping into a second and third row */
+.inbox .thread > .row:first-child { flex-wrap: nowrap; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.inbox .thread > .row:first-child::-webkit-scrollbar { display: none; }
+.inbox .thread > .row:first-child > * { flex: none; }
+.inbox .thread > .row:first-child > .grow { flex: 1 1 160px; min-width: 120px; }
+.inbox .thread > .row:first-child > .grow .muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* team bar (owner, status, snooze, priority): one compact row that scrolls sideways */
+.inbox .thread .tx-bar { flex-wrap: nowrap; overflow-x: auto; gap: 8px 12px; padding: 6px 14px; scrollbar-width: thin; }
+.inbox .thread .tx-bar > * { flex: none; }
+@media (pointer: fine) {
+  .inbox .thread .tx-bar select, .inbox .thread .tx-bar .btn { min-height: 32px; padding-top: 4px; padding-bottom: 4px; }
+}
+
+/* composer: starts small and grows with the text, never takes over the conversation */
+.inbox .thread .composer { max-height: 46%; overflow-y: auto; padding: 8px 10px; gap: 6px; }
+.inbox .thread .composer textarea { min-height: 64px; height: 64px; max-height: 32vh; field-sizing: content; resize: none; }
+.inbox .thread .composer textarea:focus { min-height: 96px; }
+
+/* ---------- phones: the open conversation is a full-height chat screen ---------- */
+@media (max-width: 719.98px) {
+  :root .inbox.has-sel {
+    position: fixed;
+    inset: 0 0 var(--tabbar-h) 0;
+    z-index: 25;
+    height: auto;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  html[data-keyboard='open'] .inbox.has-sel { inset: 0 0 auto 0; height: var(--vv-h, 100dvh); }
+  :root .inbox.has-sel .thread { overflow: hidden; height: 100%; }
+  :root .inbox.has-sel .thread > * { flex-shrink: 0; }
+  :root .inbox.has-sel .msgs { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 12px; }
+  :root .inbox .thread > .row:first-child { position: static; padding: 8px 12px !important; }
+  :root .inbox.has-sel .thread .composer { max-height: 42%; }
+  :root .inbox.has-sel .thread .composer textarea { min-height: 44px; height: 44px; font-size: 16px; }
+  :root .inbox.has-sel .thread .composer textarea:focus { min-height: 72px; }
+}
+
+/* ---------- compact until you start writing ---------- */
+/* An empty composer that is not in use shows only the message box and Send; channel tabs, template and subject appear
+   as soon as you click into it or start a draft (the box keeps its place at the bottom, so nothing jumps under a tap). */
+.inbox .thread .composer:not(:focus-within):has(textarea:placeholder-shown) > input,
+.inbox .thread .composer:not(:focus-within):has(textarea:placeholder-shown) > .row:first-child { display: none; }
+.inbox .thread .tx-notebar { padding-top: 6px; padding-bottom: 6px; }
+@media (max-width: 719.98px) {
+  :root .inbox.has-sel .thread .composer:not(:focus-within):has(textarea:placeholder-shown) > .row:first-child { display: none; }
+  :root .inbox.has-sel .thread .composer > .row:last-child { margin-top: -2px; }
+  :root .inbox.has-sel .tx-notebar { padding: 4px 12px; }
+  :root .inbox.has-sel .tx-addnote { padding-top: 6px; padding-bottom: 6px; }
+  :root .inbox.has-sel .tx-addnote .muted { display: none; }
+  :root .inbox.has-sel .tx-bar { padding: 4px 12px; }
+  :root .inbox.has-sel .tx-bar .tx-field > label { display: none; }
+}

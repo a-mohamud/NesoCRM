@@ -18,6 +18,7 @@ import { MailBadges, MailMessageExtras, MailThreadPanel, MailboxBar } from './Ma
 import { publishSelection } from '../xr/selection';
 import { DRAFT_CHANNELS, DraftBubbleActions, pendingDraft } from './MsgDrafts';
 import { Slot } from '../slots';
+import './inbox-layout.css';
 import { BulkBar, CollisionBanner, type FeedItem, NoteComposer, RowMeta, ShortcutHelp, ThreadBar, TimelineEntry, ViewRail, initialView, mergeFeed, rememberView, useInboxShortcuts, useTeamInbox } from './TeamInboxKit';
 
 const { TeamInboxModal } = lazyPages(() => import('./TeamInboxSettings'), 'TeamInboxModal');
@@ -76,6 +77,23 @@ export function Conversations({ initial }: { initial?: string }) {
     // Narrow windows scroll the whole conversation (web/src/ios/ios.css): start at the newest message and the composer.
     const pane = box.current.parentElement;
     if (pane && getComputedStyle(box.current).overflowY === 'visible' && pane.scrollHeight > pane.clientHeight) pane.scrollTop = pane.scrollHeight;
+  }, [thread.data]);
+  // Neso fork: keep the newest message in view while the pane changes size (composer opens, images load, the
+  // keyboard appears) – unless you have scrolled up to read older messages.
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let pinned = true;
+    const onScroll = () => (pinned = el.scrollHeight - el.clientHeight - el.scrollTop < 48);
+    const keep = () => {
+      if (pinned) el.scrollTop = el.scrollHeight;
+    };
+    const ro = new ResizeObserver(keep);
+    ro.observe(el);
+    for (const c of Array.from(el.children)) ro.observe(c);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    keep();
+    return () => (ro.disconnect(), el.removeEventListener('scroll', onScroll));
   }, [thread.data]);
   // Poll for new inbound messages.
   useEffect(() => {
