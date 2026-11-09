@@ -112,7 +112,8 @@ export function pickLocale(tags: readonly string[] | undefined): Locale {
     const base = String(tag).trim().toLowerCase().split(/[-_]/)[0];
     if (isLocale(base)) return base;
   }
-  return SOURCE_LOCALE;
+  // Neso fork: browsers in neither language (Swahili, Somali …) get English, not the German source.
+  return 'en';
 }
 const browserTags = (): readonly string[] => (typeof navigator === 'undefined' ? [] : navigator.languages?.length ? navigator.languages : [navigator.language]);
 /** What this browser asks for (the same list it sends as Accept-Language). */

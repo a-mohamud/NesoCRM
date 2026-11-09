@@ -15,7 +15,8 @@ import { bad } from '../core/http.js';
 
 export const UI_LOCALES = ['de', 'en'] as const;
 export type UiLocale = (typeof UI_LOCALES)[number];
-const DEFAULT: UiLocale = 'de';
+// Neso fork: English unless the browser asks for German.
+const DEFAULT: UiLocale = 'en';
 const isUiLocale = (v: unknown): v is UiLocale => typeof v === 'string' && (UI_LOCALES as readonly string[]).includes(v);
 
 /** `en-US,en;q=0.9,de;q=0.8` → the supported language with the highest weight (ties: order of the header); German when none. */

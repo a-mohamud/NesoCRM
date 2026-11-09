@@ -99,11 +99,11 @@ describe('the language layer', () => {
     }
   });
 
-  it('picks the first supported language of a list, German when none matches', () => {
+  it('picks the first supported language of a list, English when none matches (Neso fork)', () => {
     expect(pickLocale(['en-US', 'de'])).toBe('en');
     expect(pickLocale(['fr-FR', 'de-AT'])).toBe('de');
-    expect(pickLocale(['fr', 'es'])).toBe('de');
-    expect(pickLocale(undefined)).toBe('de');
+    expect(pickLocale(['fr', 'es'])).toBe('en'); // Neso fork: English when nothing matches
+    expect(pickLocale(undefined)).toBe('en');
   });
 });
 
@@ -118,13 +118,13 @@ describe('the language preference on the server', () => {
   it('reads Accept-Language with weights for the login page', async () => {
     expect(serverPick('en-US,en;q=0.9,de;q=0.8')).toBe('en');
     expect(serverPick('de-CH;q=0.5, en;q=0.8')).toBe('en');
-    expect(serverPick('fr-FR,fr;q=0.9')).toBe('de');
+    expect(serverPick('fr-FR,fr;q=0.9')).toBe('en'); // Neso fork: English when nothing matches
     expect(serverPick('en;q=0, de')).toBe('de');
-    expect(serverPick(undefined)).toBe('de');
+    expect(serverPick(undefined)).toBe('en');
     const r = await (await t.api.raw('/api/language', { headers: { 'accept-language': 'en-GB,en;q=0.9' } })).json();
     expect(r).toEqual({ lang: 'en', locales: ['de', 'en'] });
     const de = await (await t.api.raw('/api/language')).json();
-    expect(de.lang).toBe('de');
+    expect(de.lang).toBe('en'); // Neso fork: no Accept-Language → English
   });
 
   it('keeps each person’s choice on the user and hands it to the app with /api/me', async () => {
