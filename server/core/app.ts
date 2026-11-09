@@ -1,3 +1,4 @@
+import { requestLocale, translator } from '../i18n/index.js';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { performance } from 'node:perf_hooks';
 import type { Duplex } from 'node:stream';
@@ -262,6 +263,11 @@ export function createApp(config: Config, modules: Module[]) {
 const bodylessMethod = (m: string) => m === 'GET' || m === 'HEAD' || m === 'OPTIONS';
 
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
+  // Neso fork: error messages answer in the requester's language (server/i18n).
+  if (body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string') {
+    const t = translator(requestLocale(res.req as IncomingMessage | undefined));
+    body = { ...(body as object), error: t((body as { error: string }).error) };
+  }
   const json = JSON.stringify(body ?? null);
   void sendBody(res, status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers }, json);
 }
@@ -590,6 +596,7 @@ function authenticate(app: App, ctx: Ctx, auth: string) {
     permissions: row.permissions ? JSON.parse(row.permissions) : null,
   };
   ctx.user = user;
+  (ctx.req as IncomingMessage & { __lang?: string }).__lang = row.lang ?? undefined;
   ctx.via = 'session';
   if (auth === 'admin' && user.role !== 'admin') throw new HttpError(403, 'Nur für Admins');
   if (auth === 'location') {

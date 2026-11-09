@@ -134,7 +134,7 @@ export function scanSource(rel, src, { catalogKeys = new Set(), scan = true, onl
   const untranslated = [];
   // Names bound to a translator (const t = useT('x'); const tc = tr('core')).
   const findTranslators = (n) => {
-    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && ts.isCallExpression(n.initializer) && ['useT', 'tr'].includes(calleeName(n.initializer.expression))) translators.add(n.name.text);
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && ts.isCallExpression(n.initializer) && ['useT', 'tr', 'tCtx', 'tLoc', 'tApp', 'tUser', 'translator'].includes(calleeName(n.initializer.expression))) translators.add(n.name.text);
     n.forEachChild(findTranslators);
   };
   findTranslators(sf);
