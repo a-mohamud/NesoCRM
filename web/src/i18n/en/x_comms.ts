@@ -198,7 +198,7 @@ export default {
   'System': 'System',
   'Tags für den Kontakt': 'Tags for the contact',
   'Tags:': 'Tags:',
-  'Team-Posteingang': 'Team inbox',
+  'Team-Posteingang': 'Team Inbox',
   'Termin abgesagt': 'Appointment cancelled',
   'Termin absagen': 'Cancel appointment',
   'Termin verschieben': 'Move appointment',

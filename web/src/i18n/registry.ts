@@ -20,9 +20,10 @@ export interface PluralForms {
 export type Catalog = Record<string, string | PluralForms>;
 
 /** `intl`: the formatting locale when the browser asks for no regional variant of the language. */
+// Neso fork: English first in every language list.
 export const LOCALES = {
-  de: { name: 'Deutsch', intl: 'de-DE' },
   en: { name: 'English', intl: 'en-GB' },
+  de: { name: 'Deutsch', intl: 'de-DE' },
 } as const;
 export type Locale = keyof typeof LOCALES;
 export const SOURCE_LOCALE = 'de' satisfies Locale;

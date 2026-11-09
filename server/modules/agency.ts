@@ -39,7 +39,7 @@ const DEFAULT_BRANDING: Branding = {
   mark_dark_url: '',
   favicon_url: '',
   show_name: '',
-  color: '#0a6cf0',
+  color: '#2563eb',
   login_title: '',
   login_text: '',
   support_email: '',

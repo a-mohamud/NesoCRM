@@ -13,7 +13,7 @@ import { bad } from '../core/http.js';
  * Die Texte selbst liegen in der App (web/src/i18n); der Server antwortet weiter auf Deutsch.
  */
 
-export const UI_LOCALES = ['de', 'en'] as const;
+export const UI_LOCALES = ['en', 'de'] as const;
 export type UiLocale = (typeof UI_LOCALES)[number];
 // Neso fork: English unless the browser asks for German.
 const DEFAULT: UiLocale = 'en';

@@ -31,7 +31,7 @@ const I18N = 'web/src/i18n';
 
 /** Words and names that are the same in every language (brands, protocols, units) – never reported as untranslated. */
 export const ALLOW = new Set([
-  'HyperLevel', 'Neso', 'Neso CRM', 'GoHighLevel', 'GHL', 'HubSpot', 'Claude', 'Codex', 'ChatGPT', 'OpenAI', 'Anthropic', 'Stripe', 'Twilio', 'Google', 'Gmail', 'Outlook',
+  'HyperLevel', 'Neso', 'Neso CRM', 'Neso Standard', 'GoHighLevel', 'GHL', 'HubSpot', 'Claude', 'Codex', 'ChatGPT', 'OpenAI', 'Anthropic', 'Stripe', 'Twilio', 'Google', 'Gmail', 'Outlook',
   'Microsoft', 'Apple', 'GitHub', 'WhatsApp', 'Instagram', 'Messenger', 'Facebook', 'Telegram', 'Discord', 'Slack', 'Zapier', 'Make', 'Postiz',
   'Zoom', 'Google Meet', 'Teams', 'Jitsi', 'Norman', 'Authy', 'Lexware', 'sevDesk', 'DATEV', 'SEPA', 'IBAN', 'BIC', 'ZUGFeRD', 'XRechnung', 'Factur-X', 'GiroCode', 'Brevo', 'Mailgun',
   'Postmark', 'Resend', 'Hostinger', 'Cloudflare', 'ImprovMX', 'Android', 'iPhone', 'iPad', 'iPhone & iPad', 'iOS', 'Mac', 'Windows', 'Linux', 'Chrome', 'Edge', 'Firefox', 'Safari',

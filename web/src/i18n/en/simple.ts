@@ -135,7 +135,7 @@ export default {
   'KI': 'AI',
   'Service': 'Service',
   'Daten, Recht & Schnittstellen': 'Data, legal & integrations',
-  'Konto & Team': 'Account & team',
+  'Konto & Team': 'Account & Team',
   'Sonstiges': 'Other',
   'Suchen …': 'Search …',
   'Nichts gefunden.': 'Nothing found.',

@@ -20,7 +20,7 @@ export default {
   'KI-Assistent': 'AI assistant',
   'KI-Werkzeuge': 'AI tools',
   Service: 'Service',
-  'Team-Posteingang': 'Team inbox',
+  'Team-Posteingang': 'Team Inbox',
   'Felder & Tags': 'Fields & tags',
   'Custom Values': 'Custom values',
   'Einwilligung & Recht': 'Consent & legal',

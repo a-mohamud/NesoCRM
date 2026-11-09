@@ -114,7 +114,7 @@ export default {
   'E-Mail-Zustellung': 'Email deliverability',
   'Dein Absender': 'Your sender',
   'Erneut prüfen': 'Check again',
-  'Team-Posteingang': 'Team inbox',
+  'Team-Posteingang': 'Team Inbox',
   'Mir zuweisen': 'Assign to me',
   'Zurückstellen': 'Snooze',
   'Interne Notiz': 'Internal note',

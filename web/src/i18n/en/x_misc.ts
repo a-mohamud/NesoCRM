@@ -1200,5 +1200,5 @@ export default {
   'Das ist kein gültiges JSON.': 'That isn\'t valid JSON.',
   'Alle {n} ansehen': 'View all {n}',
   'Tastaturkürzel': 'Keyboard shortcuts',
-  'Neso-Blau auf ruhigem, neutralem Grund mit dunkler Seitenleiste – der Standard-Look.': 'Neso blue on a calm neutral ground with an ink sidebar – the default look.',
+  'Klar, blau, dunkle Seitenleiste – der Standard-Look.': 'Clear, blue, dark sidebar – the standard look.',
 } satisfies Catalog;

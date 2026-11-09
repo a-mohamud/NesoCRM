@@ -14,8 +14,7 @@ import { build } from 'vite';
  */
 // Neso fork: +2 KB for the English translation layer and branding (upstream: 160 KB).
 const JS_BUDGET_GZ = 162 * 1024;
-// Neso fork: +4 KB for the Neso skin (web/src/neso.css, upstream: 40 KB).
-const CSS_BUDGET_GZ = 44 * 1024;
+const CSS_BUDGET_GZ = 40 * 1024;
 const ROOT = resolve(__dirname, '..');
 
 type Entry = { file: string; src?: string; isEntry?: boolean; isDynamicEntry?: boolean; imports?: string[]; dynamicImports?: string[]; css?: string[] };
