@@ -375,7 +375,7 @@ export function Composer({ contact, onSent, templates, chat, addon, extra, initi
   const t = useT('contacts');
   // An SMS/WhatsApp draft (agent, MCP) opens in its channel when that channel is offered here (MsgDrafts.tsx).
   const draftOk = !!draft && (draft.channel === 'sms' || !!extra?.some((x) => x.key === draft.channel));
-  const [channel, setChannel] = useState<string>((draftOk && draft!.channel) || initial || (chat ? 'chat' : contact.email ? 'email' : 'sms'));
+  const [channel, setChannel] = useState<string>((draftOk && draft!.channel) || initial || (chat ? 'chat' : contact.phone ? 'sms' : contact.email ? 'email' : 'sms'));
   // Channels from other modules (WhatsApp, Messenger, Instagram) bring their own editor.
   const ext = extra?.find((x) => x.key === channel);
   const [subject, setSubject] = useState('');
@@ -408,7 +408,7 @@ export function Composer({ contact, onSent, templates, chat, addon, extra, initi
       {draft && <DraftNote draft={draft} available={draftOk} onDiscarded={onSent} />}
       {fill.offer && <DraftOffer onTake={fill.take} />}
       <div className="row" style={{ alignItems: 'center' }}>
-        <Tabs tabs={[...(chat ? [['chat', t('Chat')] as [string, string]] : []), ['email', t('E-Mail')], ['sms', t('SMS')], ...(extra ?? []).map((x) => [x.key, x.label] as [string, string])]} value={channel} onChange={setChannel} />
+        <Tabs tabs={[...(chat ? [['chat', t('Chat')] as [string, string]] : []), ['sms', t('SMS')], ['email', t('E-Mail')], ...(extra ?? []).map((x) => [x.key, x.label] as [string, string])]} value={channel} onChange={setChannel} />
         {tpl.length > 0 && (
           <div style={{ width: 200 }}>
             <Select
