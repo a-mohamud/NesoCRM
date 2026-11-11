@@ -6,6 +6,7 @@ import { datevBeleglinks, datevDocumentsArchive } from '../services/acc-datev-do
 import { chartMap, cleanDate, getEntry, getSettings, requireEnabled, todayYmd, trail, type EntryRow } from '../services/acc-ledger.js';
 import { bwa, cleanRange, euer, fiscalYearStart, openItems, susa, ustva } from '../services/acc-reports.js';
 import { actor } from './accounting.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /** Reports (EÜR, SuSa, BWA, USt-Voranmeldung overview, open items) and the exports for the tax advisor (DATEV, documents). */
 
@@ -37,8 +38,9 @@ export const reportsModule: Module = {
       const r = range(ctx.query, ctx.locationId);
       const out = susa(app, ctx.locationId, r.from, r.to);
       if (ctx.query.get('format') === 'csv') {
-        exported(ctx, 'reports/susa', `${r.from} bis ${r.to}`);
-        return file(`SuSa_${r.from}_${r.to}.csv`, 'text/csv; charset=utf-8', csv([['Konto', 'Bezeichnung', 'Anfangssaldo', 'Soll', 'Haben', 'Endsaldo'], ...out.rows.map((x) => [x.account, x.name, money(x.opening_cents), money(x.debit_cents), money(x.credit_cents), money(x.closing_cents)])]));
+        const t = tCtx(ctx);
+        exported(ctx, 'reports/susa', t('{from} bis {to}', { from: r.from, to: r.to }));
+        return file(`SuSa_${r.from}_${r.to}.csv`, 'text/csv; charset=utf-8', csv([[t('Konto'), t('Bezeichnung'), t('Anfangssaldo'), t('Soll'), t('Haben'), t('Endsaldo')], ...out.rows.map((x) => [x.account, x.name, money(x.opening_cents), money(x.debit_cents), money(x.credit_cents), money(x.closing_cents)])]));
       }
       return out;
     });
@@ -66,6 +68,7 @@ export const reportsModule: Module = {
     // The journal as a spreadsheet (one row per line).
     router.get('/api/accounting/reports/journal.csv', 'location', (ctx) => {
       requireEnabled(app, ctx.locationId);
+      const t = tCtx(ctx);
       const r = range(ctx.query, ctx.locationId);
       const chart = chartMap(app, ctx.locationId);
       const rows = db.all<any>(
@@ -76,7 +79,7 @@ export const reportsModule: Module = {
       return file(
         `Buchungsjournal_${r.from}_${r.to}.csv`,
         'text/csv; charset=utf-8',
-        csv([['Nr', 'Buchungsdatum', 'Belegdatum', 'Belegnummer', 'Text', 'Partner', 'Quelle', 'Konto', 'Kontoname', 'Soll', 'Haben', 'Steuerschlüssel'], ...rows.map((x) => [x.number, x.date, x.doc_date, x.doc_ref, x.text, x.party_name, x.source, x.account, chart.get(x.account)?.name ?? '', x.side === 'S' ? money(x.cents) : '', x.side === 'H' ? money(x.cents) : '', x.tax_code])]),
+        csv([[t('Nr'), t('Buchungsdatum'), t('Belegdatum'), t('Belegnummer'), t('Text'), t('Partner'), t('Quelle'), t('Konto'), t('Kontoname'), t('Soll'), t('Haben'), t('Steuerschlüssel')], ...rows.map((x) => [x.number, x.date, x.doc_date, x.doc_ref, x.text, x.party_name, x.source, x.account, chart.get(x.account)?.name ?? '', x.side === 'S' ? money(x.cents) : '', x.side === 'H' ? money(x.cents) : '', x.tax_code])]),
       );
     });
 
@@ -84,26 +87,26 @@ export const reportsModule: Module = {
     const entriesIn = (loc: string, from: string, to: string): EntryRow[] =>
       db.all<{ id: string }>('SELECT id FROM acc_entries WHERE location_id = ? AND date >= ? AND date <= ? ORDER BY seq', loc, from, to).map((r) => getEntry(app, loc, r.id)!).filter(Boolean);
 
-    const datevCheck = (loc: string, from: string, to: string) => {
+    const datevCheck = (loc: string, from: string, to: string, t: STFn) => {
       const s = getSettings(app, loc);
       const warnings: string[] = [];
-      if (!s.datev.berater || !s.datev.mandant) warnings.push('Beraternummer und Mandantennummer fehlen (Einstellungen → DATEV) – ohne sie lehnt DATEV den Import ab.');
+      if (!s.datev.berater || !s.datev.mandant) warnings.push(t('Beraternummer und Mandantennummer fehlen (Einstellungen → DATEV) – ohne sie lehnt DATEV den Import ab.'));
       const unlocked = db.get<{ n: number }>(
         `SELECT COUNT(DISTINCT e.period) AS n FROM acc_entries e WHERE e.location_id = ? AND e.date >= ? AND e.date <= ? AND NOT EXISTS (SELECT 1 FROM acc_periods p WHERE p.location_id = e.location_id AND p.period = e.period AND p.locked_at IS NOT NULL)`,
         loc, from, to,
       )?.n ?? 0;
-      if (unlocked) warnings.push(unlocked === 1 ? '1 Monat im Zeitraum ist noch nicht festgeschrieben.' : `${unlocked} Monate im Zeitraum sind noch nicht festgeschrieben.`);
+      if (unlocked) warnings.push(t.plural(unlocked, { one: '{n} Monat im Zeitraum ist noch nicht festgeschrieben.', other: '{n} Monate im Zeitraum sind noch nicht festgeschrieben.' }));
       const inbox = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM acc_receipts WHERE location_id = ? AND status IN ('inbox', 'review')`, loc)?.n ?? 0;
-      if (inbox) warnings.push(inbox === 1 ? '1 Beleg im Eingang ist noch nicht gebucht.' : `${inbox} Belege im Eingang sind noch nicht gebucht.`);
+      if (inbox) warnings.push(t.plural(inbox, { one: '{n} Beleg im Eingang ist noch nicht gebucht.', other: '{n} Belege im Eingang sind noch nicht gebucht.' }));
       const bank = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM acc_bank_txns WHERE location_id = ? AND status IN ('open', 'matched') AND booking_date >= ? AND booking_date <= ?`, loc, from, to)?.n ?? 0;
-      if (bank) warnings.push(bank === 1 ? '1 Bankumsatz im Zeitraum ist noch nicht gebucht.' : `${bank} Bankumsätze im Zeitraum sind noch nicht gebucht.`);
+      if (bank) warnings.push(t.plural(bank, { one: '{n} Bankumsatz im Zeitraum ist noch nicht gebucht.', other: '{n} Bankumsätze im Zeitraum sind noch nicht gebucht.' }));
       return { settings: s, warnings };
     };
 
     router.get('/api/accounting/datev/preview', 'location', (ctx) => {
       requireEnabled(app, ctx.locationId);
       const r = cleanRange(ctx.query.get('from'), ctx.query.get('to'), localYear(ctx.locationId));
-      const { warnings } = datevCheck(ctx.locationId, r.from, r.to);
+      const { warnings } = datevCheck(ctx.locationId, r.from, r.to, tCtx(ctx));
       const entries = entriesIn(ctx.locationId, r.from, r.to);
       return { ...r, entries: entries.length, rows: entries.reduce((n, e) => n + e.postings.length, 0), warnings, format: 'EXTF 700, Buchungsstapel (Kategorie 21, Version 13), Windows-1252' };
     });
@@ -132,7 +135,7 @@ export const reportsModule: Module = {
       const rows = parseExtf(built.text);
       if (rows.slice(2).some((x) => x.length !== EXTF_FIELDS)) throw new Error('Interner Fehler: Zeilenlänge im DATEV-Export');
       const a = actor(ctx);
-      trail(app, ctx.locationId, a, 'datev.export', null, `${r.from} bis ${r.to}: ${entries.length} Buchungen, ${built.rows} Zeilen`);
+      trail(app, ctx.locationId, a, 'datev.export', null, tLoc(app, ctx.locationId)('{from} bis {to}: {entries} Buchungen, {rows} Zeilen', { from: r.from, to: r.to, entries: entries.length, rows: built.rows }));
       return file(`EXTF_Buchungsstapel_${r.from}_${r.to}.csv`, 'text/csv; charset=windows-1252', encodeCp1252(built.text));
     });
 
@@ -143,8 +146,9 @@ export const reportsModule: Module = {
       requireEnabled(app, ctx.locationId);
       const r = cleanRange(ctx.query.get('from'), ctx.query.get('to'), localYear(ctx.locationId));
       const out = datevDocumentsArchive(app, ctx.locationId, r.from, r.to, { index: ctx.query.get('index') !== '0', process: ctx.query.get('process') === 'archive' ? 2 : 1 });
-      exported(ctx, 'datev/documents', `${r.from} bis ${r.to}`);
-      trail(app, ctx.locationId, actor(ctx), 'datev.documents', null, `${r.from} bis ${r.to}: ${out.documents} Belege${out.missing ? `, ${out.missing} Dateien fehlen` : ''}`);
+      const tl = tLoc(app, ctx.locationId);
+      exported(ctx, 'datev/documents', tl('{from} bis {to}', { from: r.from, to: r.to }));
+      trail(app, ctx.locationId, actor(ctx), 'datev.documents', null, tl('{from} bis {to}: {documents} Belege', { from: r.from, to: r.to, documents: out.documents }) + (out.missing ? tl(', {missing} Dateien fehlen', { missing: out.missing }) : ''));
       return file(`Belege_${r.from}_${r.to}.zip`, 'application/zip', out.zip);
     });
   },

@@ -18,6 +18,7 @@ import {
 } from '../services/community-growth.js';
 import { communityUi, kitOf } from '../services/community-ui.js';
 import { getContact } from '../services/contacts.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Growth: analytics, the welcome of new members (message, post, checklist, "Start here"), broadcasts to a segment by e-mail, push
@@ -113,7 +114,7 @@ export const communityGrowthModule: Module = {
     const broadcastOut = (b: any) => ({ ...b, channels: JSON.parse(b.channels || '[]'), segment: JSON.parse(b.segment || '{}') });
     router.get('/api/community/groups/:id/broadcasts', 'location', (ctx) => {
       const g = mustGroup(ctx.locationId, ctx.params.id);
-      return { channels: BROADCAST_CHANNELS, broadcasts: db.all<any>('SELECT * FROM community_broadcasts WHERE group_id = ? ORDER BY created_at DESC LIMIT 100', g.id).map(broadcastOut) };
+      return { channels: Object.fromEntries(Object.entries(BROADCAST_CHANNELS).map(([k, v]) => [k, tCtx(ctx)(v)])), broadcasts: db.all<any>('SELECT * FROM community_broadcasts WHERE group_id = ? ORDER BY created_at DESC LIMIT 100', g.id).map(broadcastOut) };
     });
     router.post('/api/community/groups/:id/broadcasts/preview', 'location', (ctx) => {
       const g = mustGroup(ctx.locationId, ctx.params.id);
@@ -171,16 +172,17 @@ export const communityGrowthModule: Module = {
       const k = kitOf(app);
       const gh = k.gHref(p, g);
       const ext = extOf(app, g.id);
+      const t = tLoc(app, g.location_id);
       const parts: string[] = [];
       const sp = ext.start_here.post_id ? db.get<{ id: string; title: string; status: string }>('SELECT id, title, status FROM community_posts WHERE id = ? AND group_id = ?', ext.start_here.post_id, g.id) : undefined;
       if (sp && sp.status === 'visible' && !db.get('SELECT 1 FROM community_reads WHERE post_id = ? AND contact_id = ?', sp.id, m.contact.id)) {
-        parts.push(`<div class="cm-box cm-start"><span style="font-size:30px" aria-hidden="true">📌</span><div class="grow"><strong>${escapeHtml(ext.start_here.label)}</strong><div class="muted small">${escapeHtml(sp.title)}</div></div><a class="btn" href="${k.postHref(p, g, sp.id)}">Los geht’s</a></div>`);
+        parts.push(`<div class="cm-box cm-start"><span style="font-size:30px" aria-hidden="true">📌</span><div class="grow"><strong>${escapeHtml(ext.start_here.label)}</strong><div class="muted small">${escapeHtml(sp.title)}</div></div><a class="btn" href="${k.postHref(p, g, sp.id)}">${t('Los geht’s')}</a></div>`);
       }
       const cl = checklistOf(app, g, m.contact.id, { profile: `${k.cbase(p)}/profile`, compose: `${gh}#schreiben`, start: sp ? k.postHref(p, g, sp.id) : gh, challenges: `${gh}/challenges`, feed: gh });
       if (cl && cl.window_open && !cl.dismissed && cl.done < cl.total) {
         const csrf = k.tokenInput(m);
-        parts.push(`<div class="cm-box cm-onb"><div class="cm-row"><h3 class="grow">So startest du <span class="muted small">· ${cl.done} von ${cl.total}</span></h3><form method="post" action="${gh}/checklist/dismiss">${csrf}<button class="x" title="Checkliste ausblenden" aria-label="Checkliste ausblenden">Ausblenden</button></form></div><div class="bar"><i style="width:${Math.round((cl.done / cl.total) * 100)}%"></i></div><ul>${cl.items
-          .map((it) => `<li class="${it.done ? 'done' : ''}"><span class="ck" aria-hidden="true">${it.done ? '✓' : ''}</span>${it.kind === 'custom' ? (it.done ? `<span class="t">${escapeHtml(it.label)}</span>` : `<form method="post" action="${gh}/checklist/${encodeURIComponent(it.id)}/done" style="flex:1">${csrf}<button class="cm-link" style="background:none;border:0;padding:8px 0;font:inherit;text-align:left;cursor:pointer;min-height:44px;font-weight:500;color:inherit">${escapeHtml(it.label)} – erledigt</button></form>`) : it.done ? `<span class="t">${escapeHtml(it.label)}</span>` : `<a href="${escapeHtml(it.href)}">${escapeHtml(it.label)}</a>`}</li>`)
+        parts.push(`<div class="cm-box cm-onb"><div class="cm-row"><h3 class="grow">${t('So startest du')} <span class="muted small">· ${t('{n} von {total}', { n: cl.done, total: cl.total })}</span></h3><form method="post" action="${gh}/checklist/dismiss">${csrf}<button class="x" title="${t('Checkliste ausblenden')}" aria-label="${t('Checkliste ausblenden')}">${t('Ausblenden')}</button></form></div><div class="bar"><i style="width:${Math.round((cl.done / cl.total) * 100)}%"></i></div><ul>${cl.items
+          .map((it) => `<li class="${it.done ? 'done' : ''}"><span class="ck" aria-hidden="true">${it.done ? '✓' : ''}</span>${it.kind === 'custom' ? (it.done ? `<span class="t">${escapeHtml(it.label)}</span>` : `<form method="post" action="${gh}/checklist/${encodeURIComponent(it.id)}/done" style="flex:1">${csrf}<button class="cm-link" style="background:none;border:0;padding:8px 0;font:inherit;text-align:left;cursor:pointer;min-height:44px;font-weight:500;color:inherit">${escapeHtml(it.label)} – ${t('erledigt')}</button></form>`) : it.done ? `<span class="t">${escapeHtml(it.label)}</span>` : `<a href="${escapeHtml(it.href)}">${escapeHtml(it.label)}</a>`}</li>`)
           .join('')}</ul></div>`);
       }
       return parts.join('');
@@ -205,8 +207,8 @@ export const communityGrowthModule: Module = {
       const p = pid ? kit()?.programOf(pid, g.location_id) : undefined;
       return p && p.active ? p : undefined;
     };
-    ui.tabs.push((p, _m, g) => (partnerProgram(g) ? [{ key: 'partner', href: `${kitOf(app).gHref(p, g)}/partner`, label: '🤝 Partner' }] : []));
-    const money = (c: number, cur = 'EUR') => new Intl.NumberFormat('de-DE', { style: 'currency', currency: cur }).format(c / 100);
+    ui.tabs.push((p, _m, g) => (partnerProgram(g) ? [{ key: 'partner', href: `${kitOf(app).gHref(p, g)}/partner`, label: `🤝 ${tLoc(app, g.location_id)('Partner')}` }] : []));
+    const money = (c: number, cur = 'EUR', locale = 'en') => new Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'en-GB', { style: 'currency', currency: cur }).format(c / 100);
     const partnerPage = (ctx: any, flash = '') =>
       kitOf(app).withGroup(ctx, (p, m, g) => {
         const k = kitOf(app);
@@ -214,15 +216,17 @@ export const communityGrowthModule: Module = {
         if (!prog) return k.errorPage(p, m, 'Hier gibt es kein Partnerprogramm.', 404);
         const aff = kit()!.forContact(prog.id, m.contact.id);
         const s = aff ? kit()!.statsOf(aff.id) : undefined;
-        const terms = prog.commission_type === 'fixed' ? `${money(prog.commission_value)} pro Verkauf` : `${prog.commission_value} % Provision`;
+        const t = tLoc(app, g.location_id);
+        const cash = (c: number) => money(c, 'EUR', t.locale);
+        const terms = prog.commission_type === 'fixed' ? t('{amount} pro Verkauf', { amount: cash(prog.commission_value) }) : t('{percent} % Provision', { percent: prog.commission_value });
         const body = !aff
-          ? `<p>Empfiehl diese Community weiter und verdiene mit: <strong>${escapeHtml(terms)}</strong>${prog.recurring ? ' – auch bei jeder Folgezahlung' : ''}.</p>${prog.terms ? `<p class="muted small" style="white-space:pre-wrap">${escapeHtml(prog.terms)}</p>` : ''}<form method="post" action="${k.gHref(p, g)}/partner">${k.tokenInput(m)}<label class="cm-check" style="margin:8px 0"><input type="checkbox" name="accept" value="1" required> Ich akzeptiere die Bedingungen des Partnerprogramms.</label><button class="btn">Partner werden</button></form>`
+          ? `<p>${t('Empfiehl diese Community weiter und verdiene mit: {terms}', { terms: `<strong>${escapeHtml(terms)}</strong>` })}${prog.recurring ? t(' – auch bei jeder Folgezahlung') : ''}.</p>${prog.terms ? `<p class="muted small" style="white-space:pre-wrap">${escapeHtml(prog.terms)}</p>` : ''}<form method="post" action="${k.gHref(p, g)}/partner">${k.tokenInput(m)}<label class="cm-check" style="margin:8px 0"><input type="checkbox" name="accept" value="1" required> ${t('Ich akzeptiere die Bedingungen des Partnerprogramms.')}</label><button class="btn">${t('Partner werden')}</button></form>`
           : aff.status !== 'active'
-            ? '<p><strong>Deine Anmeldung wird geprüft.</strong> Sobald sie freigegeben ist, zählen deine Klicks und Verkäufe.</p>'
-            : `<p>Dein persönlicher Link – jeder, der darüber beitritt und kauft, bringt dir Provision (<strong>${escapeHtml(terms)}</strong>).</p><input class="cm-in" readonly value="${escapeHtml(kit()!.linkOf(prog, aff))}" aria-label="Dein Partner-Link" onfocus="this.select()" style="width:100%">
-<div class="cm-pr" style="margin-top:14px"><div><b>${s?.clicks ?? 0}</b><span class="muted small">Klicks</span></div><div><b>${s?.leads ?? 0}</b><span class="muted small">Anmeldungen</span></div><div><b>${s?.sales ?? 0}</b><span class="muted small">Verkäufe</span></div><div><b>${money((s?.pending_cents ?? 0) + (s?.approved_cents ?? 0))}</b><span class="muted small">offen</span></div><div><b>${money(s?.paid_cents ?? 0)}</b><span class="muted small">ausgezahlt</span></div></div>
-<p style="margin-top:14px"><a class="btn ghost" href="${escapeHtml(kit()!.portalUrl(prog))}" target="_blank" rel="noopener noreferrer">Auszahlung &amp; Details im Partnerbereich</a></p>`;
-        return k.frame(p, m, `Partner · ${g.name}`, `${k.groupHead(p, g)}${k.groupTabs(p, m, g, 'partner')}<div class="cm-box" style="max-width:720px"><h2 style="margin-top:0">Partner-Programm</h2>${flash ? `<div class="cm-ok">${escapeHtml(flash)}</div>` : ''}${body}</div>`);
+            ? `<p><strong>${t('Deine Anmeldung wird geprüft.')}</strong> ${t('Sobald sie freigegeben ist, zählen deine Klicks und Verkäufe.')}</p>`
+            : `<p>${t('Dein persönlicher Link – jeder, der darüber beitritt und kauft, bringt dir Provision ({terms}).', { terms: `<strong>${escapeHtml(terms)}</strong>` })}</p><input class="cm-in" readonly value="${escapeHtml(kit()!.linkOf(prog, aff))}" aria-label="${t('Dein Partner-Link')}" onfocus="this.select()" style="width:100%">
+<div class="cm-pr" style="margin-top:14px"><div><b>${s?.clicks ?? 0}</b><span class="muted small">${t('Klicks')}</span></div><div><b>${s?.leads ?? 0}</b><span class="muted small">${t('Anmeldungen')}</span></div><div><b>${s?.sales ?? 0}</b><span class="muted small">${t('Verkäufe')}</span></div><div><b>${cash((s?.pending_cents ?? 0) + (s?.approved_cents ?? 0))}</b><span class="muted small">${t('offen')}</span></div><div><b>${cash(s?.paid_cents ?? 0)}</b><span class="muted small">${t('ausgezahlt')}</span></div></div>
+<p style="margin-top:14px"><a class="btn ghost" href="${escapeHtml(kit()!.portalUrl(prog))}" target="_blank" rel="noopener noreferrer">${t('Auszahlung & Details im Partnerbereich')}</a></p>`;
+        return k.frame(p, m, `${t('Partner')} · ${g.name}`, `${k.groupHead(p, g)}${k.groupTabs(p, m, g, 'partner')}<div class="cm-box" style="max-width:720px"><h2 style="margin-top:0">${t('Partner-Programm')}</h2>${flash ? `<div class="cm-ok">${escapeHtml(t(flash))}</div>` : ''}${body}</div>`);
       });
     router.get('/portal/:p/community/g/:group/partner', 'public', (ctx) => partnerPage(ctx));
     router.post('/portal/:p/community/g/:group/partner', 'public', (ctx) =>

@@ -21,6 +21,7 @@ import {
   type ChannelAccount,
 } from '../services/channel-kit.js';
 import { contactVars, getContact, logActivity } from '../services/contacts.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 import { BOT_TOKEN, CAPTION_LIMIT, TEXT_LIMIT, TG_API, TelegramError, deepLink, parseUpdate, sendMethodFor, tgCall, type TgMessage } from '../services/telegram.js';
 
 /**
@@ -100,7 +101,7 @@ export const telegramModule: Module = {
         try {
           me = await tgCall(fetcher(), t, 'getMe', undefined, 10_000);
         } catch (e) {
-          throw bad(`Telegram lehnt den Token ab: ${(e as Error).message}`);
+          throw bad(tCtx(ctx)('Telegram lehnt den Token ab: {error}', { error: (e as Error).message }));
         }
         if (!me?.is_bot) throw bad('Der Token gehört zu keinem Bot');
         secrets.bot_token = t;
@@ -143,9 +144,10 @@ export const telegramModule: Module = {
         const me = await call(a, 'getMe', undefined, 10_000);
         const wh = await call(a, 'getWebhookInfo', undefined, 10_000);
         const ours = wh?.url === `${app.baseUrl()}/hooks/telegram/${ctx.locationId}`;
+        const t = tCtx(ctx);
         return {
           ok: true,
-          info: `@${me.username}${ours ? ' · Webhook aktiv' : wh?.url ? ' · Webhook zeigt woandershin' : ' · Webhook noch nicht gesetzt'}${wh?.pending_update_count ? ` · ${wh.pending_update_count} wartende Updates` : ''}`,
+          info: `@${me.username} · ${t(ours ? 'Webhook aktiv' : wh?.url ? 'Webhook zeigt woandershin' : 'Webhook noch nicht gesetzt')}${wh?.pending_update_count ? ` · ${t.plural(Number(wh.pending_update_count), { one: '{n} wartendes Update', other: '{n} wartende Updates' })}` : ''}`,
           webhook: { url: wh?.url ?? '', ours, pending: Number(wh?.pending_update_count) || 0, last_error: wh?.last_error_message ?? null },
         };
       } catch (e) {
@@ -174,17 +176,17 @@ export const telegramModule: Module = {
       if (!body && !mediaUrl) throw bad('Nachricht fehlt');
       if (mediaUrl && (!/^https:\/\/[^\s]+$/i.test(mediaUrl) || mediaUrl.length > 2000)) throw bad('Datei-Link muss mit https:// beginnen');
       const limit = mediaUrl ? CAPTION_LIMIT : TEXT_LIMIT;
-      if (body.length > limit) throw bad(`Zu lang für Telegram: ${body.length} von max. ${limit} Zeichen${mediaUrl ? ' (Bildunterschrift)' : ''}`);
+      if (body.length > limit) throw bad(tApp()(mediaUrl ? 'Zu lang für Telegram: {len} von max. {max} Zeichen (Bildunterschrift)' : 'Zu lang für Telegram: {len} von max. {max} Zeichen', { len: body.length, max: limit }));
       const m = mediaUrl ? sendMethodFor(mediaUrl) : null;
       const rec = recordOutbound(app, loc, c, CH, body || (m ? `📎 ${mediaUrl.split(/[?#]/)[0].split('/').pop()}` : ''), { userId: input.userId, source: input.source, media: m ? { kind: m.kind, url: mediaUrl } : null });
-      if (c.dnd && !input.ignoreDnd) return finishOutbound(app, rec, { ok: false, error: 'Kontakt hat „Nicht stören“ aktiv' });
+      if (c.dnd && !input.ignoreDnd) return finishOutbound(app, rec, { ok: false, error: tLoc(app, loc)('Kontakt hat „Nicht stören“ aktiv') });
       try {
         const r = m
           ? await call(a, m.method, { chat_id: ident.chat_id, [m.field]: mediaUrl, ...(body ? { caption: body } : {}) })
           : await call(a, 'sendMessage', { chat_id: ident.chat_id, text: body });
         return finishOutbound(app, rec, { ok: true, providerId: r?.message_id !== undefined ? String(r.message_id) : null });
       } catch (e) {
-        if (e instanceof TelegramError && e.code === 403) logActivity(app, loc, c.id, 'telegram.blocked', 'Kontakt hat den Telegram-Bot blockiert');
+        if (e instanceof TelegramError && e.code === 403) logActivity(app, loc, c.id, 'telegram.blocked', tLoc(app, loc)('Kontakt hat den Telegram-Bot blockiert'));
         return finishOutbound(app, rec, { ok: false, error: (e as Error).message });
       }
     };
@@ -207,7 +209,7 @@ export const telegramModule: Module = {
         const a = getAccount(app, loc, CH);
         if (!configured(a)) return { configured: false };
         const ident = identityOfContact(app, loc, c.id, CH);
-        return { configured: true, reachable: !!ident?.chat_id, reason: ident?.chat_id ? undefined : 'Kontakt hat den Telegram-Bot noch nicht gestartet', limit: TEXT_LIMIT, media: true, handle: ident?.handle ? `@${ident.handle}` : ident?.name ?? '', bot: a.info.username ?? '' };
+        return { configured: true, reachable: !!ident?.chat_id, reason: ident?.chat_id ? undefined : tApp()('Kontakt hat den Telegram-Bot noch nicht gestartet'), limit: TEXT_LIMIT, media: true, handle: ident?.handle ? `@${ident.handle}` : ident?.name ?? '', bot: a.info.username ?? '' };
       },
     };
 
@@ -235,7 +237,8 @@ export const telegramModule: Module = {
       const base = { channel: CH, externalUser: m.fromId, name: m.name, handle: m.username, chatId: m.chatId, externalId: `tg:${m.chatId}:${m.messageId}`, at: m.at };
       if (m.start !== null) {
         const campaign = m.start;
-        const r = receiveChat(app, loc, { ...base, body: campaign ? `▶️ Bot gestartet · Kampagne „${campaign}“` : '▶️ Bot gestartet', tags: a.config.start_tags ?? [], emit: false });
+        const tl = tLoc(app, loc);
+        const r = receiveChat(app, loc, { ...base, body: campaign ? tl('▶️ Bot gestartet · Kampagne „{campaign}“', { campaign }) : tl('▶️ Bot gestartet'), tags: a.config.start_tags ?? [], emit: false });
         if (!r) return;
         // The deep link's campaign becomes the lead's source (Attribution: telegram / bot / <campaign>).
         if (campaign || r.created) {
@@ -245,7 +248,7 @@ export const telegramModule: Module = {
         const welcome = String(a.config.welcome ?? '').trim();
         if (welcome) {
           const text = render(welcome, { contact: contactVars(getContact(app, loc, r.contact.id)), location: { name: app.location(loc)?.name ?? '' } });
-          await sendTelegram(loc, { contactId: r.contact.id, body: text, source: 'Begrüßung', ignoreDnd: true });
+          await sendTelegram(loc, { contactId: r.contact.id, body: text, source: tl('Begrüßung'), ignoreDnd: true });
         }
         return;
       }
@@ -268,7 +271,7 @@ export const telegramModule: Module = {
       } catch (e) {
         // Answer 200 anyway: Telegram would otherwise retry the same update for hours.
         console.error('[telegram] update failed', e);
-        noteError(app, a.location_id, CH, `Eingang fehlgeschlagen: ${(e as Error).message}`);
+        noteError(app, a.location_id, CH, tLoc(app, a.location_id)('Eingang fehlgeschlagen: {error}', { error: (e as Error).message }));
       }
       return { ok: true };
     });
@@ -279,7 +282,7 @@ export const telegramModule: Module = {
       telegram_send: async (run: any, step: any, vars: Record<string, any>) => {
         const r = await sendTelegram(run.location_id, { contactId: run.contact_id, body: render(String(step.body ?? ''), vars), mediaUrl: render(String(step.media_url ?? ''), vars).trim() || undefined, source: 'Workflow' });
         if (r.status === 'failed') throw new Error(r.error);
-        return 'Telegram gesendet';
+        return tLoc(app, run.location_id)('Telegram gesendet');
       },
     };
     app.services.workflowTriggers = [...(app.services.workflowTriggers ?? []), 'telegram.started'];
@@ -292,11 +295,12 @@ export const telegramModule: Module = {
       ...(app.services.catalogExtra ?? []),
       {
         entry: { key: 'telegram', name: 'Telegram', category: 'Kommunikation', icon: 'telegram', scope: 'location', setup: { location: 'settings/more-channels' }, description: 'Telegram-Bot im Posteingang: Nachrichten, Fotos, Sprachnachrichten, Dokumente; Deep Links t.me/<bot>?start=<kampagne> als Lead-Quelle.', credentials: 'Bot-Token von @BotFather unter Einstellungen → Weitere Kanäle, dann „Webhook setzen“.', docs: 'docs/channels.md#telegram' },
-        location: (_ctx: Ctx, loc: string) => {
+        location: (ctx: Ctx, loc: string) => {
           const a = getAccount(app, loc, CH);
+          const t = tCtx(ctx);
           if (!configured(a)) return { status: 'missing', detail: 'Kein Bot-Token' };
-          if (a.last_error) return { status: 'partial', detail: `Fehler: ${a.last_error.slice(0, 80)}` };
-          return a.info.webhook_set_at ? { status: 'ok', detail: `@${a.info.username}` } : { status: 'partial', detail: `@${a.info.username} · Webhook noch nicht gesetzt` };
+          if (a.last_error) return { status: 'partial', detail: t('Fehler: {error}', { error: a.last_error.slice(0, 80) }) };
+          return a.info.webhook_set_at ? { status: 'ok', detail: `@${a.info.username}` } : { status: 'partial', detail: `@${a.info.username} · ${t('Webhook noch nicht gesetzt')}` };
         },
       },
     ];

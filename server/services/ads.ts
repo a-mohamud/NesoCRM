@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Read-only ad reporting: Meta Marketing API insights and Google Ads (GAQL searchStream), mapped
@@ -34,7 +35,7 @@ async function readJson(r: Response): Promise<any> {
   try {
     return t ? JSON.parse(t) : {};
   } catch {
-    throw new AdsError(`Antwort ist kein JSON (HTTP ${r.status})`);
+    throw new AdsError(tApp()('Antwort ist kein JSON (HTTP {status})', { status: r.status }));
   }
 }
 

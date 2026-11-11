@@ -21,6 +21,7 @@ import {
 } from '../services/contacts.js';
 import { unsubscribeToken } from '../services/messaging.js';
 import { contactScopeClause, maskRow, resolve, scopeClause } from '../services/record-access.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 export const contactsModule: Module = {
   name: 'contacts',
@@ -152,7 +153,7 @@ export const contactsModule: Module = {
             skipped++;
             continue;
           }
-          const r = upsertContact(app, ctx.locationId, input, { source: 'CSV-Import', tags: extraTags, quiet: !ctx.body.triggerWorkflows });
+          const r = upsertContact(app, ctx.locationId, input, { source: tLoc(app, ctx.locationId)('CSV-Import'), tags: extraTags, quiet: !ctx.body.triggerWorkflows });
           r.created ? created++ : updated++;
           touched.push(r.contact.id);
         }
@@ -240,7 +241,7 @@ export const contactsModule: Module = {
       if (!getContact(app, ctx.locationId, ctx.params.id)) throw notFound();
       const note = { id: id(), location_id: ctx.locationId, contact_id: ctx.params.id, body: str(ctx.body.body, 'Notiz', { required: true, max: 20000 }), user_id: ctx.user?.id ?? null, created_at: now() };
       db.insert('notes', note);
-      logActivity(app, ctx.locationId, ctx.params.id, 'note.added', 'Notiz hinzugefügt');
+      logActivity(app, ctx.locationId, ctx.params.id, 'note.added', tLoc(app, ctx.locationId)('Notiz hinzugefügt'));
       return note;
     });
     router.delete('/api/notes/:id', 'location', (ctx) => {
@@ -377,14 +378,18 @@ export const contactsModule: Module = {
       const c = db.get('SELECT id, location_id FROM contacts WHERE id = ?', contactId);
       if (!c || tokenStr !== unsubscribeToken(app, contactId)) return false;
       db.run('UPDATE contacts SET dnd = 1, updated_at = ? WHERE id = ?', now(), c.id);
-      logActivity(app, c.location_id, c.id, 'contact.unsubscribed', 'Vom E-Mail-Versand abgemeldet');
+      logActivity(app, c.location_id, c.id, 'contact.unsubscribed', tLoc(app, c.location_id)('Vom E-Mail-Versand abgemeldet'));
       // The consent ledger records the withdrawal with the proof data of this click (modules/consent.ts).
       app.services.consent?.unsubscribed?.(ctx, c.location_id, c.id);
       app.events.emit(c.location_id, 'contact.unsubscribed', { contactId: c.id });
       return true;
     };
-    const unsubscribed = (contactId: string) => app.services.consent?.unsubscribedPage?.(contactId) ?? html(messagePage('Abgemeldet', 'Du bekommst von uns keine Nachrichten mehr.'));
-    const invalid = (status = 200) => html(messagePage('Link ungültig', 'Dieser Abmeldelink ist nicht gültig.'), status);
+    const tOfContact = (contactId: string) => tLoc(app, db.get<{ location_id: string }>('SELECT location_id FROM contacts WHERE id = ?', contactId)?.location_id);
+    const unsubscribed = (contactId: string) => {
+      const t = tOfContact(contactId);
+      return app.services.consent?.unsubscribedPage?.(contactId) ?? html(messagePage(t('Abgemeldet'), t('Du bekommst von uns keine Nachrichten mehr.')));
+    };
+    const invalid = (status = 200) => html(messagePage(tApp()('Link ungültig'), tApp()('Dieser Abmeldelink ist nicht gültig.')), status);
     // The link in the mail opens a page with one button: opening it changes nothing. Link scanners of mail gateways and
     // anti-spam filters fetch every link of a mail (also the List-Unsubscribe header) with GET – that must not unsubscribe anybody.
     router.get('/u/:id/:token', 'public', (ctx) => {
@@ -394,8 +399,9 @@ export const contactsModule: Module = {
       const loc = app.location(c.location_id);
       const prefs: string = app.services.consent?.prefsUrl?.(c.id) ?? '';
       const action = `/u/${encodeURIComponent(c.id)}/${encodeURIComponent(ctx.params.token)}`;
-      const body = `<div class="wrap" style="max-width:560px"><div class="card">${loc ? `<p class="muted" style="margin:0 0 6px">${escapeHtml(loc.name)}</p>` : ''}<h1>Abmelden?</h1><p class="muted">Du bekommst dann keine E-Mails und SMS mehr von ${escapeHtml(loc?.name ?? 'uns')}.</p><form method="post" action="${escapeHtml(action)}"><input type="hidden" name="confirm" value="1"><button type="submit">Ja, abmelden</button></form>${prefs ? `<p style="margin-top:18px"><a href="${escapeHtml(prefs)}">Lieber nur einstellen, was ich bekomme</a></p>` : ''}</div></div>`;
-      const r = html(publicPage({ title: 'Abmelden', body }));
+      const t = tLoc(app, c.location_id);
+      const body = `<div class="wrap" style="max-width:560px"><div class="card">${loc ? `<p class="muted" style="margin:0 0 6px">${escapeHtml(loc.name)}</p>` : ''}<h1>${t('Abmelden?')}</h1><p class="muted">${loc?.name ? t('Du bekommst dann keine E-Mails und SMS mehr von {company}.', { company: escapeHtml(loc.name) }) : t('Du bekommst dann keine E-Mails und SMS mehr von uns.')}</p><form method="post" action="${escapeHtml(action)}"><input type="hidden" name="confirm" value="1"><button type="submit">${t('Ja, abmelden')}</button></form>${prefs ? `<p style="margin-top:18px"><a href="${escapeHtml(prefs)}">${t('Lieber nur einstellen, was ich bekomme')}</a></p>` : ''}</div></div>`;
+      const r = html(publicPage({ title: t('Abmeldung'), body }));
       r.headers['cache-control'] = 'no-store';
       r.headers['x-robots-tag'] = 'noindex, nofollow';
       r.headers['referrer-policy'] = 'no-referrer';

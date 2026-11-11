@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { SafeResponse } from './net.js';
 import { INTERVAL_MS, PROVIDER_LABEL, RateLimiter, type Provider } from './books-sync-model.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * HTTP for the Lexware Office / sevDesk live sync: fixed hosts, the key of the sub-account, a rate limiter per key,
@@ -80,12 +81,12 @@ export class BooksClient {
       try {
         r = await this.deps.fetch(u.toString(), { method, headers, body, timeoutMs: 30_000, maxBytes: 8 * 1024 * 1024 });
       } catch (e) {
-        if (attempt >= RETRIES) throw new BooksApiError(0, `${this.vendor} nicht erreichbar: ${(e as Error).message}`);
+        if (attempt >= RETRIES) throw new BooksApiError(0, tApp()('{vendor} nicht erreichbar: {error}', { vendor: this.vendor, error: (e as Error).message }));
         await this.deps.sleep(Math.min(1000 * 2 ** attempt, 10_000));
         continue;
       }
       if (r.status === 429 || r.status >= 500) {
-        if (attempt >= RETRIES) throw new BooksApiError(r.status, r.status === 429 ? `${this.vendor}: zu viele Anfragen – später erneut` : `${this.vendor} antwortet mit Fehler ${r.status}`);
+        if (attempt >= RETRIES) throw new BooksApiError(r.status, r.status === 429 ? tApp()('{vendor}: zu viele Anfragen – später erneut', { vendor: this.vendor }) : tApp()('{vendor} antwortet mit Fehler {status}', { vendor: this.vendor, status: r.status }));
         const ra = Number(header(r, 'retry-after'));
         await this.deps.sleep(Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 30_000) : Math.min(1000 * 2 ** attempt, 10_000));
         continue;
@@ -101,11 +102,11 @@ export class BooksClient {
       const own = String(data?.message ?? data?.error?.message ?? (Array.isArray(data?.IssueList) ? data.IssueList.map((i: any) => [i?.i18nKey, i?.source].filter(Boolean).join(' ')).join(', ') : '') ?? '').slice(0, 200);
       const msg =
         r.status === 401
-          ? `${this.vendor}: API-Schlüssel ungültig oder abgelaufen`
+          ? tApp()('{vendor}: API-Schlüssel ungültig oder abgelaufen', { vendor: this.vendor })
           : r.status === 403
-            ? `${this.vendor}: keine Berechtigung für ${where}${own ? ` (${own})` : ''}`
+            ? tApp()('{vendor}: keine Berechtigung für {what}', { vendor: this.vendor, what: where }) + (own ? ` (${own})` : '')
             : r.status === 404
-              ? `${this.vendor}: nicht gefunden (${where})`
+              ? tApp()('{vendor}: nicht gefunden ({what})', { vendor: this.vendor, what: where })
               : `${this.vendor}: ${own || `HTTP ${r.status}`}`;
       throw new BooksApiError(r.status, msg);
     }
@@ -162,7 +163,7 @@ export const sevApi = (c: BooksClient) => ({
   createContact: async (body: unknown, email?: string) => {
     const created = objects(await c.call('POST', '/Contact', { json: body }))[0];
     const cid = String(created?.id ?? '');
-    if (cid && email) await c.call('POST', '/CommunicationWay', { json: { contact: { id: Number(cid) || cid, objectName: 'Contact' }, type: 'EMAIL', value: email, key: { id: 2, objectName: 'CommunicationWayKey' }, main: true } });
+    if (cid && email) await c.call('POST', '/CommunicationWay', { json: { contact: { id: Number(cid) || cid, objectName: 'Contact' }, type: 'EMAIL', value: email, key: { id: 2, objectName: 'CommunicationWayKey' }, main: true } }); // i18n-ignore
     return cid;
   },
   invoiceByNumber: async (n: string) => objects(await c.call('GET', '/Invoice', { query: { invoiceNumber: n } })).find((x) => String(x?.invoiceNumber ?? '') === n)?.id as string | undefined,

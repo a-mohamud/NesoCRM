@@ -1,6 +1,7 @@
 import type { App } from '../core/app.js';
 import { addDaysYmd, weekdayKey, ymdInTz } from '../core/time.js';
 import { escapeHtml } from '../core/template.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * A member's activity over the last year (posts, comments, likes given, challenge check-ins, answers in polls) as a calendar of
@@ -30,7 +31,8 @@ export function contributions(app: App, locationId: string, contactId: string, t
 
 export const heatLevel = (n: number) => (n <= 0 ? 0 : n === 1 ? 1 : n <= 3 ? 2 : n <= 6 ? 3 : 4);
 
-const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+/** Short month name in the language ("Mär" / "Mar"). */
+const monthShort = (month: number, locale: string) => new Date(Date.UTC(2024, month, 1)).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { month: 'short', timeZone: 'UTC' }).replace('.', '');
 
 /** Longest run of consecutive active days ending today or yesterday (current streak). */
 export function currentStreak(map: Map<string, number>, today: string): number {
@@ -43,7 +45,7 @@ export function currentStreak(map: Map<string, number>, today: string): number {
   return n;
 }
 
-export function heatmapSvg(map: Map<string, number>, today: string): string {
+export function heatmapSvg(map: Map<string, number>, today: string, t: STFn = tApp()): string {
   const order = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
   const dow = order.indexOf(weekdayKey(today));
   // The grid starts on a Monday, 52 weeks and the days of this week back.
@@ -64,11 +66,11 @@ export function heatmapSvg(map: Map<string, number>, today: string): string {
     const n = map.get(day) ?? 0;
     const month = Number(day.slice(5, 7)) - 1;
     if (row === 0 && month !== lastMonth && Number(day.slice(8, 10)) <= 7) {
-      labels.push(`<text x="${left + col * pitch}" y="10" class="hml">${MONTHS[month]}</text>`);
+      labels.push(`<text x="${left + col * pitch}" y="10" class="hml">${monthShort(month, t.locale)}</text>`);
       lastMonth = month;
     }
-    cells.push(`<rect x="${left + col * pitch}" y="${top + row * pitch}" width="${cell}" height="${cell}" rx="2" class="hm${heatLevel(n)}"><title>${escapeHtml(`${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(0, 4)}: ${n} ${n === 1 ? 'Beitrag' : 'Beiträge'}`)}</title></rect>`);
+    cells.push(`<rect x="${left + col * pitch}" y="${top + row * pitch}" width="${cell}" height="${cell}" rx="2" class="hm${heatLevel(n)}"><title>${escapeHtml(`${t.locale === 'de' ? `${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(0, 4)}` : `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`}: ${t.plural(n, { one: '{n} Beitrag', other: '{n} Beiträge' })}`)}</title></rect>`);
   }
   const w = left + cols * pitch;
-  return `<svg class="cm-heat" viewBox="0 0 ${w} ${top + 7 * pitch}" role="img" aria-label="Aktivität der letzten 12 Monate">${labels.join('')}${cells.join('')}</svg>`;
+  return `<svg class="cm-heat" viewBox="0 0 ${w} ${top + 7 * pitch}" role="img" aria-label="${t('Aktivität der letzten 12 Monate')}">${labels.join('')}${cells.join('')}</svg>`;
 }

@@ -5,6 +5,7 @@ import { monthStart } from '../ai-context.js';
 import { NAMES } from './names.js';
 import { isPublicKey } from './signing.js';
 import { DEFAULT_GATE, cleanPatterns, loadGate, GATE_FAMILY_IDS, type ModelGate } from './modelgate.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * Admin policy of the Werkstatt (agency-wide, stored in agency_settings): who may start builds, whether
@@ -92,7 +93,7 @@ export function cleanPolicy(app: App, cur: Policy, b: Record<string, any>): Poli
   }
   for (const [key, what] of [['allow_users', 'Erlaubte Personen'], ['allow_locations', 'Erlaubte Sub-Accounts']] as const) {
     if (b[key] === undefined) continue;
-    if (!Array.isArray(b[key])) throw bad(`${what} als Liste angeben.`);
+    if (!Array.isArray(b[key])) throw bad(tApp()('{what} als Liste angeben.', { what: tApp()(what) }));
     const ids = [...new Set((b[key] as unknown[]).map((x) => String(x).trim()).filter(Boolean))].slice(0, 300);
     // Unknown ids are dropped (a deleted user or sub-account cannot keep a grant).
     next[key] = ids.filter((id) => (key === 'allow_users' ? !!app.db.get('SELECT 1 FROM users WHERE id = ?', id) : !!app.location(id)));
@@ -111,7 +112,7 @@ export function cleanPolicy(app: App, cur: Policy, b: Record<string, any>): Poli
   if (b.allowed_hosts !== undefined) {
     if (!Array.isArray(b.allowed_hosts)) throw bad('Erlaubte Hosts als Liste angeben.');
     const hosts = [...new Set(b.allowed_hosts.map((h: unknown) => String(h).trim().toLowerCase()).filter(Boolean))].slice(0, 50);
-    for (const h of hosts) if (!HOST_RE.test(h)) throw bad(`Ungültiger Host: ${h} (nur der Name, z. B. cdn.example.com).`);
+    for (const h of hosts) if (!HOST_RE.test(h)) throw bad(tApp()('Ungültiger Host: {h} (nur der Name, z. B. cdn.example.com).', { h }));
     next.allowed_hosts = hosts;
   }
   if (b.server_logic !== undefined) {
@@ -129,9 +130,9 @@ export function cleanPolicy(app: App, cur: Policy, b: Record<string, any>): Poli
       const id = String(k?.id ?? '').trim().toLowerCase();
       const public_key = String(k?.public_key ?? '').trim();
       if (!/^[a-z0-9._-]{2,40}$/.test(id)) throw bad('Schlüssel-ID: 2–40 Zeichen (a-z, 0-9, . _ -).');
-      if (seen.has(id)) throw bad(`Die Schlüssel-ID „${id}“ gibt es doppelt.`);
+      if (seen.has(id)) throw bad(tApp()('Die Schlüssel-ID „{id}“ gibt es doppelt.', { id }));
       seen.add(id);
-      if (!isPublicKey(public_key)) throw bad(`Der öffentliche Schlüssel „${id}“ ist kein gültiger Ed25519-Schlüssel (base64 oder PEM).`);
+      if (!isPublicKey(public_key)) throw bad(tApp()('Der öffentliche Schlüssel „{id}“ ist kein gültiger Ed25519-Schlüssel (base64 oder PEM).', { id }));
       return { id, label: String(k?.label ?? id).trim().slice(0, 60) || id, public_key };
     });
   }
@@ -172,13 +173,13 @@ export function cleanPolicy(app: App, cur: Policy, b: Record<string, any>): Poli
 export function mayBuild(policy: Policy, user: User | undefined, locationId: string): { ok: true } | { ok: false; reason: string } {
   const granted = policy.allow_locations.includes(locationId);
   // Sub-account API keys have no person behind them: they act like the sub-account's team.
-  if (!user) return policy.who === 'admins' && !granted ? { ok: false, reason: `${NAMES.werkstatt}: Bauen ist Admins vorbehalten (Richtlinie).` } : { ok: true };
+  if (!user) return policy.who === 'admins' && !granted ? { ok: false, reason: tApp()('{werkstatt}: Bauen ist Admins vorbehalten (Richtlinie).', { werkstatt: tApp()(NAMES.werkstatt) }) } : { ok: true };
   if (user.role === 'admin') return { ok: true };
   if (!user.locations.includes(locationId)) return { ok: false, reason: 'Kein Zugriff auf diesen Sub-Account.' };
   // An explicit grant (this person, or this whole sub-account) opens building whatever `who` says.
   if (granted || policy.allow_users.includes(user.id)) return { ok: true };
-  if (policy.who === 'admins') return { ok: false, reason: `In der ${NAMES.werkstatt} bauen nur Admins – frag deine Agentur, ob du dafür freigeschaltet werden kannst.` };
-  if (policy.who === 'team' && user.permissions && !user.permissions.includes('settings')) return { ok: false, reason: `In der ${NAMES.werkstatt} bauen nur Team-Mitglieder mit Zugriff auf die Einstellungen.` };
+  if (policy.who === 'admins') return { ok: false, reason: tApp()('In der {werkstatt} bauen nur Admins – frag deine Agentur, ob du dafür freigeschaltet werden kannst.', { werkstatt: tApp()(NAMES.werkstatt) }) };
+  if (policy.who === 'team' && user.permissions && !user.permissions.includes('settings')) return { ok: false, reason: tApp()('In der {werkstatt} bauen nur Team-Mitglieder mit Zugriff auf die Einstellungen.', { werkstatt: tApp()(NAMES.werkstatt) }) };
   return { ok: true };
 }
 
@@ -199,6 +200,11 @@ export const usd = (micros: number) => `${(micros / 1e6).toLocaleString('de-DE',
 export function budgetProblem(app: App, policy: Policy, locationId: string, estimateMicros = 0): string | null {
   const limit = Math.round(budgetUsd(policy, locationId) * 1e6);
   const used = spentMicros(app, locationId);
-  if (used + estimateMicros > limit) return `Das Monatsbudget der ${NAMES.werkstatt} ist ${used >= limit ? 'aufgebraucht' : 'zu klein für diesen Auftrag'} (${usd(used)} von ${usd(limit)}${estimateMicros ? `, geschätzt ${usd(estimateMicros)}` : ''}). Ein Admin kann es unter ${NAMES.werkstatt} → Richtlinien erhöhen.`;
+  if (used + estimateMicros > limit) {
+    const t = tApp();
+    const vars = { werkstatt: t(NAMES.werkstatt), used: usd(used), limit: usd(limit), estimate: usd(estimateMicros) };
+    if (used >= limit) return estimateMicros ? t('Das Monatsbudget der {werkstatt} ist aufgebraucht ({used} von {limit}, geschätzt {estimate}). Ein Admin kann es unter {werkstatt} → Richtlinien erhöhen.', vars) : t('Das Monatsbudget der {werkstatt} ist aufgebraucht ({used} von {limit}). Ein Admin kann es unter {werkstatt} → Richtlinien erhöhen.', vars);
+    return estimateMicros ? t('Das Monatsbudget der {werkstatt} ist zu klein für diesen Auftrag ({used} von {limit}, geschätzt {estimate}). Ein Admin kann es unter {werkstatt} → Richtlinien erhöhen.', vars) : t('Das Monatsbudget der {werkstatt} ist zu klein für diesen Auftrag ({used} von {limit}). Ein Admin kann es unter {werkstatt} → Richtlinien erhöhen.', vars);
+  }
   return null;
 }

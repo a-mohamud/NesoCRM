@@ -5,6 +5,7 @@ import { maskRow, permits, resolve, scopeClause } from '../services/record-acces
 import { diffContact } from '../services/wfx-triggers.js';
 import { id as newId, now as nowIso } from '../core/util.js';
 import type { Tool } from './mcp.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Detailed activity history (docs/api.md#field-history): every real change of a contact field or a deal field becomes an entry in
@@ -74,7 +75,7 @@ export const fieldHistoryModule: Module = {
     app.services.mcpTools = [...(app.services.mcpTools ?? []), ...TOOLS];
 
     const userName = (id: string | null | undefined) => (id ? (db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', id)?.name ?? '') : '');
-    const actorOf = (ctx: Ctx): Actor => (ctx.user ? { kind: 'user', id: ctx.user.id, name: ctx.user.name ?? userName(ctx.user.id) } : { kind: 'api', id: null, name: ctx.viaApiKey ? 'API-Schlüssel' : 'API' });
+    const actorOf = (ctx: Ctx): Actor => (ctx.user ? { kind: 'user', id: ctx.user.id, name: ctx.user.name ?? userName(ctx.user.id) } : { kind: 'api', id: null, name: ctx.viaApiKey ? tCtx(ctx)('API-Schlüssel') : 'API' });
     const record = (loc: string, contactId: string, opportunityId: string | null, field: string, label: string, oldV: unknown, newV: unknown, actor: Actor, summary: string) => {
       db.insert('field_changes', { id: newId(), location_id: loc, contact_id: contactId, opportunity_id: opportunityId, field, label, old: short(oldV), new: short(newV), actor_kind: actor.kind, actor_id: actor.id, actor_name: actor.name, created_at: nowIso() });
       logActivity(app, loc, contactId, opportunityId ? 'deal.field_changed' : 'field.changed', summary, { field, label, actor: actor.name, ...(opportunityId ? { opportunityId } : {}) });
@@ -101,15 +102,16 @@ export const fieldHistoryModule: Module = {
       if (!changes.length) return;
       const r = recent.get(contactId);
       const viaWorkflow = e.data.viaWorkflow ? db.get<{ name: string }>('SELECT name FROM workflows WHERE id = ?', e.data.viaWorkflow)?.name : undefined;
-      const actor: Actor = viaWorkflow !== undefined ? { kind: 'workflow', id: e.data.viaWorkflow, name: `Workflow „${viaWorkflow}“` } : r && Date.now() - r.at < 10_000 ? r.actor : { kind: 'system', id: null, name: 'System' };
+      const t = tLoc(app, e.locationId);
+      const actor: Actor = viaWorkflow !== undefined ? { kind: 'workflow', id: e.data.viaWorkflow, name: t('Workflow „{name}“', { name: viaWorkflow }) } : r && Date.now() - r.at < 10_000 ? r.actor : { kind: 'system', id: null, name: t('System') };
       const labels = customLabels(e.locationId);
       for (const ch of changes.slice(0, 25)) {
         const key = ch.field.startsWith('custom.') ? ch.field.slice(7) : ch.field;
-        const label = ch.field.startsWith('custom.') ? (labels.get(key) ?? key) : (CONTACT_LABELS[ch.field] ?? ch.field);
-        const show = (v: string) => (ch.field === 'assigned_to' ? userName(v) || v : ch.field === 'dnd' ? (Number(v) ? 'an' : 'aus') : v);
+        const label = ch.field.startsWith('custom.') ? (labels.get(key) ?? key) : CONTACT_LABELS[ch.field] ? t(CONTACT_LABELS[ch.field]) : ch.field;
+        const show = (v: string) => (ch.field === 'assigned_to' ? userName(v) || v : ch.field === 'dnd' ? (Number(v) ? t('an') : t('aus')) : v);
         const oldV = short(show(ch.old));
         const newV = short(show(ch.new));
-        const text = SENSITIVE_CONTACT.test(ch.field) ? `${label} geändert · ${actor.name}` : `${label}: ${oldV || '–'} → ${newV || '–'} · ${actor.name}`;
+        const text = SENSITIVE_CONTACT.test(ch.field) ? t('{label} geändert · {actor}', { label, actor: actor.name }) : `${label}: ${oldV || '–'} → ${newV || '–'} · ${actor.name}`;
         record(e.locationId, contactId, null, ch.field, label, oldV, newV, actor, text);
       }
     });
@@ -144,7 +146,9 @@ export const fieldHistoryModule: Module = {
         }
         return pipes.get(pid)!;
       };
-      for (const [f, label] of Object.entries(DEAL_FIELDS)) {
+      const t = tLoc(app, ctx.locationId);
+      for (const [f, dl] of Object.entries(DEAL_FIELDS)) {
+        const label = t(dl);
         const a = was[f] ?? '';
         const b = now[f] ?? '';
         if (String(a) === String(b)) continue;
@@ -152,7 +156,7 @@ export const fieldHistoryModule: Module = {
           f === 'stage_id' ? (pipe(row.pipeline_id).stages.find((s) => s.id === v)?.name ?? v) : f === 'pipeline_id' ? pipe(String(v)).name || v : f === 'assigned_to' ? userName(v) || v : v;
         const oldV = short(show(a, was));
         const newV = short(show(b, now));
-        const text = SENSITIVE_DEAL.test(f) ? `Deal „${short(now.name)}“ – ${label} geändert · ${actor.name}` : `Deal „${short(now.name)}“ – ${label}: ${oldV || '–'} → ${newV || '–'} · ${actor.name}`;
+        const text = SENSITIVE_DEAL.test(f) ? t('Deal „{deal}“ – {label} geändert · {actor}', { deal: short(now.name), label, actor: actor.name }) : t('Deal „{deal}“ – {label}: {old} → {new} · {actor}', { deal: short(now.name), label, old: oldV || '–', new: newV || '–', actor: actor.name });
         record(ctx.locationId, now.contact_id, now.id, f, label, oldV, newV, actor, text);
       }
     });

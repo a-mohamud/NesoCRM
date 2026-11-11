@@ -1,8 +1,9 @@
+import type { STFn } from '../i18n/index.js';
 import type { Block } from './site-blocks.js';
 import { cleanSiteSettings } from './site-settings.js';
 import { FUNNEL_TEMPLATES } from './site-templates-funnels.js';
 import { SITE_TEMPLATES } from './site-templates-sites.js';
-import type { FormKind, SiteTemplate } from './site-templates-kit.js';
+import { eyebrowSource, type FormKind, type SiteTemplate } from './site-templates-kit.js';
 
 /**
  * Template gallery (pure): the list of templates, what the gallery shows about each, and how a template is turned into a site –
@@ -13,6 +14,49 @@ import type { FormKind, SiteTemplate } from './site-templates-kit.js';
 export const TEMPLATES: SiteTemplate[] = [...SITE_TEMPLATES, ...FUNNEL_TEMPLATES];
 export const CATEGORIES = ['Dienstleistung', 'Handwerk & Lokal', 'Gesundheit', 'Immobilien', 'Verkauf & Kurse', 'Events & Webinare', 'Lead-Funnel', 'Persönlich'];
 export const templateOf = (id: unknown) => TEMPLATES.find((t) => t.id === id);
+
+/** Fields of a template that are code (ids, slugs, links, design values) – never run through the translator. */
+const CODE_KEYS = new Set(['id', 'slug', 'kind', 'tokens', 'needs', 'form', 'legal', 'thanks', 'preset', 'type', 'icon', 'url', 'url2', 'cta_url', 'button_url', 'collection_id', 'form_id', 'calendar_slug', 'product_id', 'color', 'bg', 'align', 'style', 'valign', 'stack', 'width', 'image', 'src', 'href', 'video', 'embed', 'fs', 'level']);
+
+/**
+ * One text of a template in the sub-account's language. The texts are catalog keys (German); a few are composed when the
+ * template is built – an eyebrow (`**UPPER CASE**`), bold lines, logo rows joined with ` · `, `<title> – {{firma}}` – and are
+ * translated part by part. Unknown texts stay as they are.
+ */
+export function localizeText(s: string, t: STFn): string {
+  if (!s || s.startsWith('#') || s.startsWith('page:') || s.startsWith('token:')) return s;
+  const hit = t(s);
+  if (hit !== s) return hit;
+  const flat = s.replace(/\s+/g, ' ').trim();
+  if (flat !== s) {
+    const h2 = t(flat);
+    if (h2 !== flat) return h2;
+  }
+  const bold = /^\*\*([\s\S]+)\*\*$/.exec(s);
+  if (bold) {
+    const src = eyebrowSource(bold[1]);
+    return src !== undefined ? `**${t(src).toUpperCase()}**` : `**${localizeText(bold[1], t)}**`;
+  }
+  if (s.includes('   ·   ')) return s.split('   ·   ').map((x) => localizeText(x, t)).join('   ·   ');
+  const firma = /^([\s\S]+) – \{\{firma\}\}$/.exec(s);
+  if (firma) return `${localizeText(firma[1], t)} – {{firma}}`;
+  return s;
+}
+
+/** A template with every visible text in the sub-account's language (deep copy – the gallery data is never touched). */
+export function localizeTemplate(tpl: SiteTemplate, t: STFn): SiteTemplate {
+  const walk = (v: any): any => {
+    if (typeof v === 'string') return localizeText(v, t);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') {
+      const out: Record<string, any> = {};
+      for (const [k, x] of Object.entries(v)) out[k] = CODE_KEYS.has(k) ? x : walk(x);
+      return out;
+    }
+    return v;
+  };
+  return walk(tpl);
+}
 
 export function templateMeta(t: SiteTemplate) {
   return {
@@ -36,22 +80,24 @@ export interface FormSpec {
   fields: Record<string, any>[];
   settings: Record<string, any>;
 }
-const consent = { id: 'f9', type: 'consent', label: 'Ich stimme der Verarbeitung meiner Daten gemäß Datenschutzerklärung zu.', name: 'consent', required: true };
-/** Fields of the form the apply step creates when the account has none to use. */
-export function formSpec(kind: FormKind | undefined, siteName: string): FormSpec {
+/** Fields of the form the apply step creates when the account has none to use (texts in the sub-account's language). */
+export function formSpec(kind: FormKind | undefined, siteName: string, t: STFn): FormSpec {
   const field = (id: string, type: string, label: string, name: string, required = false, extra: Record<string, any> = {}) => ({ id, type, label, name, required, ...extra });
+  const consent = { id: 'f9', type: 'consent', label: t('Ich stimme der Verarbeitung meiner Daten gemäß Datenschutzerklärung zu.'), name: 'consent', required: true };
+  const first = field('f1', 'text', t('Vorname'), 'first_name', true);
+  const email = field('f3', 'email', t('E-Mail'), 'email', true);
   switch (kind) {
     case 'optin':
-      return { name: `${siteName} – Anmeldung`, fields: [field('f1', 'text', 'Vorname', 'first_name', true), field('f3', 'email', 'E-Mail', 'email', true), consent], settings: { submit_text: 'Jetzt kostenlos sichern', thank_you: 'Danke! Schau in dein Postfach.' } };
+      return { name: t('{name} – Anmeldung', { name: siteName }), fields: [first, email, consent], settings: { submit_text: t('Jetzt kostenlos sichern'), thank_you: t('Danke! Schau in dein Postfach.') } };
     case 'registration':
-      return { name: `${siteName} – Anmeldung`, fields: [field('f1', 'text', 'Vorname', 'first_name', true), field('f3', 'email', 'E-Mail', 'email', true), consent], settings: { submit_text: 'Kostenlos anmelden', thank_you: 'Danke! Du bekommst gleich eine E-Mail.' } };
+      return { name: t('{name} – Anmeldung', { name: siteName }), fields: [first, email, consent], settings: { submit_text: t('Kostenlos anmelden'), thank_you: t('Danke! Du bekommst gleich eine E-Mail.') } };
     case 'application':
-      return { name: `${siteName} – Bewerbung`, fields: [field('f1', 'text', 'Vorname', 'first_name', true), field('f2', 'text', 'Nachname', 'last_name', true), field('f3', 'email', 'E-Mail', 'email', true), field('f4', 'phone', 'Telefon', 'phone'), field('f5', 'textarea', 'Was ist dein Ziel? Was beschäftigt dich gerade?', 'message', true), consent], settings: { submit_text: 'Bewerbung absenden', thank_you: 'Danke für deine Bewerbung!' } };
+      return { name: t('{name} – Bewerbung', { name: siteName }), fields: [first, field('f2', 'text', t('Nachname'), 'last_name', true), email, field('f4', 'phone', t('Telefon'), 'phone'), field('f5', 'textarea', t('Was ist dein Ziel? Was beschäftigt dich gerade?'), 'message', true), consent], settings: { submit_text: t('Bewerbung absenden'), thank_you: t('Danke für deine Bewerbung!') } };
     default:
       return {
-        name: `${siteName} – Kontakt`,
-        fields: [field('f1', 'text', 'Vorname', 'first_name', true), field('f2', 'text', 'Nachname', 'last_name'), field('f3', 'email', 'E-Mail', 'email', true), field('f4', 'phone', 'Telefon', 'phone'), field('f5', 'textarea', 'Ihre Nachricht', 'message', true), consent],
-        settings: { submit_text: 'Nachricht senden', thank_you: 'Danke! Wir melden uns in Kürze.' },
+        name: t('{name} – Kontakt', { name: siteName }),
+        fields: [first, field('f2', 'text', t('Nachname'), 'last_name'), email, field('f4', 'phone', t('Telefon'), 'phone'), field('f5', 'textarea', t('Ihre Nachricht'), 'message', true), consent],
+        settings: { submit_text: t('Nachricht senden'), thank_you: t('Danke! Wir melden uns in Kürze.') },
       };
   }
 }

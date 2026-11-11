@@ -8,6 +8,7 @@ import { classify, routeProblem, type Allow, type Klass } from './agent-safety.j
 import { collectAgentTools } from './agent-tool-sources.js';
 import { requiredPermission } from '../core/permissions.js';
 import { RECORD_KINDS } from './agent-context.js';
+import { tApp, tUser, type STFn } from '../i18n/index.js';
 
 /**
  * The HyperLevel Agent's tools: every MCP tool (core + `app.services.mcpTools` from other modules, so
@@ -151,7 +152,7 @@ export function makeCaller(app: App, ctx: Ctx, user: User, locationId: string, a
       const r = await callRoute(app, ctx, method, path, { locationId: (agency && opts.location) || locationId, body: opts.body });
       if (r && typeof r === 'object' && (r as any).__raw) {
         const body = (r as any).body;
-        return typeof body === 'string' ? body.slice(0, 50_000) : Buffer.isBuffer(body) ? body.toString('utf8').slice(0, 50_000) : '(Datei)';
+        return typeof body === 'string' ? body.slice(0, 50_000) : Buffer.isBuffer(body) ? body.toString('utf8').slice(0, 50_000) : '(file)';
       }
       return r;
     },
@@ -257,7 +258,7 @@ const safe = async <T>(fn: () => Promise<T>): Promise<T | null> => {
   }
 };
 const listOf = (r: any): any[] => (Array.isArray(r) ? r : (r?.contacts ?? r?.companies ?? r?.tickets ?? r?.items ?? r?.records ?? []));
-const fullName = (c: any) => [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.name || c?.email || c?.phone || 'Unbekannt';
+const fullName = (c: any) => [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.name || c?.email || c?.phone || 'Unknown';
 
 /** Knowledge chunks of a sub-account from the chosen sources. */
 async function knowledgeChunks(env: ToolEnv): Promise<{ source: string; title: string; text: string; link?: string }[]> {
@@ -269,27 +270,27 @@ async function knowledgeChunks(env: ToolEnv): Promise<{ source: string; title: s
       if (t.length > 20) out.push({ source, title: t.match(/^#{1,3} (.+)/)?.[1] ?? title, text: t.slice(0, 3000), link });
     }
   };
-  if (src.has('agent') && env.knowledge.text.trim()) split('Agent-Wissen', 'Wissen des Agenten', redactSecrets(env.knowledge.text));
+  if (src.has('agent') && env.knowledge.text.trim()) split('Agent knowledge', 'Agent knowledge', redactSecrets(env.knowledge.text));
   if (src.has('ai')) {
     const row = env.app.db.get('SELECT data FROM ai_settings WHERE location_id = ?', env.locationId);
     if (row) {
       const s = withDefaults(JSON.parse(row.data || '{}'));
-      for (const k of s.knowledge) out.push({ source: 'KI-Assistent', title: k.q, text: `F: ${k.q}\nA: ${k.a}`, link: 'settings/ai' });
+      for (const k of s.knowledge) out.push({ source: 'AI assistant', title: k.q, text: `Q: ${k.q}\nA: ${k.a}`, link: 'settings/ai' });
       const loc = env.app.location(env.locationId);
-      split('KI-Assistent', 'Wissen des KI-Assistenten', knowledgeBlock({ locationName: loc?.name ?? '', settings: { ...s, knowledge: [] }, extra: [] }), 'settings/ai');
+      split('AI assistant', 'AI assistant knowledge', knowledgeBlock({ locationName: loc?.name ?? '', settings: { ...s, knowledge: [] }, extra: [] }), 'settings/ai');
     }
   }
   if (src.has('kb')) {
     const arts = await safe(() => env.caller.api('GET', '/api/kb/search?q=&all=0&full=1&limit=40'));
-    for (const a of listOf(arts)) out.push({ source: 'Wissensdatenbank', title: a.title, text: String(a.body ?? a.excerpt ?? '').slice(0, 3000), link: a.url });
+    for (const a of listOf(arts)) out.push({ source: 'Knowledge base', title: a.title, text: String(a.body ?? a.excerpt ?? '').slice(0, 3000), link: a.url });
   }
   if (src.has('docs')) {
     const docs = await safe(() => env.caller.api('GET', '/api/docs'));
-    for (const d of listOf(docs)) out.push({ source: 'Dokumente', title: d.title ?? d.url, text: `${d.title ?? ''} ${d.kind ?? ''} ${d.url ?? ''}`, link: d.url });
+    for (const d of listOf(docs)) out.push({ source: 'Documents', title: d.title ?? d.url, text: `${d.title ?? ''} ${d.kind ?? ''} ${d.url ?? ''}`, link: d.url });
   }
   if (src.has('project')) {
     const p = await safe(() => env.caller.api('GET', '/api/project'));
-    if (p) split('Projekt-Steckbrief', 'Projekt-Steckbrief', [p.tagline, p.description, p.goals, p.notes].filter(Boolean).join('\n\n'), 'project');
+    if (p) split('Project profile', 'Project profile', [p.tagline, p.description, p.goals, p.notes].filter(Boolean).join('\n\n'), 'project');
   }
   return out;
 }
@@ -308,7 +309,7 @@ export function agentTools(app: App, opts: { webFetch: boolean }): AgentTool[] {
       run: async (env, a) => {
         const to = String(a.to ?? '').replace(/^\/?(app\/)?/, '');
         if (!ROUTE_RE.test(to)) throw new HttpError(400, 'Nur interne Pfade wie contacts/<id> sind erlaubt.');
-        if (env.automatic) return { ok: false, note: 'Keine Oberfläche offen (automatischer Lauf).' };
+        if (env.automatic) return { ok: false, note: 'No interface open (automatic run).' };
         env.emit({ type: 'navigate', to, label: String(a.label ?? '').slice(0, 80) });
         return { ok: true, opened: to };
       },
@@ -324,7 +325,7 @@ export function agentTools(app: App, opts: { webFetch: boolean }): AgentTool[] {
       group: 'Agent',
       source: 'agent',
       run: async (env) => {
-        if (!env.ui) return { page: null, note: env.automatic ? 'Automatischer Lauf ohne Oberfläche.' : 'Kein Seitenkontext übermittelt.' };
+        if (!env.ui) return { page: null, note: env.automatic ? 'Automatic run without an interface.' : 'No page context provided.' };
         const e = env.ui.entity;
         let details: unknown = null;
         if (e?.id) {
@@ -456,7 +457,7 @@ export function agentTools(app: App, opts: { webFetch: boolean }): AgentTool[] {
         if (!a.source) {
           const meta = await env.caller.api('GET', '/api/reports/sources');
           return {
-            hint: 'Wähle eine Quelle und rufe das Werkzeug erneut mit source, measures, group_by, filters und range auf.',
+            hint: 'Choose a source and call the tool again with source, measures, group_by, filters and range.',
             sources: (meta.sources ?? []).map((s: any) => ({ key: s.key, label: s.label, fields: s.fields.map((f: any) => `${f.key}:${f.type}`).slice(0, 40), calcs: (s.calcs ?? []).map((c: any) => c.key) })),
             ranges: meta.ranges,
           };
@@ -503,12 +504,20 @@ export function toolCatalog(app: App, user: User, opts: { webFetch: boolean }): 
   const mcp: McpTool[] = [...MCP_CORE_TOOLS, ...((app.services.mcpTools ?? []) as McpTool[])];
   const seen = new Set<string>();
   const out: AgentTool[] = [];
+  const tr = tUser(app as never, user.id);
   for (const t of [...agentTools(app, opts), ...mcp.filter((t) => t.name !== 'ghl_run_agent' && (admin || !t.agencyOnly)).map((t) => fromMcp(t, admin))]) {
     if (seen.has(t.name)) continue;
     seen.add(t.name);
-    out.push(t);
+    out.push(localizeTool(t, tr));
   }
   return out;
+}
+
+/** A tool's texts in a language: title, description, group and the descriptions in its schema (the German texts are message ids). */
+export function localizeTool(tool: AgentTool, t: STFn): AgentTool {
+  const walk = (v: any): any =>
+    Array.isArray(v) ? v.map(walk) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, k === 'description' && typeof x === 'string' ? t(x) : walk(x)])) : v;
+  return { ...tool, title: t(tool.title), description: t(tool.description), group: t(tool.group), inputSchema: walk(tool.inputSchema) };
 }
 
 /**
@@ -521,6 +530,7 @@ export async function externalTools(app: App, user: User, locationId: string): P
   const area = requiredPermission('POST', '/api/mcp-servers/call');
   if (user.role !== 'admin' && user.permissions && area && !user.permissions.includes(area)) return [];
   const list = await collectAgentTools(app, { locationId, userId: user.id });
+  const tr = tUser(app as never, user.id);
   return list.map((t) => {
     const a = t.annotations ?? {};
     const readOnly = a.readOnlyHint === true && a.destructiveHint !== true;
@@ -531,7 +541,7 @@ export async function externalTools(app: App, user: User, locationId: string): P
       inputSchema: t.input_schema as Json,
       klass: readOnly ? 'read' : 'sensitive',
       untrusted: true,
-      group: 'Externe Werkzeuge',
+      group: tr('Externe Werkzeuge'),
       source: 'external',
       run: async (_env, args) => {
         const r = await t.run(args);
@@ -557,10 +567,11 @@ export function toolsFor(catalog: AgentTool[], allowed: string[] | null, mode?: 
 }
 
 /** Internal links for a tool card ("Kontakt öffnen"). */
-export function linksFor(name: string, args: Json, out: any): { label: string; to: string }[] {
+export function linksFor(name: string, args: Json, out: any, t: STFn = tApp()): { label: string; to: string }[] {
   const links: { label: string; to: string }[] = [];
+  // labels: German message ids, shown in the language of `t`
   const add = (label: string, to: string | undefined) => {
-    if (to && ROUTE_RE.test(to) && !links.some((l) => l.to === to)) links.push({ label, to });
+    if (to && ROUTE_RE.test(to) && !links.some((l) => l.to === to)) links.push({ label: t(label), to });
   };
   const o = out && typeof out === 'object' && !Array.isArray(out) ? out : {};
   if (typeof o.link === 'string') add('Öffnen', o.link.replace(/^\/?(app\/)?/, ''));
@@ -582,6 +593,6 @@ export function describeTarget(app: App, locationId: string, args: Json): string
   const id = args.contact_id;
   if (!id) return null;
   const c = app.db.get('SELECT first_name, last_name, email, phone FROM contacts WHERE id = ? AND location_id = ?', String(id), locationId);
-  if (!c) return 'Unbekannter Kontakt';
+  if (!c) return tApp()('Unbekannter Kontakt');
   return `${fullName(c)}${c.email ? ` <${c.email}>` : c.phone ? ` (${c.phone})` : ''}`;
 }

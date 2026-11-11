@@ -7,6 +7,7 @@ import { contentMatches } from '../core/files.js';
 import { id, now } from '../core/util.js';
 import type { Actor } from './collab-actor.js';
 import { KINDS, activeLock, lockMessage, type LockRow, type OfficeKind } from './office-model.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Storage of Office files: the rows (`office_files`, `office_versions` – a version is never changed, a trigger refuses it) and the
@@ -71,10 +72,11 @@ export function usedBytes(app: App, locationId: string): number {
 export function checkBytes(app: App, locationId: string, kind: OfficeKind, buf: Buffer) {
   if (!buf.length) throw new HttpError(400, 'Die Datei ist leer');
   const max = maxFileBytes();
-  if (buf.length > max) throw new HttpError(413, `Datei größer als ${Math.round(max / MB)} MB`);
-  if (!contentMatches(KINDS[kind].mime, buf)) throw new HttpError(400, `Dateiinhalt passt nicht zum Dateityp (${KINDS[kind].one})`);
+  const t = tApp();
+  if (buf.length > max) throw new HttpError(413, t('Datei größer als {n} MB', { n: Math.round(max / MB) }));
+  if (!contentMatches(KINDS[kind].mime, buf)) throw new HttpError(400, t('Dateiinhalt passt nicht zum Dateityp ({kind})', { kind: t(KINDS[kind].one) }));
   const quota = quotaBytes();
-  if (quota !== null && usedBytes(app, locationId) + buf.length > quota) throw new HttpError(413, `Der Office-Speicher dieses Sub-Accounts ist voll (${Math.round(quota / MB)} MB) – alte Dateien löschen oder das Limit erhöhen (PGHL_OFFICE_QUOTA_MB)`);
+  if (quota !== null && usedBytes(app, locationId) + buf.length > quota) throw new HttpError(413, t('Der Office-Speicher dieses Sub-Accounts ist voll ({n} MB) – alte Dateien löschen oder das Limit erhöhen (PGHL_OFFICE_QUOTA_MB)', { n: Math.round(quota / MB) }));
 }
 
 export function getFile(app: App, locationId: string, fileId: string): FileRow {
@@ -86,7 +88,7 @@ export function getFile(app: App, locationId: string, fileId: string): FileRow {
 export function getVersion(app: App, file: FileRow, version?: number | null): VersionRow {
   const n = version ?? file.version;
   const v = app.db.get<VersionRow>('SELECT * FROM office_versions WHERE file_id = ? AND version = ?', file.id, n);
-  if (!v) throw notFound(`Version ${n} nicht gefunden`);
+  if (!v) throw notFound(tApp()('Version {n} nicht gefunden', { n }));
   return v;
 }
 
@@ -94,7 +96,7 @@ export function readVersion(app: App, v: VersionRow): Buffer {
   try {
     return readFileSync(blobPath(app, v.blob));
   } catch {
-    throw new HttpError(410, `Die Datei der Version ${v.version} fehlt auf dem Server`);
+    throw new HttpError(410, tApp()('Die Datei der Version {n} fehlt auf dem Server', { n: v.version }));
   }
 }
 

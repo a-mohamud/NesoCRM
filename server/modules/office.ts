@@ -9,6 +9,7 @@ import { engineStatus } from '../services/office-engine.js';
 import { KINDS, LIMITS, LOCK_RENEW_MS, LOCK_TTL_MS, OFFICE_KINDS, cleanName, isKind, kindOf, type OfficeKind } from '../services/office-model.js';
 import { addVersion, assertWritable, blobsOf, getFile, getVersion, lockOf, maxFileBytes, quotaBytes, readVersion, removeBlobs, usedBytes, type FileRow } from '../services/office-store.js';
 import { PUSH_KINDS } from './push.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Office: documents, spreadsheets, presentations and PDFs per sub-account (docs/office.md) – files with immutable versions (each save is a
@@ -41,7 +42,7 @@ function links(app: App, ctx: Ctx, get: (k: string) => unknown): Partial<Pick<Fi
     const v = get(k);
     if (v === undefined) return undefined;
     if (v === null || v === '') return null;
-    if (typeof v !== 'string' || v.length > 64) throw bad(`${k} ist ungültig`);
+    if (typeof v !== 'string' || v.length > 64) throw bad(tCtx(ctx)('{field} ist ungültig', { field: k }));
     return v;
   };
   const c = read('contact_id');
@@ -119,7 +120,8 @@ export function saveVersion(app: App, ctx: Ctx, file: FileRow, buf: Buffer, o: {
   const actor = o.actor ?? actorOf(app, ctx);
   assertWritable(app, file, actor);
   if (o.baseVersion && o.baseVersion !== file.version && !o.force) {
-    throw new HttpError(409, `Seit dem Öffnen gibt es eine neuere Version (${file.version}, von ${file.updated_by_name || 'jemandem'}). Trotzdem als neue Version speichern?`, { current_version: file.version, updated_by: file.updated_by_name });
+    const t = tCtx(ctx);
+    throw new HttpError(409, t('Seit dem Öffnen gibt es eine neuere Version ({version}, von {name}). Trotzdem als neue Version speichern?', { version: file.version, name: file.updated_by_name || t('jemandem') }), { current_version: file.version, updated_by: file.updated_by_name });
   }
   let v;
   app.db.tx(() => {
@@ -138,6 +140,7 @@ export const officeModule: Module = {
   migrations: [
     [
       '001-init',
+      // i18n-ignore – SQL; the trigger's message is translated where it reaches a person (core/app.ts)
       `
       CREATE TABLE office_files (
         id TEXT PRIMARY KEY, location_id TEXT NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
@@ -206,7 +209,7 @@ export const officeModule: Module = {
 
     // --- status: what is installed, limits ---------------------------------------------------------------------------------
     router.get('/api/office/status', 'location', (ctx) => ({
-      kinds: OFFICE_KINDS.map((k) => ({ kind: k, label: KINDS[k].label, one: KINDS[k].one, ext: ext(k) })),
+      kinds: OFFICE_KINDS.map((k) => ({ kind: k, label: tCtx(ctx)(KINDS[k].label), one: tCtx(ctx)(KINDS[k].one), ext: ext(k) })),
       editors: editorStatus(),
       engines: engineStatus(),
       sandbox: sandboxMode(),
@@ -260,7 +263,7 @@ export const officeModule: Module = {
         const claimed = param(ctx, 'kind');
         const kind = isKind(claimed) ? claimed : kindOf(param(ctx, 'mime'), name);
         if (!kind) throw bad('Nur Word- (.docx), Excel- (.xlsx), PowerPoint- (.pptx) oder PDF-Dateien');
-        return fileOut(app, createFile(app, ctx, { kind, name, bytes: buf, links: linked, message: 'Hochgeladen' }) as FileRow & Record<string, unknown>);
+        return fileOut(app, createFile(app, ctx, { kind, name, bytes: buf, links: linked, message: tLoc(app, ctx.locationId)('Hochgeladen') }) as FileRow & Record<string, unknown>);
       }
       const kind = param(ctx, 'kind');
       if (!isKind(kind)) throw bad('Art fehlt: docx, xlsx, pptx oder pdf');
@@ -269,7 +272,7 @@ export const officeModule: Module = {
       const rows = ctx.body?.rows;
       if (rows !== undefined && (!Array.isArray(rows) || !rows.every((r: unknown) => Array.isArray(r)))) throw bad('rows muss eine Liste von Zeilen sein');
       const bytes = blankFile(kind, { text, rows });
-      return fileOut(app, createFile(app, ctx, { kind, name, bytes, links: linked, message: 'Neu angelegt' }) as FileRow & Record<string, unknown>);
+      return fileOut(app, createFile(app, ctx, { kind, name, bytes, links: linked, message: tLoc(app, ctx.locationId)('Neu angelegt') }) as FileRow & Record<string, unknown>);
     });
 
     router.get('/api/office/files/:id', 'location', (ctx) => {
@@ -374,7 +377,7 @@ export const officeModule: Module = {
       if (!Number.isInteger(n) || n < 1) throw bad('Ungültige Versionsnummer');
       const old = getVersion(app, f, n);
       if (old.version === f.version) throw bad('Das ist schon die aktuelle Version');
-      const v = saveVersion(app, ctx, f, readVersion(app, old), { message: `Version ${old.version} wiederhergestellt`, restoredFrom: old.version });
+      const v = saveVersion(app, ctx, f, readVersion(app, old), { message: tLoc(app, ctx.locationId)('Version {n} wiederhergestellt', { n: old.version }), restoredFrom: old.version });
       return { ...fileOut(app, f as FileRow & Record<string, unknown>), saved_version: v.version };
     });
 

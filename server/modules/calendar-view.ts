@@ -13,6 +13,7 @@ import { callRoute } from '../services/route-call.js';
 import { cancelAppointment, rescheduleAppointment } from '../services/teamcal-book.js';
 import { moveVideo } from '../services/teamcal-video.js';
 import { peopleOf } from '../services/team-people.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Calendar view (docs/booking.md#calendar-view): the data behind the day, week, month, team and agenda grids of the Kalender page,
@@ -30,14 +31,14 @@ const ISSUE_TEXT: Record<Issue['kind'], string> = {
   limit: 'das Tages- oder Wochenlimit ist erreicht',
   absence: 'die Person ist abwesend',
 };
-export const issueMessage = (issues: Issue[]) => `Die Zeit ${[...new Set(issues.map((i) => ISSUE_TEXT[i.kind]))].join(', ')}`;
+export const issueMessage = (issues: Issue[], t: STFn = tApp()) => t('Die Zeit {issues}', { issues: [...new Set(issues.map((i) => t(ISSUE_TEXT[i.kind])))].join(', ') });
 
 /** May this request see another area's data (invoices, tasks)? Admins, unrestricted members and API keys may. */
 const mayArea = (ctx: Ctx, area: string) => (ctx.user ? ctx.user.role === 'admin' || ctx.user.permissions === null || ctx.user.permissions.includes(area) : !!ctx.viaApiKey);
 
 const isoOf = (v: unknown, what: string): Date => {
   const d = new Date(String(v ?? ''));
-  if (Number.isNaN(d.getTime())) throw bad(`${what}: ungültige Zeit`);
+  if (Number.isNaN(d.getTime())) throw bad(tApp()('{what}: ungültige Zeit', { what: tApp()(what) }));
   return d;
 };
 const parseList = <T>(v: unknown, fallback: T): T => {
@@ -65,11 +66,12 @@ function calOf(app: App, locationId: string, calendarId: unknown): CalendarRow {
 /** The contact's e-mail when staff moved an appointment by hand (the reschedule logic sends the same one itself). */
 async function tellMoved(app: App, a: any, cal: CalendarRow) {
   if (!a.contact_id) return false;
+  const t = tLoc(app, a.location_id);
   const r = await sendToContact(app, a.location_id, {
     contactId: a.contact_id,
     channel: 'email',
-    subject: `Termin verschoben: ${cal.name}`,
-    body: `Hallo,\n\ndein Termin findet jetzt am ${formatInTz(a.start_at, cal.timezone)} (${cal.timezone}) statt.${a.meeting_url ? `\nLink: ${a.meeting_url}` : ''}\n\nTermin verwalten: ${app.baseUrl()}/book/manage/${a.manage_token}`,
+    subject: t('Termin verschoben: {calendar}', { calendar: cal.name }),
+    body: t('Hallo,\n\ndein Termin findet jetzt am {date} ({timezone}) statt.', { date: formatInTz(a.start_at, cal.timezone), timezone: cal.timezone }) + (a.meeting_url ? `\n${t('Link: {url}', { url: a.meeting_url })}` : '') + `\n\n${t('Termin verwalten: {url}', { url: `${app.baseUrl()}/book/manage/${a.manage_token}` })}`,
     source: 'Terminbestätigung',
     ignoreDnd: true,
   }).catch(() => null);
@@ -131,7 +133,7 @@ export const calendarViewModule: Module = {
         people = peopleOfAppt(a, membersByCalendar(app, ctx.locationId));
       } else people = peopleOfAppt({ calendar_id: cal.id }, membersByCalendar(app, ctx.locationId));
       const issues = checkTime(app, cal, start.toISOString(), end.toISOString(), { except, people }).filter((i) => !b.blocked || ['appointment', 'blocked', 'person'].includes(i.kind));
-      return { ok: !issues.length, issues, message: issues.length ? issueMessage(issues) : '' };
+      return { ok: !issues.length, issues, message: issues.length ? issueMessage(issues, tCtx(ctx)) : '' };
     });
 
     /** Booking from an empty slot of the grid: the conflict check first (409 unless `force`), then the calendar's own booking. */
@@ -262,7 +264,7 @@ export const calendarViewModule: Module = {
       const inv = await callRoute(app, ctx, 'POST', '/api/invoices', {
         contact_id: a.contact_id,
         title: cal.name,
-        items: [{ name: cal.name, description: `Termin am ${formatInTz(a.start_at, cal.timezone)}`, qty: 1, price_cents: price }],
+        items: [{ name: cal.name, description: tLoc(app, ctx.locationId)('Termin am {date}', { date: formatInTz(a.start_at, cal.timezone) }), qty: 1, price_cents: price }],
       });
       db.run('INSERT OR REPLACE INTO appointment_invoices (appointment_id, location_id, invoice_id, created_at) VALUES (?, ?, ?, ?)', a.id, ctx.locationId, inv.id, now());
       return { invoice_id: inv.id, number: inv.number, status: inv.status, link: `/app/invoices/${inv.id}` };

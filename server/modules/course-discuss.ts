@@ -10,6 +10,7 @@ import { logActivity } from '../services/contacts.js';
 import { notifyTeam, sendToContact } from '../services/messaging.js';
 import { registerTriggers } from '../services/wfx-kit.js';
 import { PUSH_KINDS } from './push.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Discussion under every lesson ("Fragen & Diskussion": threaded, a badge for the course team, notifications) and ratings & reviews of a
@@ -118,12 +119,13 @@ export const courseDiscussModule: Module = {
     };
     const tellMember = (loc: string, contactId: string, course: any, lessonId: string, from: string, text: string) => {
       const lesson = db.get<{ title: string }>('SELECT title FROM course_lessons WHERE id = ?', lessonId);
+      const t = tLoc(app, loc);
       void sendToContact(app, loc, {
         contactId,
         channel: 'email',
-        subject: `Neue Antwort auf deinen Kommentar in „${course.title}“`,
-        body: `Hallo,\n\n${from} hat auf deinen Kommentar in der Lektion „${lesson?.title ?? ''}“ geantwortet:\n\n${clip(text, 400)}\n\nZur Diskussion:\n${lessonUrl(loc, course, lessonId)}#diskussion`,
-        source: 'Kurse',
+        subject: t('Neue Antwort auf deinen Kommentar in „{course}“', { course: course.title }),
+        body: `${t('Hallo,')}\n\n${t('{from} hat auf deinen Kommentar in der Lektion „{lesson}“ geantwortet:', { from, lesson: lesson?.title ?? '' })}\n\n${clip(text, 400)}\n\n${t('Zur Diskussion:')}\n${lessonUrl(loc, course, lessonId)}#diskussion`,
+        source: t('Kurse'),
         purpose: 'transactional',
       }).catch((e) => console.error('[course-discuss] mail', (e as Error).message));
     };
@@ -160,7 +162,7 @@ export const courseDiscussModule: Module = {
         parent = replyTarget(db.all('SELECT id, parent_id FROM course_comments WHERE lesson_id = ?', lesson.id), p.id);
       }
       const body = cleanText(ctx.body?.body, 'Antwort', { min: COMMENT_MIN, max: COMMENT_MAX });
-      const row = { id: id(), location_id: ctx.locationId, course_id: c.id, lesson_id: lesson.id, parent_id: parent, contact_id: null, author_name: ctx.user?.name || 'Kursleitung', staff: 1, user_id: ctx.user?.id ?? null, body, status: 'visible', created_at: now(), edited_at: null };
+      const row = { id: id(), location_id: ctx.locationId, course_id: c.id, lesson_id: lesson.id, parent_id: parent, contact_id: null, author_name: ctx.user?.name || tLoc(app, ctx.locationId)('Kursleitung'), staff: 1, user_id: ctx.user?.id ?? null, body, status: 'visible', created_at: now(), edited_at: null };
       db.insert('course_comments', row);
       app.events.emit(ctx.locationId, 'course.comment_posted', { courseId: c.id, lessonId: lesson.id, commentId: row.id, parentId: parent, staff: true });
       // The member who wrote the comment below gets told.
@@ -239,9 +241,10 @@ export const courseDiscussModule: Module = {
       }
       const row = { id: id(), location_id: p.locationId, course_id: s.course.id, lesson_id: l.id, parent_id: parent, contact_id: m.contact.id, author_name: nameOf(m.contact), staff: 0, user_id: null, body, status: 'visible', created_at: now(), edited_at: null };
       db.insert('course_comments', row);
-      logActivity(app, p.locationId, m.contact.id, 'course.comment', `Kommentar in „${l.title}“ (${s.course.title})`);
+      const t = tLoc(app, p.locationId);
+      logActivity(app, p.locationId, m.contact.id, 'course.comment', t('Kommentar in „{lesson}“ ({course})', { lesson: l.title, course: s.course.title }));
       app.events.emit(p.locationId, 'course.comment_posted', { contactId: m.contact.id, courseId: s.course.id, lessonId: l.id, commentId: row.id, parentId: parent, staff: false, course: { id: s.course.id, title: s.course.title }, lesson: { id: l.id, title: l.title } });
-      tellTeam(p.locationId, s.course, `Neuer Kommentar in „${s.course.title}“`, `${row.author_name} in „${l.title}“:\n${clip(body, 300)}`, `${lessonUrl(p.locationId, s.course, l.id)}#diskussion`);
+      tellTeam(p.locationId, s.course, t('Neuer Kommentar in „{course}“', { course: s.course.title }), `${t('{name} in „{lesson}“:', { name: row.author_name, lesson: l.title })}\n${clip(body, 300)}`, `${lessonUrl(p.locationId, s.course, l.id)}#diskussion`);
       const target = parent ? db.get<any>('SELECT * FROM course_comments WHERE id = ?', parent) : undefined;
       if (target?.contact_id && target.contact_id !== m.contact.id) tellMember(p.locationId, target.contact_id, s.course, l.id, row.author_name, body);
       return back(p, s, l, '?kommentar=ok');
@@ -256,7 +259,8 @@ export const courseDiscussModule: Module = {
     });
 
     // --- the discussion block under a lesson -----------------------------------------------------------------------------------------
-    const flash: Record<string, string> = { ok: 'Danke – dein Kommentar ist da.', zulang: `Der Kommentar ist zu lang (höchstens ${COMMENT_MAX} Zeichen).`, leer: 'Bitte schreibe etwas (mindestens zwei Zeichen).', zuviele: 'Das waren viele Kommentare in kurzer Zeit – bitte in ein paar Minuten wieder.' };
+    // The keys are the codes in the redirect URL (?kommentar=…), the texts are catalog keys.
+    const flash: Record<string, string> = { ok: 'Danke – dein Kommentar ist da.', zulang: 'Der Kommentar ist zu lang (höchstens {max} Zeichen).', leer: 'Bitte schreibe etwas (mindestens zwei Zeichen).', zuviele: 'Das waren viele Kommentare in kurzer Zeit – bitte in ein paar Minuten wieder.' };
     app.services.lessonExtras = [
       ...((app.services.lessonExtras as unknown[] | undefined) ?? []),
       (p: any, m: any, s: any, l: any, query: URLSearchParams) => {
@@ -265,15 +269,19 @@ export const courseDiscussModule: Module = {
         const tree = buildThreads(rows);
         const action = `${kit().lessonHref(p, s.course, l)}/comments`;
         const tz = p.loc.timezone;
-        const item = (c: Threaded<any>): string => `<div class="c" id="k-${escapeHtml(c.id)}"><div class="h"><b>${escapeHtml(c.author_name)}</b>${c.staff ? '<span class="badge">Kursleitung</span>' : ''}<time datetime="${escapeHtml(c.created_at)}">${escapeHtml(deDate(c.created_at, tz))}</time>${c.contact_id === m.contact.id ? `<form method="post" action="${action}/${escapeHtml(c.id)}/delete" style="margin-left:auto"><button class="x" onclick="return confirm('Kommentar löschen?')">Löschen</button></form>` : ''}</div>
+        const t = tLoc(app, p.locationId);
+        const e = (x: string) => escapeHtml(t(x));
+        const confirmDel = escapeHtml(JSON.stringify(t('Kommentar löschen?')));
+        const item = (c: Threaded<any>): string => `<div class="c" id="k-${escapeHtml(c.id)}"><div class="h"><b>${escapeHtml(c.author_name)}</b>${c.staff ? `<span class="badge">${e('Kursleitung')}</span>` : ''}<time datetime="${escapeHtml(c.created_at)}">${escapeHtml(deDate(c.created_at, tz))}</time>${c.contact_id === m.contact.id ? `<form method="post" action="${action}/${escapeHtml(c.id)}/delete" style="margin-left:auto"><button class="x" onclick="return confirm(${confirmDel})">${e('Löschen')}</button></form>` : ''}</div>
 <p class="t">${escapeHtml(c.body)}</p>
-<details><summary>Antworten</summary><form method="post" action="${action}"><input type="hidden" name="parent" value="${escapeHtml(c.id)}"><textarea name="body" maxlength="${COMMENT_MAX}" required aria-label="Deine Antwort"></textarea><p><button class="btn ghost">Antwort senden</button></p></form></details>
+<details><summary>${e('Antwort schreiben')}</summary><form method="post" action="${action}"><input type="hidden" name="parent" value="${escapeHtml(c.id)}"><textarea name="body" maxlength="${COMMENT_MAX}" required aria-label="${e('Deine Antwort')}"></textarea><p><button class="btn ghost">${e('Antwort senden')}</button></p></form></details>
 ${c.replies.length ? `<div class="r">${c.replies.map(item).join('')}</div>` : ''}</div>`;
-        const msg = flash[query?.get('kommentar') ?? ''];
+        const flashKey = flash[query?.get('kommentar') ?? ''];
+        const msg = flashKey ? t(flashKey, { max: COMMENT_MAX }) : '';
         return {
-          html: `${CSS}<section class="dc" id="diskussion"><h2>Fragen &amp; Diskussion <span class="n">${rows.filter((r) => r.status === 'visible').length}</span></h2>
-${msg ? `<div class="note" role="status">${escapeHtml(msg)}</div>` : ''}<form method="post" action="${action}"><textarea name="body" maxlength="${COMMENT_MAX}" required placeholder="Frage oder Gedanke zu dieser Lektion …" aria-label="Neuer Kommentar"></textarea><p><button class="btn">Kommentar senden</button></p></form>
-${tree.map(item).join('') || '<p class="muted">Noch keine Kommentare – stell die erste Frage.</p>'}</section>`,
+          html: `${CSS}<section class="dc" id="diskussion"><h2>${e('Fragen & Diskussion')} <span class="n">${rows.filter((r) => r.status === 'visible').length}</span></h2>
+${msg ? `<div class="note" role="status">${escapeHtml(msg)}</div>` : ''}<form method="post" action="${action}"><textarea name="body" maxlength="${COMMENT_MAX}" required placeholder="${e('Frage oder Gedanke zu dieser Lektion …')}" aria-label="${e('Neuer Kommentar')}"></textarea><p><button class="btn">${e('Kommentar senden')}</button></p></form>
+${tree.map(item).join('') || `<p class="muted">${e('Noch keine Kommentare – stell die erste Frage.')}</p>`}</section>`,
         };
       },
     ];
@@ -344,9 +352,10 @@ ${tree.map(item).join('') || '<p class="muted">Noch keine Kommentare – stell d
       const status = st.reviews_moderation ? 'pending' : 'published';
       if (cur) db.update('course_reviews', cur.id, { rating, title, body, status, updated_at: now(), author_name: nameOf(m.contact) });
       else db.insert('course_reviews', { id: id(), location_id: p.locationId, course_id: s.course.id, contact_id: m.contact.id, author_name: nameOf(m.contact), rating, title, body, status, reply: '', replied_at: null, created_at: now(), updated_at: now() });
-      logActivity(app, p.locationId, m.contact.id, 'course.review', `Kurs „${s.course.title}“ mit ${rating} Sternen bewertet`);
+      const t = tLoc(app, p.locationId);
+      logActivity(app, p.locationId, m.contact.id, 'course.review', t('Kurs „{course}“ mit {n} Sternen bewertet', { course: s.course.title, n: rating }));
       app.events.emit(p.locationId, 'course.review_posted', { contactId: m.contact.id, courseId: s.course.id, rating, status, course: { id: s.course.id, title: s.course.title } });
-      tellTeam(p.locationId, s.course, `Neue Bewertung für „${s.course.title}“`, `${nameOf(m.contact)}: ${rating} von 5 Sternen${title ? ` – ${title}` : ''}${st.reviews_moderation ? '\n(wartet auf Freigabe)' : ''}`, `${app.baseUrl()}/app/courses/${s.course.id}`);
+      tellTeam(p.locationId, s.course, t('Neue Bewertung für „{course}“', { course: s.course.title }), `${t('{name}: {n} von 5 Sternen', { name: nameOf(m.contact), n: rating })}${title ? ` – ${title}` : ''}${st.reviews_moderation ? `\n${t('(wartet auf Freigabe)')}` : ''}`, `${app.baseUrl()}/app/courses/${s.course.id}`);
       return redirect(`${here}?bewertung=ok#bewertungen`, 303);
     });
     router.post('/portal/:p/c/:course/review/delete', 'public', (ctx) => {
@@ -370,23 +379,28 @@ ${tree.map(item).join('') || '<p class="muted">Noch keine Kommentare – stell d
         const tz = p.loc.timezone;
         const action = `${kit().courseHref(p, s.course)}/review`;
         const can = s.progress.percent >= st.reviews_min_percent;
+        const t = tLoc(app, p.locationId);
+        const e = (x: string, v?: Record<string, string | number>) => escapeHtml(t(x, v));
+        const starsLabel = (n: number) => escapeHtml(t.plural(n, { one: '{n} Stern', other: '{n} Sterne' }));
         const form = can
-          ? `<form method="post" action="${action}"><fieldset style="border:0;padding:0;margin:0"><legend class="small muted">${mine ? 'Deine Bewertung ändern' : 'Bewerte diesen Kurs'}</legend>
-<div class="rate">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" name="rating" id="rt${n}" value="${n}"${mine?.rating === n ? ' checked' : ''} required><label for="rt${n}" title="${n} Sterne" aria-label="${n} Sterne">★</label>`).join('')}</div></fieldset>
-<p><input type="text" name="title" maxlength="100" placeholder="Überschrift (optional)" aria-label="Überschrift" value="${escapeHtml(mine?.title ?? '')}"></p>
-<p><textarea name="body" maxlength="2000" placeholder="Was hat dir gefallen? Was könnte besser sein? (optional)" aria-label="Deine Bewertung">${escapeHtml(mine?.body ?? '')}</textarea></p>
-<p><button class="btn">${mine ? 'Bewertung speichern' : 'Bewertung abschicken'}</button></p></form>${mine ? `<form method="post" action="${action}/delete"><button class="x" onclick="return confirm('Bewertung löschen?')">Meine Bewertung löschen</button></form>` : ''}`
-          : `<p class="muted small">Du kannst den Kurs bewerten, sobald du ${st.reviews_min_percent} % geschafft hast.</p>`;
-        const status = mine ? `<div class="note">${mine.status === 'published' ? 'Deine Bewertung ist veröffentlicht.' : mine.status === 'pending' ? 'Deine Bewertung wartet auf die Freigabe durch das Team.' : 'Deine Bewertung wurde nicht veröffentlicht.'}</div>` : '';
+          ? `<form method="post" action="${action}"><fieldset style="border:0;padding:0;margin:0"><legend class="small muted">${mine ? e('Deine Bewertung ändern') : e('Bewerte diesen Kurs')}</legend>
+<div class="rate">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" name="rating" id="rt${n}" value="${n}"${mine?.rating === n ? ' checked' : ''} required><label for="rt${n}" title="${starsLabel(n)}" aria-label="${starsLabel(n)}">★</label>`).join('')}</div></fieldset>
+<p><input type="text" name="title" maxlength="100" placeholder="${e('Überschrift (optional)')}" aria-label="${e('Überschrift')}" value="${escapeHtml(mine?.title ?? '')}"></p>
+<p><textarea name="body" maxlength="2000" placeholder="${e('Was hat dir gefallen? Was könnte besser sein? (optional)')}" aria-label="${e('Deine Bewertung')}">${escapeHtml(mine?.body ?? '')}</textarea></p>
+<p><button class="btn">${mine ? e('Bewertung speichern') : e('Bewertung abschicken')}</button></p></form>${mine ? `<form method="post" action="${action}/delete"><button class="x" onclick="return confirm(${escapeHtml(JSON.stringify(t('Bewertung löschen?')))})">${e('Meine Bewertung löschen')}</button></form>` : ''}`
+          : `<p class="muted small">${e('Du kannst den Kurs bewerten, sobald du {pct} % geschafft hast.', { pct: st.reviews_min_percent })}</p>`;
+        const status = mine ? `<div class="note">${mine.status === 'published' ? e('Deine Bewertung ist veröffentlicht.') : mine.status === 'pending' ? e('Deine Bewertung wartet auf die Freigabe durch das Team.') : e('Deine Bewertung wurde nicht veröffentlicht.')}</div>` : '';
         const list = published
           .slice(0, 12)
           .map(
-            (r) => `<div class="c"><div class="h"><span class="stars" aria-label="${r.rating} von 5 Sternen">${stars(r.rating)}</span><b>${escapeHtml(r.author_name)}</b><time datetime="${escapeHtml(r.created_at)}">${escapeHtml(deDate(r.created_at, tz))}</time></div>${r.title ? `<p class="t"><b>${escapeHtml(r.title)}</b></p>` : ''}${r.body ? `<p class="t">${escapeHtml(r.body)}</p>` : ''}${r.reply ? `<div class="r"><div class="h"><b>Antwort der Kursleitung</b><span class="badge">Kursleitung</span></div><p class="t">${escapeHtml(r.reply)}</p></div>` : ''}</div>`,
+            (r) => `<div class="c"><div class="h"><span class="stars" aria-label="${e('{n} von 5 Sternen', { n: r.rating })}">${stars(r.rating)}</span><b>${escapeHtml(r.author_name)}</b><time datetime="${escapeHtml(r.created_at)}">${escapeHtml(deDate(r.created_at, tz))}</time></div>${r.title ? `<p class="t"><b>${escapeHtml(r.title)}</b></p>` : ''}${r.body ? `<p class="t">${escapeHtml(r.body)}</p>` : ''}${r.reply ? `<div class="r"><div class="h"><b>${e('Antwort der Kursleitung')}</b><span class="badge">${e('Kursleitung')}</span></div><p class="t">${escapeHtml(r.reply)}</p></div>` : ''}</div>`,
           )
           .join('');
-        const msg = reviewFlash[query?.get('bewertung') ?? ''];
+        const flashKey = reviewFlash[query?.get('bewertung') ?? ''];
+        const msg = flashKey ? t(flashKey) : '';
+        const avg = t.locale === 'de' ? String(sum.average).replace('.', ',') : String(sum.average);
         return {
-          bottom: `${CSS}<section class="dc panel" id="bewertungen" style="margin-top:22px"><h2>Bewertungen</h2>${sum.count ? `<div class="avg"><b>${String(sum.average).replace('.', ',')}</b><span class="stars" aria-hidden="true">${stars(sum.average)}</span><span class="muted">${sum.count} ${sum.count === 1 ? 'Bewertung' : 'Bewertungen'}</span></div>` : '<p class="muted">Noch keine Bewertungen.</p>'}${msg ? `<div class="note" role="status">${escapeHtml(msg)}</div>` : ''}${status}${form}${list ? `<div style="margin-top:16px">${list}</div>` : ''}</section>`,
+          bottom: `${CSS}<section class="dc panel" id="bewertungen" style="margin-top:22px"><h2>${e('Bewertungen')}</h2>${sum.count ? `<div class="avg"><b>${avg}</b><span class="stars" aria-hidden="true">${stars(sum.average)}</span><span class="muted">${escapeHtml(t.plural(sum.count, { one: '{n} Bewertung', other: '{n} Bewertungen' }))}</span></div>` : `<p class="muted">${e('Noch keine Bewertungen.')}</p>`}${msg ? `<div class="note" role="status">${escapeHtml(msg)}</div>` : ''}${status}${form}${list ? `<div style="margin-top:16px">${list}</div>` : ''}</section>`,
         };
       },
     ];
@@ -397,7 +411,8 @@ ${tree.map(item).join('') || '<p class="muted">Noch keine Kommentare – stell d
       (_a: App, loc: string, c: { id: string }) => {
         for (const r of db.all<{ id: string }>('SELECT id FROM course_comments WHERE contact_id = ? AND location_id = ?', c.id, loc)) {
           const answered = db.get('SELECT 1 AS x FROM course_comments WHERE parent_id = ? AND location_id = ?', r.id, loc);
-          if (answered) db.run(`UPDATE course_comments SET contact_id = NULL, author_name = 'Gelöscht (DSGVO)', body = '[Kommentar gelöscht]' WHERE id = ?`, r.id);
+          const t = tLoc(app, loc);
+          if (answered) db.run(`UPDATE course_comments SET contact_id = NULL, author_name = ?, body = ? WHERE id = ?`, t('Gelöscht (DSGVO)'), t('[Kommentar gelöscht]'), r.id);
         }
       },
     ];

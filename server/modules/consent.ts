@@ -39,6 +39,7 @@ import {
 } from '../services/consent.js';
 import { registerTriggers, type FieldDef, type TriggerMeta } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
+import { tLoc, tCtx } from '../i18n/index.js';
 
 /**
  * Consent ledger (Einwilligung): who agreed to what, when, where and with which text – per contact, channel and purpose –
@@ -155,7 +156,7 @@ export const consentModule: Module = {
       proof: (loc: string, contactId: string) => buildProof(app, loc, contactId),
       /** The unsubscribe link was used (contacts module): DND is set, the ledger records the withdrawal with the browser's proof data. */
       unsubscribed: (ctx: Ctx | undefined, loc: string, contactId: string) =>
-        void revokeConsent(app, { locationId: loc, contactId, channel: 'all', source: { kind: 'unsubscribe', label: 'Abmeldelink in einer E-Mail' }, meta: metaOf(ctx), actor: 'contact' }),
+        void revokeConsent(app, { locationId: loc, contactId, channel: 'all', source: { kind: 'unsubscribe', label: tLoc(app, loc)('Abmeldelink in einer E-Mail') }, meta: metaOf(ctx), actor: 'contact' }),
     };
 
     // "Nicht stören" changed by hand (contact page, bulk action, workflow step): the ledger keeps a line for it.
@@ -163,8 +164,9 @@ export const consentModule: Module = {
       const d = e.data ?? {};
       if (!Array.isArray(d.changed) || !d.changed.includes('dnd') || !!d.previous?.dnd === !!d.contact?.dnd || !d.contactId) return;
       try {
-        if (d.contact?.dnd) revokeConsent(app, { locationId: e.locationId, contactId: d.contactId, channel: 'all', source: { kind: 'manual', label: 'Nicht stören' }, note: '„Nicht stören“ gesetzt', actor: 'team' });
-        else resetConsent(app, e.locationId, d.contactId, { kind: 'manual', label: 'Nicht stören' }, { actor: 'team', note: '„Nicht stören“ aufgehoben' });
+        const t = tLoc(app, e.locationId);
+        if (d.contact?.dnd) revokeConsent(app, { locationId: e.locationId, contactId: d.contactId, channel: 'all', source: { kind: 'manual', label: t('Nicht stören') }, note: t('„Nicht stören“ gesetzt'), actor: 'team' });
+        else resetConsent(app, e.locationId, d.contactId, { kind: 'manual', label: t('Nicht stören') }, { actor: 'team', note: t('„Nicht stören“ aufgehoben') });
       } catch (err) {
         console.error('[consent] dnd:', (err as Error).message);
       }
@@ -193,7 +195,10 @@ export const consentModule: Module = {
     };
 
     // --- settings -------------------------------------------------------------------------------------------------------
-    router.get('/api/consent/settings', 'location', (ctx) => ({ settings: settingsOf(app, ctx.locationId), channels: CHANNELS.map((c) => ({ key: c, label: CHANNEL_LABEL[c], purposes: CHANNEL_PURPOSES[c].map((p) => ({ key: p, label: PURPOSE_LABEL[p] })) })) }));
+    router.get('/api/consent/settings', 'location', (ctx) => {
+      const t = tCtx(ctx);
+      return { settings: settingsOf(app, ctx.locationId), channels: CHANNELS.map((c) => ({ key: c, label: t(CHANNEL_LABEL[c]), purposes: CHANNEL_PURPOSES[c].map((p) => ({ key: p, label: t(PURPOSE_LABEL[p]) })) })) };
+    });
     router.put('/api/consent/settings', 'location', (ctx) => {
       writable(ctx);
       const b = ctx.body ?? {};
@@ -259,10 +264,13 @@ export const consentModule: Module = {
       const texts = new Map<string, string>();
       for (const e of events) if (e.text_id && !texts.has(e.text_id)) texts.set(e.text_id, db.get<{ text: string }>('SELECT text FROM consent_texts WHERE id = ?', e.text_id)?.text ?? '');
       const doi = doiOf(app, c.id).map((d) => ({ ...d, link: d.status === 'pending' ? confirmUrl(app, d) : undefined }));
+      const t = tCtx(ctx);
+      // The derived reasons are German ids (compared in the model); the answer carries them in the user's language.
+      const said = <S extends { reason: string }>(s: S): S => ({ ...s, reason: s.reason ? t(s.reason) : s.reason });
       return {
         contact: { id: c.id, dnd: !!c.dnd, email: c.email, phone: c.phone, source: c.source },
         policy: settingsOf(app, ctx.locationId).policy,
-        channels: Object.fromEntries(CHANNELS.map((ch) => [ch, { ...state[ch], label: STATUS_LABEL[state[ch].status], channel_label: CHANNEL_LABEL[ch] }])),
+        channels: Object.fromEntries(CHANNELS.map((ch) => [ch, { ...said(state[ch]), purposes: Object.fromEntries(Object.entries(state[ch].purposes).map(([p, x]) => [p, said(x)])), label: t(STATUS_LABEL[state[ch].status]), channel_label: t(CHANNEL_LABEL[ch]) }])),
         events: events
           .slice()
           .reverse()
@@ -307,7 +315,7 @@ export const consentModule: Module = {
         source,
         text: b.text ? { key: `manual:${channel}`, text: str(b.text, 'Text', { max: 4000 }) } : undefined,
         proofUrl: cleanProofUrl(b.proof_url),
-        note: doi && !note ? 'Bestätigungsanfrage per Double-Opt-in (Einwilligung steht noch aus)' : note,
+        note: doi && !note ? tLoc(app, ctx.locationId)('Bestätigungsanfrage per Double-Opt-in (Einwilligung steht noch aus)') : note,
         actor,
         doi,
         clearDnd: !!b.clear_dnd,
@@ -325,7 +333,7 @@ export const consentModule: Module = {
       if (d && (d.contact_id !== c.id || d.location_id !== ctx.locationId)) throw notFound();
       if (!d) {
         const purposes = Array.isArray(ctx.body?.purposes) && ctx.body.purposes.length ? ctx.body.purposes.map(String) : ['newsletter'];
-        const r = grantConsent(app, { locationId: ctx.locationId, contactId: c.id, channel: 'email', purposes, source: { kind: 'manual', label: ctx.user?.name || 'Team' }, note: 'Bestätigungsanfrage per Double-Opt-in (Einwilligung steht noch aus)', actor: ctx.user?.id ?? 'team', doi: true });
+        const r = grantConsent(app, { locationId: ctx.locationId, contactId: c.id, channel: 'email', purposes, source: { kind: 'manual', label: ctx.user?.name || 'Team' }, note: tLoc(app, ctx.locationId)('Bestätigungsanfrage per Double-Opt-in (Einwilligung steht noch aus)'), actor: ctx.user?.id ?? 'team', doi: true });
         d = r.doi!;
       }
       if (d.status !== 'pending') throw bad('Diese Bestätigung ist nicht mehr offen');

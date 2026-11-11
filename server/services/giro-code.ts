@@ -1,5 +1,6 @@
 import QRCode from 'qrcode';
 import { checkIban, normalizeIban } from './invoice-model.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * GiroCode: the QR code of the European Payments Council (EPC069-12, "Quick Response Code: Guidelines to Enable the
@@ -86,5 +87,5 @@ export function qrSvg(text: string, px = 160): string {
     .map(([x, y, n]) => `M${x + q} ${y + q}h${n}v1h-${n}z`)
     .join('');
   const total = m.size + q * 2;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" width="${px}" height="${px}" shape-rendering="crispEdges" role="img" aria-label="GiroCode zum Bezahlen per Banking-App"><rect width="${total}" height="${total}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" width="${px}" height="${px}" shape-rendering="crispEdges" role="img" aria-label="${tApp()('GiroCode zum Bezahlen per Banking-App')}"><rect width="${total}" height="${total}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
 }

@@ -1,6 +1,7 @@
 import type { App } from '../core/app.js';
 import { ensureTags } from './contacts.js';
 import { id, now } from '../core/util.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Tag colours and categories (modules/tag-meta.ts): pure helpers plus the snapshot copy. A tag keeps its name as the key on
@@ -12,7 +13,7 @@ import { id, now } from '../core/util.js';
 export function cleanColor(v: unknown, field = 'Farbe'): string {
   if (v === null || v === undefined || v === '') return '';
   const s = String(v).trim().toLowerCase();
-  if (!/^#[0-9a-f]{6}$/.test(s)) throw new Error(`${field}: Farbe als #rrggbb angeben`);
+  if (!/^#[0-9a-f]{6}$/.test(s)) throw new Error(tApp()('{field}: Farbe als #rrggbb angeben', { field: tApp()(field) }));
   return s;
 }
 

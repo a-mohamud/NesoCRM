@@ -10,6 +10,7 @@ import { knowledgeSummary, translateKnowledge, withoutKnowledge } from './knowle
 import { createLocation } from './core.js';
 import { sealSettings } from '../core/secrets.js';
 import { locationStats, overviewExtras } from '../services/location-stats.js';
+import { tCtx } from '../i18n/index.js';
 
 /** The white-label look of the whole app (agency level). */
 export interface Branding {
@@ -103,7 +104,7 @@ export const agencyModule: Module = {
       const u = ctx.user;
       if (!u || u.role === 'admin' || !u.permissions) return;
       const need = requiredPermission(ctx.method, ctx.path);
-      if (need && !u.permissions.includes(need)) throw new HttpError(403, `Kein Zugriff auf „${PERMISSIONS[need]}“`);
+      if (need && !u.permissions.includes(need)) throw new HttpError(403, tCtx(ctx)('Kein Zugriff auf „{area}“', { area: tCtx(ctx)(PERMISSIONS[need]) }));
     });
     router.get('/api/permissions', 'user', () => PERMISSIONS);
 
@@ -262,7 +263,7 @@ export const agencyModule: Module = {
       } catch (e) {
         throw bad((e as Error).message);
       }
-      const row = { id: id(), name: str(ctx.body.name, 'Name') || 'Importierter Snapshot', description: str(ctx.body.description, 'Beschreibung', { max: 2000 }), source_location_id: null, data: JSON.stringify(data), created_at: now() };
+      const row = { id: id(), name: str(ctx.body.name, 'Name') || tCtx(ctx)('Importierter Snapshot'), description: str(ctx.body.description, 'Beschreibung', { max: 2000 }), source_location_id: null, data: JSON.stringify(data), created_at: now() };
       db.insert('snapshots', row);
       return out(row);
     });

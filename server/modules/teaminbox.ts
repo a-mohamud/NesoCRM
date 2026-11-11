@@ -34,6 +34,7 @@ import {
   whoOf,
   type ConvRow,
 } from '../services/teaminbox-store.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Team-Posteingang: every conversation gets an assignee (a person, or a team that takes turns), a status (open / waiting /
@@ -186,11 +187,12 @@ export const teamInboxModule: Module = {
     const names = (locationId: string) => new Map(agentsOf(app, locationId).map((a) => [a.id, a.name]));
     function decorate(locationId: string, rows: any[]): any[] {
       const who = names(locationId);
+      const unknown = tApp()('Unbekannt');
       const teams = new Map(db.all<{ id: string; name: string }>('SELECT id, name FROM helpdesk_teams WHERE location_id = ?', locationId).map((t) => [t.id, t.name]));
       const at = new Date();
       return rows.map((r) => ({
         ...r,
-        assignee_name: r.assignee_id ? (who.get(r.assignee_id) ?? 'Unbekannt') : '',
+        assignee_name: r.assignee_id ? (who.get(r.assignee_id) ?? unknown) : '',
         team_name: r.team_id ? (teams.get(r.team_id) ?? '') : '',
         snoozed: !!r.snoozed_until && Date.parse(r.snoozed_until) > at.getTime() && r.inbox_status !== 'closed',
         // The scheduler marks a missed deadline for good; before it has looked, the clock decides.
@@ -206,12 +208,13 @@ export const teamInboxModule: Module = {
         const av = availabilityOf(app, ctx.locationId, a.id);
         return { ...a, away: isAway(app, ctx.locationId, a.id, new Date(), true), paused: av.paused, back_on: awayUntil(av), me: a.id === ctx.user?.id };
       });
+      const t = tCtx(ctx);
       return {
         me: ctx.user?.id ?? null,
         timezone: tz,
-        views: VIEWS.map((k) => [k, VIEW_LABEL[k]]),
-        statuses: STATUSES.map((k) => [k, STATUS_LABEL[k]]),
-        priorities: PRIORITIES.map((k) => [k, PRIORITY_LABEL[k]]),
+        views: VIEWS.map((k) => [k, t(VIEW_LABEL[k])]),
+        statuses: STATUSES.map((k) => [k, t(STATUS_LABEL[k])]),
+        priorities: PRIORITIES.map((k) => [k, t(PRIORITY_LABEL[k])]),
         people,
         teams: db.all('SELECT id, name, members FROM helpdesk_teams WHERE location_id = ? ORDER BY name', ctx.locationId).map((t: any) => ({ id: t.id, name: t.name, members: JSON.parse(t.members || '[]') })),
         settings: { assignment_mode: s.assignment.mode, sla_enabled: s.sla.enabled, first_response_min: s.sla.first_response_min, next_response_min: s.sla.next_response_min, auto_close_days: s.auto_close_days, reply_sets_waiting: s.reply_sets_waiting },
@@ -240,7 +243,7 @@ export const teamInboxModule: Module = {
     function queue(ctx: Ctx) {
       const at = new Date().toISOString();
       const viewParam = ctx.query.get('view') ?? 'open';
-      if (!isView(viewParam)) throw bad(`Unbekannte Ansicht – möglich: ${VIEWS.join(', ')}`);
+      if (!isView(viewParam)) throw bad(tCtx(ctx)('Unbekannte Ansicht – möglich: {views}', { views: VIEWS.join(', ') }));
       const where = ['v.location_id = ?'];
       const params: any[] = [ctx.locationId];
       const v = viewSql(viewParam, ctx.user?.id, at);
@@ -412,8 +415,8 @@ export const teamInboxModule: Module = {
       if (next.assignment.team_id && !teams.has(next.assignment.team_id)) throw bad('Unbekanntes Team');
       for (const u of next.assignment.user_ids) if (!people.has(u)) throw bad('Eine gewählte Person hat keinen Zugriff auf die Konversationen');
       for (const r of next.assignment.rules) {
-        if (r.target.type === 'user' && !people.has(r.target.id)) throw bad(`Regel „${r.name}“: Person hat keinen Zugriff`);
-        if (r.target.type === 'team' && !teams.has(r.target.id)) throw bad(`Regel „${r.name}“: unbekanntes Team`);
+        if (r.target.type === 'user' && !people.has(r.target.id)) throw bad(tCtx(ctx)('Regel „{name}“: Person hat keinen Zugriff', { name: r.name }));
+        if (r.target.type === 'team' && !teams.has(r.target.id)) throw bad(tCtx(ctx)('Regel „{name}“: unbekanntes Team', { name: r.name }));
       }
       saveSettings(app, ctx.locationId, next);
       return settingsOf(app, ctx.locationId);

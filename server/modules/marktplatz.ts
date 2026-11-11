@@ -5,6 +5,7 @@ import { parseScreenshot } from '../services/feedback.js';
 import { callCost, modelInfo } from '../services/werkstatt/aicost.js';
 import { CATEGORIES, SCOPES, newScopes, riskOf } from '../services/werkstatt/manifest.js';
 import { NAMES } from '../services/werkstatt/names.js';
+import { tApp, tCtx } from '../i18n/index.js';
 import { healthOf } from '../services/werkstatt/health.js';
 import { licenseInfo, requirePro } from '../services/werkstatt/license.js';
 import { gateProblem } from '../services/werkstatt/models.js';
@@ -67,7 +68,7 @@ export const marktplatzModule: Module = {
       if (!ctx.user) throw new HttpError(403, 'Der Marktplatz braucht eine Anmeldung (nicht einen API-Schlüssel).');
       return ctx.user;
     };
-    const actor = (ctx: Ctx): User => ctx.user ?? { id: '', email: '', name: 'API-Schlüssel', role: 'member', locations: [ctx.locationId], permissions: null };
+    const actor = (ctx: Ctx): User => ctx.user ?? { id: '', email: '', name: tCtx(ctx)('API-Schlüssel'), role: 'member', locations: [ctx.locationId], permissions: null };
     /** Admin routes that act in a sub-account (AI budget, card of the plugin) need x-location-id like every other route. */
     const adminOnly = (ctx: Ctx) => {
       if (ctx.user?.role !== 'admin') throw new HttpError(403, 'Nur für Admins');
@@ -94,9 +95,9 @@ export const marktplatzModule: Module = {
         icon: p.icon,
         description: p.description,
         category: p.category,
-        category_label: CATEGORIES.find(([k]) => k === p.category)?.[1] ?? p.category,
+        category_label: tApp()(CATEGORIES.find(([k]) => k === p.category)?.[1] ?? p.category),
         version: v?.version ?? '',
-        scopes: (m?.scopes ?? []).map((k) => ({ key: k, label: SCOPES[k]?.label ?? k, hint: SCOPES[k]?.hint ?? '', risk: SCOPES[k]?.risk ?? 'medium', write: !!SCOPES[k]?.write })),
+        scopes: (m?.scopes ?? []).map((k) => ({ key: k, label: SCOPES[k] ? tApp()(SCOPES[k].label) : k, hint: SCOPES[k] ? tApp()(SCOPES[k].hint) : '', risk: SCOPES[k]?.risk ?? 'medium', write: !!SCOPES[k]?.write })),
         risk: riskOf(m?.scopes ?? []),
         has_ui: !!(m?.entries.page || m?.entries.panels?.length || m?.entries.widgets?.length),
         has_actions: !!m?.entries.actions?.length,
@@ -133,7 +134,7 @@ export const marktplatzModule: Module = {
       else if (sort === 'new') cards.sort((a, b) => String(b.published_at).localeCompare(String(a.published_at)));
       else cards.sort((a, b) => b.installs - a.installs || (b.rating ?? 0) - (a.rating ?? 0));
       const counts = Object.fromEntries(CATEGORIES.map(([k]) => [k, listed().filter((p) => p.category === k && p.status !== 'killed').length]));
-      return { plugins: cards, categories: CATEGORIES.map(([key, label]) => ({ key, label, count: counts[key] })), names: NAMES, can_install: isTeam(u), license: licenseInfo(app) };
+      return { plugins: cards, categories: CATEGORIES.map(([key, label]) => ({ key, label: tApp()(label), count: counts[key] })), names: NAMES, can_install: isTeam(u), license: licenseInfo(app) };
     });
     router.get('/api/marktplatz/:id', 'location', (ctx) => {
       const u = actor(ctx);
@@ -153,7 +154,7 @@ export const marktplatzModule: Module = {
         long_description: p.description,
         entries: { page: mv.manifest.entries.page ?? null, panels: mv.manifest.entries.panels ?? [], widgets: mv.manifest.entries.widgets ?? [], actions: mv.manifest.entries.actions ?? [], jobs: mv.manifest.entries.jobs ?? [] },
         changelog,
-        update: own && own.version_id && own.version_id !== p.market_version_id ? { from: installedV?.version ?? '', to: mv.version, changelog: newer, new_scopes: added.map((k) => ({ key: k, label: SCOPES[k]?.label ?? k, risk: SCOPES[k]?.risk ?? 'medium' })) } : null,
+        update: own && own.version_id && own.version_id !== p.market_version_id ? { from: installedV?.version ?? '', to: mv.version, changelog: newer, new_scopes: added.map((k) => ({ key: k, label: SCOPES[k] ? tApp()(SCOPES[k].label) : k, risk: SCOPES[k]?.risk ?? 'medium' })) } : null,
         my_review: db.get('SELECT rating, body FROM plugin_reviews WHERE plugin_id = ? AND user_id = ?', p.id, u.id) ?? null,
         can_review: !!own,
       };
@@ -176,7 +177,7 @@ export const marktplatzModule: Module = {
       if ((m.entries.actions?.length || m.entries.jobs?.length) && policy.server_logic === 'off') throw new HttpError(409, 'Server-Logik ist laut Richtlinie ausgeschaltet – dieses Plugin braucht sie.');
       if (m.server?.mode === 'script' && (policy.server_logic === 'declarative' || !(await probeSandbox()).ok)) throw new HttpError(409, 'Dieses Plugin braucht die Skript-Sandbox, die hier nicht verfügbar oder ausgeschaltet ist.');
       const hosts = m.externalHosts ?? [];
-      if (hosts.some((h) => !policy.allowed_hosts.includes(h))) throw new HttpError(409, `Das Plugin nutzt externe Hosts, die ein Admin noch nicht freigegeben hat: ${hosts.filter((h) => !policy.allowed_hosts.includes(h)).join(', ')}.`);
+      if (hosts.some((h) => !policy.allowed_hosts.includes(h))) throw new HttpError(409, tCtx(ctx)('Das Plugin nutzt externe Hosts, die ein Admin noch nicht freigegeben hat: {hosts}.', { hosts: hosts.filter((h) => !policy.allowed_hosts.includes(h)).join(', ') }));
       upsertInstall(app, { pluginId: p.id, locationId: ctx.locationId, userId: scope === 'private' ? u.id : null, versionId: v.id, consent: v.manifest.scopes, by: u.id });
       return card(p, u, ctx.locationId);
     });
@@ -285,7 +286,7 @@ export const marktplatzModule: Module = {
     const aiRunner = () => app.services.aiRun as ((i: Record<string, unknown>) => Promise<RunResult>) | undefined;
     const aiProblem = (locationId: string, what: string) => {
       const problem = (app.services.aiReady?.(locationId) as string | null | undefined) ?? (aiRunner() ? null : 'Die KI ist nicht eingerichtet.');
-      if (problem) throw new HttpError(409, `${what} braucht die KI: ${problem}`);
+      if (problem) throw new HttpError(409, tApp()('{what} braucht die KI: {problem}', { what: tApp()(what), problem: tApp()(problem) }));
       const over = budgetProblem(app, loadPolicy(app), locationId, 0);
       if (over) throw new HttpError(409, over);
     };
@@ -299,9 +300,9 @@ export const marktplatzModule: Module = {
       const files = { manifest: v.manifest, ui_html: v.ui_html, server_js: v.server_js, steps: v.steps };
       const verification = await verify(app, files, ctx.locationId);
       const auto = autoChecks(files, verification);
-      const r = await aiRunner()!({ locationId: ctx.locationId, purpose, system: [{ text: REVIEW_SYSTEM, cache: true }], user: reviewUser({ ...files, staticReport: verification.ok ? 'Alle automatischen Prüfungen bestanden.' : verificationText(verification) }), schema: REVIEW_SCHEMA, maxTokens: 3000, timeoutMs: 180_000, userId: ctx.user!.id });
+      const r = await aiRunner()!({ locationId: ctx.locationId, purpose, system: [{ text: REVIEW_SYSTEM, cache: true }], user: reviewUser({ ...files, staticReport: verification.ok ? 'All automatic checks passed.' : verificationText(verification) }), schema: REVIEW_SCHEMA, maxTokens: 3000, timeoutMs: 180_000, userId: ctx.user!.id });
       const parsed = parseReview(r.text);
-      if (!parsed.ok) throw new HttpError(502, `Die KI hat keine brauchbare Prüfung geliefert (${parsed.error}).`);
+      if (!parsed.ok) throw new HttpError(502, tCtx(ctx)('Die KI hat keine brauchbare Prüfung geliefert ({error}).', { error: parsed.error }));
       const merged: Review = mergeReview(parsed.value, auto);
       const id = newId();
       const effort = r.effort ? { requested: r.effort.requested, applied: r.effort.applied, label: r.effort.applied ? EFFORT_LABELS[r.effort.applied] : '', note: r.effort.note } : null;
@@ -364,14 +365,14 @@ export const marktplatzModule: Module = {
       const second = db.get<any>(`SELECT * FROM plugin_security_reviews WHERE version_id = ? AND kind = 'second_opinion' ORDER BY created_at DESC LIMIT 1`, v.id);
       if (st.required && st.available && !second) throw new HttpError(409, 'Vor dem Veröffentlichen fehlt die Zweitmeinung eines anderen Spitzenmodells – bitte zuerst einholen (Richtlinie).');
       if (second?.verdict === 'fail') throw new HttpError(409, 'Die Zweitmeinung ist durchgefallen – das Plugin wird nicht veröffentlicht.');
-      if (ctx.body?.approve !== true) throw bad(`Bitte bestätige die Veröffentlichung im ${NAMES.marktplatz} (approve).`);
+      if (ctx.body?.approve !== true) throw bad(tCtx(ctx)('Bitte bestätige die Veröffentlichung im {name} (approve).', { name: tCtx(ctx)(NAMES.marktplatz) }));
       if ((rev.verdict === 'warn' || second?.verdict === 'warn') && ctx.body?.accept_warnings !== true) throw bad('Die Prüfung hat Hinweise – bitte bestätigen, dass du sie gelesen hast (accept_warnings).');
       // A review belongs to the exact content: edited code needs a new one.
       db.run(`UPDATE plugins SET scope = 'marketplace', market_version_id = ?, published_at = COALESCE(published_at, ?), published_by = ?, name = ?, icon = ?, description = ?, category = ?, updated_at = ? WHERE id = ?`, v.id, now(), ctx.user!.id, v.manifest.name, v.manifest.icon, v.manifest.description, v.manifest.category, now(), p.id);
       void autoShot(getPlugin(app, p.id)!).catch(() => false);
       // People who run an older version hear that an update is there.
       const people = db.all<{ installed_by: string }>(`SELECT DISTINCT installed_by FROM plugin_installs WHERE plugin_id = ? AND version_id IS NOT NULL AND version_id <> ? AND installed_by IS NOT NULL`, p.id, v.id).map((r) => r.installed_by);
-      if (people.length) void Promise.resolve(app.services.pushNotify?.({ userIds: people, kind: 'plugin', title: `Update für „${v.manifest.name}“`, body: v.changelog || `Version ${v.version}`, url: `/app/marktplatz/${p.id}`, tag: `plugin-update-${p.id}` })).catch(() => {});
+      if (people.length) void Promise.resolve(app.services.pushNotify?.({ userIds: people, kind: 'plugin', title: tApp()('Update für „{name}“', { name: v.manifest.name }), body: v.changelog || `Version ${v.version}`, url: `/app/marktplatz/${p.id}`, tag: `plugin-update-${p.id}` })).catch(() => {});
       return card(getPlugin(app, p.id)!, ctx.user!, ctx.locationId);
     });
     router.post('/api/marktplatz/:id/unpublish', 'admin', (ctx) => {

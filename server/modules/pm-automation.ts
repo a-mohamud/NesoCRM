@@ -4,6 +4,7 @@ import { TRIGGERS, runAutomations, scanDueToday, scanOverdue, taskFromTemplate }
 import { team, tzOf, type Actor } from '../services/pm-core.js';
 import { createTask, resolveStatus, updateTask, taskRow } from '../services/pm-tasks.js';
 import { statusesOf } from '../services/pm-core.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Wires the planner's rules and scans into the app: task events run the project automations, a scan announces
@@ -55,24 +56,28 @@ export const pmAutomationModule: Module = {
       ...(app.services.workflowActions ?? {}),
       pm_create_task: async (run: any, step: any, vars: any) => {
         const tz = tzOf(app, run.location_id);
-        const base = taskFromTemplate(app, run.location_id, { title: render(String(step.title ?? ''), vars) || 'Aufgabe', description: render(String(step.description ?? ''), vars), priority: step.priority, due_in_days: step.due_in_days === '' || step.due_in_days === undefined ? undefined : Number(step.due_in_days), subtasks: Array.isArray(step.subtasks) ? step.subtasks.map((s: string) => render(String(s), vars)) : undefined }, tz, { project_id: step.project_id || undefined, contact_id: run.contact_id });
+        // i18n-ignore (default title 'Aufgabe' is a catalog key)
+        const base = taskFromTemplate(app, run.location_id, { title: render(String(step.title ?? ''), vars) || tLoc(app, run.location_id)('Aufgabe'), description: render(String(step.description ?? ''), vars), priority: step.priority, due_in_days: step.due_in_days === '' || step.due_in_days === undefined ? undefined : Number(step.due_in_days), subtasks: Array.isArray(step.subtasks) ? step.subtasks.map((s: string) => render(String(s), vars)) : undefined }, tz, { project_id: step.project_id || undefined, contact_id: run.contact_id });
         const assignee = step.assignee && team(app, run.location_id).some((p) => p.id === step.assignee) ? [step.assignee] : undefined;
         const t = createTask(app, run.location_id, { ...base, assignees: assignee }, WORKFLOW_ACTOR);
-        return `Aufgabe „${t.title}“ im Projekt ${t.project?.name ?? ''} angelegt`;
+        const tl = tLoc(app, run.location_id);
+        return tl('Aufgabe „{title}“ im Projekt {project} angelegt', { title: t.title, project: t.project?.name ?? '' });
       },
       pm_move_task: async (run: any, step: any, vars: any) => {
         const t = target(run, step, vars);
         const to = resolveStatus(statusesOf(app, t.project_id!), step);
         if (!to) throw new Error('Status wählen');
         updateTask(app, run.location_id, t.id, { status_id: to.id }, WORKFLOW_ACTOR);
-        return `Status „${to.name}“`;
+        const tl = tLoc(app, run.location_id);
+        return tl('Status „{name}“', { name: to.name });
       },
       pm_assign_task: async (run: any, step: any, vars: any) => {
         const t = target(run, step, vars);
         const u = String(step.user_id ?? '');
         if (!team(app, run.location_id).some((p) => p.id === u)) throw new Error('Person nicht gefunden');
         updateTask(app, run.location_id, t.id, step.mode === 'set' ? { assignees: [u] } : { add_assignees: [u] }, WORKFLOW_ACTOR);
-        return 'Zugewiesen';
+        const tl = tLoc(app, run.location_id);
+        return tl('Zugewiesen');
       },
     };
   },

@@ -6,6 +6,7 @@ import { contactName, getContact, logActivity } from '../services/contacts.js';
 import { peopleOf } from '../services/team-people.js';
 import { E164, RECORDING_SID, attrs, hangup, say, twiml, xml } from '../services/twilio.js';
 import { finalizeCall, isOwnNumber, syncMessage, telephonyConfig, twilioRequest, type Config } from './telephony.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * What a person does during and after a call: notes written while talking, handing the call over and the retention period of
@@ -106,9 +107,10 @@ export const telephonyCallsModule: Module = {
       let contactNote: string | null = null;
       if (call.contact_id && getContact(app, ctx.locationId, call.contact_id)) {
         contactNote = id();
-        const when = at !== null ? ` (nach ${Math.floor(at / 60)}:${String(at % 60).padStart(2, '0')})` : '';
-        db.insert('notes', { id: contactNote, location_id: ctx.locationId, contact_id: call.contact_id, body: `Anrufnotiz${when}: ${body}`, user_id: ctx.user?.id ?? null, created_at: now() });
-        logActivity(app, ctx.locationId, call.contact_id, 'call.note', `Notiz zum Anruf: ${body.slice(0, 140)}`, { callId: call.id });
+        const t = tLoc(app, ctx.locationId);
+        const when = at !== null ? ` ${t('(nach {time})', { time: `${Math.floor(at / 60)}:${String(at % 60).padStart(2, '0')}` })}` : '';
+        db.insert('notes', { id: contactNote, location_id: ctx.locationId, contact_id: call.contact_id, body: `${t('Anrufnotiz')}${when}: ${body}`, user_id: ctx.user?.id ?? null, created_at: now() });
+        logActivity(app, ctx.locationId, call.contact_id, 'call.note', t('Notiz zum Anruf: {note}', { note: body.slice(0, 140) }), { callId: call.id });
       }
       db.insert('call_notes', { id: nid, location_id: ctx.locationId, call_id: call.id, contact_id: call.contact_id ?? null, user_id: ctx.user?.id ?? null, note_id: contactNote, body, at_second: at, created_at: now() });
       return noteOut(db.get('SELECT * FROM call_notes WHERE id = ?', nid));
@@ -133,7 +135,8 @@ export const telephonyCallsModule: Module = {
     const phoneCall = (locationId: string, callId: string) => db.get<any>('SELECT * FROM phone_calls WHERE call_id = ? AND location_id = ?', callId, locationId);
     const transferRow = (locationId: string, key: string) => db.get<TransferRow>('SELECT * FROM call_transfers WHERE id = ? AND location_id = ?', key, locationId);
     const transferOut = (t: TransferRow) => ({ id: t.id, call_id: t.call_id, mode: t.mode, target_type: t.target_type, target_label: t.target_label, note: t.note, status: t.status, error: t.error, created_at: t.created_at });
-    const setStatus = (t: TransferRow, status: TransferRow['status'], error = '') => db.run('UPDATE call_transfers SET status = ?, error = ?, updated_at = ? WHERE id = ?', status, error, now(), t.id);
+    // The error is shown in the browser phone: catalog keys are stored in the sub-account's language (other texts as they are).
+    const setStatus = (t: TransferRow, status: TransferRow['status'], error = '') => db.run('UPDATE call_transfers SET status = ?, error = ?, updated_at = ? WHERE id = ?', status, error ? tLoc(app, t.location_id)(error) : '', now(), t.id);
 
     /** The other party's leg: known from the browser phone, else the child of the call that rang the person's browser. */
     async function remoteLeg(cfg: Config, pc: any): Promise<string> {
@@ -170,7 +173,7 @@ export const telephonyCallsModule: Module = {
         if (!person) throw bad('Person nicht gefunden');
         if (person.id === pc.user_id) throw bad('Das bist du selbst');
         client = app.services.voiceUserClient?.(ctx.locationId, person.id, call) ?? null;
-        if (!client) throw bad(`${person.name} ist nicht erreichbar (Browser-Telefon geschlossen oder abwesend)`);
+        if (!client) throw bad(tCtx(ctx)('{name} ist nicht erreichbar (Browser-Telefon geschlossen oder abwesend)', { name: person.name }));
         label = person.name;
         targetId = person.id;
       } else if (to.type === 'number') {
@@ -199,7 +202,7 @@ export const telephonyCallsModule: Module = {
         db.insert('call_transfers', t);
         db.run('UPDATE phone_calls SET hold = 1, hold_at = ?, remote_sid = ?, updated_at = ? WHERE call_id = ?', now(), remote, now(), call.id);
         try {
-          await twilioRequest(app, cfg, 'POST', `/Calls/${encodeURIComponent(remote)}.json`, [['Twiml', twiml(dial)]]);
+          await twilioRequest(app, cfg, 'POST', `/Calls/${encodeURIComponent(remote)}.json`, [['Twiml', twiml(dial)]]); // i18n-ignore (Twilio API field)
         } catch (e) {
           db.run('UPDATE phone_calls SET hold = ?, updated_at = ? WHERE call_id = ?', pc.hold ? 1 : 0, now(), call.id);
           setStatus(t, 'failed', (e as Error).message.slice(0, 300));
@@ -207,27 +210,33 @@ export const telephonyCallsModule: Module = {
         }
       } else {
         const contact = call.contact_id ? getContact(app, ctx.locationId, call.contact_id) : undefined;
-        const who = contact && (contact.first_name || contact.last_name) ? contactName(contact) : (call.direction === 'in' ? call.from_number : call.to_number) || 'einer unbekannten Nummer';
+        // Spoken to the colleague by Twilio's voice (which follows the instance language).
+        const sp = tLoc(app, ctx.locationId);
+        const who = contact && (contact.first_name || contact.last_name) ? contactName(contact) : (call.direction === 'in' ? call.from_number : call.to_number) || sp('einer unbekannten Nummer');
+        const intro = call.direction === 'in' ? sp('Übergabe eines Anrufs von {who}.', { who }) : sp('Übergabe eines Anrufs an {who}.', { who });
         const screening = twiml(
-          `<Gather${attrs({ input: 'dtmf', numDigits: 1, timeout: 10, action: q('accept'), method: 'POST' })}>${say(`Übergabe eines Anrufs ${call.direction === 'in' ? 'von' : 'an'} ${who}.${note ? ` ${note}.` : ''} Drücken Sie die 1, um das Gespräch anzunehmen.`)}</Gather>${say('Es wurde keine Taste gedrückt. Auf Wiederhören.')}<Hangup/>`,
+          `<Gather${attrs({ input: 'dtmf', numDigits: 1, timeout: 10, action: q('accept'), method: 'POST' })}>${say(`${intro}${note ? ` ${note}.` : ''} ${sp('Drücken Sie die 1, um das Gespräch anzunehmen.')}`)}</Gather>${say(sp('Es wurde keine Taste gedrückt. Auf Wiederhören.'))}<Hangup/>`,
         );
         db.insert('call_transfers', t);
         try {
-          await twilioRequest(app, cfg, 'POST', '/Calls.json', [
-            ['To', client ? `client:${client.identity}` : numbers[0]],
-            ['From', cfg.numbers[0]],
-            ['Twiml', screening],
-            ['Timeout', '25'],
-            ['StatusCallback', q('status')],
-            ['StatusCallbackMethod', 'POST'],
-            ['StatusCallbackEvent', 'completed'],
-          ]);
+          const fields: [string, string][] = [];
+          fields.push(['To', client ? `client:${client.identity}` : numbers[0]]); // i18n-ignore
+          fields.push(['From', cfg.numbers[0]]); // i18n-ignore
+          fields.push(['Twiml', screening]); // i18n-ignore
+          fields.push(['Timeout', '25']); // i18n-ignore
+          fields.push(['StatusCallback', q('status')]); // i18n-ignore
+          fields.push(['StatusCallbackMethod', 'POST']); // i18n-ignore
+          fields.push(['StatusCallbackEvent', 'completed']); // i18n-ignore
+          await twilioRequest(app, cfg, 'POST', '/Calls.json', fields);
         } catch (e) {
           setStatus(t, 'failed', (e as Error).message.slice(0, 300));
           throw e;
         }
       }
-      if (call.contact_id) logActivity(app, ctx.locationId, call.contact_id, 'call.transfer', `Anruf ${mode === 'cold' ? 'weitergeleitet' : 'mit Ansage übergeben'} an ${label}${note ? ` – ${note}` : ''}`);
+      if (call.contact_id) {
+        const tl = tLoc(app, ctx.locationId);
+        logActivity(app, ctx.locationId, call.contact_id, 'call.transfer', `${mode === 'cold' ? tl('Anruf weitergeleitet an {to}', { to: label }) : tl('Anruf mit Ansage übergeben an {to}', { to: label })}${note ? ` – ${note}` : ''}`);
+      }
       app.events.emit(ctx.locationId, 'call.transferred', { contactId: call.contact_id ?? undefined, callId: call.id, mode, to: label, by: ctx.user?.id ?? null });
       return transferOut(transferRow(ctx.locationId, t.id)!);
     });
@@ -242,7 +251,7 @@ export const telephonyCallsModule: Module = {
       if (t.status === 'ringing' && Date.now() - Date.parse(t.created_at) > RING_MS) {
         setStatus(t, 'failed', 'Niemand hat abgenommen');
         t.status = 'failed';
-        t.error = 'Niemand hat abgenommen';
+        t.error = tLoc(app, ctx.locationId)('Niemand hat abgenommen');
       }
       return transferOut(t);
     });
@@ -290,7 +299,7 @@ export const telephonyCallsModule: Module = {
         }
         if (call.ended_at || !pc?.hold) {
           setStatus(t, 'failed', 'Der Anruf wird nicht mehr gehalten');
-          return hangup('Der Anruf wird nicht mehr gehalten. Auf Wiederhören.');
+          return hangup(tLoc(app, loc.id)('Der Anruf wird nicht mehr gehalten. Auf Wiederhören.'));
         }
         setStatus(t, 'accepted');
         // The caller leaves "hold": the colleague owns the call, and when the room ends the call ends.
@@ -321,7 +330,7 @@ export const telephonyCallsModule: Module = {
       // An inbound caller gets the usual voicemail; whom we called ourselves just hears that nobody is there.
       if (call.direction === 'in') return kit().unanswered(loc, cfg, call);
       finalizeCall(app, call, call.answered ? 'completed' : 'no-answer', { duration: call.answered ? secondsSince(call.answered_at) : 0 });
-      return hangup('Leider ist gerade niemand erreichbar. Auf Wiederhören.');
+      return hangup(tLoc(app, loc.id)('Leider ist gerade niemand erreichbar. Auf Wiederhören.'));
     });
 
     // --- recordings: retention ------------------------------------------------------------------------------------------------

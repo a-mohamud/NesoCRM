@@ -4,6 +4,7 @@ import { UmzugError, VendorHttp, networkFetch } from './umzug-http.js';
 import { counter } from './umzug-lib.js';
 import type { Json } from './umzug-flow.js';
 import { clip, toDay, toIso } from './umzug-text.js';
+import { translator, tApp } from '../i18n/index.js';
 
 /**
  * Salesforce (REST API, https://<your org>.my.salesforce.com/services/data/v62.0, SOQL): accounts → companies, contacts and leads →
@@ -40,6 +41,7 @@ const http = (creds: Record<string, string>, _meta: Record<string, string>, deps
     pauseMs: deps.pauseMs ?? 100,
     errorText: (b) => (Array.isArray(b) ? (b[0]?.message ? `${b[0].errorCode}: ${b[0].message}` : undefined) : typeof b?.error_description === 'string' ? b.error_description : undefined),
     prepare: async () => {
+      const t = tApp();
       if (token && Date.now() < expires - 60_000) return;
       if (!creds.client_id || !creds.client_secret) throw new UmzugError(401, 'Salesforce: Der Zugriffs-Token ist abgelaufen – bitte einen neuen eintragen (oder Client-ID und Client-Secret verwenden)');
       const f = deps.fetch ?? networkFetch;
@@ -47,10 +49,10 @@ const http = (creds: Record<string, string>, _meta: Record<string, string>, deps
       try {
         r = await f(`${base}/services/oauth2/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: new URLSearchParams({ grant_type: 'client_credentials', client_id: creds.client_id, client_secret: creds.client_secret }).toString() });
       } catch (e) {
-        throw new UmzugError(0, `Salesforce nicht erreichbar: ${(e as Error).message}`);
+        throw new UmzugError(0, t('Salesforce nicht erreichbar: {reason}', { reason: (e as Error).message }));
       }
       const j: any = await r.json().catch(() => ({}));
-      if (!r.ok || !j.access_token) throw new UmzugError(401, `Salesforce: Anmeldung abgelehnt${j?.error_description ? ` (${String(j.error_description).slice(0, 120)})` : ''} – Client-ID, Client-Secret und „Client Credentials Flow“ mit einem Ausführungs-Benutzer prüfen`);
+      if (!r.ok || !j.access_token) throw new UmzugError(401, t('Salesforce: Anmeldung abgelehnt{details} – Client-ID, Client-Secret und „Client Credentials Flow“ mit einem Ausführungs-Benutzer prüfen', { details: j?.error_description ? ` (${String(j.error_description).slice(0, 120)})` : '' }));
       token = String(j.access_token);
       // Sessions last two hours by default; renewed a little earlier.
       expires = Date.now() + 90 * 60_000;
@@ -95,8 +97,11 @@ const FT = (t: string): FieldType => (/^(int|double|currency|percent|long)/.test
 
 const CONTACT_STD: Record<string, StdTarget> = { Email: 'email', FirstName: 'first_name', LastName: 'last_name', Phone: 'phone', MailingStreet: 'address', MailingCity: 'city', MailingPostalCode: 'postal_code', MailingCountry: 'country', Birthdate: 'date_of_birth', LeadSource: 'source', Website: 'website' };
 /** A lead's address fields read like a contact's, so one mapping serves both. */
+// i18n-ignore (Salesforce API field names)
 const LEAD_ADDRESS: Record<string, string> = { Street: 'MailingStreet', City: 'MailingCity', PostalCode: 'MailingPostalCode', Country: 'MailingCountry' };
+// i18n-ignore (Salesforce API field names)
 const CONTACT_FIELDS = ['Id', 'FirstName', 'LastName', 'Email', 'Phone', 'MobilePhone', 'Title', 'Department', 'MailingStreet', 'MailingCity', 'MailingPostalCode', 'MailingCountry', 'AccountId', 'HasOptedOutOfEmail', 'DoNotCall', 'Birthdate', 'LeadSource', 'Description', 'CreatedDate'];
+// i18n-ignore (Salesforce API field names)
 const LEAD_FIELDS = ['Id', 'FirstName', 'LastName', 'Company', 'Title', 'Email', 'Phone', 'MobilePhone', 'Street', 'City', 'PostalCode', 'Country', 'Website', 'Status', 'LeadSource', 'IsConverted', 'HasOptedOutOfEmail', 'DoNotCall', 'Description', 'CreatedDate'];
 const LABELS: Record<string, string> = { MobilePhone: 'Mobiltelefon', Title: 'Position', Department: 'Abteilung', Description: 'Beschreibung', Status: 'Lead-Status', Company: 'Firma', DoNotCall: 'Nicht anrufen', LeadSource: 'Quelle', Birthdate: 'Geburtstag', MailingStreet: 'Straße', MailingCity: 'Ort', MailingPostalCode: 'PLZ', MailingCountry: 'Land', Street: 'Straße', City: 'Ort', PostalCode: 'PLZ', Country: 'Land', Website: 'Webseite', Phone: 'Telefon', Email: 'E-Mail', FirstName: 'Vorname', LastName: 'Nachname' };
 
@@ -119,8 +124,10 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
       if (!fields.some((x) => x.ref === ref)) fields.push({ ref, label: LABELS[f.name] ?? f.label, type: FT(f.type), std, group: std ? 'standard' : 'custom' });
     };
     const base = (name: string): SField => ({ name, label: name, type: name === 'Email' ? 'email' : /Phone/.test(name) ? 'phone' : name === 'Birthdate' ? 'date' : 'string', custom: false });
+    // i18n-ignore (Salesforce API field names)
     for (const name of ['Email', 'FirstName', 'LastName', 'Phone', 'MailingStreet', 'MailingCity', 'MailingPostalCode', 'MailingCountry']) add(base(name), CONTACT_STD[name], `f:${name}`);
     add(base('Company'), 'company', 'org_name');
+    // i18n-ignore (Salesforce API field names)
     for (const name of ['MobilePhone', 'Title', 'Department', 'Description']) add(base(name), undefined, `f:${name}`);
     add(base('LeadSource'), 'source', 'f:LeadSource');
     add(base('Birthdate'), 'date_of_birth', 'f:Birthdate');
@@ -168,10 +175,12 @@ const steps = (): StepDef[] => [
     label: 'Accounts → Firmen',
     part: 'companies',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const have = await fieldsOf(ctx.http, 'Account');
+      // i18n-ignore (Salesforce API field names)
       const select = selectList(['Id', 'Name', 'Website', 'Phone', 'BillingStreet', 'BillingCity', 'BillingPostalCode', 'BillingCountry', 'Industry'], have).filter((f) => !f.endsWith('__c'));
       for await (const pg of blocks(ctx.http, 'Account', select, ctx, '', ctx.cursor ? String(ctx.cursor) : undefined)) {
-        const records: RCompany[] = pg.items.map((a) => ({ kind: 'company', ext: `a:${a.Id}`, name: String(a.Name ?? `Account ${a.Id}`), website: a.Website || undefined, phone: a.Phone || undefined, address: a.BillingStreet || undefined, city: a.BillingCity || undefined, postal_code: a.BillingPostalCode || undefined, country: a.BillingCountry || undefined, industry: a.Industry || undefined }));
+        const records: RCompany[] = pg.items.map((a) => ({ kind: 'company', ext: `a:${a.Id}`, name: String(a.Name ?? t('Account {id}', { id: a.Id })), website: a.Website || undefined, phone: a.Phone || undefined, address: a.BillingStreet || undefined, city: a.BillingCity || undefined, postal_code: a.BillingPostalCode || undefined, country: a.BillingCountry || undefined, industry: a.Industry || undefined }));
         yield { records, cursor: pg.next };
       }
     },
@@ -181,12 +190,13 @@ const steps = (): StepDef[] => [
     label: 'Kontakte',
     part: 'contacts',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const have = await fieldsOf(ctx.http, 'Contact');
       const select = [...selectList(CONTACT_FIELDS, have), 'Account.Name'];
       for await (const pg of blocks(ctx.http, 'Contact', select, ctx, '', ctx.cursor ? String(ctx.cursor) : undefined)) {
         const records: RContact[] = pg.items.map((c) => {
           const x = crmConsent('Salesforce', c.HasOptedOutOfEmail);
-          const tags = c.DoNotCall ? ['Salesforce: Nicht anrufen'] : [];
+          const tags = c.DoNotCall ? [t('Salesforce: Nicht anrufen')] : [];
           return { kind: 'contact', ext: `c:${c.Id}`, values: contactValues(c, c.Account?.Name), tags, consent: c.Email ? x.consent : 'unknown', native_status: x.native, created_at: toIso(c.CreatedDate), org: c.AccountId ? `a:${c.AccountId}` : undefined, org_name: c.Account?.Name ?? undefined, proof: c.Email ? x.proof : undefined };
         });
         yield { records, cursor: pg.next };
@@ -198,6 +208,7 @@ const steps = (): StepDef[] => [
     label: 'Leads',
     part: 'contacts',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const have = await fieldsOf(ctx.http, 'Lead');
       const select = selectList(LEAD_FIELDS, have);
       for await (const pg of blocks(ctx.http, 'Lead', select, ctx, 'IsConverted = false', ctx.cursor ? String(ctx.cursor) : undefined)) {
@@ -205,7 +216,7 @@ const steps = (): StepDef[] => [
           const x = crmConsent('Salesforce', l.HasOptedOutOfEmail);
           const values = contactValues(l, l.Company);
           for (const [from, to] of Object.entries(LEAD_ADDRESS)) if (l[from]) (values[`f:${to}`] = l[from], delete values[`f:${from}`]);
-          return { kind: 'contact', ext: `l:${l.Id}`, values, tags: ['Salesforce: Lead', ...(l.Status ? [`Lead-Status: ${l.Status}`] : []), ...(l.DoNotCall ? ['Salesforce: Nicht anrufen'] : [])], consent: l.Email ? x.consent : 'unknown', native_status: x.native, created_at: toIso(l.CreatedDate), proof: l.Email ? x.proof : undefined };
+          return { kind: 'contact', ext: `l:${l.Id}`, values, tags: [t('Salesforce: Lead'), ...(l.Status ? [t('Lead-Status: {status}', { status: l.Status })] : []), ...(l.DoNotCall ? [t('Salesforce: Nicht anrufen')] : [])], consent: l.Email ? x.consent : 'unknown', native_status: x.native, created_at: toIso(l.CreatedDate), proof: l.Email ? x.proof : undefined };
         });
         yield { records, cursor: pg.next };
       }
@@ -223,10 +234,12 @@ const steps = (): StepDef[] => [
         const stages: RStage[] = (await soql(ctx.http, 'SELECT MasterLabel, SortOrder, DefaultProbability FROM OpportunityStage WHERE IsActive = true ORDER BY SortOrder ASC')).records.map((s) => ({ ext: `st:${s.MasterLabel}`, name: String(s.MasterLabel), probability: s.DefaultProbability !== undefined && s.DefaultProbability !== null ? Number(s.DefaultProbability) : undefined }));
         // Stages deals still use but the org no longer lists (retired stages).
         const seen = new Set<string>();
+        // i18n-ignore (Salesforce API field names)
         for await (const pg of blocks(ctx.http, 'Opportunity', ['Id', 'StageName'], ctx)) for (const o of pg.items) seen.add(String(o.StageName ?? ''));
         const pipeline: RPipeline = pipelineOf('sf', 'Salesforce', stages, seen);
         yield { records: [pipeline], cursor: { phase: 'deals' } };
       }
+      // i18n-ignore (Salesforce API field names)
       const select = dedupe([...selectList(['Id', 'Name', 'Amount', 'StageName', 'CloseDate', 'IsClosed', 'IsWon', 'AccountId', 'CreatedDate'], have), ...(multi ? ['CurrencyIsoCode'] : [])]);
       for await (const pg of blocks(ctx.http, 'Opportunity', select, ctx, '', cur.phase === 'deals' ? cur.after : undefined)) {
         const ids = pg.items.map((o) => `'${q(String(o.Id))}'`);
@@ -250,6 +263,7 @@ const steps = (): StepDef[] => [
     part: 'tasks',
     async *run(ctx): AsyncGenerator<Batch> {
       const have = await fieldsOf(ctx.http, 'Task');
+      // i18n-ignore (Salesforce API field names)
       const select = selectList(['Id', 'Subject', 'Status', 'ActivityDate', 'Description', 'IsClosed', 'WhoId', 'WhatId', 'Type', 'CreatedDate'], have).filter((f) => !f.endsWith('__c'));
       for await (const pg of blocks(ctx.http, 'Task', select, ctx, '', ctx.cursor ? String(ctx.cursor) : undefined)) {
         const records: RTask[] = pg.items.map((t) => {
@@ -297,13 +311,14 @@ export const SALESFORCE: SourceDef = {
   ],
   http,
   async connect(creds, deps): Promise<Account> {
+    const t = tApp();
     const base = salesforceBase(creds.instance_url);
     if (!creds.access_token && !(creds.client_id && creds.client_secret)) throw new UmzugError(400, 'Trage entweder Client-ID und Client-Secret oder einen Zugriffs-Token ein');
     const h = http(creds, {}, deps);
     const j = await h.get('/services/data/' + VERSION + '/limits');
     const host = base.replace(/^https:\/\//, '').replace(/\.my\.salesforce\.com$/, '');
     const left = Number(j?.DailyApiRequests?.Remaining ?? NaN);
-    return { account: host.slice(0, 100), label: `${host}${Number.isFinite(left) ? ` · ${left.toLocaleString('de-DE')} API-Aufrufe heute frei` : ''}`.slice(0, 120), meta: {} };
+    return { account: host.slice(0, 100), label: `${host}${Number.isFinite(left) ? t(' · {left} API-Aufrufe heute frei', { left: left.toLocaleString(t.locale === 'de' ? 'de-DE' : 'en-GB') }) : ''}`.slice(0, 120), meta: {} };
   },
   describe: (h, parts) => describe(h, parts),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),

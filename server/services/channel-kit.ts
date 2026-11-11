@@ -8,6 +8,7 @@ import { openSecret, sealSecret } from '../modules/mail-sync.js';
 import { getContact, logActivity, upsertContact, type Contact } from './contacts.js';
 import { getOrCreateConversation } from './messaging.js';
 import { inboundGate } from './inbound-gate.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Shared plumbing for the extra channels (Telegram, Discord, Slack, email/SMS providers, push to
@@ -247,7 +248,7 @@ export function contactForUser(app: App, locationId: string, e: Pick<InboundChat
     linkIdentity(app, locationId, e.channel, e.externalUser, linked.id, { name: e.name, handle: e.handle, chatId: e.chatId, data: e.identityData });
     return { contact: linked, created: false };
   }
-  const name = e.name || (e.handle ? `@${e.handle}` : `${label}-Kontakt`);
+  const name = e.name || (e.handle ? `@${e.handle}` : tLoc(app, locationId)('{channel}-Kontakt', { channel: label }));
   const custom = e.handle ? { [e.channel]: `@${e.handle}` } : {};
   const { contact, created } = upsertContact(app, locationId, { name, ...(e.fields ?? {}), custom }, { source: label, tags: [e.channel, ...(e.tags ?? [])] });
   linkIdentity(app, locationId, e.channel, e.externalUser, contact.id, { name, handle: e.handle, chatId: e.chatId, data: e.identityData });
@@ -291,7 +292,7 @@ export function receiveChat(app: App, locationId: string, e: InboundChat): { mes
   // Receive hook (services/inbound-gate.ts): a blocked sender is archived silently and treated like a duplicate (no welcome, no event).
   const claim = inboundGate(app, { locationId, contactId: contact.id, channel: e.channel });
   if (claim) return (claim.archive(conversationId, message.id), null);
-  logActivity(app, locationId, contact.id, `${e.channel}.received`, `${label}-Nachricht empfangen`);
+  logActivity(app, locationId, contact.id, `${e.channel}.received`, tLoc(app, locationId)('{channel}-Nachricht empfangen', { channel: label }));
   if (e.emit !== false) app.events.emit(locationId, 'message.inbound', { contactId: contact.id, contact: getContact(app, locationId, contact.id), message });
   return { message, contact, created };
 }
@@ -345,7 +346,7 @@ export function finishOutbound(app: App, msg: OutRecord, r: { ok: true; provider
   }
   app.db.run(`UPDATE messages SET status = CASE WHEN status = 'queued' THEN 'sent' ELSE status END, provider_id = ? WHERE id = ?`, r.providerId ?? null, msg.id);
   const label = CHANNEL_LABEL[msg.channel] ?? msg.channel;
-  logActivity(app, msg.location_id, msg.contact_id, `${msg.channel}.sent`, r.activity ?? `${label}-Nachricht gesendet`);
+  logActivity(app, msg.location_id, msg.contact_id, `${msg.channel}.sent`, r.activity ?? tLoc(app, msg.location_id)('{channel}-Nachricht gesendet', { channel: label }));
   return { ...msg, status: 'sent', provider_id: r.providerId ?? null };
 }
 
@@ -373,7 +374,8 @@ export function applyDelivery(app: App, locationId: string, channel: 'email' | '
   if (!providerId) return 0;
   const m = app.db.get(`SELECT id, status, contact_id FROM messages WHERE location_id = ? AND provider_id IN (?, ?) AND direction = 'out' AND channel = ? LIMIT 1`, locationId, providerId, `<${providerId}>`, channel);
   if (!m) return 0;
-  const label = channel === 'email' ? 'E-Mail' : 'SMS';
+  const tl = tLoc(app, locationId);
+  const label = channel === 'email' ? tl('E-Mail') : 'SMS';
   const reason = (e.reason ?? '').slice(0, 300);
   switch (e.status) {
     case 'sent':
@@ -382,32 +384,32 @@ export function applyDelivery(app: App, locationId: string, channel: 'email' | '
       return app.db.run('UPDATE messages SET status = ? WHERE id = ?', e.status, m.id).changes;
     }
     case 'deferred':
-      if (m.status === 'queued' || m.status === 'sent') app.db.run('UPDATE messages SET error = ? WHERE id = ?', reason ? `Verzögert: ${reason}` : 'Zustellung verzögert – der Anbieter versucht es weiter', m.id);
+      if (m.status === 'queued' || m.status === 'sent') app.db.run('UPDATE messages SET error = ? WHERE id = ?', reason ? tl('Verzögert: {reason}', { reason }) : tl('Zustellung verzögert – der Anbieter versucht es weiter'), m.id);
       return 0;
     case 'failed':
     case 'bounced': {
       const hard = e.status === 'bounced' && e.permanent !== false;
       const status = hard ? 'bounced' : 'failed';
       if (m.status === status) return 0;
-      app.db.run('UPDATE messages SET status = ?, error = ? WHERE id = ?', status, reason || (hard ? 'Unzustellbar (Hard Bounce)' : 'Nicht zugestellt'), m.id);
-      logActivity(app, locationId, m.contact_id, `${channel}.${status}`, `${label} nicht zugestellt${reason ? `: ${reason}` : ''}`);
+      app.db.run('UPDATE messages SET status = ?, error = ? WHERE id = ?', status, reason || tl(hard ? 'Unzustellbar (Hard Bounce)' : 'Nicht zugestellt'), m.id);
+      logActivity(app, locationId, m.contact_id, `${channel}.${status}`, reason ? tl('{channel} nicht zugestellt: {reason}', { channel: label, reason }) : tl('{channel} nicht zugestellt', { channel: label }));
       if (hard && channel === 'email') {
         app.db.run('UPDATE contacts SET dnd = 1 WHERE id = ?', m.contact_id);
-        logActivity(app, locationId, m.contact_id, 'contact.dnd', '„Nicht stören“ nach Hard Bounce');
+        logActivity(app, locationId, m.contact_id, 'contact.dnd', tl('„Nicht stören“ nach Hard Bounce'));
         app.events.emit(locationId, 'email.bounced', { contactId: m.contact_id, messageId: m.id, reason });
       }
       return 1;
     }
     case 'complained': {
-      app.db.run(`UPDATE messages SET status = 'complained', error = ? WHERE id = ?`, reason || 'Als Spam gemeldet', m.id);
+      app.db.run(`UPDATE messages SET status = 'complained', error = ? WHERE id = ?`, reason || tl('Als Spam gemeldet'), m.id);
       app.db.run('UPDATE contacts SET dnd = 1 WHERE id = ?', m.contact_id);
-      logActivity(app, locationId, m.contact_id, `${channel}.complained`, `${label} als Spam gemeldet – „Nicht stören“ an`);
+      logActivity(app, locationId, m.contact_id, `${channel}.complained`, tl('{channel} als Spam gemeldet – „Nicht stören“ an', { channel: label }));
       app.events.emit(locationId, 'email.complained', { contactId: m.contact_id, messageId: m.id });
       return 1;
     }
     case 'unsubscribed':
       app.db.run('UPDATE contacts SET dnd = 1 WHERE id = ?', m.contact_id);
-      logActivity(app, locationId, m.contact_id, 'contact.dnd', `Beim ${label}-Anbieter abgemeldet – „Nicht stören“ an`);
+      logActivity(app, locationId, m.contact_id, 'contact.dnd', tl('Beim {channel}-Anbieter abgemeldet – „Nicht stören“ an', { channel: label }));
       return 1;
   }
   return 0;
@@ -438,7 +440,7 @@ export async function serveMedia(fetcher: FetchLike, url: string, opts: { allowH
     try {
       r = await fetcher(target, { headers: hop === 0 ? (opts.headers ?? {}) : {}, redirect: 'manual', signal: AbortSignal.timeout(20_000) });
     } catch (e) {
-      throw new HttpError(502, `Datei nicht abrufbar: ${(e as Error).message}`);
+      throw new HttpError(502, tApp()('Datei nicht abrufbar: {error}', { error: (e as Error).message }));
     }
     const next = r.status >= 300 && r.status < 400 ? r.headers.get('location') : null;
     if (!next) break;
@@ -446,7 +448,7 @@ export async function serveMedia(fetcher: FetchLike, url: string, opts: { allowH
     r = undefined;
   }
   if (!r) throw new HttpError(502, 'Datei nicht abrufbar (zu viele Weiterleitungen)');
-  if (!r.ok) throw new HttpError(r.status === 404 ? 404 : 502, r.status === 404 ? 'Datei nicht mehr verfügbar' : `Datei nicht abrufbar (${r.status})`);
+  if (!r.ok) throw new HttpError(r.status === 404 ? 404 : 502, r.status === 404 ? 'Datei nicht mehr verfügbar' : tApp()('Datei nicht abrufbar ({status})', { status: r.status }));
   if (Number(r.headers.get('content-length') || 0) > MEDIA_MAX) throw new HttpError(413, 'Datei zu groß für die Vorschau');
   const buf = Buffer.from(await r.arrayBuffer());
   if (buf.length > MEDIA_MAX) throw new HttpError(413, 'Datei zu groß für die Vorschau');

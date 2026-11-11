@@ -1,5 +1,6 @@
 import type { App } from '../core/app.js';
 import { HttpError, type Ctx } from '../core/http.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Runs another API route in-process on behalf of the current caller: same login/key, same
@@ -9,7 +10,7 @@ import { HttpError, type Ctx } from '../core/http.js';
 export async function callRoute(app: App, parent: Ctx, method: string, path: string, body: Record<string, any> = {}, opts: { locationId?: string; /** A read-only call (a report run): no audit entry. */ quiet?: boolean } = {}): Promise<any> {
   const url = new URL(path, 'http://local');
   const found = app.router.match(method, url.pathname);
-  if (!found) throw new HttpError(404, `Nicht verfügbar: ${method} ${url.pathname}`);
+  if (!found) throw new HttpError(404, tApp()('Nicht verfügbar: {route}', { route: `${method} ${url.pathname}` }));
   const auth = found.route.auth;
   const ctx: Ctx = {
     ...parent,

@@ -17,6 +17,7 @@ import { activateVersion, deletePlugin, pluginOrThrow, rollbackPlugin, storeVers
 import { runLogic } from '../services/werkstatt/logic.js';
 import { SCOPES, riskOf, type Manifest } from '../services/werkstatt/manifest.js';
 import { NAMES } from '../services/werkstatt/names.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 import { PLUGIN_ROUTES, opsFor, sampleFor } from '../services/werkstatt/ops.js';
 import { WERKSTATT_ROUTES } from '../services/werkstatt/plan.js';
 import { loadPolicy, mayBuild } from '../services/werkstatt/policy.js';
@@ -148,7 +149,10 @@ export const pluginsModule: Module = {
       const via = ctx.via as string;
       const sig = `${ctx.method} ${ctx.path}`;
       if (via === 'plugin' && !PLUGIN_ROUTES.some((r) => r.test(sig))) throw new HttpError(403, 'Diese Funktion ist für Plugins nicht freigegeben.');
-      if (via === 'werkstatt' && !WERKSTATT_ROUTES.some((r) => r.test(sig))) throw new HttpError(403, `Diese Funktion ist für die ${NAMES.werkstatt} nicht freigegeben.`);
+      if (via === 'werkstatt' && !WERKSTATT_ROUTES.some((r) => r.test(sig))) {
+        const t = tCtx(ctx);
+        throw new HttpError(403, t('Diese Funktion ist für die {name} nicht freigegeben.', { name: t(NAMES.werkstatt) }));
+      }
     });
 
     // --- output ----------------------------------------------------------------------------------------------------------
@@ -250,10 +254,10 @@ export const pluginsModule: Module = {
       if (!Array.isArray(ctx.body?.consent) || [...ctx.body.consent.map(String)].sort().join(',') !== [...e.manifest.scopes].sort().join(',')) throw bad('Bitte bestätige die angefragten Berechtigungen.');
       const manifest = manifestOrThrow(e.manifest);
       const p = createPlugin(app, { manifest, ownerLocationId: ctx.locationId, ownerUserId: u.id, origin: 'example' });
-      const { version, verification } = await storeVersion(app, p, { manifest, ui_html: e.ui_html, server_js: e.server_js, steps: e.steps ?? null, changelog: 'Beispiel-Plugin', source: 'example' }, u, ctx.locationId);
+      const { version, verification } = await storeVersion(app, p, { manifest, ui_html: e.ui_html, server_js: e.server_js, steps: e.steps ?? null, changelog: tCtx(ctx)('Beispiel-Plugin'), source: 'example' }, u, ctx.locationId);
       if (version.status !== 'checked') {
         deletePlugin(app, p.id);
-        throw bad(`Das Beispiel hat die Prüfung nicht bestanden: ${verification.issues.filter((i) => i.level === 'error').map((i) => i.message).join(' ')}`);
+        throw bad(tCtx(ctx)('Das Beispiel hat die Prüfung nicht bestanden: {issues}', { issues: verification.issues.filter((i) => i.level === 'error').map((i) => i.message).join(' ') }));
       }
       activateVersion(app, p, version, u, version.manifest.scopes);
       upsertInstall(app, { pluginId: p.id, locationId: ctx.locationId, userId: u.id, consent: version.manifest.scopes, by: u.id });
@@ -309,7 +313,7 @@ export const pluginsModule: Module = {
         if (p.scope === 'marketplace') throw bad('Das Plugin ist schon im Marktplatz.');
         db.run(`UPDATE plugins SET scope = 'agency', run_as = ?, updated_at = ? WHERE id = ?`, u.id, now(), p.id);
       } else if (to === 'private') {
-        if (p.scope === 'marketplace') throw bad(`Aus dem ${NAMES.marktplatz} nimmt ein Admin das Plugin zurück.`);
+        if (p.scope === 'marketplace') throw bad(tCtx(ctx)('Aus dem {name} nimmt ein Admin das Plugin zurück.', { name: tCtx(ctx)(NAMES.marktplatz) }));
         if (p.scope === 'agency' && u.role !== 'admin') throw new HttpError(403, 'Nur Admins nehmen die Agentur-weite Freigabe zurück.');
         db.run(`UPDATE plugins SET scope = 'private', run_as = NULL, updated_at = ? WHERE id = ?`, now(), p.id);
         // Back to the author alone: the sub-account install becomes private again, other sub-accounts lose it.
@@ -354,7 +358,7 @@ export const pluginsModule: Module = {
     router.delete('/api/plugins/:id', 'location', (ctx) => {
       const u = user(ctx);
       const p = managing(u, ctx.locationId, ctx.params.id);
-      if (p.scope === 'marketplace' && u.role !== 'admin') throw new HttpError(403, `Aus dem ${NAMES.marktplatz} löscht nur ein Admin.`);
+      if (p.scope === 'marketplace' && u.role !== 'admin') throw new HttpError(403, tCtx(ctx)('Aus dem {name} löscht nur ein Admin.', { name: tCtx(ctx)(NAMES.marktplatz) }));
       deletePlugin(app, p.id);
       return { ok: true };
     });
@@ -367,7 +371,7 @@ export const pluginsModule: Module = {
     });
     router.post('/api/plugins/:id/kill', 'admin', (ctx) => {
       const p = pluginOrThrow(app, ctx.params.id);
-      killPlugin(app, p.id, String(ctx.body?.reason ?? '').slice(0, 200) || 'Von einem Admin abgeschaltet.');
+      killPlugin(app, p.id, String(ctx.body?.reason ?? '').slice(0, 200) || tCtx(ctx)('Von einem Admin abgeschaltet.'));
       return { ok: true };
     });
     router.post('/api/plugins/:id/revive', 'admin', (ctx) => {
@@ -400,15 +404,15 @@ export const pluginsModule: Module = {
       // A changed or forged bundle is refused; a signed one from the catalogue is a Pro feature; an unsigned one is „ungeprüft“ and needs the importer's explicit OK.
       if (b.signature.state === 'invalid') throw bad(b.signature.warning);
       if (b.signature.state === 'signed') requirePro(app, 'signed');
-      else if (ctx.body?.accept_unverified !== true) throw bad(`${b.signature.warning} Bitte bestätige, dass du das Paket trotzdem installieren willst (accept_unverified).`);
+      else if (ctx.body?.accept_unverified !== true) throw bad(`${tCtx(ctx)(b.signature.warning)} ${tCtx(ctx)('Bitte bestätige, dass du das Paket trotzdem installieren willst (accept_unverified).')}`);
       // The importer consents to what the plugin asks for, like for any install (the preview shows the list).
       const want = [...b.manifest.scopes].sort().join(',');
       if (!Array.isArray(ctx.body?.consent) || [...ctx.body.consent.map(String)].sort().join(',') !== want) throw bad('Bitte die angefragten Berechtigungen bestätigen.');
       const p = createPlugin(app, { manifest: b.manifest, ownerLocationId: ctx.locationId, ownerUserId: u.id, origin: 'import' });
-      const { version, verification } = await storeVersion(app, p, { manifest: b.manifest, ui_html: b.ui_html, server_js: b.server_js, steps: b.steps, changelog: b.changelog || 'Importiert', source: 'import', meta: { signature: { state: b.signature.state, key_id: b.signature.key_id, label: b.signature.label, gohigh: b.signature.gohigh } } }, u, ctx.locationId);
+      const { version, verification } = await storeVersion(app, p, { manifest: b.manifest, ui_html: b.ui_html, server_js: b.server_js, steps: b.steps, changelog: b.changelog || tCtx(ctx)('Importiert'), source: 'import', meta: { signature: { state: b.signature.state, key_id: b.signature.key_id, label: b.signature.label, gohigh: b.signature.gohigh } } }, u, ctx.locationId);
       if (version.status !== 'checked') {
         deletePlugin(app, p.id);
-        throw bad(`Die Prüfung ist fehlgeschlagen: ${verification.issues.filter((i) => i.level === 'error').map((i) => i.message).join(' ')}`);
+        throw bad(tCtx(ctx)('Die Prüfung ist fehlgeschlagen: {issues}', { issues: verification.issues.filter((i) => i.level === 'error').map((i) => i.message).join(' ') }));
       }
       activateVersion(app, p, version, u, version.manifest.scopes);
       upsertInstall(app, { pluginId: p.id, locationId: ctx.locationId, userId: u.id, consent: version.manifest.scopes, by: u.id });
@@ -473,7 +477,7 @@ export const pluginsModule: Module = {
         demo: o.demo,
         ops,
         samples: o.demo ? Object.fromEntries(ops.map((op) => [op, sampleFor(op, l?.timezone || 'Europe/Berlin')])) : {},
-        context: { entry: { kind: entry.kind, id: entry.id }, entity: entityOf(ctx.query.get('entity')) ?? (o.demo && entry.kind === 'panel' ? { type: 'contact', id: 'demo-c1' } : null), today: ymdInTz(new Date(), l?.timezone || 'Europe/Berlin'), location: { name: o.demo ? 'Beispiel-Firma' : (l?.name ?? ''), timezone: l?.timezone || 'Europe/Berlin' }, plugin: { name: a.plugin.name, version: a.version.version }, demo: o.demo },
+        context: { entry: { kind: entry.kind, id: entry.id }, entity: entityOf(ctx.query.get('entity')) ?? (o.demo && entry.kind === 'panel' ? { type: 'contact', id: 'demo-c1' } : null), today: ymdInTz(new Date(), l?.timezone || 'Europe/Berlin'), location: { name: o.demo ? tCtx(ctx)('Beispiel-Firma') : (l?.name ?? ''), timezone: l?.timezone || 'Europe/Berlin' }, plugin: { name: a.plugin.name, version: a.version.version }, demo: o.demo },
         theme,
         entry: { kind: entry.kind, id: entry.id },
         entity: entityOf(ctx.query.get('entity')),
@@ -495,7 +499,7 @@ export const pluginsModule: Module = {
       const u = user(ctx);
       const demo = ctx.query.get('demo') === '1';
       const a = demo ? demoTarget(u, ctx.locationId, ctx.params.id) : resolveFor(app, ctx.params.id, u, ctx.locationId);
-      if (!a) return page('Dieses Plugin ist hier nicht aktiv.');
+      if (!a) return page(tCtx(ctx)('Dieses Plugin ist hier nicht aktiv.'));
       if (!demo) recordEvent(app, a.plugin.id, ctx.locationId, 'open', ctx.query.get('entry') ?? 'page');
       try {
         return hostFor(ctx, a, { demo, locationId: ctx.locationId, frameUrl: `/plugin-frame/${a.version.id}?${frameQuery(ctx, ctx.locationId)}` });
@@ -513,10 +517,10 @@ export const pluginsModule: Module = {
       const u = user(ctx);
       const v = getVersion(app, ctx.params.vid);
       const p = v && getPlugin(app, v.plugin_id);
-      if (!v || !p || p.status !== 'active' || v.status !== 'checked') return page('Nicht verfügbar.');
+      if (!v || !p || p.status !== 'active' || v.status !== 'checked') return page(tCtx(ctx)('Nicht verfügbar.'));
       const resolved = resolveFor(app, p.id, u, ctx.locationId);
       const ok = resolved?.version.id === v.id || canManage(u, p) || (p.scope === 'marketplace' && p.active_version_id === v.id);
-      if (!ok) return page('Nicht verfügbar.');
+      if (!ok) return page(tCtx(ctx)('Nicht verfügbar.'));
       return frameFor(v, p, ctx.query.get('theme') === 'dark' ? 'dark' : 'light');
     });
 
@@ -559,23 +563,24 @@ export const pluginsModule: Module = {
       ...(app.services.workflowActions ?? {}),
       /** step: { plugin: slug or id, action: id, input: { field: "text with {{merge fields}}" } } */
       plugin_action: async (run: any, step: any, vars: Record<string, any>) => {
+        const t = tLoc(app, run.location_id);
         const ref = String(step.plugin ?? '');
         const p = getPlugin(app, ref) ?? getPluginBySlug(app, ref);
-        if (!p) throw new Error('Plugin nicht gefunden');
+        if (!p) throw new Error(t('Plugin nicht gefunden'));
         // Only plugins that are on for the whole sub-account run inside automations – never a private one.
         const a = resolveFor(app, p.id, undefined, run.location_id);
-        if (!a) throw new Error(`Das Plugin „${p.name}“ ist in diesem Sub-Account nicht für alle aktiv (oder abgeschaltet).`);
+        if (!a) throw new Error(t('Das Plugin „{name}“ ist in diesem Sub-Account nicht für alle aktiv (oder abgeschaltet).', { name: p.name }));
         const action = a.manifest.entries.actions?.find((x) => x.id === step.action);
-        if (!action) throw new Error(`Das Plugin hat keine Aktion „${String(step.action)}“.`);
+        if (!action) throw new Error(t('Das Plugin hat keine Aktion „{action}“.', { action: String(step.action) }));
         const u = runAs(a, run.location_id);
-        if (!u) throw new Error('Der Nutzer, der das Plugin eingerichtet hat, ist nicht mehr verfügbar.');
+        if (!u) throw new Error(t('Der Nutzer, der das Plugin eingerichtet hat, ist nicht mehr verfügbar.'));
         const input: Record<string, unknown> = {};
         for (const [k, v] of Object.entries((step.input && typeof step.input === 'object' ? step.input : {}) as Record<string, unknown>)) input[k] = typeof v === 'string' ? render(v, vars) : v;
         const c = vars.contact;
         if (c) input.contact = { id: c.id ?? run.contact_id, name: c.name ?? [c.first_name, c.last_name].filter(Boolean).join(' '), email: c.email ?? '' };
         const r = await runLogic(app, { target: { plugin: a.plugin, manifest: a.manifest, code: a.version.server_js, steps: a.version.steps }, kind: 'action', id: action.id, input, user: u, locationId: run.location_id });
-        if (!r.ok) throw new Error(`Plugin „${p.name}“: ${r.error}`);
-        return `Plugin „${p.name}“: Aktion „${action.label}“ ausgeführt${r.result ? ` – ${JSON.stringify(r.result).slice(0, 120)}` : ''}`;
+        if (!r.ok) throw new Error(`${t('Plugin „{name}“', { name: p.name })}: ${r.error}`);
+        return `${t('Plugin „{name}“: Aktion „{action}“ ausgeführt', { name: p.name, action: action.label })}${r.result ? ` – ${JSON.stringify(r.result).slice(0, 120)}` : ''}`;
       },
     };
     // The step has its own editor in the web app (werkstatt/WorkflowStep.tsx); the catalog only needs its description for the picker.
@@ -631,7 +636,7 @@ export const pluginsModule: Module = {
           db.run('UPDATE plugin_job_state SET last_run_at = ?, next_run_at = ? WHERE plugin_id = ? AND location_id = ? AND job_id = ?', at.toISOString(), nextRun(job, tz, at).toISOString(), a.plugin.id, locationId, job.id);
           const u = runAs(a, locationId);
           if (!u) {
-            recordEvent(app, a.plugin.id, locationId, 'error', `${job.id}: Der Nutzer, der das Plugin eingerichtet hat, ist nicht mehr verfügbar.`);
+            recordEvent(app, a.plugin.id, locationId, 'error', `${job.id}: ${tLoc(app, locationId)('Der Nutzer, der das Plugin eingerichtet hat, ist nicht mehr verfügbar.')}`);
             continue;
           }
           await runLogic(app, { target: { plugin: a.plugin, manifest: a.manifest, code: a.version.server_js, steps: a.version.steps }, kind: 'job', id: job.id, user: u, locationId });

@@ -240,7 +240,7 @@ describe('composio helpers (pure)', () => {
     expect(coerceArgs(schema, { channel: '', priority: 7 }).errors).toEqual(['channel: Pflichtfeld fehlt', 'text: Pflichtfeld fehlt', 'priority: erlaubt sind 1, 2, 3']);
     expect(coerceArgs({ type: 'object', properties: { ids: { type: 'array', items: { type: 'integer' } }, meta: { type: 'object' } } }, { ids: '1, 2,3', meta: '{"a":1}' }).args).toEqual({ ids: [1, 2, 3], meta: { a: 1 } });
     expect(coerceArgs({ type: 'object', properties: { n: { type: ['number', 'null'] } }, additionalProperties: false }, { n: 'x', extra: 1 })).toEqual({ args: {}, errors: ['n: Zahl erwartet'] });
-    expect(schemaSummary(schema)).toContain('- channel (string, Pflicht): Channel name');
+    expect(schemaSummary(schema)).toContain('- channel (string, required): Channel name');
     expect(schemaPaths({ type: 'object', properties: { email: { type: 'string' }, customer: { type: 'object', properties: { first_name: { type: 'string' } } } } }).map((p) => p.path)).toEqual(['email', 'customer.first_name']);
   });
 

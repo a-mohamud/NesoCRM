@@ -10,6 +10,7 @@ import { resolve as accessOf, scopeClause } from '../services/record-access.js';
 import { cleanName, DOC_MAX, DOC_TYPES, docsCap } from './contact-documents.js';
 import type { Tool } from './mcp.js';
 import type { Member, Portal } from './portal.js';
+import { tLoc, tUser, type STFn } from '../i18n/index.js';
 
 /**
  * Files in the customer portal (HighLevel parity, docs/sales.md#files-in-the-customer-portal): the team shares a document of a
@@ -183,9 +184,9 @@ export const portalFilesModule: Module = {
     const csrf = (m: Member) => sha256(`${app.config.secret}:portal-files:${m.sessionHash}`).slice(0, 32);
     const base = (p: Portal) => `${p.base}/documents`;
     const size = (n: number) => (n < MB ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / MB).toFixed(1)} MB`);
-    const day = (iso: string, tz: string) => {
+    const day = (iso: string, tz: string, t: STFn) => {
       try {
-        return new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: tz }).format(new Date(iso));
+        return new Intl.DateTimeFormat(t.locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: tz }).format(new Date(iso));
       } catch {
         return iso.slice(0, 10);
       }
@@ -241,7 +242,7 @@ export const portalFilesModule: Module = {
       if (shared) {
         if (row) db.run('UPDATE portal_files SET shared = 1, shared_at = ?, shared_by = ? WHERE doc_id = ?', now(), ctx.user?.id ?? null, d.id);
         else db.insert('portal_files', { doc_id: d.id, location_id: ctx.locationId, contact_id: c.id, source: 'team', shared: 1, shared_by: ctx.user?.id ?? null, created_at: now(), shared_at: now() });
-        if (!row?.shared) logActivity(app, ctx.locationId, c.id, 'portal.file_shared', 'Datei im Kundenportal freigegeben', { document_id: d.id });
+        if (!row?.shared) logActivity(app, ctx.locationId, c.id, 'portal.file_shared', tLoc(app, ctx.locationId)('Datei im Kundenportal freigegeben'), { document_id: d.id });
       } else if (row) {
         db.run('UPDATE portal_files SET shared = 0 WHERE doc_id = ?', d.id);
       }
@@ -260,15 +261,20 @@ export const portalFilesModule: Module = {
     app.services.portalHead = [...(app.services.portalHead ?? []), () => HEAD];
     app.services.portalHeader = [
       ...(app.services.portalHeader ?? []),
-      (p: Portal, m: Member) => (hasShared(p.locationId, m.contact.id) || settingsOf(p.locationId).uploads ? `<a class="pf-link" href="${base(p)}" aria-label="Meine Dateien">${ICON}<span>Meine Dateien</span></a>` : ''),
+      (p: Portal, m: Member) => {
+        if (!hasShared(p.locationId, m.contact.id) && !settingsOf(p.locationId).uploads) return '';
+        const label = escapeHtml(tLoc(app, p.locationId)('Meine Dateien'));
+        return `<a class="pf-link" href="${base(p)}" aria-label="${label}">${ICON}<span>${label}</span></a>`;
+      },
     ];
     app.services.portalDashboard = [
       ...(app.services.portalDashboard ?? []),
       (p: Portal, m: Member) => {
         const fresh = filesOf(p.locationId, m.contact.id).filter((f) => f.source === 'team' && !f.downloads);
         if (!fresh.length) return '';
-        const list = fresh.slice(0, 3).map((f) => `<div class="pf-row"><div><div class="n">${escapeHtml(f.name)}</div><div class="pf-st">${size(f.size)}</div></div><a class="btn ghost" href="${base(p)}/${encodeURIComponent(f.id)}">Herunterladen</a></div>`).join('');
-        return `<section class="pf-dash"><h2>${ICON} Neue Dateien für dich (${fresh.length})</h2>${list}<a href="${base(p)}">Alle Dateien</a></section>`;
+        const t = tLoc(app, p.locationId);
+        const list = fresh.slice(0, 3).map((f) => `<div class="pf-row"><div><div class="n">${escapeHtml(f.name)}</div><div class="pf-st">${size(f.size)}</div></div><a class="btn ghost" href="${base(p)}/${encodeURIComponent(f.id)}">${escapeHtml(t('Herunterladen'))}</a></div>`).join('');
+        return `<section class="pf-dash"><h2>${ICON} ${escapeHtml(t('Neue Dateien für dich ({n})', { n: fresh.length }))}</h2>${list}<a href="${base(p)}">${escapeHtml(t('Alle Dateien'))}</a></section>`;
       },
     ];
     // A contact the team shared a file with may log in to the portal.
@@ -294,28 +300,29 @@ export const portalFilesModule: Module = {
     router.get('/portal/:p/documents', 'public', (ctx) =>
       withMember(ctx, (k, p, m) => {
         const tz = p.loc.timezone || 'Europe/Berlin';
+        const t = tLoc(app, p.locationId);
         const s = settingsOf(p.locationId);
         const files = filesOf(p.locationId, m.contact.id);
         const row = (f: any) =>
-          `<div class="pf-row"><div><div class="n">${escapeHtml(f.name)}</div><div class="pf-st">${size(f.size)} · ${escapeHtml(day(f.shared_at || f.created_at, tz))}</div></div><a class="btn ghost" href="${base(p)}/${encodeURIComponent(f.id)}" download>Herunterladen</a></div>`;
+          `<div class="pf-row"><div><div class="n">${escapeHtml(f.name)}</div><div class="pf-st">${size(f.size)} · ${escapeHtml(day(f.shared_at || f.created_at, tz, t))}</div></div><a class="btn ghost" href="${base(p)}/${encodeURIComponent(f.id)}" download>${escapeHtml(t('Herunterladen'))}</a></div>`;
         const team = files.filter((f) => f.source === 'team');
         const mine = files.filter((f) => f.source === 'customer');
         const err = ERRORS[ctx.query.get('error') ?? ''];
-        const notice = ctx.query.get('ok') === '1' ? '<div class="notice">Danke – deine Datei ist angekommen.</div>' : err ? `<div class="pf-err" role="alert">${escapeHtml(err)}</div>` : '';
+        const notice = ctx.query.get('ok') === '1' ? `<div class="notice">${escapeHtml(t('Danke – deine Datei ist angekommen.'))}</div>` : err ? `<div class="pf-err" role="alert">${escapeHtml(t(err))}</div>` : '';
         let upload = '';
         if (s.uploads) {
           const used = customerBytes(p.locationId, m.contact.id);
           const left = Math.max(0, s.quota_mb * MB - used);
-          const accept = s.types.map((t) => ACCEPT[t]).join(',');
-          upload = `<section class="pf-up"><h2 class="pf-h">${ICON} Datei an uns senden</h2>
-<p class="pf-st">${escapeHtml(s.types.map((t) => CATEGORY_LABEL[t]).join(', '))} · höchstens ${s.max_mb} MB je Datei · noch ${size(left)} frei</p>
-<form method="post" action="${base(p)}" enctype="multipart/form-data"><input type="hidden" name="csrf" value="${csrf(m)}"><label class="pf-st" for="pf-file">Datei</label><input id="pf-file" type="file" name="file" required accept="${escapeHtml(accept)}"><button class="btn">Hochladen</button></form></section>`;
+          const accept = s.types.map((x) => ACCEPT[x]).join(',');
+          upload = `<section class="pf-up"><h2 class="pf-h">${ICON} ${escapeHtml(t('Datei an uns senden'))}</h2>
+<p class="pf-st">${escapeHtml(s.types.map((x) => t(CATEGORY_LABEL[x])).join(', '))} · ${escapeHtml(t('höchstens {mb} MB je Datei · noch {left} frei', { mb: s.max_mb, left: size(left) }))}</p>
+<form method="post" action="${base(p)}" enctype="multipart/form-data"><input type="hidden" name="csrf" value="${csrf(m)}"><label class="pf-st" for="pf-file">${escapeHtml(t('Datei'))}</label><input id="pf-file" type="file" name="file" required accept="${escapeHtml(accept)}"><button class="btn">${escapeHtml(t('Hochladen'))}</button></form></section>`;
         }
-        const body = `<div class="crumb"><a href="${p.base}">Start</a></div><h1>Meine Dateien</h1>${notice}
-${team.length ? team.map(row).join('') : '<div class="panel empty"><p class="muted">Noch keine Dateien für dich freigegeben.</p></div>'}
+        const body = `<div class="crumb"><a href="${p.base}">${escapeHtml(t('Start'))}</a></div><h1>${escapeHtml(t('Meine Dateien'))}</h1>${notice}
+${team.length ? team.map(row).join('') : `<div class="panel empty"><p class="muted">${escapeHtml(t('Noch keine Dateien für dich freigegeben.'))}</p></div>`}
 ${upload}
-${mine.length ? `<h2 style="margin-top:28px">Von dir gesendet</h2>${mine.map(row).join('')}` : ''}`;
-        return k.page(p, { title: 'Meine Dateien', body, member: m });
+${mine.length ? `<h2 style="margin-top:28px">${escapeHtml(t('Von dir gesendet'))}</h2>${mine.map(row).join('')}` : ''}`;
+        return k.page(p, { title: t('Meine Dateien'), body, member: m });
       }),
     );
 
@@ -331,7 +338,7 @@ ${mine.length ? `<h2 style="margin-top:28px">Von dir gesendet</h2>${mine.map(row
         );
         if (!d?.data) return k.notFoundPage(p, m);
         db.run('UPDATE portal_files SET downloads = downloads + 1, last_download_at = ? WHERE doc_id = ?', now(), d.id);
-        if (!d.downloads && d.source === 'team') logActivity(app, p.locationId, m.contact.id, 'portal.file_downloaded', `Datei im Kundenportal geöffnet: ${d.name}`, { document_id: d.id });
+        if (!d.downloads && d.source === 'team') logActivity(app, p.locationId, m.contact.id, 'portal.file_downloaded', tLoc(app, p.locationId)('Datei im Kundenportal geöffnet: {name}', { name: d.name }), { document_id: d.id });
         return {
           __raw: true,
           status: 200,
@@ -393,14 +400,15 @@ ${mine.length ? `<h2 style="margin-top:28px">Von dir gesendet</h2>${mine.map(row
           db.insert('contact_document_blobs', { doc_id: docId, data: file.data });
           db.insert('portal_files', { doc_id: docId, location_id: loc, contact_id: cid, source: 'customer', shared: 1, shared_by: null, created_at: at, shared_at: at });
         });
-        logActivity(app, loc, cid, 'portal.file_uploaded', `Datei im Kundenportal hochgeladen: ${name}`, { document_id: docId, size: file.data.length });
+        const tl = tLoc(app, loc);
+        logActivity(app, loc, cid, 'portal.file_uploaded', tl('Datei im Kundenportal hochgeladen: {name}', { name }), { document_id: docId, size: file.data.length });
         app.events.emit(loc, 'portal.file_uploaded', { contactId: cid, documentId: docId, name, mime, size: file.data.length });
         if (s.notify) {
           const c = getContact(app, loc, cid);
-          const who = [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.email || 'Ein Kunde';
+          const who = [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.email || tl('Ein Kunde');
           const owner = c?.assigned_to ? [String(c.assigned_to)] : [];
           const to = owner.length ? owner : membersWhere(app, loc, (u) => u.role === 'admin').slice(0, 5);
-          for (const userId of to) notifyMember(app, { locationId: loc, userId, kind: 'portal_file', title: `${who} hat eine Datei gesendet`, body: name, link: `/app/contacts/${cid}`, ref: `portal-file:${docId}`, area: 'contacts' });
+          for (const userId of to) notifyMember(app, { locationId: loc, userId, kind: 'portal_file', title: tUser(app as never, userId)('{name} hat eine Datei gesendet', { name: who }), body: name, link: `/app/contacts/${cid}`, ref: `portal-file:${docId}`, area: 'contacts' });
         }
         return back('ok');
       }),

@@ -5,6 +5,7 @@ import type { SnapshotData, SnapshotPart } from '../services/snapshots.js';
 import { MODES } from '../services/agent-safety.js';
 import { markdownToText } from '../services/wiki-markdown.js';
 import { indexPage, type PageRow } from '../services/wiki-store.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Wissens-Snapshot: what a sub-account has learned travels with its snapshot, so a new market or brand (e.g. a shop
@@ -44,13 +45,15 @@ const ownerFor = (app: App, locationId: string): string | null =>
   null;
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : 0);
-const euro = (cents: number) => `${Math.round(cents / 100).toLocaleString('de-DE')} €`;
+const euro = (cents: number, de: boolean) => (de ? `${Math.round(cents / 100).toLocaleString('de-DE')} €` : `€${Math.round(cents / 100).toLocaleString('en-GB')}`);
 
 /** The "Learnings" page: what worked, by numbers – read by people and by agents (wiki is agent knowledge). */
 export function learningsMarkdown(app: App, locationId: string): string {
   const db = app.db;
   const loc = app.location(locationId);
-  const lines: string[] = [`Stand ${new Date().toISOString().slice(0, 10)} · aus „${loc?.name ?? 'Sub-Account'}“. Erzeugt beim Erstellen des Snapshots – Zahlen, keine Meinungen.`, ''];
+  const t = tLoc(app, locationId);
+  const de = t.locale === 'de';
+  const lines: string[] = [t('Stand {date} · aus „{name}“. Erzeugt beim Erstellen des Snapshots – Zahlen, keine Meinungen.', { date: new Date().toISOString().slice(0, 10), name: loc?.name ?? t('Sub-Account') }), ''];
 
   const camps = db.all<{ id: string; name: string; subject: string; sent: number; opened: number; clicked: number }>(
     `SELECT c.id, c.name, c.subject,
@@ -60,13 +63,13 @@ export function learningsMarkdown(app: App, locationId: string): string {
      FROM campaigns c WHERE c.location_id = ? AND c.channel = 'email' AND c.status IN ('sent', 'sending')`,
     locationId,
   ).filter((c) => c.sent >= 20);
-  lines.push('## E-Mail: Betreffzeilen, die geöffnet wurden', '');
+  lines.push(t('## E-Mail: Betreffzeilen, die geöffnet wurden'), '');
   if (camps.length) {
     const top = [...camps].sort((a, b) => b.opened / b.sent - a.opened / a.sent).slice(0, 5);
     const avg = pct(camps.reduce((n, c) => n + c.opened, 0), camps.reduce((n, c) => n + c.sent, 0));
-    lines.push(`Durchschnittliche Öffnungsrate: ${avg} % über ${camps.length} Kampagnen.`, '', '| Betreff | Gesendet | Geöffnet | Geklickt |', '|---|---|---|---|');
+    lines.push(t('Durchschnittliche Öffnungsrate: {rate} % über {n} Kampagnen.', { rate: avg, n: camps.length }), '', t('| Betreff | Gesendet | Geöffnet | Geklickt |'), '|---|---|---|---|');
     for (const c of top) lines.push(`| ${(c.subject || c.name).replace(/\|/g, '/')} | ${c.sent} | ${pct(c.opened, c.sent)} % | ${pct(c.clicked, c.sent)} % |`);
-  } else lines.push('Noch keine E-Mail-Kampagne mit mindestens 20 Empfängern.');
+  } else lines.push(t('Noch keine E-Mail-Kampagne mit mindestens 20 Empfängern.'));
   lines.push('');
 
   const sources = db.all<{ source: string; n: number; won: number; won_value: number }>(
@@ -75,11 +78,11 @@ export function learningsMarkdown(app: App, locationId: string): string {
      FROM contacts c LEFT JOIN opportunities o ON o.contact_id = c.id WHERE c.location_id = ? GROUP BY 1 ORDER BY won_value DESC, n DESC LIMIT 8`,
     locationId,
   );
-  lines.push('## Lead-Quellen: woher die Kunden kommen', '');
+  lines.push(t('## Lead-Quellen: woher die Kunden kommen'), '');
   if (sources.length) {
-    lines.push('| Quelle | Kontakte | Gewonnene Deals | Gewonnener Umsatz |', '|---|---|---|---|');
-    for (const r of sources) lines.push(`| ${r.source.replace(/\|/g, '/')} | ${r.n} | ${r.won} | ${euro(r.won_value)} |`);
-  } else lines.push('Noch keine Kontakte.');
+    lines.push(t('| Quelle | Kontakte | Gewonnene Deals | Gewonnener Umsatz |'), '|---|---|---|---|');
+    for (const r of sources) lines.push(`| ${(r.source === 'unbekannt' ? t('unbekannt') : r.source).replace(/\|/g, '/')} | ${r.n} | ${r.won} | ${euro(r.won_value, de)} |`);
+  } else lines.push(t('Noch keine Kontakte.'));
   lines.push('');
 
   const channels = db.all<{ channel: string; inbound: number; outbound: number }>(
@@ -88,12 +91,12 @@ export function learningsMarkdown(app: App, locationId: string): string {
     locationId,
     new Date(Date.now() - 180 * 864e5).toISOString(),
   );
-  lines.push('## Kanäle: wo Kunden antworten (letzte 180 Tage)', '');
+  lines.push(t('## Kanäle: wo Kunden antworten (letzte 180 Tage)'), '');
   if (channels.length) {
-    lines.push('| Kanal | Eingehend | Ausgehend | Antwortquote |', '|---|---|---|---|');
+    lines.push(t('| Kanal | Eingehend | Ausgehend | Antwortquote |'), '|---|---|---|---|');
     for (const c of channels) lines.push(`| ${c.channel} | ${c.inbound} | ${c.outbound} | ${c.outbound ? `${pct(c.inbound, c.outbound)} %` : '–'} |`);
-  } else lines.push('Noch keine Nachrichten.');
-  lines.push('', '## Für Agenten', '', 'Nutze diese Zahlen als Startwerte im neuen Markt: übernimm die Muster der besten Betreffzeilen und Kanäle, prüfe sie dort neu und ersetze diese Seite, sobald eigene Zahlen da sind.');
+  } else lines.push(t('Noch keine Nachrichten.'));
+  lines.push('', t('## Für Agenten'), '', t('Nutze diese Zahlen als Startwerte im neuen Markt: übernimm die Muster der besten Betreffzeilen und Kanäle, prüfe sie dort neu und ersetze diese Seite, sobald eigene Zahlen da sind.'));
   return lines.join('\n');
 }
 
@@ -105,7 +108,7 @@ function insertPage(app: App, locationId: string, spaceId: string, parentId: str
     space_id: spaceId,
     parent_id: parentId,
     position: Number(p.position) || 0,
-    title: s(p.title, 200) || 'Seite',
+    title: s(p.title, 200) || tLoc(app, locationId)('Seite'),
     icon: s(p.icon, 16),
     body: s(p.body, 500_000),
     text: markdownToText(s(p.body, 500_000)),
@@ -126,7 +129,7 @@ function insertPage(app: App, locationId: string, spaceId: string, parentId: str
 }
 
 function insertSpace(app: App, locationId: string, sp: { name: string; icon?: string; description?: string; team_access?: string; position?: number }): string {
-  const row = { id: id(), location_id: locationId, name: s(sp.name, 120) || 'Wissen', icon: s(sp.icon, 16), description: s(sp.description, 2000), team_access: ['edit', 'view', 'none'].includes(String(sp.team_access)) ? sp.team_access : 'edit', owner_id: null, owner_name: '', position: Number(sp.position) || 0, created_at: now(), updated_at: now() };
+  const row = { id: id(), location_id: locationId, name: s(sp.name, 120) || tLoc(app, locationId)('Wissen'), icon: s(sp.icon, 16), description: s(sp.description, 2000), team_access: ['edit', 'view', 'none'].includes(String(sp.team_access)) ? sp.team_access : 'edit', owner_id: null, owner_name: '', position: Number(sp.position) || 0, created_at: now(), updated_at: now() };
   app.db.insert('wiki_spaces', row);
   return row.id;
 }
@@ -156,7 +159,7 @@ export function knowledgeParts(app: App): SnapshotPart[] {
           id: c.maps.agents?.get(String(a.id)) ?? id(),
           location_id: loc,
           owner_id: owner,
-          name: s(a.name, 80) || 'Agent',
+          name: s(a.name, 80) || tLoc(app, loc)('Agent'),
           emoji: s(a.emoji, 16) || '🤖',
           color: s(a.color, 20),
           description: s(a.description, 500),
@@ -270,13 +273,13 @@ export function knowledgeParts(app: App): SnapshotPart[] {
       };
       let n = 0;
       for (const x of items.filter((i) => i.type === 'category').slice(0, MAX.categories)) {
-        const row = { id: id(), location_id: loc, name: s(x.name, 120) || 'Kategorie', slug: slug('kb_categories', x.slug || x.name), description: s(x.description, 2000), position: Number(x.position) || 0, created_at: now(), updated_at: now() };
+        const row = { id: id(), location_id: loc, name: s(x.name, 120) || tLoc(app, loc)('Kategorie'), slug: slug('kb_categories', x.slug || x.name), description: s(x.description, 2000), position: Number(x.position) || 0, created_at: now(), updated_at: now() };
         db.insert('kb_categories', row);
         cats.set(String(x.id), row.id);
       }
       for (const x of items.filter((i) => i.type === 'article').slice(0, MAX.articles)) {
         // drafts: a copied help centre is checked before it goes public under the new brand
-        db.insert('kb_articles', { id: id(), location_id: loc, category_id: cats.get(String(x.category_id)) ?? null, title: s(x.title, 200) || 'Artikel', slug: slug('kb_articles', x.slug || x.title), body: s(x.body, 200_000), excerpt: s(x.excerpt, 500), status: 'draft', tags: JSON.stringify(Array.isArray(x.tags) ? x.tags : []), seo: '{}', position: Number(x.position) || 0, created_at: now(), updated_at: now() });
+        db.insert('kb_articles', { id: id(), location_id: loc, category_id: cats.get(String(x.category_id)) ?? null, title: s(x.title, 200) || tLoc(app, loc)('Artikel'), slug: slug('kb_articles', x.slug || x.title), body: s(x.body, 200_000), excerpt: s(x.excerpt, 500), status: 'draft', tags: JSON.stringify(Array.isArray(x.tags) ? x.tags : []), seo: '{}', position: Number(x.position) || 0, created_at: now(), updated_at: now() });
         n++;
       }
       c.created.knowledge_kb = n;
@@ -285,10 +288,11 @@ export function knowledgeParts(app: App): SnapshotPart[] {
 
   const learnings: SnapshotPart = {
     key: 'knowledge_learnings',
-    export: (_a, loc, only) => (only ? [] : [{ title: 'Learnings', icon: '📈', body: learningsMarkdown(app, loc) }]),
+    export: (_a, loc, only) => (only ? [] : [{ title: tLoc(app, loc)('Learnings'), icon: '📈', body: learningsMarkdown(app, loc) }]),
     apply: (_a, loc, items, c) => {
       if (!items.length || !has('wiki_spaces')) return void (c.created.knowledge_learnings = 0);
-      const spaceId = insertSpace(app, loc, { name: 'Learnings', icon: '📈', description: 'Was im Ursprungs-Sub-Account funktioniert hat – Startwerte für diesen Markt.' });
+      const tl = tLoc(app, loc);
+      const spaceId = insertSpace(app, loc, { name: tl('Learnings'), icon: '📈', description: tl('Was im Ursprungs-Sub-Account funktioniert hat – Startwerte für diesen Markt.') });
       for (const p of items.slice(0, 20)) insertPage(app, loc, spaceId, null, p as any);
       c.created.knowledge_learnings = Math.min(items.length, 20);
     },
@@ -342,7 +346,7 @@ const TRANSLATE_SCHEMA = { type: 'object', properties: { texts: { type: 'array',
 export async function translateKnowledge(app: App, d: SnapshotData, locationId: string, language: string, userId: string | null): Promise<number> {
   if (!app.services.aiRun) throw new Error('Der KI-Assistent ist auf diesem Server nicht verfügbar');
   const why: string | null = app.services.aiReady?.(locationId) ?? null;
-  if (why) throw new Error(`${why} (Einstellungen → KI-Assistent)`);
+  if (why) throw new Error(tApp()('{reason} (Einstellungen → KI-Assistent)', { reason: tApp()(why) }));
   const texts = knowledgeTexts(d);
   const batches: (typeof texts)[] = [];
   let cur: typeof texts = [];
@@ -360,7 +364,7 @@ export async function translateKnowledge(app: App, d: SnapshotData, locationId: 
       locationId,
       purpose: 'snapshot_translate',
       userId,
-      system: [{ text: `Du übersetzt das Wissen eines Unternehmens (Anweisungen für KI-Agenten, Notizen, Wiki- und Hilfe-Artikel) ins ${language} und passt es an diesen Markt an (Anrede, Datums- und Zahlenformate, Feiertage). Namen, Marken, Links, E-Mail-Adressen, Tags, Code und Platzhalter wie {{contact.first_name}} bleiben unverändert, Markdown bleibt erhalten. Gib genau so viele Texte in derselben Reihenfolge zurück.` }],
+      system: [{ text: `You translate a company's knowledge (instructions for AI agents, notes, wiki and help articles) into ${language} and adapt it to that market (forms of address, date and number formats, public holidays). Names, brands, links, email addresses, tags, code and placeholders such as {{contact.first_name}} stay unchanged; Markdown is preserved. Return exactly as many texts, in the same order.` }],
       user: JSON.stringify({ texts: batch.map(([get]) => get()) }),
       schema: TRANSLATE_SCHEMA,
       maxTokens: 16_000,

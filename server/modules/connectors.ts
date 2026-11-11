@@ -3,6 +3,7 @@ import { HttpError, bad, notFound } from '../core/http.js';
 import { now } from '../core/util.js';
 import type { ConnectorConfig, ConnectorDef } from '../services/connectors.js';
 import { openSecret, sealSecret } from './mail-sync.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * The native connector framework (Apps → Direkt-Verbindungen): values per sub-account and
@@ -59,29 +60,29 @@ export const connectorsModule: Module = {
       return d.fields.every((f) => !f.required || out[f.key]) ? out : null;
     };
     app.services.connectorConfig = config;
-    app.services.connectorStatus = (loc: string, key: string) => {
+    app.services.connectorStatus = (loc: string, key: string, t: STFn = tApp()) => {
       const r = row(loc, key);
-      if (!config(loc, key)) return { status: 'missing', detail: r ? 'Unvollständig' : 'Nicht eingerichtet' };
-      if (r?.last_ok === 0) return { status: 'partial', detail: `Test fehlgeschlagen: ${String(r.last_result).slice(0, 80)}` };
-      return { status: 'ok', detail: r?.last_ok === 1 ? String(r.last_result || 'Verbunden').slice(0, 100) : 'Gespeichert' };
+      if (!config(loc, key)) return { status: 'missing', detail: r ? t('Unvollständig') : t('Nicht eingerichtet') };
+      if (r?.last_ok === 0) return { status: 'partial', detail: t('Test fehlgeschlagen: {result}', { result: String(r.last_result).slice(0, 80) }) };
+      return { status: 'ok', detail: r?.last_ok === 1 ? (r.last_result ? String(r.last_result).slice(0, 100) : t('Verbunden')) : t('Gespeichert') };
     };
 
-    const view = (loc: string) =>
+    const view = (loc: string, t: STFn) =>
       defs().map((d) => {
         const r = row(loc, d.key);
         const data = JSON.parse(r?.data || '{}');
         return {
           key: d.key,
-          name: d.name,
+          name: t(d.name),
           icon: d.icon,
-          category: d.category,
-          description: d.description,
-          credentials: d.credentials,
-          guide: d.guide ?? [],
+          category: t(d.category),
+          description: t(d.description),
+          credentials: t(d.credentials),
+          guide: (d.guide ?? []).map((g) => t(g)),
           custom: !!d.custom,
-          steps: d.steps ?? [],
+          steps: (d.steps ?? []).map((s) => t(s)),
           can_test: !!d.test,
-          fields: d.fields.map((f) => ({ key: f.key, label: f.label, secret: !!f.secret, required: !!f.required, placeholder: f.placeholder ?? '', help: f.help ?? '' })),
+          fields: d.fields.map((f) => ({ key: f.key, label: t(f.label), secret: !!f.secret, required: !!f.required, placeholder: f.placeholder ? t(f.placeholder) : '', help: f.help ? t(f.help) : '' })),
           values: Object.fromEntries(d.fields.map((f) => [f.key, f.secret ? (data[f.key] ? MASK : '') : String(data[f.key] ?? '')])),
           configured: !!config(loc, d.key),
           last_test_at: r?.last_test_at ?? null,
@@ -90,9 +91,10 @@ export const connectorsModule: Module = {
         };
       });
 
-    router.get('/api/connectors', 'location', (ctx) => view(ctx.locationId));
+    router.get('/api/connectors', 'location', (ctx) => view(ctx.locationId, tCtx(ctx)));
     router.put('/api/connectors/:key', 'location', (ctx) => {
       const d = defOf(ctx.params.key);
+      const t = tCtx(ctx);
       const input = ctx.body?.values ?? ctx.body ?? {};
       const data = stored(ctx.locationId, d.key);
       for (const f of d.fields) {
@@ -103,12 +105,12 @@ export const connectorsModule: Module = {
           continue;
         }
         const s = String(v).trim();
-        if (s.length > (f.max ?? 500)) throw bad(`${f.label} ist zu lang`);
-        if (f.pattern && !f.pattern.test(s)) throw bad(f.patternHint ?? `${f.label} sieht nicht richtig aus`);
+        if (s.length > (f.max ?? 500)) throw bad(t('{label} ist zu lang', { label: t(f.label) }));
+        if (f.pattern && !f.pattern.test(s)) throw bad(f.patternHint ? t(f.patternHint) : t('{label} sieht nicht richtig aus', { label: t(f.label) }));
         data[f.key] = f.secret ? sealSecret(app, s) : s;
       }
-      const missing = d.fields.filter((f) => f.required && !data[f.key]).map((f) => f.label);
-      if (missing.length) throw bad(`Fehlt: ${missing.join(', ')}`);
+      const missing = d.fields.filter((f) => f.required && !data[f.key]).map((f) => t(f.label));
+      if (missing.length) throw bad(t('Fehlt: {fields}', { fields: missing.join(', ') }));
       db.run(
         `INSERT INTO connector_settings (location_id, key, data, updated_at) VALUES (?, ?, ?, ?)
          ON CONFLICT(location_id, key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at, last_ok = NULL, last_result = ''`,
@@ -117,7 +119,7 @@ export const connectorsModule: Module = {
         JSON.stringify(data),
         now(),
       );
-      return view(ctx.locationId).find((x) => x.key === d.key);
+      return view(ctx.locationId, t).find((x) => x.key === d.key);
     });
     router.delete('/api/connectors/:key', 'location', (ctx) => {
       const d = defOf(ctx.params.key);
@@ -128,7 +130,7 @@ export const connectorsModule: Module = {
       const d = defOf(ctx.params.key);
       const cfg = config(ctx.locationId, d.key);
       if (!cfg) throw new HttpError(409, 'Erst die Zugangsdaten speichern.');
-      if (!d.test) return { ok: true, detail: 'Gespeichert' };
+      if (!d.test) return { ok: true, detail: tCtx(ctx)('Gespeichert') };
       let ok = true;
       let detail: string;
       try {

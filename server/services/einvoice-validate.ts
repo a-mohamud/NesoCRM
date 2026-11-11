@@ -1,5 +1,6 @@
 import { checkIban } from './invoice-model.js';
 import { allAt, at, kids, parseXml, textAt, type XNode } from './xml-lite.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * An own validator for the EN 16931 business rules (BR-…, BR-CO-…, the VAT category rules BR-S/Z/E/AE/IC/G) and the
@@ -274,49 +275,51 @@ export function validateEInvoice(xml: string, opts: { profile?: 'xrechnung' | 'e
   const profile = opts.profile ?? 'xrechnung';
   const errors: Finding[] = [];
   const warnings: Finding[] = [];
-  const err = (rule: string, message: string) => errors.push({ rule, level: 'error', message });
-  const warn = (rule: string, message: string) => warnings.push({ rule, level: 'warning', message });
-  const fail = (message: string): ValidationResult => ({ valid: false, syntax: 'unknown', type_code: '', errors: [{ rule: 'XML', level: 'error', message }], warnings });
+  // The messages are German ids: tr() puts them into the instance language (a message built with tr() already is).
+  const tr = tApp();
+  const err = (rule: string, message: string) => errors.push({ rule, level: 'error', message: tr(message) });
+  const warn = (rule: string, message: string) => warnings.push({ rule, level: 'warning', message: tr(message) });
+  const fail = (message: string): ValidationResult => ({ valid: false, syntax: 'unknown', type_code: '', errors: [{ rule: 'XML', level: 'error', message: tr(message) }], warnings });
 
   let root: XNode;
   try {
     root = parseXml(xml);
   } catch (e) {
-    return fail(`Kein lesbares XML: ${(e as Error).message}`);
+    return fail(tr('Kein lesbares XML: {error}', { error: (e as Error).message }));
   }
   let sem: Sem;
   if (root.name === 'CrossIndustryInvoice') {
     if (!new RegExp(`<[\\w:]*CrossIndustryInvoice[^>]*xmlns(:\\w+)?="${NS_CII}"`).test(xml.slice(0, 4000))) err('XML-NS', 'Der Namensraum der CrossIndustryInvoice (…CrossIndustryInvoice:100) fehlt');
     sem = extractCii(root);
   } else if (root.name === 'Invoice' || root.name === 'CreditNote') {
-    if (!xml.slice(0, 4000).includes(`xmlns="${NS_UBL[root.name]}"`)) err('XML-NS', `Der Namensraum von ${root.name} (${NS_UBL[root.name]}) fehlt`);
+    if (!xml.slice(0, 4000).includes(`xmlns="${NS_UBL[root.name]}"`)) err('XML-NS', tr('Der Namensraum von {root} ({ns}) fehlt', { root: root.name, ns: NS_UBL[root.name] }));
     sem = extractUbl(root);
   } else return fail('Weder CII (CrossIndustryInvoice) noch UBL (Invoice / CreditNote)');
 
   // --- document level ------------------------------------------------------------------------------------------------------------
   if (!sem.customization) err('BR-01', 'Spezifikationskennung (BT-24) fehlt');
-  else if (profile === 'xrechnung' && !XRECHNUNG_ID.test(sem.customization)) err('BR-DE-21', `Spezifikationskennung muss die von XRechnung 3.x sein, ist aber „${sem.customization}“`);
+  else if (profile === 'xrechnung' && !XRECHNUNG_ID.test(sem.customization)) err('BR-DE-21', tr('Spezifikationskennung muss die von XRechnung 3.x sein, ist aber „{customization}“', { customization: sem.customization }));
   if (profile === 'xrechnung' && !sem.profile) err('PEPPOL-EN16931-R001', 'Prozesskennung (BT-23) fehlt');
   if (!sem.number) err('BR-02', 'Rechnungsnummer (BT-1) fehlt');
   if (!sem.issue_date) err('BR-03', 'Rechnungsdatum (BT-2) fehlt');
-  else if (!validYmd(sem.issue_date)) err('BR-03', `Rechnungsdatum (BT-2) „${sem.issue_date}“ ist kein gültiges Datum`);
-  if (sem.due_date && !validYmd(sem.due_date)) err('BR-03', `Fälligkeitsdatum (BT-9) „${sem.due_date}“ ist kein gültiges Datum`);
+  else if (!validYmd(sem.issue_date)) err('BR-03', tr('Rechnungsdatum (BT-2) „{issue_date}“ ist kein gültiges Datum', { issue_date: sem.issue_date }));
+  if (sem.due_date && !validYmd(sem.due_date)) err('BR-03', tr('Fälligkeitsdatum (BT-9) „{due_date}“ ist kein gültiges Datum', { due_date: sem.due_date }));
   if (!sem.type_code) err('BR-04', 'Rechnungstyp (BT-3) fehlt');
-  else if (profile === 'xrechnung' && !TYPE_CODES.has(sem.type_code)) err('BR-DE-17', `Rechnungstyp ${sem.type_code} ist bei XRechnung nicht erlaubt (326, 380, 381, 384, 389, 875, 876, 877)`);
+  else if (profile === 'xrechnung' && !TYPE_CODES.has(sem.type_code)) err('BR-DE-17', tr('Rechnungstyp {type_code} ist bei XRechnung nicht erlaubt (326, 380, 381, 384, 389, 875, 876, 877)', { type_code: sem.type_code }));
   if (!/^[A-Z]{3}$/.test(sem.currency)) err('BR-05', 'Währung (BT-5) fehlt oder ist kein 3-Buchstaben-Code');
   if (profile === 'xrechnung' && !sem.buyer_reference) err('BR-DE-15', 'Käuferreferenz (BT-10: Leitweg-ID oder Kundenreferenz) fehlt');
 
   // --- parties ---------------------------------------------------------------------------------------------------------------------
   const party = (p: SemParty, who: 'Verkäufer' | 'Käufer', nums: { name: string; addr: string; ctry: string }) => {
-    if (!p.name) err(nums.name, `${who}: Name fehlt`);
-    if (!p.country) err(nums.ctry, `${who}: Ländercode der Anschrift fehlt`);
-    else if (!/^[A-Z]{2}$/.test(p.country)) err(nums.ctry, `${who}: Ländercode „${p.country}“ ist kein ISO-3166-Code`);
+    if (!p.name) err(nums.name, tr('{who}: Name fehlt', { who: tr(who) }));
+    if (!p.country) err(nums.ctry, tr('{who}: Ländercode der Anschrift fehlt', { who: tr(who) }));
+    else if (!/^[A-Z]{2}$/.test(p.country)) err(nums.ctry, tr('{who}: Ländercode „{country}“ ist kein ISO-3166-Code', { who: tr(who), country: p.country }));
     if (profile === 'xrechnung') {
-      if (!p.city) err(who === 'Verkäufer' ? 'BR-DE-3' : 'BR-DE-8', `${who}: Ort fehlt`);
-      if (!p.postal_code) err(who === 'Verkäufer' ? 'BR-DE-4' : 'BR-DE-9', `${who}: Postleitzahl fehlt`);
+      if (!p.city) err(who === 'Verkäufer' ? 'BR-DE-3' : 'BR-DE-8', tr('{who}: Ort fehlt', { who: tr(who) }));
+      if (!p.postal_code) err(who === 'Verkäufer' ? 'BR-DE-4' : 'BR-DE-9', tr('{who}: Postleitzahl fehlt', { who: tr(who) }));
     }
-    if (!p.endpoint) err(who === 'Verkäufer' ? 'PEPPOL-EN16931-R020' : 'PEPPOL-EN16931-R010', `${who}: elektronische Adresse (${who === 'Verkäufer' ? 'BT-34' : 'BT-49'}) fehlt`);
-    if (p.vat_id && !/^[A-Z]{2}/.test(p.vat_id)) err('BR-CO-09', `${who}: die USt-IdNr. muss mit dem Ländercode beginnen`);
+    if (!p.endpoint) err(who === 'Verkäufer' ? 'PEPPOL-EN16931-R020' : 'PEPPOL-EN16931-R010', tr('{who}: elektronische Adresse ({bt}) fehlt', { who: tr(who), bt: who === 'Verkäufer' ? 'BT-34' : 'BT-49' }));
+    if (p.vat_id && !/^[A-Z]{2}/.test(p.vat_id)) err('BR-CO-09', tr('{who}: die USt-IdNr. muss mit dem Ländercode beginnen', { who: tr(who) }));
   };
   party(sem.seller, 'Verkäufer', { name: 'BR-06', addr: 'BR-08', ctry: 'BR-09' });
   party(sem.buyer, 'Käufer', { name: 'BR-07', addr: 'BR-10', ctry: 'BR-11' });
@@ -339,54 +342,54 @@ export function validateEInvoice(xml: string, opts: { profile?: 'xrechnung' | 'e
   if (profile === 'xrechnung' && !sem.means) err('BR-DE-1', 'Zahlungsanweisung (BG-16) fehlt');
   if (['30', '58'].includes(sem.means)) {
     if (!sem.iban) err('BR-DE-23', 'Bei Überweisung (30/58) fehlt die IBAN (BT-84)');
-    else if (sem.means === '58' && !checkIban(sem.iban)) err('BR-DE-19', `Die IBAN „${sem.iban}“ ist ungültig (BT-84)`);
+    else if (sem.means === '58' && !checkIban(sem.iban)) err('BR-DE-19', tr('Die IBAN „{iban}“ ist ungültig (BT-84)', { iban: sem.iban }));
   }
   for (const line of sem.payment_terms.split('\n').filter((l) => l.startsWith('#SKONTO#') || l.startsWith('#VERZUG#'))) {
-    if (!/^#(SKONTO|VERZUG)#TAGE=\d+#PROZENT=\d+\.\d{2}#(BASISBETRAG=\d+\.\d{2}#)?$/.test(line)) err('BR-DE-18', `Skonto-Angabe in den Zahlungsbedingungen (BT-20) hat nicht das vorgeschriebene Format: ${line.slice(0, 80)}`);
+    if (!/^#(SKONTO|VERZUG)#TAGE=\d+#PROZENT=\d+\.\d{2}#(BASISBETRAG=\d+\.\d{2}#)?$/.test(line)) err('BR-DE-18', tr('Skonto-Angabe in den Zahlungsbedingungen (BT-20) hat nicht das vorgeschriebene Format: {line}', { line: line.slice(0, 80) }));
   }
 
   // --- lines ------------------------------------------------------------------------------------------------------------------------
   if (!sem.lines.length) err('BR-16', 'Mindestens eine Rechnungsposition (BG-25) nötig');
   const money = (a: Amount, where: string) => {
-    if (a.c !== null && a.dec > 2) err('BR-DEC', `${where}: höchstens zwei Nachkommastellen (hier „${a.text}“)`);
+    if (a.c !== null && a.dec > 2) err('BR-DEC', tr('{where}: höchstens zwei Nachkommastellen (hier „{text}“)', { where, text: a.text }));
   };
   let lineSum = 0;
   for (const l of sem.lines) {
-    const w = `Position ${l.id || '?'}`;
-    if (!l.id) err('BR-21', `${w}: Positionskennung (BT-126) fehlt`);
-    if (l.qty === null) err('BR-22', `${w}: Menge (BT-129) fehlt`);
-    if (!l.unit) err('BR-23', `${w}: Mengeneinheit (BT-130) fehlt`);
-    if (l.net.c === null) err('BR-24', `${w}: Positionsbetrag (BT-131) fehlt`);
-    if (!l.name) err('BR-25', `${w}: Artikelname (BT-153) fehlt`);
-    if (l.price.c === null) err('BR-26', `${w}: Nettopreis (BT-146) fehlt`);
-    else if (l.price.c < 0) err('BR-27', `${w}: der Nettopreis (BT-146) darf nicht negativ sein`);
-    if (!l.category) err('BR-CO-04', `${w}: Umsatzsteuerkategorie (BT-151) fehlt`);
-    else if (!CATEGORIES.has(l.category)) err('BR-CO-04', `${w}: Umsatzsteuerkategorie „${l.category}“ ist unbekannt`);
-    money(l.net, `${w}: Positionsbetrag`);
-    money(l.price, `${w}: Nettopreis`);
+    const w = tr('Position {id}', { id: l.id || '?' });
+    if (!l.id) err('BR-21', tr('{where}: Positionskennung (BT-126) fehlt', { where: w }));
+    if (l.qty === null) err('BR-22', tr('{where}: Menge (BT-129) fehlt', { where: w }));
+    if (!l.unit) err('BR-23', tr('{where}: Mengeneinheit (BT-130) fehlt', { where: w }));
+    if (l.net.c === null) err('BR-24', tr('{where}: Positionsbetrag (BT-131) fehlt', { where: w }));
+    if (!l.name) err('BR-25', tr('{where}: Artikelname (BT-153) fehlt', { where: w }));
+    if (l.price.c === null) err('BR-26', tr('{where}: Nettopreis (BT-146) fehlt', { where: w }));
+    else if (l.price.c < 0) err('BR-27', tr('{where}: der Nettopreis (BT-146) darf nicht negativ sein', { where: w }));
+    if (!l.category) err('BR-CO-04', tr('{where}: Umsatzsteuerkategorie (BT-151) fehlt', { where: w }));
+    else if (!CATEGORIES.has(l.category)) err('BR-CO-04', tr('{where}: Umsatzsteuerkategorie „{category}“ ist unbekannt', { where: w, category: l.category }));
+    money(l.net, tr('{where}: Positionsbetrag', { where: w }));
+    money(l.price, tr('{where}: Nettopreis', { where: w }));
     if (l.net.c !== null) lineSum += l.net.c;
     // BR-CO-10-related: the line amount is quantity × price (± one cent of rounding).
     if (l.qty !== null && l.price.c !== null && l.net.c !== null) {
       const expect = Math.round(l.qty * l.price.c);
-      if (Math.abs(expect - l.net.c) > 1) err('BR-CO-10', `${w}: Menge × Preis (${(expect / 100).toFixed(2)}) ergibt nicht den Positionsbetrag (${l.net.text})`);
+      if (Math.abs(expect - l.net.c) > 1) err('BR-CO-10', tr('{where}: Menge × Preis ({expect}) ergibt nicht den Positionsbetrag ({text})', { where: w, expect: (expect / 100).toFixed(2), text: l.net.text }));
     }
-    if (l.category === 'S' && !(l.rate !== null && l.rate > 0)) err('BR-S-05', `${w}: bei Kategorie S muss der Steuersatz größer als 0 sein`);
-    if (['Z', 'E', 'AE', 'K', 'G'].includes(l.category) && l.rate !== 0) err(`BR-${ruleKey(l.category)}-05`, `${w}: bei Kategorie ${l.category} muss der Steuersatz 0 sein`);
+    if (l.category === 'S' && !(l.rate !== null && l.rate > 0)) err('BR-S-05', tr('{where}: bei Kategorie S muss der Steuersatz größer als 0 sein', { where: w }));
+    if (['Z', 'E', 'AE', 'K', 'G'].includes(l.category) && l.rate !== 0) err(`BR-${ruleKey(l.category)}-05`, tr('{where}: bei Kategorie {category} muss der Steuersatz 0 sein', { where: w, category: l.category }));
   }
 
   // --- totals ------------------------------------------------------------------------------------------------------------------------
   const t = sem.totals;
   for (const [k, label] of [['line', 'Summe Positionen (BT-106)'], ['basis', 'Gesamtbetrag ohne USt (BT-109)'], ['tax', 'USt-Gesamtbetrag (BT-110)'], ['grand', 'Gesamtbetrag mit USt (BT-112)'], ['due', 'Fälliger Betrag (BT-115)']] as const) {
-    if (t[k].c === null) err(k === 'line' ? 'BR-12' : k === 'basis' ? 'BR-13' : k === 'grand' ? 'BR-14' : k === 'due' ? 'BR-15' : 'BR-CO-14', `${label} fehlt`);
-    money(t[k], label);
+    if (t[k].c === null) err(k === 'line' ? 'BR-12' : k === 'basis' ? 'BR-13' : k === 'grand' ? 'BR-14' : k === 'due' ? 'BR-15' : 'BR-CO-14', tr('{label} fehlt', { label: tr(label) }));
+    money(t[k], tr(label));
   }
   const c = (a: Amount) => a.c ?? 0;
-  if (t.line.c !== null && t.line.c !== lineSum) err('BR-CO-10', `Summe der Positionen (BT-106 = ${t.line.text}) ≠ Summe der Positionsbeträge (${(lineSum / 100).toFixed(2)})`);
-  if (t.basis.c !== null && t.line.c !== null && t.basis.c !== c(t.line) - c(t.allowance) + c(t.charge)) err('BR-CO-13', `Gesamtbetrag ohne USt (BT-109 = ${t.basis.text}) ≠ Positionen − Nachlässe + Zuschläge`);
+  if (t.line.c !== null && t.line.c !== lineSum) err('BR-CO-10', tr('Summe der Positionen (BT-106 = {text}) ≠ Summe der Positionsbeträge ({lineSum})', { text: t.line.text, lineSum: (lineSum / 100).toFixed(2) }));
+  if (t.basis.c !== null && t.line.c !== null && t.basis.c !== c(t.line) - c(t.allowance) + c(t.charge)) err('BR-CO-13', tr('Gesamtbetrag ohne USt (BT-109 = {text}) ≠ Positionen − Nachlässe + Zuschläge', { text: t.basis.text }));
   const taxSum = sem.groups.reduce((n, g) => n + c(g.tax), 0);
-  if (t.tax.c !== null && t.tax.c !== taxSum) err('BR-CO-14', `USt-Gesamtbetrag (BT-110 = ${t.tax.text}) ≠ Summe der Steuerbeträge je Kategorie (${(taxSum / 100).toFixed(2)})`);
-  if (t.grand.c !== null && t.basis.c !== null && t.tax.c !== null && t.grand.c !== t.basis.c + t.tax.c) err('BR-CO-15', `Gesamtbetrag mit USt (BT-112 = ${t.grand.text}) ≠ ohne USt + USt (${((t.basis.c + t.tax.c) / 100).toFixed(2)})`);
-  if (t.due.c !== null && t.grand.c !== null && t.due.c !== t.grand.c - c(t.prepaid) + c(t.rounding)) err('BR-CO-16', `Fälliger Betrag (BT-115 = ${t.due.text}) ≠ Gesamtbetrag − Anzahlungen + Rundung (${((t.grand.c - c(t.prepaid) + c(t.rounding)) / 100).toFixed(2)})`);
+  if (t.tax.c !== null && t.tax.c !== taxSum) err('BR-CO-14', tr('USt-Gesamtbetrag (BT-110 = {text}) ≠ Summe der Steuerbeträge je Kategorie ({taxSum})', { text: t.tax.text, taxSum: (taxSum / 100).toFixed(2) }));
+  if (t.grand.c !== null && t.basis.c !== null && t.tax.c !== null && t.grand.c !== t.basis.c + t.tax.c) err('BR-CO-15', tr('Gesamtbetrag mit USt (BT-112 = {text}) ≠ ohne USt + USt ({tax})', { text: t.grand.text, tax: ((t.basis.c + t.tax.c) / 100).toFixed(2) }));
+  if (t.due.c !== null && t.grand.c !== null && t.due.c !== t.grand.c - c(t.prepaid) + c(t.rounding)) err('BR-CO-16', tr('Fälliger Betrag (BT-115 = {text}) ≠ Gesamtbetrag − Anzahlungen + Rundung ({rounding})', { text: t.due.text, rounding: ((t.grand.c - c(t.prepaid) + c(t.rounding)) / 100).toFixed(2) }));
   if (sem.type_code === '381' && [t.line, t.grand, t.due].some((a) => (a.c ?? 0) < 0)) warn('EN-381', 'Bei einer Gutschrift (Typ 381) stehen die Beträge positiv – hier sind sie negativ');
 
   // --- VAT breakdown ---------------------------------------------------------------------------------------------------------------
@@ -396,35 +399,35 @@ export function validateEInvoice(xml: string, opts: { profile?: 'xrechnung' | 'e
   const cats = new Set<string>();
   for (const g of sem.groups) {
     const k = ruleKey(g.category);
-    const w = `Aufschlüsselung ${g.category} ${g.rate ?? '?'} %`;
+    const w = tr('Aufschlüsselung {category} {rate} %', { category: g.category, rate: g.rate ?? '?' });
     cats.add(g.category);
-    if (!g.category) err('BR-CO-04', `${w}: Kategorie (BT-118) fehlt`);
-    if (g.basis.c === null) err(`BR-${k}-08`, `${w}: steuerpflichtiger Betrag (BT-116) fehlt`);
-    if (g.tax.c === null) err(`BR-${k}-09`, `${w}: Steuerbetrag (BT-117) fehlt`);
-    if (g.rate === null) err('BR-48', `${w}: Steuersatz (BT-119) fehlt`);
-    money(g.basis, `${w}: steuerpflichtiger Betrag`);
-    money(g.tax, `${w}: Steuerbetrag`);
+    if (!g.category) err('BR-CO-04', tr('{where}: Kategorie (BT-118) fehlt', { where: w }));
+    if (g.basis.c === null) err(`BR-${k}-08`, tr('{where}: steuerpflichtiger Betrag (BT-116) fehlt', { where: w }));
+    if (g.tax.c === null) err(`BR-${k}-09`, tr('{where}: Steuerbetrag (BT-117) fehlt', { where: w }));
+    if (g.rate === null) err('BR-48', tr('{where}: Steuersatz (BT-119) fehlt', { where: w }));
+    money(g.basis, tr('{where}: steuerpflichtiger Betrag', { where: w }));
+    money(g.tax, tr('{where}: Steuerbetrag', { where: w }));
     // Taxable amount = lines of the same category and rate (BR-S-08 and its siblings).
     const lines = sem.lines.filter((l) => l.category === g.category && (l.rate ?? 0) === (g.rate ?? 0));
     const sumLines = lines.reduce((n, l) => n + c(l.net), 0);
-    if (g.basis.c !== null && g.basis.c !== sumLines) err(`BR-${k}-08`, `${w}: steuerpflichtiger Betrag (${g.basis.text}) ≠ Summe der Positionen dieser Kategorie (${(sumLines / 100).toFixed(2)})`);
+    if (g.basis.c !== null && g.basis.c !== sumLines) err(`BR-${k}-08`, tr('{where}: steuerpflichtiger Betrag ({text}) ≠ Summe der Positionen dieser Kategorie ({sumLines})', { where: w, text: g.basis.text, sumLines: (sumLines / 100).toFixed(2) }));
     // Tax = taxable amount × rate (BR-CO-17); categories without tax must show 0.
     if (g.basis.c !== null && g.tax.c !== null && g.rate !== null) {
       const want = g.category === 'S' ? vat(g.basis.c, g.rate) : 0;
-      if (g.tax.c !== want) err(g.category === 'S' ? 'BR-CO-17' : `BR-${k}-09`, `${w}: Steuerbetrag ${g.tax.text} – erwartet ${(want / 100).toFixed(2)} (steuerpflichtiger Betrag × Satz, kaufmännisch gerundet)`);
+      if (g.tax.c !== want) err(g.category === 'S' ? 'BR-CO-17' : `BR-${k}-09`, tr('{where}: Steuerbetrag {text} – erwartet {want} (steuerpflichtiger Betrag × Satz, kaufmännisch gerundet)', { where: w, text: g.tax.text, want: (want / 100).toFixed(2) }));
     }
-    if (['E', 'AE', 'K', 'G'].includes(g.category) && !g.reason && !g.reason_code) err(`BR-${k}-10`, `${w}: Befreiungsgrund (BT-120 Text oder BT-121 Code) fehlt`);
-    if (['S', 'Z'].includes(g.category) && (g.reason || g.reason_code)) err(`BR-${k}-10`, `${w}: bei Kategorie ${g.category} darf kein Befreiungsgrund stehen`);
-    if (g.category === 'AE' && !(sellerId && buyerId)) err('BR-AE-02', `${w}: Reverse Charge braucht die USt-IdNr. des Verkäufers (BT-31/32) und des Käufers (BT-48)`);
+    if (['E', 'AE', 'K', 'G'].includes(g.category) && !g.reason && !g.reason_code) err(`BR-${k}-10`, tr('{where}: Befreiungsgrund (BT-120 Text oder BT-121 Code) fehlt', { where: w }));
+    if (['S', 'Z'].includes(g.category) && (g.reason || g.reason_code)) err(`BR-${k}-10`, tr('{where}: bei Kategorie {category} darf kein Befreiungsgrund stehen', { where: w, category: g.category }));
+    if (g.category === 'AE' && !(sellerId && buyerId)) err('BR-AE-02', tr('{where}: Reverse Charge braucht die USt-IdNr. des Verkäufers (BT-31/32) und des Käufers (BT-48)', { where: w }));
     if (g.category === 'K') {
-      if (!(sem.seller.vat_id && buyerId)) err('BR-IC-02', `${w}: innergemeinschaftliche Lieferung braucht die USt-IdNr. von Verkäufer (BT-31) und Käufer (BT-48)`);
-      if (!sem.delivery_date && !sem.period_start) err('BR-IC-11', `${w}: Lieferdatum (BT-72) oder Leistungszeitraum (BG-14) fehlt`);
+      if (!(sem.seller.vat_id && buyerId)) err('BR-IC-02', tr('{where}: innergemeinschaftliche Lieferung braucht die USt-IdNr. von Verkäufer (BT-31) und Käufer (BT-48)', { where: w }));
+      if (!sem.delivery_date && !sem.period_start) err('BR-IC-11', tr('{where}: Lieferdatum (BT-72) oder Leistungszeitraum (BG-14) fehlt', { where: w }));
     }
-    if (g.category === 'G' && !sem.seller.vat_id) err('BR-G-02', `${w}: Ausfuhrlieferung braucht die USt-IdNr. des Verkäufers (BT-31)`);
-    if (g.category === 'E' && !sellerId) err('BR-E-02', `${w}: steuerbefreite Leistung braucht die USt-IdNr. oder Steuernummer des Verkäufers`);
+    if (g.category === 'G' && !sem.seller.vat_id) err('BR-G-02', tr('{where}: Ausfuhrlieferung braucht die USt-IdNr. des Verkäufers (BT-31)', { where: w }));
+    if (g.category === 'E' && !sellerId) err('BR-E-02', tr('{where}: steuerbefreite Leistung braucht die USt-IdNr. oder Steuernummer des Verkäufers', { where: w }));
   }
   // Every category used by a line has a breakdown (BR-S-01 …).
-  for (const l of sem.lines) if (l.category && !sem.groups.some((g) => g.category === l.category && (g.rate ?? 0) === (l.rate ?? 0))) err(`BR-${ruleKey(l.category)}-01`, `Position ${l.id}: Kategorie ${l.category} (${l.rate ?? 0} %) fehlt in der Aufschlüsselung`);
+  for (const l of sem.lines) if (l.category && !sem.groups.some((g) => g.category === l.category && (g.rate ?? 0) === (l.rate ?? 0))) err(`BR-${ruleKey(l.category)}-01`, tr('Position {id}: Kategorie {category} ({rate} %) fehlt in der Aufschlüsselung', { id: l.id, category: l.category, rate: l.rate ?? 0 }));
   if (cats.has('AE') && cats.size > 1 && [...cats].some((x) => x !== 'AE')) warn('BR-AE', 'Reverse Charge zusammen mit anderen Steuerkategorien auf einer Rechnung – bitte prüfen');
 
   // --- dates and periods --------------------------------------------------------------------------------------------------------------

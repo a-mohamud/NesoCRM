@@ -25,6 +25,7 @@ import {
 import { retainerFacts } from '../services/pm-retainers.js';
 import { viewerOf } from '../services/pm-time.js';
 import { registerTriggers } from '../services/wfx-kit.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Job costing (docs/projects.md#job-costing-and-retainers): project budgets with alert thresholds (notification, audit line and the
@@ -69,18 +70,19 @@ export const pmCostingModule: Module = {
   migrations: [['001-init', MIGRATION]],
   register(app) {
     const { router } = app;
-    const leitung = (ctx: Ctx, what: string) => {
-      if (!viewerOf(ctx).manager) throw new HttpError(403, `${what} nur die Leitung`);
+    /** Managers only; `why` is the whole sentence (translated centrally). */
+    const leitung = (ctx: Ctx, why: string) => {
+      if (!viewerOf(ctx).manager) throw new HttpError(403, why);
     };
     const ymd = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
 
     // --- cost rates -----------------------------------------------------------------------------------------------------------------
     router.get('/api/pm/billing/cost-rates', 'location', (ctx) => {
-      leitung(ctx, 'Kostensätze sieht');
+      leitung(ctx, 'Kostensätze sieht nur die Leitung');
       return listCostRates(app, ctx.locationId);
     });
     router.put('/api/pm/billing/cost-rates', 'location', (ctx) => {
-      leitung(ctx, 'Kostensätze ändert');
+      leitung(ctx, 'Kostensätze ändert nur die Leitung');
       const b = ctx.body ?? {};
       if (b.default_cost_cents !== undefined) saveCostSettings(app, ctx.locationId, b);
       if (b.user_id !== undefined) setCostRate(app, ctx.locationId, b);
@@ -115,11 +117,11 @@ export const pmCostingModule: Module = {
     router.get('/api/pm/billing/budgets', 'location', (ctx) => ({ budgets: listBudgets(app, ctx.locationId) }));
     router.get('/api/pm/billing/budgets/:projectId', 'location', (ctx) => budgetStatus(app, ctx.locationId, ctx.params.projectId));
     router.put('/api/pm/billing/budgets/:projectId', 'location', (ctx) => {
-      leitung(ctx, 'Budgets ändert');
+      leitung(ctx, 'Budgets ändert nur die Leitung');
       return saveBudget(app, ctx.locationId, ctx.params.projectId, ctx.body ?? {}, actorOf(ctx));
     });
     router.delete('/api/pm/billing/budgets/:projectId', 'location', (ctx) => {
-      leitung(ctx, 'Budgets entfernt');
+      leitung(ctx, 'Budgets entfernt nur die Leitung');
       return deleteBudget(app, ctx.locationId, ctx.params.projectId);
     });
     router.get('/api/pm/billing/burndown/:projectId', 'location', (ctx) => burndownOf(app, ctx.locationId, ctx.params.projectId));
@@ -127,13 +129,14 @@ export const pmCostingModule: Module = {
     // --- profitability ------------------------------------------------------------------------------------------------------------------
     const filter = (ctx: Ctx) => ({ group: ctx.query.get('group') ?? undefined, from: ymd(ctx.query.get('from')), to: ymd(ctx.query.get('to')), project_id: ctx.query.get('project_id') || undefined });
     router.get('/api/pm/billing/profitability', 'location', (ctx) => {
-      leitung(ctx, 'Die Rentabilität sieht');
+      leitung(ctx, 'Die Rentabilität sieht nur die Leitung');
       return profitability(app, ctx.locationId, filter(ctx), retainerFacts(app, ctx.locationId));
     });
     router.get('/api/pm/billing/profitability/export.csv', 'location', (ctx): RawResult => {
-      leitung(ctx, 'Die Rentabilität sieht');
+      leitung(ctx, 'Die Rentabilität sieht nur die Leitung');
+      const t = tCtx(ctx);
       const report = profitability(app, ctx.locationId, filter(ctx), retainerFacts(app, ctx.locationId));
-      return { __raw: true, status: 200, headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="rentabilitaet-${report.group === 'client' ? 'kunden' : 'projekte'}.csv"` }, body: '﻿' + toCsv(profitCsv(report)) };
+      return { __raw: true, status: 200, headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${t(report.group === 'client' ? 'rentabilitaet-kunden.csv' : 'rentabilitaet-projekte.csv')}"` }, body: '﻿' + toCsv(profitCsv(report, t)) };
     });
 
     // --- thresholds ---------------------------------------------------------------------------------------------------------------------

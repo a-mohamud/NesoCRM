@@ -4,6 +4,7 @@ import { HttpError, bad, notFound, str, type Ctx } from '../core/http.js';
 import { addDaysYmd, weekdayKey, ymdInTz, zonedToUtc, type DayKey } from '../core/time.js';
 import { id, now } from '../core/util.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Evergreen-Kategorien für Social Posts – docs/social-planner.md#evergreen-queues. A queue (category, e.g. "Tipps", "Kundenstimmen")
@@ -174,15 +175,17 @@ export const socialQueuesModule: Module = {
       const items = itemsOf(q.id);
       const pick = items.find((i) => q.recycle || i.used_count === 0);
       const at = new Date();
+      // Stored on the queue (shown to the sub-account's team): the sub-account's language.
+      const t = tLoc(app, q.location_id);
       if (!pick) {
-        db.run("UPDATE social_queues SET active = 0, next_at = NULL, last_error = ?, updated_at = ? WHERE id = ?", 'Alle Posts verwendet – Kategorie pausiert', now(), q.id);
-        db.insert('social_queue_runs', { id: id(), queue_id: q.id, item_id: null, ok: 0, message: 'Keine unbenutzten Posts mehr', at: now() });
-        return { ok: false, message: 'Keine unbenutzten Posts mehr' };
+        db.run("UPDATE social_queues SET active = 0, next_at = NULL, last_error = ?, updated_at = ? WHERE id = ?", t('Alle Posts verwendet – Kategorie pausiert'), now(), q.id);
+        db.insert('social_queue_runs', { id: id(), queue_id: q.id, item_id: null, ok: 0, message: t('Keine unbenutzten Posts mehr'), at: now() });
+        return { ok: false, message: t('Keine unbenutzten Posts mehr') };
       }
       let ok = true;
-      let message = 'Gepostet';
+      let message = t('Gepostet');
       try {
-        if (!app.services.socialPost) throw new Error('Social Planner nicht verfügbar');
+        if (!app.services.socialPost) throw new Error(t('Social Planner nicht verfügbar'));
         await app.services.socialPost(q.location_id, { integrationIds: q.integration_ids, content: pick.content, type: 'now', uploadIds: pick.upload_ids, source: `Evergreen: ${q.name}` });
         db.run('UPDATE social_queue_items SET used_count = used_count + 1, last_used_at = ? WHERE id = ?', now(), pick.id);
       } catch (e) {

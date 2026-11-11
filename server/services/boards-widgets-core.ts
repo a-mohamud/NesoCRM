@@ -10,10 +10,11 @@ import { addDaysYmd, hmInTz, ymdInTz, zonedToUtc } from '../core/time.js';
 import { DEFAULT_EMBED_HOSTS, checkEmbedUrl } from './boards-embed.js';
 import { CHART_PRESETS, KPI_PRESETS, RANGES, presetQuery, type ReportQuery } from './boards-presets.js';
 import { loadPage } from './wiki-store.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 import { WidgetRegistry, type ActionView, type ConfigField, type ListRow, type Tone, type View, type WidgetCtx, type WidgetDef } from './boards-widgets.js';
 
 const euro = (v: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v || 0);
-const nameOf = (c: any) => [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.contact_name || c?.email || c?.contact_email || c?.phone || 'Unbekannt';
+const nameOf = (c: any) => [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.contact_name || c?.email || c?.contact_email || c?.phone || tApp()('Unbekannt');
 const clip = (s: unknown, n: number) => {
   const t = String(s ?? '').replace(/\s+/g, ' ').trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
@@ -72,7 +73,7 @@ async function reportQueryFor(w: WidgetCtx, config: Record<string, unknown>, kin
     if (!p) return msg(kind === 'kpi' ? 'Wähle in den Einstellungen eine Kennzahl.' : 'Wähle in den Einstellungen ein Diagramm.', 'gray');
     query = p.query;
     viz = p.viz ?? '';
-    title = p.label;
+    title = tCtx(w.ctx)(p.label);
     fixed = p.fixedRange;
   }
   const range = String(config.range ?? '');
@@ -129,9 +130,10 @@ async function dealsList(w: WidgetCtx, c: Record<string, any>): Promise<View> {
   if (c.mine && w.user) list = list.filter((d) => d.assigned_to === w.user!.id);
   if (c.stale_days) list = list.filter((d) => dayDiff(d.stage_changed_at ?? d.updated_at, w.now) >= Number(c.stale_days));
   list = [...list].sort(c.sort === 'oldest' ? (a, b) => String(a.updated_at).localeCompare(String(b.updated_at)) : c.sort === 'recent' ? (a, b) => String(b.updated_at).localeCompare(String(a.updated_at)) : (a, b) => Number(b.value) - Number(a.value));
+  const t = tCtx(w.ctx);
   const tone: Record<string, Tone> = { open: 'blue', won: 'green', lost: 'red', abandoned: 'gray' };
   const label: Record<string, string> = { open: 'Offen', won: 'Gewonnen', lost: 'Verloren', abandoned: 'Aufgegeben' };
-  const rows: ListRow[] = list.slice(0, c.limit).map((d) => ({ id: d.id, title: d.name, subtitle: [nameOf(d), stages.get(`${d.pipeline_id}:${d.stage_id}`)].filter(Boolean).join(' · '), meta: euro(d.value), at: d.updated_at, badge: { text: label[d.status] ?? d.status, tone: tone[d.status] ?? 'gray' }, url: `opportunities?pipeline=${d.pipeline_id}` }));
+  const rows: ListRow[] = list.slice(0, c.limit).map((d) => ({ id: d.id, title: d.name, subtitle: [nameOf(d), stages.get(`${d.pipeline_id}:${d.stage_id}`)].filter(Boolean).join(' · '), meta: euro(d.value), at: d.updated_at, badge: { text: label[d.status] ? t(label[d.status]) : d.status, tone: tone[d.status] ?? 'gray' }, url: `opportunities?pipeline=${d.pipeline_id}` }));
   return { kind: 'list', rows, total: list.length, empty: 'Keine Deals mit diesem Filter.', url: '/app/opportunities' };
 }
 
@@ -159,6 +161,7 @@ async function tasksList(w: WidgetCtx, c: Record<string, any>): Promise<View> {
     tasks = r.tasks;
     total = r.total;
   }
+  const tr = tCtx(w.ctx);
   const projects: any[] = await w.call('GET', '/api/pm/projects').catch(() => []);
   const pname = new Map(projects.map((p) => [p.id, p.name]));
   const today = ymdInTz(w.now, w.tz);
@@ -169,8 +172,8 @@ async function tasksList(w: WidgetCtx, c: Record<string, any>): Promise<View> {
       id: t.id,
       title: t.title,
       subtitle: [pname.get(t.project_id), t.contact_name].filter(Boolean).join(' · '),
-      meta: day ? (day === today ? 'Heute' : new Date(`${day}T12:00:00Z`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })) : '',
-      badge: late ? { text: 'Überfällig', tone: 'red' as Tone } : t.priority >= 2 ? { text: String(t.priority_label), tone: 'yellow' as Tone } : undefined,
+      meta: day ? (day === today ? tr('Heute') : new Date(`${day}T12:00:00Z`).toLocaleDateString(dateLocale(tr), { day: '2-digit', month: '2-digit', timeZone: 'UTC' })) : '',
+      badge: late ? { text: tr('Überfällig'), tone: 'red' as Tone } : t.priority >= 2 ? { text: String(t.priority_label), tone: 'yellow' as Tone } : undefined,
       check: { task_id: t.id, done: !!t.done },
       url: `pm/task/${t.id}`,
     };
@@ -207,13 +210,15 @@ async function pipelineView(w: WidgetCtx, c: Record<string, any>): Promise<View>
   return { kind: 'kanban', columns, title: pipe.name, url: `/app/opportunities?pipeline=${pipe.id}`, empty: 'Keine Deals in dieser Pipeline.' };
 }
 
-const dayLabel = (ymd: string, today: string) => {
-  if (ymd === today) return 'Heute';
-  if (ymd === addDaysYmd(today, 1)) return 'Morgen';
-  return new Date(`${ymd}T12:00:00Z`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+const dateLocale = (t: STFn) => (t.locale === 'de' ? 'de-DE' : 'en-GB');
+const dayLabel = (ymd: string, today: string, t: STFn) => {
+  if (ymd === today) return t('Heute');
+  if (ymd === addDaysYmd(today, 1)) return t('Morgen');
+  return new Date(`${ymd}T12:00:00Z`).toLocaleDateString(dateLocale(t), { weekday: 'short', day: '2-digit', month: '2-digit', timeZone: 'UTC' });
 };
 
 async function agendaView(w: WidgetCtx, c: Record<string, any>): Promise<View> {
+  const t = tCtx(w.ctx);
   const today = ymdInTz(w.now, w.tz);
   const from = zonedToUtc(today, '00:00', w.tz).toISOString();
   const to = zonedToUtc(addDaysYmd(today, Number(c.days)), '00:00', w.tz).toISOString();
@@ -229,13 +234,14 @@ async function agendaView(w: WidgetCtx, c: Record<string, any>): Promise<View> {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, items]) => ({
       date,
-      label: dayLabel(date, today),
+      label: dayLabel(date, today, t),
       items: items.slice(0, 8).map((a) => ({ id: a.id, time: hmInTz(new Date(a.start_at), w.tz), title: a.title || nameOf(a), subtitle: [a.calendar_name, a.contact_id ? nameOf(a) : ''].filter(Boolean).join(' · '), url: 'calendars', tone: (a.status === 'confirmed' ? 'blue' : 'gray') as Tone })),
     }));
-  return { kind: 'agenda', days: out, empty: `Keine Termine in den nächsten ${c.days} Tagen.`, url: '/app/calendars' };
+  return { kind: 'agenda', days: out, empty: t.plural(Number(c.days), { one: 'Keine Termine am nächsten Tag.', other: 'Keine Termine in den nächsten {n} Tagen.' }), url: '/app/calendars' };
 }
 
 async function inboxView(w: WidgetCtx, c: Record<string, any>): Promise<View> {
+  const t = tCtx(w.ctx);
   const list: any[] = await w.call('GET', `/api/conversations${qs({ filter: c.only_unread ? 'unread' : '', channel: c.channel, limit: c.limit })}`);
   const rows: ListRow[] = list.slice(0, c.limit).map((v) => ({
     id: v.id,
@@ -243,7 +249,7 @@ async function inboxView(w: WidgetCtx, c: Record<string, any>): Promise<View> {
     // Message text is untrusted: the browser shows it as plain text only.
     subtitle: clip(v.last_message, 120),
     at: v.last_message_at,
-    badge: v.unread > 0 ? { text: `${v.unread} neu`, tone: 'blue' as Tone } : undefined,
+    badge: v.unread > 0 ? { text: t('{n} neu', { n: v.unread }), tone: 'blue' as Tone } : undefined,
     url: `conversations/${v.id}`,
   }));
   return { kind: 'list', rows, empty: c.only_unread ? 'Alles gelesen.' : 'Noch keine Gespräche.', url: '/app/conversations' };
@@ -268,6 +274,7 @@ const hostsOf = (app: App): string[] => (app.services.boardsEmbedHosts as (() =>
 // --- actions --------------------------------------------------------------------------------------------------------------
 
 async function actionsView(w: WidgetCtx, c: Record<string, any>): Promise<View> {
+  const t = tCtx(w.ctx);
   const list = (c.actions as Record<string, any>[]) ?? [];
   let workflows: any[] | null = null;
   let forms: any[] | null = null;
@@ -287,8 +294,8 @@ async function actionsView(w: WidgetCtx, c: Record<string, any>): Promise<View> 
       const f = forms!.find((x) => x.id === a.form_id);
       out.push({ ...base, target: String(a.form_id), enabled: !!f, why: f ? undefined : 'Das Formular gibt es nicht mehr.', href: f ? `${w.app.baseUrl()}/f/${f.id}` : undefined });
     } else if (a.kind === 'page') {
-      const t = PAGE_TARGETS[String(a.page)];
-      out.push({ ...base, target: String(a.page), href: t ? `/app/${a.page}` : undefined, enabled: !!t && w.allowed(t.access), why: !t ? 'Unbekannte Seite.' : w.allowed(t.access) ? undefined : `Dafür fehlt dir das Recht „${t.label}“.` });
+      const pt = PAGE_TARGETS[String(a.page)];
+      out.push({ ...base, target: String(a.page), href: pt ? `/app/${a.page}` : undefined, enabled: !!pt && w.allowed(pt.access), why: !pt ? 'Unbekannte Seite.' : w.allowed(pt.access) ? undefined : t('Dafür fehlt dir das Recht „{area}“.', { area: t(pt.label) }) });
     } else if (a.kind === 'task') {
       out.push({ ...base, target: '', enabled: w.allowed('/api/tasks'), why: w.allowed('/api/tasks') ? undefined : 'Dafür fehlt dir das Recht „Kontakte & Aufgaben“.' });
     } else if (a.kind === 'contact') {
@@ -301,6 +308,7 @@ async function actionsView(w: WidgetCtx, c: Record<string, any>): Promise<View> 
 // --- calc, plugin ----------------------------------------------------------------------------------------------------------
 
 async function calcView(w: WidgetCtx, c: Record<string, any>): Promise<View> {
+  const t = tCtx(w.ctx);
   if (!c.scenario_id) return msg('Wähle in den Einstellungen ein Szenario des Gewinnrechners.', 'gray');
   const list: any[] = await w.call('GET', '/api/calc/scenarios').catch(() => []);
   const s = list.find((x) => x.id === c.scenario_id);
@@ -313,7 +321,7 @@ async function calcView(w: WidgetCtx, c: Record<string, any>): Promise<View> {
       { label: 'Nettogewinn / Monat', value: k.net_profit_month ?? null, format: 'money', tone: (k.net_profit_month ?? 0) >= 0 ? 'green' : 'red' },
       { label: 'Umsatz netto / Monat', value: k.revenue_net_month ?? null, format: 'money' },
       { label: 'Marge', value: k.margin_pct ?? null, format: 'percent' },
-      { label: 'Break-even', value: k.breakeven_customers != null ? `${k.breakeven_customers} Kunden` : '–' },
+      { label: 'Break-even', value: k.breakeven_customers != null ? t.plural(Number(k.breakeven_customers), { one: '{n} Kunde', other: '{n} Kunden' }) : '–' },
     ],
     hint: 'Schätzung, keine Steuerberatung',
     url: `/app/calc/${s.id}`,
@@ -356,7 +364,7 @@ export const CORE_WIDGETS: WidgetDef[] = [
       compareField(),
       { key: 'query', label: 'Eigene Abfrage', type: 'json', hidden: true, default: null, maxLength: 3000 },
     ],
-    validate: (c) => (c.preset && !KPI_PRESETS[String(c.preset)] && !c.report_id && !c.query ? [`Unbekannte Kennzahl „${String(c.preset)}“`] : []),
+    validate: (c) => (c.preset && !KPI_PRESETS[String(c.preset)] && !c.report_id && !c.query ? [tApp()('Unbekannte Kennzahl „{preset}“', { preset: String(c.preset) })] : []),
     data: (w, c) => reportView(w, c, 'kpi'),
   },
   {
@@ -377,7 +385,7 @@ export const CORE_WIDGETS: WidgetDef[] = [
       compareField(),
       { key: 'query', label: 'Eigene Abfrage', type: 'json', hidden: true, default: null, maxLength: 3000 },
     ],
-    validate: (c) => (c.preset && !CHART_PRESETS[String(c.preset)] && !c.report_id && !c.query ? [`Unbekanntes Diagramm „${String(c.preset)}“`] : []),
+    validate: (c) => (c.preset && !CHART_PRESETS[String(c.preset)] && !c.report_id && !c.query ? [tApp()('Unbekanntes Diagramm „{preset}“', { preset: String(c.preset) })] : []),
     data: (w, c) => reportView(w, c, 'chart'),
   },
   {
@@ -409,15 +417,17 @@ export const CORE_WIDGETS: WidgetDef[] = [
       { key: 'mine', label: 'Nur meine', type: 'bool', default: false, showIf: { key: 'entity', in: ['deals', 'tasks', 'tickets'] } },
     ],
     async data(w, c) {
+      const t = tCtx(w.ctx);
       const a = LIST_ACCESS[String(c.entity)];
       if (!a) return msg('Unbekannte Liste.', 'yellow');
-      if (!w.allowed(a.path)) return { kind: 'locked', reason: `Dafür fehlt dir das Recht „${a.label}“.` };
+      if (!w.allowed(a.path)) return { kind: 'locked', reason: t('Dafür fehlt dir das Recht „{area}“.', { area: t(a.label) }) };
       let v: View;
       if (c.entity === 'contacts') v = await contactsList(w, c);
       else if (c.entity === 'deals') v = await dealsList(w, c);
       else if (c.entity === 'tickets') v = await ticketsList(w, c);
       else v = await tasksList(w, c);
-      return { ...v, title: { contacts: 'Kontakte', deals: 'Deals', tasks: 'Aufgaben', tickets: 'Tickets' }[String(c.entity)] } as View;
+      const title = ({ contacts: 'Kontakte', deals: 'Deals', tasks: 'Aufgaben', tickets: 'Tickets' } as Record<string, string>)[String(c.entity)];
+      return { ...v, title: title ? t(title) : undefined } as View;
     },
   },
   {
@@ -527,7 +537,7 @@ export const CORE_WIDGETS: WidgetDef[] = [
     validate: (c, env) => {
       if (!c.url) return [];
       const r = checkEmbedUrl(c.url, hostsOf(env.app));
-      return r.ok ? [] : [`Einbettung: ${r.problem}`];
+      return r.ok ? [] : [tApp()('Einbettung: {problem}', { problem: tApp()(r.problem ?? '') })];
     },
     data: (w, c) => {
       if (!c.url) return msg('Gib in den Einstellungen eine Adresse an.', 'gray');
@@ -562,11 +572,12 @@ export const CORE_WIDGETS: WidgetDef[] = [
       },
     ],
     validate: (c) => {
+      const t = tApp();
       const problems: string[] = [];
       for (const [i, a] of ((c.actions as Record<string, any>[]) ?? []).entries()) {
-        if (!String(a.label ?? '').trim()) problems.push(`Knopf ${i + 1}: Beschriftung fehlt`);
-        if (a.kind === 'workflow' && !a.workflow_id) problems.push(`Knopf ${i + 1}: Automation wählen`);
-        if (a.kind === 'form' && !a.form_id) problems.push(`Knopf ${i + 1}: Formular wählen`);
+        if (!String(a.label ?? '').trim()) problems.push(t('Knopf {n}: Beschriftung fehlt', { n: i + 1 }));
+        if (a.kind === 'workflow' && !a.workflow_id) problems.push(t('Knopf {n}: Automation wählen', { n: i + 1 }));
+        if (a.kind === 'form' && !a.form_id) problems.push(t('Knopf {n}: Formular wählen', { n: i + 1 }));
       }
       return problems;
     },

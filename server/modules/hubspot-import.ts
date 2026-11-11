@@ -15,6 +15,7 @@ import {
   type HubSpotProgress,
 } from '../services/hubspot.js';
 import { openSecret, sealSecret } from './mail-sync.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Einstellungen → Import → HubSpot: Private-App token (sealed), dry run with counts, then a
@@ -96,7 +97,7 @@ export const hubspotImportModule: Module = {
 
     router.get('/api/import/hubspot', 'location', (ctx) => ({
       connection: connOut(ctx.locationId),
-      parts: HUBSPOT_PARTS.map((k) => ({ key: k, label: PART_LABELS[k] })),
+      parts: HUBSPOT_PARTS.map((k) => ({ key: k, label: tCtx(ctx)(PART_LABELS[k]) })),
       modules: { companies: typeof app.services.companies?.upsert === 'function', tickets: typeof app.services.ticketsImport === 'function' },
       dry_run: lastJob(ctx.locationId, 'dry_run'),
       job: lastJob(ctx.locationId, 'import'),
@@ -113,9 +114,10 @@ export const hubspotImportModule: Module = {
       } catch (e) {
         const status = e instanceof HubSpotError ? e.status : 0;
         // No answer, rate limit or HubSpot error: the token may be fine – a gateway error, not a bad request.
-        if (status === 0) throw new HttpError(502, `HubSpot ist nicht erreichbar (keine Antwort innerhalb von ${Math.max(1, Math.round(timeoutMs / 1000))} Sekunden) – bitte später noch einmal versuchen`);
-        if (status === 429 || status >= 500) throw new HttpError(502, `HubSpot ist gerade nicht verfügbar (${status === 429 ? 'Limit erreicht' : `Fehler ${status}`}) – bitte später noch einmal versuchen`);
-        throw bad(e instanceof HubSpotError ? e.message : `HubSpot-Token konnte nicht geprüft werden: ${(e as Error).message}`);
+        const tr = tCtx(ctx);
+        if (status === 0) throw new HttpError(502, tr('HubSpot ist nicht erreichbar (keine Antwort innerhalb von {n} Sekunden) – bitte später noch einmal versuchen', { n: Math.max(1, Math.round(timeoutMs / 1000)) }));
+        if (status === 429 || status >= 500) throw new HttpError(502, tr('HubSpot ist gerade nicht verfügbar ({reason}) – bitte später noch einmal versuchen', { reason: status === 429 ? tr('Limit erreicht') : tr('Fehler {status}', { status }) }));
+        throw bad(e instanceof HubSpotError ? e.message : tr('HubSpot-Token konnte nicht geprüft werden: {error}', { error: (e as Error).message }));
       }
       const row = { token_sealed: sealSecret(app, t), token_hint: `…${t.slice(-4)}`, portal_id: String(info.portalId ?? ''), ui_domain: String(info.uiDomain ?? ''), time_zone: String(info.timeZone ?? ''), currency: String(info.companyCurrency ?? ''), updated_at: now() };
       if (conn(ctx.locationId)) db.run(`UPDATE hubspot_connections SET ${Object.keys(row).map((k) => `${k} = ?`).join(', ')} WHERE location_id = ?`, ...Object.values(row), ctx.locationId);
@@ -153,20 +155,21 @@ export const hubspotImportModule: Module = {
       const progress: HubSpotProgress = { ...emptyProgress(), ...(job.progress ?? {}) };
       const log: string[] = job.log ?? [];
       const save = (p: HubSpotProgress) => db.run('UPDATE hubspot_jobs SET progress = ?, log = ?, updated_at = ? WHERE id = ?', JSON.stringify(p), JSON.stringify(log.slice(-200)), now(), jobId);
+      const t = tLoc(app, loc);
       const say = (s: string) => {
-        log.push(`${new Date().toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin' })} ${s}`);
+        log.push(`${new Date().toLocaleTimeString(t.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: app.location(loc)?.timezone || 'Europe/Berlin' })} ${s}`);
         save(progress);
       };
       db.run(`UPDATE hubspot_jobs SET status = 'running', error = NULL, updated_at = ? WHERE id = ?`, now(), jobId);
-      say(progress.done_steps.length ? `Fortgesetzt bei „${progress.step}“` : 'Import gestartet');
+      say(progress.done_steps.length ? t('Fortgesetzt bei „{step}“', { step: progress.step }) : t('Import gestartet'));
       const done = runHubSpotImport(app, loc, c, job.parts, progress, { save, log: say, cancelled: () => flag.cancel })
         .then(() => {
-          say('Fertig');
+          say(t('Fertig'));
           db.run(`UPDATE hubspot_jobs SET status = 'done', finished_at = ?, updated_at = ? WHERE id = ?`, now(), now(), jobId);
         })
         .catch((e) => {
           const paused = e instanceof Cancelled;
-          say(paused ? 'Pausiert – mit „Fortsetzen“ geht es an derselben Stelle weiter' : `Abgebrochen: ${(e as Error).message}`);
+          say(paused ? t('Pausiert – mit „Fortsetzen“ geht es an derselben Stelle weiter') : t('Abgebrochen: {error}', { error: (e as Error).message }));
           db.run(`UPDATE hubspot_jobs SET status = ?, error = ?, updated_at = ? WHERE id = ?`, paused ? 'interrupted' : 'failed', paused ? null : (e as Error).message, now(), jobId);
         })
         .finally(() => running.delete(loc));

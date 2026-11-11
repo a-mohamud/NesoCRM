@@ -5,7 +5,8 @@ import { escapeHtml } from '../core/template.js';
 import { id, now, slugify } from '../core/util.js';
 import { isBot } from '../services/ab-stats.js';
 import { excerptOf, stripMarkdown } from '../services/markdown.js';
-import { FIELD_LABEL, FIELD_TYPES, PRESETS, cleanData, cleanFields, cleanSettings, defaultDetail, display, fillTemplate, listItems, presetOf, type CollectionSettings, type Field, type ItemView } from '../services/site-cms.js';
+import { FIELD_LABEL, FIELD_TYPES, PRESETS, cleanData, cleanFields, cleanSettings, defaultDetail, display, fillTemplate, listItems, localizePreset, presetOf, type CollectionSettings, type Field, type ItemView } from '../services/site-cms.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 import { imgTag, siteBlocks, type Block, type BlockEnv } from '../services/site-blocks.js';
 import { cleanBlocks } from '../services/site-layout.js';
 import { renderPage } from '../services/site-render.js';
@@ -124,7 +125,7 @@ export const siteCmsModule: Module = {
     };
     const viewOf = (f: any, c: Coll, it: Item): ItemView => ({ id: it.id, slug: it.slug, data: it.data, url: itemUrl(f, c, it), product: productOf(f.location_id) });
 
-    const titleOf = (c: Coll, it: Item) => display(c.fields.find((x) => x.key === c.settings.title_field), it.data[c.settings.title_field]) || it.slug;
+    const titleOf = (c: Coll, it: Item, t = tLoc(app, c.location_id)) => display(c.fields.find((x) => x.key === c.settings.title_field), it.data[c.settings.title_field], t) || it.slug;
     const uniqueSlug = (cid: string, base: string, except = '') => {
       const root = slugify(base) || 'eintrag';
       let slug = root;
@@ -136,6 +137,7 @@ export const siteCmsModule: Module = {
     /** The list: filters, search, cards, paging. Query parameters of the visitor's request: f_<field>, q, page. */
     function renderList(env: BlockEnv, c: Coll, o: { layout?: string; columns?: number; limit?: number; filter?: { field?: string; value?: string }; sort?: string; dir?: string; heading?: string; level?: number; filters?: boolean; paginate?: boolean; button?: string; intro?: string }, itemsOverride?: Item[]): string {
       // Heading levels: the list's own heading (2, or 1 on the list page), the cards one level below it; without a heading the cards are H2.
+      const t = tLoc(app, env.locationId);
       const lvl = Math.min(3, Math.max(1, o.level ?? 2));
       const cardLvl = o.heading ? lvl + 1 : 2;
       const f = env.funnel;
@@ -161,14 +163,14 @@ export const siteCmsModule: Module = {
         s.meta_fields
           .map((k) => {
             const fd = c.fields.find((x) => x.key === k);
-            const v = display(fd, it.data[k]);
-            return v ? (fd?.type === 'rating' ? `<span class="cstars" role="img" aria-label="${Number(it.data[k])} von 5 Sternen">${escapeHtml(v)}</span>` : escapeHtml(v)) : '';
+            const v = display(fd, it.data[k], t);
+            return v ? (fd?.type === 'rating' ? `<span class="cstars" role="img" aria-label="${escapeHtml(t('{n} von 5 Sternen', { n: Number(it.data[k]) }))}">${escapeHtml(v)}</span>` : escapeHtml(v)) : '';
           })
           .filter(Boolean)
           .join(' · ');
       const cards = res.rows
         .map((it) => {
-          const title = titleOf(c, it);
+          const title = titleOf(c, it, t);
           const url = link(it);
           const imgSrc = imgField ? String(it.data[imgField.key] ?? '') : '';
           const img = imgSrc ? imgTag(env, { src: imgSrc, alt: '', sizes: '(max-width:560px) 100vw, 360px' }) : '';
@@ -186,19 +188,19 @@ export const siteCmsModule: Module = {
           const values = fd.type === 'bool' ? ['1'] : fd.type === 'tags' ? [...new Set(published.flatMap((it) => (Array.isArray(it.data[fd.key]) ? it.data[fd.key] : [])))] : (fd.options ?? []).filter((v) => published.some((it) => it.data[fd.key] === v));
           if (!values.length) continue;
           const cur = q.get(`f_${fd.key}`) ?? '';
-          chips.push(`<a class="chip${cur ? '' : ' on'}" href="${escapeHtml(href({}, [`f_${fd.key}`]))}"${cur ? '' : ' aria-current="true"'}>Alle ${escapeHtml(fd.label)}</a>`);
+          chips.push(`<a class="chip${cur ? '' : ' on'}" href="${escapeHtml(href({}, [`f_${fd.key}`]))}"${cur ? '' : ' aria-current="true"'}>${escapeHtml(t('Alle {label}', { label: fd.label }))}</a>`);
           for (const v of values as string[]) chips.push(`<a class="chip${cur === v ? ' on' : ''}" href="${escapeHtml(href({ [`f_${fd.key}`]: v }))}"${cur === v ? ' aria-current="true"' : ''}>${escapeHtml(fd.type === 'bool' ? fd.label : v)}</a>`);
         }
         const hidden = [...q.entries()].filter(([k]) => /^f_[a-z0-9_]+$/.test(k)).map(([k, v]) => `<input type="hidden" name="${escapeHtml(k)}" value="${escapeHtml(v)}">`).join('');
-        bar = `<div class="cfilter">${chips.join('')}<form role="search" action="${escapeHtml(base)}" method="get">${hidden}<input type="search" name="q" value="${escapeHtml(q.get('q') ?? '')}" aria-label="In ${escapeHtml(c.name)} suchen" placeholder="Suchen …" maxlength="80"><button type="submit">Suchen</button></form></div>`;
+        bar = `<div class="cfilter">${chips.join('')}<form role="search" action="${escapeHtml(base)}" method="get">${hidden}<input type="search" name="q" value="${escapeHtml(q.get('q') ?? '')}" aria-label="${escapeHtml(t('In {name} suchen', { name: c.name }))}" placeholder="${escapeHtml(t('Suchen …'))}" maxlength="80"><button type="submit">${escapeHtml(t('Suchen'))}</button></form></div>`;
       }
       const pager =
         o.paginate && res.pages > 1
-          ? `<nav class="cpager" aria-label="Seiten">${res.page > 1 ? `<a class="btn secondary" rel="prev" href="${escapeHtml(href(res.page - 1 > 1 ? { page: String(res.page - 1) } : {}))}">← Zurück</a>` : ''}<span>Seite ${res.page} von ${res.pages}</span>${res.page < res.pages ? `<a class="btn secondary" rel="next" href="${escapeHtml(href({ page: String(res.page + 1) }))}">Weiter →</a>` : ''}</nav>`
+          ? `<nav class="cpager" aria-label="${escapeHtml(t('Seiten'))}">${res.page > 1 ? `<a class="btn secondary" rel="prev" href="${escapeHtml(href(res.page - 1 > 1 ? { page: String(res.page - 1) } : {}))}">${escapeHtml(t('← Zurück'))}</a>` : ''}<span>${escapeHtml(t('Seite {page} von {pages}', { page: res.page, pages: res.pages }))}</span>${res.page < res.pages ? `<a class="btn secondary" rel="next" href="${escapeHtml(href({ page: String(res.page + 1) }))}">${escapeHtml(t('Weiter →'))}</a>` : ''}</nav>`
           : '';
       const cols = Math.min(4, Math.max(1, Math.round(o.columns || s.columns)));
       const layout = (o.layout || s.layout) === 'list' ? 'list' : 'grid';
-      const empty = `<p class="muted">${Object.keys(filters).length || q.get('q') ? 'Nichts gefunden – andere Filter probieren.' : 'Hier erscheinen bald die ersten Einträge.'}</p>`;
+      const empty = `<p class="muted">${escapeHtml(Object.keys(filters).length || q.get('q') ? t('Nichts gefunden – andere Filter probieren.') : t('Hier erscheinen bald die ersten Einträge.'))}</p>`;
       return `<div class="coll">${o.heading ? `<h${lvl}>${escapeHtml(o.heading)}</h${lvl}>` : ''}${o.intro ? `<p class="cintro">${escapeHtml(o.intro)}</p>` : ''}${bar}${cards ? `<div class="cgrid${layout === 'list' ? ' lst' : ''}" style="--cc:${cols}">${cards}</div>` : empty}${pager}</div>`;
     }
 
@@ -207,10 +209,12 @@ export const siteCmsModule: Module = {
       css: CSS,
       render: (env, b, o) => {
         // Template previews: a collection that does not exist yet shows the preset's example entries.
-        const preset = env.preview && String(b.collection_id ?? '').startsWith('preset:') ? presetOf(String(b.collection_id).slice(7)) : undefined;
+        const raw = env.preview && String(b.collection_id ?? '').startsWith('preset:') ? presetOf(String(b.collection_id).slice(7)) : undefined;
+        const tl = tLoc(app, env.locationId);
+        const preset = raw && localizePreset(raw, tl);
         if (preset) {
           const fields = cleanFields(preset.fields);
-          const settings = cleanSettings(preset.settings, fields);
+          const settings = cleanSettings(preset.settings, fields, undefined, tl);
           const demo = { id: 'preset', location_id: env.locationId, funnel_id: '', name: preset.name, slug: preset.slug, singular: preset.singular, fields, settings, detail_blocks: [], created_at: '', updated_at: '' } as Coll;
           const items = preset.samples.map((raw, i) => ({ id: `s${i}`, collection_id: 'preset', slug: `beispiel-${i + 1}`, data: cleanData(fields, raw), status: 'published', position: i, views: 0, published_at: now(), created_at: now(), updated_at: now() }) as Item);
           const inner = renderList(env, demo, { layout: b.layout, columns: b.columns, limit: Number(b.limit) || undefined, filter: { field: b.filter_field, value: b.filter_value }, sort: b.sort_field, dir: b.sort_dir, heading: b.heading, filters: !!b.show_filters, paginate: !!b.paginate, button: b.button_text }, items);
@@ -218,7 +222,7 @@ export const siteCmsModule: Module = {
         }
         const c = collOf(env.locationId, String(b.collection_id ?? ''));
         // Only collections of this site (and so of its sub-account) are shown; its links point into this site.
-        if (!c || (env.funnel.id && c.funnel_id !== env.funnel.id)) return env.preview ? `<div class="blk"><p class="muted" style="text-align:center;padding:24px">Sammlung wählen</p></div>` : '';
+        if (!c || (env.funnel.id && c.funnel_id !== env.funnel.id)) return env.preview ? `<div class="blk"><p class="muted" style="text-align:center;padding:24px">${escapeHtml(tl('Sammlung wählen'))}</p></div>` : '';
         const inner = renderList(env, c, { layout: b.layout, columns: b.columns, limit: Number(b.limit) || undefined, filter: { field: b.filter_field, value: b.filter_value }, sort: b.sort_field, dir: b.sort_dir, heading: b.heading, level: Number(b.heading_level) || undefined, filters: !!b.show_filters, paginate: !!b.paginate, button: b.button_text });
         return o.bare ? `<div class="blk blk-collection">${inner}</div>` : `<section class="blk blk-collection"><div class="in wide">${inner}</div></section>`;
       },
@@ -321,14 +325,17 @@ export const siteCmsModule: Module = {
       return { ...c, items: Number(counts.n), published: Number(counts.p), ...(f ? { url: collUrl(f, c) } : {}) };
     };
     const slugOk = (fid: string, slug: string, except = '') => {
-      if (!slug || RESERVED_SLUGS.includes(slug)) throw bad(`Der Pfad „${slug || '…'}“ ist nicht möglich`);
-      if (db.get('SELECT id FROM funnel_pages WHERE funnel_id = ? AND slug = ?', fid, slug)) throw bad(`Es gibt schon eine Seite mit dem Pfad „${slug}“`);
-      if (db.get('SELECT id FROM site_collections WHERE funnel_id = ? AND slug = ? AND id != ?', fid, slug, except)) throw bad(`Es gibt schon eine Sammlung mit dem Pfad „${slug}“`);
+      const t = tApp();
+      if (!slug || RESERVED_SLUGS.includes(slug)) throw bad(t('Der Pfad „{slug}“ ist nicht möglich', { slug: slug || '…' }));
+      if (db.get('SELECT id FROM funnel_pages WHERE funnel_id = ? AND slug = ?', fid, slug)) throw bad(t('Es gibt schon eine Seite mit dem Pfad „{slug}“', { slug }));
+      if (db.get('SELECT id FROM site_collections WHERE funnel_id = ? AND slug = ? AND id != ?', fid, slug, except)) throw bad(t('Es gibt schon eine Sammlung mit dem Pfad „{slug}“', { slug }));
     };
 
     router.get('/api/funnels/:id/collection-presets', 'location', (ctx) => {
       funnelOr404(ctx);
-      return { presets: PRESETS.map((p) => ({ key: p.key, name: p.name, singular: p.singular, description: p.description, slug: p.slug, fields: p.fields })), field_types: FIELD_TYPES.map((t) => ({ key: t, label: FIELD_LABEL[t] })) };
+      const tl = tLoc(app, ctx.locationId);
+      const tu = tCtx(ctx);
+      return { presets: PRESETS.map((raw) => localizePreset(raw, tl)).map((p) => ({ key: p.key, name: p.name, singular: p.singular, description: p.description, slug: p.slug, fields: p.fields })), field_types: FIELD_TYPES.map((k) => ({ key: k, label: tu(FIELD_LABEL[k]) })) };
     });
     router.get('/api/funnels/:id/collections', 'location', (ctx) => {
       const f = funnelOr404(ctx);
@@ -338,14 +345,16 @@ export const siteCmsModule: Module = {
       writable(ctx);
       const f = funnelOr404(ctx);
       const b = ctx.body ?? {};
-      if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM site_collections WHERE funnel_id = ?', f.id)!.n >= MAX_COLLECTIONS) throw bad(`Höchstens ${MAX_COLLECTIONS} Sammlungen je Website`);
-      const preset = presetOf(b.preset);
+      if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM site_collections WHERE funnel_id = ?', f.id)!.n >= MAX_COLLECTIONS) throw bad(tCtx(ctx)('Höchstens {n} Sammlungen je Website', { n: MAX_COLLECTIONS }));
+      const tl = tLoc(app, ctx.locationId);
+      const rawPreset = presetOf(b.preset);
+      const preset = rawPreset && localizePreset(rawPreset, tl);
       const name = str(b.name || preset?.name, 'Name', { required: true, max: 80 });
       const slug = slugify(String(b.slug || preset?.slug || name));
       slugOk(f.id, slug);
       const fields = cleanFields(b.fields ?? preset?.fields);
-      const settings = cleanSettings({ ...(preset?.settings ?? {}), ...(b.settings ?? {}) }, fields);
-      const c: Coll = { id: id(), location_id: ctx.locationId, funnel_id: f.id, name, slug, singular: str(b.singular || preset?.singular || 'Eintrag', 'Singular', { max: 60 }), fields, settings, detail_blocks: preset ? cleanBlocks(preset.detail()) : b.detail_blocks ? cleanBlocks(b.detail_blocks) : [], created_at: now(), updated_at: now() };
+      const settings = cleanSettings({ ...(preset?.settings ?? {}), ...(b.settings ?? {}) }, fields, undefined, tl);
+      const c: Coll = { id: id(), location_id: ctx.locationId, funnel_id: f.id, name, slug, singular: str(b.singular || preset?.singular || tl('Eintrag'), 'Singular', { max: 60 }), fields, settings, detail_blocks: preset ? cleanBlocks(preset.detail()) : b.detail_blocks ? cleanBlocks(b.detail_blocks) : [], created_at: now(), updated_at: now() };
       db.tx(() => {
         db.insert('site_collections', c);
         if (preset && b.with_samples) {
@@ -378,7 +387,7 @@ export const siteCmsModule: Module = {
         // A field's type cannot change once records exist (the values would no longer fit).
         for (const old of c.fields) {
           const n = fields.find((x) => x.key === old.key);
-          if (n && n.type !== old.type && db.get('SELECT id FROM site_items WHERE collection_id = ? LIMIT 1', c.id)) throw bad(`Der Typ von „${old.label}“ lässt sich nicht ändern, solange es Einträge gibt – lege ein neues Feld an`);
+          if (n && n.type !== old.type && db.get('SELECT id FROM site_items WHERE collection_id = ? LIMIT 1', c.id)) throw bad(tCtx(ctx)('Der Typ von „{label}“ lässt sich nicht ändern, solange es Einträge gibt – lege ein neues Feld an', { label: old.label }));
         }
         patch.fields = fields;
       }
@@ -417,7 +426,7 @@ export const siteCmsModule: Module = {
       writable(ctx);
       const c = collOr404(ctx);
       const f = funnelOf(ctx.locationId, c.funnel_id);
-      if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM site_items WHERE collection_id = ?', c.id)!.n >= MAX_ITEMS) throw bad(`Höchstens ${MAX_ITEMS} Einträge je Sammlung`);
+      if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM site_items WHERE collection_id = ?', c.id)!.n >= MAX_ITEMS) throw bad(tCtx(ctx)('Höchstens {n} Einträge je Sammlung', { n: MAX_ITEMS }));
       const data = cleanData(c.fields, ctx.body?.data, productExists(ctx.locationId));
       const status = statusOf(ctx.body?.status);
       const row = {

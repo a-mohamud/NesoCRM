@@ -9,6 +9,7 @@ import { getOrCreateConversation } from '../services/messaging.js';
 import { processRun, startWorkflow } from '../services/workflow-engine.js';
 import { registerActions, registerTriggers, requireText, text as fill } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Kommentar-zu-DM (ManyChat style) for Instagram and Facebook pages. A rule says: when a comment (on all posts or one post/reel)
@@ -164,8 +165,9 @@ export const igCommentsModule: Module = {
       const ch = channelOf(ev.platform);
       const known = [ev.from_id, alt].filter(Boolean).map((x) => identityOf(loc, ch, x!)).find((x) => x && getContact(app, loc, x.contact_id));
       if (known) return { id: known.contact_id, created: false };
-      const name = ev.from_username ? `@${ev.from_username}` : ev.from_name || `${CHANNEL_LABEL[ch]}-Kontakt`;
-      const c = upsertContact(app, loc, { name, ...(ev.from_username ? { custom: { instagram: `@${ev.from_username}` } } : {}) }, { source: 'Kommentar-zu-DM', tags: [ch] }).contact;
+      const t = tLoc(app, loc);
+      const name = ev.from_username ? `@${ev.from_username}` : ev.from_name || t('{channel}-Kontakt', { channel: CHANNEL_LABEL[ch] });
+      const c = upsertContact(app, loc, { name, ...(ev.from_username ? { custom: { instagram: `@${ev.from_username}` } } : {}) }, { source: t('Kommentar-zu-DM'), tags: [ch] }).contact;
       for (const ext of new Set([ev.from_id, alt].filter(Boolean) as string[])) db.run('INSERT OR IGNORE INTO meta_identities (location_id, channel, external_id, contact_id, name, created_at) VALUES (?, ?, ?, ?, ?, ?)', loc, ch, ext, c.id, name.slice(0, 120), now());
       return { id: c.id, created: true };
     }
@@ -182,9 +184,10 @@ export const igCommentsModule: Module = {
     const overLimit = (rule: Rule, exceptEvent: string) => {
       const since = new Date(Date.now() - HOUR).toISOString();
       const perRule = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM igc_events WHERE rule_id = ? AND created_at > ? AND id != ? AND status IN ('processing', 'done', 'failed')`, rule.id, since, exceptEvent)!.n;
-      if (perRule >= rule.max_per_hour) return `Grenze der Regel erreicht (${rule.max_per_hour} pro Stunde)`;
+      const t = tLoc(app, rule.location_id);
+      if (perRule >= rule.max_per_hour) return t('Grenze der Regel erreicht ({n} pro Stunde)', { n: rule.max_per_hour });
       const perAccount = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM igc_events WHERE location_id = ? AND created_at > ? AND dm_status = 'sent'`, rule.location_id, since)!.n;
-      if (perAccount >= ACCOUNT_DMS_PER_HOUR) return `Grenze des Kontos erreicht (${ACCOUNT_DMS_PER_HOUR} private Antworten pro Stunde)`;
+      if (perAccount >= ACCOUNT_DMS_PER_HOUR) return t('Grenze des Kontos erreicht ({n} private Antworten pro Stunde)', { n: ACCOUNT_DMS_PER_HOUR });
       return '';
     };
 
@@ -206,7 +209,7 @@ export const igCommentsModule: Module = {
       const loc = ev.location_id;
       const rule = ev.rule_id ? ruleOf(loc, ev.rule_id) : undefined;
       const finish = (patch: Partial<EventRow>): void => void db.update('igc_events', ev.id, { ...patch, done_at: now() });
-      if (!rule) return finish({ status: 'skipped', error: 'Regel nicht mehr vorhanden' });
+      if (!rule) return finish({ status: 'skipped', error: tLoc(app, loc)('Regel nicht mehr vorhanden') });
       const limited = overLimit(rule, ev.id);
       if (limited) {
         db.run('UPDATE igc_events SET status = ? WHERE id = ?', 'rate_limited', ev.id);
@@ -217,7 +220,7 @@ export const igCommentsModule: Module = {
       let dm = '';
       let recipient = '';
       let providerId: string | null = null;
-      const content = dmContent(rule);
+      const content = dmContent(rule, tLoc(app, loc));
       const repeat = rule.once_per_person && db.get(`SELECT 1 FROM igc_events WHERE location_id = ? AND rule_id = ? AND from_id = ? AND dm_status = 'sent' AND id != ?`, loc, rule.id, ev.from_id, ev.id);
       if (repeat) dm = 'skipped';
       else {
@@ -246,8 +249,10 @@ export const igCommentsModule: Module = {
       // the person becomes a contact whatever happened to the messages
       const c = contactFor(loc, ev, recipient);
       if (rule.tags.length) addTags(app, loc, c.id, rule.tags);
-      if (dm === 'sent') recordOutbound(loc, c.id, ch, describeButtons(content.text, content.buttons), providerId, 'Kommentar-zu-DM');
-      logActivity(app, loc, c.id, 'igcomment.matched', `${CHANNEL_LABEL[ch]}-Kommentar „${ev.text.slice(0, 80)}“ traf ${rule.name}${dm === 'sent' ? ' – Direktnachricht gesendet' : dm === 'failed' ? ' – Direktnachricht fehlgeschlagen' : ''}`);
+      if (dm === 'sent') recordOutbound(loc, c.id, ch, describeButtons(content.text, content.buttons), providerId, tLoc(app, loc)('Kommentar-zu-DM'));
+      const tl = tLoc(app, loc);
+      const vars = { channel: CHANNEL_LABEL[ch], text: ev.text.slice(0, 80), rule: rule.name };
+      logActivity(app, loc, c.id, 'igcomment.matched', tl(dm === 'sent' ? '{channel}-Kommentar „{text}“ traf {rule} – Direktnachricht gesendet' : dm === 'failed' ? '{channel}-Kommentar „{text}“ traf {rule} – Direktnachricht fehlgeschlagen' : '{channel}-Kommentar „{text}“ traf {rule}', vars));
       const data = { contactId: c.id, ruleId: rule.id, rule: { id: rule.id, name: rule.name }, kind: ev.kind, platform: ev.platform, commentId: ev.comment_id, mediaId: ev.media_id, text: ev.text, keyword: ev.keyword, dm_sent: dm === 'sent', public_reply_sent: publicStatus === 'sent' };
       finish({ status: dm === 'failed' && publicStatus !== 'sent' ? 'failed' : 'done', dm_status: dm, public_status: publicStatus, contact_id: c.id, error: errors.join(' · ').slice(0, 500) });
       app.events.emit(loc, 'igcomment.matched', data);
@@ -323,11 +328,11 @@ export const igCommentsModule: Module = {
       const finish = (patch: Record<string, unknown>): void => void db.update('igc_events', eid, { ...patch, done_at: now() });
       if (limited) return finish({ status: 'rate_limited', error: limited });
       if (rule.r.once_per_person && db.get(`SELECT 1 FROM igc_events WHERE location_id = ? AND rule_id = ? AND from_id = ? AND dm_status = 'sent' AND id != ?`, e.locationId, rule.r.id, pending.from_id, eid)) return finish({ status: 'done', dm_status: 'skipped' });
-      const content = dmContent(rule.r);
+      const content = dmContent(rule.r, tLoc(app, e.locationId));
       let dm = 'sent';
       let error = '';
       try {
-        const r = await app.services.metaSend(e.locationId, { contactId: e.data.contactId, channel: 'instagram', body: describeButtons(content.text, content.buttons), source: 'Story-Antwort', payload: (to: string) => ({ recipient: { id: to }, messaging_type: 'RESPONSE', message: messengerMessage(content.text, content.buttons) }) });
+        const r = await app.services.metaSend(e.locationId, { contactId: e.data.contactId, channel: 'instagram', body: describeButtons(content.text, content.buttons), source: tLoc(app, e.locationId)('Story-Antwort'), payload: (to: string) => ({ recipient: { id: to }, messaging_type: 'RESPONSE', message: messengerMessage(content.text, content.buttons) }) });
         if (r.status === 'failed') throw new Error(r.error);
       } catch (err) {
         dm = 'failed';
@@ -343,10 +348,10 @@ export const igCommentsModule: Module = {
     // Comments whose handling was cut off (restart, slow Meta) are tried again a few times; old story hints are dropped.
     app.onTick(async () => {
       for (const r of db.all<{ id: string; attempts: number }>(`SELECT id, attempts FROM igc_events WHERE status = 'queued' AND created_at < ? AND created_at > ? LIMIT 20`, new Date(Date.now() - 60_000).toISOString(), new Date(Date.now() - 6 * 24 * HOUR).toISOString())) {
-        if (r.attempts >= 3) db.run(`UPDATE igc_events SET status = 'failed', error = 'Nach drei Versuchen aufgegeben' WHERE id = ?`, r.id);
+        if (r.attempts >= 3) db.run(`UPDATE igc_events SET status = 'failed', error = ? WHERE id = ?`, tApp()('Nach drei Versuchen aufgegeben'), r.id);
         else await handle(r.id).catch(() => undefined);
       }
-      db.run(`UPDATE igc_events SET status = 'failed', error = 'Abgebrochen (Neustart?)' WHERE status = 'processing' AND created_at < ?`, new Date(Date.now() - 10 * 60_000).toISOString());
+      db.run(`UPDATE igc_events SET status = 'failed', error = ? WHERE status = 'processing' AND created_at < ?`, tApp()('Abgebrochen (Neustart?)'), new Date(Date.now() - 10 * 60_000).toISOString());
       db.run('DELETE FROM igc_story_pending WHERE created_at < ?', new Date(Date.now() - 864e5).toISOString());
       db.run('DELETE FROM igc_events WHERE created_at < ?', new Date(Date.now() - 90 * 864e5).toISOString());
     });
@@ -371,14 +376,14 @@ export const igCommentsModule: Module = {
         webhook_url: `${app.baseUrl()}/hooks/meta/${ctx.locationId}`,
         permissions: { instagram: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'pages_show_list', 'pages_manage_metadata', 'pages_read_engagement'], facebook: ['pages_manage_engagement', 'pages_read_engagement', 'pages_messaging', 'pages_manage_metadata', 'pages_show_list'] },
         webhook_fields: { instagram: ['comments', 'messages'], page: ['feed', 'messages', 'messaging_postbacks'] },
-        policy: POLICY_NOTES,
+        policy: POLICY_NOTES.map((n) => tCtx(ctx)(n)),
         last_7_days: { matches: Number(c.total) || 0, dms: Number(c.dms) || 0, failed: Number(c.failed) || 0, rate_limited: Number(c.limited) || 0 },
         limits: { account_dms_per_hour: ACCOUNT_DMS_PER_HOUR },
       };
     });
     router.get('/api/ig-comments/rules', 'location', (ctx) => rulesOf(ctx.locationId).map(ruleOut));
     router.post('/api/ig-comments/rules', 'location', (ctx) => {
-      const f = cleanRule(ctx.body);
+      const f = cleanRule(ctx.body, undefined, tLoc(app, ctx.locationId));
       checkRefs(ctx.locationId, f);
       if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM igc_rules WHERE location_id = ?', ctx.locationId)!.n >= 100) throw bad('Höchstens 100 Regeln je Sub-Account');
       const row = { id: id(), location_id: ctx.locationId, ...f, once_per_person: onceFrom(ctx.body), reply_index: 0, enabled: f.enabled ? 1 : 0, created_at: now(), updated_at: now() };
@@ -389,7 +394,7 @@ export const igCommentsModule: Module = {
       const platform = ctx.body?.platform === 'facebook' ? 'facebook' : 'instagram';
       const hit = pickRule(ctx.locationId, { platform, mediaId: clip(ctx.body?.media_id, 80), text: String(ctx.body?.text ?? '') });
       if (!hit) return { match: false };
-      const content = dmContent(hit.rule);
+      const content = dmContent(hit.rule, tLoc(app, ctx.locationId));
       return { match: true, rule: { id: hit.rule.id, name: hit.rule.name }, keyword: hit.keyword, public_reply: replyAt(hit.rule.public_replies, hit.rule.reply_index), dm: { text: content.text, buttons: content.buttons }, tags: hit.rule.tags, workflow_id: hit.rule.workflow_id };
     });
     router.get('/api/ig-comments/events', 'location', (ctx) => {
@@ -409,21 +414,22 @@ export const igCommentsModule: Module = {
       if (platform === 'instagram') {
         if (!ids.instagram) throw bad('Instagram ist nicht eingerichtet (Einstellungen → Kanäle)');
         const r = await kit()!.graph(ctx.locationId, 'instagram', 'GET', `${ids.ig_account_id}/media?fields=id,caption,media_type,permalink,timestamp&limit=25`);
-        return (r?.data ?? []).map((m: any) => ({ id: String(m.id), label: String(m.caption ?? m.media_type ?? 'Beitrag').replace(/\s+/g, ' ').slice(0, 90), type: String(m.media_type ?? ''), url: String(m.permalink ?? ''), at: m.timestamp ?? null }));
+        return (r?.data ?? []).map((m: any) => ({ id: String(m.id), label: String(m.caption ?? m.media_type ?? tCtx(ctx)('Beitrag')).replace(/\s+/g, ' ').slice(0, 90), type: String(m.media_type ?? ''), url: String(m.permalink ?? ''), at: m.timestamp ?? null }));
       }
       if (!ids.messenger) throw bad('Facebook ist nicht eingerichtet (Einstellungen → Kanäle)');
       const r = await kit()!.graph(ctx.locationId, 'messenger', 'GET', `${ids.page_id}/posts?fields=id,message,permalink_url,created_time&limit=25`);
-      return (r?.data ?? []).map((m: any) => ({ id: String(m.id), label: String(m.message ?? 'Beitrag').replace(/\s+/g, ' ').slice(0, 90), type: 'post', url: String(m.permalink_url ?? ''), at: m.created_time ?? null }));
+      return (r?.data ?? []).map((m: any) => ({ id: String(m.id), label: String(m.message ?? tCtx(ctx)('Beitrag')).replace(/\s+/g, ' ').slice(0, 90), type: 'post', url: String(m.permalink_url ?? ''), at: m.created_time ?? null }));
     });
     /** Subscribes the Facebook page to `feed` (keeping the message fields) and the Instagram account to `comments`. */
     router.post('/api/ig-comments/subscribe', 'location', async (ctx) => {
       const ids = kit()?.ids(ctx.locationId);
       if (!kit() || !ids) throw bad('Meta ist nicht eingerichtet (Einstellungen → Kanäle)');
       const res: Record<string, { ok: boolean; info?: string; error?: string }> = {};
+      const t = tCtx(ctx);
       if (ids.messenger) {
         try {
           await kit()!.graph(ctx.locationId, 'messenger', 'POST', `${ids.page_id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_deliveries,message_reads,message_reactions,feed`);
-          res.facebook = { ok: true, info: 'Seite abonniert: Kommentare (feed) und Nachrichten' };
+          res.facebook = { ok: true, info: t('Seite abonniert: Kommentare (feed) und Nachrichten') };
         } catch (e) {
           res.facebook = { ok: false, error: (e as Error).message };
         }
@@ -431,13 +437,14 @@ export const igCommentsModule: Module = {
       if (ids.instagram) {
         try {
           await kit()!.graph(ctx.locationId, 'instagram', 'POST', `${ids.ig_account_id}/subscribed_apps?subscribed_fields=comments,messages`);
-          res.instagram = { ok: true, info: 'Instagram-Konto abonniert: Kommentare (comments) und Nachrichten' };
+          res.instagram = { ok: true, info: t('Instagram-Konto abonniert: Kommentare (comments) und Nachrichten') };
         } catch (e) {
-          res.instagram = { ok: false, error: `${(e as Error).message} – das Feld „comments“ lässt sich auch in der Meta-App unter Webhooks → Instagram abonnieren` };
+          res.instagram = { ok: false, error: t('{error} – das Feld „comments“ lässt sich auch in der Meta-App unter Webhooks → Instagram abonnieren', { error: (e as Error).message }) };
         }
       }
       if (!Object.keys(res).length) throw bad('Weder Facebook-Seite noch Instagram-Konto sind eingerichtet (Einstellungen → Kanäle)');
-      auditLog(app, ctx, ctx.locationId, 'igcomments.subscribe', `Webhook-Abo für Kommentare gesetzt (${Object.entries(res).map(([k, v]) => `${k}: ${v.ok ? 'ok' : 'Fehler'}`).join(', ')})`);
+      const tl = tLoc(app, ctx.locationId);
+      auditLog(app, ctx, ctx.locationId, 'igcomments.subscribe', tl('Webhook-Abo für Kommentare gesetzt ({results})', { results: Object.entries(res).map(([k, v]) => `${k}: ${v.ok ? 'ok' : tl('Fehler')}`).join(', ') }));
       return { results: res };
     });
     const mustRule = (ctx: Ctx) => {
@@ -447,7 +454,7 @@ export const igCommentsModule: Module = {
     };
     router.patch('/api/ig-comments/rules/:id', 'location', (ctx) => {
       const cur = mustRule(ctx);
-      const f = cleanRule(ctx.body, cur);
+      const f = cleanRule(ctx.body, cur, tLoc(app, ctx.locationId));
       checkRefs(ctx.locationId, f);
       db.update('igc_rules', cur.id, { ...f, once_per_person: onceFrom(ctx.body, cur), enabled: f.enabled ? 1 : 0, updated_at: now() }, ctx.locationId);
       return ruleOut(ruleOf(ctx.locationId, cur.id)!);
@@ -487,7 +494,8 @@ export const igCommentsModule: Module = {
           } catch (e) {
             throw new Error((e as Error).message);
           }
-          if (!buttons.length) throw new Error('Mindestens ein Button');
+          const tl = tLoc(app, run.location_id);
+          if (!buttons.length) throw new Error(tl('Mindestens ein Button'));
           const style = ['buttons', 'quick'].includes(step.style) ? step.style : 'auto';
           // validate the shape for the channel before anything is stored
           if (channel === 'whatsapp') whatsappInteractive('0', text, buttons);
@@ -499,7 +507,7 @@ export const igCommentsModule: Module = {
             payload: (to: string) => (channel === 'whatsapp' ? whatsappInteractive(to, text, buttons) : { recipient: { id: to }, messaging_type: 'RESPONSE', message: messengerMessage(text, buttons, style) }),
           });
           if (r.status === 'failed') throw new Error(r.error);
-          return `Nachricht mit ${buttons.length} Button${buttons.length === 1 ? '' : 's'} gesendet (${CHANNEL_LABEL[channel]})`;
+          return tl.plural(buttons.length, { one: 'Nachricht mit {n} Button gesendet ({channel})', other: 'Nachricht mit {n} Buttons gesendet ({channel})' }, { channel: CHANNEL_LABEL[channel] });
         },
       },
     ]);

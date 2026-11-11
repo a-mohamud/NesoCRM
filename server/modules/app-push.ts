@@ -5,6 +5,7 @@ import { id, now, sha256 } from '../core/util.js';
 import { configuredProviders, minimalMessage, transportFromEnv, type ContentMode, type NativeTransport, type PushProvider } from '../services/native-push.js';
 import { getBranding } from './agency.js';
 import type { PushSink } from './push.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Native push for the apps on this instance (docs/apps.md#push): the app sends its FCM/APNs token to
@@ -107,7 +108,7 @@ export const appPushModule: Module = {
     router.post('/api/mobile/push-token', 'user', async (ctx) => {
       const deviceId = deviceIdOf(ctx);
       const mode = pushMode();
-      if (mode === 'off') return { ok: false, mode, reason: 'Native Mitteilungen sind auf diesem Server ausgeschaltet' };
+      if (mode === 'off') return { ok: false, mode, reason: tCtx(ctx)('Native Mitteilungen sind auf diesem Server ausgeschaltet') };
       const provider = String(ctx.body?.provider ?? '') as PushProvider;
       if (provider !== 'fcm' && provider !== 'apns') throw bad('provider muss fcm oder apns sein');
       const tok = str(ctx.body?.token, 'token', { required: true, max: 4096 });
@@ -121,7 +122,7 @@ export const appPushModule: Module = {
         const r = await relay('/api/push-relay/devices', 'POST', { provider, token: tok }, await relayToken());
         ref = String(r.handle);
       } else {
-        if (!configuredProviders().includes(provider) && !app.services.nativePushTransport) throw bad(`${provider.toUpperCase()} ist auf diesem Server nicht eingerichtet`);
+        if (!configuredProviders().includes(provider) && !app.services.nativePushTransport) throw bad(tCtx(ctx)('{provider} ist auf diesem Server nicht eingerichtet', { provider: provider.toUpperCase() }));
         ref = sealSecret(app, tok);
       }
       db.run(

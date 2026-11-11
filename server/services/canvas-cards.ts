@@ -12,6 +12,7 @@ import type { CardData } from './canvas-render.js';
 import type { CardKind } from './canvas-model.js';
 import { callRoute } from './route-call.js';
 import { isOverdue } from './pm-core.js';
+import { tCtx, type STFn } from '../i18n/index.js';
 
 const PROBE: Record<CardKind, string> = {
   contact: '/api/contacts',
@@ -38,8 +39,9 @@ export function areaAllowed(app: App, ctx: Ctx, path: string, method = 'GET'): b
   }
 }
 
-const euro = (v: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v || 0);
-const name = (c: any) => [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.email || c?.phone || 'Unbekannt';
+let numLocale = 'en-GB';
+const euro = (v: number) => new Intl.NumberFormat(numLocale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v || 0);
+const name = (c: any, t: STFn) => [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.email || c?.phone || t('Unbekannt');
 const tags = (v: unknown): string[] => {
   try {
     const t = typeof v === 'string' ? JSON.parse(v) : v;
@@ -53,7 +55,7 @@ function dateIn(iso: string | null | undefined, tz: string, withTime = true): st
   if (!iso) return '–';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '–';
-  return d.toLocaleString('de-DE', { timeZone: tz, day: '2-digit', month: '2-digit', year: 'numeric', ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}) });
+  return d.toLocaleString(numLocale, { timeZone: tz, day: '2-digit', month: '2-digit', year: 'numeric', ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}) });
 }
 
 const TICKET_STATUS: Record<string, [string, NonNullable<CardData['badge']>['tone']]> = {
@@ -65,10 +67,10 @@ const TICKET_STATUS: Record<string, [string, NonNullable<CardData['badge']>['ton
 };
 const PRIORITY: Record<string, string> = { low: 'Niedrig', normal: 'Normal', high: 'Hoch', urgent: 'Dringend' };
 
-async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: string): Promise<CardData> {
+async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: string, tr: STFn): Promise<CardData> {
   const { db } = app;
   const loc = ctx.locationId;
-  const missing = (what: string): CardData => ({ ok: false, error: `${what} nicht gefunden (gelöscht oder in einem anderen Sub-Account)` });
+  const missing = (what: string): CardData => ({ ok: false, error: tr('{what} nicht gefunden (gelöscht oder in einem anderen Sub-Account)', { what: tr(what) }) });
   switch (kind) {
     case 'contact': {
       const c = db.get('SELECT * FROM contacts WHERE id = ? AND location_id = ?', id, loc);
@@ -77,13 +79,13 @@ async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: st
       const t = tags(c.tags);
       return {
         ok: true,
-        title: name(c),
+        title: name(c, tr),
         subtitle: [c.company, c.city].filter(Boolean).join(' · ') || c.email || '',
         badge: t[0] ? { text: t[0], tone: 'blue' } : c.source ? { text: String(c.source), tone: 'gray' } : undefined,
         fields: [
           ['E-Mail', c.email || '–'],
           ['Telefon', c.phone || '–'],
-          ['Offene Deals', deals.n ? `${deals.n} · ${euro(deals.v)}` : 'keine'],
+          ['Offene Deals', deals.n ? `${deals.n} · ${euro(deals.v)}` : tr('keine')],
           ['Tags', t.join(', ') || '–'],
           ['Letzte Aktivität', dateIn(c.last_activity_at ?? c.updated_at, tz)],
         ],
@@ -108,7 +110,7 @@ async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: st
           ['Domain', c.domain || '–'],
           ['Telefon', c.phone || '–'],
           ['Größe', c.size || '–'],
-          ['Verknüpft', contacts ? `${contacts} Datensätze` : '–'],
+          ['Verknüpft', contacts ? tr.plural(contacts, { one: '{n} Datensatz', other: '{n} Datensätze' }) : '–'],
         ],
         url: `/app/companies/${c.id}`,
       };
@@ -118,7 +120,7 @@ async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: st
       if (!o) return missing('Deal');
       const stage = (parseJson(o, ['stages']).stages as any[]).find((s) => s.id === o.stage_id)?.name ?? '';
       const tone = o.status === 'won' ? 'green' : o.status === 'lost' ? 'red' : o.status === 'abandoned' ? 'gray' : 'blue';
-      const status = { open: 'Offen', won: 'Gewonnen', lost: 'Verloren', abandoned: 'Aufgegeben' }[o.status as string] ?? o.status;
+      const status = tr({ open: 'Offen', won: 'Gewonnen', lost: 'Verloren', abandoned: 'Aufgegeben' }[o.status as string] ?? String(o.status));
       return {
         ok: true,
         title: o.name,
@@ -126,7 +128,7 @@ async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: st
         badge: { text: status, tone },
         fields: [
           ['Wert', euro(o.value)],
-          ['Kontakt', name(o)],
+          ['Kontakt', name(o, tr)],
           ['In Stufe seit', dateIn(o.stage_changed_at ?? o.created_at, tz, false)],
           ['Aktualisiert', dateIn(o.updated_at, tz)],
         ],
@@ -141,10 +143,10 @@ async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: st
         ok: true,
         title: t.title,
         subtitle: t.description ? String(t.description).replace(/\s+/g, ' ').slice(0, 120) : '',
-        badge: t.done ? { text: 'Erledigt', tone: 'green' } : overdue ? { text: 'Überfällig', tone: 'red' } : { text: 'Offen', tone: 'yellow' },
+        badge: t.done ? { text: tr('Erledigt'), tone: 'green' } : overdue ? { text: tr('Überfällig'), tone: 'red' } : { text: tr('Offen'), tone: 'yellow' },
         fields: [
           ['Fällig', t.due_at ? dateIn(t.due_at, tz, !String(t.due_at).endsWith('T00:00:00.000Z')) : '–'],
-          ['Kontakt', t.contact_id ? name(t) : '–'],
+          ['Kontakt', t.contact_id ? name(t, tr) : '–'],
           ['Zuständig', t.assignee || '–'],
         ],
         url: '/app/tasks',
@@ -157,11 +159,11 @@ async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: st
       return {
         ok: true,
         title: `#${t.number} ${t.subject}`,
-        subtitle: t.contact_id ? name(t) : t.category || '',
-        badge: { text: label, tone },
+        subtitle: t.contact_id ? name(t, tr) : t.category || '',
+        badge: { text: tr(label), tone },
         fields: [
-          ['Priorität', PRIORITY[t.priority] ?? t.priority],
-          ['Bearbeiter', t.owner || 'Nicht zugewiesen'],
+          ['Priorität', PRIORITY[t.priority] ? tr(PRIORITY[t.priority]) : t.priority],
+          ['Bearbeiter', t.owner || tr('Nicht zugewiesen')],
           ['Fällig', dateIn(t.due_at, tz)],
           ['Erstellt', dateIn(t.created_at, tz)],
         ],
@@ -176,10 +178,10 @@ async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: st
         ok: true,
         title: a.title,
         subtitle: a.calendar,
-        badge: { text: status[0], tone: status[1] as any },
+        badge: { text: tr(status[0]), tone: status[1] as any },
         fields: [
           ['Beginn', dateIn(a.start_at, tz)],
-          ['Kontakt', a.contact_id ? name(a) : '–'],
+          ['Kontakt', a.contact_id ? name(a, tr) : '–'],
           ['Quelle', a.source || '–'],
         ],
         url: '/app/calendars',
@@ -200,7 +202,7 @@ async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: st
       const kpis = Array.isArray(p.kpis) ? p.kpis.slice(0, 2).map((k: any) => [String(k.label ?? 'KPI'), `${k.value ?? ''}${k.target ? ` / ${k.target}` : ''}`] as [string, string]) : [];
       return {
         ok: true,
-        title: l?.name ?? 'Projekt',
+        title: l?.name ?? tr('Projekt'),
         subtitle: p.tagline || p.website || '',
         badge: p.status ? { text: String(p.status), tone: p.status === 'live' ? 'green' : p.status === 'pausiert' ? 'gray' : 'blue' } : undefined,
         fields: [['Kontakte', String(stats.contacts)], ['Offene Deals', `${stats.deals} · ${euro(stats.value)}`], ['Offene Aufgaben', String(stats.tasks)], ...kpis],
@@ -215,7 +217,7 @@ async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: st
         const deals = rows.filter((r) => r.stage_id === s.id);
         return { name: s.name, count: deals.length, value: euro(deals.reduce((t, d) => t + (d.value || 0), 0)), deals: deals.map((d) => ({ name: d.name, value: euro(d.value) })) };
       });
-      return { ok: true, title: p.name, total: `${rows.length} offen · ${euro(rows.reduce((t, d) => t + (d.value || 0), 0))}`, stages, url: `/app/opportunities?pipeline=${p.id}` };
+      return { ok: true, title: p.name, total: `${tr('{n} offen', { n: rows.length })} · ${euro(rows.reduce((t, d) => t + (d.value || 0), 0))}`, stages, url: `/app/opportunities?pipeline=${p.id}` };
     }
     case 'report': {
       const r = await callRoute(app, ctx, 'GET', `/api/reports/library/${encodeURIComponent(id)}`);
@@ -243,6 +245,8 @@ async function resolveOne(app: App, ctx: Ctx, kind: CardKind, id: string, tz: st
 /** Resolves many card references at once: `{ "kind:id": CardData }`. */
 export async function resolveCards(app: App, ctx: Ctx, refs: { kind: string; id: string }[]): Promise<Record<string, CardData>> {
   const out: Record<string, CardData> = {};
+  const t = tCtx(ctx);
+  numLocale = t.locale === 'de' ? 'de-DE' : 'en-GB';
   const tz = app.location(ctx.locationId)?.timezone || 'Europe/Berlin';
   const allowed = new Map<string, boolean>();
   for (const ref of refs.slice(0, 200)) {
@@ -251,13 +255,15 @@ export async function resolveCards(app: App, ctx: Ctx, refs: { kind: string; id:
     if (out[key] || !PROBE[kind]) continue;
     if (!allowed.has(kind)) allowed.set(kind, areaAllowed(app, ctx, PROBE[kind], kind === 'report' ? 'POST' : 'GET'));
     if (!allowed.get(kind)) {
-      out[key] = { ok: false, error: 'Kein Zugriff auf diesen Bereich' };
+      out[key] = { ok: false, error: t('Kein Zugriff auf diesen Bereich') };
       continue;
     }
     try {
-      out[key] = { ...(await resolveOne(app, ctx, kind, String(ref.id), tz)), updatedAt: new Date().toISOString() };
+      const d = await resolveOne(app, ctx, kind, String(ref.id), tz, t);
+      // field labels are German message ids (report measures keep their own names)
+      out[key] = { ...d, fields: d.fields?.map(([label, value]) => [kind === 'report' ? label : t(label), value] as [string, string]), updatedAt: new Date().toISOString() };
     } catch (e) {
-      out[key] = { ok: false, error: e instanceof HttpError ? (e.status === 404 ? 'Nicht gefunden' : e.status === 403 ? 'Kein Zugriff' : e.message) : 'Konnte nicht geladen werden' };
+      out[key] = { ok: false, error: e instanceof HttpError ? (e.status === 404 ? t('Nicht gefunden') : e.status === 403 ? t('Kein Zugriff') : t(e.message)) : t('Konnte nicht geladen werden') };
     }
   }
   return out;

@@ -3,6 +3,7 @@ import { parseJson } from '../core/db.js';
 import type { CalendarRow } from '../modules/calendars.js';
 import { googleEventId, toGoogleEvent, toGraphEvent, type EventInput } from './calendar-providers.js';
 import type { Video } from './teamcal-model.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Automatic video links for booked appointments:
@@ -56,9 +57,9 @@ async function call(app: App, conn: Conn, url: string, init: { method?: string; 
     if (r.status === 401 && attempt === 0) continue;
     const json = r.status === 204 ? {} : await r.json().catch(() => ({}));
     if (r.ok || allow.includes(r.status)) return { status: r.status, json };
-    throw new Error(String(json?.error?.message ?? json?.error_description ?? `Fehler ${r.status}`).slice(0, 200));
+    throw new Error(String(json?.error?.message ?? json?.error_description ?? tApp()('Fehler {status}', { status: r.status })).slice(0, 200));
   }
-  throw new Error('Anmeldung abgelehnt');
+  throw new Error(tApp()('Anmeldung abgelehnt'));
 }
 
 const meetLink = (ev: any): string => String(ev?.hangoutLink || (ev?.conferenceData?.entryPoints ?? []).find((e: any) => e.entryPointType === 'video')?.uri || '');
@@ -69,7 +70,7 @@ function eventInput(app: App, conn: Conn, appt: any, cal: CalendarRow, descripti
 
 async function meet(app: App, appt: any, cal: CalendarRow, hosts: string[], description: string): Promise<VideoResult> {
   const conn = connectionOf(app, hosts, 'google');
-  if (!conn) return { error: 'Kein Gastgeber hat einen Google-Kalender verbunden (Einstellungen → Mein Konto)' };
+  if (!conn) return { error: tApp()('Kein Gastgeber hat einen Google-Kalender verbunden (Einstellungen → Mein Konto)') };
   const calendarId = String(conn.settings.target_calendar || 'primary');
   const input = eventInput(app, conn, appt, cal, description);
   const eventId = googleEventId(input.key);
@@ -91,28 +92,28 @@ async function meet(app: App, appt: any, cal: CalendarRow, hosts: string[], desc
 
 async function teams(app: App, appt: any, cal: CalendarRow, hosts: string[], description: string): Promise<VideoResult> {
   const conn = connectionOf(app, hosts, 'microsoft');
-  if (!conn) return { error: 'Kein Gastgeber hat einen Outlook-Kalender verbunden (Einstellungen → Mein Konto)' };
+  if (!conn) return { error: tApp()('Kein Gastgeber hat einen Outlook-Kalender verbunden (Einstellungen → Mein Konto)') };
   const calendarId = String(conn.settings.target_calendar || '');
   const input = eventInput(app, conn, appt, cal, description);
   const url = calendarId ? `${GRAPH}/me/calendars/${encodeURIComponent(calendarId)}/events` : `${GRAPH}/me/events`;
   const r = await call(app, conn, url, { method: 'POST', body: { ...toGraphEvent(input), isOnlineMeeting: true, onlineMeetingProvider: 'teamsForBusiness' } });
   const link = String(r.json?.onlineMeeting?.joinUrl || r.json?.onlineMeetingUrl || '');
   const ref: VideoRef = { provider: 'teams', connection_id: conn.id, calendar_id: calendarId, event_id: String(r.json?.id ?? '') };
-  return link ? { url: link, ref } : { error: 'Microsoft hat keinen Teams-Link geliefert (Konto ohne Teams-Lizenz?)' };
+  return link ? { url: link, ref } : { error: tApp()('Microsoft hat keinen Teams-Link geliefert (Konto ohne Teams-Lizenz?)') };
 }
 
 async function zoom(app: App, appt: any, cal: CalendarRow): Promise<VideoResult> {
   const run = app.services.workflowActions?.zoom_create_meeting;
-  if (!run || !app.services.connectorConfig?.(cal.location_id, 'zoom')) return { error: 'Zoom ist nicht eingerichtet (Apps → Direkt-Verbindungen → Zoom)' };
+  if (!run || !app.services.connectorConfig?.(cal.location_id, 'zoom')) return { error: tApp()('Zoom ist nicht eingerichtet (Apps → Direkt-Verbindungen → Zoom)') };
   const out: any = await run({ id: `teamcal-${appt.id}`, location_id: cal.location_id, contact_id: appt.contact_id ?? '' }, { topic: cal.name, when: 'at', date: appt.start_at, time: '', duration: cal.duration, waiting_room: true }, {});
   const url = String(out?.vars?.zoom_join_url ?? out?.output?.join_url ?? '');
-  return url ? { url, ref: { provider: 'zoom', event_id: String(out?.vars?.zoom_meeting_id ?? '') } } : { error: 'Zoom hat keinen Beitrittslink geliefert' };
+  return url ? { url, ref: { provider: 'zoom', event_id: String(out?.vars?.zoom_meeting_id ?? '') } } : { error: tApp()('Zoom hat keinen Beitrittslink geliefert') };
 }
 
 /** Makes the video link of an appointment by the calendar's setting; `description` is the event text (contact, answers). */
 export async function createVideo(app: App, kind: Video, appt: any, cal: CalendarRow, hosts: string[], description: string): Promise<VideoResult> {
   try {
-    if (kind === 'static') return cal.settings.meeting_location ? { url: String(cal.settings.meeting_location) } : { error: 'Kein fester Ort / Link eingetragen' };
+    if (kind === 'static') return cal.settings.meeting_location ? { url: String(cal.settings.meeting_location) } : { error: tApp()('Kein fester Ort / Link eingetragen') };
     if (kind === 'meet') return await meet(app, appt, cal, hosts, description);
     if (kind === 'teams') return await teams(app, appt, cal, hosts, description);
     if (kind === 'zoom') return await zoom(app, appt, cal);

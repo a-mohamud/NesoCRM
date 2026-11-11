@@ -2,6 +2,7 @@ import type { Account, Batch, Consent, CountRow, PartKey, RContact, RForm, RMemb
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { mapSequence } from './umzug-automation.js';
 import { toIso } from './umzug-text.js';
+import { translator, type ServerLocale } from '../i18n/index.js';
 
 /**
  * Kit (formerly ConvertKit), API v4 at https://api.kit.com/v4: subscribers with state (→ DND + tag), tags and
@@ -39,7 +40,8 @@ const CONSENT: Record<string, Consent> = { active: 'ok', inactive: 'unsubscribed
 /** Custom-field values may be keyed by key, label or name – we accept all three. */
 const fieldRefs = (defs: any[]) => defs.map((d) => ({ ref: `cf:${d.key ?? d.name}`, names: [d.key, d.label, d.name].filter(Boolean).map(String) }));
 
-async function describe(h: VendorHttp, parts: PartKey[]) {
+async function describe(h: VendorHttp, parts: PartKey[], lang?: ServerLocale) {
+  const t = translator(lang);
   const counts: CountRow[] = [];
   const fields: SourceField[] = [];
   const warnings: string[] = [];
@@ -69,7 +71,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
       }
     } catch (e) {
       if (!(e instanceof UmzugError && e.skippable)) throw e;
-      warnings.push(`Eigene Felder nicht lesbar: ${e.message}`);
+      warnings.push(t('Eigene Felder nicht lesbar: {reason}', { reason: e.message }));
     }
   }
   if (parts.includes('forms')) await count('forms', 'forms', 'Formulare', () => countAll('/forms', 'forms'));
@@ -129,8 +131,9 @@ const steps = (): StepDef[] => [
     label: 'Formulare (Entwürfe)',
     part: 'forms',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const forms = await everything(ctx.http, '/forms', 'forms', ctx);
-      const records: RForm[] = forms.map((f) => ({ kind: 'form', ext: `f:${f.id}`, name: String(f.name ?? `Formular ${f.id}`), note: `Kit-${f.type === 'hosted' ? 'Landing Page' : 'Formular'}${f.archived ? ' (archiviert)' : ''}: Aufbau und Design liefert die API nicht – nur Name und Standardfelder (Vorname, E-Mail)` }));
+      const records: RForm[] = forms.map((f) => ({ kind: 'form', ext: `f:${f.id}`, name: String(f.name ?? t('Formular {id}', { id: f.id })), note: t('Kit-{kind}{archived}: Aufbau und Design liefert die API nicht – nur Name und Standardfelder (Vorname, E-Mail)', { kind: f.type === 'hosted' ? 'Landing Page' : t('Formular'), archived: f.archived ? t(' (archiviert)') : '' }) }));
       if (forms.length) ctx.warn('Kit-Formulare: übernommen wurden Name und Standardfelder; Design, eingebettete Skripte und Landing-Pages musst du neu bauen.');
       yield { records, cursor: undefined };
     },
@@ -140,8 +143,9 @@ const steps = (): StepDef[] => [
     label: 'Sequenzen (Entwürfe)',
     part: 'automations',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const seqs = await everything(ctx.http, '/sequences', 'sequences', ctx);
-      yield { records: seqs.map((s) => mapSequence('kit', { id: s.id, name: String(s.name ?? `Sequenz ${s.id}`), hold: !!s.hold })), cursor: undefined };
+      yield { records: seqs.map((s) => mapSequence('kit', { id: s.id, name: String(s.name ?? t('Sequenz {id}', { id: s.id })), hold: !!s.hold })), cursor: undefined };
     },
   },
   {
@@ -149,8 +153,9 @@ const steps = (): StepDef[] => [
     label: 'Broadcasts → Vorlagen',
     part: 'templates',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of cursorPages(ctx.http, '/broadcasts', 'broadcasts', {}, ctx, ctx.cursor ? String(ctx.cursor) : undefined)) {
-        const records: RTemplate[] = pg.items.map((b) => ({ kind: 'template', ext: `b:${b.id}`, name: String(b.subject ?? b.description ?? `Broadcast ${b.id}`), subject: String(b.subject ?? ''), html: String(b.content ?? '') }));
+        const records: RTemplate[] = pg.items.map((b) => ({ kind: 'template', ext: `b:${b.id}`, name: String(b.subject ?? b.description ?? t('Broadcast {id}', { id: b.id })), subject: String(b.subject ?? ''), html: String(b.content ?? '') }));
         yield { records, cursor: pg.next };
       }
     },
@@ -178,6 +183,6 @@ export const KIT: SourceDef = {
     const a = j.account ?? {};
     return { account: String(a.id ?? a.name ?? j.user?.email ?? 'kit').toLowerCase(), label: String(a.name ?? a.primary_email_address ?? j.user?.email ?? 'Kit'), meta: {} };
   },
-  describe: (h, parts) => describe(h, parts),
+  describe: (h, parts, c) => describe(h, parts, c.lang),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),
 };

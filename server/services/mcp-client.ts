@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { APP_VERSION } from '../version.js';
+import { tApp } from '../i18n/index.js';
 import { stripControl } from './agent-tool-sources.js';
 import { isPrivateIp, safeFetch, safeLookup, type SafeResponse } from './net.js';
 
@@ -72,11 +73,12 @@ export interface McpSession {
 
 const netError = (e: unknown): McpError => {
   const m = (e as Error)?.message ?? '';
+  const t = tApp();
   if (/internen Netz/.test(m)) return new McpError('Die Adresse liegt in einem internen Netz und ist gesperrt (nur die Agentur kann „internes Netz“ erlauben).', 'private', 400);
-  if (/zu groß/.test(m)) return new McpError(`Die Antwort des MCP-Servers ist zu groß (Limit ${Math.round(LIMITS.maxBytes / 1024 / 1024)} MB).`, 'too_large', 502);
+  if (/zu groß/.test(m)) return new McpError(t('Die Antwort des MCP-Servers ist zu groß (Limit {mb} MB).', { mb: Math.round(LIMITS.maxBytes / 1024 / 1024) }), 'too_large', 502);
   if (/Zeitüberschreitung|timeout/i.test(m)) return new McpError('Der MCP-Server hat nicht rechtzeitig geantwortet.', 'timeout', 504);
   if (/Ungültige URL|Nur http/.test(m)) return new McpError(m, 'protocol', 400);
-  return new McpError(`Der MCP-Server ist nicht erreichbar${m ? ` (${m.slice(0, 120)})` : ''}.`, 'network', 504);
+  return new McpError(m ? t('Der MCP-Server ist nicht erreichbar ({reason}).', { reason: t(m).slice(0, 120) }) : t('Der MCP-Server ist nicht erreichbar.'), 'network', 504);
 };
 
 const header = (h: Record<string, unknown>, name: string) => {
@@ -142,8 +144,9 @@ const parseMessages = (raw: string, type: string): any[] => {
 
 const rpcResult = (msgs: any[], id: number, method: string) => {
   const m = msgs.find((x) => x && x.jsonrpc === '2.0' && x.id === id && ('result' in x || 'error' in x));
-  if (!m) throw new McpError(`Der MCP-Server hat auf ${method} nicht geantwortet.`, 'protocol', 502);
-  if (m.error) throw new McpError(`MCP-Server: ${stripControl(String(m.error.message ?? 'Fehler')).slice(0, 300)}`, 'rpc', 502, { rpcCode: Number(m.error.code) || 0 });
+  const t = tApp();
+  if (!m) throw new McpError(t('Der MCP-Server hat auf {method} nicht geantwortet.', { method }), 'protocol', 502);
+  if (m.error) throw new McpError(`MCP-Server: ${stripControl(String(m.error.message ?? t('Fehler'))).slice(0, 300)}`, 'rpc', 502, { rpcCode: Number(m.error.code) || 0 });
   return m.result;
 };
 
@@ -190,7 +193,7 @@ async function httpSession(t: McpTarget): Promise<McpSession> {
       throw new McpError(r.status === 401 ? 'Der MCP-Server verlangt eine Anmeldung (Token fehlt, ist ungültig oder abgelaufen).' : 'Der MCP-Server verweigert den Zugriff (403).', 'unauthorized', 401, { httpStatus: r.status, wwwAuthenticate: header(r.headers, 'www-authenticate') });
     }
     if (r.status === 202) return [];
-    if (!r.ok) throw new McpError(`Der MCP-Server antwortet ${r.status}${raw && raw.length < 300 ? `: ${stripControl(raw).slice(0, 200)}` : ''}.`, 'http', 502, { httpStatus: r.status });
+    if (!r.ok) throw new McpError(raw && raw.length < 300 ? tApp()('Der MCP-Server antwortet {status}: {body}.', { status: r.status, body: stripControl(raw).slice(0, 200) }) : tApp()('Der MCP-Server antwortet {status}.', { status: r.status }), 'http', 502, { httpStatus: r.status });
     const sid = header(r.headers, 'mcp-session-id');
     if (sid && /^[\x21-\x7e]{1,200}$/.test(sid)) sessionId = sid;
     return parseMessages(raw, header(r.headers, 'content-type'));
@@ -323,7 +326,7 @@ async function sseSession(t: McpTarget): Promise<McpSession> {
     },
     (res) => {
       if (res.statusCode === 401 || res.statusCode === 403) onFail?.(new McpError('Der MCP-Server verlangt eine Anmeldung (Token fehlt, ist ungültig oder abgelaufen).', 'unauthorized', 401, { httpStatus: res.statusCode, wwwAuthenticate: header(res.headers, 'www-authenticate') }));
-      else if ((res.statusCode ?? 0) >= 300) onFail?.(new McpError(`Der MCP-Server antwortet ${res.statusCode} auf den SSE-Aufbau.`, 'http', 502, { httpStatus: res.statusCode }));
+      else if ((res.statusCode ?? 0) >= 300) onFail?.(new McpError(tApp()('Der MCP-Server antwortet {status} auf den SSE-Aufbau.', { status: String(res.statusCode) }), 'http', 502, { httpStatus: res.statusCode }));
       else if (!String(res.headers['content-type'] ?? '').includes('text/event-stream')) onFail?.(new McpError('Der MCP-Server liefert keinen SSE-Stream.', 'protocol'));
     },
   );
@@ -350,13 +353,13 @@ async function sseSession(t: McpTarget): Promise<McpSession> {
     }
     const raw = await r.text();
     if (r.status === 401 || r.status === 403) throw new McpError('Der MCP-Server verlangt eine Anmeldung.', 'unauthorized', 401, { httpStatus: r.status, wwwAuthenticate: header(r.headers, 'www-authenticate') });
-    if (!r.ok) throw new McpError(`Der MCP-Server antwortet ${r.status}.`, 'http', 502, { httpStatus: r.status });
+    if (!r.ok) throw new McpError(tApp()('Der MCP-Server antwortet {status}.', { status: r.status }), 'http', 502, { httpStatus: r.status });
     return raw;
   };
   const request = async (method: string, params?: Record<string, unknown>) => {
     const id = nextId++;
     const answer = new Promise<any>((resolve, reject) => {
-      const timer = setTimeout(() => (waiters.delete(id), reject(new McpError(`Der MCP-Server hat auf ${method} nicht rechtzeitig geantwortet.`, 'timeout', 504))), timeoutMs);
+      const timer = setTimeout(() => (waiters.delete(id), reject(new McpError(tApp()('Der MCP-Server hat auf {method} nicht rechtzeitig geantwortet.', { method }), 'timeout', 504))), timeoutMs);
       waiters.set(id, (m) => (clearTimeout(timer), waiters.delete(id), resolve(m)));
     });
     try {
@@ -465,12 +468,13 @@ export interface CallResult {
 
 /** A tools/call result → text + structured content, size-limited; images and binary resources are only named. */
 export function cleanCallResult(r: any, max = LIMITS.resultChars): CallResult {
+  const t = tApp();
   const parts: string[] = [];
   const content = Array.isArray(r?.content) ? r.content.slice(0, 100) : [];
   for (const c of content) {
     if (c?.type === 'text') parts.push(String(c.text ?? ''));
-    else if (c?.type === 'image' || c?.type === 'audio') parts.push(`[${c.type === 'image' ? 'Bild' : 'Audio'} ${String(c.mimeType ?? '').slice(0, 40)} – nicht übernommen]`);
-    else if (c?.type === 'resource') parts.push(typeof c.resource?.text === 'string' ? c.resource.text : `[Ressource ${String(c.resource?.uri ?? '').slice(0, 200)}]`);
+    else if (c?.type === 'image' || c?.type === 'audio') parts.push(`[${t(c.type === 'image' ? 'Bild {type} – nicht übernommen' : 'Audio {type} – nicht übernommen', { type: String(c.mimeType ?? '').slice(0, 40) })}]`);
+    else if (c?.type === 'resource') parts.push(typeof c.resource?.text === 'string' ? c.resource.text : `[${t('Ressource {uri}', { uri: String(c.resource?.uri ?? '').slice(0, 200) })}]`);
     else if (c?.type === 'resource_link') parts.push(`[Link ${String(c.uri ?? '').slice(0, 300)}]`);
   }
   let text = stripControl(parts.join('\n\n'));

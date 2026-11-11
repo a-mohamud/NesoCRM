@@ -5,6 +5,7 @@ import { isIP } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import type { App } from '../../core/app.js';
 import { isPrivateIp } from '../net.js';
+import { tApp } from '../../i18n/index.js';
 import { ProviderError, type AiConnection, type GmRequest, type GmResponse } from './types.js';
 
 /**
@@ -92,7 +93,7 @@ async function nodeRequest(u: URL, init: GmRequest, redirects: number): Promise<
         let size = 0;
         r.on('data', (c: Buffer) => {
           size += c.length;
-          if (size > maxBytes) return void req.destroy(new ProviderError(`Antwort größer als ${Math.round(maxBytes / 1024 / 1024)} MB`));
+          if (size > maxBytes) return void req.destroy(new ProviderError(tApp()('Antwort größer als {mb} MB', { mb: Math.round(maxBytes / 1024 / 1024) })));
           chunks.push(c);
         });
         r.on('end', () => resolve({ status: r.statusCode ?? 0, headers: lowerHeaders(r.headers), body: Buffer.concat(chunks) }));
@@ -122,7 +123,7 @@ export async function gmFetch(app: App, url: string, init: GmRequest = {}): Prom
     if (hook) {
       const r = await hook(u.toString(), { method: init.method ?? 'GET', headers: init.headers ?? {}, body: init.body });
       const buf = Buffer.from(await r.arrayBuffer());
-      if (init.maxBytes && buf.length > init.maxBytes) throw new ProviderError(`Antwort größer als ${Math.round(init.maxBytes / 1024 / 1024)} MB`);
+      if (init.maxBytes && buf.length > init.maxBytes) throw new ProviderError(tApp()('Antwort größer als {mb} MB', { mb: Math.round(init.maxBytes / 1024 / 1024) }));
       const headers: Record<string, string> = {};
       r.headers.forEach((v, k) => (headers[k.toLowerCase()] = v));
       return response(r.status, headers, buf);
@@ -131,7 +132,7 @@ export async function gmFetch(app: App, url: string, init: GmRequest = {}): Prom
   } catch (e) {
     if (e instanceof ProviderError) throw e;
     const msg = (e as Error).message || 'Netzwerkfehler';
-    throw new ProviderError(/intern/i.test(msg) ? msg : `Anbieter nicht erreichbar: ${msg}`, !/intern/i.test(msg));
+    throw new ProviderError(/intern/i.test(msg) ? msg : tApp()('Anbieter nicht erreichbar: {message}', { message: msg }), !/intern/i.test(msg));
   }
 }
 
@@ -180,8 +181,9 @@ export function errorText(r: GmResponse, fallback = 'Fehler beim Anbieter'): str
 export function ensureOk(r: GmResponse, what: string): GmResponse {
   if (r.ok) return r;
   const msg = errorText(r);
-  const hint = r.status === 401 || r.status === 403 ? ' – Schlüssel prüfen' : r.status === 402 ? ' – Guthaben beim Anbieter aufladen' : r.status === 429 ? ' – Limit beim Anbieter erreicht, später erneut' : '';
-  throw new ProviderError(`${what}: ${msg} (HTTP ${r.status})${hint}`, r.status === 429 || r.status >= 500, r.status);
+  const t = tApp();
+  const hint = r.status === 401 || r.status === 403 ? t('Schlüssel prüfen') : r.status === 402 ? t('Guthaben beim Anbieter aufladen') : r.status === 429 ? t('Limit beim Anbieter erreicht, später erneut') : '';
+  throw new ProviderError(`${t(what)}: ${msg} (HTTP ${r.status})${hint ? ` – ${hint}` : ''}`, r.status === 429 || r.status >= 500, r.status);
 }
 
 /** POST/GET JSON helper. */
@@ -189,7 +191,7 @@ export async function jsonCall(fetch: (url: string, init?: GmRequest) => Promise
   const r = await fetch(url, { method, headers: { accept: 'application/json', ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...headers }, body: body !== undefined ? JSON.stringify(body) : undefined, timeoutMs });
   ensureOk(r, what);
   const j = r.json();
-  if (j === null && r.body.length) throw new ProviderError(`${what}: Antwort ist kein JSON`);
+  if (j === null && r.body.length) throw new ProviderError(tApp()('{what}: Antwort ist kein JSON', { what: tApp()(what) }));
   return j ?? {};
 }
 

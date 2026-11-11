@@ -163,7 +163,7 @@ describe('the public booking page moves whole weeks also across a change of dayl
     expect(code).toBeTruthy();
     const els = new Map<string, any>();
     const fetched: string[] = [];
-    const el = (id: string) => els.get(id) ?? (els.set(id, { id, textContent: '', innerHTML: '', hidden: false, appendChild() {}, setAttribute() {}, querySelector: () => ({}) }), els.get(id));
+    const el = (id: string) => els.get(id) ?? (els.set(id, { id, textContent: '', innerHTML: '', hidden: false, firstChild: { textContent: '' }, appendChild() {}, setAttribute() {}, querySelector: () => ({}) }), els.get(id));
     const ctx = vm.createContext({
       document: { getElementById: el, createElement: () => el(`x${els.size}`) },
       fetch: async (url: string) => (fetched.push(url), { ok: true, json: async () => ({ days: [] }) }),

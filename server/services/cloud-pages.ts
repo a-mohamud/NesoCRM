@@ -3,6 +3,7 @@ import { PERMISSIONS } from '../core/permissions.js';
 import { FAIR_USE_LABEL, METRICS, PLAN_KEYS, type FairUse, type PlanKey } from './cloud.js';
 import { LEGAL_TITLE, type LegalDoc } from './cloud-legal.js';
 import { WAITLIST_ANCHOR, waitlistFormHtml, wlText, type WaitlistView, type WlClasses } from './cloud-waitlist.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * The public pages of the hosted service, server-rendered without any script, cookie, font or tracker:
@@ -35,9 +36,12 @@ export interface PlanCard {
   fair_use: FairUse;
 }
 
-const eur = (cents: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2 }).format(cents / 100);
-const num = (n: number) => n.toLocaleString('de-DE');
-const vat = (note: string) => (note === 'net' ? 'zzgl. USt.' : note === 'gross' ? 'inkl. USt.' : '');
+/** The pages speak the instance language (server/i18n); the waitlist page may switch between German and English itself. */
+const T = (): STFn => tApp();
+const numLocale = () => (T().locale === 'de' ? 'de-DE' : 'en-GB');
+const eur = (cents: number) => new Intl.NumberFormat(numLocale(), { style: 'currency', currency: 'EUR', minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2 }).format(cents / 100);
+const num = (n: number) => n.toLocaleString(numLocale());
+const vat = (note: string) => (note === 'net' ? T()('zzgl. USt.') : note === 'gross' ? T()('inkl. USt.') : '');
 
 export const CSS = `
 :root{color-scheme:light dark;--brand:#2563eb;--bg:#f6f7fb;--card:#ffffff;--text:#0f172a;--muted:#566075;--line:#e2e6ee;--soft:#eef3ff;--ok:#047857;--okbg:#d1fae5;--err:#991b1b;--errbg:#fef2f2;--shadow:0 10px 30px rgba(15,23,42,.07)}
@@ -172,10 +176,10 @@ details.coupon summary{cursor:pointer;color:var(--brand);font-weight:600;padding
 `;
 
 function shell(c: PageCtx, o: { title: string; body: string; description?: string; nav?: boolean; lang?: 'de' | 'en' }): string {
-  const en = o.lang === 'en';
+  const en = o.lang ? o.lang === 'en' : T().locale !== 'de';
   const color = /^#[0-9a-f]{6}$/i.test(c.brand.color) ? c.brand.color : '#2563eb';
   const mark = c.brand.logo_url ? `<img src="${h(c.brand.logo_url)}" alt="${h(c.brand.name)}">` : `<span class="dot" aria-hidden="true">${h(c.brand.name.slice(0, 1).toUpperCase())}</span><span>${h(c.brand.name)}</span>`;
-  const legal = c.legal.map((l) => `<a href="/cloud/legal/${l.doc}">${h(LEGAL_TITLE[l.doc].replace(/ \(.*$/, ''))}</a>`);
+  const legal = c.legal.map((l) => `<a href="/cloud/legal/${l.doc}">${h((en ? T()(LEGAL_TITLE[l.doc]) : LEGAL_TITLE[l.doc]).replace(/ \(.*$/, ''))}</a>`);
   return `<!doctype html>
 <html lang="${en ? 'en' : 'de'}">
 <head>
@@ -188,12 +192,12 @@ ${o.description ? `<meta name="description" content="${h(o.description)}">` : ''
 <style>:root{--brand:${color}}${CSS}</style>
 </head>
 <body>
-<a class="skip" href="#inhalt">${en ? 'Skip to content' : 'Zum Inhalt springen'}</a>
+<a class="skip" href="#inhalt">${en ? 'Skip to content' : 'Zum Inhalt springen' /* i18n-ignore */}</a>
 <div class="wrap">
 <header class="top"><a class="brand" href="/cloud">${mark}</a>${
     o.nav === false
       ? ''
-      : `<nav class="nav" aria-label="${en ? 'Main menu' : 'Hauptmenü'}"><a href="/cloud">${en ? 'Pricing' : 'Preise'}</a>${c.docs_url ? `<a href="${h(c.docs_url)}" rel="noopener">${en ? 'Self-host' : 'Selbst hosten'}</a>` : ''}<a href="/app">${en ? 'Sign in' : 'Anmelden'}</a></nav>`
+      : `<nav class="nav" aria-label="${en ? 'Main menu' : 'Hauptmenü' /* i18n-ignore */}"><a href="/cloud">${en ? 'Pricing' : 'Preise'}</a>${c.docs_url ? `<a href="${h(c.docs_url)}" rel="noopener">${en ? 'Self-host' : 'Selbst hosten'}</a>` : ''}<a href="/app">${en ? 'Sign in' : 'Anmelden'}</a></nav>`
   }</header>
 ${o.body.replace('<main', '<main id="inhalt"')}
 <footer class="foot"><span>© ${new Date().getFullYear()} ${h(c.brand.name)}</span>${legal.join('')}<a href="/abuse">${en ? 'Report abuse' : 'Missbrauch melden'}</a>${c.status_url ? `<a href="${h(c.status_url)}" rel="noopener">Status</a>` : ''}${c.support_email ? `<a href="mailto:${h(c.support_email)}">${h(c.support_email)}</a>` : ''}</footer>
@@ -232,147 +236,160 @@ const tick = (items: string[]) => `<ul class="ticks">${items.map((x) => `<li>${h
 /** Cloud or self-hosted: the same software, the difference is who runs the server – a fair two-column comparison. */
 function chooseBlock(d: PricingData, docsUrl: string): string {
   if (d.waitlist) return chooseWaitlist(d, docsUrl);
-  const cloud = tick([
-    'In wenigen Minuten startklar – ohne Server, Docker oder Linux-Kenntnisse.',
-    'Updates und Sicherheits-Patches spielen wir ein.',
-    'Tägliche Server-Backups; deinen Datenexport (ZIP) machst du jederzeit selbst.',
-    'TLS-Zertifikate und Betrieb übernehmen wir; eigene Domains im Tarif Cloud Agentur.',
-    `${d.hosting ? `Gehostet bei ${d.hosting}. ` : ''}Den Auftragsverarbeitungsvertrag (AVV) schließt du bei der Anmeldung ab und lädst ihn als PDF.`,
-    'Keine Grenzen für Kontakte, Funnels und Workflows (Fair Use für E-Mails, KI und Speicher).',
-    'Tarif Cloud Agentur: White-Label und Kunden-Sub-Accounts.',
-  ]);
-  const self = tick([
-    'Volle Kontrolle: dein Server, deine Daten, deine Regeln.',
-    '0 € ohne Grenzen, mit dem ganzen Quellcode (AGPL) – anpassbar bis ins Letzte.',
-    'Inklusive SaaS-Modus: Sub-Accounts mit eigenen Tarifen über dein Stripe verkaufen.',
-    'Updates, Backups, Sicherheit, TLS und E-Mail-Zustellbarkeit liegen bei dir – mit Anleitungen.',
-    'Hilfe aus der Community.',
-  ]);
-  return `<section class="block" aria-labelledby="choose-h"><h2 id="choose-h">Cloud oder selbst hosten?</h2><p class="lead">Dieselbe Software, alle Funktionen. Der Unterschied ist, wer den Server betreibt.</p>
-<div class="choose"><div class="card"><h3>Cloud</h3>${cloud}<p class="verdict">Für alle, die arbeiten wollen statt Server zu pflegen.</p></div>
-<div class="card"><h3>Selbst hosten · 0 €</h3>${self}<p class="verdict">Für alle, die ihren Server selbst betreiben wollen – oder müssen.${docsUrl ? ` <a href="${h(docsUrl)}" rel="noopener">Zur Anleitung</a>` : ''}</p></div></div>
-<p class="lead small">Wechseln: Aus der Cloud exportierst du jederzeit alles als ZIP (JSON, CSV und Dateien); Kontakte liest der CSV-Import wieder ein. Einen kompletten Umzug zwischen Cloud und eigenem Server auf Knopfdruck gibt es noch nicht.</p></section>`;
+  const t = T();
+  const cloud = tick(
+    [
+      'In wenigen Minuten startklar – ohne Server, Docker oder Linux-Kenntnisse.',
+      'Updates und Sicherheits-Patches spielen wir ein.',
+      'Tägliche Server-Backups; deinen Datenexport (ZIP) machst du jederzeit selbst.',
+      'TLS-Zertifikate und Betrieb übernehmen wir; eigene Domains im Tarif Cloud Agentur.',
+      `${d.hosting ? `${t('Gehostet bei {host}.', { host: d.hosting })} ` : ''}${t('Den Auftragsverarbeitungsvertrag (AVV) schließt du bei der Anmeldung ab und lädst ihn als PDF.')}`,
+      'Keine Grenzen für Kontakte, Funnels und Workflows (Fair Use für E-Mails, KI und Speicher).',
+      'Tarif Cloud Agentur: White-Label und Kunden-Sub-Accounts.',
+    ].map((x) => t(x)),
+  );
+  const self = tick(SELF_TICKS.map((x) => t(x)));
+  return `<section class="block" aria-labelledby="choose-h"><h2 id="choose-h">${h(t('Cloud oder selbst hosten?'))}</h2><p class="lead">${h(t('Dieselbe Software, alle Funktionen. Der Unterschied ist, wer den Server betreibt.'))}</p>
+<div class="choose"><div class="card"><h3>Cloud</h3>${cloud}<p class="verdict">${h(t('Für alle, die arbeiten wollen statt Server zu pflegen.'))}</p></div>
+<div class="card"><h3>${h(t('Selbst hosten · 0 €'))}</h3>${self}<p class="verdict">${h(t('Für alle, die ihren Server selbst betreiben wollen – oder müssen.'))}${docsUrl ? ` <a href="${h(docsUrl)}" rel="noopener">${h(t('Zur Anleitung'))}</a>` : ''}</p></div></div>
+<p class="lead small">${h(t('Wechseln: Aus der Cloud exportierst du jederzeit alles als ZIP (JSON, CSV und Dateien); Kontakte liest der CSV-Import wieder ein. Einen kompletten Umzug zwischen Cloud und eigenem Server auf Knopfdruck gibt es noch nicht.'))}</p></section>`;
 }
 
 /** The same comparison while the cloud is not open: self-hosting first (it works today), the cloud as planned. */
+const SELF_TICKS = [
+  'Volle Kontrolle: dein Server, deine Daten, deine Regeln.',
+  '0 € ohne Grenzen, mit dem ganzen Quellcode (AGPL) – anpassbar bis ins Letzte.',
+  'Inklusive SaaS-Modus: Sub-Accounts mit eigenen Tarifen über dein Stripe verkaufen.',
+  'Updates, Backups, Sicherheit, TLS und E-Mail-Zustellbarkeit liegen bei dir – mit Anleitungen.',
+  'Hilfe aus der Community.',
+];
+
 function chooseWaitlist(d: PricingData, docsUrl: string): string {
-  const self = tick([
-    'Volle Kontrolle: dein Server, deine Daten, deine Regeln.',
-    '0 € ohne Grenzen, mit dem ganzen Quellcode (AGPL) – anpassbar bis ins Letzte.',
-    'Inklusive SaaS-Modus: Sub-Accounts mit eigenen Tarifen über dein Stripe verkaufen.',
-    'Updates, Backups, Sicherheit, TLS und E-Mail-Zustellbarkeit liegen bei dir – mit Anleitungen.',
-    'Hilfe aus der Community.',
-  ]);
-  const cloud = tick([
-    'Startklar ohne Server, Docker oder Linux-Kenntnisse.',
-    'Updates, Sicherheits-Patches, Server-Backups und TLS-Zertifikate übernimmt der Betrieb.',
-    `${d.hosting ? `Geplanter Standort: ${d.hosting}. ` : ''}Mit Auftragsverarbeitungsvertrag (AVV).`,
-    'Keine Grenzen für Kontakte, Funnels und Workflows (Fair Use für E-Mails, KI und Speicher).',
-    'Tarif Cloud Agentur: White-Label und Kunden-Sub-Accounts.',
-  ]);
-  return `<section class="block" aria-labelledby="choose-h"><h2 id="choose-h">Cloud oder selbst hosten?</h2><p class="lead">Dieselbe Software, alle Funktionen. Selbst hosten geht heute schon – die Cloud ist geplant.</p>
-<div class="choose"><div class="card"><h3>Selbst hosten · 0 €</h3>${self}<p class="verdict">Heute verfügbar.${docsUrl ? ` <a href="${h(docsUrl)}" rel="noopener">Zur Anleitung</a>` : ''}</p></div>
-<div class="card"><span class="soonchip">Bald verfügbar</span><h3>Cloud (geplant)</h3>${cloud}<p class="verdict">Noch nicht buchbar. <a href="#${WAITLIST_ANCHOR}">Auf die Warteliste</a></p></div></div></section>`;
+  const t = T();
+  const self = tick(SELF_TICKS.map((x) => t(x)));
+  const cloud = tick(
+    [
+      'Startklar ohne Server, Docker oder Linux-Kenntnisse.',
+      'Updates, Sicherheits-Patches, Server-Backups und TLS-Zertifikate übernimmt der Betrieb.',
+      `${d.hosting ? `${t('Geplanter Standort: {host}.', { host: d.hosting })} ` : ''}${t('Mit Auftragsverarbeitungsvertrag (AVV).')}`,
+      'Keine Grenzen für Kontakte, Funnels und Workflows (Fair Use für E-Mails, KI und Speicher).',
+      'Tarif Cloud Agentur: White-Label und Kunden-Sub-Accounts.',
+    ].map((x) => t(x)),
+  );
+  return `<section class="block" aria-labelledby="choose-h"><h2 id="choose-h">${h(t('Cloud oder selbst hosten?'))}</h2><p class="lead">${h(t('Dieselbe Software, alle Funktionen. Selbst hosten geht heute schon – die Cloud ist geplant.'))}</p>
+<div class="choose"><div class="card"><h3>${h(t('Selbst hosten · 0 €'))}</h3>${self}<p class="verdict">${h(t('Heute verfügbar.'))}${docsUrl ? ` <a href="${h(docsUrl)}" rel="noopener">${h(t('Zur Anleitung'))}</a>` : ''}</p></div>
+<div class="card"><span class="soonchip">${h(t('Bald verfügbar'))}</span><h3>${h(t('Cloud (geplant)'))}</h3>${cloud}<p class="verdict">${h(t('Noch nicht buchbar.'))} <a href="#${WAITLIST_ANCHOR}">${h(t('Auf die Warteliste'))}</a></p></div></div></section>`;
 }
 
 function fairRow(label: string, vals: string[]) {
   return `<tr><th scope="row">${h(label)}</th>${vals.map((v) => `<td>${v}</td>`).join('')}</tr>`;
 }
-const lim = (v: number | null, unit = '') => (v === null ? 'unbegrenzt' : `${num(v)}${unit}`);
+const lim = (v: number | null, unit = '') => (v === null ? T()('unbegrenzt') : `${num(v)}${unit}`);
 
 export function pricingPage(c: PageCtx, d: PricingData): string {
+  const t = T();
   const wl = d.waitlist;
   const note = vat(d.price_note);
-  const trial = d.trial_days > 0 ? `${d.trial_days} Tage kostenlos testen` : 'Jetzt starten';
-  const trialNote = d.trial_days > 0 ? (d.card_required ? 'Zahlungsmittel nötig, erst nach der Testphase wird abgebucht.' : 'Ohne Zahlungsmittel testen.') : 'Jederzeit kündbar.';
+  const trial = d.trial_days > 0 ? t('{n} Tage kostenlos testen', { n: d.trial_days }) : t('Jetzt starten');
+  const trialNote = d.trial_days > 0 ? (d.card_required ? t('Zahlungsmittel nötig, erst nach der Testphase wird abgebucht.') : t('Ohne Zahlungsmittel testen.')) : t('Jederzeit kündbar.');
+  const perMonth = h(t(' / Monat'));
   const cards = d.plans
     .map((p) => {
       const perMonthYear = Math.round(p.price_year_cents / 12);
       const cta = (iv: string) =>
         wl
-          ? `<a class="btn ghost wide" href="/cloud?plan=${p.key}#${WAITLIST_ANCHOR}">Auf die Warteliste</a><p class="trialnote">Noch nicht buchbar – wir melden uns zum Start.</p>`
+          ? `<a class="btn ghost wide" href="/cloud?plan=${p.key}#${WAITLIST_ANCHOR}">${h(t('Auf die Warteliste'))}</a><p class="trialnote">${h(t('Noch nicht buchbar – wir melden uns zum Start.'))}</p>`
           : d.signup_open
             ? `<a class="btn wide" href="/start?plan=${p.key}&amp;interval=${iv}">${h(trial)}</a><p class="trialnote">${h(trialNote)}</p>`
-            : '<p class="trialnote">Neue Anmeldungen sind gerade pausiert.</p>';
-      const tag = wl ? '<span class="tag soon">Bald verfügbar</span>' : p.key === 'team' ? '<span class="tag">Beliebt</span>' : '';
-      const planned = wl ? '<div class="planned">voraussichtlich</div>' : '';
+            : `<p class="trialnote">${h(t('Neue Anmeldungen sind gerade pausiert.'))}</p>`;
+      const tag = wl ? `<span class="tag soon">${h(t('Bald verfügbar'))}</span>` : p.key === 'team' ? `<span class="tag">${h(t('Beliebt'))}</span>` : '';
+      const planned = wl ? `<div class="planned">${h(t('voraussichtlich'))}</div>` : '';
       return `<article class="pcard${p.key === 'team' && !wl ? ' pop' : ''}">${tag}
 <h2>${h(p.name)}</h2><p class="tagline">${h(p.tagline)}</p>
-<div class="p-month">${planned}<div class="price">${eur(p.price_month_cents)}<small> / Monat</small></div><div class="priceNote">${note ? `${h(note)} · ` : ''}${wl ? 'geplanter Preis' : 'monatlich kündbar'}</div></div>
-<div class="p-year">${planned}<div class="price">${eur(perMonthYear)}<small> / Monat</small></div><div class="priceNote">${eur(p.price_year_cents)} pro Jahr${note ? ` ${h(note)}` : ''}</div></div>
+<div class="p-month">${planned}<div class="price">${eur(p.price_month_cents)}<small>${perMonth}</small></div><div class="priceNote">${note ? `${h(note)} · ` : ''}${h(wl ? t('geplanter Preis') : t('monatlich kündbar'))}</div></div>
+<div class="p-year">${planned}<div class="price">${eur(perMonthYear)}<small>${perMonth}</small></div><div class="priceNote">${h(t('{price} pro Jahr', { price: eur(p.price_year_cents) }))}${note ? ` ${h(note)}` : ''}</div></div>
 <ul>${p.highlights.map((x) => `<li>${h(x)}</li>`).join('')}</ul>
 <div class="p-month">${cta('month')}</div><div class="p-year">${cta('year')}</div>
 </article>`;
     })
     .join('');
   const rows = [
-    ...METRICS.map((m) => fairRow(FAIR_USE_LABEL[m], d.plans.map((p) => (m === 'sms' && p.fair_use.sms === 0 ? 'zum Selbstkostenpreis' : lim(p.fair_use[m]))))),
+    ...METRICS.map((m) => fairRow(FAIR_USE_LABEL[m], d.plans.map((p) => (m === 'sms' && p.fair_use.sms === 0 ? h(t('zum Selbstkostenpreis')) : lim(p.fair_use[m]))))),
     fairRow(FAIR_USE_LABEL.storage_mb, d.plans.map((p) => lim(p.fair_use.storage_mb, ' MB'))),
   ].join('');
-  const areas = (Object.values(PERMISSIONS) as string[]).map((x) => `<span>${h(x.replace(/ \(.*$/, ''))}</span>`).join('');
+  const areas = (Object.values(PERMISSIONS) as string[]).map((x) => `<span>${h(t(x).replace(/ \(.*$/, ''))}</span>`).join('');
   // The switch itself: two labels bound to the radios above (CSS only).
   const taxLine = wl
-    ? `Geplante Preise${d.price_note === 'net' ? ', netto zzgl. gesetzlicher Umsatzsteuer' : d.price_note === 'gross' ? ' inklusive Umsatzsteuer' : ''}. Noch nicht buchbar – es gibt noch keine Konten und keine Zahlungen.`
-    : d.price_note === 'net'
-      ? `Alle Preise netto zzgl. gesetzlicher Umsatzsteuer.${d.stripe_tax ? ' Die Steuer berechnet Stripe Tax beim Bezahlen nach deinem Land; Unternehmen in der EU mit USt-IdNr. zahlen im Reverse-Charge-Verfahren.' : ''}`
+    ? d.price_note === 'net'
+      ? t('Geplante Preise, netto zzgl. gesetzlicher Umsatzsteuer. Noch nicht buchbar – es gibt noch keine Konten und keine Zahlungen.')
       : d.price_note === 'gross'
-        ? 'Alle Preise inklusive Umsatzsteuer.'
+        ? t('Geplante Preise inklusive Umsatzsteuer. Noch nicht buchbar – es gibt noch keine Konten und keine Zahlungen.')
+        : t('Geplante Preise. Noch nicht buchbar – es gibt noch keine Konten und keine Zahlungen.')
+    : d.price_note === 'net'
+      ? `${t('Alle Preise netto zzgl. gesetzlicher Umsatzsteuer.')}${d.stripe_tax ? ` ${t('Die Steuer berechnet Stripe Tax beim Bezahlen nach deinem Land; Unternehmen in der EU mit USt-IdNr. zahlen im Reverse-Charge-Verfahren.')}` : ''}`
+      : d.price_note === 'gross'
+        ? t('Alle Preise inklusive Umsatzsteuer.')
         : '';
-  const toggle = `<div class="toggle" role="group" aria-label="Abrechnung"><label for="iv-month">Monatlich</label><label for="iv-year">Jährlich${d.yearly_discount_percent > 0 ? ` <span class="save">-${d.yearly_discount_percent} %</span>` : ''}</label></div>`;
+  const toggle = `<div class="toggle" role="group" aria-label="${h(t('Abrechnung'))}"><label for="iv-month">${h(t('Monatlich'))}</label><label for="iv-year">${h(t('Jährlich'))}${d.yearly_discount_percent > 0 ? ` <span class="save">-${d.yearly_discount_percent} %</span>` : ''}</label></div>`;
   const docs = c.docs_url ? h(c.docs_url) : '';
-  const heroTop = wl
-    ? `<p class="soonbox"><strong>Bald verfügbar.</strong> Die gehostete Cloud ist in Vorbereitung: Konten und Zahlungen gibt es noch nicht. Die Tarife und Preise unten sind geplant.</p>`
-    : '';
-  const heroCtas = wl ? `<div class="ctas">${docs ? `<a class="btn" href="${docs}" rel="noopener">Kostenlos selbst hosten</a>` : ''}<a class="btn ghost" href="#${WAITLIST_ANCHOR}">Auf die Warteliste</a></div>` : '';
+  const heroTop = wl ? `<p class="soonbox">${t('<strong>Bald verfügbar.</strong> Die gehostete Cloud ist in Vorbereitung: Konten und Zahlungen gibt es noch nicht. Die Tarife und Preise unten sind geplant.')}</p>` : '';
+  const heroCtas = wl ? `<div class="ctas">${docs ? `<a class="btn" href="${docs}" rel="noopener">${h(t('Kostenlos selbst hosten'))}</a>` : ''}<a class="btn ghost" href="#${WAITLIST_ANCHOR}">${h(t('Auf die Warteliste'))}</a></div>` : '';
+  const qa = (q: string, a: string) => `<details><summary>${h(q)}</summary><p>${a}</p></details>`;
   const faq = wl
-    ? `<section class="block faq"><h2>Häufige Fragen</h2>
-<details><summary>Wann startet die Cloud?</summary><p>Wir bereiten sie gerade vor; einen festen Termin gibt es noch nicht. Wer auf der Warteliste steht, erfährt es zuerst.</p></details>
-<details><summary>Was passiert mit meinem Eintrag auf der Warteliste?</summary><p>${
-      wl.consentLabel
-        ? 'Wir verwenden deine Angaben so, wie es die Einwilligung im Formular beschreibt.'
-        : 'Wir speichern deine E-Mail-Adresse und – wenn du sie angibst – deinen Namen und Tarifwunsch, nur um dich zum Start zu informieren. Kein Newsletter, keine Werbung.'
-    } Austragen kannst du dich jederzeit${c.support_email ? ` per E-Mail an ${h(c.support_email)}` : ''}.</p></details>
-<details><summary>Kann ich schon heute loslegen?</summary><p>Ja – selbst gehostet, kostenlos und mit allen Funktionen. Du brauchst einen Server mit Docker und eine Domain; die Anleitung führt dich durch.</p></details>
-<details><summary>Sind die Preise schon fest?</summary><p>Es sind die geplanten Preise. Bevor du etwas bezahlst, siehst du den endgültigen Preis und die Bedingungen.</p></details>
-<details><summary>Was kostet jeder weitere Nutzer?</summary><p>Selbst gehostet nichts. Auch die geplanten Tarife Cloud Team &amp; Company und Cloud Agentur sollen unbegrenzt Nutzer zum gleichen Preis haben.</p></details>
+    ? `<section class="block faq"><h2>${h(t('Häufige Fragen'))}</h2>
+${qa(t('Wann startet die Cloud?'), h(t('Wir bereiten sie gerade vor; einen festen Termin gibt es noch nicht. Wer auf der Warteliste steht, erfährt es zuerst.')))}
+${qa(
+  t('Was passiert mit meinem Eintrag auf der Warteliste?'),
+  `${h(wl.consentLabel ? t('Wir verwenden deine Angaben so, wie es die Einwilligung im Formular beschreibt.') : t('Wir speichern deine E-Mail-Adresse und – wenn du sie angibst – deinen Namen und Tarifwunsch, nur um dich zum Start zu informieren. Kein Newsletter, keine Werbung.'))} ${h(c.support_email ? t('Austragen kannst du dich jederzeit per E-Mail an {email}.', { email: c.support_email }) : t('Austragen kannst du dich jederzeit.'))}`,
+)}
+${qa(t('Kann ich schon heute loslegen?'), h(t('Ja – selbst gehostet, kostenlos und mit allen Funktionen. Du brauchst einen Server mit Docker und eine Domain; die Anleitung führt dich durch.')))}
+${qa(t('Sind die Preise schon fest?'), h(t('Es sind die geplanten Preise. Bevor du etwas bezahlst, siehst du den endgültigen Preis und die Bedingungen.')))}
+${qa(t('Was kostet jeder weitere Nutzer?'), h(t('Selbst gehostet nichts. Auch die geplanten Tarife Cloud Team & Company und Cloud Agentur sollen unbegrenzt Nutzer zum gleichen Preis haben.')))}
 </section>`
-    : `<section class="block faq"><h2>Häufige Fragen</h2>
-<details><summary>Gibt es eine Mindestlaufzeit?</summary><p>Nein. Du kannst jederzeit zum Ende des bezahlten Zeitraums kündigen – mit einem Klick im Konto.</p></details>
-<details><summary>Was kostet jeder weitere Nutzer?</summary><p>Nichts. Cloud Team &amp; Company und Cloud Agentur haben unbegrenzt Nutzer zum gleichen Preis. Cloud Solo ist für eine Person gedacht.</p></details>
-<details><summary>Kann ich meine Daten mitnehmen?</summary><p>Jederzeit: Im Konto exportierst du alles als ZIP (JSON und CSV, dazu deine Dateien). Und weil die Software Open Source ist, kannst du sie auch selbst betreiben.</p></details>
-<details><summary>Wie läuft die Testphase?</summary><p>${d.trial_days > 0 ? `${d.trial_days} Tage mit allen Funktionen. ${d.card_required ? 'Du hinterlegst ein Zahlungsmittel, abgebucht wird erst nach der Testphase.' : 'Du brauchst dafür kein Zahlungsmittel; danach wählst du Tarif und Zahlungsart.'}` : 'Du startest direkt mit dem Tarif deiner Wahl.'}</p></details>
-<details><summary>Wie bezahle ich?</summary><p>Über Stripe: Karte, SEPA-Lastschrift und weitere Zahlungsarten. ${d.price_note === 'net' ? 'Die Preise sind netto; die Umsatzsteuer kommt beim Bezahlen dazu. ' : ''}Rechnungen mit Umsatzsteuer findest du jederzeit im Konto; Unternehmen in der EU können ihre USt-ID angeben.</p></details>
-<details><summary>Was passiert, wenn eine Zahlung scheitert?</summary><p>Du bekommst eine Nachricht und eine Kulanzzeit. Danach wird das Konto schreibgeschützt – deine Daten bleiben lesbar und exportierbar. Erst viel später werden sie nach Ankündigung gelöscht.</p></details>
+    : `<section class="block faq"><h2>${h(t('Häufige Fragen'))}</h2>
+${qa(t('Gibt es eine Mindestlaufzeit?'), h(t('Nein. Du kannst jederzeit zum Ende des bezahlten Zeitraums kündigen – mit einem Klick im Konto.')))}
+${qa(t('Was kostet jeder weitere Nutzer?'), h(t('Nichts. Cloud Team & Company und Cloud Agentur haben unbegrenzt Nutzer zum gleichen Preis. Cloud Solo ist für eine Person gedacht.')))}
+${qa(t('Kann ich meine Daten mitnehmen?'), h(t('Jederzeit: Im Konto exportierst du alles als ZIP (JSON und CSV, dazu deine Dateien). Und weil die Software Open Source ist, kannst du sie auch selbst betreiben.')))}
+${qa(t('Wie läuft die Testphase?'), h(d.trial_days > 0 ? `${t('{n} Tage mit allen Funktionen.', { n: d.trial_days })} ${d.card_required ? t('Du hinterlegst ein Zahlungsmittel, abgebucht wird erst nach der Testphase.') : t('Du brauchst dafür kein Zahlungsmittel; danach wählst du Tarif und Zahlungsart.')}` : t('Du startest direkt mit dem Tarif deiner Wahl.')))}
+${qa(t('Wie bezahle ich?'), h(`${t('Über Stripe: Karte, SEPA-Lastschrift und weitere Zahlungsarten.')} ${d.price_note === 'net' ? `${t('Die Preise sind netto; die Umsatzsteuer kommt beim Bezahlen dazu.')} ` : ''}${t('Rechnungen mit Umsatzsteuer findest du jederzeit im Konto; Unternehmen in der EU können ihre USt-ID angeben.')}`))}
+${qa(t('Was passiert, wenn eine Zahlung scheitert?'), h(t('Du bekommst eine Nachricht und eine Kulanzzeit. Danach wird das Konto schreibgeschützt – deine Daten bleiben lesbar und exportierbar. Erst viel später werden sie nach Ankündigung gelöscht.')))}
 </section>`;
   const waitlistBlock = wl
     ? (() => {
-        const t = wlText('de', c.brand.name);
-        return `<section class="block" id="${WAITLIST_ANCHOR}" aria-labelledby="wl-form-h"><div class="signup"><div class="card"><h2 id="wl-form-h">${h(t.h2)}</h2><p class="lead" style="color:var(--muted)">${h(t.lead)}</p>${waitlistFormHtml(wl, WL_CLASSES, 'cwl')}</div>
-<aside class="card side"><h3>${h(t.page.sideH)}</h3><p style="color:var(--muted)">${h(t.page.side)}</p>${docs ? `<p><a class="btn ghost" href="${docs}" rel="noopener">${h(t.selfCta)}</a></p>` : ''}<p style="color:var(--muted);margin:18px 0 0">${h(t.page.login)} <a href="/app">${h(t.page.account)}</a></p></aside></div></section>`;
+        const w = wlText(wl.lang, c.brand.name);
+        return `<section class="block" id="${WAITLIST_ANCHOR}" aria-labelledby="wl-form-h"><div class="signup"><div class="card"><h2 id="wl-form-h">${h(w.h2)}</h2><p class="lead" style="color:var(--muted)">${h(w.lead)}</p>${waitlistFormHtml(wl, WL_CLASSES, 'cwl')}</div>
+<aside class="card side"><h3>${h(w.page.sideH)}</h3><p style="color:var(--muted)">${h(w.page.side)}</p>${docs ? `<p><a class="btn ghost" href="${docs}" rel="noopener">${h(w.selfCta)}</a></p>` : ''}<p style="color:var(--muted);margin:18px 0 0">${h(w.page.login)} <a href="/app">${h(w.page.account)}</a></p></aside></div></section>`;
       })()
     : '';
   return shell(c, {
-    title: wl ? 'Cloud – bald verfügbar' : 'Preise',
+    title: wl ? t('Cloud – bald verfügbar') : t('Preise'),
     description: wl
-      ? 'Die gehostete Cloud ist geplant: alle Funktionen in jedem Tarif, keine Gebühr pro Nutzer. Trag dich auf die Warteliste ein – selbst hosten ist kostenlos.'
-      : 'Alle Funktionen in jedem Tarif, keine Gebühr pro Nutzer. Solo, Team & Company und Agentur mit White-Label.',
+      ? t('Die gehostete Cloud ist geplant: alle Funktionen in jedem Tarif, keine Gebühr pro Nutzer. Trag dich auf die Warteliste ein – selbst hosten ist kostenlos.')
+      : t('Alle Funktionen in jedem Tarif, keine Gebühr pro Nutzer. Solo, Team & Company und Agentur mit White-Label.'),
     body: `<main class="pricing">
-<input type="radio" name="iv" id="iv-month" checked class="vh" aria-label="Monatlich"><input type="radio" name="iv" id="iv-year" class="vh" aria-label="Jährlich">
-<section class="hero">${heroTop}<h1>Software, die sich an dich anpasst. Nicht andersrum.</h1>
-<p>CRM, Postfach, Funnels, Automationen, KI und Büro-Werkzeuge in einer Anwendung – zu einem fairen Preis pro Firma, nicht pro Platz.</p>
-${heroCtas}<ul class="chips"><li>Alle Funktionen in jedem Tarif</li><li>Keine Gebühr pro Nutzer</li><li>Kein Kontakt-Limit</li><li>Datenexport jederzeit</li><li>Open Source</li></ul>
-<p class="chipnote">White-Label und Kunden-Accounts nur im Tarif Cloud Agentur.</p>
+<input type="radio" name="iv" id="iv-month" checked class="vh" aria-label="${h(t('Monatlich'))}"><input type="radio" name="iv" id="iv-year" class="vh" aria-label="${h(t('Jährlich'))}">
+<section class="hero">${heroTop}<h1>${h(t('Software, die sich an dich anpasst. Nicht andersrum.'))}</h1>
+<p>${h(t('CRM, Postfach, Funnels, Automationen, KI und Büro-Werkzeuge in einer Anwendung – zu einem fairen Preis pro Firma, nicht pro Platz.'))}</p>
+${heroCtas}<ul class="chips">${['Alle Funktionen in jedem Tarif', 'Keine Gebühr pro Nutzer', 'Kein Kontakt-Limit', 'Datenexport jederzeit', 'Open Source'].map((x) => `<li>${h(t(x))}</li>`).join('')}</ul>
+<p class="chipnote">${h(t('White-Label und Kunden-Accounts nur im Tarif Cloud Agentur.'))}</p>
 ${toggle}</section>
-<section class="plans" aria-label="${wl ? 'Geplante Tarife' : 'Tarife'}">${cards}</section>
+<section class="plans" aria-label="${h(wl ? t('Geplante Tarife') : t('Tarife'))}">${cards}</section>
 ${taxLine ? `<p class="taxnote">${h(taxLine)}</p>` : ''}
 ${waitlistBlock}
-<section class="block wl" aria-labelledby="wl-h"><h2 id="wl-h">White-Label im Tarif Cloud Agentur${wl ? ' (geplant)' : ''}</h2><p class="lead">${wl ? 'Deine Kunden sehen deine Marke, nicht unsere – ohne Aufpreis pro Kunde. Selbst gehostet gibt es White-Label schon heute, kostenlos.' : 'Deine Kunden sehen deine Marke, nicht unsere. Alles inklusive, ohne Aufpreis pro Kunde.'}</p>
-<ul class="wlgrid"><li><strong>Dein Name, Logo und deine Farben</strong> im Login, in der App und im Browser-Tab</li><li><strong>Eigene Login-Domain</strong> für dich und <strong>eigene Domains</strong> für jeden Kunden – das Zertifikat kommt von selbst</li><li><strong>Installierbare App mit deinem Namen und Icon</strong> (Web-App für Android, iPhone und iPad); eine eigene Android-APK baust du mit der dokumentierten Anleitung selbst</li><li><strong>Kunden-Sub-Accounts</strong> für deine Kunden, getrennt voneinander, mit eigenen Logins</li></ul>
-<p class="lead small">Weiterverkaufen mit eigenen Tarifen und eigenem Stripe-Konto (SaaS-Modus) gehört zum selbst gehosteten Betrieb und ist in der Cloud nicht enthalten.</p></section>
-<section class="block"><div class="selfhost"><div><h2>${wl ? 'Heute schon loslegen: selbst hosten, 0 €' : 'Selbst hosten: 0 €'}</h2><p>Dieselbe Software, alle Funktionen, auf deinem eigenen Server – Open Source unter AGPL. ${wl ? 'Das geht schon heute, ohne Warteliste.' : 'Wenn du die Technik lieber selbst betreibst, bist du hier nicht verpflichtet.'}</p></div>${docs ? `<a class="btn${wl ? '' : ' ghost'}" href="${docs}" rel="noopener">${wl ? 'Kostenlos selbst hosten' : 'Zur Anleitung'}</a>` : ''}</div></section>
+<section class="block wl" aria-labelledby="wl-h"><h2 id="wl-h">${h(wl ? t('White-Label im Tarif Cloud Agentur (geplant)') : t('White-Label im Tarif Cloud Agentur'))}</h2><p class="lead">${h(wl ? t('Deine Kunden sehen deine Marke, nicht unsere – ohne Aufpreis pro Kunde. Selbst gehostet gibt es White-Label schon heute, kostenlos.') : t('Deine Kunden sehen deine Marke, nicht unsere. Alles inklusive, ohne Aufpreis pro Kunde.'))}</p>
+<ul class="wlgrid">${[
+      '<strong>Dein Name, Logo und deine Farben</strong> im Login, in der App und im Browser-Tab',
+      '<strong>Eigene Login-Domain</strong> für dich und <strong>eigene Domains</strong> für jeden Kunden – das Zertifikat kommt von selbst',
+      '<strong>Installierbare App mit deinem Namen und Icon</strong> (Web-App für Android, iPhone und iPad); eine eigene Android-APK baust du mit der dokumentierten Anleitung selbst',
+      '<strong>Kunden-Sub-Accounts</strong> für deine Kunden, getrennt voneinander, mit eigenen Logins',
+    ]
+      .map((x) => `<li>${t(x)}</li>`)
+      .join('')}</ul>
+<p class="lead small">${h(t('Weiterverkaufen mit eigenen Tarifen und eigenem Stripe-Konto (SaaS-Modus) gehört zum selbst gehosteten Betrieb und ist in der Cloud nicht enthalten.'))}</p></section>
+<section class="block"><div class="selfhost"><div><h2>${h(wl ? t('Heute schon loslegen: selbst hosten, 0 €') : t('Selbst hosten: 0 €'))}</h2><p>${h(t('Dieselbe Software, alle Funktionen, auf deinem eigenen Server – Open Source unter AGPL.'))} ${h(wl ? t('Das geht schon heute, ohne Warteliste.') : t('Wenn du die Technik lieber selbst betreibst, bist du hier nicht verpflichtet.'))}</p></div>${docs ? `<a class="btn${wl ? '' : ' ghost'}" href="${docs}" rel="noopener">${h(wl ? t('Kostenlos selbst hosten') : t('Zur Anleitung'))}</a>` : ''}</div></section>
 ${chooseBlock(d, c.docs_url)}
-<section class="block"><h2>Alle Funktionen in jedem Tarif</h2><p class="lead">Kein Tarif sperrt einen Bereich – einzige Ausnahme: White-Label und Kunden-Accounts gibt es nur im Tarif Cloud Agentur. Der Unterschied: Cloud Solo ist für eine Person, Cloud Team &amp; Company für beliebig viele Nutzer, Cloud Agentur kommt mit White-Label und Kunden-Accounts${d.agency_max_clients ? ` (bis ${num(d.agency_max_clients)})` : ' ohne Aufpreis'}.</p><div class="areas">${areas}</div></section>
-<section class="block"><h2>${wl ? 'Fair Use – die geplanten Grenzen' : 'Fair Use – transparent'}</h2><p class="lead">Teure Ressourcen haben großzügige Grenzen, damit wenige Vielnutzer nicht alle anderen bezahlen lassen. Das sind Grenzen für Verbrauch, keine gesperrten Funktionen. Mit eigenem KI-Schlüssel (BYOK) rechnest du KI direkt mit deinem Anbieter ab. Die Zahlen gelten pro Sub-Account und Monat.</p>
+<section class="block"><h2>${h(t('Alle Funktionen in jedem Tarif'))}</h2><p class="lead">${h(d.agency_max_clients ? t('Kein Tarif sperrt einen Bereich – einzige Ausnahme: White-Label und Kunden-Accounts gibt es nur im Tarif Cloud Agentur. Der Unterschied: Cloud Solo ist für eine Person, Cloud Team & Company für beliebig viele Nutzer, Cloud Agentur kommt mit White-Label und Kunden-Accounts (bis {n}).', { n: num(d.agency_max_clients) }) : t('Kein Tarif sperrt einen Bereich – einzige Ausnahme: White-Label und Kunden-Accounts gibt es nur im Tarif Cloud Agentur. Der Unterschied: Cloud Solo ist für eine Person, Cloud Team & Company für beliebig viele Nutzer, Cloud Agentur kommt mit White-Label und Kunden-Accounts ohne Aufpreis.'))}</p><div class="areas">${areas}</div></section>
+<section class="block"><h2>${h(wl ? t('Fair Use – die geplanten Grenzen') : t('Fair Use – transparent'))}</h2><p class="lead">${h(t('Teure Ressourcen haben großzügige Grenzen, damit wenige Vielnutzer nicht alle anderen bezahlen lassen. Das sind Grenzen für Verbrauch, keine gesperrten Funktionen. Mit eigenem KI-Schlüssel (BYOK) rechnest du KI direkt mit deinem Anbieter ab. Die Zahlen gelten pro Sub-Account und Monat.'))}</p>
 <div class="tablewrap"><table class="fair"><thead><tr><th></th>${d.plans.map((p) => `<th scope="col">${h(p.name)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></section>
 ${faq}</main>`,
   });
@@ -393,7 +410,7 @@ ${o.notice ? `<div class="alert" role="alert">${h(o.notice)}</div>` : ''}
 <div class="signup" id="${WAITLIST_ANCHOR}"><div class="card"><h2>${h(t.h2)}</h2>${waitlistFormHtml(v, WL_CLASSES, 'swl')}</div>
 <aside class="card side"><h3>${h(t.page.sideH)}</h3><p style="color:var(--muted)">${h(t.page.side)}</p>${docs ? `<p><a class="btn" href="${docs}" rel="noopener">${h(t.selfCta)}</a></p>` : ''}
 <p style="color:var(--muted);margin:18px 0 0">${h(t.page.login)} <a href="/app">${h(t.page.account)}</a></p>
-<p style="margin:10px 0 0"><a href="/start?lang=${en ? 'de' : 'en'}" hreflang="${en ? 'de' : 'en'}" lang="${en ? 'de' : 'en'}">${en ? 'Deutsch' : 'English'}</a></p></aside></div></main>`,
+<p style="margin:10px 0 0"><a href="/start?lang=${en ? 'de' : 'en'}" hreflang="${en ? 'de' : 'en'}" lang="${en ? 'de' : 'en'}">${en ? 'Deutsch' : 'English' /* i18n-ignore (language names) */}</a></p></aside></div></main>`,
   });
 }
 
@@ -409,50 +426,51 @@ export interface SignupData extends PricingData {
 }
 
 export function signupPage(c: PageCtx, d: SignupData): string {
+  const t = T();
   const note = vat(d.price_note);
   const v = d.values;
   const chosen = d.plans.find((p) => p.key === v.plan) ?? d.plans.find((p) => p.key === 'team') ?? d.plans[0];
   const iv = v.interval === 'year' ? 'year' : 'month';
-  if (d.closed) return messagePage(c, { title: 'Anmeldung pausiert', text: 'Neue Konten können gerade nicht online angelegt werden. Bitte versuche es später noch einmal.', action: ['/cloud', 'Zu den Preisen'] });
+  if (d.closed) return messagePage(c, { title: t('Anmeldung pausiert'), text: t('Neue Konten können gerade nicht online angelegt werden. Bitte versuche es später noch einmal.'), action: ['/cloud', t('Zu den Preisen')] });
   const cards = d.plans
     .map(
       (p) => `<label class="plan"><input type="radio" name="plan" value="${p.key}"${p.key === chosen.key ? ' checked' : ''}><span class="pb"><strong>${h(p.name)}</strong>
-<span class="pr"><span class="p-month">${eur(p.price_month_cents)}</span><span class="p-year">${eur(Math.round(p.price_year_cents / 12))}</span><small> / Monat ${note ? h(note) : ''}</small></span>
-<small class="p-year">${eur(p.price_year_cents)} jährlich</small><small>${p.users === 1 ? '1 Nutzer' : 'Unbegrenzt Nutzer'}</small></span></label>`,
+<span class="pr"><span class="p-month">${eur(p.price_month_cents)}</span><span class="p-year">${eur(Math.round(p.price_year_cents / 12))}</span><small>${h(t(' / Monat'))} ${note ? h(note) : ''}</small></span>
+<small class="p-year">${h(t('{price} jährlich', { price: eur(p.price_year_cents) }))}</small><small>${h(p.users === 1 ? t('1 Nutzer') : t('Unbegrenzt Nutzer'))}</small></span></label>`,
     )
     .join('');
   const legalLink = (doc: LegalDoc, label: string) => `<a href="/cloud/legal/${doc}" target="_blank" rel="noopener">${label}</a>`;
   const trial = d.trial_days > 0;
-  const submit = trial ? (d.card_required ? 'Weiter zur Zahlung' : `${d.trial_days} Tage kostenlos testen`) : 'Weiter zur Zahlung';
-  const field = (name: string, label: string, type: string, extra = '', val = '') => `<label class="f" for="f-${name}">${label}</label><input class="in" id="f-${name}" name="${name}" type="${type}" value="${h(val)}" ${extra}>`;
+  const submit = trial ? (d.card_required ? t('Weiter zur Zahlung') : t('{n} Tage kostenlos testen', { n: d.trial_days })) : t('Weiter zur Zahlung');
+  const field = (name: string, label: string, type: string, extra = '', val = '') => `<label class="f" for="f-${name}">${h(t(label))}</label><input class="in" id="f-${name}" name="${name}" type="${type}" value="${h(val)}" ${extra}>`;
   return shell(c, {
-    title: 'Konto anlegen',
+    title: t('Konto anlegen'),
     nav: true,
     body: `<main class="pricing"><form method="post" action="/start" autocomplete="on" novalidate>
-<input type="radio" name="interval" value="month" id="iv-month"${iv === 'month' ? ' checked' : ''} class="vh" aria-label="Monatlich"><input type="radio" name="interval" value="year" id="iv-year"${iv === 'year' ? ' checked' : ''} class="vh" aria-label="Jährlich">
-<h1>Konto anlegen</h1>
-<p class="muted" style="color:var(--muted);margin:0">${trial ? `${d.trial_days} Tage kostenlos testen – ${d.card_required ? 'abgebucht wird erst danach' : 'ohne Zahlungsmittel'}.` : 'Du startest direkt mit dem gewählten Tarif.'} Jederzeit kündbar.</p>
-${d.canceled ? '<div class="okbox" role="status">Die Zahlung wurde abgebrochen. Du kannst es jederzeit noch einmal versuchen – dein Konto wurde nicht angelegt.</div>' : ''}
+<input type="radio" name="interval" value="month" id="iv-month"${iv === 'month' ? ' checked' : ''} class="vh" aria-label="${h(t('Monatlich'))}"><input type="radio" name="interval" value="year" id="iv-year"${iv === 'year' ? ' checked' : ''} class="vh" aria-label="${h(t('Jährlich'))}">
+<h1>${h(t('Konto anlegen'))}</h1>
+<p class="muted" style="color:var(--muted);margin:0">${h(trial ? (d.card_required ? t('{n} Tage kostenlos testen – abgebucht wird erst danach.', { n: d.trial_days }) : t('{n} Tage kostenlos testen – ohne Zahlungsmittel.', { n: d.trial_days })) : t('Du startest direkt mit dem gewählten Tarif.'))} ${h(t('Jederzeit kündbar.'))}</p>
+${d.canceled ? `<div class="okbox" role="status">${h(t('Die Zahlung wurde abgebrochen. Du kannst es jederzeit noch einmal versuchen – dein Konto wurde nicht angelegt.'))}</div>` : ''}
 ${d.error ? `<div class="alert" role="alert">${h(d.error)}</div>` : ''}
 <div class="signup"><div class="card">
-<div class="toggle" role="group" aria-label="Abrechnung"><label for="iv-month">Monatlich</label><label for="iv-year">Jährlich${d.yearly_discount_percent > 0 ? ` <span class="save">-${d.yearly_discount_percent} %</span>` : ''}</label></div>
+<div class="toggle" role="group" aria-label="${h(t('Abrechnung'))}"><label for="iv-month">${h(t('Monatlich'))}</label><label for="iv-year">${h(t('Jährlich'))}${d.yearly_discount_percent > 0 ? ` <span class="save">-${d.yearly_discount_percent} %</span>` : ''}</label></div>
 <div class="mini">${cards}</div>
 ${field('company', 'Firmenname', 'text', 'required maxlength="120" autocomplete="organization"', v.company)}
-${d.b2b_only ? `${field('vat_id', 'USt-IdNr. (falls vorhanden)', 'text', 'maxlength="20" autocomplete="off" placeholder="DE123456789"', v.vat_id ?? '')}<label class="chk"><input type="checkbox" name="business" value="1"${v.business ? ' checked' : ''}><span>Ich bestelle als Unternehmen (§ 14 BGB). Das Angebot richtet sich nur an Unternehmen, nicht an Verbraucher.</span></label>` : ''}
+${d.b2b_only ? `${field('vat_id', 'USt-IdNr. (falls vorhanden)', 'text', 'maxlength="20" autocomplete="off" placeholder="DE123456789"', v.vat_id ?? '')}<label class="chk"><input type="checkbox" name="business" value="1"${v.business ? ' checked' : ''}><span>${h(t('Ich bestelle als Unternehmen (§ 14 BGB). Das Angebot richtet sich nur an Unternehmen, nicht an Verbraucher.'))}</span></label>` : ''}
 <div class="two"><div>${field('name', 'Dein Name', 'text', 'maxlength="120" autocomplete="name"', v.name)}</div><div>${field('email', 'E-Mail (dein Login)', 'email', 'required maxlength="200" autocomplete="email"', v.email)}</div></div>
 ${field('password', 'Passwort (mindestens 8 Zeichen)', 'password', 'minlength="8" maxlength="200" autocomplete="new-password"')}
-<details class="coupon"><summary>Gutscheincode?</summary>${field('coupon', 'Gutscheincode', 'text', 'maxlength="60" autocomplete="off"', v.coupon)}</details>
+<details class="coupon"><summary>${h(t('Gutscheincode?'))}</summary>${field('coupon', 'Gutscheincode', 'text', 'maxlength="60" autocomplete="off"', v.coupon)}</details>
 <div class="hp" aria-hidden="true"><label for="f-website">Website</label><input id="f-website" name="website" tabindex="-1" autocomplete="off"></div>
 <input type="hidden" name="t" value="${h(d.token)}">
-<label class="chk"><input type="checkbox" name="agb" value="1" required><span>Ich akzeptiere die ${legalLink('agb', 'AGB')}.</span></label>
-<label class="chk"><input type="checkbox" name="avv" value="1" required><span>Ich schließe den ${legalLink('avv', 'Auftragsverarbeitungsvertrag (AVV)')} ab.</span></label>
-<label class="chk"><input type="checkbox" name="datenschutz" value="1" required><span>Ich habe die ${legalLink('datenschutz', 'Datenschutzerklärung')} gelesen.</span></label>
+<label class="chk"><input type="checkbox" name="agb" value="1" required><span>${t('Ich akzeptiere die {link}.', { link: legalLink('agb', h(t('AGB'))) })}</span></label>
+<label class="chk"><input type="checkbox" name="avv" value="1" required><span>${t('Ich schließe den {link} ab.', { link: legalLink('avv', h(t('Auftragsverarbeitungsvertrag (AVV)'))) })}</span></label>
+<label class="chk"><input type="checkbox" name="datenschutz" value="1" required><span>${t('Ich habe die {link} gelesen.', { link: legalLink('datenschutz', h(t('Datenschutzerklärung'))) })}</span></label>
 <button class="btn wide" type="submit" name="via" value="email">${h(submit)}</button>
-${d.google ? '<div class="or">oder</div><button class="btn wide ghost" type="submit" name="via" value="google" formnovalidate>Mit Google fortfahren</button>' : ''}
-<p class="trialnote">Keine Cookies, kein Tracking auf dieser Seite.</p>
+${d.google ? `<div class="or">${h(t('oder'))}</div><button class="btn wide ghost" type="submit" name="via" value="google" formnovalidate>${h(t('Mit Google fortfahren'))}</button>` : ''}
+<p class="trialnote">${h(t('Keine Cookies, kein Tracking auf dieser Seite.'))}</p>
 </div>
-<aside class="card side"><h3>So geht es weiter</h3><ol><li>Du bestätigst deine E-Mail-Adresse${d.google ? ' (mit Google entfällt das)' : ''}.</li><li>${trial && !d.card_required ? 'Dein Konto ist sofort bereit.' : 'Du gibst bei Stripe dein Zahlungsmittel an.'}</li><li>Dein Konto wird eingerichtet – Pipeline und Vorlagen sind schon da.</li><li>Du arbeitest sofort weiter, im Browser oder in der Android-App.</li></ol>
-<p style="color:var(--muted);margin:18px 0 0">Schon ein Konto? <a href="/app">Zur Anmeldung</a></p></aside></div>
+<aside class="card side"><h3>${h(t('So geht es weiter'))}</h3><ol><li>${h(d.google ? t('Du bestätigst deine E-Mail-Adresse (mit Google entfällt das).') : t('Du bestätigst deine E-Mail-Adresse.'))}</li><li>${h(trial && !d.card_required ? t('Dein Konto ist sofort bereit.') : t('Du gibst bei Stripe dein Zahlungsmittel an.'))}</li><li>${h(t('Dein Konto wird eingerichtet – Pipeline und Vorlagen sind schon da.'))}</li><li>${h(t('Du arbeitest sofort weiter, im Browser oder in der Android-App.'))}</li></ol>
+<p style="color:var(--muted);margin:18px 0 0">${h(t('Schon ein Konto?'))} <a href="/app">${h(t('Zur Anmeldung'))}</a></p></aside></div>
 </form></main>`,
   });
 }
@@ -460,7 +478,7 @@ ${d.google ? '<div class="or">oder</div><button class="btn wide ghost" type="sub
 // --- small pages ---------------------------------------------------------------------------------------------------
 
 export function messagePage(c: PageCtx, o: { title: string; text: string; action?: [string, string]; extra?: string; head?: string; error?: string; method?: { action: string; label: string; fields?: Record<string, string>; /** Asks for a new password (twice): the sign-up's verification in another browser than the form. */ passwords?: boolean } }): string {
-  const pw = (id: string, name: string, label: string, focus: boolean) => `<label class="f" for="${id}">${label}</label><input class="in" id="${id}" name="${name}" type="password" minlength="8" maxlength="200" required autocomplete="new-password"${focus ? ' autofocus' : ''}>`;
+  const pw = (id: string, name: string, label: string, focus: boolean) => `<label class="f" for="${id}">${h(T()(label))}</label><input class="in" id="${id}" name="${name}" type="password" minlength="8" maxlength="200" required autocomplete="new-password"${focus ? ' autofocus' : ''}>`;
   const form = o.method
     ? `<form method="post" action="${h(o.method.action)}">${Object.entries(o.method.fields ?? {}).map(([k, x]) => `<input type="hidden" name="${h(k)}" value="${h(x)}">`).join('')}${o.method.passwords ? `${pw('p1', 'password', 'Passwort (mindestens 8 Zeichen)', true)}${pw('p2', 'password2', 'Passwort wiederholen', false)}<p></p>` : ''}<button class="btn" type="submit">${h(o.method.label)}</button></form>`
     : '';
@@ -469,7 +487,8 @@ export function messagePage(c: PageCtx, o: { title: string; text: string; action
 }
 
 export function legalPage(c: PageCtx, o: { doc: LegalDoc; html: string; version: number; date: string }): string {
-  return shell(c, { title: LEGAL_TITLE[o.doc], body: `<main class="legal"><h1>${h(LEGAL_TITLE[o.doc])}</h1><p class="meta">Version ${o.version} · Stand ${h(o.date)}</p>${o.html}</main>` });
+  const t = T();
+  return shell(c, { title: t(LEGAL_TITLE[o.doc]), body: `<main class="legal"><h1>${h(t(LEGAL_TITLE[o.doc]))}</h1><p class="meta">${h(t('Version {n} · Stand {date}', { n: o.version, date: o.date }))}</p>${o.html}</main>` });
 }
 
 export { PLAN_KEYS };

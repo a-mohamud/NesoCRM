@@ -4,6 +4,7 @@ import { addTags, getContact, logActivity, removeTags, upsertContact } from '../
 import { ABANDONED_STEPS } from '../services/mk-gallery.js';
 import { getSettings } from '../services/mk-settings.js';
 import { registerTriggers, type TriggerMeta } from '../services/wfx-kit.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * "Warenkorbabbruch": when a Stripe Checkout Session of a product expires without payment (`checkout.session.expired`, Stripe
@@ -39,7 +40,8 @@ export const mkAbandonedModule: Module = {
         name: 'Warenkorbabbruch-Serie',
         trigger: { type: 'checkout.abandoned', config: {} },
         settings: { allow_reentry: true },
-        steps: ABANDONED_STEPS(),
+        // Neso fork: the e-mails of the series in the instance language (the recipe's name is translated where it is listed).
+        steps: ABANDONED_STEPS(tApp()),
       },
     };
 
@@ -60,18 +62,19 @@ export const mkAbandonedModule: Module = {
       if (!contactId && email) {
         const known = db.get<{ id: string }>('SELECT id FROM contacts WHERE location_id = ? AND email = ?', locationId, email);
         contactId = known?.id ?? null;
-        if (!contactId && getSettings(app, locationId).abandoned.create_contacts) contactId = upsertContact(app, locationId, { email, name: session.customer_details?.name }, { source: 'Stripe: Checkout abgebrochen' }).contact.id;
+        if (!contactId && getSettings(app, locationId).abandoned.create_contacts) contactId = upsertContact(app, locationId, { email, name: session.customer_details?.name }, { source: tLoc(app, locationId)('Stripe: Checkout abgebrochen') }).contact.id;
       }
       if (!contactId) return;
+      const t = tLoc(app, locationId);
       // Bought in the meantime (another session, a payment link): nothing to remind.
       const bought = db.get('SELECT 1 FROM stripe_checkouts WHERE location_id = ? AND contact_id = ? AND product_id = ? AND status = ? AND paid_at >= ? LIMIT 1', locationId, contactId, md.product_id, 'paid', row?.created_at ?? '');
       if (bought) return;
       const product = db.get<{ name: string }>('SELECT name FROM products WHERE id = ? AND location_id = ?', md.product_id, locationId);
-      const name = String(product?.name ?? md.product_name ?? 'Produkt');
+      const name = String(product?.name ?? md.product_name ?? t('Produkt'));
       const amount = Number(session.amount_total ?? row?.amount_cents ?? 0);
       const currency = String(session.currency ?? row?.currency ?? 'eur').toUpperCase();
       addTags(app, locationId, contactId, [ABANDONED_TAG]);
-      logActivity(app, locationId, contactId, 'checkout.abandoned', `Checkout abgebrochen: ${name}`);
+      logActivity(app, locationId, contactId, 'checkout.abandoned', t('Checkout abgebrochen: {name}', { name }));
       app.events.emit(locationId, 'checkout.abandoned', {
         contactId,
         productId: md.product_id,

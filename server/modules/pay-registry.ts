@@ -38,6 +38,7 @@ import {
 } from '../services/pay-registry.js';
 import { sessionState, stripeProvider } from '../services/pay-stripe.js';
 import { lineItemParams } from '../services/stripe.js';
+import { tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Payment provider registry (docs/payment-providers.md): Stripe, PayPal (Orders v2 incl. Pay Later) and Mollie (iDEAL, SEPA, cards,
@@ -345,39 +346,44 @@ export const payRegistryModule: Module = {
 
     // --- the pay page ----------------------------------------------------------------------------------------------------------
     const page = (title: string, body: string, color?: string, status = 200) => html(publicPage({ title, body: `<div class="wrap" style="max-width:560px"><div class="card">${body}</div></div>`, color }), status);
-    const notThere = () => page('Nicht gefunden', '<h1>Nicht gefunden</h1><p class="muted">Diese Zahlung gibt es nicht (mehr).</p>', undefined, 404);
+    /** A short page with a heading and a muted line, in the sub-account's language. */
+    const notice = (t: STFn, title: string, text: string, status = 200, extra = '', color?: string) => page(t(title), `<h1>${escapeHtml(t(title))}</h1><p class="muted">${escapeHtml(t(text))}</p>${extra}`, color, status);
+    const notThere = () => notice(tLoc(app), 'Nicht gefunden', 'Diese Zahlung gibt es nicht (mehr).', 404);
+    const methodsOf = (t: STFn, p: { methods: (a: typeof app, loc: string) => string[] }, loc: string) => p.methods(app, loc).map((m) => t(m));
     const back = (s: PaySession) => String(s.meta.return_url || `/pay/${s.id}`);
 
     function payPage(s: PaySession, error = ''): RawResult {
       const loc = app.location(s.location_id);
       const color = loc?.settings?.branding?.color || undefined;
+      const t = tLoc(app, s.location_id);
+      const h = (x: string, v?: Record<string, string | number>) => escapeHtml(t(x, v));
       const head = `${loc?.logo_url ? `<img src="${escapeHtml(loc.logo_url)}" alt="" style="max-height:48px;margin-bottom:12px">` : `<p class="muted" style="margin:0 0 6px">${escapeHtml(loc?.name ?? '')}</p>`}`;
       if (s.status === 'paid')
-        return page('Bezahlt', `${head}<h1>Danke!</h1><p class="ok">Die Zahlung über ${escapeHtml(money(s.received_cents + s.gift_cents, s.currency))} ist eingegangen.</p><p class="muted">${escapeHtml(s.description)}</p>${s.meta.return_url ? `<p><a class="btn secondary" href="${escapeHtml(String(s.meta.return_url))}">Weiter</a></p>` : ''}`, color);
-      if (s.status === 'pending') return page('In Bearbeitung', `${head}<h1>Danke!</h1><p>Deine Zahlung wird bearbeitet (z. B. eine Überweisung oder Lastschrift). Sobald sie bestätigt ist, bekommst du Bescheid.</p>`, color);
-      if (s.status !== 'open') return page('Abgelaufen', `${head}<h1>Diese Zahlung ist abgelaufen</h1><p class="muted">Bitte starte den Vorgang noch einmal.</p>`, color, 410);
+        return page(t('Bezahlt'), `${head}<h1>${h('Danke!')}</h1><p class="ok">${h('Die Zahlung über {amount} ist eingegangen.', { amount: money(s.received_cents + s.gift_cents, s.currency) })}</p><p class="muted">${escapeHtml(s.description)}</p>${s.meta.return_url ? `<p><a class="btn secondary" href="${escapeHtml(String(s.meta.return_url))}">${h('Weiter')}</a></p>` : ''}`, color);
+      if (s.status === 'pending') return page(t('In Bearbeitung'), `${head}<h1>${h('Danke!')}</h1><p>${h('Deine Zahlung wird bearbeitet (z. B. eine Überweisung oder Lastschrift). Sobald sie bestätigt ist, bekommst du Bescheid.')}</p>`, color);
+      if (s.status !== 'open') return page(t('Abgelaufen'), `${head}<h1>${h('Diese Zahlung ist abgelaufen')}</h1><p class="muted">${h('Bitte starte den Vorgang noch einmal.')}</p>`, color, 410);
       const total = s.amount_cents + s.gift_cents;
       const gift = app.services.giftCards && !s.provider_ref;
       const providers = readyProviders(app, s.location_id);
       const buttons =
         s.amount_cents === 0
-          ? `<form method="post" action="/pay/${s.id}/go"><input type="hidden" name="provider" value="${GIFT_PROVIDER}"><button type="submit" style="width:100%">Mit Gutschein bezahlen</button></form>`
+          ? `<form method="post" action="/pay/${s.id}/go"><input type="hidden" name="provider" value="${GIFT_PROVIDER}"><button type="submit" style="width:100%">${h('Mit Gutschein bezahlen')}</button></form>`
           : providers.length
             ? providers
                 .map(
-                  (p) => `<form method="post" action="/pay/${s.id}/go" style="margin:0 0 10px"><input type="hidden" name="provider" value="${escapeHtml(p.id)}"><button type="submit" style="width:100%">Weiter mit ${escapeHtml(p.label)}</button><div class="muted" style="font-size:12px;margin-top:4px;text-align:center">${escapeHtml(p.methods(app, s.location_id).join(' · '))}</div></form>`,
+                  (p) => `<form method="post" action="/pay/${s.id}/go" style="margin:0 0 10px"><input type="hidden" name="provider" value="${escapeHtml(p.id)}"><button type="submit" style="width:100%">${h('Weiter mit {provider}', { provider: t(p.label) })}</button><div class="muted" style="font-size:12px;margin-top:4px;text-align:center">${escapeHtml(methodsOf(t, p, s.location_id).join(' · '))}</div></form>`,
                 )
                 .join('')
-            : '<p class="error">Für diesen Betrag ist gerade keine Online-Zahlung eingerichtet.</p>';
-      const body = `${head}<h1>Bezahlen</h1>
+            : `<p class="error">${h('Für diesen Betrag ist gerade keine Online-Zahlung eingerichtet.')}</p>`;
+      const body = `${head}<h1>${h('Bezahlen')}</h1>
 <p>${escapeHtml(s.description)}</p>
-<table><tr><td>Betrag</td><td style="text-align:right">${escapeHtml(money(total, s.currency))}</td></tr>
-${s.gift_cents ? `<tr><td>Gutschein</td><td style="text-align:right">−${escapeHtml(money(s.gift_cents, s.currency))}</td></tr>` : ''}
-<tr><td><strong>Noch zu zahlen</strong></td><td style="text-align:right"><strong>${escapeHtml(money(s.amount_cents, s.currency))}</strong></td></tr></table>
-${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
-${gift ? `<form method="post" action="/pay/${s.id}/gift" style="margin:16px 0"><label for="gc">Gutscheincode</label><div class="row"><input id="gc" name="code" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="40"><button type="submit" class="btn secondary" style="flex:0 0 auto">Einlösen</button></div></form>` : ''}
+<table><tr><td>${h('Betrag')}</td><td style="text-align:right">${escapeHtml(money(total, s.currency))}</td></tr>
+${s.gift_cents ? `<tr><td>${h('Gutschein')}</td><td style="text-align:right">−${escapeHtml(money(s.gift_cents, s.currency))}</td></tr>` : ''}
+<tr><td><strong>${h('Noch zu zahlen')}</strong></td><td style="text-align:right"><strong>${escapeHtml(money(s.amount_cents, s.currency))}</strong></td></tr></table>
+${error ? `<p class="error">${h(error)}</p>` : ''}
+${gift ? `<form method="post" action="/pay/${s.id}/gift" style="margin:16px 0"><label for="gc">${h('Gutscheincode')}</label><div class="row"><input id="gc" name="code" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="40"><button type="submit" class="btn secondary" style="flex:0 0 auto">${h('Einlösen')}</button></div></form>` : ''}
 <div style="margin-top:18px">${buttons}</div>`;
-      return page('Bezahlen', body, color);
+      return page(t('Bezahlen'), body, color);
     }
 
     router.get('/pay/:id', 'public', (ctx) => {
@@ -442,18 +448,20 @@ ${gift ? `<form method="post" action="/pay/${s.id}/gift" style="margin:16px 0"><
       const gift = giftActive(inv.location_id);
       if (!extra.length && !gift && base) return base;
       if (!extra.length && !gift && !readyProviders(app, inv.location_id).length) return base;
-      const what = [...(base ? [] : readyProviders(app, inv.location_id).filter((p) => p.id === 'stripe')), ...extra].map((p) => p.label);
-      const label = base ? `Mit ${[...what, ...(gift ? ['Gutschein'] : [])].join(', ').replace(/, ([^,]*)$/, ' oder $1')} bezahlen` : 'Jetzt online bezahlen';
+      const t = tLoc(app, inv.location_id);
+      const what = [...(base ? [] : readyProviders(app, inv.location_id).filter((p) => p.id === 'stripe')), ...extra].map((p) => t(p.label));
+      const label = base ? t('Mit {methods} bezahlen', { methods: [...what, ...(gift ? [t('Gutschein')] : [])].join(', ').replace(/, ([^,]*)$/, ` ${t('oder')} $1`) }) : t('Jetzt online bezahlen');
       return `${base}<form method="post" action="/i/${encodeURIComponent(inv.public_token)}/pay-options" class="noprint" style="margin:0 0 14px">
       <button type="submit" class="${base ? 'btn secondary' : ''}" style="width:100%;max-width:420px">${escapeHtml(label)}</button>
-      <div class="muted" style="font-size:12px;margin-top:6px">${escapeHtml([...extra.flatMap((p) => p.methods(app, inv.location_id)), ...(gift ? ['Gutschein einlösen'] : [])].join(' · '))}</div></form>`;
+      <div class="muted" style="font-size:12px;margin-top:6px">${escapeHtml([...extra.flatMap((p) => methodsOf(t, p, inv.location_id)), ...(gift ? [t('Gutschein einlösen')] : [])].join(' · '))}</div></form>`;
     };
     router.post('/i/:token/pay-options', 'public', (ctx) => {
       const inv = parseJson(db.get<any>('SELECT * FROM invoices WHERE public_token = ?', ctx.params.token), ['items']);
-      if (!inv || inv.status === 'draft') return page('Nicht gefunden', '<h1>Nicht gefunden</h1><p class="muted">Dieses Dokument gibt es nicht.</p>', undefined, 404);
+      if (!inv || inv.status === 'draft') return notice(tLoc(app, inv?.location_id), 'Nicht gefunden', 'Dieses Dokument gibt es nicht.', 404);
+      const t = tLoc(app, inv.location_id);
       const backTo = `/i/${encodeURIComponent(inv.public_token)}`;
-      if (!payable(inv)) return page('Online-Zahlung nicht möglich', `<h1>Online-Zahlung nicht möglich</h1><p class="muted">${inv.status === 'paid' ? 'Diese Rechnung ist schon bezahlt.' : 'Für diese Rechnung ist nichts (mehr) online zu bezahlen.'}</p><p><a class="btn secondary" href="${backTo}">Zurück</a></p>`);
-      if (throttled(`inv:${ctx.ip}`)) return page('Bitte kurz warten', '<h1>Bitte kurz warten</h1><p class="muted">Zu viele Versuche – bitte in ein paar Minuten noch einmal.</p>', undefined, 429);
+      if (!payable(inv)) return notice(t, 'Online-Zahlung nicht möglich', inv.status === 'paid' ? 'Diese Rechnung ist schon bezahlt.' : 'Für diese Rechnung ist nichts (mehr) online zu bezahlen.', 200, `<p><a class="btn secondary" href="${backTo}">${escapeHtml(t('Zurück'))}</a></p>`);
+      if (throttled(`inv:${ctx.ip}`)) return notice(t, 'Bitte kurz warten', 'Zu viele Versuche – bitte in ein paar Minuten noch einmal.', 429);
       const open = openCents(inv);
       const recent = db.get<{ id: string }>(
         `SELECT id FROM pay_sessions WHERE location_id = ? AND purpose = 'invoice' AND ref_id = ? AND status = 'open' AND amount_cents + gift_cents = ? AND created_at > ? ORDER BY created_at DESC LIMIT 1`,
@@ -467,7 +475,7 @@ ${gift ? `<form method="post" action="/pay/${s.id}/gift" style="margin:16px 0"><
         refId: inv.id,
         amountCents: open,
         currency: inv.currency,
-        description: `${open < inv.total_cents ? 'Restbetrag ' : ''}Rechnung ${inv.number}`,
+        description: t(open < inv.total_cents ? 'Restbetrag Rechnung {number}' : 'Rechnung {number}', { number: inv.number }),
         email: contact?.email ?? '',
         name: [contact?.first_name, contact?.last_name].filter(Boolean).join(' '),
         returnUrl: `${app.baseUrl()}${backTo}`,
@@ -485,14 +493,16 @@ ${gift ? `<form method="post" action="/pay/${s.id}/gift" style="margin:16px 0"><
         const opts = [...(stripe ? [stripeProvider] : []), ...extra];
         const radio = (id: string, label: string, sub: string, on: boolean) =>
           `<label class="check" style="margin:6px 0"><input type="radio" name="provider" value="${escapeHtml(id)}"${on ? ' checked' : ''}> <span><strong>${escapeHtml(label)}</strong><br><span class="muted" style="font-size:13px">${escapeHtml(sub)}</span></span></label>`;
-        return `<fieldset style="border:0;padding:0;margin:16px 0 0"><legend style="font-weight:600;font-size:14px;margin:0 0 8px">Bezahlen mit</legend>${opts.map((o, i) => radio(o.id, o.id === 'stripe' ? 'Karte, SEPA, Apple Pay' : o.label, o.methods(app, p.location_id).join(' · '), i === 0)).join('')}</fieldset>`;
+        const t = tLoc(app, p.location_id);
+        return `<fieldset style="border:0;padding:0;margin:16px 0 0"><legend style="font-weight:600;font-size:14px;margin:0 0 8px">${escapeHtml(t('Bezahlen mit'))}</legend>${opts.map((o, i) => radio(o.id, o.id === 'stripe' ? t('Karte, SEPA, Apple Pay') : t(o.label), methodsOf(t, o, p.location_id).join(' · '), i === 0)).join('')}</fieldset>`;
       },
     ];
     /** The buy page with another provider than Stripe: the same hooks (order bump, discount code) build the lines, the registry takes the money. */
     app.services.payBuy = async (ctx: Ctx, found: { p: any; link: any }, key: string): Promise<RawResult> => {
       const { p, link } = found;
       const self = `/buy/${encodeURIComponent(key)}`;
-      const fail = (msg: string) => page('Kauf gerade nicht möglich', `<h1>Kauf gerade nicht möglich</h1><p class="muted">${escapeHtml(msg)}</p><p><a class="btn secondary" href="${escapeHtml(self)}">Zurück</a></p>`);
+      const t = tLoc(app, p.location_id);
+      const fail = (msg: string) => notice(t, 'Kauf gerade nicht möglich', msg, 200, `<p><a class="btn secondary" href="${escapeHtml(self)}">${escapeHtml(t('Zurück'))}</a></p>`);
       const providerId = String(ctx.body?.provider ?? '');
       const prov = payProviders(app).get(providerId);
       if (!prov || !prov.ready(app, p.location_id)) return fail('Diese Zahlungsart ist nicht verfügbar');
@@ -519,7 +529,8 @@ ${gift ? `<form method="post" action="/pay/${s.id}/gift" style="margin:16px 0"><
     app.services.buyPayNote = (p: any) => {
       const list = readyProviders(app, p.location_id);
       if (!list.some((x) => x.id !== 'stripe')) return undefined;
-      return `Sichere Zahlung – ${[...new Set(list.flatMap((x) => x.methods(app, p.location_id)))].slice(0, 6).join(', ')} …`;
+      const t = tLoc(app, p.location_id);
+      return t('Sichere Zahlung – {methods} …', { methods: [...new Set(list.flatMap((x) => methodsOf(t, x, p.location_id)))].slice(0, 6).join(', ') });
     };
     registerPayPurpose(app, 'product', {
       settle: (_a, s, received) =>

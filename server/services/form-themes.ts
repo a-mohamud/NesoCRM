@@ -1,4 +1,5 @@
 import { bad } from '../core/http.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Looks for forms: presets (colours and fonts), the settings an owner can change (fonts from the system – no web font is loaded, so no
@@ -49,7 +50,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 const hexOf = (v: unknown, fallback: string, what: string) => {
   const s = String(v ?? '').trim();
   if (!s) return fallback;
-  if (!HEX.test(s)) throw bad(`${what}: Farbe als #rrggbb`);
+  if (!HEX.test(s)) throw bad(tApp()('{what}: Farbe als #rrggbb', { what: tApp()(what) }));
   return s.toLowerCase();
 };
 
@@ -72,7 +73,7 @@ export function cleanTheme(input: any, base?: Partial<Theme>): Theme {
     font,
     color: hexOf(v.color, '#2563eb', 'Farbe'),
     background: hexOf(v.background, '#f9fafb', 'Hintergrund'),
-    card: hexOf(v.card, '#ffffff', 'Karte'),
+    card: hexOf(v.card, '#ffffff', 'Formularkarte'),
     text: hexOf(v.text, '#111827', 'Text'),
     button_text: v.button_text ? hexOf(v.button_text, '', 'Button-Text') : '',
     bg_image: image,
@@ -116,16 +117,16 @@ export function contrast(a: string, b: string): number {
 export const readableOn = (bg: string) => (contrast(bg, '#000000') >= contrast(bg, '#ffffff') ? '#000000' : '#ffffff');
 
 /** Combinations that are hard to read (below WCAG AA 4.5 : 1), as sentences for the editor. */
-export function contrastWarnings(t: Theme): string[] {
+export function contrastWarnings(t: Theme, tr: STFn = tApp()): string[] {
   const out: string[] = [];
   const onCard = contrast(t.text, t.card);
-  if (onCard < 4.5) out.push(`Text auf Karte: Kontrast ${onCard} : 1 – mindestens 4,5 : 1 ist gut lesbar.`);
+  if (onCard < 4.5) out.push(tr('Text auf Karte: Kontrast {ratio} : 1 – mindestens 4,5 : 1 ist gut lesbar.', { ratio: onCard }));
   const onPage = contrast(t.text, t.background);
-  if (!t.bg_image && onPage < 4.5) out.push(`Text auf Hintergrund: Kontrast ${onPage} : 1 – mindestens 4,5 : 1 ist gut lesbar.`);
+  if (!t.bg_image && onPage < 4.5) out.push(tr('Text auf Hintergrund: Kontrast {ratio} : 1 – mindestens 4,5 : 1 ist gut lesbar.', { ratio: onPage }));
   const btn = contrast(t.button_text || readableOn(t.color), t.color);
-  if (btn < 4.5) out.push(`Button: Kontrast ${btn} : 1 – mindestens 4,5 : 1 ist gut lesbar.`);
+  if (btn < 4.5) out.push(tr('Button: Kontrast {ratio} : 1 – mindestens 4,5 : 1 ist gut lesbar.', { ratio: btn }));
   const accent = contrast(t.color, t.card);
-  if (accent < 3) out.push(`Akzentfarbe auf Karte: Kontrast ${accent} : 1 – mindestens 3 : 1 für Markierungen.`);
+  if (accent < 3) out.push(tr('Akzentfarbe auf Karte: Kontrast {ratio} : 1 – mindestens 3 : 1 für Markierungen.', { ratio: accent }));
   return out;
 }
 

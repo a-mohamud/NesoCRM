@@ -9,6 +9,7 @@ import { PayError, accountOf, amountValue, centsOf, payJson, type Account, type 
  */
 
 const API = 'https://api.mollie.com/v2';
+// i18n: the labels are German message ids – the pay pages translate them (methodsOf).
 export const MOLLIE_METHODS: [string, string][] = [
   ['ideal', 'iDEAL'],
   ['creditcard', 'Kreditkarte'],

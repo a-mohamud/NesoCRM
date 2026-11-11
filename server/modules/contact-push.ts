@@ -7,6 +7,7 @@ import { finishOutbound, getAccount, recordOutbound, saveAccount, type ChannelAc
 import { getContact } from '../services/contacts.js';
 import { fromB64u, generateVapidKeys, isPushEndpoint, sendWebPush, type VapidKeys } from '../services/webpush.js';
 import { openSecret, sealSecret } from './mail-sync.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Browser push to contacts: visitors of funnel pages can allow notifications (a small bell button;
@@ -28,28 +29,37 @@ export interface ContactPushInput {
   source?: string;
 }
 
-const SUBSCRIBE_JS = `(function(){
+/** The opt-in script; its messages come in the sub-account's language. */
+const subscribeJs = (t: STFn) => `(function(){
+  var M=${JSON.stringify({
+    unsupported: t('Dieser Browser unterstützt keine Benachrichtigungen (auf dem iPhone: erst „Zum Home-Bildschirm“).'),
+    wait: t('Einen Moment …'),
+    denied: t('Benachrichtigungen wurden nicht erlaubt.'),
+    saveFailed: t('Speichern fehlgeschlagen'),
+    done: t('Fertig – du bekommst jetzt Benachrichtigungen. Du kannst dieses Fenster schließen.'),
+    failed: t('Hat nicht geklappt.'),
+  }).replace(/</g, '\\u003c')};
   var b=document.body, btn=document.getElementById('go'), st=document.getElementById('st');
   var loc=b.dataset.loc, key=b.dataset.key, attr=b.dataset.attr||'';
   function say(t,ok){st.textContent=t;st.className=ok?'ok':'';}
   function k(s){s=s.replace(/-/g,'+').replace(/_/g,'/');var r=atob(s+'==='.slice((s.length+3)%4)),a=new Uint8Array(r.length);for(var i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a;}
-  if(!('serviceWorker' in navigator)||!('PushManager' in window)){btn.disabled=true;say('Dieser Browser unterstützt keine Benachrichtigungen (auf dem iPhone: erst „Zum Home-Bildschirm“).');return;}
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){btn.disabled=true;say(M.unsupported);return;}
   btn.onclick=function(){
-    btn.disabled=true;say('Einen Moment …');
+    btn.disabled=true;say(M.wait);
     navigator.serviceWorker.register('/push/'+loc+'/sw.js',{scope:'/push/'+loc+'/'}).then(function(reg){
       return Notification.requestPermission().then(function(p){
-        if(p!=='granted')throw new Error('Benachrichtigungen wurden nicht erlaubt.');
+        if(p!=='granted')throw new Error(M.denied);
         return reg.pushManager.getSubscription().then(function(s){return s||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:k(key)});});
       });
     }).then(function(sub){
       return fetch('/api/public/push/'+loc,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({subscription:sub.toJSON(),attr:attr})});
-    }).then(function(r){if(!r.ok)throw new Error('Speichern fehlgeschlagen ('+r.status+')');say('Fertig – du bekommst jetzt Benachrichtigungen. Du kannst dieses Fenster schließen.',true);setTimeout(function(){try{window.close();}catch(e){}},2500);})
-    .catch(function(e){btn.disabled=false;say(e&&e.message?e.message:'Hat nicht geklappt.');});
+    }).then(function(r){if(!r.ok)throw new Error(M.saveFailed+' ('+r.status+')');say(M.done,true);setTimeout(function(){try{window.close();}catch(e){}},2500);})
+    .catch(function(e){btn.disabled=false;say(e&&e.message?e.message:M.failed);});
   };
 })();`;
 
-const SW_JS = `self.addEventListener('push',function(e){var d={};try{d=e.data?e.data.json():{};}catch(x){d={body:e.data&&e.data.text()};}
-e.waitUntil(self.registration.showNotification(d.title||'Neuigkeit',{body:d.body||'',icon:d.icon||undefined,tag:d.tag||undefined,data:{url:d.url||''}}));});
+const swJs = (t: STFn) => `self.addEventListener('push',function(e){var d={};try{d=e.data?e.data.json():{};}catch(x){d={body:e.data&&e.data.text()};}
+e.waitUntil(self.registration.showNotification(d.title||${JSON.stringify(t('Neuigkeit')).replace(/</g, '\\u003c')},{body:d.body||'',icon:d.icon||undefined,tag:d.tag||undefined,data:{url:d.url||''}}));});
 self.addEventListener('notificationclick',function(e){e.notification.close();var u=e.notification.data&&e.notification.data.url;if(u&&/^https:\\/\\//.test(u))e.waitUntil(clients.openWindow(u));});`;
 
 export const contactPushModule: Module = {
@@ -86,13 +96,13 @@ export const contactPushModule: Module = {
       const admin = db.get(`SELECT email FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1`);
       return process.env.PGHL_PUSH_CONTACT || (admin?.email ? `mailto:${admin.email}` : app.baseUrl().startsWith('https://') ? app.baseUrl() : 'mailto:push@example.com');
     };
-    const conf = (a: ChannelAccount | undefined) => ({ ...DEFAULTS, ...Object.fromEntries(Object.entries(a?.config ?? {}).filter(([, v]) => typeof v === 'string' && v)) });
+    const conf = (a: ChannelAccount | undefined, t: STFn = tLoc(app, a?.location_id)) => ({ ...Object.fromEntries(Object.entries(DEFAULTS).map(([k, v]) => [k, t(v)])), ...Object.fromEntries(Object.entries(a?.config ?? {}).filter(([, v]) => typeof v === 'string' && v)) });
     const on = (a: ChannelAccount | undefined): a is ChannelAccount => !!a?.enabled;
 
     // --- settings ----------------------------------------------------------------------------
     const out = (loc: string) => {
       const a = getAccount(app, loc, CH);
-      const c = conf(a);
+      const c = conf(a, tLoc(app, loc));
       const n = db.get<{ all: number; linked: number }>('SELECT COUNT(*) AS "all", COUNT(contact_id) AS linked FROM contact_push_subs WHERE location_id = ?', loc)!;
       return { enabled: on(a), button: c.button, title: c.title, text: c.text, subscribers: n.all, linked: n.linked, subscribe_url: `${app.baseUrl()}/push/${loc}/subscribe` };
     };
@@ -112,29 +122,33 @@ export const contactPushModule: Module = {
     router.get('/push/:loc/subscribe', 'public', (ctx) => {
       const loc = app.location(ctx.params.loc);
       const a = loc ? getAccount(app, loc.id, CH) : undefined;
-      if (!loc || !on(a)) return html('<!doctype html><meta charset="utf-8"><title>Nicht verfügbar</title><p style="font-family:system-ui;padding:24px">Benachrichtigungen sind hier nicht eingerichtet.</p>', 404);
-      const c = conf(a);
+      if (!loc || !on(a)) {
+        const t = loc ? tLoc(app, loc.id) : tCtx(ctx);
+        return html(`<!doctype html><meta charset="utf-8"><title>${escapeHtml(t('Nicht verfügbar'))}</title><p style="font-family:system-ui;padding:24px">${escapeHtml(t('Benachrichtigungen sind hier nicht eingerichtet.'))}</p>`, 404);
+      }
+      const tl = tLoc(app, loc.id);
+      const c = conf(a, tl);
       const attr = String(ctx.query.get('a') ?? '').slice(0, 200).replace(/[^\w.-]/g, '');
       const color = /^#[0-9a-f]{3,8}$/i.test(String(loc.settings?.branding?.color ?? '')) ? loc.settings.branding.color : '#2563eb';
-      const r = html(`<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(c.title)}</title>
+      const r = html(`<!doctype html><html lang="${tl.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(c.title)}</title>
 <style>body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f5f6f8;color:#1f2937;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
 .card{background:#fff;border-radius:14px;box-shadow:0 6px 30px rgba(0,0,0,.08);padding:28px;max-width:420px;width:100%;text-align:center}
 h1{font-size:20px;margin:8px 0}p{color:#4b5563;line-height:1.5}button{background:${color};color:#fff;border:0;border-radius:10px;padding:12px 20px;font-size:16px;font-weight:600;cursor:pointer;width:100%}
 button:disabled{opacity:.6}#st{min-height:1.5em;margin-top:14px;font-size:14px;color:#b91c1c}#st.ok{color:#15803d}.bell{font-size:34px}
 @media (prefers-color-scheme:dark){body{background:#111318;color:#e5e7eb}.card{background:#1b1e25}p{color:#9ca3af}}</style></head>
 <body data-loc="${escapeHtml(loc.id)}" data-key="${escapeHtml(keys.publicKey)}" data-attr="${escapeHtml(attr)}"><main class="card"><div class="bell" aria-hidden="true">🔔</div><h1>${escapeHtml(c.title)}</h1><p>${escapeHtml(c.text)}</p>
-<button id="go" type="button">Benachrichtigungen erlauben</button><div id="st" role="status"></div><p style="font-size:12px;margin-top:18px">${escapeHtml(loc.name)}</p></main>
+<button id="go" type="button">${escapeHtml(tl('Benachrichtigungen erlauben'))}</button><div id="st" role="status"></div><p style="font-size:12px;margin-top:18px">${escapeHtml(loc.name)}</p></main>
 <script src="/push/${escapeHtml(loc.id)}/subscribe.js"></script></body></html>`);
       Object.assign(r.headers, pushHeaders);
       return r;
     });
-    router.get('/push/:loc/subscribe.js', 'public', () => {
-      const r = text(SUBSCRIBE_JS, 'text/javascript; charset=utf-8');
+    router.get('/push/:loc/subscribe.js', 'public', (ctx) => {
+      const r = text(subscribeJs(tLoc(app, app.location(ctx.params.loc)?.id)), 'text/javascript; charset=utf-8');
       r.headers['cache-control'] = 'public, max-age=3600';
       return r;
     });
-    router.get('/push/:loc/sw.js', 'public', () => {
-      const r = text(SW_JS, 'text/javascript; charset=utf-8');
+    router.get('/push/:loc/sw.js', 'public', (ctx) => {
+      const r = text(swJs(tLoc(app, app.location(ctx.params.loc)?.id)), 'text/javascript; charset=utf-8');
       r.headers['cache-control'] = 'no-cache';
       return r;
     });
@@ -185,7 +199,7 @@ button:disabled{opacity:.6}#st{min-height:1.5em;margin-top:14px;font-size:14px;c
       (_ctx: Ctx, funnel: any, _page: any, page: string) => {
         const a = getAccount(app, funnel.location_id, CH);
         if (!on(a)) return page;
-        const c = conf(a);
+        const c = conf(a, tLoc(app, funnel.location_id));
         const href = `${app.baseUrl()}/push/${funnel.location_id}/subscribe`;
         const bell = `<a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="pghl-push" onclick="if(window.pghlAttr&&this.href.indexOf('?a=')<0)this.href+='?a='+encodeURIComponent(window.pghlAttr)" style="position:fixed;left:16px;bottom:16px;z-index:9998;background:#111827;color:#fff;border-radius:99px;padding:9px 14px;font:600 13px system-ui,sans-serif;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.25)">🔔 ${escapeHtml(c.button)}</a>`;
         return page.includes('</body>') ? page.replace('</body>', `${bell}</body>`) : page + bell;
@@ -199,7 +213,8 @@ button:disabled{opacity:.6}#st{min-height:1.5em;margin-top:14px;font-size:14px;c
       if (!c) throw notFound('Kontakt nicht gefunden');
       const subs = devicesOf(loc, c.id);
       if (!subs.length) throw bad('Kontakt hat keine Benachrichtigungen erlaubt');
-      const title = String(input.title || app.location(loc)?.name || 'Neuigkeit').trim().slice(0, 80);
+      const tl = tLoc(app, loc);
+      const title = String(input.title || app.location(loc)?.name || tl('Neuigkeit')).trim().slice(0, 80);
       const body = String(input.body ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
       if (!body) throw bad('Nachricht fehlt');
       const url = String(input.url ?? '').trim();
@@ -219,8 +234,8 @@ button:disabled{opacity:.6}#st{min-height:1.5em;margin-top:14px;font-size:14px;c
           db.run(`UPDATE contact_push_subs SET last_ok_at = ?, last_error = '', fails = 0 WHERE id = ?`, now(), s.id);
         }
       }
-      if (!sent) return finishOutbound(app, rec, { ok: false, error: lastError ? `Push fehlgeschlagen: ${lastError}` : 'Kein Gerät erreichbar (Benachrichtigungen abbestellt)' });
-      return { ...finishOutbound(app, rec, { ok: true, activity: `Push gesendet (${sent} ${sent === 1 ? 'Gerät' : 'Geräte'})` }), devices: sent };
+      if (!sent) return finishOutbound(app, rec, { ok: false, error: lastError ? tl('Push fehlgeschlagen: {error}', { error: lastError }) : tl('Kein Gerät erreichbar (Benachrichtigungen abbestellt)') });
+      return { ...finishOutbound(app, rec, { ok: true, activity: tl.plural(sent, { one: 'Push gesendet ({n} Gerät)', other: 'Push gesendet ({n} Geräte)' }) }), devices: sent };
     };
     app.services.contactPush = pushToContact;
 
@@ -277,18 +292,20 @@ button:disabled{opacity:.6}#st{min-height:1.5em;margin-top:14px;font-size:14px;c
       ...(app.services.channelStatus ?? {}),
       push: (loc: string, c: { id: string }) => {
         const n = db.get<{ n: number }>('SELECT COUNT(*) n FROM contact_push_subs WHERE location_id = ? AND contact_id = ?', loc, c.id)!.n;
-        return { configured: n > 0 || on(getAccount(app, loc, CH)), reachable: n > 0, devices: n, reason: n ? undefined : 'Kontakt hat keine Benachrichtigungen erlaubt', limit: 300 };
+        return { configured: n > 0 || on(getAccount(app, loc, CH)), reachable: n > 0, devices: n, reason: n ? undefined : tLoc(app, loc)('Kontakt hat keine Benachrichtigungen erlaubt'), limit: 300 };
       },
     };
 
+    const ti = tApp();
     app.services.catalogExtra = [
       ...(app.services.catalogExtra ?? []),
       {
-        entry: { key: 'contact_push', name: 'Web-Push an Kontakte', category: 'Marketing', icon: 'push', scope: 'location', setup: { location: 'settings/more-channels' }, description: 'Besucher von Funnels erlauben Browser-Benachrichtigungen; Workflow-Aktion „Push an Kontakt“.', credentials: 'Keine – nur einschalten unter Einstellungen → Weitere Kanäle (eigene VAPID-Schlüssel).', docs: 'docs/channels.md#web-push-to-contacts' },
-        location: (_ctx: Ctx, loc: string) => {
-          if (!on(getAccount(app, loc, CH))) return { status: 'info', detail: 'Aus' };
+        entry: { key: 'contact_push', name: ti('Web-Push an Kontakte'), category: ti('Marketing'), icon: 'push', scope: 'location', setup: { location: 'settings/more-channels' }, description: ti('Besucher von Funnels erlauben Browser-Benachrichtigungen; Workflow-Aktion „Push an Kontakt“.'), credentials: ti('Keine – nur einschalten unter Einstellungen → Weitere Kanäle (eigene VAPID-Schlüssel).'), docs: 'docs/channels.md#web-push-to-contacts' },
+        location: (ctx: Ctx, loc: string) => {
+          const t = tCtx(ctx);
+          if (!on(getAccount(app, loc, CH))) return { status: 'info', detail: t('Aus') };
           const n = db.get<{ all: number; linked: number }>('SELECT COUNT(*) AS "all", COUNT(contact_id) AS linked FROM contact_push_subs WHERE location_id = ?', loc)!;
-          return { status: 'ok', detail: `${n.all} Anmeldungen, ${n.linked} mit Kontakt` };
+          return { status: 'ok', detail: t('{all} Anmeldungen, {linked} mit Kontakt', { all: n.all, linked: n.linked }) };
         },
       },
     ];
@@ -296,10 +313,11 @@ button:disabled{opacity:.6}#st{min-height:1.5em;margin-top:14px;font-size:14px;c
     app.services.workflowActions = {
       ...(app.services.workflowActions ?? {}),
       push_contact: async (run: any, step: any, vars: Record<string, any>) => {
-        const t = (s: unknown) => render(String(s ?? ''), vars);
-        const r: any = await pushToContact(run.location_id, { contactId: run.contact_id, title: t(step.title) || undefined, body: t(step.body), url: t(step.url).trim() || undefined, source: 'Workflow' });
+        const fill = (s: unknown) => render(String(s ?? ''), vars);
+        const r: any = await pushToContact(run.location_id, { contactId: run.contact_id, title: fill(step.title) || undefined, body: fill(step.body), url: fill(step.url).trim() || undefined, source: 'Workflow' });
         if (r.status === 'failed') throw new Error(r.error);
-        return `Push an ${r.devices} ${r.devices === 1 ? 'Gerät' : 'Geräte'}`;
+        const t = tApp();
+        return t.plural(r.devices, { one: 'Push an {n} Gerät', other: 'Push an {n} Geräte' });
       },
     };
   },

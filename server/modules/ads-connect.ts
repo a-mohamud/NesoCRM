@@ -29,6 +29,7 @@ import {
 } from '../services/ads-store.js';
 import { STATE_TTL_MS, authorizeUrl, exchangeCode, idTokenClaims, pkcePair, revokeToken, signState, verifyState, type Purpose, type StatePayload } from '../services/oauth.js';
 import { canManageLocation, clientConfig } from './oauth-connect.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Connections of the ads manager: per sub-account Meta (Facebook Login → long-lived token, ad account, Page, pixel)
@@ -125,7 +126,7 @@ export const adsConnectModule: Module = {
         `INSERT INTO ads_settings (location_id, max_daily_budget_cents, updated_at) VALUES (?, ?, ?) ON CONFLICT(location_id) DO UPDATE SET max_daily_budget_cents = excluded.max_daily_budget_cents, updated_at = excluded.updated_at`,
         ctx.locationId, v, now(),
       );
-      audit(app, ctx, 'ads.settings.limit', `Tageslimit für Anzeigen auf ${(v / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} gesetzt`, { locationId: ctx.locationId });
+      audit(app, ctx, 'ads.settings.limit', tApp()('Tageslimit für Anzeigen auf {amount} gesetzt', { amount: (v / 100).toLocaleString(tApp().locale === 'de' ? 'de-DE' : 'en-GB', { style: 'currency', currency: 'EUR' }) }), { locationId: ctx.locationId });
       return { max_daily_budget_cents: v };
     });
 
@@ -191,7 +192,7 @@ export const adsConnectModule: Module = {
         }
       }
       saveAgencyAds(app, { meta, google });
-      audit(app, ctx, 'ads.agency.update', `Anzeigen-Zugänge der Agentur geändert (${[...Object.keys(meta).map((k) => `Meta ${k}`), ...Object.keys(google).map((k) => `Google ${k}`)].join(', ') || 'nichts'})`, { locationId: null });
+      audit(app, ctx, 'ads.agency.update', tApp()('Anzeigen-Zugänge der Agentur geändert ({fields})', { fields: [...Object.keys(meta).map((k) => `Meta ${k}`), ...Object.keys(google).map((k) => `Google ${k}`)].join(', ') || tApp()('nichts') }), { locationId: null });
       return agencyOut();
     });
 
@@ -228,20 +229,21 @@ export const adsConnectModule: Module = {
     });
 
     // --- OAuth: callback -----------------------------------------------------------------------------------------
-    const back = (params: Record<string, string>) => redirect(`${RETURN_TO}?${new URLSearchParams(params)}`);
+    // The message is shown as it comes: translated here (it is a German message id or an already translated error).
+    const back = (params: Record<string, string>) => redirect(`${RETURN_TO}?${new URLSearchParams(params.msg ? { ...params, msg: tApp()(params.msg) } : params)}`);
 
     router.get('/oauth/ads/:platform/callback', 'public', async (ctx: Ctx) => {
       const platform = ctx.params.platform as Platform;
       if (!PLATFORMS.includes(platform)) throw notFound();
       const sid = ctx.cookies[SESSION_COOKIE];
       const user = sid ? db.get(`SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`, sha256(sid), now()) : undefined;
-      if (!user) return html(messagePage('Nicht angemeldet', 'Bitte zuerst anmelden und dann noch einmal verbinden.'), 401);
+      if (!user) return html(messagePage(tCtx(ctx)('Nicht angemeldet'), tCtx(ctx)('Bitte zuerst anmelden und dann noch einmal verbinden.')), 401);
       let payload: StatePayload;
       try {
         payload = verifyState(app.config.secret, String(ctx.query.get('state') ?? ''), { sessionHash: sha256(sid!) });
         if ((payload.p as string) !== platform || payload.u !== user.id) throw new Error('Ungültige Anfrage (state passt nicht)');
       } catch (e) {
-        return html(messagePage('Verbinden fehlgeschlagen', (e as Error).message), 400);
+        return html(messagePage(tCtx(ctx)('Verbinden fehlgeschlagen'), tCtx(ctx)((e as Error).message)), 400);
       }
       const pending = db.get('SELECT * FROM ads_oauth_pending WHERE nonce = ?', payload.n);
       db.run('DELETE FROM ads_oauth_pending WHERE nonce = ?', payload.n);
@@ -265,11 +267,11 @@ export const adsConnectModule: Module = {
 
     async function finishMeta(ctx: Ctx, user: any, locationId: string, code: string, pending: any) {
       const a = agencyAds(app).meta;
-      if (!a.app_id || !a.app_secret) throw new Error('Die Meta-App der Agentur fehlt');
+      if (!a.app_id || !a.app_secret) throw new Error(tApp()('Die Meta-App der Agentur fehlt'));
       const t = await exchangeMetaCode(fetcher(), META_ADS_VERSION, { appId: a.app_id, appSecret: a.app_secret, redirectUri: pending.redirect_uri, code });
       const api = metaApi(fetcher(), META_ADS_VERSION, t.access_token);
       const granted = await grantedScopes(api).catch(() => [] as string[]);
-      if (!granted.includes('ads_management') && !granted.includes('ads_read')) throw new Error('Bitte beim Verbinden die Rechte für Anzeigen erlauben (ads_management und ads_read)');
+      if (!granted.includes('ads_management') && !granted.includes('ads_read')) throw new Error(tApp()('Bitte beim Verbinden die Rechte für Anzeigen erlauben (ads_management und ads_read)'));
       const found = await discover(api);
       const cur = loadConnection(app, locationId, 'meta');
       const same = cur?.config.fb_user_id && cur.config.fb_user_id === found.user.id;
@@ -299,18 +301,18 @@ export const adsConnectModule: Module = {
       if (!same) config.pixel_id = '';
       saveConnection(app, locationId, 'meta', { config, secrets });
       setConnectionError(app, locationId, 'meta', null);
-      audit(app, ctx, 'ads.connect', `Meta verbunden: ${found.user.name}${granted.includes('ads_management') ? '' : ' (nur lesend – ads_management fehlt)'}`, { locationId, userId: user.id, actor: user.name });
+      audit(app, ctx, 'ads.connect', tApp()(granted.includes('ads_management') ? 'Meta verbunden: {name}' : 'Meta verbunden: {name} (nur lesend – ads_management fehlt)', { name: found.user.name }), { locationId, userId: user.id, actor: user.name });
     }
 
     async function finishGoogle(ctx: Ctx, user: any, locationId: string, code: string, pending: any) {
       const cfg = clientConfig(app, 'google');
-      if (!cfg) throw new Error('Die Google-App der Agentur fehlt');
+      if (!cfg) throw new Error(tApp()('Die Google-App der Agentur fehlt'));
       const t = await exchangeCode(fetcher(), 'google', cfg, { code, verifier: pending.verifier, redirectUri: pending.redirect_uri, scopes: [] });
       if (t.scope && !t.scope.split(/\s+/).includes(GOOGLE_ADS_SCOPE)) {
         await revokeToken(fetcher(), 'google', cfg, t.refresh_token ?? t.access_token);
-        throw new Error('Bitte beim Verbinden den Zugriff auf Google Ads erlauben');
+        throw new Error(tApp()('Bitte beim Verbinden den Zugriff auf Google Ads erlauben'));
       }
-      if (!t.refresh_token) throw new Error('Google hat keinen dauerhaften Zugriff erteilt – bitte noch einmal verbinden');
+      if (!t.refresh_token) throw new Error(tApp()('Google hat keinen dauerhaften Zugriff erteilt – bitte noch einmal verbinden'));
       const claims = idTokenClaims(t.id_token);
       const cur = loadConnection(app, locationId, 'google');
       const same = cur?.config.account_email && cur.config.account_email === claims.email;
@@ -319,7 +321,7 @@ export const adsConnectModule: Module = {
       // The OAuth app is the agency's: values from an earlier manual setup must not shadow it.
       saveConnection(app, locationId, 'google', { config, secrets: { refresh_token: t.refresh_token, client_id: null, client_secret: null } });
       setConnectionError(app, locationId, 'google', null);
-      audit(app, ctx, 'ads.connect', `Google Ads verbunden: ${claims.email}`, { locationId, userId: user.id, actor: user.name });
+      audit(app, ctx, 'ads.connect', tApp()('Google Ads verbunden: {email}', { email: claims.email }), { locationId, userId: user.id, actor: user.name });
     }
 
     // --- choose the ad account ---------------------------------------------------------------------------------
@@ -384,7 +386,7 @@ export const adsConnectModule: Module = {
           config.pixel_id = px;
         }
         saveConnection(app, ctx.locationId, 'meta', { config, secrets });
-        audit(app, ctx, 'ads.connect.select', `Meta: Werbekonto/Seite/Pixel gewählt (${config.ad_account_name ?? c.adAccountId})`, { locationId: ctx.locationId });
+        audit(app, ctx, 'ads.connect.select', tApp()('Meta: Werbekonto/Seite/Pixel gewählt ({account})', { account: config.ad_account_name ?? c.adAccountId }), { locationId: ctx.locationId });
         return out(ctx.locationId, 'meta');
       }
       const conn = loadConnection(app, ctx.locationId, 'google');
@@ -406,7 +408,7 @@ export const adsConnectModule: Module = {
         config.login_customer_id = v;
       }
       saveConnection(app, ctx.locationId, 'google', { config });
-      audit(app, ctx, 'ads.connect.select', `Google Ads: Konto gewählt (${config.customer_name ?? g.customerId})`, { locationId: ctx.locationId });
+      audit(app, ctx, 'ads.connect.select', tApp()('Google Ads: Konto gewählt ({account})', { account: config.customer_name ?? g.customerId }), { locationId: ctx.locationId });
       return out(ctx.locationId, 'google');
     });
 
@@ -454,7 +456,7 @@ export const adsConnectModule: Module = {
           saveConnection(app, row.location_id, 'meta', { config: { token_expires_at: new Date(Date.now() + t.expires_in * 1000).toISOString() }, secrets: { token: t.access_token } });
           setConnectionError(app, row.location_id, 'meta', null);
         } catch (e) {
-          if (left < 3 * 86400_000) setConnectionError(app, row.location_id, 'meta', 'Der Meta-Zugang läuft bald ab – bitte unter Anzeigen → Verbindungen neu verbinden');
+          if (left < 3 * 86400_000) setConnectionError(app, row.location_id, 'meta', tLoc(app, row.location_id)('Der Meta-Zugang läuft bald ab – bitte unter Anzeigen → Verbindungen neu verbinden'));
           console.warn('[ads] token refresh', row.location_id, (e as Error).message);
         }
       }

@@ -20,6 +20,7 @@ import {
 } from '../services/todoist-sync.js';
 import type { Tool } from './mcp.js';
 import { openSecret, sealSecret } from './mail-sync.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Agentur → Integrationen → Todoist: two-way task sync with one personal Todoist account –
@@ -185,7 +186,7 @@ export const todoistModule: Module = {
         try {
           user = await todoistClient(app, tokenValue).user();
         } catch (e) {
-          throw bad(e instanceof TodoistError && (e.status === 401 || e.status === 403) ? 'Todoist lehnt den Token ab – bitte unter Todoist → Einstellungen → Integrationen → Entwickler neu kopieren' : `Token-Test fehlgeschlagen: ${(e as Error).message}`);
+          throw bad(e instanceof TodoistError && (e.status === 401 || e.status === 403) ? 'Todoist lehnt den Token ab – bitte unter Todoist → Einstellungen → Integrationen → Entwickler neu kopieren' : tApp()('Token-Test fehlgeschlagen: {message}', { message: (e as Error).message }));
         }
         const premium = user.is_premium ?? (user.premium_status ? user.premium_status !== 'not_premium' : undefined);
         const account = { id: String(user.id), name: user.full_name ?? '', email: user.email ?? '', tz: user.tz_info?.timezone ?? '', premium };
@@ -194,7 +195,7 @@ export const todoistModule: Module = {
         // project). One project per sub-account waits until the user switches syncing on.
         if (!cfg.token_sealed && b.enabled === undefined) cfg.enabled = cfg.layout === 'sections';
         Object.assign(cfg, { token_sealed: sealSecret(app, tokenValue), token_hint: `…${tokenValue.slice(-4)}`, account, owner_user_id: ctx.user?.id ?? cfg.owner_user_id ?? null });
-        log(app, 'info', `Verbunden mit Todoist${account.name ? ` (${account.name})` : ''}.`);
+        log(app, 'info', account.name ? tApp()('Verbunden mit Todoist ({name}).', { name: account.name }) : tApp()('Verbunden mit Todoist.'));
       }
       if (b.enabled !== undefined) {
         if (b.enabled && !cfg.token_sealed) throw bad('Bitte zuerst den API-Token eintragen');

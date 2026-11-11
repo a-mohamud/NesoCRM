@@ -4,6 +4,7 @@ import { id as newId, now, uniq } from '../../core/util.js';
 import { getBranding } from '../../modules/agency.js';
 import { loadFeedbackSettings } from '../feedback-store.js';
 import { deliverEmail } from '../messaging.js';
+import { tApp, tUser } from '../../i18n/index.js';
 
 /**
  * Tells people what happens to their orders: a note in the app (the strip on the Werkstatt page and the badge in
@@ -40,7 +41,9 @@ export async function tell(app: App, t: Tell): Promise<void> {
   const { db } = app;
   const ids = uniq(t.userIds.filter((x): x is string => !!x)).filter((u) => db.get('SELECT 1 FROM users WHERE id = ?', u));
   if (!ids.length) return;
-  const body = String(t.body ?? '').slice(0, 400);
+  // Titles, bodies and button labels are German message ids (translated here, in the instance language).
+  t = { ...t, title: tApp()(t.title), ...(t.actions ? { actions: t.actions.map((x) => ({ ...x, title: tApp()(x.title) })) } : {}) };
+  const body = tApp()(String(t.body ?? '')).slice(0, 400);
   const url = q(t.path, t.locationId);
   // 1. in the app
   try {
@@ -85,15 +88,16 @@ export async function tell(app: App, t: Tell): Promise<void> {
     if (!user?.email) continue;
     const prefs = db.get<{ email: number }>('SELECT email FROM feedback_prefs WHERE user_id = ?', u);
     if (prefs && prefs.email === 0) continue;
-    const lines = [`Hallo ${String(user.name || '').split(' ')[0] || ''},`, '', t.title, ...(body ? ['', body] : []), '', `Auftrag öffnen: ${base}${url}`];
-    for (const a of t.actions ?? []) lines.push(`${a.title}: ${base}${q(t.path, t.locationId, a.action)}`);
-    if (t.actions?.length) lines.push('', 'Die Links öffnen die Seite in der App – erst dort bestätigst du.');
-    lines.push('', 'Viele Grüße', brand);
+    const tu = tUser(app as never, u);
+    const lines = [tu('Hallo {name},', { name: String(user.name || '').split(' ')[0] || '' }), '', tu(t.title), ...(body ? ['', tu(body)] : []), '', tu('Auftrag öffnen: {base}{url}', { base, url })];
+    for (const a of t.actions ?? []) lines.push(`${tu(a.title)}: ${base}${q(t.path, t.locationId, a.action)}`);
+    if (t.actions?.length) lines.push('', tu('Die Links öffnen die Seite in der App – erst dort bestätigst du.'));
+    lines.push('', tu('Viele Grüße'), brand);
     const text = lines.join('\n');
     let html = textToHtml(text);
     for (const link of new Set(lines.filter((l) => l.includes(`${base}/`)).map((l) => l.slice(l.indexOf(base))))) html = html.replace(escapeHtml(link), `<a href="${escapeHtml(link)}">${escapeHtml(link)}</a>`);
     try {
-      await send(loc, { to: user.email, subject: t.title, text, html });
+      await send(loc, { to: user.email, subject: tu(t.title), text, html });
     } catch (e) {
       console.error('[werkstatt] mail', (e as Error).message);
     }

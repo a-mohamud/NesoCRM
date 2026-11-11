@@ -2,6 +2,7 @@ import type { App, Module } from '../core/app.js';
 import { HttpError, bad, notFound, str } from '../core/http.js';
 import { id, now } from '../core/util.js';
 import type { Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Reports, Claude artifacts and other documents, filed under the project they belong to.
@@ -62,7 +63,7 @@ export function saveDocs(app: App, list: DocIn[], opts: { locationId?: string | 
     const guess = guessDoc(url);
     const kind = DOC_KINDS.includes(String(raw.kind)) ? String(raw.kind) : (guess?.kind ?? 'artifact');
     const loc = raw.location_id !== undefined ? raw.location_id || null : (opts.locationId ?? null);
-    if (loc && !app.location(loc)) throw bad(`Projekt ${loc} gibt es nicht`);
+    if (loc && !app.location(loc)) throw bad(tApp()('Projekt {id} gibt es nicht', { id: loc }));
     const at = raw.updated_at && !Number.isNaN(Date.parse(raw.updated_at)) ? new Date(raw.updated_at).toISOString() : now();
     const fields = {
       title: str(raw.title, 'Titel', { max: 300 }) || url,

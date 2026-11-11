@@ -5,6 +5,7 @@ import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { tApp } from '../i18n/index.js';
 
 /**
  * A small S3 client for the off-site backups – just what they need (put, get, list, delete, multipart for big files), signed
@@ -94,7 +95,7 @@ export class S3Client {
     return new Promise<IncomingMessage>((resolve, reject) => {
       req.once('response', resolve);
       req.once('error', reject);
-      req.once('timeout', () => req.destroy(new Error(`S3: keine Antwort von ${url.host}`)));
+      req.once('timeout', () => req.destroy(new Error(tApp()('S3: keine Antwort von {host}', { host: url.host }))));
       if (typeof o.body === 'function') {
         const src = o.body();
         src.once('error', (e) => req.destroy(e));
@@ -110,7 +111,7 @@ export class S3Client {
     if ((res.statusCode ?? 0) >= 300) {
       const code = tag(body, 'Code');
       const msg = tag(body, 'Message');
-      throw new Error(`S3 ${what}: HTTP ${res.statusCode}${code ? ` ${code}` : ''}${msg ? ` – ${msg}` : ''}`);
+      throw new Error(`S3 ${what}: HTTP ${res.statusCode}${code ? ` ${code}` : ''}${msg ? ` – ${msg}` : ''}`); // i18n-ignore – technical (status, provider code and message)
     }
     return body;
   }
@@ -137,12 +138,12 @@ export class S3Client {
         const buf = Buffer.alloc(Math.min(PART_SIZE, size - pos));
         await fh.read(buf, 0, buf.length, pos);
         const res = await this.send('PUT', this.url(key, { partNumber: String(n), uploadId }), { body: buf });
-        await this.ok(res, `Teil ${n} von ${key}`);
+        await this.ok(res, tApp()('Teil {n} von {key}', { n, key }));
         parts.push({ n, etag: String(res.headers.etag ?? '') });
       }
       const xml = `<CompleteMultipartUpload>${parts.map((p) => `<Part><PartNumber>${p.n}</PartNumber><ETag>${p.etag.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</ETag></Part>`).join('')}</CompleteMultipartUpload>`;
-      const done = await this.ok(await this.send('POST', this.url(key, { uploadId }), { body: Buffer.from(xml), headers: { 'content-type': 'application/xml' } }), `Upload abschließen ${key}`);
-      if (/<Error>/.test(done)) throw new Error(`S3 Upload abschließen ${key}: ${tag(done, 'Message') || tag(done, 'Code')}`);
+      const done = await this.ok(await this.send('POST', this.url(key, { uploadId }), { body: Buffer.from(xml), headers: { 'content-type': 'application/xml' } }), tApp()('Upload abschließen {key}', { key }));
+      if (/<Error>/.test(done)) throw new Error(`S3 ${tApp()('Upload abschließen {key}', { key })}: ${tag(done, 'Message') || tag(done, 'Code')}`);
     } catch (e) {
       await this.send('DELETE', this.url(key, { uploadId })).then((r) => r.resume()).catch(() => undefined);
       throw e;

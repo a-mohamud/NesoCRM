@@ -4,6 +4,7 @@ import { open } from 'node:fs/promises';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip, createGzip } from 'node:zlib';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Encryption of off-site backups: AES-256-GCM with a key from the environment (PGHL_BACKUP_KEY, 32 bytes as hex or base64),
@@ -122,7 +123,7 @@ export async function decryptFile(src: string, dst: string, keys: BackupKey[]): 
   }
   const id = header.subarray(8, 16);
   const key = keys.find((k) => k.id.equals(id));
-  if (!key) throw new Error(`Diese Sicherung braucht einen anderen Schlüssel (Key-ID ${id.toString('hex')}) – PGHL_BACKUP_KEY bzw. PGHL_BACKUP_KEY_PREVIOUS prüfen`);
+  if (!key) throw new Error(tApp()('Diese Sicherung braucht einen anderen Schlüssel (Key-ID {id}) – PGHL_BACKUP_KEY bzw. PGHL_BACKUP_KEY_PREVIOUS prüfen', { id: id.toString('hex') }));
   const decipher = createDecipheriv('aes-256-gcm', key.key, header.subarray(16, 28));
   decipher.setAAD(header);
   decipher.setAuthTag(tag);

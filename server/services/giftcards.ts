@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import type { App } from '../core/app.js';
 import { HttpError, bad } from '../core/http.js';
 import { centsToMoney, id, now } from '../core/util.js';
+import { tApp, translator, type STFn } from '../i18n/index.js';
 
 /**
  * Gift cards (docs/store.md#gift-cards): a code and a balance kept in an append-only ledger (issue, redeem, refund, adjust). A
@@ -69,7 +70,7 @@ export function usable(app: App, locationId: string, code: string, currency?: st
   if (!c) throw bad('Diesen Gutscheincode gibt es nicht');
   if (c.status !== 'active') throw bad('Dieser Gutschein ist gesperrt');
   if (expired(c)) throw bad('Dieser Gutschein ist abgelaufen');
-  if (currency && c.currency !== currency) throw bad(`Dieser Gutschein gilt nur in ${c.currency}`);
+  if (currency && c.currency !== currency) throw bad(tApp()('Dieser Gutschein gilt nur in {currency}', { currency: c.currency }));
   if (available(app, c) <= 0) throw bad('Auf diesem Gutschein ist kein Guthaben mehr');
   return c;
 }
@@ -167,11 +168,20 @@ export function issue(app: App, locationId: string, o: IssueInput): GiftCard {
 }
 
 /** The text of the mail with the code (buyer or recipient). */
-export function giftMailText(c: GiftCard, shop: string, from = ''): { subject: string; body: string } {
+export function giftMailText(c: GiftCard, shop: string, from = '', t: STFn = translator(), timeZone = 'Europe/Berlin'): { subject: string; body: string } {
   const value = centsToMoney(c.initial_cents, c.currency);
-  const until = c.expires_at ? `\nGültig bis: ${new Date(c.expires_at).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}` : '';
+  const de = t.locale === 'de';
+  const date = c.expires_at ? new Date(c.expires_at).toLocaleDateString(de ? 'de-DE' : 'en-GB', { timeZone, day: 'numeric', month: de ? '2-digit' : 'long', year: 'numeric' }) : '';
+  const until = date ? `\n${t('Gültig bis: {date}', { date })}` : '';
+  const quoted = c.message ? (de ? `„${c.message}“` : `“${c.message}”`) : '';
   return {
-    subject: `Dein Gutschein über ${value} von ${shop}`,
-    body: `Hallo${c.recipient_name ? ` ${c.recipient_name}` : ''},\n\n${from ? `${from} schenkt dir einen Gutschein` : 'hier ist dein Gutschein'} über ${value} für ${shop}.${c.message ? `\n\n„${c.message}“` : ''}\n\nGutscheincode: ${c.code}${until}\n\nDu kannst ihn im Online-Shop, auf Rechnungen und bei Terminbuchungen einlösen.\n\nViele Grüße\n${shop}`,
+    subject: t('Dein Gutschein über {value} von {shop}', { value, shop }),
+    body: [
+      c.recipient_name ? t('Hallo {name},', { name: c.recipient_name }) : t('Hallo,'),
+      (from ? t('{from} schenkt dir einen Gutschein über {value} für {shop}.', { from, value, shop }) : t('hier ist dein Gutschein über {value} für {shop}.', { value, shop })) + (quoted ? `\n\n${quoted}` : ''),
+      `${t('Gutscheincode: {code}', { code: c.code })}${until}`,
+      t('Du kannst ihn im Online-Shop, auf Rechnungen und bei Terminbuchungen einlösen.'),
+      `${t('Viele Grüße')}\n${shop}`,
+    ].join('\n\n'),
   };
 }

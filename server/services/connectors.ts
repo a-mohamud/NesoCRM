@@ -2,6 +2,7 @@ import type { App } from '../core/app.js';
 import type { Ctx } from '../core/http.js';
 import { safeFetch, type SafeResponse } from './net.js';
 import type { ActionOutcome } from './workflow-engine.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * Native connectors: small, direct integrations that need no Composio – a Slack/Discord webhook,
@@ -60,7 +61,7 @@ export function registerConnector(app: App, def: ConnectorDef) {
   for (const [type, fn] of Object.entries(def.actions ?? {})) {
     wrapped[type] = async (run, step, vars) => {
       const cfg: ConnectorConfig | null = app.services.connectorConfig?.(run.location_id, def.key) ?? null;
-      if (!cfg) throw new Error(`${def.name} ist in diesem Sub-Account nicht eingerichtet (Apps → Direkt-Verbindungen).`);
+      if (!cfg) throw new Error(tApp()('{name} ist in diesem Sub-Account nicht eingerichtet (Apps → Direkt-Verbindungen).', { name: def.name }));
       return fn(app, cfg, run, step, vars);
     };
   }
@@ -71,8 +72,8 @@ export function registerConnector(app: App, def: ConnectorDef) {
       entry: { key: `connector_${def.key}`, name: def.name, category: def.category, icon: def.icon, scope: 'location', setup: { location: 'apps/direct' }, description: def.description, credentials: def.credentials, guide: def.guide, docs: def.docs ?? 'docs/connectors.md' },
       location: (ctx: Ctx, loc: string) => {
         if (def.probe) return def.probe(app, loc, ctx);
-        const st = app.services.connectorStatus?.(loc, def.key);
-        return st ?? { status: 'unavailable', detail: 'Modul nicht installiert' };
+        const st = app.services.connectorStatus?.(loc, def.key, tCtx(ctx));
+        return st ?? { status: 'unavailable', detail: tCtx(ctx)('Modul nicht installiert') };
       },
     },
   ];
@@ -94,10 +95,11 @@ export async function readJson(r: SafeResponse, service: string): Promise<any> {
   }
   if (r.ok) return data;
   const msg = String(data?.message ?? data?.error?.message ?? data?.error ?? raw ?? '').slice(0, 200);
-  if (r.status === 401 || r.status === 403) throw new Error(`${service}: Zugriff verweigert (${r.status}) – Token/Freigabe prüfen${msg ? `: ${msg}` : ''}`);
-  if (r.status === 404 || r.status === 410) throw new Error(`${service}: nicht gefunden (${r.status})${msg ? ` – ${msg}` : ''}`);
-  if (r.status === 429) throw new Error(`${service}: zu viele Anfragen – bitte später erneut`);
-  throw new Error(`${service} antwortet ${r.status}${msg ? `: ${msg}` : ''}`);
+  const t = tApp();
+  if (r.status === 401 || r.status === 403) throw new Error(t('{service}: Zugriff verweigert ({status}) – Token/Freigabe prüfen', { service, status: r.status }) + (msg ? `: ${msg}` : ''));
+  if (r.status === 404 || r.status === 410) throw new Error(t('{service}: nicht gefunden ({status})', { service, status: r.status }) + (msg ? ` – ${msg}` : ''));
+  if (r.status === 429) throw new Error(t('{service}: zu viele Anfragen – bitte später erneut', { service }));
+  throw new Error(t('{service} antwortet {status}', { service, status: r.status }) + (msg ? `: ${msg}` : ''));
 }
 
 // --- Slack & Discord (pure) ----------------------------------------------------------------------
@@ -215,8 +217,8 @@ export const EXPORT_COLUMNS: [string, string][] = [
 ];
 
 /** Contacts → sheet rows (header + one row each), custom fields as extra columns. */
-export function contactsToRows(contacts: any[], custom: { key: string; label: string }[]): string[][] {
-  const head = [...EXPORT_COLUMNS.map((c) => c[1]), ...custom.map((f) => f.label || f.key)];
+export function contactsToRows(contacts: any[], custom: { key: string; label: string }[], t: STFn = tApp()): string[][] {
+  const head = [...EXPORT_COLUMNS.map((c) => t(c[1])), ...custom.map((f) => f.label || f.key)];
   const cell = (v: unknown) => {
     // Written with valueInputOption=RAW: Sheets stores "=…" as text, never as a formula.
     const s = Array.isArray(v) ? v.join(', ') : v === null || v === undefined ? '' : String(v);

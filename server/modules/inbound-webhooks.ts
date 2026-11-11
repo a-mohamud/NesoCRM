@@ -7,6 +7,7 @@ import { processRun, startWorkflow } from '../services/workflow-engine.js';
 import { RateLimiter, SIGNATURE_HEADERS, applyMapping, cleanMapping, flattenPaths, hasIdentity, verifyHmac } from '../services/inbound-webhooks.js';
 import { openSecret, sealSecret } from './mail-sync.js';
 import { deliveryIdOf, firstSeen } from '../services/channel-kit.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Workflow trigger "Webhook empfangen": every workflow with this trigger gets a secret URL
@@ -174,7 +175,8 @@ export const inboundWebhooksModule: Module = {
     router.post('/hooks/in/:token', 'public', async (ctx: Ctx) => {
       const row = db.get('SELECT * FROM inbound_webhooks WHERE token = ?', ctx.params.token);
       if (!row) throw notFound();
-      const stamp = (status: string) => db.run('UPDATE inbound_webhooks SET hits = hits + 1, last_at = ?, last_status = ? WHERE workflow_id = ?', now(), status.slice(0, 200), row.workflow_id);
+      // The last status is shown to the team: the texts are catalog keys, stored in the instance language.
+      const stamp = (status: string) => db.run('UPDATE inbound_webhooks SET hits = hits + 1, last_at = ?, last_status = ? WHERE workflow_id = ?', now(), tApp()(status).slice(0, 200), row.workflow_id);
       if (!limiter.allow(row.token, row.rate_limit)) {
         stamp('429 zu viele Anfragen');
         throw new HttpError(429, 'Zu viele Anfragen – bitte kurz warten');
@@ -226,7 +228,7 @@ export const inboundWebhooksModule: Module = {
         stamp('200 schon empfangen (gleiche Zustell-ID)');
         return { ok: true, duplicate: true };
       }
-      const { contact, created } = upsertContact(app, w.location_id, input, { source: `Webhook: ${w.name}`, tags });
+      const { contact, created } = upsertContact(app, w.location_id, input, { source: tLoc(app, w.location_id)('Webhook: {name}', { name: w.name }), tags });
       const rid = startWorkflow(app, w, contact.id, { webhook: payload });
       if (rid) await processRun(app, rid);
       stamp(`200 ${created ? 'Kontakt angelegt' : 'Kontakt aktualisiert'}${rid ? ', gestartet' : ''}`);

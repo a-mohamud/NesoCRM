@@ -9,6 +9,7 @@ import { id, now, normalizeEmail, safeEqual, sha256, token } from '../core/util.
 import { limiter } from '../services/creator-kit.js';
 import { parseRange } from '../services/genmedia/media.js';
 import type { Tool } from './mcp.js';
+import { tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Video-Testimonials – docs/reputation.md#video-testimonials. Each sub-account gets a collect page (`/testimonials/<slug>`): a
@@ -56,18 +57,19 @@ function stream(path: string, ctx: Ctx, mime: string, cache: string): RawResult 
 }
 const json = (body: unknown, status = 200): RawResult => ({ __raw: true, status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }, body: JSON.stringify(body) });
 
-const collectScript = (slug: string, maxMb: number) => `
+/** The page's script; its texts come in as JSON strings in the page's language. */
+const collectScript = (slug: string, maxMb: number, t: STFn) => `
 document.getElementById('vt').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target, file = f.video.files[0], out = document.getElementById('vt-msg'), btn = f.querySelector('button');
-  if (!file) { out.textContent = 'Bitte ein Video aufnehmen oder auswählen.'; return; }
-  if (file.size > ${maxMb} * 1048576) { out.textContent = 'Das Video ist zu groß (max. ${maxMb} MB).'; return; }
-  btn.disabled = true; out.textContent = 'Wird hochgeladen …';
+  if (!file) { out.textContent = ${JSON.stringify(t('Bitte ein Video aufnehmen oder auswählen.'))}; return; }
+  if (file.size > ${maxMb} * 1048576) { out.textContent = ${JSON.stringify(t('Das Video ist zu groß (max. {mb} MB).', { mb: maxMb }))}; return; }
+  btn.disabled = true; out.textContent = ${JSON.stringify(t('Wird hochgeladen …'))};
   try {
     const s = await fetch('/testimonials/${slug}/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: f.name.value, email: f.email.value, text: f.text.value, consent: f.consent.checked, size: file.size }) });
-    const j = await s.json(); if (!s.ok) throw new Error(j.error || 'Fehler');
+    const j = await s.json(); if (!s.ok) throw new Error(j.error || ${JSON.stringify(t('Fehler'))});
     const u = await fetch('/testimonials/${slug}/upload/' + j.id + '?t=' + encodeURIComponent(j.token), { method: 'PUT', body: file });
-    const k = await u.json(); if (!u.ok) throw new Error(k.error || 'Fehler');
+    const k = await u.json(); if (!u.ok) throw new Error(k.error || ${JSON.stringify(t('Fehler'))});
     f.hidden = true; out.textContent = document.getElementById('vt').dataset.thanks;
   } catch (err) { out.textContent = err.message; btn.disabled = false; }
 });`;
@@ -97,8 +99,15 @@ export const videoTestimonialsModule: Module = {
      * address is the sub-account's id – already public in the chat widget's URL – so the default page takes no videos: anonymous
      * uploads only reach a sub-account that switched its collect page on. */
     const defaults = (loc: string) => {
-      const name = app.location(loc)?.name ?? 'Unternehmen';
-      return { location_id: loc, slug: loc, title: `Dein Video für ${name}`, intro: 'Erzähl in 30–60 Sekunden, wie dir unsere Arbeit geholfen hat. Einfach mit dem Handy aufnehmen.', thank_you: 'Danke! Wir haben dein Video erhalten.', active: 0, updated_at: now() };
+      // the page is for the sub-account's customers: its language
+      const t = tLoc(app, loc);
+      const name = app.location(loc)?.name ?? t('Unternehmen');
+      return { location_id: loc, slug: loc, title: t('Dein Video für {name}', { name }), intro: t('Erzähl in 30–60 Sekunden, wie dir unsere Arbeit geholfen hat. Einfach mit dem Handy aufnehmen.'), thank_you: t('Danke! Wir haben dein Video erhalten.'), active: 0, updated_at: now() };
+    };
+    /** A JSON error of the public routes in the sub-account's language (raw answers skip the central translation). */
+    const err = (loc: string | null | undefined, message: string, status: number) => {
+      const t = tLoc(app, loc);
+      return json({ error: t(message) }, status);
     };
     const pageOf = (loc: string) => {
       const p = db.get<any>('SELECT * FROM testimonial_pages WHERE location_id = ?', loc) ?? defaults(loc);
@@ -149,19 +158,25 @@ export const videoTestimonialsModule: Module = {
     });
 
     // --- customer ------------------------------------------------------------------------------------------------------------------
-    const closed = () => html(publicPage({ title: 'Nicht verfügbar', body: '<div class="wrap"><div class="card"><h1>Nicht verfügbar</h1><p class="muted">Diese Seite nimmt gerade keine Videos an.</p></div></div>' }), 404);
+    const closed = (loc?: string | null) => {
+      const t = tLoc(app, loc);
+      return html(publicPage({ title: t('Nicht verfügbar'), body: `<div class="wrap"><div class="card"><h1>${escapeHtml(t('Nicht verfügbar'))}</h1><p class="muted">${escapeHtml(t('Diese Seite nimmt gerade keine Videos an.'))}</p></div></div>` }), 404);
+    };
     router.get('/testimonials/:slug', 'public', (ctx) => {
       const p = bySlug(ctx.params.slug);
-      if (!p || !p.active) return closed();
-      const body = `<div class="wrap" style="max-width:560px"><div class="card"><h1>${escapeHtml(p.title)}</h1><p class="muted">${escapeHtml(p.intro)}</p>
-<form id="vt" data-thanks="${escapeHtml(p.thank_you)}">
-<label for="vt-video">Video</label><input id="vt-video" name="video" type="file" accept="video/*" capture="user" required>
-<label for="vt-name">Dein Name</label><input id="vt-name" name="name" required maxlength="80" autocomplete="name">
-<label for="vt-email">E-Mail (wird nicht veröffentlicht)</label><input id="vt-email" name="email" type="email" maxlength="160" autocomplete="email">
-<label for="vt-text">Ein Satz dazu (optional)</label><textarea id="vt-text" name="text" rows="2" maxlength="500"></textarea>
-<label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px"><input type="checkbox" name="consent" required style="width:auto"> <span>Ich bin einverstanden, dass ${escapeHtml(app.location(p.location_id)?.name ?? 'das Unternehmen')} mein Video mit meinem Namen auf der Website und in sozialen Netzwerken zeigt. Widerruf jederzeit per E-Mail.</span></label>
-<button type="submit" style="margin-top:12px">Video senden</button></form><p id="vt-msg" role="status"></p></div></div>
-<script>${collectScript(escapeHtml(p.slug), Math.round(MAX / 1048576))}</script>`;
+      if (!p || !p.active) return closed(p?.location_id);
+      const t = tLoc(app, p.location_id);
+      const e = (s: string) => escapeHtml(s);
+      const business = app.location(p.location_id)?.name ?? t('das Unternehmen');
+      const body = `<div class="wrap" style="max-width:560px"><div class="card"><h1>${e(p.title)}</h1><p class="muted">${e(p.intro)}</p>
+<form id="vt" data-thanks="${e(p.thank_you)}">
+<label for="vt-video">${e(t('Video'))}</label><input id="vt-video" name="video" type="file" accept="video/*" capture="user" required>
+<label for="vt-name">${e(t('Dein Name'))}</label><input id="vt-name" name="name" required maxlength="80" autocomplete="name">
+<label for="vt-email">${e(t('E-Mail (wird nicht veröffentlicht)'))}</label><input id="vt-email" name="email" type="email" maxlength="160" autocomplete="email">
+<label for="vt-text">${e(t('Ein Satz dazu (optional)'))}</label><textarea id="vt-text" name="text" rows="2" maxlength="500"></textarea>
+<label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px"><input type="checkbox" name="consent" required style="width:auto"> <span>${e(t('Ich bin einverstanden, dass {business} mein Video mit meinem Namen auf der Website und in sozialen Netzwerken zeigt. Widerruf jederzeit per E-Mail.', { business }))}</span></label>
+<button type="submit" style="margin-top:12px">${e(t('Video senden'))}</button></form><p id="vt-msg" role="status"></p></div></div>
+<script>${collectScript(escapeHtml(p.slug), Math.round(MAX / 1048576), t)}</script>`;
       const r = html(publicPage({ title: p.title, body, head: '<meta name="robots" content="noindex">' }));
       r.headers['cache-control'] = 'no-store';
       return r;
@@ -180,18 +195,21 @@ export const videoTestimonialsModule: Module = {
     };
     router.post('/testimonials/:slug/start', 'public', (ctx) => {
       const p = bySlug(ctx.params.slug);
-      if (!p || !p.active) return json({ error: 'Diese Seite nimmt gerade keine Videos an' }, 404);
+      if (!p || !p.active) return err(p?.location_id, 'Diese Seite nimmt gerade keine Videos an', 404);
       const name = String(ctx.body?.name ?? '').trim().slice(0, 80);
-      if (!name) return json({ error: 'Bitte deinen Namen angeben' }, 400);
-      if (ctx.body?.consent !== true) return json({ error: 'Bitte die Einwilligung bestätigen' }, 400);
+      if (!name) return err(p.location_id, 'Bitte deinen Namen angeben', 400);
+      if (ctx.body?.consent !== true) return err(p.location_id, 'Bitte die Einwilligung bestätigen', 400);
       const size = Math.round(Number(ctx.body?.size));
-      if (!(size > 0) || size > MAX) return json({ error: `Das Video ist zu groß (max. ${Math.round(MAX / 1048576)} MB)` }, 400);
-      if (ipLimited(ctx.ip)) return json({ error: 'Zu viele Videos von dieser Verbindung – bitte in einer Stunde noch einmal' }, 429);
-      if (locationLimited(p.location_id)) return json({ error: 'Zu viele Videos auf einmal – bitte später noch einmal' }, 429);
+      if (!(size > 0) || size > MAX) {
+        const t = tLoc(app, p.location_id);
+        return json({ error: t('Das Video ist zu groß (max. {mb} MB)', { mb: Math.round(MAX / 1048576) }) }, 400);
+      }
+      if (ipLimited(ctx.ip)) return err(p.location_id, 'Zu viele Videos von dieser Verbindung – bitte in einer Stunde noch einmal', 429);
+      if (locationLimited(p.location_id)) return err(p.location_id, 'Zu viele Videos auf einmal – bitte später noch einmal', 429);
       // Unfinished uploads of this page go away after an hour (and free the space they reserved).
       db.run("DELETE FROM video_testimonials WHERE location_id = ? AND status = 'uploading' AND created_at < ?", p.location_id, new Date(Date.now() - OPEN_FOR_MS).toISOString());
-      if (db.get<{ n: number }>("SELECT COUNT(*) AS n FROM video_testimonials WHERE location_id = ? AND status = 'uploading'", p.location_id)!.n > 50) return json({ error: 'Gerade sind zu viele Uploads offen – bitte später noch einmal' }, 429);
-      if (!fits(p.location_id, size)) return json({ error: 'Gerade können keine Videos angenommen werden: der Speicherplatz ist voll. Bitte melde dich direkt beim Unternehmen.' }, 413);
+      if (db.get<{ n: number }>("SELECT COUNT(*) AS n FROM video_testimonials WHERE location_id = ? AND status = 'uploading'", p.location_id)!.n > 50) return err(p.location_id, 'Gerade sind zu viele Uploads offen – bitte später noch einmal', 429);
+      if (!fits(p.location_id, size)) return err(p.location_id, 'Gerade können keine Videos angenommen werden: der Speicherplatz ist voll. Bitte melde dich direkt beim Unternehmen.', 413);
       const raw = token(24);
       // `size` reserves the announced bytes until the video arrives (then it is the real size).
       const row = { id: id(), location_id: p.location_id, name, email: normalizeEmail(ctx.body?.email ?? '') || '', text: String(ctx.body?.text ?? '').trim().slice(0, 500), size, status: 'uploading', token_hash: sha256(raw), consent_at: now(), created_at: now(), updated_at: now() };
@@ -229,17 +247,17 @@ export const videoTestimonialsModule: Module = {
     };
     router.put('/testimonials/:slug/upload/:id', 'public', (ctx) => {
       const o = openUpload(ctx.params.slug, ctx.params.id, ctx.query.get('t') ?? '');
-      if (!o) return json({ error: 'Upload nicht gefunden – bitte Seite neu laden' }, 404);
+      if (!o) return err(bySlug(ctx.params.slug)?.location_id, 'Upload nicht gefunden – bitte Seite neu laden', 404);
       const { p, v } = o;
       if (claims.get(ctx.req) !== v.id) {
-        return inflight.has(v.id) ? json({ error: 'Dieses Video wird gerade schon hochgeladen' }, 409) : json({ error: 'Gerade werden sehr viele Videos hochgeladen – bitte gleich noch einmal' }, 503);
+        return inflight.has(v.id) ? err(p.location_id, 'Dieses Video wird gerade schon hochgeladen', 409) : err(p.location_id, 'Gerade werden sehr viele Videos hochgeladen – bitte gleich noch einmal', 503);
       }
       const buf = ctx.rawBuffer ?? Buffer.alloc(0);
       const kind = videoType(buf);
       if (!kind) {
         // The token is used up (a new try starts again, as the page does): one body per start.
         db.run("DELETE FROM video_testimonials WHERE id = ? AND status = 'uploading'", v.id);
-        return json({ error: 'Bitte ein Video (MP4, MOV oder WebM) senden' }, 400);
+        return err(p.location_id, 'Bitte ein Video (MP4, MOV oder WebM) senden', 400);
       }
       mkdirSync(dir, { recursive: true });
       const file = `${id(20)}.${TYPES[kind].ext}`;
@@ -252,18 +270,19 @@ export const videoTestimonialsModule: Module = {
     router.get('/testimonials/:slug/wall', 'public', (ctx) => {
       const p = bySlug(ctx.params.slug);
       if (!p) return closed();
+      const t = tLoc(app, p.location_id);
       const items = db.all<any>("SELECT * FROM video_testimonials WHERE location_id = ? AND status = 'approved' ORDER BY created_at DESC LIMIT 24", p.location_id);
       const cards = items
         .map((v) => `<figure class="card" style="margin:0"><video controls preload="metadata" playsinline src="/testimonials/${escapeHtml(p.slug)}/v/${escapeHtml(v.id)}" style="width:100%;border-radius:8px;background:#000"></video><figcaption><strong>${escapeHtml(v.name)}</strong>${v.text ? `<br><span class="muted">${escapeHtml(v.text)}</span>` : ''}</figcaption></figure>`)
         .join('');
-      const r = html(publicPage({ title: 'Kundenstimmen', embed: true, body: `<div style="display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));padding:16px">${cards || '<p class="muted">Noch keine Videos.</p>'}</div>` }));
+      const r = html(publicPage({ title: t('Kundenstimmen'), embed: true, body: `<div style="display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));padding:16px">${cards || `<p class="muted">${escapeHtml(t('Noch keine Videos.'))}</p>`}</div>` }));
       r.headers['cache-control'] = 'public, max-age=300';
       return r;
     });
     router.get('/testimonials/:slug/v/:id', 'public', (ctx) => {
       const p = bySlug(ctx.params.slug);
       const v = p && db.get<any>("SELECT * FROM video_testimonials WHERE id = ? AND location_id = ? AND status = 'approved'", ctx.params.id, p.location_id);
-      if (!v?.file || !existsSync(pathOf(v))) return json({ error: 'Nicht gefunden' }, 404);
+      if (!v?.file || !existsSync(pathOf(v))) return err(p?.location_id, 'Nicht gefunden', 404);
       return stream(pathOf(v), ctx, v.mime, 'public, max-age=3600');
     });
 

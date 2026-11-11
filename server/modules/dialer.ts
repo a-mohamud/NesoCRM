@@ -23,6 +23,7 @@ import { twiml, xml } from '../services/twilio.js';
 import { registerTriggers, type TriggerMeta } from '../services/wfx-kit.js';
 import { telephonyConfig, twilioRequest } from './telephony.js';
 import { audioOf, audioUrl } from './telephony-audio.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Power dialer: work through a call list contact after contact. A list comes from a smart list, from tags or from picked
@@ -121,20 +122,22 @@ export const dialerModule: Module = {
     };
 
     // --- settings ---------------------------------------------------------------------------------------------------
-    const settingsOf = (locationId: string): DialerSettings => withDialerDefaults(parseJson(db.get<any>('SELECT data FROM dialer_settings WHERE location_id = ?', locationId), ['data'])?.data);
+    const settingsOf = (locationId: string): DialerSettings => withDialerDefaults(parseJson(db.get<any>('SELECT data FROM dialer_settings WHERE location_id = ?', locationId), ['data'])?.data, tLoc(app, locationId));
     const tzOf = (locationId: string) => app.location(locationId)?.timezone || 'Europe/Berlin';
-    router.get('/api/dialer/settings', 'location', (ctx) => ({ settings: settingsOf(ctx.locationId), window: callingWindow(settingsOf(ctx.locationId), tzOf(ctx.locationId)), states: STATES.map(([code, name]) => ({ code, name })), consent_module: !!app.services.consent?.status, timezone: tzOf(ctx.locationId) }));
+    router.get('/api/dialer/settings', 'location', (ctx) => ({ settings: settingsOf(ctx.locationId), window: callingWindow(settingsOf(ctx.locationId), tzOf(ctx.locationId), new Date(), tCtx(ctx)), states: STATES.map(([code, name]) => ({ code, name })), consent_module: !!app.services.consent?.status, timezone: tzOf(ctx.locationId) }));
     router.put('/api/dialer/settings', 'location', (ctx) => {
       const next = cleanDialerSettings(ctx.body ?? {}, settingsOf(ctx.locationId));
       db.run('INSERT INTO dialer_settings (location_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(location_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at', ctx.locationId, JSON.stringify(next), now());
-      return { settings: next, window: callingWindow(next, tzOf(ctx.locationId)) };
+      return { settings: next, window: callingWindow(next, tzOf(ctx.locationId), new Date(), tCtx(ctx)) };
     });
 
     // --- the rules ------------------------------------------------------------------------------------------------------
     /** Whether `contactId` may be called now: the compliance gate of the sub-account (nothing is written). */
     const verdictFor = (locationId: string, contactId: string, item: { attempts: number; next_at: string | null }, s: DialerSettings, at = new Date()): Verdict => {
       const c = getContact(app, locationId, contactId);
-      if (!c) return { ok: false, code: 'no_phone', reason: 'Kontakt nicht gefunden' };
+      // The reason is stored on the list entry (blocked_reason): in the sub-account's language.
+      const t = tLoc(app, locationId);
+      if (!c) return { ok: false, code: 'no_phone', reason: t('Kontakt nicht gefunden') };
       let consent: { allow: boolean; reason: string; confirmed: boolean } | null = null;
       const svc = app.services.consent;
       if (svc?.status && svc.settings) {
@@ -151,9 +154,9 @@ export const dialerModule: Module = {
         attempts: item.attempts,
         maxAttempts: s.max_attempts,
         notBefore: item.next_at ?? '',
-        window: callingWindow(s, tzOf(locationId), at),
+        window: callingWindow(s, tzOf(locationId), at, t),
         at,
-      });
+      }, t);
     };
 
     // --- lists ----------------------------------------------------------------------------------------------------------
@@ -171,7 +174,7 @@ export const dialerModule: Module = {
       name: l.name,
       source: l.source,
       smart_list_id: l.smart_list_id,
-      smart_list_name: l.smart_list_id ? (smartListById(app, l.location_id, l.smart_list_id, who)?.name ?? '(gelöscht)') : null,
+      smart_list_name: l.smart_list_id ? (smartListById(app, l.location_id, l.smart_list_id, who)?.name ?? tLoc(app, l.location_id)('(gelöscht)')) : null,
       tags: l.tags,
       status: l.status,
       from_number: l.from_number,
@@ -274,7 +277,7 @@ export const dialerModule: Module = {
       if (!l) throw notFound('Anrufliste nicht gefunden');
       const by = db.all<{ disposition: string; n: number }>(`SELECT disposition, COUNT(*) n FROM dialer_items WHERE list_id = ? AND disposition <> '' GROUP BY disposition`, l.id);
       const s = settingsOf(ctx.locationId);
-      return { ...listOut(l, ctx), dispositions: by.map((r) => ({ key: r.disposition, label: s.dispositions.find((d) => d.key === r.disposition)?.label ?? r.disposition, n: r.n })), window: callingWindow(s, tzOf(ctx.locationId)) };
+      return { ...listOut(l, ctx), dispositions: by.map((r) => ({ key: r.disposition, label: s.dispositions.find((d) => d.key === r.disposition)?.label ?? r.disposition, n: r.n })), window: callingWindow(s, tzOf(ctx.locationId), new Date(), tCtx(ctx)) };
     });
     router.patch('/api/dialer/lists/:id', 'location', (ctx) => {
       const l = listRow(ctx.locationId, ctx.params.id);
@@ -341,10 +344,11 @@ export const dialerModule: Module = {
     router.post('/api/dialer/lists/:id/next', 'location', (ctx) => {
       const l = listRow(ctx.locationId, ctx.params.id);
       if (!l) throw notFound('Anrufliste nicht gefunden');
-      if (l.status !== 'active') return { item: null, done: false, paused: true, reason: 'Die Liste ist pausiert.', counts: counts(l.id) };
+      const t = tCtx(ctx);
+      if (l.status !== 'active') return { item: null, done: false, paused: true, reason: t('Die Liste ist pausiert.'), counts: counts(l.id) };
       const s = settingsOf(ctx.locationId);
-      const w = callingWindow(s, tzOf(ctx.locationId));
-      if (!w.open) return { item: null, done: false, waiting: true, reason: `Außerhalb der Anrufzeiten: ${w.reason}.`, next_window: w.next, counts: counts(l.id) };
+      const w = callingWindow(s, tzOf(ctx.locationId), new Date(), t);
+      if (!w.open) return { item: null, done: false, waiting: true, reason: t('Außerhalb der Anrufzeiten: {reason}.', { reason: w.reason }), next_window: w.next, counts: counts(l.id) };
       // Record access (modules/record-access.ts): a person who sees only part of the contacts is handed only those.
       const visible = app.services.recordAccess?.contactFilter?.(ctx) as ((contactId: string) => boolean) | undefined;
       for (let n = 0; n < 60; n++) {
@@ -352,7 +356,7 @@ export const dialerModule: Module = {
         const pick = pickNext(items, me(ctx));
         if (!pick) {
           const later = items.find((i) => i.next_at && i.next_at > now());
-          return { item: null, done: !later, waiting: !!later, reason: later ? 'Die übrigen Kontakte sind erst später dran (Rückruf oder Pause nach einem Versuch).' : 'Alle Kontakte sind abgearbeitet.', next_window: later?.next_at ?? null, counts: counts(l.id) };
+          return { item: null, done: !later, waiting: !!later, reason: later ? t('Die übrigen Kontakte sind erst später dran (Rückruf oder Pause nach einem Versuch).') : t('Alle Kontakte sind abgearbeitet.'), next_window: later?.next_at ?? null, counts: counts(l.id) };
         }
         const item = items.find((i) => i.id === pick.id)!;
         const v = verdictFor(ctx.locationId, item.contact_id, item, s);
@@ -365,12 +369,13 @@ export const dialerModule: Module = {
         db.run('UPDATE dialer_items SET locked_by = ?, locked_until = ?, updated_at = ? WHERE id = ?', me(ctx), new Date(Date.now() + LOCK_MS).toISOString(), now(), item.id);
         return { item: itemOut(itemRow(ctx.locationId, item.id)!, s), counts: counts(l.id), wrap_seconds: s.wrap_seconds };
       }
-      return { item: null, done: false, reason: 'Es ließ sich gerade kein anrufbarer Kontakt finden.', counts: counts(l.id) };
+      return { item: null, done: false, reason: t('Es ließ sich gerade kein anrufbarer Kontakt finden.'), counts: counts(l.id) };
     });
 
     /** The server's yes or no before a call is placed from the dialer (the browser phone and click-to-call ask it again). */
     const authorize = (locationId: string, itemId: string, userId: string | null): { ok: boolean; reason?: string; itemId?: string; from?: string } => {
       const item = itemRow(locationId, itemId);
+      // German ids: callers throw them as errors, which core/app.ts translates for the requester.
       if (!item) return { ok: false, reason: 'Eintrag der Anrufliste nicht gefunden' };
       const l = listRow(locationId, item.list_id);
       if (!l || l.status !== 'active') return { ok: false, reason: 'Die Anrufliste ist nicht aktiv' };
@@ -404,6 +409,7 @@ export const dialerModule: Module = {
     /** The outcome of a call: what happens to the entry, the contact and (for a callback) the calendar of the person. */
     const finish = (locationId: string, userId: string | null, item: ItemRow, d: Disposition, o: { note: string; callbackAt?: string; callbackUser?: string | null; callId?: string | null }): ItemRow => {
       const s = settingsOf(locationId);
+      const t = tLoc(app, locationId);
       const r = applyDisposition(d, { attempts: item.attempts, maxAttempts: s.max_attempts, retryMinutes: s.retry_minutes, callbackAt: o.callbackAt });
       const contact = getContact(app, locationId, item.contact_id)!;
       const callId = o.callId ?? db.get<{ id: string }>('SELECT id FROM calls WHERE dialer_item_id = ? ORDER BY started_at DESC LIMIT 1', item.id)?.id ?? null;
@@ -418,8 +424,8 @@ export const dialerModule: Module = {
             id: taskId,
             location_id: locationId,
             contact_id: contact.id,
-            title: `Rückruf: ${contactName(contact)} (${contact.phone})`.slice(0, 200),
-            description: `Vereinbart im Power-Dialer.${o.note ? `\n${o.note}` : ''}`.slice(0, 4000),
+            title: t('Rückruf: {name} ({phone})', { name: contactName(contact), phone: contact.phone }).slice(0, 200),
+            description: `${t('Vereinbart im Power-Dialer.')}${o.note ? `\n${o.note}` : ''}`.slice(0, 4000),
             due_at: r.next_at,
             assigned_to: o.callbackUser ?? userId ?? null,
             done: 0,
@@ -437,21 +443,21 @@ export const dialerModule: Module = {
           callId,
           d.kind === 'callback' ? (o.callbackUser ?? userId ?? null) : null,
           taskId,
-          r.exhausted ? `Nach ${r.attempts} Versuchen nicht erreicht` : '',
+          r.exhausted ? t('Nach {n} Versuchen nicht erreicht', { n: r.attempts }) : '',
           now(),
           item.id,
         );
         if (callId) db.run('UPDATE calls SET disposition = ?, updated_at = ? WHERE id = ? AND location_id = ?', d.key, now(), callId, locationId);
-        if (o.note) db.insert('notes', { id: id(), location_id: locationId, contact_id: contact.id, body: `Anruf (Power-Dialer) – ${d.label}\n${o.note}`.slice(0, 20_000), user_id: userId, created_at: now() });
-        logActivity(app, locationId, contact.id, 'dialer.disposition', `Power-Dialer: ${d.label}${o.note ? ` – ${o.note.slice(0, 120)}` : ''}`, { itemId: item.id, listId: item.list_id, disposition: d.key, callId });
+        if (o.note) db.insert('notes', { id: id(), location_id: locationId, contact_id: contact.id, body: `${t('Anruf (Power-Dialer) – {label}', { label: d.label })}\n${o.note}`.slice(0, 20_000), user_id: userId, created_at: now() });
+        logActivity(app, locationId, contact.id, 'dialer.disposition', `${t('Power-Dialer: {label}', { label: d.label })}${o.note ? ` – ${o.note.slice(0, 120)}` : ''}`, { itemId: item.id, listId: item.list_id, disposition: d.key, callId });
       });
       if (d.tag) addTags(app, locationId, contact.id, [d.tag]);
       if (d.dnd) {
         // "Nicht mehr anrufen": the phone consent is withdrawn in the ledger (or, without the module, the contact gets "Nicht stören").
-        if (app.services.consent?.revoke) app.services.consent.revoke({ locationId, contactId: contact.id, channel: 'phone', source: { kind: 'manual', label: 'Power-Dialer' }, note: o.note || 'Will nicht mehr angerufen werden', actor: userId ?? '' });
+        if (app.services.consent?.revoke) app.services.consent.revoke({ locationId, contactId: contact.id, channel: 'phone', source: { kind: 'manual', label: t('Power-Dialer') }, note: o.note || t('Will nicht mehr angerufen werden'), actor: userId ?? '' });
         else db.update('contacts', contact.id, { dnd: 1, updated_at: now() }, locationId);
         // Every other open entry of this contact in any list stops too.
-        db.run(`UPDATE dialer_items SET status = 'blocked', blocked_reason = 'Will nicht mehr angerufen werden', updated_at = ? WHERE contact_id = ? AND status IN ('pending', 'callback')`, now(), contact.id);
+        db.run(`UPDATE dialer_items SET status = 'blocked', blocked_reason = ?, updated_at = ? WHERE contact_id = ? AND status IN ('pending', 'callback')`, t('Will nicht mehr angerufen werden'), now(), contact.id);
       }
       app.events.emit(locationId, 'dialer.disposition', { contactId: contact.id, listId: item.list_id, itemId: item.id, callId, disposition: d.key, label: d.label, positive: d.positive, kind: d.kind, note: o.note, callbackAt: r.status === 'callback' ? r.next_at : null, attempts: r.attempts });
       return itemRow(locationId, item.id)!;
@@ -502,9 +508,10 @@ export const dialerModule: Module = {
         remote = j.calls?.[0]?.sid ?? null;
       }
       if (!remote || !CALL_SID.test(remote)) throw bad('Die Gegenstelle ist (noch) nicht verbunden');
+      // i18n-ignore (the Twilio field name "Twiml")
       await twilioRequest(app, cfg, 'POST', `/Calls/${remote}.json`, [['Twiml', twiml(`<Play>${xml(audioUrl(app, audio))}</Play><Hangup/>`)]]);
       db.run('UPDATE calls SET disposition = ?, updated_at = ? WHERE id = ?', 'voicemail_drop', now(), call.id);
-      if (call.contact_id) logActivity(app, ctx.locationId, call.contact_id, 'call.voicemail_drop', `Nachricht auf der Mailbox hinterlassen („${audio.name}“)`);
+      if (call.contact_id) logActivity(app, ctx.locationId, call.contact_id, 'call.voicemail_drop', tLoc(app, ctx.locationId)('Nachricht auf der Mailbox hinterlassen („{name}“)', { name: audio.name }));
       app.events.emit(ctx.locationId, 'dialer.voicemail_drop', { contactId: call.contact_id ?? undefined, callId: call.id, audioId: audio.id });
       const s = settingsOf(ctx.locationId);
       const d = s.dispositions.find((x) => x.key === 'voicemail_drop');

@@ -6,6 +6,7 @@ import { getContact } from '../services/contacts.js';
 import { deliverEmail, deliverSms, receiveMessage, sendToContact } from '../services/messaging.js';
 import { sealSettings } from '../core/secrets.js';
 import { firstSeen, inboundMessageId } from '../services/channel-kit.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 export const conversationsModule: Module = {
   name: 'conversations',
@@ -109,12 +110,13 @@ export const conversationsModule: Module = {
     router.post('/api/settings/test-message', 'location', async (ctx) => {
       const loc = app.location(ctx.locationId)!;
       const to = str(ctx.body.to, 'Empfänger', { required: true });
+      const t = tLoc(app, loc.id);
       try {
-        if (ctx.body.channel === 'sms') return await deliverSms(loc, to, `Test von ${loc.name}: SMS-Versand funktioniert.`);
-        const body = `Hallo,\n\ndiese Test-E-Mail kommt von ${loc.name}. Der Versand funktioniert.`;
-        return await deliverEmail(loc, { to, subject: 'Test-E-Mail', text: body, html: textToHtml(body) });
+        if (ctx.body.channel === 'sms') return await deliverSms(loc, to, t('Test von {name}: SMS-Versand funktioniert.', { name: loc.name }));
+        const body = t('Hallo,\n\ndiese Test-E-Mail kommt von {name}. Der Versand funktioniert.', { name: loc.name });
+        return await deliverEmail(loc, { to, subject: t('Test-E-Mail'), text: body, html: textToHtml(body) });
       } catch (e) {
-        throw bad(`Versand fehlgeschlagen: ${(e as Error).message}`);
+        throw bad(tCtx(ctx)('Versand fehlgeschlagen: {error}', { error: (e as Error).message }));
       }
     });
 

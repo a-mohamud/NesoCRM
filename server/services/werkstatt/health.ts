@@ -5,6 +5,7 @@ import { RateLimiter } from '../feedback.js';
 import { loadPolicy } from './policy.js';
 import { NAMES, ROUTES } from './names.js';
 import { tell } from './notify.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * Health of a plugin: usage and errors from `plugin_events`, votes of its wish, ratings of the Marktplatz.
@@ -43,7 +44,7 @@ export function killPlugin(app: App, pluginId: string, reason: string): boolean 
   reportPluginError(app, p, null, `automatisch abgeschaltet: ${reason}`);
   // Auto-disable is only half of it: admins and the author hear about it (app, push, email) and can roll back with one click.
   const admins = app.db.all<{ id: string }>(`SELECT id FROM users WHERE role = 'admin'`).map((r) => r.id);
-  void tell(app, { userIds: [...admins, p.owner_user_id], kind: 'alarm', title: `${NAMES.plugin} „${p.name}“ wurde abgeschaltet`, body: `${reason} Mit „Zurückrollen“ läuft wieder die Vorversion.`, path: `/app/${ROUTES.werkstatt}/plugins/${p.id}`, ...(p.owner_location_id ? { locationId: p.owner_location_id } : {}), actions: [{ action: 'rollback', title: 'Zurückrollen' }], email: true }).catch(() => {});
+  void tell(app, { userIds: [...admins, p.owner_user_id], kind: 'alarm', title: tApp()('{plugin} „{name}“ wurde abgeschaltet', { plugin: tApp()(NAMES.plugin), name: p.name }), body: tApp()('{reason} Mit „Zurückrollen“ läuft wieder die Vorversion.', { reason }), path: `/app/${ROUTES.werkstatt}/plugins/${p.id}`, ...(p.owner_location_id ? { locationId: p.owner_location_id } : {}), actions: [{ action: 'rollback', title: 'Zurückrollen' }], email: true }).catch(() => {});
   return true;
 }
 
@@ -59,7 +60,7 @@ export function maybeKill(app: App, pluginId: string): boolean {
   const k = loadPolicy(app).kill;
   const since = new Date(Date.now() - k.window_min * 60_000).toISOString();
   const r = app.db.get<{ errors: number; total: number }>(`SELECT COALESCE(SUM(kind IN ('error', 'denied')), 0) AS errors, COUNT(*) AS total FROM plugin_events WHERE plugin_id = ? AND created_at >= ?`, pluginId, since)!;
-  if (r.errors >= k.errors && r.errors / Math.max(1, r.total) >= k.ratio) return killPlugin(app, pluginId, `${r.errors} Fehler in ${k.window_min} Minuten (${Math.round((r.errors / r.total) * 100)} % aller Aufrufe)`);
+  if (r.errors >= k.errors && r.errors / Math.max(1, r.total) >= k.ratio) return killPlugin(app, pluginId, tApp()('{n} Fehler in {minutes} Minuten ({percent} % aller Aufrufe)', { n: r.errors, minutes: k.window_min, percent: Math.round((r.errors / r.total) * 100) }));
   return false;
 }
 
@@ -75,7 +76,7 @@ export function maybeSlow(app: App, pluginId: string): boolean {
   lastSlowCheck.set(pluginId, t);
   const since = new Date(t - k.window_min * 60_000).toISOString();
   const r = app.db.get<{ n: number; avg: number | null }>(`SELECT COUNT(*) AS n, AVG(ms) AS avg FROM plugin_events WHERE plugin_id = ? AND created_at >= ? AND kind IN ('call', 'job', 'action') AND ms > 0`, pluginId, since)!;
-  if (r.n >= k.min_calls && (r.avg ?? 0) >= k.latency_ms) return killPlugin(app, pluginId, `Zu langsam: im Schnitt ${Math.round(r.avg!)} ms in ${k.window_min} Minuten (Grenze ${k.latency_ms} ms, ${r.n} Aufrufe)`);
+  if (r.n >= k.min_calls && (r.avg ?? 0) >= k.latency_ms) return killPlugin(app, pluginId, tApp()('Zu langsam: im Schnitt {avg} ms in {minutes} Minuten (Grenze {limit} ms, {n} Aufrufe)', { avg: Math.round(r.avg!), minutes: k.window_min, limit: k.latency_ms, n: r.n }));
   return false;
 }
 

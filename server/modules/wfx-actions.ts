@@ -1,4 +1,5 @@
 import type { Module } from '../core/app.js';
+import { tApp, tLoc } from '../i18n/index.js';
 import { bad } from '../core/http.js';
 import { checkSyntax } from '../services/expr.js';
 import { aiActions } from '../services/wfx-ai.js';
@@ -47,12 +48,13 @@ export const wfxActionsModule: Module = {
     ],
   ],
   register(app) {
+    const t = tApp();
     registerActions(app, [...dataActions(app), ...flowActions(app), ...crmActions(app), ...aiActions(app), ...httpActions(app)]);
 
     // DND per channel: sendToContact (e-mail, SMS) and the Meta sender (WhatsApp, Messenger, Instagram) ask this before they send.
     const CHANNEL_LABEL: Record<string, string> = { email: 'E-Mail', sms: 'SMS', whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram' };
     app.services.channelDnd = (_loc: string, contactId: string, channel: string): string | undefined =>
-      app.db.get('SELECT 1 FROM wfx_dnd WHERE contact_id = ? AND channel = ?', contactId, channel) ? `Kontakt hat „Nicht stören“ für ${CHANNEL_LABEL[channel] ?? channel} aktiv` : undefined;
+      app.db.get('SELECT 1 FROM wfx_dnd WHERE contact_id = ? AND channel = ?', contactId, channel) ? tLoc(app, _loc)('Kontakt hat „Nicht stören“ für {channel} aktiv', { channel: tLoc(app, _loc)(CHANNEL_LABEL[channel] ?? channel) }) : undefined;
 
     // Checked when a workflow is saved: broken expressions and out-of-range limits are refused early, with a clear message.
     const clamp = (v: unknown, lo: number, hi: number, d: number) => {
@@ -64,12 +66,12 @@ export const wfxActionsModule: Module = {
       '*': (step: any) => {
         if (typeof step.expression === 'string' && step.expression.trim()) {
           const err = checkSyntax(step.expression);
-          if (err) throw bad(`Ausdruck in „${step.name || step.type}“: ${err}`);
+          if (err) throw bad(t('Ausdruck in „{step}“: {error}', { step: step.name || step.type, error: t(err) }));
         }
       },
       code: (step: any) => {
         const err = checkSyntax(String(step.code ?? ''));
-        if (err) throw bad(`Code-Schritt: ${err}`);
+        if (err) throw bad(t('Code-Schritt: {error}', { error: t(err) }));
       },
       goto: (step: any) => void (step.max_jumps = clamp(step.max_jumps, 1, HARD_MAX_JUMPS, 10)),
       goal_jump: (step: any) => void (step.max_jumps = clamp(step.max_jumps, 1, HARD_MAX_JUMPS, 10)),

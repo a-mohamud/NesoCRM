@@ -30,7 +30,6 @@ import {
   type Inv,
 } from '../services/invoice-flow.js';
 import {
-  INV_TYPES,
   TAX_MODES,
   UNITS,
   calcTotals,
@@ -59,6 +58,7 @@ import {
 } from '../services/invoice-model.js';
 import { archiveEinvoice, archiveFile, einvoiceOf, invoicePdfOf } from '../services/invoice-render.js';
 import { viesCheck } from '../services/vies.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 export type { LineItem };
 
@@ -111,6 +111,21 @@ export function invoiceOut(app: App, inv: Inv, extra: Record<string, unknown> = 
   };
 }
 
+/**
+ * Words of the printed document whose bare German form means something else elsewhere in the catalog ("Angebot" = offer,
+ * "Position" = job title, "Tag" = tag): looked up under a document-specific id; German keeps the plain word.
+ */
+const DOC_WORDS: Record<string, string> = {
+  Angebot: 'Angebot (Dokument)',
+  Abschlagsrechnung: 'Abschlagsrechnung (Dokument)',
+  Position: 'Position (Rechnungszeile)',
+  Menge: 'Menge (Rechnungszeile)',
+  Tag: 'Tag (Mengeneinheit)',
+  Woche: 'Woche (Mengeneinheit)',
+  Monat: 'Monat (Mengeneinheit)',
+};
+const docWord = (t: STFn, word: string) => (t.locale === 'de' || !DOC_WORDS[word] ? t(word) : t(DOC_WORDS[word]));
+
 // --- public page --------------------------------------------------------------------------------------------------------------------
 
 function invoiceHtml(app: App, inv: Inv) {
@@ -122,51 +137,52 @@ function invoiceHtml(app: App, inv: Inv) {
   const credit = inv.kind === 'credit_note';
   const paid = inv.status === 'paid' && inv.kind === 'invoice';
   const cancelled = inv.status === 'void';
-  const title = docTitle(inv as any);
+  const tl = tLoc(app, inv.location_id);
+  const title = docWord(tl, docTitle(inv as any));
   const open = inv.kind === 'invoice' ? openCents(inv as any) : 0;
   const link = inv.payment_link || (s.paypal && open > 0 ? `https://www.paypal.me/${encodeURIComponent(s.paypal)}/${(open / 100).toFixed(2)}${d.currency}` : '');
   // Online payment offered by another module (Stripe Checkout button), when configured.
   const online: string = !paid && !isQuote && !credit && !cancelled && open > 0 ? (app.services.invoicePayHtml?.(inv) ?? '') : '';
   const code = !isQuote && !credit && !cancelled && open > 0 ? girocodeFor({ name: d.seller.name, iban: d.bank.iban, bic: d.bank.bic, amount_cents: open, remittance: `${title} ${d.number}`.trim(), currency: d.currency }) : null;
   const addr = [d.buyer.company || d.buyer.name, d.buyer.company ? d.buyer.name : '', d.buyer.street, [d.buyer.postal_code, d.buyer.city].filter(Boolean).join(' ')].filter(Boolean);
-  const supply = d.supply_to ? `${deYmd(d.supply_from)} – ${deYmd(d.supply_to)}` : d.supply_auto ? 'entspricht dem Rechnungsdatum' : deYmd(d.supply_from);
+  const supply = d.supply_to ? `${deYmd(d.supply_from)} – ${deYmd(d.supply_to)}` : d.supply_auto ? tl('entspricht dem Rechnungsdatum') : deYmd(d.supply_from);
   const sign = credit ? 1 : -1;
   const terms = !isQuote && !credit ? paymentTermsText({ due_ymd: d.due_ymd, skonto: d.skonto, issued_ymd: d.issued_ymd, total_cents: open, currency: d.currency }) : '';
   const body = `<div class="wrap" style="max-width:860px"><div class="card">
   <div class="row" style="align-items:flex-start">
     <div>${loc.logo_url ? `<img src="${escapeHtml(loc.logo_url)}" alt="" style="max-height:60px">` : `<h2>${escapeHtml(loc.name)}</h2>`}
-      <p class="muted" style="font-size:13px">${escapeHtml(d.seller.name)}<br>${escapeHtml(d.seller.street)}${d.seller.street ? '<br>' : ''}${escapeHtml([d.seller.postal_code, d.seller.city].filter(Boolean).join(' '))}${d.seller.email ? `<br>${escapeHtml(d.seller.email)}` : ''}${d.seller.vat_id ? `<br>USt-IdNr.: ${escapeHtml(d.seller.vat_id)}` : ''}${d.seller.tax_number ? `<br>Steuernr.: ${escapeHtml(d.seller.tax_number)}` : ''}</p></div>
+      <p class="muted" style="font-size:13px">${escapeHtml(d.seller.name)}<br>${escapeHtml(d.seller.street)}${d.seller.street ? '<br>' : ''}${escapeHtml([d.seller.postal_code, d.seller.city].filter(Boolean).join(' '))}${d.seller.email ? `<br>${escapeHtml(d.seller.email)}` : ''}${d.seller.vat_id ? `<br>${escapeHtml(tl('USt-IdNr.: {id}', { id: d.seller.vat_id }))}` : ''}${d.seller.tax_number ? `<br>${escapeHtml(tl('Steuernr.: {n}', { n: d.seller.tax_number }))}` : ''}</p></div>
     <div style="text-align:right"><h1>${escapeHtml(title)}</h1>
-      <p>Nr. <strong>${escapeHtml(isDraftNumber(inv.number) ? 'Entwurf' : inv.number)}</strong><br>Datum: ${escapeHtml(deYmd(d.issued_ymd))}${!isQuote ? `<br>Leistungsdatum: ${escapeHtml(supply)}` : ''}${d.due_ymd && !isQuote && !credit ? `<br>Fällig: ${escapeHtml(deYmd(d.due_ymd))}` : ''}${d.ref ? `<br>Bezug: ${escapeHtml(d.ref.number)} vom ${escapeHtml(deYmd(d.ref.issued_ymd))}` : ''}</p>
-      ${paid ? '<p class="ok" style="display:inline-block">Bezahlt ✓</p>' : cancelled ? (creditClosed(inv as any) ? '<p class="muted">Gutgeschrieben – nichts mehr offen</p>' : '<p class="error">Storniert</p>') : ''}</div>
+      <p>${escapeHtml(tl('Nr.'))} <strong>${escapeHtml(isDraftNumber(inv.number) ? tl('Entwurf') : inv.number)}</strong><br>${escapeHtml(tl('Datum: {date}', { date: deYmd(d.issued_ymd) }))}${!isQuote ? `<br>${escapeHtml(tl('Leistungsdatum: {date}', { date: supply }))}` : ''}${d.due_ymd && !isQuote && !credit ? `<br>${escapeHtml(tl('Fällig: {date}', { date: deYmd(d.due_ymd) }))}` : ''}${d.ref ? `<br>${escapeHtml(tl('Bezug: {number} vom {date}', { number: d.ref.number, date: deYmd(d.ref.issued_ymd) }))}` : ''}</p>
+      ${paid ? `<p class="ok" style="display:inline-block">${escapeHtml(tl('Bezahlt ✓'))}</p>` : cancelled ? (creditClosed(inv as any) ? `<p class="muted">${escapeHtml(tl('Gutgeschrieben – nichts mehr offen'))}</p>` : `<p class="error">${escapeHtml(tl('Storniert'))}</p>`) : ''}</div>
   </div>
-  <p><strong>${escapeHtml(addr[0] ?? '')}</strong>${addr.slice(1).map((a) => `<br>${escapeHtml(a)}`).join('')}${d.buyer.vat_id ? `<br><span class="muted">USt-IdNr.: ${escapeHtml(d.buyer.vat_id)}</span>` : ''}${d.buyer.leitweg_id ? `<br><span class="muted">Leitweg-ID: ${escapeHtml(d.buyer.leitweg_id)}</span>` : ''}</p>
+  <p><strong>${escapeHtml(addr[0] ?? '')}</strong>${addr.slice(1).map((a) => `<br>${escapeHtml(a)}`).join('')}${d.buyer.vat_id ? `<br><span class="muted">${escapeHtml(tl('USt-IdNr.: {id}', { id: d.buyer.vat_id }))}</span>` : ''}${d.buyer.leitweg_id ? `<br><span class="muted">${escapeHtml(tl('Leitweg-ID: {id}', { id: d.buyer.leitweg_id }))}</span>` : ''}</p>
   ${d.title ? `<h2>${escapeHtml(d.title)}</h2>` : ''}
-  <div class="inv-scroll"><table class="inv-items"><thead><tr><th>Position</th><th style="text-align:right">Menge</th><th style="text-align:right">Einzelpreis</th>${d.tax_mode === 'standard' ? '<th style="text-align:right">USt.</th>' : ''}<th style="text-align:right">Gesamt</th></tr></thead><tbody>
-  ${d.items.map((it) => `<tr><td>${escapeHtml(it.name)}${it.description ? `<br><span class="muted" style="font-size:13px">${escapeHtml(it.description)}</span>` : ''}</td><td style="text-align:right">${escapeHtml(String(it.qty).replace('.', ','))}${it.unit && UNITS[it.unit] ? ` ${escapeHtml(UNITS[it.unit])}` : ''}</td><td style="text-align:right">${money(it.price_cents)}</td>${d.tax_mode === 'standard' ? `<td style="text-align:right">${escapeHtml(String(it.tax_rate).replace('.', ','))} %</td>` : ''}<td style="text-align:right">${money(lineNet(it))}</td></tr>`).join('')}
+  <div class="inv-scroll"><table class="inv-items"><thead><tr><th>${escapeHtml(docWord(tl, 'Position'))}</th><th style="text-align:right">${escapeHtml(docWord(tl, 'Menge'))}</th><th style="text-align:right">${escapeHtml(tl('Einzelpreis'))}</th>${d.tax_mode === 'standard' ? `<th style="text-align:right">${escapeHtml(tl('USt.'))}</th>` : ''}<th style="text-align:right">${escapeHtml(tl('Gesamt'))}</th></tr></thead><tbody>
+  ${d.items.map((it) => `<tr><td>${escapeHtml(it.name)}${it.description ? `<br><span class="muted" style="font-size:13px">${escapeHtml(it.description)}</span>` : ''}</td><td style="text-align:right">${escapeHtml(String(it.qty).replace('.', ','))}${it.unit && UNITS[it.unit] ? ` ${escapeHtml(docWord(tl, UNITS[it.unit]))}` : ''}</td><td style="text-align:right">${money(it.price_cents)}</td>${d.tax_mode === 'standard' ? `<td style="text-align:right">${escapeHtml(String(it.tax_rate).replace('.', ','))} %</td>` : ''}<td style="text-align:right">${money(lineNet(it))}</td></tr>`).join('')}
   </tbody></table></div>
   <table style="max-width:420px;margin-left:auto;margin-top:12px">
-    <tr><td>${d.tax_mode === 'standard' ? 'Netto' : 'Summe (ohne USt.)'}</td><td style="text-align:right">${money(d.totals.subtotal_cents)}</td></tr>
-    ${d.tax_mode === 'standard' ? d.totals.groups.filter((g) => g.rate > 0 || g.tax_cents !== 0).map((g) => `<tr><td>USt. ${escapeHtml(String(g.rate).replace('.', ','))} % auf ${escapeHtml(deAmount(g.net_cents))}</td><td style="text-align:right">${money(g.tax_cents)}</td></tr>`).join('') : ''}
-    <tr><td><strong>Gesamt</strong></td><td style="text-align:right"><strong>${money(d.totals.total_cents)}</strong></td></tr>
-    ${d.deductions.map((x) => `<tr><td>abzgl. ${escapeHtml(INV_TYPES.partial)} ${escapeHtml(x.number)} vom ${escapeHtml(deYmd(deductionYmd(x)))}</td><td style="text-align:right">${money(sign * x.total_cents)}</td></tr>`).join('')}
-    ${d.deductions.length ? `<tr><td><strong>${credit ? 'Erstattungsbetrag' : 'Noch zu zahlen'}</strong></td><td style="text-align:right"><strong>${money(d.totals.total_cents + sign * d.deducted_cents)}</strong></td></tr>` : ''}
+    <tr><td>${escapeHtml(tl(d.tax_mode === 'standard' ? 'Netto' : 'Summe (ohne USt.)'))}</td><td style="text-align:right">${money(d.totals.subtotal_cents)}</td></tr>
+    ${d.tax_mode === 'standard' ? d.totals.groups.filter((g) => g.rate > 0 || g.tax_cents !== 0).map((g) => `<tr><td>${escapeHtml(tl('USt. {rate} % auf {net}', { rate: String(g.rate).replace('.', ','), net: deAmount(g.net_cents) }))}</td><td style="text-align:right">${money(g.tax_cents)}</td></tr>`).join('') : ''}
+    <tr><td><strong>${escapeHtml(tl('Gesamt'))}</strong></td><td style="text-align:right"><strong>${money(d.totals.total_cents)}</strong></td></tr>
+    ${d.deductions.map((x) => `<tr><td>${escapeHtml(tl('abzgl. Abschlagsrechnung {number} vom {date}', { number: x.number, date: deYmd(deductionYmd(x)) }))}</td><td style="text-align:right">${money(sign * x.total_cents)}</td></tr>`).join('')}
+    ${d.deductions.length ? `<tr><td><strong>${escapeHtml(tl(credit ? 'Erstattungsbetrag' : 'Noch zu zahlen'))}</strong></td><td style="text-align:right"><strong>${money(d.totals.total_cents + sign * d.deducted_cents)}</strong></td></tr>` : ''}
   </table>
   ${d.tax_mode !== 'standard' && d.tax_note ? `<p style="font-size:13px"><strong>${escapeHtml(d.tax_note)}</strong></p>` : ''}
   ${d.notes ? `<p>${escapeHtml(d.notes).replace(/\n/g, '<br>')}</p>` : ''}
   ${terms ? `<p class="muted" style="font-size:13px">${escapeHtml(terms)}</p>` : ''}
   ${!paid && !isQuote && !credit && !cancelled && (d.bank.iban || link || online) ? `<div style="margin-top:20px;padding:16px;background:#f9fafb;border-radius:10px;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
     <div style="flex:1 1 300px">
-    <strong>Zahlung</strong>
+    <strong>${escapeHtml(tl('Zahlung'))}</strong>
     ${online}
-    ${d.bank.iban ? `<p style="margin:6px 0">Überweisung an ${escapeHtml(d.seller.name)}<br>IBAN: ${escapeHtml(d.bank.iban)}${d.bank.bic ? ` · BIC: ${escapeHtml(d.bank.bic)}` : ''}${d.bank.bank ? `<br>${escapeHtml(d.bank.bank)}` : ''}<br>Verwendungszweck: ${escapeHtml(d.number)}${open < inv.total_cents ? `<br>Offener Betrag: ${escapeHtml(money(open))}` : ''}</p>` : ''}
-    ${link ? `<p><a class="btn" href="${escapeHtml(link)}" target="_blank" rel="noopener">Jetzt online bezahlen</a></p>` : ''}
+    ${d.bank.iban ? `<p style="margin:6px 0">${escapeHtml(tl('Überweisung an {name}', { name: d.seller.name }))}<br>IBAN: ${escapeHtml(d.bank.iban)}${d.bank.bic ? ` · BIC: ${escapeHtml(d.bank.bic)}` : ''}${d.bank.bank ? `<br>${escapeHtml(d.bank.bank)}` : ''}<br>${escapeHtml(tl('Verwendungszweck: {ref}', { ref: d.number }))}${open < inv.total_cents ? `<br>${escapeHtml(tl('Offener Betrag: {amount}', { amount: money(open) }))}` : ''}</p>` : ''}
+    ${link ? `<p><a class="btn" href="${escapeHtml(link)}" target="_blank" rel="noopener">${escapeHtml(tl('Jetzt online bezahlen'))}</a></p>` : ''}
     </div>
-    ${code ? `<div style="text-align:center" class="giro">${qrSvg(code, 150)}<div class="muted" style="font-size:12px">GiroCode – mit der Banking-App scannen</div></div>` : ''}
+    ${code ? `<div style="text-align:center" class="giro">${qrSvg(code, 150)}<div class="muted" style="font-size:12px">${escapeHtml(tl('GiroCode – mit der Banking-App scannen'))}</div></div>` : ''}
   </div>` : ''}
-  ${isQuote && inv.status !== 'accepted' && inv.status !== 'void' ? `<p style="margin-top:20px"><button id="accept">Angebot annehmen</button></p>` : ''}
+  ${isQuote && inv.status !== 'accepted' && inv.status !== 'void' ? `<p style="margin-top:20px"><button id="accept">${escapeHtml(tl('Angebot annehmen'))}</button></p>` : ''}
   ${d.seller.footer ? `<p class="muted" style="font-size:12px;margin-top:24px">${escapeHtml(d.seller.footer)}</p>` : ''}
-  <p class="noprint" style="margin-top:24px"><a class="btn secondary" href="/i/${escapeHtml(inv.public_token)}/pdf">PDF herunterladen</a> ${!isQuote && inv.finalised_at ? `<a class="btn secondary" href="/i/${escapeHtml(inv.public_token)}/xml">XRechnung (XML)</a> ` : ''}<button class="btn secondary" onclick="print()">Drucken</button></p>
+  <p class="noprint" style="margin-top:24px"><a class="btn secondary" href="/i/${escapeHtml(inv.public_token)}/pdf">${escapeHtml(tl('PDF herunterladen'))}</a> ${!isQuote && inv.finalised_at ? `<a class="btn secondary" href="/i/${escapeHtml(inv.public_token)}/xml">XRechnung (XML)</a> ` : ''}<button class="btn secondary" onclick="print()">${escapeHtml(tl('Drucken'))}</button></p>
 </div></div>
 <style>.inv-scroll { overflow-x: auto; } @media (max-width: 560px) { .inv-items td, .inv-items th { padding: 8px 4px; font-size: 13px } }
 @media print { .noprint, #accept { display:none } body { background:#fff } .card { border:0; box-shadow:none } }</style>
@@ -230,7 +246,7 @@ export function cleanLegalFields(input: Record<string, any>, current?: { tax_mod
       if (!isTaxMode(input.tax_mode)) throw new Error('Unbekannte Steuerbehandlung');
       out.tax_mode = input.tax_mode;
       // switching the mode loads its standard text unless a text was sent along
-      if (input.tax_note === undefined && input.tax_mode !== current?.tax_mode) out.tax_note = TAX_MODES[input.tax_mode as TaxMode].note;
+      if (input.tax_note === undefined && input.tax_mode !== current?.tax_mode) out.tax_note = tApp()(TAX_MODES[input.tax_mode as TaxMode].note);
     }
     if (input.tax_note !== undefined) out.tax_note = str(input.tax_note, 'Hinweistext zur Steuer', { max: 600 });
     if (input.supply_from !== undefined) out.supply_from = cleanYmd(input.supply_from, 'Leistungsdatum') || null;
@@ -244,13 +260,13 @@ export function cleanLegalFields(input: Record<string, any>, current?: { tax_mod
       if (!raw) out.buyer_vat_id = '';
       else {
         const c = checkVatId(raw);
-        if (!c.valid) throw new Error(`USt-IdNr. des Kunden: ${c.reason}`);
+        if (!c.valid) throw new Error(tApp()('USt-IdNr. des Kunden: {reason}', { reason: tApp()(c.reason ?? '') }));
         out.buyer_vat_id = c.normalized;
       }
     }
     if (input.leitweg_id !== undefined) {
       const raw = String(input.leitweg_id ?? '').trim();
-      if (raw && !checkLeitwegId(raw).valid) throw new Error(`Leitweg-ID: ${checkLeitwegId(raw).reason}`);
+      if (raw && !checkLeitwegId(raw).valid) throw new Error(tApp()('Leitweg-ID: {reason}', { reason: tApp()(checkLeitwegId(raw).reason ?? '') }));
       out.leitweg_id = raw;
     }
     if (input.buyer_ref !== undefined) out.buyer_ref = str(input.buyer_ref, 'Kundenreferenz', { max: 100 });
@@ -286,7 +302,7 @@ export function createInvoice(app: App, locationId: string, input: Record<string
   if (input.contact_id && !getContact(app, locationId, input.contact_id)) throw bad('Kontakt nicht gefunden');
   if (kind === 'invoice' && str(input.number, 'Nummer')) throw bad('Rechnungsnummern vergibt HyperLevel beim Festschreiben – fortlaufend und ohne Lücken');
   const legal = cleanLegalFields({ ...input, tax_mode: mode }, { tax_mode: mode, tax_note: '' });
-  if (legal.tax_note === undefined) legal.tax_note = mode === 'standard' ? '' : TAX_MODES[mode].note;
+  if (legal.tax_note === undefined) legal.tax_note = mode === 'standard' ? '' : tLoc(app, locationId)(TAX_MODES[mode].note);
   if (legal.inv_type && legal.inv_type !== 'standard' && kind !== 'invoice') throw bad('Abschlags- und Schlussrechnungen gibt es nur bei Rechnungen');
   if ((legal.deduct_ids?.length ?? 0) && legal.inv_type !== 'final') throw bad('Abschlagsrechnungen lassen sich nur in einer Schlussrechnung abziehen');
   const issued = input.issued_at ? new Date(input.issued_at).toISOString() : now();
@@ -332,7 +348,7 @@ export function createInvoice(app: App, locationId: string, input: Record<string
       } else row.number = allocateNumber(app, locationId, 'estimate', issued);
     }
     db.insert('invoices', row);
-    invAudit(app, locationId, row.id, 'invoice.created', kind === 'estimate' ? `Angebot ${row.number}` : 'Entwurf angelegt');
+    invAudit(app, locationId, row.id, 'invoice.created', kind === 'estimate' ? tLoc(app, locationId)('Angebot {number}', { number: row.number }) : tLoc(app, locationId)('Entwurf angelegt'));
   });
   return { ...row, number: row.kind === 'invoice' ? '' : row.number } as CreatedInvoice;
 }
@@ -367,7 +383,7 @@ const sendingDocs = new Set<string>();
 export async function sendInvoice(app: App, locationId: string, inv0: { id?: string } | undefined, opts: SendOptions = {}): Promise<Inv> {
   if (!inv0?.id) throw notFound();
   const inv = mustInvoice(app, locationId, inv0.id);
-  if (sendingDocs.has(inv.id)) throw new HttpError(409, `${inv.kind === 'estimate' ? 'Das Angebot' : 'Das Dokument'} wird gerade gesendet – bitte einen Moment warten`);
+  if (sendingDocs.has(inv.id)) throw new HttpError(409, tApp()(inv.kind === 'estimate' ? 'Das Angebot wird gerade gesendet – bitte einen Moment warten' : 'Das Dokument wird gerade gesendet – bitte einen Moment warten'));
   sendingDocs.add(inv.id);
   try {
     return await sendInvoiceNow(app, locationId, inv, opts);
@@ -386,19 +402,20 @@ async function sendInvoiceNow(app: App, locationId: string, inv0: Inv, opts: Sen
   if (channel === 'sms' && !c.phone) throw bad('Kontakt hat keine Telefonnummer');
   const loc = app.location(locationId)!;
   const cfg = loc.settings.invoices ?? {};
-  const actor = opts.actor ?? (opts.userId ? { id: opts.userId, name: 'Nutzer' } : { id: null, name: 'System' });
+  const tl = tLoc(app, locationId);
+  const actor = opts.actor ?? (opts.userId ? { id: opts.userId, name: tl('Nutzer') } : { id: null, name: 'System' });
   const isQuote = inv.kind === 'estimate';
   if (!isQuote && inv.status === 'void') throw new HttpError(409, 'Das Dokument ist storniert');
   // Number and freeze come first – the mail names the number and carries the PDF.
   if (!isQuote && !inv.finalised_at) inv = (await finaliseChecked(app, locationId, inv.id, { actor, adopt: inv.status !== 'draft' })).invoice;
-  const doc = docTitle(inv as any);
+  const doc = docWord(tl, docTitle(inv as any));
   const url = `${app.baseUrl()}/i/${inv.public_token}`;
   // A credit note is stored with negative amounts; the mail says "deine Gutschrift … über 11,90 €", not "über -11,90 €".
   const shown = inv.kind === 'credit_note' ? Math.abs(inv.total_cents) : inv.total_cents;
   const vars = { contact: contactVars(c), location: loc, invoice: { ...stripSnapshot(inv), number: inv.number, url, pdf_url: `${url}/pdf`, doc, total: centsToMoney(shown, inv.currency) } };
-  const subject = render(opts.subject || `${doc} {{invoice.number}} von {{location.name}}`, vars);
-  const attachNote = channel === 'email' && opts.attach_pdf !== false && cfg.attach_pdf !== false ? '\n(PDF im Anhang)' : '';
-  const body = render(opts.body || `Hallo {{contact.first_name|}},\n\nanbei ${isQuote ? 'unser Angebot' : inv.kind === 'credit_note' ? 'deine Gutschrift' : 'deine Rechnung'} {{invoice.number}} über {{invoice.total}}:${attachNote}\n{{invoice.url}}\n\nViele Grüße\n{{location.name}}`, vars);
+  const subject = render(opts.subject || tl('{doc} {{invoice.number}} von {{location.name}}', { doc }), vars);
+  const attachNote = channel === 'email' && opts.attach_pdf !== false && cfg.attach_pdf !== false ? `\n${tl('(PDF im Anhang)')}` : '';
+  const body = render(opts.body || tl('Hallo {{contact.first_name|}},\n\nanbei {what} {{invoice.number}} über {{invoice.total}}:{note}\n{{invoice.url}}\n\nViele Grüße\n{{location.name}}', { what: tl(isQuote ? 'unser Angebot' : inv.kind === 'credit_note' ? 'deine Gutschrift' : 'deine Rechnung'), note: attachNote }), vars);
   const attachments: { filename: string; content: string; contentType: string; encoding?: 'base64' }[] = [];
   if (channel === 'email' && opts.attach_pdf !== false && cfg.attach_pdf !== false) {
     // a module may hand the hybrid e-invoice PDF (ZUGFeRD) instead – it archives that copy itself
@@ -419,13 +436,13 @@ async function sendInvoiceNow(app: App, locationId: string, inv0: Inv, opts: Sen
       invAudit(app, locationId, inv.id, 'einvoice.attach_skipped', (e as Error).message.slice(0, 300), actor);
     }
   }
-  const m = await sendToContact(app, locationId, { contactId: c.id, channel, subject, body, source: isQuote ? 'Angebot' : inv.kind === 'credit_note' ? 'Gutschrift' : 'Rechnung', ignoreDnd: true, userId: opts.userId, ...(attachments.length ? { attachments } : {}) });
+  const m = await sendToContact(app, locationId, { contactId: c.id, channel, subject, body, source: docWord(tl, isQuote ? 'Angebot' : inv.kind === 'credit_note' ? 'Gutschrift' : 'Rechnung'), ignoreDnd: true, userId: opts.userId, ...(attachments.length ? { attachments } : {}) });
   if (m.status === 'failed') {
     if (!isQuote) invAudit(app, locationId, inv.id, 'invoice.send_failed', String(m.error).slice(0, 300), actor);
-    throw bad(inv.finalised_at && !isQuote ? `Die Rechnung ist festgeschrieben (${inv.number}), aber der Versand ist fehlgeschlagen: ${m.error}` : m.error);
+    throw bad(inv.finalised_at && !isQuote ? tl('Die Rechnung ist festgeschrieben ({number}), aber der Versand ist fehlgeschlagen: {error}', { number: inv.number, error: String(m.error) }) : m.error);
   }
   app.db.run(`UPDATE invoices SET status = CASE WHEN status = 'draft' THEN 'sent' ELSE status END, sent_at = ?, updated_at = ? WHERE id = ?`, now(), now(), inv.id);
-  invAudit(app, locationId, inv.id, 'invoice.sent', `${channel === 'sms' ? 'SMS' : 'E-Mail'} an ${channel === 'sms' ? c.phone : c.email}${attachments.length ? ` · Anhänge: ${attachments.map((a) => a.filename).join(', ')}` : ''}`, actor);
+  invAudit(app, locationId, inv.id, 'invoice.sent', `${tl('{channel} an {to}', { channel: channel === 'sms' ? 'SMS' : tl('E-Mail'), to: (channel === 'sms' ? c.phone : c.email) ?? '' })}${attachments.length ? ` · ${tl('Anhänge: {files}', { files: attachments.map((a) => a.filename).join(', ') })}` : ''}`, actor);
   return mustInvoice(app, locationId, inv.id);
 }
 
@@ -442,11 +459,12 @@ export async function finaliseChecked(app: App, loc: string, invoiceId: string, 
       vies = { checked_at: now(), valid: !!r.valid, ...(r.name ? { name: r.name } : {}), ...(r.address ? { address: r.address } : {}) };
       if (!r.valid) {
         const needs = TAX_MODES[isTaxMode(inv.tax_mode) ? inv.tax_mode : 'standard'].needsBuyerVat;
-        const msg = `VIES kennt die USt-IdNr. ${inv.buyer_vat_id} nicht als gültig`;
-        if (needs) throw new HttpError(409, `${msg} – ohne gültige USt-IdNr. ist ${TAX_MODES[inv.tax_mode as TaxMode].label} nicht zulässig`);
+        const tl = tLoc(app, loc);
+        const msg = tl('VIES kennt die USt-IdNr. {id} nicht als gültig', { id: inv.buyer_vat_id });
+        if (needs) throw new HttpError(409, tl('{msg} – ohne gültige USt-IdNr. ist {mode} nicht zulässig', { msg, mode: tl(TAX_MODES[inv.tax_mode as TaxMode].label) }));
         warnings.push(msg);
       }
-    } else warnings.push(`USt-IdNr. nicht über VIES geprüft: ${r.error ?? 'nicht erreichbar'}`);
+    } else warnings.push(tLoc(app, loc)('USt-IdNr. nicht über VIES geprüft: {error}', { error: r.error ?? tLoc(app, loc)('nicht erreichbar') }));
   }
   const fin = finaliseInvoice(app, loc, invoiceId, { actor: o.actor, issued_at: o.issued_at, adopt: o.adopt ?? (inv.status !== 'draft'), vies, warnings });
   return fin;
@@ -486,7 +504,7 @@ export function markInvoicePaid(app: App, locationId: string, invoiceId: string,
 
 function emitPaid(app: App, locationId: string, invoiceId: string, via = ''): boolean {
   const inv = loadInvoice(app, locationId, invoiceId)!;
-  if (inv.contact_id) logActivity(app, locationId, inv.contact_id, 'invoice.paid', `Rechnung ${inv.number} bezahlt (${centsToMoney(inv.total_cents, inv.currency)})${via ? ` – ${via}` : ''}`);
+  if (inv.contact_id) logActivity(app, locationId, inv.contact_id, 'invoice.paid', `${tLoc(app, locationId)('Rechnung {number} bezahlt ({amount})', { number: inv.number, amount: centsToMoney(inv.total_cents, inv.currency) })}${via ? ` – ${via}` : ''}`);
   app.events.emit(locationId, 'invoice.paid', { contactId: inv.contact_id, invoice: stripSnapshot(inv), ...(via ? { via } : {}) });
   return true;
 }
@@ -663,7 +681,7 @@ export const paymentsModule: Module = {
       const locked = !!inv.finalised_at;
       const patch: Record<string, any> = { updated_at: now() };
       const mode: TaxMode = isTaxMode(body.tax_mode) ? body.tax_mode : isTaxMode(inv.tax_mode) ? inv.tax_mode : 'standard';
-      const refuse = (field: string) => new HttpError(409, `Festgeschriebene Rechnung ${inv!.number}: „${field}“ lässt sich nicht mehr ändern. Storniere die Rechnung und schreibe eine neue – nur Hinweistext, Fälligkeit, Zahlungslink und Abo lassen sich noch anpassen.`, { locked: true, field });
+      const refuse = (field: string) => new HttpError(409, tCtx(ctx)('Festgeschriebene Rechnung {number}: „{field}“ lässt sich nicht mehr ändern. Storniere die Rechnung und schreibe eine neue – nur Hinweistext, Fälligkeit, Zahlungslink und Abo lassen sich noch anpassen.', { number: inv!.number, field: tCtx(ctx)(field) }), { locked: true, field });
       const lockedQuote = inv.kind === 'estimate' && (inv.status === 'accepted' || db.get('SELECT 1 AS x FROM invoices WHERE ref_id = ? LIMIT 1', inv.id));
       const frozen = locked || lockedQuote;
       const changed = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b);
@@ -731,7 +749,7 @@ export const paymentsModule: Module = {
       // what changes on a final invoice goes into the trail
       const trail = locked ? ['notes', 'due_at', 'payment_link'].filter((k) => patch[k] !== undefined && String(patch[k] ?? '') !== String(inv![k] ?? '')) : [];
       db.update('invoices', inv.id, patch);
-      for (const k of trail) invAudit(app, ctx.locationId, inv.id, 'invoice.amended', `${k === 'notes' ? 'Hinweistext' : k === 'due_at' ? 'Fälligkeit' : 'Zahlungslink'} geändert: ${String(inv[k] ?? '').slice(0, 80)} → ${String(patch[k] ?? '').slice(0, 80)}`, actor);
+      for (const k of trail) invAudit(app, ctx.locationId, inv.id, 'invoice.amended', tLoc(app, ctx.locationId)('{field} geändert: {from} → {to}', { field: tLoc(app, ctx.locationId)(k === 'notes' ? 'Hinweistext' : k === 'due_at' ? 'Fälligkeit' : 'Zahlungslink'), from: String(inv[k] ?? '').slice(0, 80), to: String(patch[k] ?? '').slice(0, 80) }), actor);
 
       let extra: Record<string, unknown> = {};
       if (body.status !== undefined) {
@@ -756,7 +774,7 @@ export const paymentsModule: Module = {
           invAudit(app, ctx.locationId, inv.id, inv.kind === 'estimate' ? 'quote.discarded' : 'draft.discarded', '', actor);
         } else if (action === 'accept' || action === 'send') {
           db.run(`UPDATE invoices SET status = ?, updated_at = ? WHERE id = ?`, action === 'accept' ? 'accepted' : 'sent', now(), inv.id);
-          if (action === 'accept' && inv.contact_id) logActivity(app, ctx.locationId, inv.contact_id, 'estimate.accepted', `Angebot ${inv.number} angenommen`);
+          if (action === 'accept' && inv.contact_id) logActivity(app, ctx.locationId, inv.contact_id, 'estimate.accepted', tLoc(app, ctx.locationId)('Angebot {number} angenommen', { number: inv.number }));
         }
       }
       return invoiceOut(app, mustInvoice(app, ctx.locationId, ctx.params.id), extra);
@@ -764,11 +782,11 @@ export const paymentsModule: Module = {
     router.delete('/api/invoices/:id', 'location', (ctx) => {
       const inv = refresh(ctx.locationId, ctx.params.id);
       if (!inv) throw notFound();
-      if (inv.finalised_at) throw new HttpError(409, `Festgeschriebene Rechnungen werden nicht gelöscht (Aufbewahrungspflicht) – storniere ${inv.number} stattdessen`);
+      if (inv.finalised_at) throw new HttpError(409, tCtx(ctx)('Festgeschriebene Rechnungen werden nicht gelöscht (Aufbewahrungspflicht) – storniere {number} stattdessen', { number: inv.number }));
       if (inv.status !== 'draft') throw new HttpError(409, 'Nur Entwürfe löschen – sonst stornieren oder verwerfen');
       db.tx(() => {
         db.run('DELETE FROM invoices WHERE id = ?', inv.id);
-        invAudit(app, ctx.locationId, inv.id, 'draft.deleted', inv.title || 'ohne Titel', actorOf(ctx));
+        invAudit(app, ctx.locationId, inv.id, 'draft.deleted', inv.title || tLoc(app, ctx.locationId)('ohne Titel'), actorOf(ctx));
       });
       return { ok: true };
     });
@@ -806,7 +824,7 @@ export const paymentsModule: Module = {
 
     router.get('/i/:token', 'public', (ctx) => {
       const inv = db.get('SELECT * FROM invoices WHERE public_token = ?', ctx.params.token);
-      if (!inv || inv.status === 'draft') return html(messagePage('Nicht gefunden', 'Dieses Dokument gibt es nicht.'), 404);
+      if (!inv || inv.status === 'draft') return html(messagePage(tApp()('Nicht gefunden'), tApp()('Dieses Dokument gibt es nicht.')), 404);
       return html(invoiceHtml(app, parseInv(inv)));
     });
     // The same document as a file: PDF and XRechnung from the public link (the token is the secret, like the page itself).
@@ -843,9 +861,9 @@ export const paymentsModule: Module = {
       if (!inv || inv.kind !== 'estimate' || inv.status === 'draft') throw notFound();
       if (inv.status !== 'accepted') {
         db.run(`UPDATE invoices SET status = 'accepted', updated_at = ? WHERE id = ?`, now(), inv.id);
-        if (inv.contact_id) logActivity(app, inv.location_id, inv.contact_id, 'estimate.accepted', `Angebot ${inv.number} angenommen`);
+        if (inv.contact_id) logActivity(app, inv.location_id, inv.contact_id, 'estimate.accepted', tLoc(app, inv.location_id)('Angebot {number} angenommen', { number: inv.number }));
         app.events.emit(inv.location_id, 'estimate.accepted', { contactId: inv.contact_id, invoice: stripSnapshot(parseInv(db.get('SELECT * FROM invoices WHERE id = ?', inv.id))) });
-        invAudit(app, inv.location_id, inv.id, 'quote.accepted', 'online angenommen');
+        invAudit(app, inv.location_id, inv.id, 'quote.accepted', tLoc(app, inv.location_id)('online angenommen'));
       }
       return { ok: true };
     });

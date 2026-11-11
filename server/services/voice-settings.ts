@@ -1,5 +1,9 @@
 import { bad, num, str } from '../core/http.js';
 import { MODEL_RE } from './ai-presets.js';
+import { defaultLocale, tApp } from '../i18n/index.js';
+
+/** Speech language when none is set: the instance language (de | en). */
+const DEFAULT_LANG = defaultLocale();
 
 /**
  * Voice settings per sub-account (defaults for text to speech and speech to text, the phone agent's engine,
@@ -40,8 +44,8 @@ export interface VoiceSettings {
 
 export function defaultVoiceSettings(): VoiceSettings {
   return {
-    tts: { connection_id: '', model: '', voice: '', language: 'de', speed: 1, instructions: '' },
-    stt: { connection_id: '', model: '', language: 'de' },
+    tts: { connection_id: '', model: '', voice: '', language: DEFAULT_LANG, speed: 1, instructions: '' },
+    stt: { connection_id: '', model: '', language: DEFAULT_LANG },
     phone: { engine: 'twilio', transport: 'auto', tts_connection_id: '', tts_model: '', tts_voice: '', stt_connection_id: '', stt_model: '', tts_ws: false, endpoint_ms: 700, barge_in: true, filler: true },
     agent: { read_aloud: false, auto_send: false },
     voicemail_transcribe: false,
@@ -69,21 +73,21 @@ const bool = (v: unknown) => v === true || v === 'true' || v === 1;
 const id = (v: unknown, field: string) => str(v, field, { max: 120 });
 const modelId = (v: unknown, field: string) => {
   const m = str(v, field, { max: 160 });
-  if (m && !MODEL_RE.test(m)) throw bad(`${field}: bitte die Modell-ID des Anbieters (Buchstaben, Ziffern, . _ - : / @ +).`);
+  if (m && !MODEL_RE.test(m)) throw bad(tApp()('{field}: bitte die Modell-ID des Anbieters (Buchstaben, Ziffern, . _ - : / @ +).', { field: tApp()(field) }));
   return m;
 };
 /** Voice ids as providers write them (letters, digits, spaces, . _ - : ' ( ) / @ +). */
 export const VOICE_RE = /^[\p{L}\p{N} _.:'()/@+-]{1,120}$/u;
 const voiceId = (v: unknown, field: string) => {
   const s = str(v, field, { max: 120 });
-  if (s && !VOICE_RE.test(s)) throw bad(`${field}: ungültige Zeichen`);
+  if (s && !VOICE_RE.test(s)) throw bad(tApp()('{field}: ungültige Zeichen', { field: tApp()(field) }));
   return s;
 };
 export const LANG_RE = /^[a-z]{2,3}([-_][A-Za-z]{2,4})?$/;
 const lang = (v: unknown, field: string) => {
   const s = str(v, field, { max: 12 });
-  if (s && !LANG_RE.test(s)) throw bad(`${field}: bitte ein Sprachkürzel wie de oder de-DE`);
-  return s || 'de';
+  if (s && !LANG_RE.test(s)) throw bad(tApp()('{field}: bitte ein Sprachkürzel wie de oder de-DE', { field: tApp()(field) }));
+  return s || DEFAULT_LANG;
 };
 
 /** Validates a settings patch from the browser; connection ids are checked by the module against the registry. */

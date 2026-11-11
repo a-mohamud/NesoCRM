@@ -5,6 +5,7 @@
  * inactivity and thresholds with a label (e.g. MQL ≥ 50, SQL ≥ 80). Pure functions; the module
  * gathers the data.
  */
+import { tApp, type STFn } from '../i18n/index.js';
 
 export const SCORE_EVENTS = {
   'email.opened': 'E-Mail geöffnet',
@@ -64,48 +65,49 @@ export class ScoreError extends Error {}
 const fail = (m: string) => new ScoreError(m);
 const int = (v: unknown, lo: number, hi: number, what: string) => {
   const n = Math.round(Number(v));
-  if (!Number.isFinite(n) || n < lo || n > hi) throw fail(`${what}: Zahl von ${lo} bis ${hi}`);
+  if (!Number.isFinite(n) || n < lo || n > hi) throw fail(tApp()('{what}: Zahl von {lo} bis {hi}', { what, lo, hi }));
   return n;
 };
 
 /** Checks a model's settings from the API; ids of rules are kept or made up. */
 export function cleanModel(input: any, makeId: () => string): ScoreModel {
+  const t = tApp();
   const rulesIn = Array.isArray(input?.rules) ? input.rules : [];
   if (rulesIn.length > 100) throw fail('Höchstens 100 Kriterien');
   const rules: ScoreRule[] = rulesIn.map((r: any, i: number) => {
     const kind: ScoreRule['kind'] | null = r?.kind === 'event' ? 'event' : r?.kind === 'property' ? 'property' : null;
-    if (!kind) throw fail(`Kriterium ${i + 1}: Art fehlt (Eigenschaft oder Aktivität)`);
-    const points = int(r.points, -1000, 1000, `Kriterium ${i + 1}: Punkte`);
-    if (!points) throw fail(`Kriterium ${i + 1}: Punkte dürfen nicht 0 sein`);
+    if (!kind) throw fail(t('Kriterium {n}: Art fehlt (Eigenschaft oder Aktivität)', { n: i + 1 }));
+    const points = int(r.points, -1000, 1000, t('Kriterium {n}: Punkte', { n: i + 1 }));
+    if (!points) throw fail(t('Kriterium {n}: Punkte dürfen nicht 0 sein', { n: i + 1 }));
     const base = { id: typeof r.id === 'string' && /^[\w-]{1,40}$/.test(r.id) ? r.id : makeId(), kind, points, label: String(r.label ?? '').trim().slice(0, 120) };
     if (kind === 'property') {
       const field = String(r.field ?? '').trim();
-      if (!FIELD_RE.test(field)) throw fail(`Kriterium ${i + 1}: unbekanntes Feld „${field.slice(0, 60)}“`);
+      if (!FIELD_RE.test(field)) throw fail(t('Kriterium {n}: unbekanntes Feld „{field}“', { n: i + 1, field: field.slice(0, 60) }));
       const op = SCORE_OPS.includes(r.op) ? (r.op as ScoreOp) : field === 'tag' ? 'has' : 'equals';
       const value = String(r.value ?? '').trim().slice(0, 200);
-      if (!['empty', 'not_empty'].includes(op) && !value) throw fail(`Kriterium ${i + 1}: Wert fehlt`);
+      if (!['empty', 'not_empty'].includes(op) && !value) throw fail(t('Kriterium {n}: Wert fehlt', { n: i + 1 }));
       return { ...base, field, op, value };
     }
     const event = String(r.event ?? '') as ScoreEvent;
-    if (!(event in SCORE_EVENTS)) throw fail(`Kriterium ${i + 1}: unbekannte Aktivität`);
+    if (!(event in SCORE_EVENTS)) throw fail(t('Kriterium {n}: unbekannte Aktivität', { n: i + 1 }));
     const out: ScoreRule = { ...base, event };
-    if (r.within_days !== undefined && r.within_days !== null && r.within_days !== '' && Number(r.within_days) > 0) out.within_days = int(r.within_days, 1, 3650, `Kriterium ${i + 1}: Zeitraum`);
-    if (r.max_points !== undefined && r.max_points !== null && r.max_points !== '' && Number(r.max_points) > 0) out.max_points = int(r.max_points, 1, 100000, `Kriterium ${i + 1}: Höchstpunkte`);
+    if (r.within_days !== undefined && r.within_days !== null && r.within_days !== '' && Number(r.within_days) > 0) out.within_days = int(r.within_days, 1, 3650, t('Kriterium {n}: Zeitraum', { n: i + 1 }));
+    if (r.max_points !== undefined && r.max_points !== null && r.max_points !== '' && Number(r.max_points) > 0) out.max_points = int(r.max_points, 1, 100000, t('Kriterium {n}: Höchstpunkte', { n: i + 1 }));
     return out;
   });
   const thIn = Array.isArray(input?.thresholds) ? input.thresholds : [];
   if (thIn.length > 10) throw fail('Höchstens 10 Schwellen');
   const thresholds = thIn
-    .map((t: any) => {
-      const label = String(t?.label ?? '').trim().slice(0, 40);
+    .map((x: any) => {
+      const label = String(x?.label ?? '').trim().slice(0, 40);
       if (!label) throw fail('Schwelle: Name fehlt');
-      return { label, min: int(t.min, 0, 100000, `Schwelle „${label}“`) };
+      return { label, min: int(x.min, 0, 100000, t('Schwelle „{label}“', { label })) };
     })
     .sort((a: Threshold, b: Threshold) => a.min - b.min);
-  if (new Set(thresholds.map((t: Threshold) => t.label.toLowerCase())).size !== thresholds.length) throw fail('Schwellen brauchen verschiedene Namen');
+  if (new Set(thresholds.map((x: Threshold) => x.label.toLowerCase())).size !== thresholds.length) throw fail('Schwellen brauchen verschiedene Namen');
   const d = input?.decay ?? {};
-  const decay = { percent: d.percent ? int(d.percent, 0, 100, 'Zerfall in %') : 0, days: d.days ? int(d.days, 1, 365, 'Zerfall: Tage') : 30 };
-  const max = input?.max_score === null || input?.max_score === undefined || input?.max_score === '' || Number(input.max_score) === 0 ? null : int(input.max_score, 1, 100000, 'Höchstwert');
+  const decay = { percent: d.percent ? int(d.percent, 0, 100, t('Zerfall in %')) : 0, days: d.days ? int(d.days, 1, 365, t('Zerfall: Tage')) : 30 };
+  const max = input?.max_score === null || input?.max_score === undefined || input?.max_score === '' || Number(input.max_score) === 0 ? null : int(input.max_score, 1, 100000, t('Höchstwert'));
   return { rules, thresholds, decay, max_score: max };
 }
 
@@ -146,23 +148,24 @@ const FIELD_LABELS: Record<string, string> = {
 const OP_LABELS: Record<string, string> = { equals: 'ist', not_equals: 'ist nicht', contains: 'enthält', has: 'enthält', not_has: 'enthält nicht', empty: 'ist leer', not_empty: 'ist nicht leer', gt: 'größer als', lt: 'kleiner als' };
 
 /** Readable name of a rule when it has no own label ("Quelle ist Website", "Tag „vip“"). */
-export function describeRule(r: ScoreRule, fieldLabels: Record<string, string> = {}): string {
+export function describeRule(r: ScoreRule, fieldLabels: Record<string, string> = {}, t: STFn = tApp()): string {
   if (r.label) return r.label;
-  if (r.kind === 'event') return SCORE_EVENTS[r.event!] ?? String(r.event);
-  if (r.field === 'tag') return r.op === 'not_has' ? `ohne Tag „${r.value}“` : `Tag „${r.value}“`;
-  const f = fieldLabels[r.field!] ?? FIELD_LABELS[r.field!] ?? r.field!.replace(/^(company\.)?custom\./, (m) => (m.startsWith('company') ? 'Firma: ' : ''));
-  return `${f} ${OP_LABELS[r.op!] ?? r.op}${['empty', 'not_empty'].includes(r.op!) ? '' : ` ${r.value ?? ''}`}`.trim();
+  if (r.kind === 'event') return SCORE_EVENTS[r.event!] ? t(SCORE_EVENTS[r.event!]) : String(r.event);
+  if (r.field === 'tag') return t(r.op === 'not_has' ? 'ohne Tag „{tag}“' : 'Tag „{tag}“', { tag: r.value ?? '' });
+  const custom = /^(company\.)?custom\./.exec(r.field!);
+  const f = fieldLabels[r.field!] ?? (FIELD_LABELS[r.field!] ? t(FIELD_LABELS[r.field!]) : custom?.[1] ? t('Firma: {label}', { label: r.field!.slice(custom[0].length) }) : r.field!.replace(/^custom\./, ''));
+  return `${f} ${OP_LABELS[r.op!] ? t(OP_LABELS[r.op!]) : r.op}${['empty', 'not_empty'].includes(r.op!) ? '' : ` ${r.value ?? ''}`}`.trim();
 }
 
 /**
  * Final score from rule results: sum, decay, clamp to 0…max. `matches` says per property rule
  * whether it applies, `counts` per event rule how many events count.
  */
-export function scoreFrom(model: ScoreModel, matches: Record<string, boolean>, counts: Record<string, number>, lastEngagement: string | null, now = Date.now(), fieldLabels: Record<string, string> = {}) {
+export function scoreFrom(model: ScoreModel, matches: Record<string, boolean>, counts: Record<string, number>, lastEngagement: string | null, now = Date.now(), fieldLabels: Record<string, string> = {}, t: STFn = tApp()) {
   const breakdown: BreakdownItem[] = [];
   let raw = 0;
   for (const r of model.rules) {
-    const label = describeRule(r, fieldLabels);
+    const label = describeRule(r, fieldLabels, t);
     if (r.kind === 'property') {
       if (!matches[r.id]) continue;
       raw += r.points;
@@ -176,10 +179,10 @@ export function scoreFrom(model: ScoreModel, matches: Record<string, boolean>, c
     }
   }
   const decayed = applyDecay(raw, model.decay, lastEngagement, now);
-  if (Math.round(decayed) !== Math.round(raw)) breakdown.push({ rule: 'decay', label: `Inaktivität (−${model.decay.percent} % je ${model.decay.days} Tage)`, points: Math.round(decayed) - Math.round(raw) });
+  if (Math.round(decayed) !== Math.round(raw)) breakdown.push({ rule: 'decay', label: t('Inaktivität (−{percent} % je {days} Tage)', { percent: model.decay.percent, days: model.decay.days }), points: Math.round(decayed) - Math.round(raw) });
   let score = Math.max(0, Math.round(decayed));
   if (model.max_score !== null && score > model.max_score) {
-    breakdown.push({ rule: 'cap', label: `Höchstwert ${model.max_score}`, points: model.max_score - score });
+    breakdown.push({ rule: 'cap', label: t('Höchstwert {n}', { n: model.max_score }), points: model.max_score - score });
     score = model.max_score;
   }
   return { score, label: labelFor(score, model.thresholds), breakdown };

@@ -27,6 +27,7 @@ import { isReadOnly, readOnlyMessage, type Subscription } from '../services/saas
 import { isSecretKey, isWebhookSecret, keyHint, isLiveKey } from '../services/stripe.js';
 import { getBranding } from './agency.js';
 import { planById, saasSettings, saasStripe, stockCount, stripeKeyOf, subscriptionOf, upsertSubscription, usageOf } from './saas.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Cloud mode (PGHL_CLOUD_MODE=1): the hosted service – self-serve signup, billing, tenants, operator console.
@@ -178,11 +179,18 @@ export function requireTenant(app: App, ctx: Ctx, mustOwn = true): Tenant {
 /** A first set of e-mail templates for a new sub-account (when no default snapshot is set). */
 export function starterContent(app: App, locationId: string) {
   const t = now();
+  // In the sub-account's language; the bodies are looked up with their whitespace collapsed (the catalog key), untranslated they stay as they are.
+  const tr = tLoc(app, locationId);
+  const multi = (s: string) => {
+    const k = s.replace(/\s+/g, ' ').trim();
+    const r = tr(k);
+    return r === k ? s : r;
+  };
   for (const [name, subject, body] of [
     ['Willkommen', 'Willkommen bei {{company}}', 'Hallo {{first_name}},\n\nschön, dass du da bist. Melde dich einfach, wenn du Fragen hast.\n\nViele Grüße'],
     ['Terminbestätigung', 'Dein Termin bei {{company}}', 'Hallo {{first_name}},\n\ndein Termin ist bestätigt. Bis bald!\n\nViele Grüße'],
     ['Nachfassen', 'Kurze Rückfrage', 'Hallo {{first_name}},\n\nich wollte kurz nachfragen, ob du noch Fragen zu unserem Angebot hast.\n\nViele Grüße'],
-  ]) app.db.insert('templates', { id: id(), location_id: locationId, name, channel: 'email', subject, body, is_html: 0, created_at: t, updated_at: t });
+  ]) app.db.insert('templates', { id: id(), location_id: locationId, name: tr(name), channel: 'email', subject: tr(subject), body: multi(body), is_html: 0, created_at: t, updated_at: t });
 }
 
 /**
@@ -208,6 +216,8 @@ export const tenantSub = (app: App, t: Tenant): Subscription | undefined => subs
 export const tenantPlanKey = (app: App, t: Tenant): PlanKey => planKeyOf(tenantSub(app, t)?.plan_id) ?? 'team';
 
 export function logCloudEvent(app: App, tenantId: string | null, type: string, detail = '') {
+  // Fixed details are message ids (translated into the instance language); built ones arrive translated.
+  detail = detail ? tApp()(detail) : detail;
   app.db.insert('cloud_events', { id: id(), tenant_id: tenantId, type, detail: detail.slice(0, 500), at: now() });
   tapCloudEvent(app, tenantId, type, detail);
 }
@@ -246,7 +256,30 @@ export function phaseOf(t: Tenant, sub: Subscription | undefined): Phase {
   }
 }
 
-export const PHASE_LABEL: Record<Phase, string> = { trial: 'Testphase', active: 'aktiv', comped: 'geschenkt', past_due: 'Zahlung offen', read_only: 'schreibgeschützt', canceled: 'gekündigt', deletion_scheduled: 'Löschung geplant' };
+/** Labels of the phases in the instance language (read when used). */
+export const PHASE_LABEL: Record<Phase, string> = {
+  get trial() {
+    return tApp()('Testphase');
+  },
+  get active() {
+    return tApp()('aktiv');
+  },
+  get comped() {
+    return tApp()('geschenkt');
+  },
+  get past_due() {
+    return tApp()('Zahlung offen');
+  },
+  get read_only() {
+    return tApp()('schreibgeschützt');
+  },
+  get canceled() {
+    return tApp()('gekündigt');
+  },
+  get deletion_scheduled() {
+    return tApp()('Löschung geplant');
+  },
+};
 
 // --- links and mails ------------------------------------------------------------------------------------------------
 
@@ -254,7 +287,7 @@ export const cloudBrand = (app: App) => getBranding(app).name || 'Neso CRM';
 export const cloudSupport = (app: App) => cloudSettings(app).support_email || getBranding(app).support_email || cloudSettings(app).operator.email || '';
 export const appLink = (app: App, path = '') => `${app.baseUrl()}${path}`;
 export const billingLink = (app: App) => appLink(app, '/app/settings/cloud');
-export const fmtDay = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' }) : '');
+export const fmtDay = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString(tApp().locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: 'Europe/Berlin' }) : '');
 
 /** The sub-account the system mails go out of: the operator's choice, the SaaS one, else the oldest non-tenant sub-account. */
 export function mailSender(app: App) {
@@ -276,7 +309,7 @@ export async function sendCloudMail(app: App, kind: MailKind, to: string, vars: 
   const sender = mailSender(app);
   if (!sender) {
     undo();
-    logCloudEvent(app, o.tenantId ?? null, 'mail_failed', `${kind}: kein Absender-Sub-Account`);
+    logCloudEvent(app, o.tenantId ?? null, 'mail_failed', tApp()('{kind}: kein Absender-Sub-Account', { kind }));
     return 'no_sender';
   }
   const m = composeMail(kind, { brand: cloudBrand(app), support: cloudSupport(app), ...vars });
@@ -323,7 +356,7 @@ export function legalText(app: App, row: LegalRow, o: { company?: string; email?
   return fillLegal(row.body, {
     operator: s.operator,
     service: cloudBrand(app),
-    company: o.company ?? '[Name deiner Firma]',
+    company: o.company ?? tApp()('[Name deiner Firma]'),
     email: o.email,
     trial_days: s.trial_days,
     grace_days: s.grace_days,
@@ -485,7 +518,7 @@ export async function eraseTenant(app: App, t: Tenant, why: string): Promise<{ r
     );
     logCloudEvent(app, t.id, 'deleted', why);
   });
-  app.services.audit?.({ action: 'cloud.deleted', summary: `${why} (${out.rows} Zeilen, ${out.files} Dateien)`, actor: 'Cloud', entityId: t.id });
+  app.services.audit?.({ action: 'cloud.deleted', summary: tApp()('{why} ({rows} Zeilen, {files} Dateien)', { why, rows: out.rows, files: out.files }), actor: 'Cloud', entityId: t.id });
   return out;
 }
 
@@ -594,7 +627,7 @@ export const cloudModule: Module = {
       const t = tenantOfLocation(app, locationId);
       if (!t) return;
       const limit = cloudSettings(app).fair_use[tenantPlanKey(app, t)].storage_mb;
-      if (limit !== null && storageUsedBytes(app, locationId) + incoming > limit * MB) throw new HttpError(403, `Speicher-Limit erreicht: dein Tarif enthält ${limit.toLocaleString('de-DE')} MB für Medien (Fair Use). Lösche Dateien oder schreib uns für mehr.`);
+      if (limit !== null && storageUsedBytes(app, locationId) + incoming > limit * MB) throw new HttpError(403, tApp()('Speicher-Limit erreicht: dein Tarif enthält {mb} MB für Medien (Fair Use). Lösche Dateien oder schreib uns für mehr.', { mb: limit.toLocaleString(tApp().locale === 'de' ? 'de-DE' : 'en-GB') }));
     };
     app.services.storageGate = storageGate;
     /** The same meter for gates that answer with their own words (public form uploads: modules/public-upload-quota.ts). */

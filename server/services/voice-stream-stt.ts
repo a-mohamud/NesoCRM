@@ -3,6 +3,7 @@ import { FrameSlicer, Vad, ulawToPcm, wavFromPcm } from './voice-audio.js';
 import { langOf } from './voice-adapters.js';
 import { VoiceError, type LiveStt, type LiveSttHandlers, type LiveSttOpts, type SttOpener, type StreamCtx } from './voice-types.js';
 import type { WsClientLike } from './voice-ws.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Live speech to text for phone calls: audio arrives as µ-law 8 kHz (20 ms frames) and text leaves as
@@ -58,7 +59,7 @@ export const deepgramOpen: SttOpener = (ctx, o, h) => {
   let closed = false;
   let lastSent = Date.now();
   const keepAlive = setInterval(() => {
-    if (sock.readyState === OPEN && Date.now() - lastSent > 4000) sock.send(JSON.stringify({ type: 'KeepAlive' }));
+    if (sock.readyState === OPEN && Date.now() - lastSent > 4000) sock.send(JSON.stringify({ type: 'KeepAlive' })); // i18n-ignore
   }, 3000);
   keepAlive.unref?.();
   const emit = (speechFinal: boolean) => {
@@ -104,12 +105,12 @@ export const deepgramOpen: SttOpener = (ctx, o, h) => {
       out.send(ulaw);
     },
     finalize() {
-      out.send(JSON.stringify({ type: 'Finalize' }));
+      out.send(JSON.stringify({ type: 'Finalize' })); // i18n-ignore
     },
     close() {
       if (closed) return;
       try {
-        if (sock.readyState === OPEN) sock.send(JSON.stringify({ type: 'CloseStream' }));
+        if (sock.readyState === OPEN) sock.send(JSON.stringify({ type: 'CloseStream' })); // i18n-ignore
         sock.close(1000);
       } catch {
         /* already closed */
@@ -128,7 +129,7 @@ export const assemblyaiOpen: SttOpener = async (ctx, o, h) => {
   // The key never goes into a URL: a short-lived token does.
   const tr = await ctx.fetch(`https://${host}/v3/token?expires_in_seconds=300`, { method: 'GET', headers });
   const tj: any = await tr.json().catch(() => null);
-  if (!tr.ok || !tj?.token) throw new VoiceError(`AssemblyAI: Echtzeit-Token nicht erhalten (HTTP ${tr.status})`, tr.status === 429 || tr.status >= 500, tr.status, 'assemblyai');
+  if (!tr.ok || !tj?.token) throw new VoiceError(tApp()('AssemblyAI: Echtzeit-Token nicht erhalten (HTTP {status})', { status: tr.status }), tr.status === 429 || tr.status >= 500, tr.status, 'assemblyai');
   const q = new URLSearchParams({ sample_rate: '8000', encoding: 'pcm_mulaw', format_turns: 'false', token: tj.token });
   if (langOf(o.language) !== 'en') q.set('speech_model', 'universal-streaming-multilingual');
   if (o.endpointMs) q.set('min_end_of_turn_silence_when_confident', String(Math.max(160, Math.min(2000, o.endpointMs))));
@@ -166,13 +167,13 @@ export const assemblyaiOpen: SttOpener = async (ctx, o, h) => {
       for (const f of slicer.push(ulaw)) out.send(f);
     },
     finalize() {
-      out.send(JSON.stringify({ type: 'ForceEndpoint' }));
+      out.send(JSON.stringify({ type: 'ForceEndpoint' })); // i18n-ignore
     },
     close() {
       if (closed) return;
       closed = true;
       try {
-        if (sock.readyState === OPEN) sock.send(JSON.stringify({ type: 'Terminate' }));
+        if (sock.readyState === OPEN) sock.send(JSON.stringify({ type: 'Terminate' })); // i18n-ignore
         sock.close(1000);
       } catch {
         /* already closed */

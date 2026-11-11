@@ -58,7 +58,7 @@ export async function completeText(target: LlmTarget, input: CompatInput, fetchI
   const nativeSchema = target.wire === 'anthropic' || target.provider === 'openai' || target.provider === 'azure';
   const system = [
     ...input.system.filter((b) => b.text.trim()).map((b) => b.text),
-    input.schema && !nativeSchema ? `Antworte ausschließlich mit einem gültigen JSON-Objekt (ohne Markdown, ohne Erklärung) nach diesem JSON-Schema:\n${JSON.stringify(input.schema)}` : '',
+    input.schema && !nativeSchema ? `Reply only with a valid JSON object (no Markdown, no explanation) that follows this JSON schema:\n${JSON.stringify(input.schema)}` : '',
   ]
     .filter(Boolean)
     .join('\n\n');

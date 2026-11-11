@@ -50,7 +50,13 @@ export const h = (text: string, level = 2, o: B = {}): B => ({ type: 'heading', 
 export const p = (text: string, o: B = {}): B => ({ type: 'text', text, ...o });
 export const btn = (text: string, url: string, o: B = {}): B => ({ type: 'button', text, url, ...o });
 export const lead = (text: string, o: B = {}): B => p(text, { fs: { desktop: 118, phone: 108 }, ...o });
-export const eyebrow = (text: string, o: B = {}): B => p(`**${text.toUpperCase()}**`, { color: 'token:brand', fs: { desktop: 82 }, ...o });
+/** Upper-case eyebrow → the text it was written as (a catalog key), so the gallery can show it in another language. */
+const EYEBROWS = new Map<string, string>();
+export const eyebrowSource = (upper: string) => EYEBROWS.get(upper);
+export const eyebrow = (text: string, o: B = {}): B => {
+  EYEBROWS.set(text.toUpperCase(), text);
+  return p(`**${text.toUpperCase()}**`, { color: 'token:brand', fs: { desktop: 82 }, ...o });
+};
 /** One or two buttons side by side (the second one quieter). */
 export const buttons = (primary?: [string, string], secondary?: [string, string]): B[] => (primary ? [btn(primary[0], primary[1], secondary ? { text2: secondary[0], url2: secondary[1] } : {})] : []);
 

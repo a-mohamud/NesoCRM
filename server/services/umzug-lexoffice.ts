@@ -4,6 +4,7 @@ import type { Json } from './umzug-flow.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { counter } from './umzug-lib.js';
 import { toIso } from './umzug-text.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Lexware Office (formerly lexoffice; public API, https://api.lexware.io/v1, an API key): customers → contacts (a company becomes a company
@@ -94,17 +95,18 @@ const VOUCHER_TYPES = Object.keys(TYPE).join(',');
 const VOUCHER_STATUS = Object.keys(STATUS).join(',');
 
 export function lexofficeDocument(v: Json): RActivity | undefined {
+  const t = tApp();
   if (!v?.id || !v?.contactId) return undefined;
   const type = String(v.voucherType ?? '').toLowerCase();
   return documentActivity({
     vendor: 'Lexware Office',
     ext: `v:${v.id}`,
     contact: `c:${v.contactId}`,
-    label: TYPE[type] ?? String(v.voucherType ?? 'Beleg'),
+    label: TYPE[type] ? t(TYPE[type]) : String(v.voucherType ?? t('Beleg')),
     number: v.voucherNumber ? String(v.voucherNumber) : undefined,
     date: toIso(v.voucherDate)?.slice(0, 10),
     due: toIso(v.dueDate)?.slice(0, 10),
-    status: STATUS[String(v.voucherStatus ?? '').toLowerCase()] ?? (v.voucherStatus ? String(v.voucherStatus) : undefined),
+    status: STATUS[String(v.voucherStatus ?? '').toLowerCase()] ? t(STATUS[String(v.voucherStatus ?? '').toLowerCase()]) : v.voucherStatus ? String(v.voucherStatus) : undefined,
     total: v.totalAmount === undefined ? undefined : Number(v.totalAmount),
     open: v.openAmount === undefined ? undefined : Number(v.openAmount),
     currency: v.currency,

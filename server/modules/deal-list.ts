@@ -5,6 +5,7 @@ import { HttpError, bad, type Ctx, type RawResult } from '../core/http.js';
 import { DEAL_FROM, dealListSql, dealProps, deniedDealFields } from '../services/deal-query.js';
 import { getPipeline, updateOpportunity } from '../services/opportunities.js';
 import { maskContactFields, maskRow, resolve, scopeClause } from '../services/record-access.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * The opportunity list view's server side (docs/api.md, Pipelines): bulk actions on selected deals (stage, owner, delete – one
@@ -111,7 +112,8 @@ export const dealListModule: Module = {
       const pipes = new Map(parseRows(db.all('SELECT id, name, stages FROM pipelines WHERE location_id = ?', ctx.locationId), ['stages']).map((p) => [p.id, p]));
       const users = new Map(db.all<{ id: string; name: string }>('SELECT id, name FROM users').map((u) => [u.id, u.name]));
       const props = dealProps(app, ctx.locationId);
-      const header = ['Name', 'Kontakt', 'E-Mail', 'Telefon', 'Firma', 'Pipeline', 'Stufe', 'Status', 'Wert', 'Währung', 'Zuständig', 'Erwarteter Abschluss', 'Quelle', 'Verlustgrund', 'Tags', 'Angelegt', 'Geändert', ...props.map((p) => p.label)];
+      const tr = tCtx(ctx);
+      const header = [...['Name', 'Kontakt', 'E-Mail', 'Telefon', 'Firma', 'Pipeline', 'Stufe', 'Status', 'Wert', 'Währung', 'Zuständig', 'Erwarteter Abschluss', 'Quelle', 'Verlustgrund', 'Tags', 'Angelegt', 'Geändert'].map((h) => tr(h)), ...props.map((p) => p.label)];
       const lines = rows.map((r) => {
         const p = pipes.get(r.pipeline_id);
         const cell = (v: unknown) => (v === null || v === undefined ? '' : Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v));
@@ -153,8 +155,10 @@ export const dealListModule: Module = {
         action: (_b: unknown, a: unknown) => (!a ? 'delete' : 'bulk'),
         groupLabel: (ctx: Ctx, rows: unknown[]) => {
           const n = rows.length;
-          const what = ctx.body?.action === 'delete' ? 'gelöscht' : ctx.body?.action === 'owner' ? 'neu zugewiesen' : 'in andere Stufe verschoben';
-          return `${n} ${n === 1 ? 'Deal' : 'Deals'} ${what}`;
+          const t = tCtx(ctx);
+          if (ctx.body?.action === 'delete') return t.plural(n, { one: '{n} Deal gelöscht', other: '{n} Deals gelöscht' });
+          if (ctx.body?.action === 'owner') return t.plural(n, { one: '{n} Deal neu zugewiesen', other: '{n} Deals neu zugewiesen' });
+          return t.plural(n, { one: '{n} Deal in andere Stufe verschoben', other: '{n} Deals in andere Stufe verschoben' });
         },
       });
     }

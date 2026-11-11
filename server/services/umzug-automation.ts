@@ -1,5 +1,6 @@
 import type { RWorkflow } from './umzug-core.js';
 import { clip, convertMergeTags } from './umzug-text.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Best-effort translation of other tools' automations into HyperLevel workflow drafts. Common triggers and
@@ -35,6 +36,7 @@ const TRIGGERS: [RegExp, string][] = [
 ];
 
 export function mapTrigger(raw: Json | undefined, look: Lookup = {}): { trigger: { type: string; config: Json }; warning?: string } {
+  const t = tApp();
   if (!raw) return { trigger: { type: 'manual', config: {} }, warning: 'Auslöser unbekannt – auf „Manuell“ gesetzt' };
   const p = params(raw);
   // The block says "start"/"trigger"; what starts the automation is named in its parameters (or in the block itself).
@@ -47,9 +49,9 @@ export function mapTrigger(raw: Json | undefined, look: Lookup = {}): { trigger:
       const tag = text(p.tag) || text(p.tagName) || text(p.tag_name) || look.tag?.(p.tagid ?? p.tag_id ?? p.tagId);
       if (tag) config.tag = tag;
     }
-    return { trigger: { type, config }, warning: type === 'contact.created' && (p.list || p.listid) ? `Auslöser „Zu Liste hinzugefügt“ wurde zu „Kontakt angelegt“ – die Listen-Bedingung (${look.list?.(p.list ?? p.listid) ?? p.list ?? p.listid}) bitte als Tag-Filter nachbauen` : undefined };
+    return { trigger: { type, config }, warning: type === 'contact.created' && (p.list || p.listid) ? t('Auslöser „Zu Liste hinzugefügt“ wurde zu „Kontakt angelegt“ – die Listen-Bedingung ({list}) bitte als Tag-Filter nachbauen', { list: look.list?.(p.list ?? p.listid) ?? p.list ?? p.listid }) : undefined };
   }
-  return { trigger: { type: 'manual', config: {} }, warning: `Auslöser „${clip(raw.type ?? raw.name ?? '?', 40)}“ hat keine Entsprechung – auf „Manuell“ gesetzt` };
+  return { trigger: { type: 'manual', config: {} }, warning: t('Auslöser „{type}“ hat keine Entsprechung – auf „Manuell“ gesetzt', { type: clip(raw.type ?? raw.name ?? '?', 40) }) };
 }
 
 function waitStep(p: Json): Json {
@@ -62,49 +64,51 @@ function waitStep(p: Json): Json {
   return { type: 'wait', amount: raw, unit: 'days' };
 }
 
-const note = (vendor: string, what: string, original: unknown): Json => ({ type: 'add_note', body: `Nicht übernommen (${vendor}: ${what}). Original: ${clip(JSON.stringify(original), 3000)}` });
+const note = (vendor: string, what: string, original: unknown): Json => ({ type: 'add_note', body: tApp()('Nicht übernommen ({vendor}: {what}). Original: {original}', { vendor, what, original: clip(JSON.stringify(original), 3000) }) });
 
 /** One block → one step (or a note step); returns warnings for the report. */
 export function mapBlock(vendor: Vendor, b: Json, look: Lookup = {}): { steps: Json[]; warnings: string[] } {
+  const t = tApp();
   const kind = norm(b.type ?? b.kind ?? b.action ?? b.name);
   const p = params(b);
   const tagName = () => text(p.tag) || text(p.tagName) || text(p.tag_name) || look.tag?.(p.tagid ?? p.tag_id ?? p.tagId) || '';
-  const fail = (why: string) => ({ steps: [note(vendor, why, b)], warnings: [`Schritt „${clip(b.type ?? b.name ?? '?', 40)}“ nicht übernommen (${why})`] });
+  const fail = (why: string) => ({ steps: [note(vendor, why, b)], warnings: [t('Schritt „{type}“ nicht übernommen ({why})', { type: clip(b.type ?? b.name ?? '?', 40), why })] });
   if (/^(start|trigger)$/.test(kind)) return { steps: [], warnings: [] };
   if (/^(sendemail|email|campaign|sendcampaign|sendanemail|sendmessage)$/.test(kind)) {
-    const subject = text(p.subject) || text(p.subjectline) || text(p.name) || text(b.name) || 'E-Mail aus dem Umzug';
+    const subject = text(p.subject) || text(p.subjectline) || text(p.name) || text(b.name) || t('E-Mail aus dem Umzug');
     const html = text(p.html) || text(p.content) || text(p.body) || '';
     const v = vendor === 'keap' || vendor === 'kit' || vendor === 'activecampaign' ? vendor : undefined;
-    const body = html ? (v ? convertMergeTags(v, html).text : html) : `[Inhalt der E-Mail „${subject}“ bitte aus ${vendor === 'activecampaign' ? 'ActiveCampaign' : vendor === 'kit' ? 'Kit' : 'Keap'} einfügen]`;
-    return { steps: [{ type: 'send_email', subject: v ? convertMergeTags(v, subject).text : subject, body, isHtml: /<[a-z][\s\S]*>/i.test(body) }], warnings: html ? [] : [`E-Mail „${subject}“: Inhalt liefert die API nicht – Platzhaltertext eingesetzt`] };
+    const body = html ? (v ? convertMergeTags(v, html).text : html) : t('[Inhalt der E-Mail „{subject}“ bitte aus {source} einfügen]', { subject, source: vendor === 'activecampaign' ? 'ActiveCampaign' : vendor === 'kit' ? 'Kit' : 'Keap' });
+    return { steps: [{ type: 'send_email', subject: v ? convertMergeTags(v, subject).text : subject, body, isHtml: /<[a-z][\s\S]*>/i.test(body) }], warnings: html ? [] : [t('E-Mail „{subject}“: Inhalt liefert die API nicht – Platzhaltertext eingesetzt', { subject })] };
   }
-  if (/^(sendsms|sms|text)$/.test(kind)) return { steps: [{ type: 'send_sms', body: text(p.message) || text(p.body) || text(p.text) || '[SMS-Text einfügen]' }], warnings: [] };
+  if (/^(sendsms|sms|text)$/.test(kind)) return { steps: [{ type: 'send_sms', body: text(p.message) || text(p.body) || text(p.text) || t('[SMS-Text einfügen]') }], warnings: [] };
   if (/^(wait|delay|waitfor|timedelay|waituntil)/.test(kind)) return { steps: [waitStep(p)], warnings: /until|date/.test(kind) ? ['„Warten bis Datum“ wurde als feste Wartezeit übernommen – bitte prüfen'] : [] };
   if (/^(addtag|tagadd|applytag|tag|addtags)$/.test(kind)) {
-    const t = tagName();
-    return t ? { steps: [{ type: 'add_tag', tags: [t] }], warnings: [] } : fail('Tag-Name unbekannt');
+    const tag = tagName();
+    return tag ? { steps: [{ type: 'add_tag', tags: [tag] }], warnings: [] } : fail(t('Tag-Name unbekannt'));
   }
   if (/^(removetag|tagremove|removetags)$/.test(kind)) {
-    const t = tagName();
-    return t ? { steps: [{ type: 'remove_tag', tags: [t] }], warnings: [] } : fail('Tag-Name unbekannt');
+    const tag = tagName();
+    return tag ? { steps: [{ type: 'remove_tag', tags: [tag] }], warnings: [] } : fail(t('Tag-Name unbekannt'));
   }
-  if (/^(updatefield|setfield|updatecontact|updatecustomfield)$/.test(kind)) return text(p.field) || text(p.fieldname) ? { steps: [{ type: 'update_field', field: text(p.field) || text(p.fieldname), value: text(p.value) }], warnings: ['Feldname aus der Quelle – bitte dem HyperLevel-Feld zuordnen'] } : fail('Feld unbekannt');
-  if (/^(createtask|addtask|task)$/.test(kind)) return { steps: [{ type: 'create_task', title: text(p.title) || text(p.name) || 'Aufgabe', due_in_days: Number(p.days ?? 0) || 0 }], warnings: [] };
-  if (/^(addnote|note)$/.test(kind)) return { steps: [{ type: 'add_note', body: text(p.note) || text(p.body) || text(p.text) || 'Notiz' }], warnings: [] };
-  if (/^(notify|sendnotification|notifyteam|notification)$/.test(kind)) return { steps: [{ type: 'notify', subject: text(p.subject) || 'Benachrichtigung', body: text(p.body) || text(p.message) || '' }], warnings: [] };
+  if (/^(updatefield|setfield|updatecontact|updatecustomfield)$/.test(kind)) return text(p.field) || text(p.fieldname) ? { steps: [{ type: 'update_field', field: text(p.field) || text(p.fieldname), value: text(p.value) }], warnings: [t('Feldname aus der Quelle – bitte dem HyperLevel-Feld zuordnen')] } : fail(t('Feld unbekannt'));
+  if (/^(createtask|addtask|task)$/.test(kind)) return { steps: [{ type: 'create_task', title: text(p.title) || text(p.name) || t('Aufgabe'), due_in_days: Number(p.days ?? 0) || 0 }], warnings: [] };
+  if (/^(addnote|note)$/.test(kind)) return { steps: [{ type: 'add_note', body: text(p.note) || text(p.body) || text(p.text) || t('Notiz') }], warnings: [] };
+  if (/^(notify|sendnotification|notifyteam|notification)$/.test(kind)) return { steps: [{ type: 'notify', subject: text(p.subject) || t('Benachrichtigung'), body: text(p.body) || text(p.message) || '' }], warnings: [] };
   if (/^(webhook|posttourl|posttoaurl)$/.test(kind) && /^https?:\/\//.test(text(p.url))) return { steps: [{ type: 'webhook', url: text(p.url), method: 'POST' }], warnings: [] };
   if (/^(unsubscribe|unsubscribefromall|dnd)$/.test(kind)) return { steps: [{ type: 'set_dnd', value: true }], warnings: [] };
   if (/^(end|exit|stop|endautomation)$/.test(kind)) return { steps: [{ type: 'end' }], warnings: [] };
-  if (/(if|else|condition|split|goal|branch|wait.?until.?cond)/.test(kind)) return { steps: [note(vendor, 'Verzweigung/Bedingung', b)], warnings: [`Verzweigung „${clip(b.type ?? b.name ?? '?', 40)}“ nicht nachgebaut – bitte als Wenn/Sonst-Schritt neu anlegen`] };
-  return fail(`Typ „${clip(b.type ?? b.name ?? '?', 40)}“ hat keine Entsprechung`);
+  if (/(if|else|condition|split|goal|branch|wait.?until.?cond)/.test(kind)) return { steps: [note(vendor, t('Verzweigung/Bedingung'), b)], warnings: [t('Verzweigung „{type}“ nicht nachgebaut – bitte als Wenn/Sonst-Schritt neu anlegen', { type: clip(b.type ?? b.name ?? '?', 40) })] };
+  return fail(t('Typ „{type}“ hat keine Entsprechung', { type: clip(b.type ?? b.name ?? '?', 40) }));
 }
 
 export function mapAutomation(vendor: Vendor, input: { id: string | number; name: string; blocks: Json[]; trigger?: Json; active?: boolean }, look: Lookup = {}): RWorkflow {
+  const t = tApp();
   const warnings: string[] = [];
   const blocks = input.blocks ?? [];
   const start = input.trigger ?? blocks.find((b) => /^(start|trigger)$/.test(norm(b.type ?? b.kind)));
-  const t = mapTrigger(start, look);
-  if (t.warning) warnings.push(t.warning);
+  const trig = mapTrigger(start, look);
+  if (trig.warning) warnings.push(trig.warning);
   const steps: Json[] = [];
   for (const b of blocks) {
     if (b === start) continue;
@@ -114,29 +118,31 @@ export function mapAutomation(vendor: Vendor, input: { id: string | number; name
   }
   if (!blocks.length) {
     warnings.push('Die Schritte dieser Automation hat die API nicht geliefert – nur Name und Status wurden übernommen');
-    steps.push({ type: 'add_note', body: `Die Schritte der ${vendor === 'activecampaign' ? 'ActiveCampaign' : vendor === 'kit' ? 'Kit' : 'Keap'}-Automation „${clip(input.name, 80)}“ wurden nicht geliefert. Bitte hier nachbauen.` });
+    steps.push({ type: 'add_note', body: t('Die Schritte der {source}-Automation „{name}“ wurden nicht geliefert. Bitte hier nachbauen.', { source: vendor === 'activecampaign' ? 'ActiveCampaign' : vendor === 'kit' ? 'Kit' : 'Keap', name: clip(input.name, 80) }) });
   }
   if (blocks.some((b) => /(if|else|condition|split|goal|branch)/.test(norm(b.type ?? b.kind)))) warnings.push('Die Automation hatte Verzweigungen: HyperLevel-Entwurf läuft geradlinig, bitte prüfen');
   if (input.active === false) warnings.push('In der Quelle war die Automation inaktiv');
-  return { kind: 'workflow', ext: `a:${input.id}`, name: clip(input.name, 160) || 'Automation', trigger: t.trigger, steps, warnings: [...new Set(warnings)] };
+  return { kind: 'workflow', ext: `a:${input.id}`, name: clip(input.name, 160) || t('Automation'), trigger: trig.trigger, steps, warnings: [...new Set(warnings)] };
 }
 
 /** Kit sequences: emails with their delays (when the source delivers them) as a row of mail + wait steps. */
 export function mapSequence(vendor: Vendor, input: { id: string | number; name: string; emails?: { subject?: string; content?: string; delay_days?: number; delay?: number }[]; hold?: boolean }): RWorkflow {
+  const t = tApp();
   const warnings: string[] = [];
   const steps: Json[] = [];
   const mails = input.emails ?? [];
   if (!mails.length) {
     warnings.push('Die E-Mails dieser Sequenz stellt die API nicht bereit – bitte die Texte aus dem Original einfügen');
-    steps.push({ type: 'add_note', body: `Sequenz „${clip(input.name, 80)}“ – die E-Mails hat die API nicht geliefert. Hier die Schritte nachbauen: E-Mail → warten → E-Mail …` });
+    steps.push({ type: 'add_note', body: t('Sequenz „{name}“ – die E-Mails hat die API nicht geliefert. Hier die Schritte nachbauen: E-Mail → warten → E-Mail …', { name: clip(input.name, 80) }) });
   }
   mails.forEach((m, i) => {
+    const t = tApp();
     const d = Number(m.delay_days ?? m.delay ?? 0) || 0;
     if (i > 0 || d > 0) steps.push({ type: 'wait', amount: Math.max(d, 0) || 1, unit: 'days' });
-    const body = m.content ? convertMergeTags(vendor, m.content).text : `[Inhalt von „${m.subject ?? `E-Mail ${i + 1}`}“ einfügen]`;
-    steps.push({ type: 'send_email', subject: convertMergeTags(vendor, m.subject ?? `E-Mail ${i + 1}`).text, body, isHtml: /<[a-z][\s\S]*>/i.test(body) });
-    if (!m.content) warnings.push(`E-Mail „${m.subject ?? i + 1}“: kein Inhalt geliefert`);
+    const body = m.content ? convertMergeTags(vendor, m.content).text : t('[Inhalt von „{subject}“ einfügen]', { subject: m.subject ?? t('E-Mail {n}', { n: i + 1 }) });
+    steps.push({ type: 'send_email', subject: convertMergeTags(vendor, m.subject ?? t('E-Mail {n}', { n: i + 1 })).text, body, isHtml: /<[a-z][\s\S]*>/i.test(body) });
+    if (!m.content) warnings.push(t('E-Mail „{subject}“: kein Inhalt geliefert', { subject: m.subject ?? i + 1 }));
   });
   if (input.hold) warnings.push('In der Quelle war die Sequenz angehalten');
-  return { kind: 'workflow', ext: `q:${input.id}`, name: clip(`Sequenz: ${input.name}`, 160), trigger: { type: 'manual', config: {} }, steps, warnings: [...new Set(warnings)] };
+  return { kind: 'workflow', ext: `q:${input.id}`, name: clip(t('Sequenz: {name}', { name: input.name }), 160), trigger: { type: 'manual', config: {} }, steps, warnings: [...new Set(warnings)] };
 }

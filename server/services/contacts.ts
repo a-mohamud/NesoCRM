@@ -3,6 +3,7 @@ import type { App } from '../core/app.js';
 import { parseJson } from '../core/db.js';
 import { id, normalizeEmail, normalizePhone, now, uniq } from '../core/util.js';
 import { maskRow, resolve, scopeClause, type Who } from './record-access.js';
+import { tLoc } from '../i18n/index.js';
 
 export interface Contact {
   id: string;
@@ -140,7 +141,7 @@ export function upsertContact(
       country: '',
       website: '',
       ...fields,
-      source: fields.source || opts.source || 'manuell',
+      source: fields.source || opts.source || tLoc(app, locationId)('manuell'),
       tags,
       custom,
       dnd: input.dnd ? 1 : 0,
@@ -150,10 +151,10 @@ export function upsertContact(
     app.db.insert('contacts', c);
     ensureTags(app, locationId, tags);
     const contact = getContact(app, locationId, c.id)!;
-    logActivity(app, locationId, c.id, 'contact.created', `Kontakt angelegt (${c.source})`);
+    logActivity(app, locationId, c.id, 'contact.created', tLoc(app, locationId)('Kontakt angelegt ({source})', { source: c.source }));
     // Public input with a known number but another address: a contact of its own (see above); say why there are two.
     if (opts.publicInput && fields.email && fields.phone && app.db.get('SELECT 1 AS x FROM contacts WHERE location_id = ? AND phone = ? AND id <> ?', locationId, fields.phone, c.id)) {
-      logActivity(app, locationId, c.id, 'contact.possible_duplicate', 'Gleiche Telefonnummer wie ein bestehender Kontakt mit anderer E-Mail-Adresse – nicht zusammengeführt (öffentliche Eingabe). Ist es dieselbe Person, in den Dubletten zusammenführen.', { phone: fields.phone, source: c.source });
+      logActivity(app, locationId, c.id, 'contact.possible_duplicate', tLoc(app, locationId)('Gleiche Telefonnummer wie ein bestehender Kontakt mit anderer E-Mail-Adresse – nicht zusammengeführt (öffentliche Eingabe). Ist es dieselbe Person, in den Dubletten zusammenführen.'), { phone: fields.phone, source: c.source });
     }
     if (!opts.quiet) {
       app.events.emit(locationId, 'contact.created', { contactId: c.id, contact });
@@ -172,8 +173,9 @@ export function upsertContact(
       delete patch[k];
       if (k === 'phone' ? sameNumber(had, got) : had === got) continue;
       // Never overwritten from unproven input: the value stays visible to the team as an unverified alternative.
-      const source = fields.source || opts.source || 'öffentliche Eingabe';
-      logActivity(app, locationId, existing.id, 'contact.unverified_alternative', `Abweichende ${IDENTITY_LABEL[k]} aus „${source}“ nicht übernommen (unbestätigt): ${got}`, { field: k, value: got, source });
+      const t = tLoc(app, locationId);
+      const source = fields.source || opts.source || t('öffentliche Eingabe');
+      logActivity(app, locationId, existing.id, 'contact.unverified_alternative', t('Abweichende {field} aus „{source}“ nicht übernommen (unbestätigt): {value}', { field: t(IDENTITY_LABEL[k]), source, value: got }), { field: k, value: got, source });
     }
   }
   const newTags = tags.filter((t) => !existing!.tags.includes(t));
@@ -204,7 +206,7 @@ export function addTags(app: App, locationId: string, contactId: string, tags: s
   ensureTags(app, locationId, add);
   const contact = getContact(app, locationId, contactId)!;
   for (const t of add) {
-    logActivity(app, locationId, contactId, 'tag.added', `Tag „${t}“ hinzugefügt`);
+    logActivity(app, locationId, contactId, 'tag.added', tLoc(app, locationId)('Tag „{tag}“ hinzugefügt', { tag: t }));
     app.events.emit(locationId, 'contact.tag_added', { contactId, tag: t, contact });
   }
 }
@@ -217,7 +219,7 @@ export function removeTags(app: App, locationId: string, contactId: string, tags
   app.db.update('contacts', c.id, { tags: c.tags.filter((t) => !drop.includes(t)), updated_at: now() });
   const contact = getContact(app, locationId, contactId)!;
   for (const t of drop) {
-    logActivity(app, locationId, contactId, 'tag.removed', `Tag „${t}“ entfernt`);
+    logActivity(app, locationId, contactId, 'tag.removed', tLoc(app, locationId)('Tag „{tag}“ entfernt', { tag: t }));
     app.events.emit(locationId, 'contact.tag_removed', { contactId, tag: t, contact });
   }
 }

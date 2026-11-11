@@ -10,6 +10,7 @@ import { gmailApi } from './mailbox-gmail.js';
 import { graphApi } from './mailbox-graph.js';
 import { MailError, canRead, formatAddress, sameAddress, type MailAccess, type MailApi, type MailProviderKind, type MsgChange, type RemoteMessage } from './mailbox-kit.js';
 import { inboundGate } from './inbound-gate.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * The sync engine behind native mailboxes: turns what Gmail / Graph report into conversations and messages
@@ -72,7 +73,8 @@ export function apiFor(app: App, mb: Pick<MailboxRow, 'provider' | 'connection_i
 }
 
 /** Has this mailbox's connection lost its grant (only reconnecting helps)? */
-export const needsReconnect = (mb: Pick<MailboxRow, 'status' | 'last_error'>) => mb.status === 'error' && /neu verbinden/.test(mb.last_error ?? '');
+// Matches the German message and its English translation (the stored error is in the instance language).
+export const needsReconnect = (mb: Pick<MailboxRow, 'status' | 'last_error'>) => mb.status === 'error' && /neu verbinden|reconnect/i.test(mb.last_error ?? '');
 
 /** May the owner of a personal mailbox file mail into this sub-account? (Rights can change after the rules were set.) */
 export function ownerMayUse(app: App, userId: string | null, locationId: string): boolean {
@@ -458,7 +460,7 @@ export async function flushOutbox(app: App, mailboxId?: string): Promise<{ done:
         } else {
           // Gone (404) or not allowed (403): retrying will not help.
           db.run('DELETE FROM mailbox_outbox WHERE id = ?', row.id);
-          if (err instanceof MailError && err.status === 403) db.run('UPDATE mailboxes SET last_error = ?, updated_at = ? WHERE id = ?', `Keine Berechtigung zum Ändern von Mails: ${err.message}`.slice(0, 300), now(), mid);
+          if (err instanceof MailError && err.status === 403) db.run('UPDATE mailboxes SET last_error = ?, updated_at = ? WHERE id = ?', tApp()('Keine Berechtigung zum Ändern von Mails: {error}', { error: err.message }).slice(0, 300), now(), mid);
         }
         out.failed++;
       }
@@ -593,7 +595,7 @@ export async function syncMailbox(app: App, mailboxId: string, opts: SyncOptions
       }
     }
     if (counts.created || counts.deleted) {
-      app.services.audit?.({ action: 'mailbox.sync', summary: `${mb.name}: ${counts.created} neu${counts.linked ? `, ${counts.linked} verknüpft` : ''}${counts.deleted ? `, ${counts.deleted} gelöscht` : ''}`, locationId: mb.location_id, entityId: mb.id });
+      app.services.audit?.({ action: 'mailbox.sync', summary: `${mb.name}: ${[tApp()('{n} neu', { n: counts.created }), counts.linked ? tApp()('{n} verknüpft', { n: counts.linked }) : '', counts.deleted ? tApp()('{n} gelöscht', { n: counts.deleted }) : ''].filter(Boolean).join(', ')}`, locationId: mb.location_id, entityId: mb.id });
     }
     return { ...counts, more };
   } catch (e) {

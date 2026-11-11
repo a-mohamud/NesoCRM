@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Db, Row } from '../core/db.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Building blocks of the undo journal (modules/undo.ts): what a "snapshot" of a record is, how the
@@ -300,11 +301,11 @@ export function kidsText(counts: Record<string, number>, max = 4): string {
     .sort((a, b) => b[1] - a[1])
     .map(([t, n]) => {
       const noun = KID_NOUNS[t];
-      return noun ? `${n} ${n === 1 ? noun[0] : noun[1]}` : null;
+      return noun ? `${n} ${tApp()(n === 1 ? noun[0] : noun[1])}` : null;
     })
     .filter(Boolean) as string[];
   const rest = Object.entries(counts).filter(([t, n]) => n > 0 && !KID_NOUNS[t]).reduce((s, [, n]) => s + n, 0);
   const shown = parts.slice(0, max);
-  if (rest || parts.length > max) shown.push('weitere Einträge');
+  if (rest || parts.length > max) shown.push(tApp()('weitere Einträge'));
   return shown.join(', ');
 }

@@ -11,6 +11,7 @@ import { applySnapshot, validateSnapshot } from '../services/snapshots.js';
 import { getBranding } from './agency.js';
 import { cloudEnabled } from './cloud.js';
 import { createLocation } from './core.js';
+import { tApp, tCtx, tUser, type STFn } from '../i18n/index.js';
 import { fetchSubscription, fromStripeSub, logSaasEvent, planById, saasSettings, saasStripe, stripeKeyOf, upsertSubscription } from './saas.js';
 
 /**
@@ -38,11 +39,12 @@ function throttled(key: string, max: number, windowMs = 60 * 60_000): boolean {
   return list.length > max;
 }
 
-const euro = (cents: number, currency: string) => {
-  const s = new Intl.NumberFormat('de-DE', { style: 'currency', currency, minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2 }).format(cents / 100);
+const numLocale = (t: STFn) => (t.locale === 'de' ? 'de-DE' : 'en-GB');
+const euro = (cents: number, currency: string, t: STFn = tApp()) => {
+  const s = new Intl.NumberFormat(numLocale(t), { style: 'currency', currency, minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2 }).format(cents / 100);
   return s;
 };
-const n = (v: number) => v.toLocaleString('de-DE');
+const n = (v: number, t: STFn = tApp()) => v.toLocaleString(numLocale(t));
 
 const SIGNUP_CSS = `<style>
 .saas { max-width: 1040px; margin: 0 auto; padding: 36px 16px 56px; }
@@ -91,13 +93,15 @@ const SIGNUP_CSS = `<style>
 </style>`;
 
 /** "1.000 Kontakte", "E-Mails pro Monat: unbegrenzt" … – funnels/courses only when the plan has that area. */
-function limitLines(p: Plan): string[] {
+function limitLines(p: Plan, t: STFn = tApp()): string[] {
   const order: LimitKey[] = ['contacts', 'users', 'emails', 'sms', 'ai', 'funnels', 'courses'];
   return order
     .filter((k) => (k === 'funnels' || k === 'courses' ? p.features.includes(k) : true))
     .map((k) => {
       const l = limitOf(p, k);
-      return l === null ? `${LIMITS[k]}: unbegrenzt` : `${n(l)} ${LIMITS[k]}`;
+      // "Nutzer" is singular and plural in German: users get their own forms.
+      if (k === 'users') return l === null ? t('Nutzer: unbegrenzt') : t.plural(l, { one: '{n} Nutzer', other: '{n} Nutzer' }, { n: n(l, t) });
+      return l === null ? t('{label}: unbegrenzt', { label: t(LIMITS[k]) }) : `${n(l, t)} ${t(LIMITS[k])}`;
     });
 }
 
@@ -151,17 +155,19 @@ export const saasSignupModule: Module = {
       return `${app.baseUrl()}/invite/${t}`;
     }
 
-    async function sendWelcome(r: { loc: { id: string; name: string }; user: any; isNew: boolean; plan: Plan }) {
+    async function sendWelcome(r: { loc: { id: string; name: string }; user: any; isNew: boolean; plan: Plan; t?: STFn }) {
       const s = saasSettings(app);
       const b = getBranding(app);
       const sender = (s.mail_location_id && app.location(s.mail_location_id)) || app.location(r.loc.id);
       if (!sender) return;
       const link = r.isNew ? createInvite(r.user.id, r.loc.id) : `${app.baseUrl()}/app`;
+      const t = r.t ?? tApp();
+      const vars = { name: r.user.name || '', account: r.loc.name, brand: b.name, plan: r.plan.name, days: INVITE_DAYS, link, app_url: `${app.baseUrl()}/app`, email: r.user.email };
       const text = r.isNew
-        ? `Hallo ${r.user.name || ''},\n\ndein Konto „${r.loc.name}“ bei ${b.name} ist bereit (Tarif „${r.plan.name}“).\n\nLege hier dein Passwort fest – der Link ist ${INVITE_DAYS} Tage gültig:\n${link}\n\nDanach meldest du dich unter ${app.baseUrl()}/app mit ${r.user.email} an.\n${b.support_email ? `\nFragen? ${b.support_email}\n` : ''}\nViele Grüße\n${b.name}`
-        : `Hallo ${r.user.name || ''},\n\ndein neues Konto „${r.loc.name}“ bei ${b.name} ist bereit (Tarif „${r.plan.name}“). Du findest es nach dem Login unter ${link}.\n\nViele Grüße\n${b.name}`;
+        ? `${t('Hallo {name},\n\ndein Konto „{account}“ bei {brand} ist bereit (Tarif „{plan}“).\n\nLege hier dein Passwort fest – der Link ist {days} Tage gültig:\n{link}\n\nDanach meldest du dich unter {app_url} mit {email} an.\n', vars)}${b.support_email ? `\n${t('Fragen? {email}', { email: b.support_email })}\n` : ''}\n${t('Viele Grüße')}\n${b.name}`
+        : t('Hallo {name},\n\ndein neues Konto „{account}“ bei {brand} ist bereit (Tarif „{plan}“). Du findest es nach dem Login unter {link}.\n\nViele Grüße\n{brand}', vars);
       // The agency's own wording, if set (modules/system-mails.ts).
-      const builtIn = { subject: r.isNew ? `Willkommen bei ${b.name} – lege dein Passwort fest` : `Dein neues Konto bei ${b.name}`, text };
+      const builtIn = { subject: r.isNew ? t('Willkommen bei {brand} – lege dein Passwort fest', vars) : t('Dein neues Konto bei {brand}', vars), text };
       const m = app.services.systemMail?.(r.isNew ? 'saas_welcome' : 'saas_new_account', builtIn, { brand: b, link, user: r.user, location: r.loc, plan: r.plan, days: INVITE_DAYS, app_url: `${app.baseUrl()}/app` }) ?? builtIn;
       const htmlBody = `<!doctype html><html><body style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#1f2937">${escapeHtml(m.text)
         .replace(/\n/g, '<br>')
@@ -169,7 +175,7 @@ export const saasSignupModule: Module = {
       try {
         await mailer(sender, { to: r.user.email, subject: m.subject, text: m.text, html: htmlBody });
       } catch (e) {
-        logSaasEvent(app, r.loc.id, 'mail_failed', `Einladung an ${r.user.email}: ${(e as Error).message}`);
+        logSaasEvent(app, r.loc.id, 'mail_failed', tApp()('Einladung an {email}: {error}', { email: r.user.email, error: (e as Error).message }));
       }
     }
 
@@ -211,7 +217,8 @@ export const saasSignupModule: Module = {
           : { billing: 'manual' as const, status: 'active' as const };
       upsertSubscription(app, { interval: signup.interval === 'year' ? 'year' : 'month', ...fields, location_id: loc.id, plan_id: plan.id, email: signup.email });
       db.run(`UPDATE saas_signups SET status = 'done', location_id = ?, user_id = ?, new_user = ?, completed_at = ?, error = '' WHERE id = ?`, loc.id, user.id, isNew ? 1 : 0, now(), signup.id);
-      logSaasEvent(app, loc.id, 'signup', `${signup.company} · ${plan.name} (${signup.interval === 'year' ? 'jährlich' : 'monatlich'}${stripe ? '' : ', ohne Stripe'})`);
+      const tl = tApp();
+      logSaasEvent(app, loc.id, 'signup', `${signup.company} · ${plan.name} (${tl(signup.interval === 'year' ? 'jährlich' : 'monatlich')}${stripe ? '' : tl(', ohne Stripe')})`);
       return { loc, user, isNew, plan };
     }
 
@@ -243,7 +250,9 @@ export const saasSignupModule: Module = {
       const b = getBranding(app);
       const want = String(opts.values?.plan ?? ctx.query.get('plan') ?? '');
       const plans = signupPlans(want);
-      if (!s.signup_enabled || !plans.length) return message('Anmeldung geschlossen', 'Neue Konten können gerade nicht online angelegt werden. Bitte melde dich direkt bei uns.', { status: 404, action: b.support_email ? [`mailto:${b.support_email}`, 'Kontakt aufnehmen'] : undefined });
+      const t = tCtx(ctx);
+      const h = (s: string, vars?: Record<string, string | number>) => escapeHtml(t(s, vars));
+      if (!s.signup_enabled || !plans.length) return message(t('Anmeldung geschlossen'), t('Neue Konten können gerade nicht online angelegt werden. Bitte melde dich direkt bei uns.'), { status: 404, action: b.support_email ? [`mailto:${b.support_email}`, t('Kontakt aufnehmen')] : undefined });
       const v = opts.values ?? {};
       const chosen = plans.find((p) => p.id === want) ?? plans[0];
       const anyYear = plans.some((p) => p.price_year_cents > 0 && p.price_month_cents > 0);
@@ -253,49 +262,49 @@ export const saasSignupModule: Module = {
         .map((p) => {
           const ints = intervalsOf(p);
           const free = isFree(p);
-          const m = p.price_month_cents ? `${euro(p.price_month_cents, p.currency)}<small> / Monat</small>` : free ? 'Kostenlos' : '';
-          const y = p.price_year_cents ? `${euro(p.price_year_cents, p.currency)}<small> / Jahr</small>` : free ? 'Kostenlos' : '';
-          const monthBlock = m ? `<div class="price">${m}</div><div class="alt">${p.price_year_cents ? `oder ${euro(p.price_year_cents, p.currency)} pro Jahr` : ''}</div>` : `<div class="price">${y}</div><div class="alt">nur jährlich</div>`;
-          const yearBlock = y ? `<div class="price">${y}</div><div class="alt">${p.price_month_cents ? `entspricht ${euro(Math.round(p.price_year_cents / 12), p.currency)} pro Monat` : ''}</div>` : `<div class="price">${m}</div><div class="alt">nur monatlich</div>`;
-          const areas = (Object.keys(PERMISSIONS) as (keyof typeof PERMISSIONS)[]).filter((k) => p.features.includes(k) && k !== 'settings').map((k) => `<span>${escapeHtml(PERMISSIONS[k])}</span>`);
+          const m = p.price_month_cents ? `${euro(p.price_month_cents, p.currency, t)}<small> ${h('/ Monat')}</small>` : free ? h('Kostenlos') : '';
+          const y = p.price_year_cents ? `${euro(p.price_year_cents, p.currency, t)}<small> ${h('/ Jahr')}</small>` : free ? h('Kostenlos') : '';
+          const monthBlock = m ? `<div class="price">${m}</div><div class="alt">${p.price_year_cents ? h('oder {price} pro Jahr', { price: euro(p.price_year_cents, p.currency, t) }) : ''}</div>` : `<div class="price">${y}</div><div class="alt">${h('nur jährlich')}</div>`;
+          const yearBlock = y ? `<div class="price">${y}</div><div class="alt">${p.price_month_cents ? h('entspricht {price} pro Monat', { price: euro(Math.round(p.price_year_cents / 12), p.currency, t) }) : ''}</div>` : `<div class="price">${m}</div><div class="alt">${h('nur monatlich')}</div>`;
+          const areas = (Object.keys(PERMISSIONS) as (keyof typeof PERMISSIONS)[]).filter((k) => p.features.includes(k) && k !== 'settings').map((k) => `<span>${escapeHtml(t(PERMISSIONS[k]))}</span>`);
           return `<label class="plan"><input type="radio" name="plan" value="${escapeHtml(p.id)}" ${p.id === chosen.id ? 'checked' : ''} data-intervals="${ints.join(',')}">
   <div class="plan-body">
     <div class="plan-name">${escapeHtml(p.name)} <span class="pick"></span></div>
     <div class="p-month">${monthBlock}</div><div class="p-year">${yearBlock}</div>
-    ${p.trial_days && !free ? `<div class="trial">${p.trial_days} Tage kostenlos testen</div>` : ''}
+    ${p.trial_days && !free ? `<div class="trial">${h('{n} Tage kostenlos testen', { n: p.trial_days })}</div>` : ''}
     ${p.description ? `<p class="desc">${escapeHtml(p.description)}</p>` : ''}
-    <ul class="limits">${limitLines(p).map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ul>
+    <ul class="limits">${limitLines(p, t).map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ul>
     ${areas.length ? `<div class="areas">${areas.join('')}</div>` : ''}
   </div></label>`;
         })
         .join('');
       const field = (name: string, label: string, type = 'text', extra = '') =>
         `<label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" type="${type}" value="${escapeHtml(v[name] ?? '')}" ${extra}>`;
-      const body = `<h1>${escapeHtml(s.signup_title || `${b.name} jetzt starten`)}</h1>
-<p class="lead">${escapeHtml(s.signup_text || 'Wähle deinen Tarif, lege dein Konto an und leg direkt los – in zwei Minuten.')}</p>
+      const body = `<h1>${escapeHtml(s.signup_title || t('{brand} jetzt starten', { brand: b.name }))}</h1>
+<p class="lead">${escapeHtml(s.signup_text || t('Wähle deinen Tarif, lege dein Konto an und leg direkt los – in zwei Minuten.'))}</p>
 ${opts.error ? `<div class="error" role="alert">${escapeHtml(opts.error)}</div>` : ''}
 <form method="post" action="/signup">
-  ${anyYear ? `<div class="interval" role="radiogroup" aria-label="Abrechnung"><label><input type="radio" name="interval" value="month" ${interval === 'month' ? 'checked' : ''}> Monatlich</label><label><input type="radio" name="interval" value="year" ${interval === 'year' ? 'checked' : ''}> Jährlich ${maxSave > 0 ? `<span class="save">bis ${maxSave} % sparen</span>` : ''}</label></div>` : `<input type="hidden" name="interval" value="${plans.every((p) => !p.price_month_cents && p.price_year_cents) ? 'year' : 'month'}">`}
+  ${anyYear ? `<div class="interval" role="radiogroup" aria-label="${h('Abrechnung')}"><label><input type="radio" name="interval" value="month" ${interval === 'month' ? 'checked' : ''}> ${h('Monatlich')}</label><label><input type="radio" name="interval" value="year" ${interval === 'year' ? 'checked' : ''}> ${h('Jährlich')} ${maxSave > 0 ? `<span class="save">${h('bis {n} % sparen', { n: maxSave })}</span>` : ''}</label></div>` : `<input type="hidden" name="interval" value="${plans.every((p) => !p.price_month_cents && p.price_year_cents) ? 'year' : 'month'}">`}
   <div class="plans">${cards}</div>
   <div class="account">
     <div class="card">
-      <h2>Dein Konto</h2>
-      ${field('company', 'Firmenname', 'text', 'required maxlength="120" autocomplete="organization"')}
-      <div class="row"><div>${field('name', 'Dein Name', 'text', 'maxlength="120" autocomplete="name"')}</div><div>${field('phone', 'Telefon (optional)', 'tel', 'maxlength="40" autocomplete="tel"')}</div></div>
-      ${field('email', 'E-Mail (dein Login)', 'email', 'required maxlength="200" autocomplete="email"')}
+      <h2>${h('Dein Konto')}</h2>
+      ${field('company', h('Firmenname'), 'text', 'required maxlength="120" autocomplete="organization"')}
+      <div class="row"><div>${field('name', h('Dein Name'), 'text', 'maxlength="120" autocomplete="name"')}</div><div>${field('phone', h('Telefon (optional)'), 'tel', 'maxlength="40" autocomplete="tel"')}</div></div>
+      ${field('email', h('E-Mail (dein Login)'), 'email', 'required maxlength="200" autocomplete="email"')}
       <div class="hp" aria-hidden="true"><label for="f-website">Website</label><input id="f-website" name="website" tabindex="-1" autocomplete="off"></div>
-      ${s.terms_url ? `<label class="check"><input type="checkbox" name="terms" value="1" required ${v.terms ? 'checked' : ''}> <span>Ich akzeptiere die <a href="${escapeHtml(s.terms_url)}" target="_blank" rel="noopener">AGB</a>.</span></label>` : ''}
-      <button type="submit">Konto anlegen</button>
-      <p class="muted small" style="text-align:center;margin-bottom:0">Bezahlung sicher über Stripe (Karte, SEPA, Apple Pay …). Jederzeit kündbar.</p>
+      ${s.terms_url ? `<label class="check"><input type="checkbox" name="terms" value="1" required ${v.terms ? 'checked' : ''}> <span>${t('Ich akzeptiere die {link}AGB{end}.', { link: `<a href="${escapeHtml(s.terms_url)}" target="_blank" rel="noopener">`, end: '</a>' })}</span></label>` : ''}
+      <button type="submit">${h('Konto anlegen')}</button>
+      <p class="muted small" style="text-align:center;margin-bottom:0">${h('Bezahlung sicher über Stripe (Karte, SEPA, Apple Pay …). Jederzeit kündbar.')}</p>
     </div>
     <div class="side">
-      <h3>So geht's weiter</h3>
-      <ul><li>Tarif wählen und Konto anlegen</li><li>Bei Stripe bezahlen – ${plans.some((p) => p.trial_days) ? 'in der Testphase wird noch nichts abgebucht' : 'Karte oder SEPA'}</li><li>Passwort festlegen – du landest direkt in deinem Konto</li></ul>
-      <p style="margin-top:14px">Schon Kunde? <a href="/app">Zum Login</a>${b.support_email ? ` · Fragen: <a href="mailto:${escapeHtml(b.support_email)}">${escapeHtml(b.support_email)}</a>` : ''}</p>
+      <h3>${h("So geht's weiter")}</h3>
+      <ul><li>${h('Tarif wählen und Konto anlegen')}</li><li>${h('Bei Stripe bezahlen – {note}', { note: plans.some((p) => p.trial_days) ? t('in der Testphase wird noch nichts abgebucht') : t('Karte oder SEPA') })}</li><li>${h('Passwort festlegen – du landest direkt in deinem Konto')}</li></ul>
+      <p style="margin-top:14px">${h('Schon Kunde?')} <a href="/app">${h('Zum Login')}</a>${b.support_email ? ` · ${h('Fragen:')} <a href="mailto:${escapeHtml(b.support_email)}">${escapeHtml(b.support_email)}</a>` : ''}</p>
     </div>
   </div>
 </form>`;
-      return page(s.signup_title || 'Konto anlegen', body, { status: opts.status });
+      return page(s.signup_title || t('Konto anlegen'), body, { status: opts.status });
     }
 
     // A link to a cloud plan (/signup?plan=cloud-team) leads to the cloud's own pricing page (in waitlist mode: the waitlist).
@@ -306,15 +315,16 @@ ${opts.error ? `<div class="error" role="alert">${escapeHtml(opts.error)}</div>`
       const b = ctx.body ?? {};
       const values: Record<string, string> = {};
       for (const k of ['plan', 'interval', 'company', 'name', 'email', 'phone', 'terms']) values[k] = String(b[k] ?? '').trim().slice(0, 200);
-      const fail = (error: string, status = 400) => signupPage(ctx, { error, values, status });
+      const t = tCtx(ctx);
+      const fail = (error: string, status = 400) => signupPage(ctx, { error: t(error), values, status });
       if (!s.signup_enabled) return signupPage(ctx);
       // Bots fill the hidden field: answer like a success, do nothing.
-      if (String(b.website ?? '').trim()) return message('Fast geschafft', 'Bitte prüfe dein E-Mail-Postfach.');
+      if (String(b.website ?? '').trim()) return message(t('Fast geschafft'), t('Bitte prüfe dein E-Mail-Postfach.'));
       if (throttled(`signup:${ctx.ip}`, 10)) return fail('Zu viele Versuche – bitte in ein paar Minuten noch einmal.', 429);
       const plan = planById(app, values.plan);
       if (!plan || !plan.active || isCloudPlanId(plan.id)) return fail('Bitte einen Tarif wählen.');
       const interval: Interval = values.interval === 'year' ? 'year' : 'month';
-      if (!intervalsOf(plan).includes(interval)) return fail(`„${plan.name}“ gibt es nur ${intervalsOf(plan)[0] === 'year' ? 'jährlich' : 'monatlich'}.`);
+      if (!intervalsOf(plan).includes(interval)) return fail(t(intervalsOf(plan)[0] === 'year' ? '„{plan}“ gibt es nur jährlich.' : '„{plan}“ gibt es nur monatlich.', { plan: plan.name }));
       const company = values.company;
       if (!company) return fail('Bitte den Firmennamen angeben.');
       if (company.length > 120 || values.name.length > 120) return fail('Name ist zu lang.');
@@ -333,7 +343,7 @@ ${opts.error ? `<div class="error" role="alert">${escapeHtml(opts.error)}</div>`
 
       if (free) {
         const r = provision(signup, null);
-        await sendWelcome(r);
+        await sendWelcome({ ...r, t });
         return redirect(createInvite(r.user.id, r.loc.id).replace(app.baseUrl(), ''), 303);
       }
       try {
@@ -356,7 +366,7 @@ ${opts.error ? `<div class="error" role="alert">${escapeHtml(opts.error)}</div>`
         return redirect(session.url, 303);
       } catch (e) {
         db.run(`UPDATE saas_signups SET status = 'failed', error = ? WHERE id = ?`, (e as Error).message.slice(0, 300), signup.id);
-        return fail(`Bezahlung gerade nicht möglich: ${(e as Error).message}`, 502);
+        return fail(t('Bezahlung gerade nicht möglich: {error}', { error: (e as Error).message }), 502);
       }
     });
 
@@ -364,7 +374,8 @@ ${opts.error ? `<div class="error" role="alert">${escapeHtml(opts.error)}</div>`
     router.get('/signup/done', 'public', async (ctx) => {
       const sid = String(ctx.query.get('session_id') ?? '');
       let signup = /^cs_[A-Za-z0-9_]+$/.test(sid) ? db.get('SELECT * FROM saas_signups WHERE session_id = ?', sid) : undefined;
-      if (!signup) return message('Danke!', 'Wir richten dein Konto ein. Du bekommst gleich eine E-Mail mit deinem Zugang.');
+      const t = tCtx(ctx);
+      if (!signup) return message(t('Danke!'), t('Wir richten dein Konto ein. Du bekommst gleich eine E-Mail mit deinem Zugang.'));
       if (signup.status === 'pending' || signup.status === 'failed') {
         try {
           const session = await saasStripe(app, 'GET', `/v1/checkout/sessions/${encodeURIComponent(sid)}`, { expand: ['subscription'] });
@@ -381,9 +392,9 @@ ${opts.error ? `<div class="error" role="alert">${escapeHtml(opts.error)}</div>`
           ctx.setCookie(SIGNUP_COOKIE, '', { maxAge: 0 });
           return redirect(createInvite(signup.user_id, signup.location_id).replace(app.baseUrl(), ''), 303);
         }
-        return message('Dein Konto ist bereit', `Wir haben dir eine E-Mail an ${signup.email} geschickt. Darin legst du dein Passwort fest und meldest dich an.`, { action: ['/app', 'Zum Login'] });
+        return message(t('Dein Konto ist bereit'), t('Wir haben dir eine E-Mail an {email} geschickt. Darin legst du dein Passwort fest und meldest dich an.', { email: signup.email }), { action: ['/app', t('Zum Login')] });
       }
-      return message('Einen Moment …', 'Wir bestätigen gerade deine Zahlung und richten dein Konto ein. Diese Seite lädt sich von selbst neu.', { head: '<meta http-equiv="refresh" content="3">' });
+      return message(t('Einen Moment …'), t('Wir bestätigen gerade deine Zahlung und richten dein Konto ein. Diese Seite lädt sich von selbst neu.'), { head: '<meta http-equiv="refresh" content="3">' });
     });
 
     // --- invite: set password, sign in ------------------------------------------------------
@@ -394,35 +405,41 @@ ${opts.error ? `<div class="error" role="alert">${escapeHtml(opts.error)}</div>`
       const user = db.get('SELECT * FROM users WHERE id = ?', inv.user_id);
       return user ? { inv, user } : undefined;
     };
-    const invitePage = (t: string, user: any, error = '', status = 200) =>
-      page(
-        'Passwort festlegen',
-        `<div class="card" style="max-width:480px"><h1 style="font-size:26px">Willkommen${user.name ? `, ${escapeHtml(user.name)}` : ''}!</h1>
-<p class="muted">Lege ein Passwort für <strong>${escapeHtml(user.email)}</strong> fest – danach bist du direkt in deinem Konto.</p>
-${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ''}
+    const invitePage = (ctx: Ctx, t: string, user: any, error = '', status = 200) => {
+      const tr = tCtx(ctx);
+      const h = (s: string) => escapeHtml(tr(s));
+      return page(
+        tr('Passwort festlegen'),
+        `<div class="card" style="max-width:480px"><h1 style="font-size:26px">${user.name ? escapeHtml(tr('Willkommen, {name}!', { name: user.name })) : h('Willkommen!')}</h1>
+<p class="muted">${tr('Lege ein Passwort für {email} fest – danach bist du direkt in deinem Konto.', { email: `<strong>${escapeHtml(user.email)}</strong>` })}</p>
+${error ? `<div class="error" role="alert">${h(error)}</div>` : ''}
 <form method="post" action="/invite/${escapeHtml(t)}">
-<label for="p1">Passwort (mindestens 8 Zeichen)</label><input id="p1" name="password" type="password" minlength="8" required autocomplete="new-password" autofocus>
-<label for="p2">Passwort wiederholen</label><input id="p2" name="password2" type="password" minlength="8" required autocomplete="new-password">
-<button type="submit">Passwort speichern und loslegen</button></form></div>`,
+<label for="p1">${h('Passwort (mindestens 8 Zeichen)')}</label><input id="p1" name="password" type="password" minlength="8" required autocomplete="new-password" autofocus>
+<label for="p2">${h('Passwort wiederholen')}</label><input id="p2" name="password2" type="password" minlength="8" required autocomplete="new-password">
+<button type="submit">${h('Passwort speichern und loslegen')}</button></form></div>`,
         { status },
       );
-    const expired = () => message('Link abgelaufen', `Dieser Link ist nicht mehr gültig. Melde dich an (Passwort vergessen? Bitte bei uns melden) – Einladungslinks gelten ${INVITE_DAYS} Tage und nur einmal.`, { status: 410, action: ['/app', 'Zum Login'] });
+    };
+    const expired = (ctx: Ctx) => {
+      const t = tCtx(ctx);
+      return message(t('Link abgelaufen'), t('Dieser Link ist nicht mehr gültig. Melde dich an (Passwort vergessen? Bitte bei uns melden) – Einladungslinks gelten {days} Tage und nur einmal.', { days: INVITE_DAYS }), { status: 410, action: ['/app', t('Zum Login')] });
+    };
 
     router.get('/invite/:token', 'public', (ctx) => {
       const found = inviteOf(ctx.params.token);
-      if (!found) return expired();
-      return invitePage(ctx.params.token, found.user);
+      if (!found) return expired(ctx);
+      return invitePage(ctx, ctx.params.token, found.user);
     });
     router.post('/invite/:token', 'public', async (ctx) => {
       const found = inviteOf(ctx.params.token);
-      if (!found) return expired();
-      if (throttled(`invite:${ctx.ip}`, 30)) return invitePage(ctx.params.token, found.user, 'Zu viele Versuche – bitte kurz warten.', 429);
+      if (!found) return expired(ctx);
+      if (throttled(`invite:${ctx.ip}`, 30)) return invitePage(ctx, ctx.params.token, found.user, 'Zu viele Versuche – bitte kurz warten.', 429);
       const pw = String(ctx.body?.password ?? '');
-      if (pw.length < 8) return invitePage(ctx.params.token, found.user, 'Das Passwort braucht mindestens 8 Zeichen.', 400);
-      if (pw.length > 200) return invitePage(ctx.params.token, found.user, 'Das Passwort ist zu lang.', 400);
-      if (pw !== String(ctx.body?.password2 ?? '')) return invitePage(ctx.params.token, found.user, 'Die beiden Passwörter sind nicht gleich.', 400);
+      if (pw.length < 8) return invitePage(ctx, ctx.params.token, found.user, 'Das Passwort braucht mindestens 8 Zeichen.', 400);
+      if (pw.length > 200) return invitePage(ctx, ctx.params.token, found.user, 'Das Passwort ist zu lang.', 400);
+      if (pw !== String(ctx.body?.password2 ?? '')) return invitePage(ctx, ctx.params.token, found.user, 'Die beiden Passwörter sind nicht gleich.', 400);
       // Claim the link first: two parallel posts can't both set a password with one single-use link.
-      if (!db.run('UPDATE saas_invites SET used_at = ? WHERE token_hash = ? AND used_at IS NULL', now(), sha256(ctx.params.token)).changes) return expired();
+      if (!db.run('UPDATE saas_invites SET used_at = ? WHERE token_hash = ? AND used_at IS NULL', now(), sha256(ctx.params.token)).changes) return expired(ctx);
       db.run('UPDATE saas_invites SET used_at = ? WHERE user_id = ? AND used_at IS NULL', now(), found.user.id);
       db.run('UPDATE users SET password_hash = ? WHERE id = ?', await hashPasswordAsync(pw), found.user.id);
       db.run('DELETE FROM sessions WHERE user_id = ?', found.user.id);
@@ -452,9 +469,12 @@ ${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ''}
       let mail = 'skipped';
       if (sender && ctx.body?.send !== false) {
         try {
-          mail = (await mailer(sender, { to: user.email, subject: `Dein Zugang zu ${getBranding(app).name}`, text: `Hallo ${user.name || ''},\n\nhier ist dein Link zum Passwort-Festlegen (${INVITE_DAYS} Tage gültig):\n${url}`, html: `<p>Hallo ${escapeHtml(user.name || '')},</p><p>hier ist dein Link zum Passwort-Festlegen (${INVITE_DAYS} Tage gültig):<br><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>` })).status;
+          const t = tUser(app as never, user.id);
+          const hello = t('Hallo {name},', { name: user.name || '' });
+          const line = t('hier ist dein Link zum Passwort-Festlegen ({days} Tage gültig):', { days: INVITE_DAYS });
+          mail = (await mailer(sender, { to: user.email, subject: t('Dein Zugang zu {brand}', { brand: getBranding(app).name }), text: `${hello}\n\n${line}\n${url}`, html: `<p>${escapeHtml(hello)}</p><p>${escapeHtml(line)}<br><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>` })).status;
         } catch (e) {
-          mail = `Fehler: ${(e as Error).message}`;
+          mail = tCtx(ctx)('Fehler: {error}', { error: (e as Error).message });
         }
       }
       return { url, mail };

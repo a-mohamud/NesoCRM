@@ -1,4 +1,5 @@
 import type { FetchLike } from './channel-kit.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Telegram Bot API: calls, update parsing and deep links. Pure functions – the module
@@ -25,14 +26,15 @@ export class TelegramError extends Error {
 /** Telegram's English error descriptions → short German text for the inbox. */
 export function tgErrorText(code: number, description: string, retryAfter?: number): string {
   const d = description.toLowerCase();
-  if (code === 401 || d.includes('unauthorized')) return 'Bot-Token ungültig';
-  if (d.includes('bot was blocked')) return 'Kontakt hat den Bot blockiert';
-  if (d.includes('user is deactivated')) return 'Telegram-Konto des Kontakts gelöscht';
-  if (d.includes('chat not found')) return 'Chat nicht gefunden – der Kontakt muss den Bot zuerst starten';
-  if (d.includes('wrong file identifier') || d.includes('failed to get http url content') || d.includes('wrong type of the web page content')) return 'Datei-Link konnte von Telegram nicht geladen werden';
-  if (code === 429) return `Zu viele Nachrichten – Telegram bittet um ${retryAfter ?? 'einige'} Sekunden Pause`;
-  if (d.includes('bad webhook') || d.includes('https url must be provided')) return 'Telegram akzeptiert die Webhook-Adresse nicht (braucht öffentliches https mit gültigem Zertifikat)';
-  return `Telegram: ${description.slice(0, 200) || `Fehler ${code}`}`;
+  const t = tApp();
+  if (code === 401 || d.includes('unauthorized')) return t('Bot-Token ungültig');
+  if (d.includes('bot was blocked')) return t('Kontakt hat den Bot blockiert');
+  if (d.includes('user is deactivated')) return t('Telegram-Konto des Kontakts gelöscht');
+  if (d.includes('chat not found')) return t('Chat nicht gefunden – der Kontakt muss den Bot zuerst starten');
+  if (d.includes('wrong file identifier') || d.includes('failed to get http url content') || d.includes('wrong type of the web page content')) return t('Datei-Link konnte von Telegram nicht geladen werden');
+  if (code === 429) return retryAfter ? t('Zu viele Nachrichten – Telegram bittet um {n} Sekunden Pause', { n: retryAfter }) : t('Zu viele Nachrichten – Telegram bittet um einige Sekunden Pause');
+  if (d.includes('bad webhook') || d.includes('https url must be provided')) return t('Telegram akzeptiert die Webhook-Adresse nicht (braucht öffentliches https mit gültigem Zertifikat)');
+  return `Telegram: ${description.slice(0, 200) || t('Fehler {code}', { code })}`;
 }
 
 export async function tgCall<T = any>(fetcher: FetchLike, botToken: string, method: string, body?: Record<string, unknown>, timeoutMs = 15_000): Promise<T> {
@@ -46,7 +48,7 @@ export async function tgCall<T = any>(fetcher: FetchLike, botToken: string, meth
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
-    throw new TelegramError(0, `Telegram nicht erreichbar: ${(e as Error).message}`);
+    throw new TelegramError(0, tApp()('Telegram nicht erreichbar: {error}', { error: (e as Error).message }));
   }
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j?.ok) {
@@ -105,17 +107,17 @@ export function parseUpdate(u: any): TgMessage | null {
   if (Array.isArray(m.photo) && m.photo.length) {
     const big = m.photo[m.photo.length - 1];
     media = { kind: 'image', file_id: clip(big.file_id, 300), size: Number(big.file_size) || undefined, mime: 'image/jpeg' };
-    body = caption || '📷 Foto';
+    body = caption || tApp()('📷 Foto');
   } else if (m.voice) {
     media = { kind: 'audio', file_id: clip(m.voice.file_id, 300), mime: clip(m.voice.mime_type || 'audio/ogg', 80), voice: true, size: Number(m.voice.file_size) || undefined };
-    body = caption || '🎤 Sprachnachricht';
+    body = caption || tApp()('🎤 Sprachnachricht');
   } else if (m.audio) {
     media = { kind: 'audio', file_id: clip(m.audio.file_id, 300), mime: clip(m.audio.mime_type || 'audio/mpeg', 80), filename: fileName(m.audio.file_name || m.audio.title || 'audio'), size: Number(m.audio.file_size) || undefined };
     body = caption || `🎵 ${media.filename}`;
   } else if (m.video || m.video_note || m.animation) {
     const v = m.video ?? m.video_note ?? m.animation;
     media = { kind: 'video', file_id: clip(v.file_id, 300), mime: clip(v.mime_type || 'video/mp4', 80), size: Number(v.file_size) || undefined };
-    body = caption || (m.video_note ? '🎬 Videonachricht' : '🎬 Video');
+    body = caption || tApp()(m.video_note ? '🎬 Videonachricht' : '🎬 Video');
   } else if (m.document) {
     media = { kind: 'document', file_id: clip(m.document.file_id, 300), mime: clip(m.document.mime_type || 'application/octet-stream', 80), filename: fileName(m.document.file_name || 'datei'), size: Number(m.document.file_size) || undefined };
     body = caption || `📄 ${media.filename}`;
@@ -126,12 +128,12 @@ export function parseUpdate(u: any): TgMessage | null {
     body = `Sticker ${clip(m.sticker.emoji, 16)}`.trim();
   } else if (m.location && Number.isFinite(Number(m.location.latitude))) {
     media = { kind: 'location', lat: Number(m.location.latitude), lng: Number(m.location.longitude) };
-    body = '📍 Standort';
+    body = tApp()('📍 Standort');
   } else if (m.contact) {
     const own = String(m.contact.user_id ?? '') === fromId;
     const num = clip(m.contact.phone_number, 30).replace(/[^\d+]/g, '');
     if (own && num) phone = num.startsWith('+') ? num : `+${num}`;
-    body = `📇 Kontakt geteilt: ${[m.contact.first_name, m.contact.last_name].filter(Boolean).join(' ')} ${num}`.trim();
+    body = tApp()('📇 Kontakt geteilt: {name}', { name: `${[m.contact.first_name, m.contact.last_name].filter(Boolean).join(' ')} ${num}`.trim() });
   }
   let start: string | null = null;
   const cmd = String(m.text ?? '').match(/^\/start(?:@\w+)?(?:\s+(\S+))?\s*$/);

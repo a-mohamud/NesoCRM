@@ -4,6 +4,7 @@ import { bad, type User } from '../../core/http.js';
 import { id as newId, now } from '../../core/util.js';
 import { parseManifest, slugify, type Manifest } from './manifest.js';
 import type { PluginScope } from './names.js';
+import { tApp } from '../../i18n/index.js';
 
 /** Database access for plugins: rows, versions, installs and "which plugins are active for this person here". */
 
@@ -168,7 +169,7 @@ export interface NewVersion {
 }
 
 export function addVersion(app: App, pluginId: string, o: NewVersion): VersionRow {
-  if (app.db.get('SELECT 1 FROM plugin_versions WHERE plugin_id = ? AND version = ?', pluginId, o.manifest.version)) throw bad(`Version ${o.manifest.version} gibt es schon.`);
+  if (app.db.get('SELECT 1 FROM plugin_versions WHERE plugin_id = ? AND version = ?', pluginId, o.manifest.version)) throw bad(tApp()('Version {version} gibt es schon.', { version: o.manifest.version }));
   const row = { id: newId(), plugin_id: pluginId, version: o.manifest.version, manifest: o.manifest, ui_html: o.ui_html, server_js: o.server_js, steps: o.steps ?? null, changelog: o.changelog.slice(0, 500), source: o.source, build_id: o.buildId ?? null, status: o.status, checks: o.checks, hash: contentHash({ manifest: o.manifest, ui_html: o.ui_html, server_js: o.server_js, steps: o.steps }), meta: o.meta ?? {}, created_by: o.createdBy, created_at: now() };
   app.db.insert('plugin_versions', row);
   app.db.run('UPDATE plugins SET updated_at = ? WHERE id = ?', now(), pluginId);
@@ -241,7 +242,7 @@ export const canManage = (user: User | undefined, p: PluginRow) => !!user && (us
 
 /** Parsed manifest from raw JSON with a clear German error. */
 export function manifestOrThrow(raw: unknown): Manifest {
-  const r = parseManifest(raw);
-  if (!r.ok) throw bad(`Manifest ungültig: ${r.errors.join(' ')}`);
+  const r = parseManifest(raw, tApp());
+  if (!r.ok) throw bad(tApp()('Manifest ungültig: {list}', { list: r.errors.join(' ') }));
   return r.manifest;
 }

@@ -3,6 +3,7 @@ import { UmzugError, VendorHttp } from './umzug-http.js';
 import { counter, nameParts } from './umzug-lib.js';
 import type { Json } from './umzug-flow.js';
 import { stripHtml, toIso } from './umzug-text.js';
+import { translator, type ServerLocale } from '../i18n/index.js';
 
 /**
  * Intercom (REST API, https://api.intercom.io – EU and AU have their own hosts – `Authorization: Bearer <access token>`, versioned by header):
@@ -79,7 +80,8 @@ export function intercomConsent(c: Json): { consent: Consent; native?: string; p
   return { consent: 'ok', proof: [{ basis: 'legacy', at: toIso(c.signed_up_at ?? c.created_at), method: c.role === 'lead' ? 'Lead in Intercom' : 'Nutzer in Intercom' }] };
 }
 
-async function describe(h: VendorHttp, parts: PartKey[]) {
+async function describe(h: VendorHttp, parts: PartKey[], lang?: ServerLocale) {
+  const t = translator(lang);
   const counts: CountRow[] = [];
   const fields: SourceField[] = [];
   const warnings: string[] = [];
@@ -104,7 +106,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
       for (const a of (await h.get('/data_attributes', { model: 'contact' }))?.data ?? []) if (a.custom && !a.archived) fields.push({ ref: `ca:${a.name}`, label: String(a.label ?? a.name), type: attrType(String(a.data_type)), group: 'custom', options: Array.isArray(a.options) && a.options.length ? a.options.map(String) : undefined });
     } catch (e) {
       if (!(e instanceof UmzugError && e.skippable)) throw e;
-      warnings.push(`Eigene Attribute nicht lesbar: ${e.message}`);
+      warnings.push(t('Eigene Attribute nicht lesbar: {reason}', { reason: e.message }));
     }
   }
   if (parts.includes('companies')) await count('companies', 'companies', 'Unternehmen', () => totalOf(h, '/companies'));
@@ -124,8 +126,9 @@ const steps = (): StepDef[] => [
     label: 'Unternehmen',
     part: 'companies',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of numberPages(ctx.http, '/companies', ctx, {}, Number(ctx.cursor ?? 1), 50)) {
-        const records: RCompany[] = pg.items.map((c) => ({ kind: 'company', ext: `co:${c.id}`, name: String(c.name ?? `Unternehmen ${c.company_id ?? c.id}`), website: c.website || undefined, industry: c.industry || undefined }));
+        const records: RCompany[] = pg.items.map((c) => ({ kind: 'company', ext: `co:${c.id}`, name: String(c.name ?? t('Unternehmen {company_id}', { company_id: c.company_id ?? c.id })), website: c.website || undefined, industry: c.industry || undefined }));
         yield { records, cursor: pg.next, total: pg.total };
       }
     },
@@ -135,6 +138,7 @@ const steps = (): StepDef[] => [
     label: 'Kontakte',
     part: 'contacts',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const tagNames = new Map<string, string>(((await ctx.http.get('/tags').catch(() => ({})))?.data ?? []).map((t: Json) => [String(t.id), String(t.name)]));
       // A contact carries only its companies' ids: the names are read first (up to 10,000 – the limit of the list call).
       const companyNames = new Map<string, string>();
@@ -147,7 +151,7 @@ const steps = (): StepDef[] => [
           const values: Record<string, unknown> = { email: c.email, first_name: n.first, last_name: n.last, phone: c.phone, city: loc.city, country: loc.country, external_id: c.external_id, language: c.language_override, signed_up_at: toIso(c.signed_up_at)?.slice(0, 10), last_seen_at: toIso(c.last_seen_at)?.slice(0, 10), org_name: org?.id ? companyNames.get(String(org.id)) : undefined };
           for (const [k, v] of Object.entries((c.custom_attributes ?? {}) as Json)) if (v !== null && v !== undefined && v !== '') values[`ca:${k}`] = v;
           const tags = (Array.isArray(c.tags?.data) ? c.tags.data : []).map((t: Json) => tagNames.get(String(t.id))).filter((x: string | undefined): x is string => !!x);
-          if (c.role === 'lead') tags.push('Intercom: Lead');
+          if (c.role === 'lead') tags.push(t('Intercom: Lead'));
           const x = intercomConsent(c);
           return { kind: 'contact', ext: `c:${c.id}`, values, tags, consent: x.consent, native_status: x.native, created_at: toIso(c.created_at), org: org?.id ? `co:${org.id}` : undefined, org_name: org?.id ? companyNames.get(String(org.id)) : undefined, proof: x.proof.length ? x.proof : undefined };
         });
@@ -194,6 +198,7 @@ const steps = (): StepDef[] => [
     label: 'Hilfe-Artikel (Entwürfe)',
     part: 'articles',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const cur = (ctx.cursor ?? { phase: 'collections' }) as { phase: 'collections' | 'articles'; page?: number };
       let collections: Json[] = [];
       try {
@@ -205,15 +210,15 @@ const steps = (): StepDef[] => [
       const byId = new Map(collections.map((c) => [String(c.id), c]));
       const nameOf = (c: Json): string => {
         const parent = c.parent_id ? byId.get(String(c.parent_id)) : undefined;
-        return parent ? `${nameOf(parent)} › ${c.name}` : String(c.name ?? `Sammlung ${c.id}`);
+        return parent ? `${nameOf(parent)} › ${c.name}` : String(c.name ?? t('Sammlung {id}', { id: c.id }));
       };
       if (cur.phase === 'collections') {
         const records: RKbCategory[] = collections.map((c) => ({ kind: 'kb_category', ext: `col:${c.id}`, name: nameOf(c), description: text(c.description) }));
         yield { records, cursor: { phase: 'articles', page: 1 } };
       }
       for await (const pg of numberPages(ctx.http, '/articles', ctx, {}, cur.phase === 'articles' ? Number(cur.page ?? 1) : 1, 50)) {
-        const records: RArticle[] = pg.items.map((a) => ({ kind: 'article', ext: `a:${a.id}`, title: String(a.title ?? `Artikel ${a.id}`), html: String(a.body ?? ''), category: a.parent_id && byId.has(String(a.parent_id)) ? `col:${a.parent_id}` : undefined, created_at: toIso(a.created_at) }));
-        for (const a of pg.items) if (/(src|href)="https?:\/\/[^"]*intercom(cdn|-attachments|assets)/i.test(String(a.body ?? ''))) ctx.warn(`Artikel „${String(a.title).slice(0, 60)}“: Bilder oder Anhänge liegen noch bei Intercom – vor dem Kündigen herunterladen und neu einfügen`);
+        const records: RArticle[] = pg.items.map((a) => ({ kind: 'article', ext: `a:${a.id}`, title: String(a.title ?? t('Artikel {id}', { id: a.id })), html: String(a.body ?? ''), category: a.parent_id && byId.has(String(a.parent_id)) ? `col:${a.parent_id}` : undefined, created_at: toIso(a.created_at) }));
+        for (const a of pg.items) if (/(src|href)="https?:\/\/[^"]*intercom(cdn|-attachments|assets)/i.test(String(a.body ?? ''))) ctx.warn(t('Artikel „{title}“: Bilder oder Anhänge liegen noch bei Intercom – vor dem Kündigen herunterladen und neu einfügen', { title: String(a.title).slice(0, 60) }));
         yield { records, cursor: pg.next ? { phase: 'articles', page: pg.next } : undefined, total: pg.total };
       }
     },
@@ -255,6 +260,6 @@ export const INTERCOM: SourceDef = {
     const code = String(app.id_code ?? '').toLowerCase();
     return { account: /^[a-z0-9]{3,20}$/.test(code) ? `app-${code}` : `app-${String(me?.id ?? 'workspace')}`.slice(0, 40), label: String(app.name ?? me?.name ?? 'Intercom-Workspace').slice(0, 120), meta: {} };
   },
-  describe: (h, parts) => describe(h, parts),
+  describe: (h, parts, c) => describe(h, parts, c.lang),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),
 };

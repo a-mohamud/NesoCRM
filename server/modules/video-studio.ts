@@ -15,6 +15,10 @@ import * as os from '../services/openshorts.js';
 import type { CatalogExtra } from './integrations-catalog.js';
 import { openSecret, sealSecret } from './mail-sync.js';
 import type { Tool } from './mcp.js';
+import { tApp, tUser } from '../i18n/index.js';
+
+/** Messages and stored job texts in the instance language (static ids for the catalog). */
+const tm = tApp();
 
 /**
  * Video-Studio: long video → AI-picked 9:16 shorts (OpenShorts) → review → Social Planner.
@@ -214,7 +218,7 @@ export const videoStudioModule: Module = {
     const testConnection = async (cfg: os.OsConfig): Promise<Info> => {
       const f = fetchImpl();
       const h = await os.osFetch(f, cfg, 'GET', '/health', { timeoutMs: 10_000 });
-      if (!h.ok) throw new HttpError(502, h.status === 404 ? 'Unter dieser Adresse antwortet kein OpenShorts-Backend – die Adresse des Backends (Port 8000) angeben, nicht die des Dashboards' : `OpenShorts antwortet mit Status ${h.status}`);
+      if (!h.ok) throw new HttpError(502, h.status === 404 ? 'Unter dieser Adresse antwortet kein OpenShorts-Backend – die Adresse des Backends (Port 8000) angeben, nicht die des Dashboards' : tm('OpenShorts antwortet mit Status {status}', { status: h.status }));
       const conf = await os.osJson(f, cfg, 'GET', '/api/config', { timeoutMs: 10_000 }).catch(() => ({}) as any);
       const hosted = !!conf?.billingEnabled;
       if (hosted && !cfg.apiKey) throw bad('Für die gehostete API (openshorts.app) wird ein API-Schlüssel (osk_…) gebraucht');
@@ -287,7 +291,11 @@ export const videoStudioModule: Module = {
       return {
         ...rest,
         options: typeof rest.options === 'string' ? JSON.parse(rest.options) : rest.options,
-        status_label: JOB_STATUS[j.status] ?? j.status,
+        status_label: tm(JOB_STATUS[j.status] ?? j.status),
+        // stage and error are stored as static German ids (or already translated text)
+        stage: rest.stage ? tm(String(rest.stage)) : rest.stage,
+        error: rest.error ? tm(String(rest.error)) : rest.error,
+        origin: rest.origin ? tm(String(rest.origin)) : rest.origin,
         webhook: !!_h,
         clips_count: Number(counts?.n ?? 0),
         best_score: counts?.best ?? null,
@@ -326,7 +334,7 @@ export const videoStudioModule: Module = {
       const r: any = await os.osJson(fetchImpl(), cfg, 'POST', '/api/process', { json: body, timeoutMs: 150_000 });
       if (r?.needs_confirmation) {
         const q = r.quality_check ?? {};
-        setJob(job.id, { status: 'confirm', progress: 0, stage: `Die Quelle gibt es nur in ${q.max_height ?? '?'}p (empfohlen ab ${q.min_height ?? 720}p) – trotzdem verarbeiten?` });
+        setJob(job.id, { status: 'confirm', progress: 0, stage: tm('Die Quelle gibt es nur in {height}p (empfohlen ab {min}p) – trotzdem verarbeiten?', { height: q.max_height ?? '?', min: q.min_height ?? 720 }) });
         return;
       }
       const osId = String(r?.job_id ?? '');
@@ -352,7 +360,7 @@ export const videoStudioModule: Module = {
           const slot: any = await os.osJson(f, cfg, 'POST', '/api/uploads', { json: { filename: up.name.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'video.mp4' }, timeoutMs: 30_000 });
           const slotId = String(slot?.upload_id ?? '');
           if (!/^[A-Za-z0-9-]{8,64}$/.test(slotId)) throw new HttpError(502, 'OpenShorts hat keinen Upload-Platz vergeben');
-          if (slot.max_mb && up.size > Number(slot.max_mb) * 1024 * 1024) throw bad(`OpenShorts nimmt höchstens ${slot.max_mb} MB an`);
+          if (slot.max_mb && up.size > Number(slot.max_mb) * 1024 * 1024) throw bad(tm('OpenShorts nimmt höchstens {mb} MB an', { mb: slot.max_mb }));
           const blob = await openAsBlob(path, { type: 'application/octet-stream' });
           // ~1 MB/s worst case, at least 2 minutes, at most 3 hours.
           const ms = Math.min(3 * 3600_000, Math.max(120_000, Math.ceil(up.size / 1_000_000) * 1000));
@@ -383,7 +391,7 @@ export const videoStudioModule: Module = {
     const createJob = async (loc: string, input: JobInput) => {
       cfgOrFail();
       const options = os.cleanOptions(input.options);
-      if (activeCount(loc) >= maxActive()) throw new HttpError(429, `Höchstens ${maxActive()} laufende Jobs je Sub-Account – bitte warten, bis einer fertig ist`);
+      if (activeCount(loc) >= maxActive()) throw new HttpError(429, tm('Höchstens {n} laufende Jobs je Sub-Account – bitte warten, bis einer fertig ist', { n: maxActive() }));
       const contactId = input.contact_id ? String(input.contact_id) : null;
       if (contactId && !db.get('SELECT id FROM contacts WHERE id = ? AND location_id = ?', contactId, loc)) throw bad('Kontakt nicht gefunden');
       let up: any = null;
@@ -473,7 +481,8 @@ export const videoStudioModule: Module = {
         url: `${app.baseUrl()}/app/video-studio/${job.id}`,
       });
       if (fresh.user_id) {
-        Promise.resolve(app.services.pushNotify?.({ userIds: [fresh.user_id], kind: 'shorts', title: 'Shorts fertig', body: `${fresh.title}: ${clips.length} Clips`, url: `/app/video-studio/${job.id}`, tag: `shorts-${job.id}` })).catch(() => {});
+        const tu = tUser(app as never, fresh.user_id);
+        Promise.resolve(app.services.pushNotify?.({ userIds: [fresh.user_id], kind: 'shorts', title: tu('Shorts fertig'), body: tu('{title}: {n} Clips', { title: fresh.title, n: clips.length }), url: `/app/video-studio/${job.id}`, tag: `shorts-${job.id}` })).catch(() => {});
       }
       // Other modules continue from here (recycling, autopilot): app.services.videoStudioReady = [...(…), fn(job)].
       const hooks: ((j: any) => unknown)[] = app.services.videoStudioReady ?? [];
@@ -699,7 +708,7 @@ export const videoStudioModule: Module = {
           delete next[hintKey];
         } else if (b[field]) {
           const v = str(b[field], label, { max: 300 });
-          if (/\s/.test(v)) throw bad(`${label} enthält Leerzeichen`);
+          if (/\s/.test(v)) throw bad(tm('{field} enthält Leerzeichen', { field: tm(label) }));
           next[sealedKey] = sealSecret(app, v);
           next[hintKey] = hint(v);
         }
@@ -837,9 +846,9 @@ export const videoStudioModule: Module = {
       cfgOrFail();
       const name = str(ctx.body.name, 'Dateiname', { required: true, max: 200 });
       const size = Math.round(Number(ctx.body.size));
-      if (!VIDEO_EXT.includes(ext(name))) throw bad(`Nur Videodateien (${VIDEO_EXT.join(', ')})`);
+      if (!VIDEO_EXT.includes(ext(name))) throw bad(tm('Nur Videodateien ({types})', { types: VIDEO_EXT.join(', ') }));
       if (!(size > 0)) throw bad('Dateigröße fehlt');
-      if (size > maxUploadMb() * 1024 * 1024) throw bad(`Datei größer als ${maxUploadMb()} MB`);
+      if (size > maxUploadMb() * 1024 * 1024) throw bad(tm('Datei größer als {mb} MB', { mb: maxUploadMb() }));
       if (Number(db.get(`SELECT COUNT(*) n FROM video_uploads WHERE location_id = ? AND status = 'open'`, ctx.locationId)?.n ?? 0) >= 3) throw new HttpError(429, 'Es laufen schon 3 Uploads – bitte warten');
       mkdirSync(dir, { recursive: true });
       try {
@@ -859,11 +868,11 @@ export const videoStudioModule: Module = {
       if (up.status !== 'open') return { id: up.id, received: up.received, complete: up.status !== 'open' };
       const buf = ctx.rawBuffer;
       if (!buf?.length) throw bad('Daten fehlen (Teil der Datei als Rohdaten im Body)');
-      if (buf.length > CHUNK) throw bad(`Höchstens ${CHUNK / 1024 / 1024} MB pro Teil`);
+      if (buf.length > CHUNK) throw bad(tm('Höchstens {mb} MB pro Teil', { mb: CHUNK / 1024 / 1024 }));
       const offset = Number(ctx.query.get('offset') ?? up.received);
       if (offset !== up.received) {
         if (offset + buf.length === up.received) return { id: up.id, received: up.received, complete: false };
-        throw new HttpError(409, `Erwartet wird der Teil ab Byte ${up.received}`);
+        throw new HttpError(409, tm('Erwartet wird der Teil ab Byte {offset}', { offset: up.received }));
       }
       if (offset + buf.length > up.size) throw bad('Mehr Daten als angekündigt');
       if (offset === 0 && !looksLikeVideo(buf)) {
@@ -986,7 +995,7 @@ export const videoStudioModule: Module = {
       if (!app.services.saveDocs) throw new HttpError(409, 'Das Dokumente-Modul ist nicht installiert');
       if (!app.baseUrl().startsWith('https://')) throw bad('Dokumente brauchen eine https-Adresse von HyperLevel (PGHL_BASE_URL)');
       const tags: string[] = JSON.parse(c.hashtags || '[]');
-      const summary = [c.description, tags.join(' '), c.score !== null ? `Viralität: ${c.score}/100${c.reason ? ` – ${c.reason}` : ''}` : '', c.duration ? `Länge: ${Math.round(c.duration)} s` : ''].filter(Boolean).join('\n').slice(0, 2000);
+      const summary = [c.description, tags.join(' '), c.score !== null ? `${tm('Viralität: {score}/100', { score: c.score })}${c.reason ? ` – ${c.reason}` : ''}` : '', c.duration ? tm('Länge: {seconds} s', { seconds: Math.round(c.duration) }) : ''].filter(Boolean).join('\n').slice(0, 2000);
       const url = `${app.baseUrl()}/app/video-studio/${c.job_id}?clip=${c.id}`;
       app.services.saveDocs([{ url, title: `Short: ${c.title}`.slice(0, 300), kind: 'doc', source: 'Video-Studio', summary, location_id: ctx.locationId }], { force: true });
       db.run('UPDATE video_clips SET doc_saved = 1, updated_at = ? WHERE id = ?', now(), c.id);
@@ -1079,11 +1088,11 @@ export const videoStudioModule: Module = {
       },
       agency: () => {
         const c = config();
-        if (!c) return { status: 'missing', detail: 'Keine OpenShorts-Adresse' };
+        if (!c) return { status: 'missing', detail: tm('Keine OpenShorts-Adresse') };
         const s = stored();
-        if (s.error) return { status: 'partial', detail: `Fehler: ${s.error.slice(0, 80)}` };
-        if (!s.info) return { status: 'partial', detail: 'Gespeichert – Verbindung noch nicht getestet' };
-        return { status: 'ok', detail: s.info.mode === 'hosted' ? `openshorts.app${s.info.plan ? ` · Tarif ${s.info.plan}` : ''}` : 'Selbst gehostet' };
+        if (s.error) return { status: 'partial', detail: tm('Fehler: {error}', { error: s.error.slice(0, 80) }) };
+        if (!s.info) return { status: 'partial', detail: tm('Gespeichert – Verbindung noch nicht getestet') };
+        return { status: 'ok', detail: s.info.mode === 'hosted' ? `openshorts.app${s.info.plan ? tm(' · Tarif {plan}', { plan: s.info.plan }) : ''}` : tm('Selbst gehostet') };
       },
     };
     app.services.catalogExtra = [...(app.services.catalogExtra ?? []), catalog];

@@ -9,7 +9,7 @@ import { PRESETS, presetOut } from '../server/services/ai-presets.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
-const presets = PRESETS.map(presetOut);
+const presets = PRESETS.map((p) => presetOut(p));
 const ids = (o: Partial<Parameters<typeof filterPresets>[1]> = {}) => filterPresets(presets, { q: '', kind: '', tags: [], ...o }).map((p) => p.id);
 
 describe('provider gallery filters', () => {

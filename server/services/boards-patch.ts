@@ -14,6 +14,7 @@ import type { App } from '../core/app.js';
 import { clampCell, placeNew, reorderStack, settle, type Bp, type Cell, type Placed, type Placement } from './boards-layout.js';
 import { BOARD_ICONS, LIMITS, accentName, cellsAt, cleanAccent, cleanIcon, cleanLine, newWidgetId, normalizeSpec, type BoardSpec, type BoardState, type WidgetInst } from './boards-model.js';
 import { cleanConfig, type ConfigField, type WidgetDef, type WidgetRegistry } from './boards-widgets.js';
+import { tApp } from '../i18n/index.js';
 
 export type OpName = 'add' | 'remove' | 'move' | 'resize' | 'configure' | 'rename' | 'theme';
 export interface Op {
@@ -64,7 +65,7 @@ export interface PatchEnv {
 const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
-const titleOf = (w: WidgetInst, reg: WidgetRegistry) => w.title || reg.get(w.type)?.label || w.type;
+const titleOf = (w: WidgetInst, reg: WidgetRegistry) => w.title || (reg.get(w.type)?.label ? tApp()(reg.get(w.type)!.label) : w.type);
 
 /** "beside:w123" / "below:ref1" / "top" / "bottom" → a placement, ids still unresolved. */
 type Parsed = { edge: 'top' | 'bottom' } | { rel: 'beside' | 'below' | 'above'; target: string };
@@ -79,30 +80,36 @@ function parsePlacement(p: unknown): Parsed | null {
 const relPlacement = (rel: 'beside' | 'below' | 'above', id: string): Placement => (rel === 'beside' ? { beside: id } : rel === 'below' ? { below: id } : { above: id });
 
 const fmtValue = (f: ConfigField, v: unknown): string => {
+  const tr = tApp();
   if (v === null || v === undefined || v === '') return '–';
-  if (f.type === 'bool') return v ? 'Ja' : 'Nein';
-  if (f.type === 'select' && f.options) return f.options.find(([k]) => k === v)?.[1] ?? String(v);
-  if (f.type === 'number') return new Intl.NumberFormat('de-DE').format(Number(v));
+  if (f.type === 'bool') return v ? tr('Ja') : tr('Nein');
+  if (f.type === 'select' && f.options) {
+    const label = f.options.find(([k]) => k === v)?.[1];
+    return label ? tr(label) : String(v);
+  }
+  if (f.type === 'number') return new Intl.NumberFormat(tr.locale === 'de' ? 'de-DE' : 'en-GB').format(Number(v));
   if (f.type === 'multi' && Array.isArray(v)) return v.join(', ') || '–';
-  if (f.type === 'list') return `${(v as unknown[]).length} Einträge`;
-  if (f.type === 'json') return 'eigene Abfrage';
-  if (f.type === 'textarea') return 'geändert';
-  if (f.type === 'select' && f.optionsFrom) return 'gewählt';
+  if (f.type === 'list') return tr.plural((v as unknown[]).length, { one: '{n} Eintrag', other: '{n} Einträge' });
+  if (f.type === 'json') return tr('eigene Abfrage');
+  if (f.type === 'textarea') return tr('geändert');
+  if (f.type === 'select' && f.optionsFrom) return tr('gewählt');
   return String(v).slice(0, 60);
 };
 
 /** What changed in a widget's config, in the person's words. */
 function configDiff(def: WidgetDef, before: Record<string, unknown>, after: Record<string, unknown>): string[] {
+  const tr = tApp();
   const out: string[] = [];
   for (const f of def.fields) {
     if (f.hidden && f.type !== 'json') continue;
     if (JSON.stringify(before[f.key] ?? null) === JSON.stringify(after[f.key] ?? null)) continue;
-    out.push(`${f.label}: ${fmtValue(f, after[f.key])}`);
+    out.push(`${tr(f.label)}: ${fmtValue(f, after[f.key])}`);
   }
   return out;
 }
 
 export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): PatchResult {
+  const tr = tApp();
   const errors: string[] = [];
   const strict = p.strict !== false;
   const genId = p.newId ?? newWidgetId;
@@ -118,17 +125,17 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
     if (r === 'high' || (r === 'normal' && risk === 'low')) risk = r;
   };
   const fail = (i: number, msg: string) => {
-    if (errors.length < 12) errors.push(`Schritt ${i + 1}: ${msg}`);
+    if (errors.length < 12) errors.push(tr('Schritt {n}: {message}', { n: i + 1, message: tr(msg) }));
   };
 
   const result = (ok: boolean): PatchResult => ({ ok, errors, state: after, ops: accepted, changes, risk, summary: summarize(changes), touched: [...touched], created });
 
   if (!Array.isArray(rawOps) || !rawOps.length) {
-    errors.push('Keine Änderungen angegeben (ops fehlt oder ist leer)');
+    errors.push(tr('Keine Änderungen angegeben (ops fehlt oder ist leer)'));
     return result(false);
   }
   if (rawOps.length > LIMITS.ops) {
-    errors.push(`Höchstens ${LIMITS.ops} Änderungen auf einmal`);
+    errors.push(tr('Höchstens {n} Änderungen auf einmal', { n: LIMITS.ops }));
     return result(false);
   }
 
@@ -159,13 +166,13 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
 
   for (const [i, raw] of rawOps.entries()) {
     if (!isObj(raw) || typeof raw.op !== 'string' || !(raw.op in OP_KEYS)) {
-      fail(i, `Unbekannte Änderung „${isObj(raw) ? String(raw.op ?? '').slice(0, 30) : '?'}“ (erlaubt: ${OP_NAMES.join(', ')})`);
+      fail(i, tr('Unbekannte Änderung „{op}“ (erlaubt: {list})', { op: isObj(raw) ? String(raw.op ?? '').slice(0, 30) : '?', list: OP_NAMES.join(', ') }));
       continue;
     }
     const name = raw.op as OpName;
     const unknown = Object.keys(raw).filter((k) => !OP_KEYS[name].includes(k));
     if (unknown.length) {
-      fail(i, `„${name}“ kennt das Feld „${unknown[0].slice(0, 30)}“ nicht (erlaubt: ${OP_KEYS[name].filter((k) => k !== 'op').join(', ')})`);
+      fail(i, tr('„{name}“ kennt das Feld „{field}“ nicht (erlaubt: {list})', { name, field: unknown[0].slice(0, 30), list: OP_KEYS[name].filter((k) => k !== 'op').join(', ') }));
       continue;
     }
     const clean: Op = { ...raw, op: name };
@@ -178,18 +185,18 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
     if (name === 'add') {
       const def = p.reg.get(String(raw.type ?? ''));
       if (!def) {
-        fail(i, `Unbekanntes Widget „${String(raw.type ?? '').slice(0, 30)}“ (verfügbar: ${p.reg.list().map((d) => d.type).join(', ')})`);
+        fail(i, tr('Unbekanntes Widget „{type}“ (verfügbar: {list})', { type: String(raw.type ?? '').slice(0, 30), list: p.reg.list().map((d) => d.type).join(', ') }));
         continue;
       }
       if (spec.widgets.length >= LIMITS.widgets) {
-        fail(i, `Ein Board hat höchstens ${LIMITS.widgets} Widgets`);
+        fail(i, tr('Ein Board hat höchstens {n} Widgets', { n: LIMITS.widgets }));
         continue;
       }
       if (raw.config !== undefined && !isObj(raw.config)) {
         fail(i, 'config muss ein Objekt sein');
         continue;
       }
-      const cfg = cleanConfig(def, raw.config ?? {}, { strict, where: `„${def.label}“` });
+      const cfg = cleanConfig(def, raw.config ?? {}, { strict, where: `„${tr(def.label)}“` });
       const more = cfg.errors.length ? [] : (def.validate?.(cfg.config, p.env) ?? []);
       if (cfg.errors.length || more.length) {
         for (const e of [...cfg.errors, ...more]) fail(i, e);
@@ -209,7 +216,7 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
         else {
           const t = widget(pl.target);
           if (!t) {
-            fail(i, `placement: das Widget „${pl.target.slice(0, 30)}“ gibt es nicht`);
+            fail(i, tr('placement: das Widget „{id}“ gibt es nicht', { id: pl.target.slice(0, 30) }));
             continue;
           }
           at = relPlacement(pl.rel, t.id);
@@ -225,7 +232,7 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
       created.push({ ref: String(raw.ref ?? ''), id });
       touched.add(id);
       bump(def.risk === 'high' ? 'high' : 'normal');
-      changes.push({ kind: 'add', widget_id: id, text: `Neu: „${w.title || def.label}“${w.title && w.title !== def.label ? ` (${def.label})` : ''}` });
+      changes.push({ kind: 'add', widget_id: id, text: w.title && w.title !== def.label ? tr('Neu: „{title}“ ({type})', { title: w.title, type: tr(def.label) }) : tr('Neu: „{title}“', { title: w.title || tr(def.label) }) });
       accepted.push(clean);
       continue;
     }
@@ -238,16 +245,16 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
           fail(i, 'Der Name darf nicht leer sein');
           continue;
         }
-        if (n !== after.name) changes.push({ kind: 'rename', text: `Board umbenannt: „${after.name}“ → „${n}“` });
+        if (n !== after.name) changes.push({ kind: 'rename', text: tr('Board umbenannt: „{from}“ → „{to}“', { from: after.name, to: n }) });
         after.name = n;
         did = true;
       }
       if (raw.icon !== undefined) {
         if (!(BOARD_ICONS as readonly string[]).includes(String(raw.icon))) {
-          fail(i, `Unbekanntes Symbol „${String(raw.icon).slice(0, 20)}“`);
+          fail(i, tr('Unbekanntes Symbol „{icon}“', { icon: String(raw.icon).slice(0, 20) }));
           continue;
         }
-        if (raw.icon !== after.icon) changes.push({ kind: 'rename', text: `Symbol: ${String(raw.icon)}` });
+        if (raw.icon !== after.icon) changes.push({ kind: 'rename', text: tr('Symbol: {icon}', { icon: String(raw.icon) }) });
         after.icon = cleanIcon(raw.icon);
         did = true;
       }
@@ -262,10 +269,10 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
     if (name === 'theme') {
       const a = cleanAccent(raw.accent);
       if (a === null) {
-        fail(i, `Unbekannte Farbe „${String(raw.accent).slice(0, 20)}“ (erlaubt: ${Object.keys({ blau: 1, grün: 1, violett: 1, orange: 1, rot: 1, türkis: 1, rosa: 1, grau: 1 }).join(', ')} oder #rrggbb)`);
+        fail(i, tr('Unbekannte Farbe „{color}“ (erlaubt: {list} oder #rrggbb)', { color: String(raw.accent).slice(0, 20), list: Object.keys({ blau: 1, grün: 1, violett: 1, orange: 1, rot: 1, türkis: 1, rosa: 1, grau: 1 }).join(', ') }));
         continue;
       }
-      if (a !== after.accent) changes.push({ kind: 'theme', text: a ? `Akzentfarbe: ${accentName(a)}` : 'Akzentfarbe zurückgesetzt' });
+      if (a !== after.accent) changes.push({ kind: 'theme', text: a ? tr('Akzentfarbe: {color}', { color: tr(accentName(a)) }) : tr('Akzentfarbe zurückgesetzt') });
       after.accent = a;
       accepted.push(clean);
       continue;
@@ -274,7 +281,7 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
     // everything below works on an existing widget
     const w = widget(raw.id);
     if (!w) {
-      fail(i, `Das Widget „${String(raw.id ?? '').slice(0, 30)}“ gibt es nicht`);
+      fail(i, tr('Das Widget „{id}“ gibt es nicht', { id: String(raw.id ?? '').slice(0, 30) }));
       continue;
     }
     const def = p.reg.get(w.type);
@@ -283,7 +290,7 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
 
     if (name === 'remove') {
       spec.widgets = spec.widgets.filter((x) => x.id !== w.id);
-      changes.push({ kind: 'remove', widget_id: w.id, text: `Entfernt: „${titleOf(w, p.reg)}“` });
+      changes.push({ kind: 'remove', widget_id: w.id, text: tr('Entfernt: „{title}“', { title: titleOf(w, p.reg) }) });
       bump('normal');
       touched.delete(w.id);
       accepted.push(clean);
@@ -296,7 +303,7 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
         continue;
       }
       if (!def) {
-        fail(i, `„${w.type}“ ist nicht (mehr) verfügbar und lässt sich nicht ändern`);
+        fail(i, tr('„{type}“ ist nicht (mehr) verfügbar und lässt sich nicht ändern', { type: w.type }));
         continue;
       }
       let merged = w.config;
@@ -308,7 +315,7 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
         const keys = Object.keys(raw.config);
         const bad = strict ? keys.find((k) => !def.fields.some((f) => f.key === k)) : undefined;
         if (bad) {
-          fail(i, `„${def.label}“ kennt das Feld „${bad.slice(0, 30)}“ nicht (erlaubt: ${def.fields.filter((f) => !f.hidden || f.type === 'json').map((f) => f.key).join(', ')})`);
+          fail(i, tr('„{name}“ kennt das Feld „{field}“ nicht (erlaubt: {list})', { name: tr(def.label), field: bad.slice(0, 30), list: def.fields.filter((f) => !f.hidden || f.type === 'json').map((f) => f.key).join(', ') }));
           continue;
         }
         merged = { ...w.config };
@@ -317,8 +324,8 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
           else merged[k] = v;
         }
         // Only the fields of the patch are held to the strict rules; the rest was stored before.
-        const patchCheck = cleanConfig({ ...def, fields: def.fields.filter((f) => keys.includes(f.key)) }, raw.config, { strict, where: `„${def.label}“` });
-        const cfg = cleanConfig(def, merged, { strict: false, where: `„${def.label}“` });
+        const patchCheck = cleanConfig({ ...def, fields: def.fields.filter((f) => keys.includes(f.key)) }, raw.config, { strict, where: `„${tr(def.label)}“` });
+        const cfg = cleanConfig(def, merged, { strict: false, where: `„${tr(def.label)}“` });
         const more = patchCheck.errors.length ? [] : (def.validate?.(cfg.config, p.env) ?? []);
         if (patchCheck.errors.length || more.length) {
           for (const e of [...patchCheck.errors, ...more]) fail(i, e);
@@ -331,7 +338,7 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
       w.config = merged;
       if (raw.title !== undefined) w.title = cleanLine(raw.title, LIMITS.title);
       const diff = configDiff(def, old, merged);
-      if (w.title !== oldTitle) diff.unshift(`Titel: ${w.title || def.label}`);
+      if (w.title !== oldTitle) diff.unshift(tr('Titel: {title}', { title: w.title || tr(def.label) }));
       if (diff.length) {
         changes.push({ kind: 'configure', widget_id: w.id, text: `„${titleOf(w, p.reg)}“: ${diff.join(' · ')}` });
         bump(def.risk === 'high' ? 'high' : diff.every((d) => d.startsWith('Titel:')) ? 'low' : 'normal');
@@ -363,21 +370,21 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
         else if (pl) {
           const t = order.findIndex((c) => c.id === resolveId(pl.target));
           if (t < 0) {
-            fail(i, `placement: das Widget „${pl.target.slice(0, 30)}“ gibt es nicht`);
+            fail(i, tr('placement: das Widget „{id}“ gibt es nicht', { id: pl.target.slice(0, 30) }));
             continue;
           }
           index = pl.rel === 'above' ? t : t + 1;
         } else index = Math.max(0, Math.min(order.length, Math.round(num(raw.y) ?? order.length)));
         write('sm', reorderStack(cells, w.id, index));
         touched.add(w.id);
-        changes.push({ kind: 'move', widget_id: w.id, text: `„${titleOf(w, p.reg)}“ verschoben` });
+        changes.push({ kind: 'move', widget_id: w.id, text: tr('„{title}“ verschoben', { title: titleOf(w, p.reg) }) });
         accepted.push(clean);
         continue;
       }
       if (pl && 'rel' in pl) {
         const t = widget(pl.target);
         if (!t || t.id === w.id) {
-          fail(i, `placement: das Widget „${pl.target.slice(0, 30)}“ gibt es nicht`);
+          fail(i, tr('placement: das Widget „{id}“ gibt es nicht', { id: pl.target.slice(0, 30) }));
           continue;
         }
         next = placeNew(others, { w: me.w, h: me.h }, bp, relPlacement(pl.rel, t.id));
@@ -386,7 +393,7 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
       next = clampCell(next, bp, lim);
       write(bp, settle(cells.map((c) => (c.id === w.id ? { ...c, ...next } : c)), w.id));
       touched.add(w.id);
-      changes.push({ kind: 'move', widget_id: w.id, text: `„${titleOf(w, p.reg)}“ verschoben` });
+      changes.push({ kind: 'move', widget_id: w.id, text: tr('„{title}“ verschoben', { title: titleOf(w, p.reg) }) });
       accepted.push(clean);
       continue;
     }
@@ -414,7 +421,7 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
   if (errors.length) return result(false);
   after.spec = normalizeSpec(spec, limits);
   if (JSON.stringify(after.spec).length > LIMITS.specBytes) {
-    errors.push('Das Board wird zu groß');
+    errors.push(tr('Das Board wird zu groß'));
     return result(false);
   }
   return result(true);
@@ -422,9 +429,10 @@ export function applyPatch(state: BoardState, rawOps: unknown, p: PatchEnv): Pat
 
 /** One line for lists and the version history. */
 export function summarize(changes: Change[]): string {
-  if (!changes.length) return 'Keine Änderung';
+  const tr = tApp();
+  if (!changes.length) return tr('Keine Änderung');
   const head = changes.slice(0, 3).map((c) => c.text);
   const rest = changes.length - head.length;
-  const text = head.join(' · ') + (rest > 0 ? ` · und ${rest} weitere` : '');
+  const text = head.join(' · ') + (rest > 0 ? ` · ${tr('und {n} weitere', { n: rest })}` : '');
   return text.length > 300 ? `${text.slice(0, 299)}…` : text;
 }

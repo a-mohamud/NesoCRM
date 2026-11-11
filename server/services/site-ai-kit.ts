@@ -1,3 +1,4 @@
+import { tApp } from '../i18n/index.js';
 import type { App } from '../core/app.js';
 import { HttpError, type Ctx } from '../core/http.js';
 import { costMicros, type SystemBlock, type Usage } from './anthropic.js';
@@ -70,7 +71,7 @@ export function estimate(app: App, locationId: string, purpose: string, userId: 
     model: { label: info.label, model: info.model, byok: info.byok },
     budget: { used_usd: b.used_usd, limit_usd: b.limit_usd, remaining_usd: b.remaining_usd },
     fits: !b.problem && usd <= b.remaining_usd,
-    problem: b.problem ?? (usd > b.remaining_usd ? `Das Monatslimit des KI-Assistenten reicht dafür voraussichtlich nicht (geschätzt ${usd.toFixed(2)} $, frei ${b.remaining_usd.toFixed(2)} $). Das Limit lässt sich unter Einstellungen → KI-Assistent erhöhen.` : null),
+    problem: b.problem ?? (usd > b.remaining_usd ? tApp()('Das Monatslimit des KI-Assistenten reicht dafür voraussichtlich nicht (geschätzt {estimate} $, frei {left} $). Das Limit lässt sich unter Einstellungen → KI-Assistent erhöhen.', { estimate: usd.toFixed(2), left: b.remaining_usd.toFixed(2) }) : null),
   };
 }
 
@@ -107,10 +108,11 @@ export async function askChecked<T>(
     cost += r.costMicros ?? info.price(u);
     model = r.model || model;
     const raw = parseAnswer(r.text ?? '');
-    const checked = raw ? o.check(raw) : { errors: ['Die Antwort war kein einzelnes JSON-Objekt. Antworte ausschließlich mit dem JSON-Objekt.'], warnings: [] };
+    const checked = raw ? o.check(raw) : { errors: ['The answer was not a single JSON object. Reply with the JSON object only.'], warnings: [] };
     errors = checked.errors;
     if (!errors.length && checked.value !== undefined) return { value: checked.value, warnings: checked.warnings, attempts: attempt, tokens, cost_micros: Math.round(cost), model };
     user = retryText(o.user, r.text ?? '', errors);
   }
-  throw new HttpError(422, `Die KI hat nach ${ATTEMPTS} Versuchen keinen gültigen ${o.what} geliefert: ${errors.slice(0, 4).join(' · ')}`);
+  const t = tApp();
+  throw new HttpError(422, t('Die KI hat nach {n} Versuchen keinen gültigen {what} geliefert: {errors}', { n: ATTEMPTS, what: t(o.what), errors: errors.slice(0, 4).join(' · ') }));
 }

@@ -1,6 +1,7 @@
 import type { App } from '../core/app.js';
 import type { Row } from '../core/db.js';
 import type { Ctx } from '../core/http.js';
+import { tLoc } from '../i18n/index.js';
 import { NEVER_KEEP, applyKids, applyPart, collectKids, decodeRow, encodeRow, sameValue, tableMeta, updateRow, upsertRow, type PartData, type Snapshot } from './undo-core.js';
 
 /** How a changed value is shown in "before → after". */
@@ -133,14 +134,17 @@ export function tableEntity(app: App, spec: TableSpec): UndoEntity {
       if (target.kids || target.nulls) applyKids(db, target);
       spec.onRestore?.(app, target, current, ctx);
     },
-    label: (s) => `${spec.noun} „${clip(spec.title(s.row, app), 60)}“`,
+    label: (s) => {
+      const t = tLoc(app, typeof s.row.location_id === 'string' ? s.row.location_id : undefined);
+      return t('{noun} „{title}“', { noun: t(spec.noun), title: clip(spec.title(s.row, app), 60) });
+    },
     verb: spec.verb,
     afterRestore: spec.afterRestore,
     contactId: (s) => (spec.table === 'contacts' ? s.id : contactCol && typeof s.row[contactCol] === 'string' ? (s.row[contactCol] as string) : undefined),
   };
   // Make sure the table really has the columns the spec names (a typo here would only show up as a missing diff).
   const meta = tableMeta(db, spec.table);
-  if (!meta.cols.length) throw new Error(`undo: unknown table ${spec.table}`);
+  if (!meta.cols.length) throw new Error(`undo: unknown table ${spec.table}`); // i18n-ignore (internal)
   return entity;
 }
 

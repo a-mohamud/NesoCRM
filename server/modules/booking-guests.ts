@@ -5,6 +5,7 @@ import { formatInTz } from '../core/time.js';
 import { id, normalizeEmail, now } from '../core/util.js';
 import { icsFeed } from '../services/ical.js';
 import { deliverEmail } from '../services/messaging.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Guests per booking (HighLevel parity, docs/team-calendars.md#guests): a calendar with `guests_max` lets the visitor add e-mail
@@ -38,17 +39,24 @@ function invitesAsked(body: any): number {
 type Due = { gid: string; location_id: string; email: string; id: string; status: string; start_at: string; end_at: string; meeting_url: string | null; calendar_name: string; timezone: string | null; cal_settings: string | null };
 
 /** The invitation: a fixed text of the business with the appointment's facts and the calendar file. */
-function invitation(loc: LocationRow, r: Due) {
+function invitation(app: App, loc: LocationRow, r: Due) {
   let place = r.meeting_url || '';
   try {
     place ||= JSON.parse(r.cal_settings || '{}').meeting_location || '';
   } catch {
     /* plain */
   }
-  const when = `${formatInTz(r.start_at, r.timezone || loc.timezone)} Uhr`;
-  const text = `Hallo,\n\ndu bist zu einem Termin bei ${loc.name} eingeladen:\n\n${r.calendar_name}\n${when}${place ? `\nOrt/Link: ${place}` : ''}\n\nDie Kalenderdatei zum Eintragen hängt an. Wenn du diesen Termin nicht erwartest, kannst du diese E-Mail einfach ignorieren.\n\nViele Grüße\n${loc.name}`;
-  const ics = icsFeed(r.calendar_name, [{ id: r.id, start_at: r.start_at, end_at: r.end_at, title: `${r.calendar_name} (${loc.name})`, description: place ? `Ort/Link: ${place}` : undefined }]);
-  return { to: r.email, subject: `Einladung: ${r.calendar_name} am ${when}`, text, html: textToHtml(text), attachments: [{ filename: 'termin.ics', content: ics, contentType: 'text/calendar; charset=utf-8' }] };
+  const t = tLoc(app, loc.id);
+  const when = t('{time} Uhr', { time: formatInTz(r.start_at, r.timezone || loc.timezone) });
+  const placeLine = place ? t('Ort/Link: {place}', { place }) : '';
+  const text = t('Hallo,\n\ndu bist zu einem Termin bei {business} eingeladen:\n\n{calendar}\n{when}{place}\n\nDie Kalenderdatei zum Eintragen hängt an. Wenn du diesen Termin nicht erwartest, kannst du diese E-Mail einfach ignorieren.\n\nViele Grüße\n{business}', {
+    business: loc.name,
+    calendar: r.calendar_name,
+    when,
+    place: placeLine ? `\n${placeLine}` : '',
+  });
+  const ics = icsFeed(r.calendar_name, [{ id: r.id, start_at: r.start_at, end_at: r.end_at, title: `${r.calendar_name} (${loc.name})`, description: placeLine || undefined }]);
+  return { to: r.email, subject: t('Einladung: {calendar} am {when}', { calendar: r.calendar_name, when }), text, html: textToHtml(text), attachments: [{ filename: t('termin.ics'), content: ics, contentType: 'text/calendar; charset=utf-8' }] };
 }
 
 /** Sends the invitations whose delay has passed (background tick); returns how many went out. */
@@ -77,7 +85,7 @@ export async function inviteDueGuests(app: App, at = Date.now()): Promise<number
       if (left <= 0) continue;
       left--;
       try {
-        await deliverEmail(loc, invitation(loc, r));
+        await deliverEmail(loc, invitation(app, loc, r));
         db.run(`UPDATE appointment_guests SET state = 'sent', invited_at = ? WHERE id = ?`, now(), r.gid);
         sent++;
       } catch (err) {

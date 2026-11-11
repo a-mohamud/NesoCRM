@@ -1,4 +1,5 @@
 import { escapeHtml as h } from '../core/template.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Abuse handling of the hosted service (modules/cloud-abuse.ts, docs/cloud.md#abuse-handling): the notice form of the Digital
@@ -41,7 +42,7 @@ function validUrl(u: string): boolean {
 }
 
 /** Checks a notice; name and e-mail are required except for child sexual abuse material (Art. 16(2)(c) DSA). */
-export function cleanReport(b: Record<string, unknown>): { values: ReportInput; error?: string } {
+export function cleanReport(b: Record<string, unknown>, t: STFn = tApp()): { values: ReportInput; error?: string } {
   const s = (k: string, max: number) => String(b[k] ?? '').trim().slice(0, max);
   const urls = s('urls', 4000)
     .split(/[\s,]+/)
@@ -64,7 +65,7 @@ export function cleanReport(b: Record<string, unknown>): { values: ReportInput; 
               : !values.good_faith
                 ? 'Bitte bestätige, dass deine Angaben nach bestem Wissen richtig und vollständig sind.'
                 : undefined;
-  return { values, error };
+  return { values, error: error && t(error) };
 }
 
 /** Auto-pause: the last 500 sent e-mails of a customer, judged once at least 100 went out. */
@@ -80,35 +81,38 @@ export function sendRates(statuses: string[]): { sent: number; bounced: number; 
   return { sent, bounced, complained, bounceRate: sent ? bounced / sent : 0, complaintRate: sent ? complained / sent : 0 };
 }
 
-const pct = (v: number) => `${(Math.round(v * 1000) / 10).toString().replace('.', ',')} %`;
+const pct = (v: number, t: STFn) => {
+  const n = (Math.round(v * 1000) / 10).toString();
+  return t.locale === 'de' ? `${n.replace('.', ',')} %` : `${n}%`;
+};
 
 /** The reason to pause, or undefined. */
-export function pauseReason(statuses: string[]): string | undefined {
+export function pauseReason(statuses: string[], t: STFn = tApp()): string | undefined {
   const r = sendRates(statuses);
   if (r.sent < MIN_SENDS) return undefined;
-  if (r.complaintRate > COMPLAINT_LIMIT) return `Beschwerderate ${pct(r.complaintRate)} (${r.complained} von ${r.sent} E-Mails als Spam gemeldet, erlaubt 0,1 %)`;
-  if (r.bounceRate > BOUNCE_LIMIT) return `Bounce-Rate ${pct(r.bounceRate)} (${r.bounced} von ${r.sent} E-Mails unzustellbar, erlaubt 5 %)`;
+  if (r.complaintRate > COMPLAINT_LIMIT) return t('Beschwerderate {rate} ({n} von {sent} E-Mails als Spam gemeldet, erlaubt 0,1 %)', { rate: pct(r.complaintRate, t), n: r.complained, sent: r.sent });
+  if (r.bounceRate > BOUNCE_LIMIT) return t('Bounce-Rate {rate} ({n} von {sent} E-Mails unzustellbar, erlaubt 5 %)', { rate: pct(r.bounceRate, t), n: r.bounced, sent: r.sent });
   return undefined;
 }
 
 /** The form (inside the cloud pages' card). */
-export function reportForm(o: { values?: Partial<ReportInput>; error?: string; token: string; abuseEmail?: string }): string {
+export function reportForm(o: { values?: Partial<ReportInput>; error?: string; token: string; abuseEmail?: string }, t: STFn = tApp()): string {
   const v = o.values ?? {};
   const opt = Object.entries(CATEGORIES)
-    .map(([k, label]) => `<option value="${k}"${v.category === k ? ' selected' : ''}>${h(label)}</option>`)
+    .map(([k, label]) => `<option value="${k}"${v.category === k ? ' selected' : ''}>${h(t(label))}</option>`)
     .join('');
   return `${o.error ? `<div class="alert" role="alert">${h(o.error)}</div>` : ''}
 <form method="post" action="/abuse" novalidate>
-<label class="f" for="a-cat">Art des Verstoßes</label><select class="in" id="a-cat" name="category" required><option value="">Bitte wählen …</option>${opt}</select>
-<label class="f" for="a-urls">Genaue Adresse(n) des Inhalts (URL, eine pro Zeile)</label><textarea class="in" id="a-urls" name="urls" rows="3" required maxlength="4000">${h((v.urls ?? []).join('\n'))}</textarea>
-<label class="f" for="a-exp">Warum ist der Inhalt rechtswidrig oder verstößt gegen die Regeln?</label><textarea class="in" id="a-exp" name="explanation" rows="6" required maxlength="5000">${h(v.explanation ?? '')}</textarea>
-<label class="f" for="a-name">Dein Name</label><input class="in" id="a-name" name="name" maxlength="120" autocomplete="name" value="${h(v.name ?? '')}">
-<label class="f" for="a-mail">Deine E-Mail-Adresse</label><input class="in" id="a-mail" name="email" type="email" maxlength="200" autocomplete="email" value="${h(v.email ?? '')}">
-<p style="color:var(--muted);font-size:14px">Name und E-Mail brauchen wir für die Eingangsbestätigung und unsere Entscheidung. Bei Darstellungen von Kindesmissbrauch kannst du anonym melden.</p>
+<label class="f" for="a-cat">${h(t('Art des Verstoßes'))}</label><select class="in" id="a-cat" name="category" required><option value="">${h(t('Bitte wählen …'))}</option>${opt}</select>
+<label class="f" for="a-urls">${h(t('Genaue Adresse(n) des Inhalts (URL, eine pro Zeile)'))}</label><textarea class="in" id="a-urls" name="urls" rows="3" required maxlength="4000">${h((v.urls ?? []).join('\n'))}</textarea>
+<label class="f" for="a-exp">${h(t('Warum ist der Inhalt rechtswidrig oder verstößt gegen die Regeln?'))}</label><textarea class="in" id="a-exp" name="explanation" rows="6" required maxlength="5000">${h(v.explanation ?? '')}</textarea>
+<label class="f" for="a-name">${h(t('Dein Name'))}</label><input class="in" id="a-name" name="name" maxlength="120" autocomplete="name" value="${h(v.name ?? '')}">
+<label class="f" for="a-mail">${h(t('Deine E-Mail-Adresse'))}</label><input class="in" id="a-mail" name="email" type="email" maxlength="200" autocomplete="email" value="${h(v.email ?? '')}">
+<p style="color:var(--muted);font-size:14px">${h(t('Name und E-Mail brauchen wir für die Eingangsbestätigung und unsere Entscheidung. Bei Darstellungen von Kindesmissbrauch kannst du anonym melden.'))}</p>
 <div class="hp" aria-hidden="true"><label for="a-website">Website</label><input id="a-website" name="website" tabindex="-1" autocomplete="off"></div>
 <input type="hidden" name="t" value="${h(o.token)}">
-<label class="chk"><input type="checkbox" name="good_faith" value="1" required${v.good_faith ? ' checked' : ''}><span>Ich bin in gutem Glauben davon überzeugt, dass die Angaben in dieser Meldung richtig und vollständig sind.</span></label>
-<button class="btn wide" type="submit">Meldung absenden</button>
+<label class="chk"><input type="checkbox" name="good_faith" value="1" required${v.good_faith ? ' checked' : ''}><span>${h(t('Ich bin in gutem Glauben davon überzeugt, dass die Angaben in dieser Meldung richtig und vollständig sind.'))}</span></label>
+<button class="btn wide" type="submit">${h(t('Meldung absenden'))}</button>
 </form>
-${o.abuseEmail ? `<p style="color:var(--muted);font-size:14px">Oder per E-Mail an <a href="mailto:${h(o.abuseEmail)}">${h(o.abuseEmail)}</a>.</p>` : ''}`;
+${o.abuseEmail ? `<p style="color:var(--muted);font-size:14px">${h(t('Oder per E-Mail an'))} <a href="mailto:${h(o.abuseEmail)}">${h(o.abuseEmail)}</a>.</p>` : ''}`;
 }

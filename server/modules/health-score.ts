@@ -7,6 +7,7 @@ import { getContact } from '../services/contacts.js';
 import { overdueBefore } from '../services/invoice-model.js';
 import { HEALTH_SIGNALS, SIGNAL_LABELS, computeHealth, healthDropped, type Band, type HealthInput } from '../services/health-score.js';
 import { SLA_BREACHED_SQL, loadHelpdeskSettings, ticketOut } from '../services/tickets.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Customer health score per contact (0–100, green/yellow/red) from weighted signals configured per
@@ -208,7 +209,7 @@ export const healthScoreModule: Module = {
       if (!getContact(app, ctx.locationId, ctx.params.id)) throw notFound('Kontakt nicht gefunden');
       const cfg = loadHelpdeskSettings(app, ctx.locationId).health;
       const r = compute(ctx.locationId, ctx.params.id)!;
-      return { score: r.score, band: r.band, previous_score: r.previous?.score ?? null, enabled: cfg.enabled, signals: HEALTH_SIGNALS.map((k) => ({ key: k, label: SIGNAL_LABELS[k], score: r.signals[k], weight: cfg.weights[k] })), input: r.input };
+      return { score: r.score, band: r.band, previous_score: r.previous?.score ?? null, enabled: cfg.enabled, signals: HEALTH_SIGNALS.map((k) => ({ key: k, label: tCtx(ctx)(SIGNAL_LABELS[k]), score: r.signals[k], weight: cfg.weights[k] })), input: r.input };
     });
 
     router.post('/api/health/recompute', 'location', (ctx) => {
@@ -235,7 +236,7 @@ export const healthScoreModule: Module = {
         .map((t) => ticketOut(app, parseJson(t, ['tags'])))
         .map(({ description: _d, ...t }) => t);
       return {
-        health: h ? { score: h.score, band: h.band, previous_score: h.previous?.score ?? null, signals: HEALTH_SIGNALS.map((k) => ({ key: k, label: SIGNAL_LABELS[k], score: h.signals[k], weight: cfg.weights[k] })) } : null,
+        health: h ? { score: h.score, band: h.band, previous_score: h.previous?.score ?? null, signals: HEALTH_SIGNALS.map((k) => ({ key: k, label: tCtx(ctx)(SIGNAL_LABELS[k]), score: h.signals[k], weight: cfg.weights[k] })) } : null,
         tickets,
         open: tickets.filter((t) => ['new', 'open', 'waiting'].includes(t.status_kind)).length,
         surveys: app.services.surveysOfContact?.(ctx.locationId, ctx.params.id) ?? { csat: [], nps: [] },

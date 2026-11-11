@@ -3,6 +3,7 @@ import { isRelay } from '../core/app.js';
 import { HttpError, notFound, str, type Ctx, type User } from '../core/http.js';
 import { id, now, sha256, token } from '../core/util.js';
 import { APP_VERSION } from '../version.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * Agency API keys (all sub-accounts at once, read-only or read/write) and an MCP endpoint
@@ -61,7 +62,8 @@ async function stageId(call: Caller, loc: string, pipelineId: string | undefined
     const s = p.stages.find((x: any) => x.id === stage || String(x.name).toLowerCase() === wanted);
     if (s) return s.id;
   }
-  throw new HttpError(400, `Stufe „${stage}“ nicht gefunden – verfügbare: ${list.flatMap((p) => p.stages.map((s: any) => s.name)).join(', ')}`);
+  const t = tApp();
+  throw new HttpError(400, t('Stufe „{stage}“ nicht gefunden – verfügbare: {list}', { stage, list: list.flatMap((p) => p.stages.map((s: any) => s.name)).join(', ') }));
 }
 
 export const TOOLS: Tool[] = [
@@ -404,7 +406,8 @@ export const TOOLS: Tool[] = [
 function checkArgs(tool: Tool, args: Json) {
   const req: string[] = tool.inputSchema.required ?? [];
   const missing = req.filter((k) => args[k] === undefined || args[k] === null || args[k] === '');
-  if (missing.length) throw new RpcError(-32602, `Fehlende Parameter für ${tool.name}: ${missing.join(', ')}`);
+  const t = tApp();
+  if (missing.length) throw new RpcError(-32602, t('Fehlende Parameter für {tool}: {params}', { tool: tool.name, params: missing.join(', ') }));
 }
 
 const TYPE_WORD: Record<string, string> = { string: 'Text', integer: 'eine ganze Zahl', number: 'eine Zahl', boolean: 'true oder false', array: 'eine Liste', object: 'ein Objekt' };
@@ -443,7 +446,8 @@ function coerce(v: unknown, types: string[]): unknown {
  */
 export function normalizeArgs(tool: Pick<Tool, 'name' | 'inputSchema'>, input: unknown): Json {
   if (input === undefined || input === null) return {};
-  if (!isPlain(input)) throw new HttpError(400, `Die Argumente für ${tool.name} müssen ein Objekt sein`);
+  const t = tApp();
+  if (!isPlain(input)) throw new HttpError(400, t('Die Argumente für {tool} müssen ein Objekt sein', { tool: tool.name }));
   const props: Json = tool.inputSchema?.properties ?? {};
   const out: Json = { ...(input as Json) };
   for (const [k, v] of Object.entries(out)) {
@@ -452,7 +456,7 @@ export function normalizeArgs(tool: Pick<Tool, 'name' | 'inputSchema'>, input: u
     const types: string[] = (Array.isArray(s.type) ? s.type : [s.type]).filter((x: unknown): x is string => typeof x === 'string');
     if (!types.length) continue;
     const fixed = coerce(v, types);
-    if (fixed === INVALID) throw new HttpError(400, `Parameter „${k}“ muss ${types.map((x) => TYPE_WORD[x] ?? x).join(' oder ')} sein`);
+    if (fixed === INVALID) throw new HttpError(400, t('Parameter „{name}“ muss {types} sein', { name: k, types: types.map((x) => (TYPE_WORD[x] ? t(TYPE_WORD[x]) : x)).join(` ${t('oder')} `) }));
     out[k] = fixed;
   }
   return out;
@@ -481,6 +485,19 @@ class RpcError extends Error {
 function keyUser(app: App, k: any): User {
   const creator = (k.created_by && app.db.get('SELECT * FROM users WHERE id = ?', k.created_by)) || app.db.get(`SELECT * FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1`);
   return { id: creator?.id ?? `key:${k.id}`, email: creator?.email ?? '', name: `API: ${k.name}`, role: 'admin', locations: [], permissions: null };
+}
+
+/** A tool's input schema with its `description`/`title` texts in the caller's language (property names, enums and types stay). */
+export function translateSchema(s: unknown, tr: STFn): any {
+  if (Array.isArray(s)) return s.map((x) => translateSchema(x, tr));
+  if (!s || typeof s !== 'object') return s;
+  const out: Json = {};
+  for (const [k, v] of Object.entries(s as Json)) {
+    if ((k === 'description' || k === 'title') && typeof v === 'string') out[k] = tr(v);
+    else if (k === 'properties' && isPlain(v)) out[k] = Object.fromEntries(Object.entries(v as Json).map(([name, ps]) => [name, translateSchema(ps, tr)]));
+    else out[k] = translateSchema(v, tr);
+  }
+  return out;
 }
 
 export const mcpModule: Module = {
@@ -573,9 +590,10 @@ export const mcpModule: Module = {
       }
       return out;
     };
-    router.get('/mcp', 'public', () => ({ __raw: true, status: 405, headers: { allow: 'POST', 'content-type': 'application/json' }, body: JSON.stringify({ error: 'MCP: bitte POST (Streamable HTTP, JSON)' }) }));
+    router.get('/mcp', 'public', (ctx) => ({ __raw: true, status: 405, headers: { allow: 'POST', 'content-type': 'application/json' }, body: JSON.stringify({ error: tCtx(ctx)('MCP: bitte POST (Streamable HTTP, JSON)') }) }));
     router.delete('/mcp', 'public', () => ({ __raw: true, status: 405, headers: { allow: 'POST' }, body: '' }));
     router.post('/mcp', 'public', async (ctx) => {
+      const tr = tCtx(ctx);
       const auth = String(ctx.req.headers.authorization ?? '');
       const bearer = auth.match(/^Bearer\s+(.+)$/i)?.[1] ?? '';
       let caller: Caller | null = null;
@@ -598,7 +616,7 @@ export const mcpModule: Module = {
       if (!caller) {
         // The challenge points MCP clients to the OAuth metadata (when the OAuth module is there).
         const challenge: string = app.services.mcpChallenge?.(ctx, bearer ? 'invalid_token' : undefined) ?? 'Bearer realm="gohigh"';
-        return { __raw: true, status: 401, headers: { 'content-type': 'application/json', 'www-authenticate': challenge }, body: JSON.stringify({ error: bearer ? 'Schlüssel oder Token ungültig oder abgelaufen' : 'Authorization: Bearer <Schlüssel oder OAuth-Token> fehlt' }) };
+        return { __raw: true, status: 401, headers: { 'content-type': 'application/json', 'www-authenticate': challenge }, body: JSON.stringify({ error: bearer ? tr('Schlüssel oder Token ungültig oder abgelaufen') : tr('Authorization: Bearer <Schlüssel oder OAuth-Token> fehlt') }) };
       }
       const c = caller;
       const relay = async (method: string, path: string, opts: { body?: unknown; location?: string } = {}, readToken = '') => {
@@ -617,7 +635,7 @@ export const mcpModule: Module = {
         });
         const data = await r.json().catch(() => null);
         // An agency connection reaches every sub-account: a tool without location_id cannot know which one is meant.
-        if (!r.ok && c.agency && !location && r.status === 400 && /^Kein Sub-Account gewählt/.test(String(data?.error ?? ''))) throw new HttpError(400, 'location_id fehlt – mit einem Agentur-Zugang bitte location_id angeben (aus ghl_list_projects)');
+        if (!r.ok && c.agency && !location && r.status === 400 && /^(Kein Sub-Account gewählt|No sub-account selected)/i.test(String(data?.error ?? ''))) throw new HttpError(400, 'location_id fehlt – mit einem Agentur-Zugang bitte location_id angeben (aus ghl_list_projects)');
         if (!r.ok) throw new HttpError(r.status, data?.error ?? `HTTP ${r.status}`);
         return data;
       };
@@ -626,7 +644,7 @@ export const mcpModule: Module = {
       const handleOne = async (msg: any): Promise<any | null> => {
         const isNotification = msg && msg.id === undefined;
         try {
-          if (!msg || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') throw new RpcError(-32600, 'Ungültige JSON-RPC-Anfrage');
+          if (!msg || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') throw new RpcError(-32600, tr('Ungültige JSON-RPC-Anfrage'));
           let result: any;
           switch (msg.method) {
             case 'initialize': {
@@ -636,8 +654,8 @@ export const mcpModule: Module = {
                 capabilities: { tools: { listChanged: false } },
                 serverInfo: { name: 'gohigh', title: app.services.brandName?.() ?? 'Neso CRM', version: APP_VERSION },
                 instructions: c.agency
-                  ? 'Agentur-CRM: Jedes Projekt ist ein Sub-Account (location_id). Starte mit ghl_list_projects. Schreibende Tools wirken sofort und landen im Protokoll. Social-Posts standardmäßig als Entwurf anlegen; ghl_send_message verschickt echt.'
-                  : `CRM eines einzelnen Sub-Accounts (location_id ${c.locationId}) – andere Sub-Accounts sind mit dieser Verbindung nicht erreichbar. Starte mit ghl_list_projects. Schreibende Tools wirken sofort und landen im Protokoll. Social-Posts standardmäßig als Entwurf anlegen; ghl_send_message verschickt echt.`,
+                  ? tr('Agentur-CRM: Jedes Projekt ist ein Sub-Account (location_id). Starte mit ghl_list_projects. Schreibende Tools wirken sofort und landen im Protokoll. Social-Posts standardmäßig als Entwurf anlegen; ghl_send_message verschickt echt.')
+                  : tr('CRM eines einzelnen Sub-Accounts (location_id {id}) – andere Sub-Accounts sind mit dieser Verbindung nicht erreichbar. Starte mit ghl_list_projects. Schreibende Tools wirken sofort und landen im Protokoll. Social-Posts standardmäßig als Entwurf anlegen; ghl_send_message verschickt echt.', { id: String(c.locationId) }),
               };
               break;
             }
@@ -648,15 +666,15 @@ export const mcpModule: Module = {
               result = {
                 tools: [...tools(), ...(await callerTools(c))]
                   .filter((t) => c.agency || !t.agencyOnly)
-                  .map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: { title: t.title, ...t.annotations } })),
+                  .map((t) => ({ name: t.name, title: tr(t.title), description: tr(t.description), inputSchema: translateSchema(t.inputSchema, tr), annotations: { title: tr(t.title), ...t.annotations } })),
               };
               break;
             case 'tools/call': {
               const name = msg.params?.name;
-              if (typeof name !== 'string' || !name) throw new RpcError(-32602, 'Tool-Name fehlt (params.name)');
+              if (typeof name !== 'string' || !name) throw new RpcError(-32602, tr('Tool-Name fehlt (params.name)'));
               const own = tools().find((x) => x.name === name);
               const t = own ?? (name.startsWith('ext_') ? (await callerTools(c)).find((x) => x.name === name) : undefined);
-              if (!t || (!c.agency && t.agencyOnly)) throw new RpcError(-32602, `Unbekanntes Tool: ${name.slice(0, 100)}`);
+              if (!t || (!c.agency && t.agencyOnly)) throw new RpcError(-32602, tr('Unbekanntes Tool: {name}', { name: name.slice(0, 100) }));
               let args: Json;
               try {
                 args = normalizeArgs(t, msg.params?.arguments);
@@ -671,11 +689,11 @@ export const mcpModule: Module = {
                 if (!c.agency && args.location_id !== undefined && args.location_id !== null && args.location_id !== '' && String(args.location_id) !== c.locationId) throw new HttpError(403, 'Dieser Schlüssel gilt nur für einen Sub-Account');
                 const out = await t.run(readToken ? { ...c, api: (method, path, opts = {}) => relay(method, path, opts, readToken) } : c, args);
                 const textOut = JSON.stringify(out ?? { ok: true });
-                result = { content: [{ type: 'text', text: textOut.length > 60_000 ? `${textOut.slice(0, 60_000)}… (gekürzt – Filter/limit nutzen)` : textOut }], isError: false };
+                result = { content: [{ type: 'text', text: textOut.length > 60_000 ? `${textOut.slice(0, 60_000)}… ${tr('(gekürzt – Filter/limit nutzen)')}` : textOut }], isError: false };
                 if (out && typeof out === 'object' && !Array.isArray(out)) result.structuredContent = out;
               } catch (e) {
                 const status = e instanceof HttpError ? ` (${e.status})` : '';
-                result = { content: [{ type: 'text', text: `Fehler${status}: ${(e as Error).message}` }], isError: true };
+                result = { content: [{ type: 'text', text: tr('Fehler{status}: {message}', { status, message: tr((e as Error).message) }) }], isError: true };
               } finally {
                 if (readToken) readToolTokens.delete(readToken);
               }
@@ -683,13 +701,13 @@ export const mcpModule: Module = {
             }
             default:
               if (msg.method.startsWith('notifications/')) return null;
-              throw new RpcError(-32601, `Methode nicht unterstützt: ${msg.method}`);
+              throw new RpcError(-32601, tr('Methode nicht unterstützt: {method}', { method: msg.method }));
           }
           return isNotification ? null : { jsonrpc: '2.0', id: msg.id, result };
         } catch (e) {
           if (isNotification) return null;
           const code = e instanceof RpcError ? e.code : -32603;
-          return { jsonrpc: '2.0', id: msg?.id ?? null, error: { code, message: (e as Error).message } };
+          return { jsonrpc: '2.0', id: msg?.id ?? null, error: { code, message: tr((e as Error).message) } };
         }
       };
 

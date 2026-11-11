@@ -16,7 +16,15 @@ import { type CanvasElement } from './canvas-model.js';
 import { type Direction, type GraphEdge, type GraphNode, type GraphSpec, type NodeShape, buildGraph } from './canvas-layout.js';
 import { layoutText, textWidth } from './canvas-text.js';
 
-export class MermaidError extends Error {}
+/** `key`: the German message id with {placeholders} (the server translates it, server/i18n); `vars`: its values. */
+export class MermaidError extends Error {
+  constructor(
+    readonly key: string,
+    readonly vars?: Record<string, string | number>,
+  ) {
+    super(vars ? key.replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m)) : key);
+  }
+}
 
 export type MermaidResult =
   | { kind: 'flowchart' | 'mindmap'; graph: GraphSpec }
@@ -49,7 +57,7 @@ export function parseMermaid(src: string): MermaidResult {
   if (/^(flowchart|graph)\b/i.test(head)) return { kind: 'flowchart', graph: parseFlowchart(head, rest) };
   if (/^mindmap\b/i.test(head)) return { kind: 'mindmap', graph: parseMindmap(rest) };
   if (/^sequenceDiagram\b/i.test(head)) return parseSequence(rest);
-  throw new MermaidError(`Mermaid: „${head.slice(0, 40)}“ wird nicht unterstützt – nur flowchart/graph, mindmap und sequenceDiagram`);
+  throw new MermaidError('Mermaid: „{head}“ wird nicht unterstützt – nur flowchart/graph, mindmap und sequenceDiagram', { head: head.slice(0, 40) });
 }
 
 // --- flowchart -----------------------------------------------------------------------------------

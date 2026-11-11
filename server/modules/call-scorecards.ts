@@ -3,6 +3,7 @@ import type { Module } from '../core/app.js';
 import { parseJson } from '../core/db.js';
 import { HttpError, bad, notFound, num, str } from '../core/http.js';
 import { id, now } from '../core/util.js';
+import { tApp, tCtx } from '../i18n/index.js';
 import { SCORECARD_TEMPLATES, SCORE_SCHEMA, cleanCriteria, normalise, parseScores, scorePrompt, scoreTotal, type Criterion, type PointScore } from '../services/call-intel.js';
 
 /**
@@ -92,7 +93,10 @@ export const callScorecardsModule: Module = {
     };
 
     // --- cards ------------------------------------------------------------------------------------------------------------
-    router.get('/api/call-scorecards/templates', 'location', () => SCORECARD_TEMPLATES);
+    router.get('/api/call-scorecards/templates', 'location', (ctx) => {
+      const t = tCtx(ctx);
+      return SCORECARD_TEMPLATES.map((tpl) => ({ ...tpl, name: t(tpl.name), description: t(tpl.description), criteria: tpl.criteria.map((c) => ({ ...c, label: t(c.label), description: t(c.description) })) }));
+    });
     router.get('/api/call-scorecards', 'location', (ctx) => db.all<any>('SELECT * FROM call_scorecards WHERE location_id = ? ORDER BY name', ctx.locationId).map((r) => cardOut(parseJson(r, ['criteria']))));
     router.post('/api/call-scorecards', 'location', (ctx) => {
       const b = ctx.body ?? {};
@@ -135,11 +139,11 @@ export const callScorecardsModule: Module = {
       const intel = db.get<{ id: string; transcript: string; separated: number; status: string; contact_id: string | null }>('SELECT id, transcript, separated, status, contact_id FROM call_intel WHERE id = ? AND location_id = ?', intelId, locationId);
       if (!intel) throw notFound('Auswertung nicht gefunden');
       if (intel.status !== 'done' || !intel.transcript) throw bad('Das Gespräch ist noch nicht ausgewertet');
-      const problem: string | null = app.services.aiReady ? app.services.aiReady(locationId) : 'Das Modul KI-Assistent fehlt.';
-      if (problem || !app.services.aiRun) throw new HttpError(409, problem || 'Der KI-Assistent fehlt');
+      const problem: string | null = app.services.aiReady ? app.services.aiReady(locationId) : tApp()('Das Modul KI-Assistent fehlt.');
+      if (problem || !app.services.aiRun) throw new HttpError(409, problem || tApp()('Der KI-Assistent fehlt'));
       const res = await app.services.aiRun({ locationId, purpose: 'call_intel', user: scorePrompt({ transcript: intel.transcript, criteria: c.criteria, name: c.name, separated: !!intel.separated }), schema: SCORE_SCHEMA, maxTokens: 2500, contactId: intel.contact_id });
       const parsed = parseScores(res.text, c.criteria);
-      if (!parsed.ok) throw new HttpError(502, `Die KI-Antwort war nicht brauchbar: ${parsed.error}`);
+      if (!parsed.ok) throw new HttpError(502, tApp()('Die KI-Antwort war nicht brauchbar: {error}', { error: parsed.error }));
       const ai = parsed.value;
       const aiTotal = scoreTotal(c.criteria, Object.fromEntries(c.criteria.map((k) => [k.id, ai[k.id]?.score ?? null])));
       const existing = db.get<any>('SELECT * FROM call_scores WHERE intel_id = ? AND scorecard_id = ?', intelId, scorecardId);
@@ -181,13 +185,13 @@ export const callScorecardsModule: Module = {
         if (!b.scores || typeof b.scores !== 'object') throw bad('Bewertungen ungültig');
         for (const [cid, v] of Object.entries<any>(b.scores)) {
           const k = c.criteria.find((x) => x.id === cid);
-          if (!k) throw bad(`Kriterium „${cid}“ gibt es nicht`);
+          if (!k) throw bad(tCtx(ctx)('Kriterium „{key}“ gibt es nicht', { key: cid }));
           if (v === null || v?.score === null) {
             review[cid] = { score: null, comment: String(v?.comment ?? '').slice(0, 400) };
             continue;
           }
           const n = Math.round(Number(v?.score));
-          if (!Number.isFinite(n) || (k.scale === 'yesno' ? n < 0 || n > 1 : n < 1 || n > 5)) throw bad(`„${k.label}“: ${k.scale === 'yesno' ? '0 oder 1' : 'eine Zahl von 1 bis 5'}`);
+          if (!Number.isFinite(n) || (k.scale === 'yesno' ? n < 0 || n > 1 : n < 1 || n > 5)) throw bad(tCtx(ctx)(k.scale === 'yesno' ? '„{label}“: 0 oder 1' : '„{label}“: eine Zahl von 1 bis 5', { label: k.label }));
           review[cid] = { score: n, comment: String(v?.comment ?? '').slice(0, 400).trim() };
         }
       }

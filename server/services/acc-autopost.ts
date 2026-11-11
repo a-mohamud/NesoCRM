@@ -5,6 +5,7 @@ import { bookingDate, entryBySourceKey, getSettings, postEntry, stornoEntry, tod
 import { codeForRate, type TaxCode } from './acc-vat.js';
 import { calcTotals, creditClosed, creditClosedSql, isTaxMode, type Deduction, type TaxMode } from './invoice-model.js';
 import { stripeRequest } from './stripe.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Auto-posting: invoices of the CRM become entries (issue, payment, cancellation), Stripe payments land in the
@@ -75,7 +76,7 @@ export function invoicePostings(
   const rcText = !mode && REVERSE_CHARGE_TEXT.test(`${inv.title ?? ''} ${inv.notes ?? ''}`);
   for (const [rate, g] of [...groups.entries()].sort((a, b) => b[0] - a[0])) {
     if (g.net === 0 && g.tax === 0) continue;
-    if (![0, 7, 19].includes(rate)) throw new Error(`Steuersatz ${rate} % wird nicht unterstützt (19, 7 oder 0)`);
+    if (![0, 7, 19].includes(rate)) throw new Error(tApp()('Steuersatz {rate} % wird nicht unterstützt (19, 7 oder 0)', { rate }));
     let code: TaxCode = codeForRate(rate, 'output');
     let revenue = rate === 19 ? m.revenue19 : rate === 7 ? m.revenue7 : m.revenue0;
     if (mode === 'reverse_charge' || (rate === 0 && rcText)) {
@@ -94,7 +95,7 @@ export function invoicePostings(
   // what the postings put on the receivable account must be the document total less the partial invoices
   const booked = postings.reduce((n, p) => n + (p.debit === m.receivable ? p.amount_cents : -p.amount_cents), 0);
   const want = (credit ? -1 : 1) * (Math.abs(inv.total_cents) - (inv.deductions ?? []).reduce((n, d) => n + d.total_cents, 0));
-  if (booked !== want) warnings.push(`Rechnungssumme ${want} weicht von den Positionen (${booked}) ab`);
+  if (booked !== want) warnings.push(tApp()('Rechnungssumme {total} weicht von den Positionen ({lines}) ab', { total: want, lines: booked }));
   return { postings, warnings };
 }
 
@@ -168,7 +169,7 @@ export function ensureIssued(app: App, locationId: string, inv: any, settings: A
     date,
     doc_date: docDate,
     due_date: !credit && inv.due_at ? day(app, locationId, inv.due_at) : null,
-    text: credit ? `Gutschrift ${inv.number}${ref ? ` zu Rechnung ${ref.number}` : ''}${inv.title ? `: ${inv.title}` : ''}` : `Rechnung ${inv.number}${inv.title ? `: ${inv.title}` : ''}`,
+    text: (credit ? (ref ? tLoc(app, locationId)('Gutschrift {number} zu Rechnung {ref}', { number: inv.number, ref: ref.number }) : tLoc(app, locationId)('Gutschrift {number}', { number: inv.number })) : tLoc(app, locationId)('Rechnung {number}', { number: inv.number })) + (inv.title ? `: ${inv.title}` : ''),
     doc_ref: ref?.number ?? inv.number,
     source: 'invoice',
     source_id: inv.id,
@@ -195,12 +196,12 @@ export function postInvoicePayment(app: App, locationId: string, inv: any, opts:
   return postEntry(app, locationId, {
     date: bookingDate(app, locationId, docDate),
     doc_date: docDate,
-    text: `Zahlungseingang ${inv.number}${via === 'stripe' ? ' (Stripe)' : ''}`,
+    text: tLoc(app, locationId)('Zahlungseingang {number}', { number: inv.number }) + (via === 'stripe' ? ' (Stripe)' : ''),
     doc_ref: inv.number,
     source: via === 'stripe' ? 'stripe' : 'payment',
     source_id: inv.id,
     source_key: key,
-    postings: [{ debit: via === 'stripe' ? m.transit : m.bank, credit: m.receivable, amount_cents: amount, tax_code: 'none', text: `Zahlung ${inv.number}` }],
+    postings: [{ debit: via === 'stripe' ? m.transit : m.bank, credit: m.receivable, amount_cents: amount, tax_code: 'none', text: tLoc(app, locationId)('Zahlung {number}', { number: inv.number }) }],
     party_name: partyOf(app, inv),
     contact_id: inv.contact_id ?? null,
     actor: opts.actor ?? (via === 'stripe' ? 'Automatik (Stripe)' : 'Automatik (Zahlung)'),
@@ -264,10 +265,10 @@ export function syncInvoices(app: App, locationId: string, opts: { invoiceId?: s
             if (postInvoicePayment(app, locationId, inv, { date: day(app, locationId, p.paid_at), amount_cents: p.amount_cents, via, key })) out.payments++;
           } else if (p.kind === 'reversal') {
             const orig = entryBySourceKey(app, locationId, `invoice:${inv.id}:pay:${p.reverses_id}`);
-            if (orig && !orig.reversed_by) stornoEntry(app, locationId, orig.id, { reason: 'Zahlung zurückgenommen', user: { id: null, name: 'Automatik (Zahlung)' } });
+            if (orig && !orig.reversed_by) stornoEntry(app, locationId, orig.id, { reason: tLoc(app, locationId)('Zahlung zurückgenommen'), user: { id: null, name: tLoc(app, locationId)('Automatik (Zahlung)') } });
           } else if (p.kind === 'skonto') {
             // a Skonto deduction has no bank movement: the difference stays open on the receivable until the advisor clears it (said once)
-            const detail = `${inv.number}: Skonto-Abzug von ${(p.amount_cents / 100).toFixed(2)} € nicht gebucht – die Differenz bleibt auf dem Forderungskonto offen (Erlösschmälerung mit dem Steuerberater klären)`;
+            const detail = tLoc(app, locationId)('{number}: Skonto-Abzug von {amount} € nicht gebucht – die Differenz bleibt auf dem Forderungskonto offen (Erlösschmälerung mit dem Steuerberater klären)', { number: inv.number, amount: (p.amount_cents / 100).toFixed(2) });
             if (!app.db.get(`SELECT 1 AS x FROM acc_audit WHERE location_id = ? AND action = 'autopost.warning' AND detail = ?`, locationId, detail)) trail(app, locationId, null, 'autopost.warning', issued.id, detail);
           }
         }
@@ -303,7 +304,7 @@ export function bookStripePayout(app: App, locationId: string, payout: any): { h
   const cur = String(payout?.currency ?? 'eur').toUpperCase();
   if (!payout?.id || !Number.isInteger(amount) || amount <= 0) return { handled: 'ignored' };
   if (cur !== 'EUR') {
-    trail(app, locationId, null, 'autopost.error', null, `Stripe-Auszahlung ${payout.id} in ${cur} nicht gebucht (nur EUR)`);
+    trail(app, locationId, null, 'autopost.error', null, tLoc(app, locationId)('Stripe-Auszahlung {id} in {currency} nicht gebucht (nur EUR)', { id: payout.id, currency: cur }));
     return { handled: 'ignored' };
   }
   const m = settings.mapping;
@@ -311,12 +312,12 @@ export function bookStripePayout(app: App, locationId: string, payout: any): { h
   const out = postEntry(app, locationId, {
     date: bookingDate(app, locationId, date),
     doc_date: date,
-    text: `Stripe-Auszahlung ${payout.id}`,
+    text: tLoc(app, locationId)('Stripe-Auszahlung {id}', { id: payout.id }),
     doc_ref: String(payout.id),
     source: 'stripe',
     source_id: String(payout.id),
     source_key: `stripe:payout:${payout.id}`,
-    postings: [{ debit: m.bank, credit: m.transit, amount_cents: amount, tax_code: 'none', text: 'Auszahlung von Stripe' }],
+    postings: [{ debit: m.bank, credit: m.transit, amount_cents: amount, tax_code: 'none', text: tLoc(app, locationId)('Auszahlung von Stripe') }],
     party_name: 'Stripe',
     actor: 'Automatik (Stripe)',
   });
@@ -350,12 +351,12 @@ export async function bookStripeFees(app: App, locationId: string, payout: any):
   postEntry(app, locationId, {
     date: bookingDate(app, locationId, date),
     doc_date: date,
-    text: `Stripe-Gebühren zur Auszahlung ${payout.id}`,
+    text: tLoc(app, locationId)('Stripe-Gebühren zur Auszahlung {id}', { id: payout.id }),
     doc_ref: String(payout.id),
     source: 'stripe',
     source_id: String(payout.id),
     source_key: key,
-    postings: [{ debit: m.fees, credit: m.transit, amount_cents: fees, tax_code: 'none', text: 'Zahlungsgebühren Stripe' }],
+    postings: [{ debit: m.fees, credit: m.transit, amount_cents: fees, tax_code: 'none', text: tLoc(app, locationId)('Zahlungsgebühren Stripe') }],
     party_name: 'Stripe',
     actor: 'Automatik (Stripe)',
   });
@@ -377,12 +378,12 @@ export function bookStripeRefund(app: App, locationId: string, e: { invoiceId?: 
   postEntry(app, locationId, {
     date: bookingDate(app, locationId, today),
     doc_date: today,
-    text: `Stripe-Rückzahlung ${inv.number}`,
+    text: tLoc(app, locationId)('Stripe-Rückzahlung {number}', { number: inv.number }),
     doc_ref: inv.number,
     source: 'stripe',
     source_id: inv.id,
     source_key: `refund:${inv.id}:${Number(e.amount_cents)}`,
-    postings: [{ debit: m.receivable, credit: m.transit, amount_cents: amount, tax_code: 'none', text: `Rückzahlung ${inv.number}` }],
+    postings: [{ debit: m.receivable, credit: m.transit, amount_cents: amount, tax_code: 'none', text: tLoc(app, locationId)('Rückzahlung {number}', { number: inv.number }) }],
     party_name: partyOf(app, inv),
     contact_id: inv.contact_id ?? null,
     actor: 'Automatik (Stripe)',

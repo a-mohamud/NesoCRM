@@ -4,6 +4,7 @@ import { requiredPermission } from '../core/permissions.js';
 import { agentForbidden } from '../services/agent-safety.js';
 import { ROUTE_DOCS } from '../services/openapi.js';
 import type { Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * ghl_api (docs/ai-tools.md#ghl_api-every-app-function): every REST route of the app through one MCP tool, for what no
@@ -79,7 +80,8 @@ export const API_TOOL: Tool = {
   untrusted: true,
   run: async (call, a) => {
     const method = String(a.method).toUpperCase();
-    if (!(API_METHODS as readonly string[]).includes(method)) throw new HttpError(400, `method muss eines von ${API_METHODS.join(', ')} sein`);
+    const t = tApp();
+    if (!(API_METHODS as readonly string[]).includes(method)) throw new HttpError(400, t('method muss eines von {list} sein', { list: API_METHODS.join(', ') }));
     const path = apiPath(a.path);
     const body = method === 'GET' || method === 'DELETE' ? undefined : (a.body ?? {});
     return call.api(method, path, { body, location: a.location_id ? String(a.location_id) : undefined });
@@ -151,11 +153,12 @@ export function apiRoutesTool(app: App): Tool {
         })
         .filter((x) => !q.length || x.score > 0)
         .sort((x, y) => y.score - x.score || x.r.pattern.length - y.r.pattern.length);
+      const t = tApp();
       const routes = hits.slice(0, limit).map(({ r, summary }) => {
         const area = requiredPermission(r.method, r.pattern);
-        return `${r.method} ${r.pattern}${summary ? ` – ${summary}` : ''}${area ? ` [${area}]` : ''}${r.auth === 'admin' ? ' [nur Agentur]' : ''}`;
+        return `${r.method} ${r.pattern}${summary ? ` – ${summary}` : ''}${area ? ` [${area}]` : ''}${r.auth === 'admin' ? ` [${t('nur Agentur')}]` : ''}`;
       });
-      return { total: hits.length, routes, hint: hits.length > limit ? 'Mehr Treffer – Stichworte genauer fassen oder module angeben.' : undefined };
+      return { total: hits.length, routes, hint: hits.length > limit ? t('Mehr Treffer – Stichworte genauer fassen oder module angeben.') : undefined };
     },
   };
 }

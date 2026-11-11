@@ -5,6 +5,10 @@ import { bad, notFound, str } from '../core/http.js';
 import { id as newId, now } from '../core/util.js';
 import { actorOf, filesDir, json, logTask, mentionsIn, notifyUser, removeFiles, storedPath, team, type Actor } from './pm-core.js';
 import { getTask, taskRow, type TaskOut } from './pm-tasks.js';
+import { tApp, tUser } from '../i18n/index.js';
+
+/** Messages in the instance language (static ids for the catalog). */
+const tm = tApp();
 
 /** Comments with @mentions and attachments (links and small files) on tasks. */
 
@@ -35,13 +39,15 @@ function notifyComment(app: App, task: TaskOut, c: { id: string; body: string },
   const preview = c.body.replace(/\s+/g, ' ').slice(0, 160);
   for (const u of mentioned) {
     if (u === actor.id || (onlyNew && !onlyNew.includes(u))) continue;
-    notifyUser(app, { locationId: task.location_id, userId: u, kind: 'mention', title: `${actor.name} hat dich erwähnt: ${task.title}`, body: preview, taskId: task.id, projectId: task.project_id, ref: `mention:${c.id}:${u}` });
+    const tu = tUser(app as never, u);
+    notifyUser(app, { locationId: task.location_id, userId: u, kind: 'mention', title: tu('{name} hat dich erwähnt: {title}', { name: actor.name, title: task.title }), body: preview, taskId: task.id, projectId: task.project_id, ref: `mention:${c.id}:${u}` });
   }
   if (onlyNew) return;
   const rest = new Set([...task.assignees.map((a) => a.id), ...task.watchers]);
   for (const u of rest) {
     if (u === actor.id || mentioned.includes(u)) continue;
-    notifyUser(app, { locationId: task.location_id, userId: u, kind: 'comment', title: `${actor.name} hat „${task.title}“ kommentiert`, body: preview, taskId: task.id, projectId: task.project_id, ref: `comment:${c.id}:${u}`, quiet: false });
+    const tu = tUser(app as never, u);
+    notifyUser(app, { locationId: task.location_id, userId: u, kind: 'comment', title: tu('{name} hat „{title}“ kommentiert', { name: actor.name, title: task.title }), body: preview, taskId: task.id, projectId: task.project_id, ref: `comment:${c.id}:${u}`, quiet: false });
   }
 }
 
@@ -128,7 +134,7 @@ export function listAttachments(app: App, locationId: string, taskId: string): A
 }
 
 function assertRoom(app: App, taskId: string) {
-  if (Number(app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM pm_attachments WHERE task_id = ?', taskId)?.n) >= MAX_ATTACHMENTS) throw bad(`Höchstens ${MAX_ATTACHMENTS} Anhänge je Aufgabe`);
+  if (Number(app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM pm_attachments WHERE task_id = ?', taskId)?.n) >= MAX_ATTACHMENTS) throw bad(tm('Höchstens {n} Anhänge je Aufgabe', { n: MAX_ATTACHMENTS }));
 }
 
 export function addLink(app: App, locationId: string, taskId: string, b: any, actor: Actor): AttachmentOut {

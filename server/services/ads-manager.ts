@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { bad } from '../core/http.js';
 import type { Platform } from './ads-store.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * The campaign spec of the wizard: what a person (or an agent) describes, independent of the platform's API.
@@ -108,8 +109,8 @@ const intIn = (v: unknown, min: number, max: number, fallback?: number) => {
 const date = (v: unknown) => {
   const s = String(v ?? '').trim();
   if (!s) return undefined;
-  if (!/^\d{4}-\d\d-\d\d(T\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:?\d\d)?)?$/.test(s)) throw bad(`Datum ungültig: ${s.slice(0, 30)}`);
-  if (Number.isNaN(Date.parse(s.length === 10 ? `${s}T00:00:00Z` : s))) throw bad(`Datum ungültig: ${s.slice(0, 30)}`);
+  if (!/^\d{4}-\d\d-\d\d(T\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:?\d\d)?)?$/.test(s)) throw bad(tApp()('Datum ungültig: {value}', { value: s.slice(0, 30) }));
+  if (Number.isNaN(Date.parse(s.length === 10 ? `${s}T00:00:00Z` : s))) throw bad(tApp()('Datum ungültig: {value}', { value: s.slice(0, 30) }));
   return s;
 };
 const ids = (v: unknown, max = 20) => (Array.isArray(v) ? [...new Set(v.map((x) => String(x ?? '').trim()).filter((x) => /^[\w-]{1,60}$/.test(x)))].slice(0, max) : []);
@@ -204,75 +205,75 @@ const days = (from?: string, to?: string) => {
 };
 
 /** Everything that stops a publish (errors) or deserves a second look (warnings). */
-export function validateSpec(spec: AdSpec, o: { maxDailyCents: number; hasPixel?: boolean; hasPage?: boolean; hasLeadForm?: boolean; link?: string }): Problems {
+export function validateSpec(spec: AdSpec, o: { maxDailyCents: number; hasPixel?: boolean; hasPage?: boolean; hasLeadForm?: boolean; link?: string }, tr: STFn = tApp()): Problems {
   const errors: string[] = [];
   const warnings: string[] = [];
   const { audience: a, creative: c, budget } = spec;
-  if (!spec.name) errors.push('Name der Kampagne fehlt');
-  if (!budget.amount_cents) errors.push('Budget fehlt');
+  if (!spec.name) errors.push(tr('Name der Kampagne fehlt'));
+  if (!budget.amount_cents) errors.push(tr('Budget fehlt'));
   const daily = budget.type === 'daily' ? budget.amount_cents : spec.schedule.end ? Math.round(budget.amount_cents / days(spec.schedule.start ?? new Date().toISOString().slice(0, 10), spec.schedule.end)) : budget.amount_cents;
-  if (budget.amount_cents && daily > o.maxDailyCents) errors.push(`Das Budget liegt über dem Tageslimit dieses Sub-Accounts (${(o.maxDailyCents / 100).toLocaleString('de-DE')} €) – Limit unter Anzeigen → Verbindungen anpassen`);
+  if (budget.amount_cents && daily > o.maxDailyCents) errors.push(tr('Das Budget liegt über dem Tageslimit dieses Sub-Accounts ({limit}) – Limit unter Anzeigen → Verbindungen anpassen', { limit: eur(o.maxDailyCents, 'EUR', tr) }));
   if (budget.type === 'lifetime') {
-    if (!spec.schedule.end) errors.push('Ein Gesamtbudget braucht ein Enddatum');
-    else if (spec.schedule.start && spec.schedule.end <= spec.schedule.start) errors.push('Das Ende muss nach dem Start liegen');
-  } else if (spec.schedule.start && spec.schedule.end && spec.schedule.end < spec.schedule.start) errors.push('Das Ende liegt vor dem Start');
-  if (spec.schedule.end && Date.parse(spec.schedule.end.length === 10 ? `${spec.schedule.end}T23:59:59Z` : spec.schedule.end) < Date.now()) errors.push('Das Enddatum liegt in der Vergangenheit');
-  if (!o.link) errors.push('Link fehlt: Funnel-Seite wählen oder Adresse eintragen');
+    if (!spec.schedule.end) errors.push(tr('Ein Gesamtbudget braucht ein Enddatum'));
+    else if (spec.schedule.start && spec.schedule.end <= spec.schedule.start) errors.push(tr('Das Ende muss nach dem Start liegen'));
+  } else if (spec.schedule.start && spec.schedule.end && spec.schedule.end < spec.schedule.start) errors.push(tr('Das Ende liegt vor dem Start'));
+  if (spec.schedule.end && Date.parse(spec.schedule.end.length === 10 ? `${spec.schedule.end}T23:59:59Z` : spec.schedule.end) < Date.now()) errors.push(tr('Das Enddatum liegt in der Vergangenheit'));
+  if (!o.link) errors.push(tr('Link fehlt: Funnel-Seite wählen oder Adresse eintragen'));
 
   if (spec.platform === 'meta') {
-    if (!o.hasPage) errors.push('Facebook-Seite fehlt – unter Anzeigen → Verbindungen wählen (die Anzeige erscheint im Namen der Seite)');
-    if (spec.goal === 'leads' && spec.kind === 'website' && !o.hasPixel) errors.push('Website-Leads brauchen ein Meta-Pixel (Verbindungen) – oder wähle ein Sofortformular');
-    if (spec.goal === 'conversions' && !o.hasPixel) errors.push('Conversions brauchen ein Meta-Pixel (Anzeigen → Verbindungen)');
-    if (spec.kind === 'lead_form' && !o.hasLeadForm) errors.push('Sofortformular fehlt – eines wählen oder anlegen');
-    if (!a.countries?.length && !a.locations?.length) errors.push('Ort fehlt: mindestens ein Land oder eine Stadt');
-    if (!c.primary_text) errors.push('Haupttext fehlt');
-    if (!c.headline) errors.push('Überschrift fehlt');
-    if (!c.media?.length) errors.push('Bild oder Video fehlt');
-    if (c.primary_text && c.primary_text.length > 125) warnings.push('Der Haupttext wird nach etwa 125 Zeichen mit „… mehr“ gekürzt');
-    if (c.headline && c.headline.length > 40) warnings.push('Die Überschrift wird ab etwa 40 Zeichen abgeschnitten');
-    if (c.description && c.description.length > 30) warnings.push('Die Beschreibung wird ab etwa 30 Zeichen abgeschnitten');
-    if (c.cta && !(c.cta in CTA_LABEL)) errors.push(`Button „${c.cta}“ gibt es nicht`);
+    if (!o.hasPage) errors.push(tr('Facebook-Seite fehlt – unter Anzeigen → Verbindungen wählen (die Anzeige erscheint im Namen der Seite)'));
+    if (spec.goal === 'leads' && spec.kind === 'website' && !o.hasPixel) errors.push(tr('Website-Leads brauchen ein Meta-Pixel (Verbindungen) – oder wähle ein Sofortformular'));
+    if (spec.goal === 'conversions' && !o.hasPixel) errors.push(tr('Conversions brauchen ein Meta-Pixel (Anzeigen → Verbindungen)'));
+    if (spec.kind === 'lead_form' && !o.hasLeadForm) errors.push(tr('Sofortformular fehlt – eines wählen oder anlegen'));
+    if (!a.countries?.length && !a.locations?.length) errors.push(tr('Ort fehlt: mindestens ein Land oder eine Stadt'));
+    if (!c.primary_text) errors.push(tr('Haupttext fehlt'));
+    if (!c.headline) errors.push(tr('Überschrift fehlt'));
+    if (!c.media?.length) errors.push(tr('Bild oder Video fehlt'));
+    if (c.primary_text && c.primary_text.length > 125) warnings.push(tr('Der Haupttext wird nach etwa 125 Zeichen mit „… mehr“ gekürzt'));
+    if (c.headline && c.headline.length > 40) warnings.push(tr('Die Überschrift wird ab etwa 40 Zeichen abgeschnitten'));
+    if (c.description && c.description.length > 30) warnings.push(tr('Die Beschreibung wird ab etwa 30 Zeichen abgeschnitten'));
+    if (c.cta && !(c.cta in CTA_LABEL)) errors.push(tr('Button „{cta}“ gibt es nicht', { cta: c.cta }));
     const eu = [...(a.countries ?? [])].some((x) => EU_COUNTRIES.includes(x)) || (a.locations ?? []).some((l) => l.type === 'country' && EU_COUNTRIES.includes(l.key.toUpperCase()));
-    if (eu && !spec.dsa?.beneficiary) warnings.push('Für die EU verlangt Meta Begünstigten und Zahler der Anzeige – ohne Angabe wird der Name der Seite genommen');
-    if (a.interests?.length && a.audience_ids?.length) warnings.push('Interessen und eigene Zielgruppen werden kombiniert (UND) – die Zielgruppe wird dadurch eng');
-    if (!a.audience_ids?.length && !a.interests?.length) warnings.push('Ohne Interessen oder Zielgruppen wählt Meta die Menschen allein (breit) – das ist oft gut, braucht aber mehr Budget');
-    if (spec.goal === 'reach' && spec.kind !== 'website') errors.push('Reichweite geht nur mit einer Website-Anzeige');
+    if (eu && !spec.dsa?.beneficiary) warnings.push(tr('Für die EU verlangt Meta Begünstigten und Zahler der Anzeige – ohne Angabe wird der Name der Seite genommen'));
+    if (a.interests?.length && a.audience_ids?.length) warnings.push(tr('Interessen und eigene Zielgruppen werden kombiniert (UND) – die Zielgruppe wird dadurch eng'));
+    if (!a.audience_ids?.length && !a.interests?.length) warnings.push(tr('Ohne Interessen oder Zielgruppen wählt Meta die Menschen allein (breit) – das ist oft gut, braucht aber mehr Budget'));
+    if (spec.goal === 'reach' && spec.kind !== 'website') errors.push(tr('Reichweite geht nur mit einer Website-Anzeige'));
   } else {
-    if (spec.goal === 'reach') errors.push('Reichweite gibt es nur bei Meta – für Google Traffic oder Leads wählen');
-    if (!a.locations?.length) errors.push('Ort fehlt: mindestens ein Zielgebiet (Google-Standort)');
+    if (spec.goal === 'reach') errors.push(tr('Reichweite gibt es nur bei Meta – für Google Traffic oder Leads wählen'));
+    if (!a.locations?.length) errors.push(tr('Ort fehlt: mindestens ein Zielgebiet (Google-Standort)'));
     if (spec.kind === 'search') {
-      if (!a.keywords?.length) errors.push('Keywords fehlen');
+      if (!a.keywords?.length) errors.push(tr('Keywords fehlen'));
       const h = (c.headlines ?? []).filter(Boolean);
       const d = (c.descriptions ?? []).filter(Boolean);
-      if (h.length < 3) errors.push('Mindestens 3 Überschriften (je höchstens 30 Zeichen)');
-      if (d.length < 2) errors.push('Mindestens 2 Beschreibungen (je höchstens 90 Zeichen)');
-      if (h.some((x) => x.length > 30)) errors.push('Eine Überschrift ist länger als 30 Zeichen');
-      if (d.some((x) => x.length > 90)) errors.push('Eine Beschreibung ist länger als 90 Zeichen');
-      if (h.length > 15) errors.push('Höchstens 15 Überschriften');
-      if (d.length > 4) errors.push('Höchstens 4 Beschreibungen');
-      if (c.path1 && c.path1.length > 15) errors.push('Pfad 1: höchstens 15 Zeichen');
-      if (c.path2 && c.path2.length > 15) errors.push('Pfad 2: höchstens 15 Zeichen');
-      if (h.length && new Set(h.map((x) => x.toLowerCase())).size < h.length) warnings.push('Einige Überschriften sind doppelt');
+      if (h.length < 3) errors.push(tr('Mindestens 3 Überschriften (je höchstens 30 Zeichen)'));
+      if (d.length < 2) errors.push(tr('Mindestens 2 Beschreibungen (je höchstens 90 Zeichen)'));
+      if (h.some((x) => x.length > 30)) errors.push(tr('Eine Überschrift ist länger als 30 Zeichen'));
+      if (d.some((x) => x.length > 90)) errors.push(tr('Eine Beschreibung ist länger als 90 Zeichen'));
+      if (h.length > 15) errors.push(tr('Höchstens 15 Überschriften'));
+      if (d.length > 4) errors.push(tr('Höchstens 4 Beschreibungen'));
+      if (c.path1 && c.path1.length > 15) errors.push(tr('Pfad 1: höchstens 15 Zeichen'));
+      if (c.path2 && c.path2.length > 15) errors.push(tr('Pfad 2: höchstens 15 Zeichen'));
+      if (h.length && new Set(h.map((x) => x.toLowerCase())).size < h.length) warnings.push(tr('Einige Überschriften sind doppelt'));
     } else if (spec.kind === 'pmax') {
       const h = (c.headlines ?? []).filter(Boolean);
       const lh = (c.long_headlines ?? []).filter(Boolean);
       const d = (c.descriptions ?? []).filter(Boolean);
-      if (h.length < 3) errors.push('Performance Max: mindestens 3 Überschriften (je höchstens 30 Zeichen)');
-      if (lh.length < 1) errors.push('Performance Max: mindestens 1 lange Überschrift (höchstens 90 Zeichen)');
-      if (d.length < 2) errors.push('Performance Max: mindestens 2 Beschreibungen (eine höchstens 60, die anderen 90 Zeichen)');
-      if (h.some((x) => x.length > 30)) errors.push('Eine Überschrift ist länger als 30 Zeichen');
-      if (lh.some((x) => x.length > 90)) errors.push('Eine lange Überschrift ist länger als 90 Zeichen');
-      if (d.some((x) => x.length > 90)) errors.push('Eine Beschreibung ist länger als 90 Zeichen');
-      if (!d.some((x) => x.length <= 60)) errors.push('Performance Max: eine Beschreibung muss höchstens 60 Zeichen haben');
-      if (!c.business_name) errors.push('Performance Max: Firmenname fehlt (höchstens 25 Zeichen)');
-      else if (c.business_name.length > 25) errors.push('Firmenname: höchstens 25 Zeichen');
+      if (h.length < 3) errors.push(tr('Performance Max: mindestens 3 Überschriften (je höchstens 30 Zeichen)'));
+      if (lh.length < 1) errors.push(tr('Performance Max: mindestens 1 lange Überschrift (höchstens 90 Zeichen)'));
+      if (d.length < 2) errors.push(tr('Performance Max: mindestens 2 Beschreibungen (eine höchstens 60, die anderen 90 Zeichen)'));
+      if (h.some((x) => x.length > 30)) errors.push(tr('Eine Überschrift ist länger als 30 Zeichen'));
+      if (lh.some((x) => x.length > 90)) errors.push(tr('Eine lange Überschrift ist länger als 90 Zeichen'));
+      if (d.some((x) => x.length > 90)) errors.push(tr('Eine Beschreibung ist länger als 90 Zeichen'));
+      if (!d.some((x) => x.length <= 60)) errors.push(tr('Performance Max: eine Beschreibung muss höchstens 60 Zeichen haben'));
+      if (!c.business_name) errors.push(tr('Performance Max: Firmenname fehlt (höchstens 25 Zeichen)'));
+      else if (c.business_name.length > 25) errors.push(tr('Firmenname: höchstens 25 Zeichen'));
       const roles = new Set((c.media ?? []).map((m) => m.role));
-      if (!roles.has('marketing')) errors.push('Performance Max: ein Querformat-Bild (1,91:1) fehlt');
-      if (!roles.has('square')) errors.push('Performance Max: ein quadratisches Bild (1:1) fehlt');
-      if (!roles.has('logo')) errors.push('Performance Max: ein Logo (1:1) fehlt');
-      if (spec.goal === 'traffic') warnings.push('Performance Max optimiert auf Conversions – für reinen Traffic ist das Suchnetzwerk besser');
+      if (!roles.has('marketing')) errors.push(tr('Performance Max: ein Querformat-Bild (1,91:1) fehlt'));
+      if (!roles.has('square')) errors.push(tr('Performance Max: ein quadratisches Bild (1:1) fehlt'));
+      if (!roles.has('logo')) errors.push(tr('Performance Max: ein Logo (1:1) fehlt'));
+      if (spec.goal === 'traffic') warnings.push(tr('Performance Max optimiert auf Conversions – für reinen Traffic ist das Suchnetzwerk besser'));
     }
-    if (spec.goal === 'conversions' && !o.hasPixel) warnings.push('Ohne eingerichtete Conversion-Erfassung in Google Ads kann „Conversions“ nicht optimieren – dann zuerst Conversions einrichten');
+    if (spec.goal === 'conversions' && !o.hasPixel) warnings.push(tr('Ohne eingerichtete Conversion-Erfassung in Google Ads kann „Conversions“ nicht optimieren – dann zuerst Conversions einrichten'));
   }
   return { errors, warnings };
 }
@@ -314,7 +315,7 @@ export function tracking(spec: AdSpec, link: string): { urlTags?: string; tracki
   if (spec.platform === 'meta') {
     return {
       urlTags: `utm_source=${source}&utm_medium=${medium}&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&utm_term={{adset.name}}`,
-      example: withUtm(link, { utm_source: source, utm_medium: medium, utm_campaign: spec.name, utm_content: `${spec.name} – Anzeige`, utm_term: `${spec.name} – Anzeigengruppe` }),
+      example: withUtm(link, { utm_source: source, utm_medium: medium, utm_campaign: spec.name, utm_content: tApp()('{name} – Anzeige', { name: spec.name }), utm_term: tApp()('{name} – Anzeigengruppe', { name: spec.name }) }),
     };
   }
   return {
@@ -338,7 +339,7 @@ export const canonical = (v: unknown): string => {
 /** What the person looked at: publishing is bound to exactly this version of the spec (and this ad account). */
 export const reviewHash = (spec: AdSpec, account: string) => createHash('sha256').update(`${account}\n${canonical(spec)}`).digest('hex').slice(0, 32);
 
-const eur = (c: number, cur = 'EUR') => new Intl.NumberFormat('de-DE', { style: 'currency', currency: cur }).format((c || 0) / 100);
+const eur = (c: number, cur = 'EUR', tr: STFn = tApp()) => new Intl.NumberFormat(tr.locale === 'de' ? 'de-DE' : 'en-GB', { style: 'currency', currency: cur }).format((c || 0) / 100);
 
 export interface Review {
   platform: Platform;
@@ -355,7 +356,7 @@ export interface Review {
 }
 
 /** The review screen: every setting in plain words, the ad as it will look, what blocks and what to double-check. */
-export function reviewOf(spec: AdSpec, o: { accountName: string; currency: string; problems: Problems; link: string; mediaNames: string[]; audienceNames: string[]; leadFormName?: string; hash: string }): Review {
+export function reviewOf(spec: AdSpec, o: { accountName: string; currency: string; problems: Problems; link: string; mediaNames: string[]; audienceNames: string[]; leadFormName?: string; hash: string }, tr: STFn = tApp()): Review {
   const t = tracking(spec, o.link);
   // Shown to people: decoded, not as a URL-encoded string.
   const readable = (u: string) => {
@@ -367,28 +368,28 @@ export function reviewOf(spec: AdSpec, o: { accountName: string; currency: strin
   };
   const a = spec.audience;
   const where = [...(a.countries ?? []), ...(a.locations ?? []).map((l) => l.name || l.key)].join(', ') || '–';
-  const budget = spec.budget.type === 'daily' ? `${eur(spec.budget.amount_cents, o.currency)} pro Tag` : `${eur(spec.budget.amount_cents, o.currency)} insgesamt`;
-  const span = spec.schedule.start || spec.schedule.end ? `${spec.schedule.start?.slice(0, 10) ?? 'ab Aktivierung'} bis ${spec.schedule.end?.slice(0, 10) ?? 'offen'}` : 'ab Aktivierung, ohne Ende';
-  const maxTotal = spec.budget.type === 'daily' && spec.schedule.end ? ` (höchstens ${eur(spec.budget.amount_cents * days(spec.schedule.start ?? new Date().toISOString().slice(0, 10), spec.schedule.end), o.currency)} in der Laufzeit)` : '';
+  const budget = spec.budget.type === 'daily' ? tr('{amount} pro Tag', { amount: eur(spec.budget.amount_cents, o.currency, tr) }) : tr('{amount} insgesamt', { amount: eur(spec.budget.amount_cents, o.currency, tr) });
+  const span = spec.schedule.start || spec.schedule.end ? tr('{from} bis {to}', { from: spec.schedule.start?.slice(0, 10) ?? tr('ab Aktivierung'), to: spec.schedule.end?.slice(0, 10) ?? tr('offen') }) : tr('ab Aktivierung, ohne Ende');
+  const maxTotal = spec.budget.type === 'daily' && spec.schedule.end ? ` ${tr('(höchstens {amount} in der Laufzeit)', { amount: eur(spec.budget.amount_cents * days(spec.schedule.start ?? new Date().toISOString().slice(0, 10), spec.schedule.end), o.currency, tr) })}` : '';
   const rows: { label: string; value: string }[] = [
-    { label: 'Plattform', value: `${spec.platform === 'meta' ? 'Meta (Facebook & Instagram)' : 'Google Ads'} · ${o.accountName}` },
-    { label: 'Art', value: KIND_LABEL[spec.kind] },
-    { label: 'Ziel', value: GOAL_LABEL[spec.goal] },
-    { label: 'Budget', value: `${budget}${maxTotal}` },
-    { label: 'Zeitraum', value: span },
-    { label: 'Orte', value: where },
+    { label: tr('Plattform'), value: `${spec.platform === 'meta' ? 'Meta (Facebook & Instagram)' : 'Google Ads'} · ${o.accountName}` },
+    { label: tr('Art'), value: tr(KIND_LABEL[spec.kind]) },
+    { label: tr('Ziel'), value: tr(GOAL_LABEL[spec.goal]) },
+    { label: tr('Budget'), value: `${budget}${maxTotal}` },
+    { label: tr('Zeitraum'), value: span },
+    { label: tr('Orte'), value: where },
   ];
   if (spec.platform === 'meta') {
-    rows.push({ label: 'Alter & Geschlecht', value: `${a.age_min ?? 18}–${a.age_max && a.age_max < 65 ? a.age_max : '65+'} Jahre · ${a.genders?.length === 1 ? (a.genders[0] === 'male' ? 'Männer' : 'Frauen') : 'alle'}` });
-    rows.push({ label: 'Interessen', value: (a.interests ?? []).map((i) => i.name).join(', ') || 'keine (breite Zielgruppe)' });
+    rows.push({ label: tr('Alter & Geschlecht'), value: tr('{from}–{to} Jahre · {genders}', { from: a.age_min ?? 18, to: a.age_max && a.age_max < 65 ? a.age_max : '65+', genders: tr(a.genders?.length === 1 ? (a.genders[0] === 'male' ? 'Männer' : 'Frauen') : 'alle') }) });
+    rows.push({ label: tr('Interessen'), value: (a.interests ?? []).map((i) => i.name).join(', ') || tr('keine (breite Zielgruppe)') });
   } else {
-    rows.push({ label: 'Keywords', value: (a.keywords ?? []).map((k) => (k.match === 'EXACT' ? `[${k.text}]` : k.match === 'PHRASE' ? `"${k.text}"` : k.text)).join(', ') || '–' });
-    rows.push({ label: 'Sprachen', value: (a.languages ?? []).join(', ') || 'alle' });
+    rows.push({ label: tr('Keywords'), value: (a.keywords ?? []).map((k) => (k.match === 'EXACT' ? `[${k.text}]` : k.match === 'PHRASE' ? `"${k.text}"` : k.text)).join(', ') || '–' });
+    rows.push({ label: tr('Sprachen'), value: (a.languages ?? []).join(', ') || tr('alle') });
   }
-  if (o.audienceNames.length) rows.push({ label: 'Eigene Zielgruppen', value: o.audienceNames.join(', ') });
-  if (o.leadFormName) rows.push({ label: 'Sofortformular', value: o.leadFormName });
-  rows.push({ label: 'Link', value: o.link || '–' });
-  rows.push({ label: 'Tracking', value: spec.creative.utm === false ? 'keine UTM-Parameter' : readable(t.example) });
+  if (o.audienceNames.length) rows.push({ label: tr('Eigene Zielgruppen'), value: o.audienceNames.join(', ') });
+  if (o.leadFormName) rows.push({ label: tr('Sofortformular'), value: o.leadFormName });
+  rows.push({ label: tr('Link'), value: o.link || '–' });
+  rows.push({ label: tr('Tracking'), value: spec.creative.utm === false ? tr('keine UTM-Parameter') : readable(t.example) });
   const ready = !o.problems.errors.length;
   return {
     platform: spec.platform,
@@ -400,7 +401,7 @@ export function reviewOf(spec: AdSpec, o: { accountName: string; currency: strin
       primary_text: spec.creative.primary_text,
       headline: spec.creative.headline,
       description: spec.creative.description,
-      cta: spec.creative.cta ? CTA_LABEL[spec.creative.cta] ?? spec.creative.cta : undefined,
+      cta: spec.creative.cta ? (CTA_LABEL[spec.creative.cta] ? tr(CTA_LABEL[spec.creative.cta]) : spec.creative.cta) : undefined,
       link: o.link,
       example_link: readable(t.example),
       media: o.mediaNames,
@@ -411,6 +412,6 @@ export function reviewOf(spec: AdSpec, o: { accountName: string; currency: strin
     warnings: o.problems.warnings,
     ready,
     hash: o.hash,
-    note: 'Die Kampagne wird pausiert angelegt – es wird nichts ausgegeben, bis du sie aktivierst (mit Bestätigung).',
+    note: tr('Die Kampagne wird pausiert angelegt – es wird nichts ausgegeben, bis du sie aktivierst (mit Bestätigung).'),
   };
 }

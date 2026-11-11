@@ -29,6 +29,7 @@ import { cloudEnabled, cloudWaitlist, cloudWaitlistReason } from './cloud.js';
 import { pageCtx, servePage } from './cloud-pages.js';
 import { landingEnabled } from './landing.js';
 import { landingConfig } from './landing-waitlist.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Cloud waitlist (docs/cloud.md#waitlist-mode). While the waitlist mode is on (`PGHL_CLOUD_WAITLIST=1`, or the cloud mode without a
@@ -144,7 +145,7 @@ export const cloudWaitlistModule: Module = {
     const view = (o: { lang?: WlLang; back: string; plan?: unknown; state?: unknown }): WaitlistView => {
       const f = formsTarget(app);
       return {
-        lang: o.lang ?? 'de',
+        lang: o.lang ?? wlLang(undefined),
         brand: brand(),
         back: safeBack(o.back),
         token: token(),
@@ -168,8 +169,8 @@ export const cloudWaitlistModule: Module = {
         app.services.pushNotify({
           userIds: ids,
           kind: 'cloud_waitlist',
-          title: 'Neu auf der Cloud-Warteliste',
-          body: `${entry.plan ? `Tarif: ${WL_TEXT.de.plans[entry.plan]} · ` : ''}${total} ${total === 1 ? 'Eintrag' : 'Einträge'} insgesamt`,
+          title: tApp()('Neu auf der Cloud-Warteliste'),
+          body: `${entry.plan ? `${tApp()('Tarif: {plan}', { plan: tApp()(WL_TEXT.de.plans[entry.plan]) })} · ` : ''}${tApp().plural(total, { one: '{n} Eintrag insgesamt', other: '{n} Einträge insgesamt' })}`,
           url: '/app/agency/cloud?tab=waitlist',
           tag: 'cloud-waitlist',
           urgency: 'low',
@@ -215,7 +216,9 @@ export const cloudWaitlistModule: Module = {
 
     /** The forms path: the HQ form (or PGHL_LANDING_FORM) through the landing waitlist hook – its own Double-Opt-in and consent proof. */
     async function forward(entry: WaitlistEntry, ctx: Ctx, f: NonNullable<ReturnType<typeof formsTarget>>, page: string) {
-      const plan = entry.plan ? (f.planOptions.includes(FORM_PLAN[entry.plan]) ? FORM_PLAN[entry.plan] : WL_TEXT.de.plans[entry.plan]) : undefined;
+      // The HQ form's options may be in the language it was set up in (modules/hq-template.ts).
+      const planOption = (p: WlPlan) => [FORM_PLAN[p], tApp()(FORM_PLAN[p])].find((x) => f.planOptions.includes(x)) ?? tApp()(WL_TEXT.de.plans[p]);
+      const plan = entry.plan ? planOption(entry.plan) : undefined;
       await app.services.landingWaitlist.submit(ctx, {
         email: entry.email,
         ...(entry.name ? { [f.nameField]: entry.name } : {}),
@@ -341,14 +344,15 @@ export const cloudWaitlistModule: Module = {
       return { enabled: enabled(), reason: cloudWaitlistReason(app), cloud: cloudEnabled(app), via: target() ? 'forms' : 'builtin', forms: target(), privacy_url: privacyUrl(), total, by_plan: byPlan, items };
     });
     // Export and delete land in the audit log by themselves (modules/security.ts logs every write and every .csv read).
-    router.get('/api/cloud/waitlist.csv', 'admin', () => {
+    router.get('/api/cloud/waitlist.csv', 'admin', (ctx) => {
       const rows = db.all<Row>('SELECT * FROM cloud_waitlist ORDER BY created_at');
+      const t = tCtx(ctx);
       const csv = toCsv([
-        ['E-Mail', 'Name', 'Tarif', 'Sprache', 'Quelle', 'Einwilligung am', 'Einwilligungstext', 'Eingetragen am'],
-        ...rows.map((r) => [r.email, r.name, r.plan ? WL_TEXT.de.plans[r.plan as WlPlan] ?? r.plan : '', r.lang, r.source, r.consent_at, r.consent_text, r.created_at]),
+        ['E-Mail', 'Name', 'Tarif', 'Sprache', 'Quelle', 'Einwilligung am', 'Einwilligungstext', 'Eingetragen am'].map((x) => t(x)),
+        ...rows.map((r) => [r.email, r.name, r.plan ? (WL_TEXT.de.plans[r.plan as WlPlan] ? t(WL_TEXT.de.plans[r.plan as WlPlan]) : r.plan) : '', r.lang, r.source, r.consent_at, r.consent_text, r.created_at]),
       ]);
       const r = text(`﻿${csv}`, 'text/csv; charset=utf-8');
-      r.headers['content-disposition'] = `attachment; filename="cloud-warteliste-${new Date().toISOString().slice(0, 10)}.csv"`;
+      r.headers['content-disposition'] = `attachment; filename="${t('cloud-warteliste')}-${new Date().toISOString().slice(0, 10)}.csv"`;
       r.headers['cache-control'] = 'no-store';
       return r;
     });

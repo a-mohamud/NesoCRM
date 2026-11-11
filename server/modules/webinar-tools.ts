@@ -15,14 +15,14 @@ const W = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 const link = (id?: string) => `/app/webinars${id ? `/${id}` : ''}`;
 const WID = { webinar_id: { type: 'string', description: 'Webinar-ID (aus ghl_webinar_list)' } };
 
-const NOTE =
-  'Die Webinare sind automatisiert: das Video läuft zum Termin ab, die Räume heißen „Automatisiertes Webinar“ bzw. „Aufzeichnung“ – nenne sie nie „live“. Zeiten sind ISO-Zeitstempel (UTC); zeige sie in der Zeitzone des Sub-Accounts.';
+// Every description ends with the same note (repeated, so each description is one translatable text):
+// the webinars are automated – never call them “live”; times are ISO (UTC).
 
 export const WEBINAR_TOOLS: Tool[] = [
   {
     name: 'ghl_webinar_list',
     title: 'Webinare auflisten',
-    description: `Alle Webinare eines Sub-Accounts: Titel, Status (draft/published), Dauer, nächster Termin, Anmeldungen und Teilnehmer, Anmeldeseite. ${NOTE}`,
+    description: 'Alle Webinare eines Sub-Accounts: Titel, Status (draft/published), Dauer, nächster Termin, Anmeldungen und Teilnehmer, Anmeldeseite. Die Webinare sind automatisiert: das Video läuft zum Termin ab, die Räume heißen „Automatisiertes Webinar“ bzw. „Aufzeichnung“ – nenne sie nie „live“. Zeiten sind ISO-Zeitstempel (UTC); zeige sie in der Zeitzone des Sub-Accounts.',
     inputSchema: obj({ ...LOC }, ['location_id']),
     annotations: RO,
     run: async (call, a) => {
@@ -33,7 +33,7 @@ export const WEBINAR_TOOLS: Tool[] = [
   {
     name: 'ghl_webinar_get',
     title: 'Webinar ansehen',
-    description: `Ein Webinar mit Videoquelle, Terminen (feste Zeiten, Einzeltermine, „Just in time“, Sofort-Start, Sperrtage), den nächsten buchbaren Terminen mit freien Plätzen, Einstellungen (Anmeldung, Raum, Angebot, Erinnerungen, Aufzeichnung), Anmelde-Link und Zählern. Fehlt etwas zum Veröffentlichen, steht es unter problems. ${NOTE}`,
+    description: 'Ein Webinar mit Videoquelle, Terminen (feste Zeiten, Einzeltermine, „Just in time“, Sofort-Start, Sperrtage), den nächsten buchbaren Terminen mit freien Plätzen, Einstellungen (Anmeldung, Raum, Angebot, Erinnerungen, Aufzeichnung), Anmelde-Link und Zählern. Fehlt etwas zum Veröffentlichen, steht es unter problems. Die Webinare sind automatisiert: das Video läuft zum Termin ab, die Räume heißen „Automatisiertes Webinar“ bzw. „Aufzeichnung“ – nenne sie nie „live“. Zeiten sind ISO-Zeitstempel (UTC); zeige sie in der Zeitzone des Sub-Accounts.',
     inputSchema: obj({ ...LOC, ...WID }, ['location_id', 'webinar_id']),
     annotations: RO,
     run: async (call, a) => {
@@ -71,7 +71,7 @@ export const WEBINAR_TOOLS: Tool[] = [
   {
     name: 'ghl_webinar_register',
     title: 'Kontakt für Webinar anmelden',
-    description: `Meldet einen Kontakt für ein veröffentlichtes Webinar an: entweder mit contact_id (bestehender Kontakt mit E-Mail) oder mit email + first_name (der Kontakt wird angelegt bzw. zusammengeführt). Ohne session gilt der nächste freie Termin; session ist der ISO-Start aus ghl_webinar_get (upcoming_sessions) oder „ondemand“ für einen eigenen Termin ab jetzt. Der Kontakt bekommt die Bestätigung mit Kalenderdatei und persönlichem Link, danach die Erinnerungen – frage vorher, ob das gewollt ist. Mehrfaches Anmelden für denselben Termin legt nichts doppelt an. ${NOTE}`,
+    description: 'Meldet einen Kontakt für ein veröffentlichtes Webinar an: entweder mit contact_id (bestehender Kontakt mit E-Mail) oder mit email + first_name (der Kontakt wird angelegt bzw. zusammengeführt). Ohne session gilt der nächste freie Termin; session ist der ISO-Start aus ghl_webinar_get (upcoming_sessions) oder „ondemand“ für einen eigenen Termin ab jetzt. Der Kontakt bekommt die Bestätigung mit Kalenderdatei und persönlichem Link, danach die Erinnerungen – frage vorher, ob das gewollt ist. Mehrfaches Anmelden für denselben Termin legt nichts doppelt an. Die Webinare sind automatisiert: das Video läuft zum Termin ab, die Räume heißen „Automatisiertes Webinar“ bzw. „Aufzeichnung“ – nenne sie nie „live“. Zeiten sind ISO-Zeitstempel (UTC); zeige sie in der Zeitzone des Sub-Accounts.',
     inputSchema: obj(
       {
         ...LOC,
@@ -95,7 +95,7 @@ export const WEBINAR_TOOLS: Tool[] = [
   {
     name: 'ghl_webinar_stats',
     title: 'Webinar-Auswertung',
-    description: `Zahlen eines Webinars insgesamt und je Termin: Anmeldungen, Teilnehmer, Show-up-Rate (nur für begonnene Termine), durchschnittliche Sehdauer, Abbruchkurve (Anteil der Zuschauer an 21 Punkten des Videos), Klicks auf das Angebot, Käufe und Umsatz in Cent, Aufzeichnungs-Aufrufe, Fragen, Umfrage-Ergebnisse. ${NOTE}`,
+    description: 'Zahlen eines Webinars insgesamt und je Termin: Anmeldungen, Teilnehmer, Show-up-Rate (nur für begonnene Termine), durchschnittliche Sehdauer, Abbruchkurve (Anteil der Zuschauer an 21 Punkten des Videos), Klicks auf das Angebot, Käufe und Umsatz in Cent, Aufzeichnungs-Aufrufe, Fragen, Umfrage-Ergebnisse. Die Webinare sind automatisiert: das Video läuft zum Termin ab, die Räume heißen „Automatisiertes Webinar“ bzw. „Aufzeichnung“ – nenne sie nie „live“. Zeiten sind ISO-Zeitstempel (UTC); zeige sie in der Zeitzone des Sub-Accounts.',
     inputSchema: obj({ ...LOC, ...WID }, ['location_id', 'webinar_id']),
     annotations: RO,
     run: async (call, a) => {

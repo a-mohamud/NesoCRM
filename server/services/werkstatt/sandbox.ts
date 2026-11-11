@@ -1,6 +1,7 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { RUNNER_SOURCE } from './runner-source.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * Runs plugin server logic (and the UI/server self-test) in a child process with no ambient authority.
@@ -119,16 +120,16 @@ export function runSandbox(run: SandboxRun): Promise<SandboxResult> {
           killed = why;
           done({ ok: false, error: message, killed: why });
         };
-        const timer = setTimeout(() => kill('timeout', `Zeitlimit überschritten (${Math.round(timeoutMs / 1000)} Sekunden).`), timeoutMs);
+        const timer = setTimeout(() => kill('timeout', tApp()('Zeitlimit überschritten ({x} Sekunden).', { x: Math.round(timeoutMs / 1000) })), timeoutMs);
         child.stderr?.on('data', (d: Buffer) => {
           if (stderr.length < 2000) stderr += d.toString('utf8').slice(0, 2000);
         });
-        child.on('error', (e) => done({ ok: false, error: `Sandbox konnte nicht starten: ${e.message}`, killed: 'crash' }));
+        child.on('error', (e) => done({ ok: false, error: tApp()('Sandbox konnte nicht starten: {message}', { message: e.message }), killed: 'crash' }));
         child.on('exit', (code, signal) => {
           if (settled) return;
           const oom = /heap out of memory|allocation failed|JavaScript heap/i.test(stderr);
-          if (oom) return kill('memory', 'Speicherlimit überschritten.');
-          done({ ok: false, error: `Die Sandbox wurde unerwartet beendet (${signal ?? code}).${stderr ? ` ${stderr.split('\n').find((l) => l.trim())?.slice(0, 160) ?? ''}` : ''}`, killed: killed ?? 'crash' });
+          if (oom) return kill('memory', tApp()('Speicherlimit überschritten.'));
+          done({ ok: false, error: `${tApp()('Die Sandbox wurde unerwartet beendet ({reason}).', { reason: String(signal ?? code) })}${stderr ? ` ${stderr.split('\n').find((l) => l.trim())?.slice(0, 160) ?? ''}` : ''}`, killed: killed ?? 'crash' });
         });
         child.on('message', (m: unknown) => {
           if (settled || !isObj(m)) return;
@@ -136,7 +137,7 @@ export function runSandbox(run: SandboxRun): Promise<SandboxResult> {
             child.send({ ...(run.mode === 'ui' ? { mode: 'ui', scripts: run.scripts ?? [] } : { mode: 'server', code: run.code ?? '', kind: run.kind ?? 'action', id: run.id ?? '', input: run.input ?? null }), ops: run.ops, context: run.context, timeoutMs });
           } else if (m.t === 'call') {
             if (typeof m.id !== 'number' || typeof m.op !== 'string' || m.op.length > 80) return;
-            if (++calls > maxCalls) return kill('calls', `Zu viele Aufrufe (höchstens ${maxCalls}).`);
+            if (++calls > maxCalls) return kill('calls', tApp()('Zu viele Aufrufe (höchstens {maxCalls}).', { maxCalls }));
             const reply = (msg: Record<string, unknown>) => {
               if (settled) return;
               try {
@@ -188,14 +189,14 @@ export function probeSandbox(force = false): Promise<SandboxStatus> {
         const node = process.version;
         const finish = (s: Omit<SandboxStatus, 'node' | 'netns'>) => resolve({ node, netns: !!netnsLauncher(), ...s });
         const major = Number(process.versions.node.split('.')[0]);
-        if (major < 22) return finish({ ok: false, reason: `Node ${process.versions.node}: das Rechtemodell (--permission) braucht Node 22 oder neuer.` });
+        if (major < 22) return finish({ ok: false, reason: tApp()('Node {node}: das Rechtemodell (--permission) braucht Node 22 oder neuer.', { node: process.versions.node }) });
         let child: ChildProcess;
         try {
           child = launch(DEFAULT_MEMORY);
         } catch (e) {
           return finish({ ok: false, reason: `Start fehlgeschlagen: ${(e as Error).message}` });
         }
-        const timer = setTimeout(() => (child.kill('SIGKILL'), finish({ ok: false, reason: 'Die Sandbox antwortet nicht (Zeitlimit).' })), 8000);
+        const timer = setTimeout(() => (child.kill('SIGKILL'), finish({ ok: false, reason: tApp()('Die Sandbox antwortet nicht (Zeitlimit).') })), 8000);
         let got = false;
         child.on('error', (e) => (clearTimeout(timer), finish({ ok: false, reason: e.message })));
         child.on('exit', () => {
@@ -214,16 +215,16 @@ export function probeSandbox(force = false): Promise<SandboxStatus> {
             const closed = (v: unknown) => typeof v === 'string' && v.startsWith('gesperrt');
             const ctx = p.context ?? {};
             const problems = [
-              !closed(p.fs) && 'Dateien lesen ist möglich',
-              !closed(p['fs-write']) && 'Dateien schreiben ist möglich',
-              !closed(p.child) && 'Prozesse starten ist möglich',
-              !closed(p.worker) && 'Worker starten ist möglich',
-              !closed(p.net) && 'Netzwerk (net) ist offen',
-              !closed(p.http) && 'Netzwerk (http) ist offen',
-              !closed(p.dgram) && 'Netzwerk (UDP) ist offen',
-              !closed(p.dns) && 'DNS ist offen',
-              (ctx.process !== 'undefined' || ctx.require !== 'undefined' || ctx.fetch !== 'undefined' || ctx.Buffer !== 'undefined') && 'Das Plugin sieht process/require/fetch',
-              (ctx.evalStrings !== 'blocked' || ctx.fnCtor !== 'blocked') && 'eval/Function ist im Plugin möglich',
+              !closed(p.fs) && tApp()('Dateien lesen ist möglich'),
+              !closed(p['fs-write']) && tApp()('Dateien schreiben ist möglich'),
+              !closed(p.child) && tApp()('Prozesse starten ist möglich'),
+              !closed(p.worker) && tApp()('Worker starten ist möglich'),
+              !closed(p.net) && tApp()('Netzwerk (net) ist offen'),
+              !closed(p.http) && tApp()('Netzwerk (http) ist offen'),
+              !closed(p.dgram) && tApp()('Netzwerk (UDP) ist offen'),
+              !closed(p.dns) && tApp()('DNS ist offen'),
+              (ctx.process !== 'undefined' || ctx.require !== 'undefined' || ctx.fetch !== 'undefined' || ctx.Buffer !== 'undefined') && tApp()('Das Plugin sieht process/require/fetch'),
+              (ctx.evalStrings !== 'blocked' || ctx.fnCtor !== 'blocked') && tApp()('eval/Function ist im Plugin möglich'),
             ].filter(Boolean);
             finish({ ok: problems.length === 0, reason: problems.length ? problems.join('; ') : undefined, probe: p, network: closed(p.net_raw) ? 'namespace' : 'in-process' });
           }

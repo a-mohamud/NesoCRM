@@ -1,4 +1,5 @@
 import { escapeHtml } from '../core/template.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Cookie consent (CMP) – the pure part: settings, the cookie, which script/iframe/pixel belongs to which category, the
@@ -66,14 +67,21 @@ export const DEFAULT_CMP: CmpSettings = {
   version: 1,
 };
 
+/** The default wording in a language (DEFAULT_CMP holds the German catalog keys). */
+export function defaultCmp(t: STFn = tApp()): CmpSettings {
+  const d = DEFAULT_CMP;
+  const cats = Object.fromEntries(CMP_CATEGORIES.map((k) => [k, { label: t(d.categories[k].label), description: t(d.categories[k].description) }])) as CmpSettings['categories'];
+  return { ...d, title: t(d.title), text: t(d.text), accept_all: t(d.accept_all), reject_all: t(d.reject_all), customize: t(d.customize), save: t(d.save), policy_label: t(d.policy_label), categories: cats, reopen: { ...d.reopen, label: t(d.reopen.label) } };
+}
+
 const hex = (v: unknown, d: string) => (/^#[0-9a-f]{6}$/i.test(String(v ?? '')) ? String(v).toLowerCase() : d);
 const txt = (v: unknown, d: string, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : d);
 const url = (v: unknown) => (/^(https?:\/\/[^\s"'<>]{3,500}|\/[^\s"'<>\\]{0,500})$/i.test(String(v ?? '').trim()) ? String(v).trim() : '');
 
 /** Stored settings (anything a client could have written) → complete, clamped settings. */
-export function cleanCmp(raw: unknown): CmpSettings {
+export function cleanCmp(raw: unknown, t: STFn = tApp()): CmpSettings {
   const r: any = raw && typeof raw === 'object' ? raw : {};
-  const d = DEFAULT_CMP;
+  const d = defaultCmp(t);
   const cats = {} as CmpSettings['categories'];
   for (const k of CMP_CATEGORIES) cats[k] = { label: txt(r.categories?.[k]?.label, d.categories[k].label, 60), description: txt(r.categories?.[k]?.description, d.categories[k].description, 400) };
   const exp = Math.round(Number(r.expiry_days));
@@ -229,6 +237,8 @@ export interface BlockOptions {
   /** Where "allow this category" leads (placeholder button). */
   allowLink?: (cat: Optional) => string;
   labels?: Partial<Record<CmpCategory, string>>;
+  /** The visitor's language (the sub-account's); the instance default when left out. */
+  t?: STFn;
 }
 export interface Blocked {
   category: CmpCategory;
@@ -359,11 +369,12 @@ export function blockEmbeds(html: string, o: BlockOptions): { html: string; bloc
     } catch {
       /* no host to show */
     }
-    const label = o.labels?.[cat] ?? 'Externe Medien';
+    const t = o.t ?? tApp();
+    const label = o.labels?.[cat] ?? t('Externe Medien');
     const link = cat === 'necessary' ? '' : (o.allowLink?.(cat as Optional) ?? '#');
     const w = attrOf(a, 'width');
     const style = `${w && /^\d{2,4}$/.test(w) ? `max-width:${w}px;` : ''}`;
-    return `<div class="pghl-cmp-ph" data-category="${cat}" data-src="${escapeHtml(src)}" style="${style}"><p>Dieser Inhalt${host ? ` von <strong>${escapeHtml(host)}</strong>` : ''} wird erst nach deiner Zustimmung geladen.</p><a class="pghl-cmp-btn" href="${escapeHtml(link)}" rel="nofollow">${escapeHtml(label)} erlauben</a></div>`;
+    return `<div class="pghl-cmp-ph" data-category="${cat}" data-src="${escapeHtml(src)}" style="${style}"><p>${host ? t('Dieser Inhalt von {host} wird erst nach deiner Zustimmung geladen.', { host: `<strong>${escapeHtml(host)}</strong>` }) : t('Dieser Inhalt wird erst nach deiner Zustimmung geladen.')}</p><a class="pghl-cmp-btn" href="${escapeHtml(link)}" rel="nofollow">${escapeHtml(t('{category} erlauben', { category: label }))}</a></div>`;
   });
   return { html: out, blocked };
 }
@@ -399,7 +410,7 @@ ${s.layout === 'center' ? 'body:has(#pghl-cmp)::before{content:"";position:fixed
 };
 
 /** The banner: first level with accept / reject (equally prominent) and "Einstellungen"; the categories behind it, none pre-selected. */
-export function bannerHtml(s: CmpSettings, choice: Choice, u: BannerUrls): string {
+export function bannerHtml(s: CmpSettings, choice: Choice, u: BannerUrls, t: STFn = tApp()): string {
   const e = escapeHtml;
   const cat = (k: CmpCategory) => {
     const c = s.categories[k];
@@ -407,7 +418,7 @@ export function bannerHtml(s: CmpSettings, choice: Choice, u: BannerUrls): strin
     const name = k === 'necessary' ? '' : ` name="pghl_${k === 'statistics' ? 's' : k === 'marketing' ? 'm' : 'e'}" value="1"`;
     return `<label class="pghl-cmp-cat"><input type="checkbox"${name}${on}><span><strong>${e(c.label)}</strong><small>${e(c.description)}</small></span></label>`;
   };
-  const links = [s.policy_url ? `<a class="pghl-cmp-link" href="${e(s.policy_url)}">${e(s.policy_label)}</a>` : '', s.imprint_url ? `<a class="pghl-cmp-link" href="${e(s.imprint_url)}">Impressum</a>` : ''].filter(Boolean).join(' · ');
+  const links = [s.policy_url ? `<a class="pghl-cmp-link" href="${e(s.policy_url)}">${e(s.policy_label)}</a>` : '', s.imprint_url ? `<a class="pghl-cmp-link" href="${e(s.imprint_url)}">${e(t('Impressum'))}</a>` : ''].filter(Boolean).join(' · ');
   return `<div id="pghl-cmp" role="dialog" aria-modal="false" aria-labelledby="pghl-cmp-t" data-version="${s.version}">
 <h2 id="pghl-cmp-t">${e(s.title)}</h2>
 <p>${e(s.text)}</p>${links ? `<p>${links}</p>` : ''}
@@ -462,13 +473,13 @@ export function applyCmp(page: string, o: PageOptions): { html: string; blocked:
   // A link anywhere on the page opens the settings again.
   html = html.replace(/href=(["'])#(?:cookie-settings|cookie-einstellungen)\1/gi, `href="${escapeHtml(o.reopenHref)}" rel="nofollow"`);
   const needsCss = o.showBanner || o.settings.reopen.enabled || emb.blocked.length > 0;
-  const extra = (needsCss ? cmpCss(o.settings) : '') + (o.showBanner ? bannerHtml(o.settings, o.choice, o.urls) : '') + (!o.showBanner && o.settings.reopen.enabled ? reopenHtml(o.settings, o.reopenHref) : '');
+  const extra = (needsCss ? cmpCss(o.settings) : '') + (o.showBanner ? bannerHtml(o.settings, o.choice, o.urls, o.t) : '') + (!o.showBanner && o.settings.reopen.enabled ? reopenHtml(o.settings, o.reopenHref) : '');
   html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, `${extra}</body>`) : html + extra;
   return { html, blocked };
 }
 
 /** The full preview page for the editor (no real actions, a made-up page behind the banner). */
-export function previewHtml(s: CmpSettings, choice: Choice): string {
+export function previewHtml(s: CmpSettings, choice: Choice, t: STFn = tApp()): string {
   const u: BannerUrls = { action: () => '#', formAction: '#', hidden: [] };
-  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vorschau</title><style>body{margin:0;font-family:system-ui,sans-serif;background:#f9fafb;color:#111827}.demo{max-width:720px;margin:0 auto;padding:60px 20px}.demo h1{font-size:34px}.demo p{color:#6b7280;font-size:18px}</style></head><body><div class="demo"><h1>Deine Seite</h1><p>So sieht das Banner für Besucher aus. Die Buttons sind in der Vorschau ohne Funktion.</p><div class="pghl-cmp-ph" style="max-width:420px"><p>Dieser Inhalt von <strong>youtube-nocookie.com</strong> wird erst nach deiner Zustimmung geladen.</p><a class="pghl-cmp-btn" href="#">${escapeHtml(s.categories.external_media.label)} erlauben</a></div></div>${cmpCss(s)}${bannerHtml(s, choice, u)}</body></html>`;
+  return `<!doctype html><html lang="${t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${t('Vorschau')}</title><style>body{margin:0;font-family:system-ui,sans-serif;background:#f9fafb;color:#111827}.demo{max-width:720px;margin:0 auto;padding:60px 20px}.demo h1{font-size:34px}.demo p{color:#6b7280;font-size:18px}</style></head><body><div class="demo"><h1>${t('Deine Seite')}</h1><p>${t('So sieht das Banner für Besucher aus. Die Buttons sind in der Vorschau ohne Funktion.')}</p><div class="pghl-cmp-ph" style="max-width:420px"><p>${t('Dieser Inhalt von {host} wird erst nach deiner Zustimmung geladen.', { host: '<strong>youtube-nocookie.com</strong>' })}</p><a class="pghl-cmp-btn" href="#">${escapeHtml(t('{category} erlauben', { category: s.categories.external_media.label }))}</a></div></div>${cmpCss(s)}${bannerHtml(s, choice, u, t)}</body></html>`;
 }

@@ -4,7 +4,7 @@ import { bad, clampLimit, notFound, str } from '../core/http.js';
 import { ymdInTz, zonedToUtc } from '../core/time.js';
 import { now } from '../core/util.js';
 import { addTags } from '../services/contacts.js';
-import { SUNSET_NAME, addressBlocks, checkSummary, ensureSunsetSegment, softBounceSuspects, suppressSoftBounces, validatePending } from '../services/mk-hygiene.js';
+import { sunsetNames, addressBlocks, checkSummary, ensureSunsetSegment, softBounceSuspects, suppressSoftBounces, validatePending } from '../services/mk-hygiene.js';
 import { LEVEL_LABEL, THRESHOLDS, buildReport, summary } from '../services/mk-reputation.js';
 import { segmentMemberIds } from '../services/mk-segments.js';
 import { getSettings, saveSettings } from '../services/mk-settings.js';
@@ -12,6 +12,7 @@ import { defaultResolver, validateMany, VERDICT_LABEL } from '../services/mk-val
 import { PLAN_INFO, WARMUP_PLANS, WARMUP_TARGET, isWarmupPlan, schedule, warmupState, type WarmupPlan } from '../services/mk-warmup.js';
 import { cleanDomain, type DnsResolver } from '../services/umzug-mailcheck.js';
 import type { Tool } from './mcp.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Deliverability: the warm-up plan of a new sending domain (daily caps that rise, honoured by the campaign loop), the reputation
@@ -40,7 +41,7 @@ const TOOLS: Tool[] = [
 ];
 
 /** Plans for the picker and the schedule of the chosen one. */
-const planList = () => WARMUP_PLANS.map((p) => ({ key: p, ...PLAN_INFO[p], schedule: schedule(p).slice(0, 14) }));
+const planList = (t: STFn) => WARMUP_PLANS.map((p) => ({ key: p, ...PLAN_INFO[p], label: t(PLAN_INFO[p].label), text: t(PLAN_INFO[p].text), schedule: schedule(p).slice(0, 14) }));
 
 export const mkDeliverabilityModule: Module = {
   name: 'mk-deliverability',
@@ -96,7 +97,7 @@ export const mkDeliverabilityModule: Module = {
 
     router.get('/api/deliverability/warmup', 'location', (ctx) => {
       const w = warmupRow(ctx.locationId);
-      return { configured: !!w, plan: w?.plan ?? null, domain: w?.domain ?? '', started_at: w?.started_at ?? null, state: stateOf(ctx.locationId), plans: planList(), target_per_day: WARMUP_TARGET };
+      return { configured: !!w, plan: w?.plan ?? null, domain: w?.domain ?? '', started_at: w?.started_at ?? null, state: stateOf(ctx.locationId), plans: planList(tCtx(ctx)), target_per_day: WARMUP_TARGET };
     });
     router.post('/api/deliverability/warmup', 'location', (ctx) => {
       const plan = ctx.body?.plan === undefined ? 'standard' : ctx.body.plan;
@@ -131,11 +132,14 @@ export const mkDeliverabilityModule: Module = {
     });
 
     // --- reputation ----------------------------------------------------------------------------------------------
-    router.get('/api/deliverability/reputation', 'location', (ctx) => ({
-      ...buildReport(app, ctx.locationId, { days: clampLimit(ctx.query.get('days'), 90, 365) }),
-      thresholds: THRESHOLDS,
-      level_labels: LEVEL_LABEL,
-    }));
+    router.get('/api/deliverability/reputation', 'location', (ctx) => {
+      const t = tCtx(ctx);
+      return {
+        ...buildReport(app, ctx.locationId, { days: clampLimit(ctx.query.get('days'), 90, 365), t }),
+        thresholds: Object.fromEntries(Object.entries(THRESHOLDS).map(([k, v]) => [k, { ...v, label: t(v.label) }])),
+        level_labels: Object.fromEntries(Object.entries(LEVEL_LABEL).map(([k, v]) => [k, t(v)])),
+      };
+    });
 
     // --- settings -----------------------------------------------------------------------------------------------
     router.get('/api/deliverability/settings', 'location', (ctx) => getSettings(app, ctx.locationId));
@@ -145,7 +149,7 @@ export const mkDeliverabilityModule: Module = {
     router.get('/api/deliverability/hygiene', 'location', (ctx) => {
       const s = getSettings(app, ctx.locationId);
       const suspects = softBounceSuspects(app, ctx.locationId, s.hygiene.soft_bounce_limit);
-      const sunset = db.get<{ id: string; count: number | null }>('SELECT id, count FROM mk_segments WHERE location_id = ? AND name = ?', ctx.locationId, SUNSET_NAME);
+      const sunset = db.get<{ id: string; count: number | null }>('SELECT id, count FROM mk_segments WHERE location_id = ? AND name IN (?, ?)', ctx.locationId, ...sunsetNames(app, ctx.locationId));
       const dnd = Number(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM contacts WHERE location_id = ? AND dnd = 1', ctx.locationId)?.n ?? 0);
       return { soft_bounce_limit: s.hygiene.soft_bounce_limit, auto_suppress: s.hygiene.auto_suppress, suspects: suspects.slice(0, 50), suspect_count: suspects.length, sunset_months: s.hygiene.sunset_months, sunset_segment: sunset ?? null, dnd };
     });
@@ -199,7 +203,7 @@ export const mkDeliverabilityModule: Module = {
     /** Tags the contacts whose address failed (or looks risky) so they can be fixed or cleaned up from the contact list. */
     router.post('/api/email-validation/tag', 'location', (ctx) => {
       const verdicts = ctx.body?.verdict === 'risky' ? ['invalid', 'risky'] : ['invalid'];
-      const tag = str(ctx.body?.tag, 'Tag', { max: 80 }) || 'E-Mail prüfen';
+      const tag = str(ctx.body?.tag, 'Tag', { max: 80 }) || tLoc(app, ctx.locationId)('E-Mail prüfen');
       const rows = db.all<{ contact_id: string }>(`SELECT k.contact_id FROM mk_email_checks k JOIN contacts c ON c.id = k.contact_id AND c.email = k.email WHERE k.location_id = ? AND c.location_id = ? AND k.verdict IN (${verdicts.map(() => '?').join(',')})`, ctx.locationId, ctx.locationId, ...verdicts);
       for (const r of rows) addTags(app, ctx.locationId, r.contact_id, [tag]);
       return { tagged: rows.length, tag };

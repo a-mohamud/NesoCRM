@@ -1,9 +1,10 @@
 import type { App, Module } from '../core/app.js';
 import { HttpError, bad, notFound, type RawResult } from '../core/http.js';
 import { jsonForScript } from '../core/page.js';
-import { textToHtml } from '../core/template.js';
+import { escapeHtml, textToHtml } from '../core/template.js';
 import { normalizeEmail, now, sha256, token } from '../core/util.js';
 import { deliverEmail } from '../services/messaging.js';
+import { tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Save progress and continue later (HighLevel parity, docs/forms.md#save-progress): a form with `settings.save_progress` offers
@@ -34,8 +35,19 @@ function throttled(ip: string, max = 10, windowMs = 10 * 60_000): boolean {
  * The browser part: the "Später weitermachen" box (link by e-mail, or "Auf diesem Gerät merken"), restore from a link or – only after
  * the visitor chose to – from this browser, forget after sending. Only the fields in `names` are collected and filled in.
  */
-const script = (formId: string, names: string[]) => `<script>(function(){
-var ID=${jsonForScript(formId)},N=${jsonForScript(names)},F=document.getElementById('pf_'+ID);if(!F)return;
+const script = (formId: string, names: string[], t: STFn) => {
+  const L = {
+    restart: t('Neu beginnen'),
+    restored: t('Deine gespeicherten Antworten sind wieder da.'),
+    expired: t('Dieser Link ist abgelaufen – bitte neu ausfüllen.'),
+    device: t('Deine auf diesem Gerät gemerkten Antworten sind wieder da.'),
+    box: `<summary style="cursor:pointer">${escapeHtml(t('Später weitermachen'))}</summary><p style="margin:8px 0">${escapeHtml(t('Wir schicken dir einen Link, mit dem du hier weitermachst ({days} Tage gültig).', { days: DAYS }))}</p><label for="pf-later-{id}">${escapeHtml(t('E-Mail'))}</label><input id="pf-later-{id}" type="email" autocomplete="email" style="max-width:320px"> <button type="button" data-act="link">${escapeHtml(t('Link schicken'))}</button><p style="margin:8px 0 0">${escapeHtml(t('Oder ohne E-Mail:'))} <button type="button" data-act="device">${escapeHtml(t('Auf diesem Gerät merken'))}</button> ${escapeHtml(t('(nur auf deinem eigenen Gerät)'))}</p><p role="status" style="margin:6px 0 0"></p>`,
+    error: t('Fehler'),
+    sent: t('Gesendet – schau in dein Postfach.'),
+    kept: t('Gemerkt – auf diesem Gerät sind deine Antworten beim nächsten Besuch wieder da ({days} Tage).', { days: DAYS }),
+  };
+  return `<script>(function(){
+var ID=${jsonForScript(formId)},N=${jsonForScript(names)},L=${jsonForScript(L)},F=document.getElementById('pf_'+ID);if(!F)return;
 var K='pghl_draft_'+ID,q=new URLSearchParams(location.search),tok=q.get('resume')||'',keep=false;
 function each(fn){Array.prototype.forEach.call(F.elements,function(e){if(!e.name||N.indexOf(e.name)<0||e.type==='file'||e.type==='hidden'||e.type==='password'||e.type==='submit'||e.type==='button')return;fn(e)})}
 function collect(){var o={};each(function(e){if(e.type==='checkbox'){o[e.name]=o[e.name]||[];if(e.checked)o[e.name].push(e.value)}else if(e.type==='radio'){if(e.checked)o[e.name]=e.value}else if(e.value)o[e.name]=e.value});return o}
@@ -43,16 +55,17 @@ function fill(o){each(function(e){if(!(e.name in o))return;var v=o[e.name];if(e.
 function save(){try{localStorage.setItem(K,JSON.stringify({at:Date.now(),keep:1,v:collect()}))}catch(x){}}
 var t;function later(){if(!keep)return;clearTimeout(t);t=setTimeout(save,600)}F.addEventListener('input',later);F.addEventListener('change',later);
 var box=document.createElement('div');box.className='pf-resume';box.style.cssText='margin:0 0 14px;font-size:14px';F.parentNode.insertBefore(box,F);
-function note(msg,reset){box.innerHTML='';var p=document.createElement('p');p.setAttribute('role','status');p.textContent=msg+' ';if(reset){var a=document.createElement('a');a.href='#';a.textContent='Neu beginnen';a.onclick=function(e){e.preventDefault();try{localStorage.removeItem(K)}catch(x){}location.replace(location.pathname+(q.get('embed')?'?embed=1':''))};p.appendChild(a)}box.appendChild(p)}
-if(tok){fetch('/api/public/forms/'+ID+'/draft/'+encodeURIComponent(tok)).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.data){fill(j.data);note('Deine gespeicherten Antworten sind wieder da.',false)}else note('Dieser Link ist abgelaufen – bitte neu ausfüllen.',false)}).catch(function(){})}
-else{try{var s=JSON.parse(localStorage.getItem(K)||'null');if(s&&!s.keep){localStorage.removeItem(K);s=null}if(s&&s.v&&Date.now()-s.at<${DAYS}*864e5&&Object.keys(s.v).some(function(k){return [].concat(s.v[k]).length})){keep=true;fill(s.v);note('Deine auf diesem Gerät gemerkten Antworten sind wieder da.',true)}}catch(x){}}
-var d=document.createElement('details');d.className='pf-later';d.style.cssText='margin:14px 0 0;font-size:14px';d.innerHTML='<summary style="cursor:pointer">Später weitermachen</summary><p style="margin:8px 0">Wir schicken dir einen Link, mit dem du hier weitermachst (${DAYS} Tage gültig).</p><label for="pf-later-'+ID+'">E-Mail</label><input id="pf-later-'+ID+'" type="email" autocomplete="email" style="max-width:320px"> <button type="button" data-act="link">Link schicken</button><p style="margin:8px 0 0">Oder ohne E-Mail: <button type="button" data-act="device">Auf diesem Gerät merken</button> (nur auf deinem eigenen Gerät)</p><p role="status" style="margin:6px 0 0"></p>';
+function note(msg,reset){box.innerHTML='';var p=document.createElement('p');p.setAttribute('role','status');p.textContent=msg+' ';if(reset){var a=document.createElement('a');a.href='#';a.textContent=L.restart;a.onclick=function(e){e.preventDefault();try{localStorage.removeItem(K)}catch(x){}location.replace(location.pathname+(q.get('embed')?'?embed=1':''))};p.appendChild(a)}box.appendChild(p)}
+if(tok){fetch('/api/public/forms/'+ID+'/draft/'+encodeURIComponent(tok)).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.data){fill(j.data);note(L.restored,false)}else note(L.expired,false)}).catch(function(){})}
+else{try{var s=JSON.parse(localStorage.getItem(K)||'null');if(s&&!s.keep){localStorage.removeItem(K);s=null}if(s&&s.v&&Date.now()-s.at<${DAYS}*864e5&&Object.keys(s.v).some(function(k){return [].concat(s.v[k]).length})){keep=true;fill(s.v);note(L.device,true)}}catch(x){}}
+var d=document.createElement('details');d.className='pf-later';d.style.cssText='margin:14px 0 0;font-size:14px';d.innerHTML=L.box.split('{id}').join(ID);
 F.parentNode.insertBefore(d,F.nextSibling);
 var em=d.querySelector('input'),st=d.querySelector('p[role=status]'),em0=F.querySelector('input[type=email]');if(em0&&em0.value)em.value=em0.value;
-d.querySelector('button[data-act=link]').onclick=function(){st.textContent='';fetch('/api/public/forms/'+ID+'/draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:em.value,data:collect()})}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||'Fehler');st.textContent='Gesendet – schau in dein Postfach.'})}).catch(function(e){st.textContent=e.message})};
-d.querySelector('button[data-act=device]').onclick=function(){keep=true;save();st.textContent='Gemerkt – auf diesem Gerät sind deine Antworten beim nächsten Besuch wieder da (${DAYS} Tage).'};
+d.querySelector('button[data-act=link]').onclick=function(){st.textContent='';fetch('/api/public/forms/'+ID+'/draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:em.value,data:collect()})}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||L.error);st.textContent=L.sent})}).catch(function(e){st.textContent=e.message})};
+d.querySelector('button[data-act=device]').onclick=function(){keep=true;save();st.textContent=L.kept};
 var done=document.getElementById('pf_'+ID+'_done');if(done&&window.MutationObserver)new MutationObserver(function(){if(!done.hidden){try{localStorage.removeItem(K)}catch(x){}keep=false;d.hidden=true;box.hidden=true;if(tok)fetch('/api/public/forms/'+ID+'/draft/'+encodeURIComponent(tok),{method:'DELETE'}).catch(function(){})}}).observe(done,{attributes:true});
 })();</script>`;
+};
 
 export const formDraftsModule: Module = {
   name: 'form-drafts',
@@ -93,7 +106,7 @@ export const formDraftsModule: Module = {
         const res = (await next(ctx)) as RawResult;
         const f = formOf(ctx.params.id);
         if (!enabled(f) || !res || typeof res !== 'object' || !(res as any).__raw || res.status !== 200 || typeof res.body !== 'string' || !res.body.includes('</body>')) return res;
-        return { ...res, body: res.body.replace('</body>', `${script(f!.id, keptNames(f!.fields))}</body>`) };
+        return { ...res, body: res.body.replace('</body>', `${script(f!.id, keptNames(f!.fields), tLoc(app, f!.location_id))}</body>`) };
       };
     });
 
@@ -117,8 +130,9 @@ export const formDraftsModule: Module = {
       db.insert('form_drafts', { id: sha256(tok), location_id: f!.location_id, form_id: f!.id, email, data: json, created_at: now(), expires_at: new Date(Date.now() + DAYS * 86_400_000).toISOString() });
       const loc = app.location(f!.location_id)!;
       const title = f!.settings?.title || f!.name;
-      const text = `Hallo,\n\nhier ist dein Link, um „${title}“ weiter auszufüllen – deine bisherigen Antworten sind gespeichert:\n${app.baseUrl()}/f/${f!.id}?resume=${tok}\n\nDer Link gilt ${DAYS} Tage. Wenn du das nicht angefordert hast, ignoriere diese E-Mail einfach.\n\nViele Grüße\n${loc.name}`;
-      const r = await deliverEmail(loc, { to: email, subject: `Später weitermachen: ${title}`, text, html: textToHtml(text) });
+      const t = tLoc(app, f!.location_id);
+      const text = t('Hallo,\n\nhier ist dein Link, um „{title}“ weiter auszufüllen – deine bisherigen Antworten sind gespeichert:\n{url}\n\nDer Link gilt {days} Tage. Wenn du das nicht angefordert hast, ignoriere diese E-Mail einfach.\n\nViele Grüße\n{sender}', { title, url: `${app.baseUrl()}/f/${f!.id}?resume=${tok}`, days: DAYS, sender: loc.name });
+      const r = await deliverEmail(loc, { to: email, subject: t('Später weitermachen: {title}', { title }), text, html: textToHtml(text) });
       return { ok: true, status: r.status, expires_in_days: DAYS };
     });
     const draftOf = (fid: string, tok: string) => db.get<any>('SELECT * FROM form_drafts WHERE id = ? AND form_id = ? AND expires_at > ?', sha256(tok), fid, now());

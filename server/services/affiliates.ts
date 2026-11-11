@@ -1,6 +1,7 @@
 import { toCsv } from '../core/csv.js';
 import { checkIban, normalizeIban } from './invoice-model.js';
 import { creditTransferXml, sepaText } from './sepa-xml.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /** Affiliate manager: commission maths, IBAN check and payout exports (CSV, SEPA pain.001). */
 
@@ -66,10 +67,10 @@ export interface PayoutLine {
   reference: string;
 }
 
-export function payoutCsv(lines: PayoutLine[]): string {
+export function payoutCsv(lines: PayoutLine[], t: STFn = tApp()): string {
   return toCsv([
-    ['Name', 'E-Mail', 'Methode', 'IBAN', 'BIC', 'PayPal', 'Betrag', 'Währung', 'Verwendungszweck'],
-    ...lines.map((l) => [l.name, l.email, l.method === 'paypal' ? 'PayPal' : 'SEPA', l.iban, l.bic, l.paypal, eur(l.amount_cents).replace('.', ','), l.currency, l.reference]),
+    ['Name', 'E-Mail', 'Methode', 'IBAN', 'BIC', 'PayPal', 'Betrag', 'Währung', 'Verwendungszweck'].map((h) => t(h)),
+    ...lines.map((l) => [l.name, l.email, l.method === 'paypal' ? 'PayPal' : 'SEPA', l.iban, l.bic, l.paypal, t.locale === 'de' ? eur(l.amount_cents).replace('.', ',') : eur(l.amount_cents), l.currency, l.reference]),
   ]);
 }
 

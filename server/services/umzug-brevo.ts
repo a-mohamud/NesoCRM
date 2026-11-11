@@ -5,6 +5,7 @@ import { UmzugError, VendorHttp } from './umzug-http.js';
 import { counter } from './umzug-lib.js';
 import type { Json } from './umzug-flow.js';
 import { toDay, toIso } from './umzug-text.js';
+import { translator, type ServerLocale } from '../i18n/index.js';
 
 /**
  * Brevo (formerly Sendinblue; API v3, https://api.brevo.com/v3, header `api-key`): contacts with attributes, list membership and the
@@ -92,7 +93,8 @@ export function brevoConsent(c: Json): { consent: Consent; native?: string; proo
   return { consent, native, proof };
 }
 
-async function describe(h: VendorHttp, parts: PartKey[]) {
+async function describe(h: VendorHttp, parts: PartKey[], lang?: ServerLocale) {
+  const t = translator(lang);
   const counts: CountRow[] = [];
   const fields: SourceField[] = [];
   const warnings: string[] = [];
@@ -108,7 +110,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
       }
     } catch (e) {
       if (!(e instanceof UmzugError && e.skippable)) throw e;
-      warnings.push(`Kontaktattribute nicht lesbar: ${e.message}`);
+      warnings.push(t('Kontaktattribute nicht lesbar: {reason}', { reason: e.message }));
     }
   }
   if (parts.includes('segments')) await count('segments', 'segments', 'Segmente', () => total(h, '/contacts/segments', 'segments'));
@@ -122,8 +124,9 @@ const steps = (): StepDef[] => [
     label: 'Listen → Tags',
     part: 'contacts',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const lists = await everything(ctx.http, '/contacts/lists', 'lists', ctx);
-      yield { records: lists.map((l): RTagRec => ({ kind: 'tag', name: `Liste: ${l.name ?? l.id}` })), cursor: undefined };
+      yield { records: lists.map((l): RTagRec => ({ kind: 'tag', name: t('Liste: {name}', { name: l.name ?? l.id }) })), cursor: undefined };
     },
   },
   {
@@ -131,6 +134,7 @@ const steps = (): StepDef[] => [
     label: 'Kontakte',
     part: 'contacts',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const names = new Map<string, string>((await everything(ctx.http, '/contacts/lists', 'lists', ctx)).map((l) => [String(l.id), String(l.name ?? l.id)]));
       const attrs = new Map<string, Attr>((await attributes(ctx.http).catch(() => [])).map((a) => [a.name, a]));
       for await (const pg of pages(ctx.http, '/contacts', 'contacts', ctx, { sort: 'asc' }, PAGE, Number(ctx.cursor ?? 0))) {
@@ -143,8 +147,8 @@ const steps = (): StepDef[] => [
           }
           const gone = new Set<string>((Array.isArray(c.listUnsubscribed) ? c.listUnsubscribed : []).map(String));
           const tags = [
-            ...(Array.isArray(c.listIds) ? c.listIds : []).filter((id: unknown) => !gone.has(String(id))).map((id: unknown) => `Liste: ${names.get(String(id)) ?? id}`),
-            ...[...gone].map((id) => `Abgemeldet von Liste: ${names.get(id) ?? id}`),
+            ...(Array.isArray(c.listIds) ? c.listIds : []).filter((id: unknown) => !gone.has(String(id))).map((id: unknown) => t('Liste: {name}', { name: names.get(String(id)) ?? String(id) })),
+            ...[...gone].map((id) => t('Abgemeldet von Liste: {id}', { id: names.get(id) ?? id })),
           ];
           const x = brevoConsent(c);
           return { kind: 'contact', ext: `c:${c.id}`, values, tags, consent: x.consent, native_status: x.native, created_at: toIso(c.createdAt), proof: x.proof.length ? x.proof : undefined };
@@ -158,14 +162,15 @@ const steps = (): StepDef[] => [
     label: 'Segmente → Tags und Smart Lists',
     part: 'segments',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const segs = await everything(ctx.http, '/contacts/segments', 'segments', ctx);
       const cur = (ctx.cursor ?? { si: 0, off: 0 }) as { si: number; off: number };
       for (let si = cur.si; si < segs.length; si++) {
         const sg = segs[si];
         const name = String(sg.segmentName ?? sg.name ?? sg.id);
-        const tag = `Segment: ${name}`;
+        const tag = t('Segment: {name}', { name });
         if (si !== cur.si || cur.off === 0) {
-          ctx.warn(`Segment „${name}“ ist bei Brevo eine Regel: übernommen als feste Liste der aktuellen Mitglieder (Tag „${tag}“), nicht als dynamische Regel`);
+          ctx.warn(t('Segment „{name}“ ist bei Brevo eine Regel: übernommen als feste Liste der aktuellen Mitglieder (Tag „{tag}“), nicht als dynamische Regel', { name, tag }));
           yield { records: [{ kind: 'tag', name: tag } satisfies RTagRec, { kind: 'smart_list', ext: `s:${sg.id}`, name, tag } satisfies RSmartList], cursor: { si, off: 0 } };
         }
         for await (const pg of pages(ctx.http, '/contacts', 'contacts', ctx, { segmentId: sg.id, sort: 'asc' }, PAGE, si === cur.si ? cur.off : 0)) {
@@ -180,9 +185,10 @@ const steps = (): StepDef[] => [
     label: 'E-Mail-Vorlagen',
     part: 'templates',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of pages(ctx.http, '/smtp/templates', 'templates', ctx, { sort: 'asc' }, PAGE, Number(ctx.cursor ?? 0))) {
-        const records: RTemplate[] = pg.items.map((t) => ({ kind: 'template', ext: `t:${t.id}`, name: String(t.name ?? `Vorlage ${t.id}`), subject: String(t.subject ?? ''), html: String(t.htmlContent ?? '') }));
-        for (const t of pg.items) if (!t.htmlContent) ctx.warn(`Vorlage „${String(t.name ?? t.id).slice(0, 60)}“ hat bei Brevo keinen HTML-Inhalt – bitte neu aufbauen`);
+        const records: RTemplate[] = pg.items.map((tpl) => ({ kind: 'template', ext: `t:${tpl.id}`, name: String(tpl.name ?? t('Vorlage {id}', { id: tpl.id })), subject: String(tpl.subject ?? ''), html: String(tpl.htmlContent ?? '') }));
+        for (const tpl of pg.items) if (!tpl.htmlContent) ctx.warn(t('Vorlage „{name}“ hat bei Brevo keinen HTML-Inhalt – bitte neu aufbauen', { name: String(tpl.name ?? tpl.id).slice(0, 60) }));
         yield { records, cursor: pg.next, total: pg.total };
       }
     },
@@ -222,6 +228,6 @@ export const BREVO: SourceDef = {
     const account = email ? `acct-${createHash('sha256').update(email).digest('hex').slice(0, 12)}` : `key-${createHash('sha256').update(String(creds.api_key ?? '')).digest('hex').slice(0, 10)}`;
     return { account, label: label.slice(0, 120), meta: {} };
   },
-  describe: (h, parts) => describe(h, parts),
+  describe: (h, parts, c) => describe(h, parts, c.lang),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),
 };

@@ -1,5 +1,6 @@
 import type { App } from '../core/app.js';
 import type { Ctx } from '../core/http.js';
+import { tApp, tUser } from '../i18n/index.js';
 import { track, userById } from './collab-actor.js';
 import { channelFetch, getAccount } from './channel-kit.js';
 import { CHANNEL_ID, isSlackWebhook, slackCall, slackEscape } from './slack.js';
@@ -16,8 +17,8 @@ import { hubOf, mayChat, type ChannelRow, type MessageRow } from './teamchat-sto
  */
 
 const preview = (m: MessageRow, fileCount: number) => {
-  const t = markdownToText(m.body).replace(/\s+/g, ' ').trim();
-  return (t || (fileCount ? '📎 Datei' : '')).slice(0, 160);
+  const s = markdownToText(m.body).replace(/\s+/g, ' ').trim();
+  return (s || (fileCount ? tApp()('📎 Datei') : '')).slice(0, 160);
 };
 
 export function notifyMessage(app: App, ctx: Ctx, ch: ChannelRow, row: MessageRow, mentioned: string[], opts: { fileCount?: number } = {}) {
@@ -54,7 +55,9 @@ export function notifyMessage(app: App, ctx: Ctx, ch: ChannelRow, row: MessageRo
     if (!(pref === 'all' || isMention || participants.has(uid))) continue;
     // somebody reading the chat right now sees it there
     if (hub.looking(uid)) continue;
-    const title = direct ? (ch.kind === 'group' ? `${row.author_name} (Gruppe)` : row.author_name) : isMention ? `${row.author_name} hat dich in ${label} erwähnt` : `${row.author_name} in ${label}`;
+    // A notification for this person: in their language.
+    const t = tUser(app as never, uid);
+    const title = direct ? (ch.kind === 'group' ? t('{name} (Gruppe)', { name: row.author_name }) : row.author_name) : isMention ? t('{name} hat dich in {channel} erwähnt', { name: row.author_name, channel: label }) : t('{name} in {channel}', { name: row.author_name, channel: label });
     const g = groups.get(title) ?? { title, users: [] };
     g.users.push(uid);
     groups.set(title, g);
@@ -80,7 +83,7 @@ async function mirrorToSlack(app: App, ch: ChannelRow, row: MessageRow, text: st
     if (a.config.mode === 'webhook') {
       if (!isSlackWebhook(a.secrets.webhook_url ?? '')) return;
       const r = await f(a.secrets.webhook_url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: line }), signal: AbortSignal.timeout(10_000) });
-      if (!r.ok) throw new Error(`Slack-Webhook ${r.status}`);
+      if (!r.ok) throw new Error(`Slack webhook ${r.status}`); // i18n-ignore (logged only)
     } else {
       if (!a.secrets.bot_token || !CHANNEL_ID.test(a.config.channel ?? '')) return;
       await slackCall(f, a.secrets.bot_token, 'chat.postMessage', { channel: a.config.channel, text: line, unfurl_links: false });

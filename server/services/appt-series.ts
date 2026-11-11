@@ -8,6 +8,7 @@ import { getContact, logActivity } from './contacts.js';
 import { notifyTeam, sendToContact } from './messaging.js';
 import { RecurrenceError, anchorRule, cleanApptRecurrence, cutBefore, describeRecurrence, endsBy, remainingCount, seriesDates, toRrule, type ApptRule } from './appt-recur.js';
 import { apptColumns, checkTime, type Issue } from './calview.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Recurring appointments (docs/booking.md#recurring-appointments). A series is a rule plus the first appointment's time of day and
@@ -69,7 +70,7 @@ export function getSeries(app: App, locationId: string, seriesId: string): Serie
 
 export function seriesOut(s: SeriesRow) {
   const rule = ruleOf(s);
-  return { ...s, rule, description: describeRecurrence(rule), blocked: !!s.blocked, host_ids: s.host_ids ? JSON.parse(s.host_ids) : [] };
+  return { ...s, rule, description: describeRecurrence(rule, tApp()), blocked: !!s.blocked, host_ids: s.host_ids ? JSON.parse(s.host_ids) : [] };
 }
 
 const calOf = (app: App, locationId: string, calendarId: string) => {
@@ -173,14 +174,15 @@ export function previewSeries(app: App, locationId: string, b: SeriesInput) {
   const conflicts = occurrences
     .map((o) => ({ ...o, issues: checkTime(app, cal, o.start_at, o.end_at).filter((i) => !b.blocked || ['appointment', 'blocked', 'person'].includes(i.kind)) }))
     .filter((c) => c.issues.length);
-  return { cal, rule, first, shape, dates, occurrences, conflicts, rrule: toRrule(rule), description: describeRecurrence(rule) };
+  return { cal, rule, first, shape, dates, occurrences, conflicts, rrule: toRrule(rule), description: describeRecurrence(rule, tLoc(app, locationId)) };
 }
 
 /** Creates a series and its first appointments; 409 with the conflicting dates unless `force`. */
 export async function createSeries(app: App, locationId: string, b: SeriesInput, by: { userId?: string | null } = {}) {
   const p = previewSeries(app, locationId, b);
   if (p.conflicts.length && b.force !== true) {
-    throw new HttpError(409, p.conflicts.length === 1 ? 'Ein Termin der Serie überschneidet sich' : `${p.conflicts.length} Termine der Serie überschneiden sich`, {
+    const t = tApp();
+    throw new HttpError(409, t.plural(p.conflicts.length, { one: 'Ein Termin der Serie überschneidet sich', other: '{n} Termine der Serie überschneiden sich' }), {
       conflicts: p.conflicts.slice(0, 50),
     });
   }
@@ -283,7 +285,7 @@ export async function createSeries(app: App, locationId: string, b: SeriesInput,
   const appts = app.db.all<any>('SELECT * FROM appointments WHERE series_id = ? ORDER BY start_at', seriesId);
   if (!blocked && s.contact_id) {
     const first = appts[0];
-    logActivity(app, locationId, s.contact_id, 'appointment.series', `Terminserie gebucht: ${describeRecurrence(rule)}, ab ${formatInTz(first.start_at, cal.timezone)}`);
+    logActivity(app, locationId, s.contact_id, 'appointment.series', tLoc(app, locationId)('Terminserie gebucht: {rule}, ab {start}', { rule: describeRecurrence(rule, tLoc(app, locationId)), start: formatInTz(first.start_at, cal.timezone) }));
     app.events.emit(locationId, 'appointment.booked', {
       contactId: s.contact_id,
       appointment: { ...first, ...(app.services.teamcalPayload?.(first) ?? {}) },
@@ -293,7 +295,7 @@ export async function createSeries(app: App, locationId: string, b: SeriesInput,
     });
     if (b.notify !== false && cal.settings.confirmation_email !== false) void notifySeries(app, s, cal, 'booked').catch(() => undefined);
     if (cal.settings.notify_team)
-      void notifyTeam(app, locationId, `Neue Terminserie: ${s.title}`, `${s.title}\n${describeRecurrence(rule)}, ab ${formatInTz(first.start_at, cal.timezone)} (${cal.timezone})`).catch(
+      void notifyTeam(app, locationId, tLoc(app, locationId)('Neue Terminserie: {title}', { title: s.title }), `${s.title}\n${tLoc(app, locationId)('{rule}, ab {start} ({timezone})', { rule: describeRecurrence(rule, tLoc(app, locationId)), start: formatInTz(first.start_at, cal.timezone), timezone: cal.timezone })}`).catch(
         () => undefined,
       );
   }
@@ -312,14 +314,16 @@ async function notifySeries(app: App, s: SeriesRow, cal: CalendarRow, what: 'boo
     new Date().toISOString(),
   );
   const list = next.map((a) => `- ${formatInTz(a.start_at, cal.timezone)}`).join('\n');
-  const rule = describeRecurrence(ruleOf(s));
-  const hello = `Hallo${c.first_name ? ` ${c.first_name}` : ''},\n\n`;
+  const rule = describeRecurrence(ruleOf(s), tLoc(app, s.location_id));
+  const t = tLoc(app, s.location_id);
+  const hello = `${c.first_name ? t('Hallo {name},', { name: c.first_name }) : t('Hallo,')}\n\n`;
+  const name = cal.name;
   const body =
     what === 'cancelled'
-      ? `${hello}deine Terminserie „${cal.name}“ ist${fromDay ? ` ab dem ${formatInTz(zonedToUtc(fromDay, '12:00', cal.timezone), cal.timezone, { hour: undefined, minute: undefined })}` : ''} abgesagt.\n\nEinen neuen Termin findest du hier: ${app.baseUrl()}/book/${cal.slug}\n\n${loc.name}`
-      : `${hello}${what === 'booked' ? 'deine Terminserie ist gebucht' : 'deine Terminserie wurde geändert'}: „${cal.name}“, ${rule} um ${s.start_time} Uhr (${cal.timezone}).${list ? `\n\nDie nächsten Termine:\n${list}` : ''}\n\nJeden Termin kannst du einzeln verwalten oder absagen – der Link steht in der Erinnerung vor dem Termin.${next[0] ? `\nNächster Termin: ${app.baseUrl()}/book/manage/${next[0].manage_token}` : ''}\n\n${loc.name}`;
-  const subject = what === 'cancelled' ? `Terminserie abgesagt: ${cal.name}` : what === 'booked' ? `Terminserie bestätigt: ${cal.name}` : `Terminserie geändert: ${cal.name}`;
-  await sendToContact(app, s.location_id, { contactId: c.id, channel: 'email', subject, body, source: 'Terminbestätigung', ignoreDnd: true });
+      ? `${hello}${fromDay ? t('deine Terminserie „{name}“ ist ab dem {date} abgesagt.', { name, date: formatInTz(zonedToUtc(fromDay, '12:00', cal.timezone), cal.timezone, { hour: undefined, minute: undefined }) }) : t('deine Terminserie „{name}“ ist abgesagt.', { name })}\n\n${t('Einen neuen Termin findest du hier: {url}', { url: `${app.baseUrl()}/book/${cal.slug}` })}\n\n${loc.name}`
+      : `${hello}${what === 'booked' ? t('deine Terminserie ist gebucht: „{name}“, {rule} um {time} Uhr ({timezone}).', { name, rule, time: s.start_time, timezone: cal.timezone }) : t('deine Terminserie wurde geändert: „{name}“, {rule} um {time} Uhr ({timezone}).', { name, rule, time: s.start_time, timezone: cal.timezone })}${list ? `\n\n${t('Die nächsten Termine:')}\n${list}` : ''}\n\n${t('Jeden Termin kannst du einzeln verwalten oder absagen – der Link steht in der Erinnerung vor dem Termin.')}${next[0] ? `\n${t('Nächster Termin: {url}', { url: `${app.baseUrl()}/book/manage/${next[0].manage_token}` })}` : ''}\n\n${loc.name}`;
+  const subject = what === 'cancelled' ? t('Terminserie abgesagt: {name}', { name }) : what === 'booked' ? t('Terminserie bestätigt: {name}', { name }) : t('Terminserie geändert: {name}', { name });
+  await sendToContact(app, s.location_id, { contactId: c.id, channel: 'email', subject, body, source: t('Terminbestätigung'), ignoreDnd: true });
 }
 
 const occurrenceOf = (app: App, s: SeriesRow, appointmentId: unknown) => {
@@ -474,7 +478,7 @@ export async function updateSeries(app: App, locationId: string, seriesId: strin
     });
     target = getSeries(app, locationId, s.id);
   }
-  if (target.contact_id) logActivity(app, locationId, target.contact_id, 'appointment.series', `Terminserie geändert: ${describeRecurrence(ruleOf(target))} um ${target.start_time}`);
+  if (target.contact_id) logActivity(app, locationId, target.contact_id, 'appointment.series', tLoc(app, locationId)('Terminserie geändert: {rule} um {time}', { rule: describeRecurrence(ruleOf(target), tLoc(app, locationId)), time: target.start_time }));
   if (b.notify !== false && (result!.moved || result!.removed || result!.added) && !target.blocked) void notifySeries(app, target, cal, 'changed').catch(() => undefined);
   return { series: seriesOut(target), ...result! };
 }

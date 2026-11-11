@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { gzip } from 'node:zlib';
 import { MIN_COMPRESS_BYTES, isCompressible, pickEncoding, type Encoding } from './compress.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * The built web app (dist-web): hashed files under /assets/ are cached for a year (`immutable`),
@@ -151,7 +152,7 @@ export async function serveStatic(req: IncomingMessage, res: ServerResponse, o: 
   }
   if (!st || !st.isFile()) {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
-    return void res.end(head ? undefined : '<h1>HyperLevel</h1><p>Die Oberfläche ist noch nicht gebaut: <code>npm run build</code>.</p>');
+    return void res.end(head ? undefined : `<h1>HyperLevel</h1><p>${tApp()('Die Oberfläche ist noch nicht gebaut: {command}.', { command: '<code>npm run build</code>' })}</p>`);
   }
 
   const e = entryFor(file, st);

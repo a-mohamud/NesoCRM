@@ -11,6 +11,7 @@ import { bookTeam, calendarById, cancelAppointment, completeHold, expireHolds, o
 import { expireSession, holdBy } from '../services/teamcal-pay.js';
 import { registerPayPurpose } from '../services/pay-registry.js';
 import { track } from '../services/collab-actor.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Team-Kalender: the types of a booking calendar – single, round robin (even or weighted, optimised for availability or for equal
@@ -91,8 +92,8 @@ export const teamCalModule: Module = {
       if (!tc) {
         // The public API and the old booking page: nothing that needs a payment or answers may go through here.
         const publicCaller = !input.source || input.source === 'Buchungsseite';
-        if (publicCaller && cfg.payment.mode !== 'none') throw bad(`Dieser Termin ist kostenpflichtig – bitte über die Buchungsseite buchen: ${app.baseUrl()}/book/${cal.slug}`);
-        if (publicCaller && cfg.questions.some((q) => q.required)) throw bad(`Bitte über die Buchungsseite buchen – es gibt Pflichtfragen: ${app.baseUrl()}/book/${cal.slug}`);
+        if (publicCaller && cfg.payment.mode !== 'none') throw bad(tApp()('Dieser Termin ist kostenpflichtig – bitte über die Buchungsseite buchen: {url}', { url: `${app.baseUrl()}/book/${cal.slug}` }));
+        if (publicCaller && cfg.questions.some((q) => q.required)) throw bad(tApp()('Bitte über die Buchungsseite buchen – es gibt Pflichtfragen: {url}', { url: `${app.baseUrl()}/book/${cal.slug}` }));
       }
       if (cfg.kind === 'single') return { extra: {}, checked: false };
       if (tc?.checked) return { extra: {}, checked: true };
@@ -206,7 +207,7 @@ export const teamCalModule: Module = {
         duration: cal.duration,
         timezone: cal.timezone,
         kind: cfg.kind,
-        kind_label: KIND_LABEL[cfg.kind],
+        kind_label: tCtx(ctx)(KIND_LABEL[cfg.kind]),
         members: membersOf(app, cal.id).map((m) => ({ user_id: m.user_id, name: m.name, weight: m.weight })),
         questions: cfg.questions.length,
         payment: cfg.payment.mode === 'none' ? null : { mode: cfg.payment.mode, amount_cents: cfg.payment.amount_cents, deposit_cents: cfg.payment.deposit_cents, currency: cfg.payment.currency },
@@ -219,9 +220,9 @@ export const teamCalModule: Module = {
     router.get('/api/team-calendars/types', 'location', (ctx) => db.all<any>('SELECT * FROM calendars WHERE location_id = ? ORDER BY name', ctx.locationId).map((r) => summary(ctx, calendarById(app, r.id)!)));
 
     router.get('/api/team-calendars/meta', 'location', (ctx) => ({
-      kinds: KINDS.map((k) => [k, KIND_LABEL[k]]),
-      video: Object.entries(VIDEO_LABEL),
-      question_types: Object.entries(QUESTION_TYPES),
+      kinds: KINDS.map((k) => [k, tCtx(ctx)(KIND_LABEL[k])]),
+      video: Object.entries(VIDEO_LABEL).map(([k, v]) => [k, tCtx(ctx)(v)]),
+      question_types: Object.entries(QUESTION_TYPES).map(([k, v]) => [k, tCtx(ctx)(v)]),
       stripe: !!app.services.stripeKey?.(ctx.locationId),
       zoom: !!app.services.connectorConfig?.(ctx.locationId, 'zoom'),
       google: !!app.services.oauth?.configured('google'),
@@ -243,15 +244,16 @@ export const teamCalModule: Module = {
       const cur = getConfig(app, cal.id);
       const next: TeamCalConfig = b.config !== undefined ? cleanConfig(b.config, cur) : cur;
       const warnings: string[] = [];
+      const t = tCtx(ctx);
       if (next.payment.mode !== 'none' && !app.services.stripeKey?.(ctx.locationId)) throw bad('Für Zahlung bei Buchung muss Stripe eingerichtet sein (Einstellungen → Stripe)');
       if (b.members !== undefined) setMembers(app, ctx.locationId, cal.id, b.members);
       const members = membersOf(app, cal.id);
       if ((next.kind === 'round_robin' || next.kind === 'collective') && !members.length) throw bad('Round Robin und Kollektiv brauchen mindestens eine Person');
-      if (next.kind === 'collective' && members.length < 2) warnings.push('Ein Kollektiv-Termin mit nur einer Person verhält sich wie ein Einzeltermin.');
-      if (next.video === 'zoom' && !app.services.connectorConfig?.(ctx.locationId, 'zoom')) warnings.push('Zoom ist noch nicht eingerichtet (Apps → Direkt-Verbindungen) – bis dahin gibt es keinen Link.');
+      if (next.kind === 'collective' && members.length < 2) warnings.push(t('Ein Kollektiv-Termin mit nur einer Person verhält sich wie ein Einzeltermin.'));
+      if (next.video === 'zoom' && !app.services.connectorConfig?.(ctx.locationId, 'zoom')) warnings.push(t('Zoom ist noch nicht eingerichtet (Apps → Direkt-Verbindungen) – bis dahin gibt es keinen Link.'));
       if (next.video === 'meet' || next.video === 'teams') {
         const want = next.video === 'meet' ? 'google' : 'microsoft';
-        if (!members.some((m) => connections(m.user_id)[want === 'google' ? 'google' : 'microsoft'])) warnings.push(`${next.video === 'meet' ? 'Google Meet' : 'Microsoft Teams'} braucht eine verbundene ${next.video === 'meet' ? 'Google' : 'Outlook'}-Verbindung bei mindestens einem Gastgeber (Einstellungen → Mein Konto).`);
+        if (!members.some((m) => connections(m.user_id)[want === 'google' ? 'google' : 'microsoft'])) warnings.push(t('{video} braucht eine verbundene {provider}-Verbindung bei mindestens einem Gastgeber (Einstellungen → Mein Konto).', { video: next.video === 'meet' ? 'Google Meet' : 'Microsoft Teams', provider: next.video === 'meet' ? 'Google' : 'Outlook' }));
       }
       saveConfig(app, ctx.locationId, cal.id, next);
       return { ...summary(ctx, cal), config: getConfig(app, cal.id), members: membersOf(app, cal.id), warnings };
@@ -329,7 +331,7 @@ export const teamCalModule: Module = {
         const label = String(o?.label ?? '').trim().slice(0, 120);
         if (!label) throw bad('Jede Antwortmöglichkeit braucht einen Text');
         const calendar_id = String(o?.calendar_id ?? '');
-        if (!db.get('SELECT 1 FROM calendars WHERE id = ? AND location_id = ?', calendar_id, locationId)) throw bad(`„${label}“: Kalender nicht gefunden`);
+        if (!db.get('SELECT 1 FROM calendars WHERE id = ? AND location_id = ?', calendar_id, locationId)) throw bad(tApp()('„{label}“: Kalender nicht gefunden', { label }));
         return { id: /^[A-Za-z0-9_-]{2,30}$/.test(String(o?.id ?? '')) ? String(o.id) : `o${i + 1}${Math.random().toString(36).slice(2, 6)}`, label, calendar_id };
       });
     };
@@ -349,7 +351,7 @@ export const teamCalModule: Module = {
         location_id: ctx.locationId,
         name,
         slug: uniqueRouteSlug(String(b.slug || name)),
-        question: String(b.question ?? 'Wobei können wir helfen?').trim().slice(0, 200) || 'Wobei können wir helfen?',
+        question: String(b.question ?? tLoc(app, ctx.locationId)('Wobei können wir helfen?')).trim().slice(0, 200) || tLoc(app, ctx.locationId)('Wobei können wir helfen?'),
         intro: String(b.intro ?? '').trim().slice(0, 1000),
         options: cleanOptions(b.options, ctx.locationId),
         color: /^#[0-9a-f]{6}$/i.test(b.color ?? '') ? b.color : '#2563eb',

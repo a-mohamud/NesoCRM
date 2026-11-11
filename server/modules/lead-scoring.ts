@@ -8,6 +8,7 @@ import type { SnapshotPart } from '../services/snapshots.js';
 import { SCORE_EVENTS, SCORE_OPS, ScoreError, cleanModel, labelRank, scoreFrom, type ScoreModel, type ScoreRule } from '../services/lead-scoring.js';
 import type { AssociationsService } from './associations.js';
 import type { Tool } from './mcp.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Lead scoring per sub-account: models with property and engagement rules, decay and thresholds
@@ -124,6 +125,7 @@ export const leadScoringModule: Module = {
         ['tags', 'custom'],
       );
       if (!contacts.length) return 0;
+      const tl = tLoc(app, loc);
       const cids = ids ? contacts.map((c) => c.id) : null;
       const ruleCounts = new Map<string, Map<string, { n: number; last: string }>>();
       for (const r of m.rules.filter((x) => x.kind === 'event')) ruleCounts.set(r.id, counts(loc, r.event!, cids, r.within_days ? new Date(Date.now() - r.within_days * 864e5).toISOString() : undefined));
@@ -134,7 +136,7 @@ export const leadScoringModule: Module = {
       }
       const fieldLabels: Record<string, string> = Object.fromEntries([
         ...db.all('SELECT key, label FROM custom_fields WHERE location_id = ?', loc).map((f) => [`custom.${f.key}`, f.label]),
-        ...(tableExists('object_properties') ? db.all(`SELECT key, label FROM object_properties WHERE location_id = ? AND object_key = 'company'`, loc).map((p) => [`company.custom.${p.key}`, `Firma: ${p.label}`]) : []),
+        ...(tableExists('object_properties') ? db.all(`SELECT key, label FROM object_properties WHERE location_id = ? AND object_key = 'company'`, loc).map((p) => [`company.custom.${p.key}`, tl('Firma: {label}', { label: p.label })]) : []),
       ]);
       const needsCompany = m.rules.some((r) => r.field?.startsWith('company.'));
       const needsAttr = m.rules.some((r) => r.field?.startsWith('attribution.'));
@@ -151,7 +153,7 @@ export const leadScoringModule: Module = {
           else cnt[r.id] = ruleCounts.get(r.id)?.get(c.id)?.n ?? 0;
         }
         const lastAt = last.get(c.id) ?? c.last_activity_at ?? c.created_at;
-        const res = scoreFrom(m, hit, cnt, lastAt, Date.now(), fieldLabels);
+        const res = scoreFrom(m, hit, cnt, lastAt, Date.now(), fieldLabels, tl);
         const prev = existing.get(c.id);
         db.run(
           `INSERT INTO lead_scores (model_id, contact_id, location_id, score, label, breakdown, last_engagement_at, calculated_at, changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -170,7 +172,7 @@ export const leadScoringModule: Module = {
         if (prev && prev.score === res.score) continue;
         if (!prev && res.score === 0) continue;
         changed++;
-        db.insert('lead_score_history', { id: id(), location_id: loc, model_id: model.id, contact_id: c.id, score: res.score, previous: prev?.score ?? null, label: res.label, reason, created_at: at });
+        db.insert('lead_score_history', { id: id(), location_id: loc, model_id: model.id, contact_id: c.id, score: res.score, previous: prev?.score ?? null, label: res.label, reason: tl(reason), created_at: at });
         app.events.emit(loc, 'lead_score.changed', { contactId: c.id, modelId: model.id, model: model.name, score: res.score, previous: prev?.score ?? 0, label: res.label, previousLabel: prev?.label ?? '', direction: res.score > (prev?.score ?? 0) ? 'up' : 'down' });
         if (labelRank(res.label, m.thresholds) > labelRank(prev?.label ?? '', m.thresholds)) {
           app.events.emit(loc, 'lead_score.threshold_reached', { contactId: c.id, modelId: model.id, model: model.name, threshold: res.label, score: res.score });
@@ -309,7 +311,7 @@ export const leadScoringModule: Module = {
     };
 
     router.get('/api/lead-scoring/meta', 'location', (ctx) => ({
-      events: SCORE_EVENTS,
+      events: Object.fromEntries(Object.entries(SCORE_EVENTS).map(([k, v]) => [k, tCtx(ctx)(v)])),
       ops: SCORE_OPS,
       custom_fields: db.all('SELECT key, label, type, options FROM custom_fields WHERE location_id = ? ORDER BY position, label', ctx.locationId).map((f) => ({ ...f, options: JSON.parse(f.options || '[]') })),
       company_properties: tableExists('object_properties') ? db.all(`SELECT key, label, type FROM object_properties WHERE location_id = ? AND object_key = 'company' ORDER BY position`, ctx.locationId) : [],
@@ -321,7 +323,7 @@ export const leadScoringModule: Module = {
       if (models(ctx.locationId).length >= 10) throw bad('Höchstens 10 Scoring-Modelle');
       const cfg = clean({ thresholds: [{ label: 'MQL', min: 50 }, { label: 'SQL', min: 80 }], decay: { percent: 0, days: 30 }, ...b });
       const first = !db.get('SELECT 1 FROM lead_score_models WHERE location_id = ?', ctx.locationId);
-      const row = { id: id(), location_id: ctx.locationId, name: str(b.name, 'Name', { max: 80 }) || 'Lead-Score', active: b.active === false ? 0 : 1, is_primary: first || b.is_primary ? 1 : 0, rules: cfg.rules, thresholds: cfg.thresholds, decay: cfg.decay, max_score: cfg.max_score, created_at: now(), updated_at: now() };
+      const row = { id: id(), location_id: ctx.locationId, name: str(b.name, 'Name', { max: 80 }) || tLoc(app, ctx.locationId)('Lead-Score'), active: b.active === false ? 0 : 1, is_primary: first || b.is_primary ? 1 : 0, rules: cfg.rules, thresholds: cfg.thresholds, decay: cfg.decay, max_score: cfg.max_score, created_at: now(), updated_at: now() };
       if (row.is_primary && !first) db.run('UPDATE lead_score_models SET is_primary = 0 WHERE location_id = ?', ctx.locationId);
       db.insert('lead_score_models', row);
       const m = getModel(ctx.locationId, row.id);

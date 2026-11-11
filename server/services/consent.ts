@@ -35,6 +35,7 @@ import {
   type Status,
 } from './consent-model.js';
 import { oneLine, sendToContact } from './messaging.js';
+import { tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * The consent ledger on the database: events (what happened, when, where, with which text), versioned consent texts, the
@@ -104,7 +105,7 @@ export const cleanProofUrl = (v: unknown) => {
 
 // --- settings -------------------------------------------------------------------------------------------------------
 
-export const settingsOf = (app: App, locationId: string): ConsentSettings => cleanConsentSettings(app.location(locationId)?.settings.consent);
+export const settingsOf = (app: App, locationId: string): ConsentSettings => cleanConsentSettings(app.location(locationId)?.settings.consent, tLoc(app, locationId));
 
 /** Merges a patch into the stored settings (whatever is not in the patch stays) and returns the cleaned result. */
 export function saveSettings(app: App, locationId: string, patch: Record<string, any>): ConsentSettings {
@@ -112,7 +113,7 @@ export function saveSettings(app: App, locationId: string, patch: Record<string,
   if (!loc) throw notFound();
   const cur = settingsOf(app, locationId);
   const merged: any = { ...cur, ...patch, doi: { ...cur.doi, ...(patch.doi ?? {}), sources: { ...cur.doi.sources, ...(patch.doi?.sources ?? {}) }, page: { ...cur.doi.page, ...(patch.doi?.page ?? {}) } } };
-  const next = cleanConsentSettings(merged);
+  const next = cleanConsentSettings(merged, tLoc(app, locationId));
   if (next.policy !== cur.policy) next.policy_changed_at = now();
   else if (cur.policy_changed_at) next.policy_changed_at = cur.policy_changed_at;
   app.db.run('UPDATE locations SET settings = ? WHERE id = ?', JSON.stringify(sealSettings(app, { ...loc.settings, consent: next }).value), locationId);
@@ -201,8 +202,11 @@ export function statusOf(app: App, locationId: string, contactId: string): Recor
   return deriveAll(eventsOf(app, contactId), { dnd: !!c.dnd });
 }
 
-const labelOf = (kind: string, label?: string) => (label ? `${SOURCE_LABEL[kind] ?? kind} „${label}“` : (SOURCE_LABEL[kind] ?? kind));
-const purposesText = (purposes: string[]) => (purposes.length ? purposes.map((p) => PURPOSE_LABEL[p as keyof typeof PURPOSE_LABEL] ?? p).join(', ') : 'alle Zwecke');
+const labelOf = (kind: string, label: string | undefined, t: STFn) => {
+  const k = SOURCE_LABEL[kind] ? t(SOURCE_LABEL[kind]) : kind;
+  return label ? `${k} „${label}“` : k;
+};
+const purposesText = (purposes: string[], t: STFn) => (purposes.length ? purposes.map((p) => (PURPOSE_LABEL[p as keyof typeof PURPOSE_LABEL] ? t(PURPOSE_LABEL[p as keyof typeof PURPOSE_LABEL]) : p)).join(', ') : t('alle Zwecke'));
 
 /** Sources where the person acted themselves: their yes (after a "Nicht stören") lifts the DND, the team's note does not. */
 const PERSON_SOURCES = new Set(['form', 'funnel', 'webinar', 'community', 'preferences', 'doi', 'checkout', 'api']);
@@ -302,7 +306,8 @@ export function grantConsent(app: App, i: GrantInput): GrantResult {
       app.db.insert('consent_doi', { ...doi, purposes });
       for (const p of purposes) events.push(insertEvent(app, { ...base, purpose: p, action: 'granted', doiRequired: true, expiresAt: doi.expires_at, doiId: doi.id }));
     });
-    logActivity(app, i.locationId, contact.id, 'consent.pending', `Einwilligung angefragt (Double-Opt-in): ${CHANNEL_LABEL[i.channel]} · ${purposesText(purposes)} – ${labelOf(i.source.kind, i.source.label)}`, { channel: i.channel, purposes, doi_id: doi.id });
+    const t = tLoc(app, i.locationId);
+    logActivity(app, i.locationId, contact.id, 'consent.pending', t('Einwilligung angefragt (Double-Opt-in): {channel} · {purposes} – {source}', { channel: t(CHANNEL_LABEL[i.channel]), purposes: purposesText(purposes, t), source: labelOf(i.source.kind, i.source.label, t) }), { channel: i.channel, purposes, doi_id: doi.id });
     return { status: 'pending', events, doi, mailQueued: true };
   }
 
@@ -310,7 +315,8 @@ export function grantConsent(app: App, i: GrantInput): GrantResult {
   app.db.tx(() => {
     for (const p of purposes) events.push(insertEvent(app, { ...base, purpose: p, action: 'granted' }));
   });
-  logActivity(app, i.locationId, contact.id, 'consent.granted', `Einwilligung erteilt: ${CHANNEL_LABEL[i.channel]} · ${purposesText(purposes)} – ${labelOf(i.source.kind, i.source.label)}`, { channel: i.channel, purposes });
+  const t = tLoc(app, i.locationId);
+  logActivity(app, i.locationId, contact.id, 'consent.granted', t('Einwilligung erteilt: {channel} · {purposes} – {source}', { channel: t(CHANNEL_LABEL[i.channel]), purposes: purposesText(purposes, t), source: labelOf(i.source.kind, i.source.label, t) }), { channel: i.channel, purposes });
   liftDnd(app, contact, i.clearDnd ?? PERSON_SOURCES.has(i.source.kind), i.channel);
   app.events.emit(i.locationId, 'consent.confirmed', { contactId: contact.id, channel: i.channel, purposes, source: i.source.kind, doi: false });
   return { status: 'confirmed', events, mailQueued: false };
@@ -320,7 +326,7 @@ export function grantConsent(app: App, i: GrantInput): GrantResult {
 function liftDnd(app: App, contact: Contact, on: boolean, channel: ConsentChannel) {
   if (!on || !contact.dnd || channel === 'tracking') return;
   app.db.run('UPDATE contacts SET dnd = 0, updated_at = ? WHERE id = ?', now(), contact.id);
-  logActivity(app, contact.location_id, contact.id, 'consent.dnd_lifted', 'Nicht stören aufgehoben (neue Einwilligung der Person)');
+  logActivity(app, contact.location_id, contact.id, 'consent.dnd_lifted', tLoc(app, contact.location_id)('Nicht stören aufgehoben (neue Einwilligung der Person)'));
 }
 
 export interface RevokeInput {
@@ -353,8 +359,9 @@ export function revokeConsent(app: App, i: RevokeInput): EventRow[] {
     }
   });
   if (events.length) {
-    const what = i.purposes?.length ? purposesText(i.purposes) : 'alle Zwecke';
-    logActivity(app, i.locationId, contact.id, 'consent.revoked', `Einwilligung widerrufen: ${i.channel === 'all' ? 'alle Kanäle' : CHANNEL_LABEL[i.channel]} · ${what} – ${labelOf(i.source.kind, i.source.label)}`, { channel: i.channel, purposes: i.purposes ?? [] });
+    const t = tLoc(app, i.locationId);
+    const what = i.purposes?.length ? purposesText(i.purposes, t) : t('alle Zwecke');
+    logActivity(app, i.locationId, contact.id, 'consent.revoked', t('Einwilligung widerrufen: {channel} · {purposes} – {source}', { channel: i.channel === 'all' ? t('alle Kanäle') : t(CHANNEL_LABEL[i.channel]), purposes: what, source: labelOf(i.source.kind, i.source.label, t) }), { channel: i.channel, purposes: i.purposes ?? [] });
     app.events.emit(i.locationId, 'consent.revoked', { contactId: contact.id, channel: i.channel, purposes: i.purposes ?? [], source: i.source.kind });
   }
   return events;
@@ -369,7 +376,7 @@ export function resetConsent(app: App, locationId: string, contactId: string, so
   app.db.tx(() => {
     for (const channel of channels) if (app.db.get('SELECT 1 FROM consent_events WHERE contact_id = ? AND channel = ?', contactId, channel)) events.push(insertEvent(app, { locationId, contactId, channel, purpose: '*', action: 'reset', source, actor: o.actor, note: o.note }));
   });
-  if (events.length) logActivity(app, locationId, contactId, 'consent.reset', 'Sperre aufgehoben (ohne Nachweis, Status „unbekannt“)');
+  if (events.length) logActivity(app, locationId, contactId, 'consent.reset', tLoc(app, locationId)('Sperre aufgehoben (ohne Nachweis, Status „unbekannt“)'));
   return events;
 }
 
@@ -388,11 +395,12 @@ export function confirmDoi(app: App, doiId: string, meta: Meta): ConfirmResult {
   if (!contact) return { ok: false, reason: 'invalid' };
   const text = d.text_id ? app.db.get<TextRow>('SELECT * FROM consent_texts WHERE id = ?', d.text_id) : undefined;
   const at = now();
+  const t = tLoc(app, d.location_id);
   app.db.tx(() => {
     app.db.run('UPDATE consent_doi SET status = ?, confirmed_at = ? WHERE id = ?', 'confirmed', at, d.id);
-    for (const p of d.purposes) insertEvent(app, { locationId: d.location_id, contactId: d.contact_id, channel: d.channel, purpose: p, action: 'confirmed', doiRequired: false, source: { kind: 'doi', id: d.id, label: labelOf(d.source_kind, d.source_label) }, text: text ?? null, proofUrl: d.proof_url, meta, note: `Link aus der E-Mail an ${d.email} bestätigt`, actor: 'contact', doiId: d.id });
+    for (const p of d.purposes) insertEvent(app, { locationId: d.location_id, contactId: d.contact_id, channel: d.channel, purpose: p, action: 'confirmed', doiRequired: false, source: { kind: 'doi', id: d.id, label: labelOf(d.source_kind, d.source_label, t) }, text: text ?? null, proofUrl: d.proof_url, meta, note: t('Link aus der E-Mail an {email} bestätigt', { email: d.email }), actor: 'contact', doiId: d.id });
   });
-  logActivity(app, d.location_id, d.contact_id, 'consent.confirmed', `Einwilligung bestätigt (Double-Opt-in): ${CHANNEL_LABEL[d.channel]} · ${purposesText(d.purposes)}`, { channel: d.channel, purposes: d.purposes, doi_id: d.id });
+  logActivity(app, d.location_id, d.contact_id, 'consent.confirmed', t('Einwilligung bestätigt (Double-Opt-in): {channel} · {purposes}', { channel: t(CHANNEL_LABEL[d.channel]), purposes: purposesText(d.purposes, t) }), { channel: d.channel, purposes: d.purposes, doi_id: d.id });
   liftDnd(app, contact, true, d.channel);
   app.events.emit(d.location_id, 'consent.confirmed', { contactId: d.contact_id, channel: d.channel, purposes: d.purposes, source: d.source_kind, doi: true });
   return { ok: true, doi: { ...d, status: 'confirmed', confirmed_at: at }, already: false };
@@ -406,7 +414,8 @@ export const prefsUrl = (app: App, contactId: string) => `${app.baseUrl()}/conse
 export function mailVars(app: App, d: DoiRow, contact: Contact) {
   const loc = app.location(d.location_id)!;
   const text = d.text_id ? app.db.get<TextRow>('SELECT text FROM consent_texts WHERE id = ?', d.text_id) : undefined;
-  return { contact: contactVars(contact), location: { name: loc.name, email: loc.email ?? '', website: loc.website ?? '' }, confirm_url: confirmUrl(app, d), purpose_text: purposeSentence(d.purposes), expires: deStamp(d.expires_at, loc.timezone, true), consent_text: normText(text?.text ?? purposeSentence(d.purposes)) };
+  const t = tLoc(app, d.location_id);
+  return { contact: contactVars(contact), location: { name: loc.name, email: loc.email ?? '', website: loc.website ?? '' }, confirm_url: confirmUrl(app, d), purpose_text: purposeSentence(d.purposes, t), expires: deStamp(d.expires_at, loc.timezone, true, t), consent_text: normText(text?.text ?? purposeSentence(d.purposes, t)) };
 }
 
 /** Sends the confirmation mail (or the reminder); false when it did not go out (retried by the tick, a few times). */
@@ -415,11 +424,12 @@ export async function sendDoiMail(app: App, d: DoiRow, reminder = false): Promis
   if (!contact || !contact.email || d.status !== 'pending') return false;
   const s = settingsOf(app, d.location_id);
   const vars = mailVars(app, d, contact);
-  const subject = oneLine(`${reminder ? 'Erinnerung: ' : ''}${render(s.doi.subject, vars)}`).slice(0, 200);
-  const body = (reminder ? 'Das ist eine kurze Erinnerung – du hast die Bestätigung noch nicht abgeschlossen.\n\n' : '') + render(s.doi.body, vars);
+  const t = tLoc(app, d.location_id);
+  const subject = oneLine(`${reminder ? t('Erinnerung: ') : ''}${render(s.doi.subject, vars)}`).slice(0, 200);
+  const body = (reminder ? `${t('Das ist eine kurze Erinnerung – du hast die Bestätigung noch nicht abgeschlossen.')}\n\n` : '') + render(s.doi.body, vars);
   // A reply to the person's own sign-up: no gate, no DND check – it is the one mail that asks for the consent. Before that consent
   // nothing is measured (no pixel, no tracked links – § 25 TDDDG) and there is no "Abmelden" (service mail, nothing to unsubscribe from).
-  const m = await sendToContact(app, d.location_id, { contactId: contact.id, channel: 'email', subject, body, source: reminder ? 'Double-Opt-in Erinnerung' : 'Double-Opt-in', ignoreDnd: true, purpose: 'transactional', track: false });
+  const m = await sendToContact(app, d.location_id, { contactId: contact.id, channel: 'email', subject, body, source: reminder ? t('Double-Opt-in Erinnerung') : 'Double-Opt-in', ignoreDnd: true, purpose: 'transactional', track: false });
   return m.status !== 'failed';
 }
 
@@ -460,7 +470,8 @@ export async function runDoiTick(app: App, limit = 40): Promise<{ sent: number; 
     try {
       if (await sendDoiMail(app, d, true)) {
         out.reminded++;
-        logActivity(app, d.location_id, d.contact_id, 'consent.reminded', `Erinnerung an die Bestätigung gesendet (${CHANNEL_LABEL[d.channel]} · ${purposesText(d.purposes)})`, { doi_id: d.id });
+        const t = tLoc(app, d.location_id);
+        logActivity(app, d.location_id, d.contact_id, 'consent.reminded', t('Erinnerung an die Bestätigung gesendet ({channel} · {purposes})', { channel: t(CHANNEL_LABEL[d.channel]), purposes: purposesText(d.purposes, t) }), { doi_id: d.id });
       }
     } catch (e) {
       console.error('[consent] DOI-Erinnerung:', (e as Error).message);
@@ -469,11 +480,12 @@ export async function runDoiTick(app: App, limit = 40): Promise<{ sent: number; 
 
   for (const r of app.db.all<any>('SELECT * FROM consent_doi WHERE status = ? AND expires_at <= ? LIMIT ?', 'pending', nowIso, limit * 5)) {
     const d = parseDoi(r)!;
+    const t = tLoc(app, d.location_id);
     app.db.tx(() => {
       app.db.run('UPDATE consent_doi SET status = ? WHERE id = ? AND status = ?', 'expired', d.id, 'pending');
-      for (const p of d.purposes) insertEvent(app, { locationId: d.location_id, contactId: d.contact_id, channel: d.channel, purpose: p, action: 'expired', source: { kind: 'system', label: labelOf(d.source_kind, d.source_label) }, doiId: d.id, note: 'Bestätigungslink nicht rechtzeitig angeklickt', actor: 'system' });
+      for (const p of d.purposes) insertEvent(app, { locationId: d.location_id, contactId: d.contact_id, channel: d.channel, purpose: p, action: 'expired', source: { kind: 'system', label: labelOf(d.source_kind, d.source_label, t) }, doiId: d.id, note: t('Bestätigungslink nicht rechtzeitig angeklickt'), actor: 'system' });
     });
-    logActivity(app, d.location_id, d.contact_id, 'consent.expired', `Bestätigung abgelaufen (${CHANNEL_LABEL[d.channel]} · ${purposesText(d.purposes)}) – keine Werbung ohne neue Einwilligung`, { doi_id: d.id });
+    logActivity(app, d.location_id, d.contact_id, 'consent.expired', t('Bestätigung abgelaufen ({channel} · {purposes}) – keine Werbung ohne neue Einwilligung', { channel: t(CHANNEL_LABEL[d.channel]), purposes: purposesText(d.purposes, t) }), { doi_id: d.id });
     out.expired++;
   }
   return out;
@@ -508,7 +520,7 @@ export function judge(app: App, i: GateInput): Verdict {
   const channel = i.channel as ConsentChannel;
   if (!(['email', 'sms', 'whatsapp'] as string[]).includes(channel)) return { allow: true, basis: '', reason: '', purpose, mark: '' };
   const state = deriveChannel(eventsOf(app, i.contact.id, channel), channel, { dnd: !!i.contact.dnd });
-  const r = gateDecision(state, settingsOf(app, i.locationId).policy);
+  const r = gateDecision(state, settingsOf(app, i.locationId).policy, tLoc(app, i.locationId));
   return { ...r, purpose, mark: r.allow ? r.basis : 'blocked' };
 }
 
@@ -539,7 +551,8 @@ export function allowMarketingMany(app: App, locationId: string, contacts: Pick<
     l.push(e);
     by.set(e.contact_id, l);
   }
-  for (const c of contacts) out.set(c.id, gateDecision(deriveChannel(by.get(c.id) ?? [], channel as ConsentChannel, { dnd: !!c.dnd }), policy));
+  const t = tLoc(app, locationId);
+  for (const c of contacts) out.set(c.id, gateDecision(deriveChannel(by.get(c.id) ?? [], channel as ConsentChannel, { dnd: !!c.dnd }), policy, t));
   return out;
 }
 

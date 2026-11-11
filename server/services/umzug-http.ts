@@ -1,4 +1,5 @@
 import { safeFetch } from './net.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * HTTP for the switch-over importers: one small client per vendor account with a pause between calls,
@@ -97,6 +98,9 @@ export class VendorHttp {
     const sleep = this.o.sleep ?? realSleep;
     const max = this.o.maxRetries ?? 6;
     const where = path.split('?')[0].replace(/^https?:\/\/[^/]+/, '');
+    // No request or sub-account here: vendor errors are written in the instance language.
+    const t = tApp();
+    const vendor = this.o.vendor;
     const body = init.body !== undefined ? JSON.stringify(init.body) : init.form ? new URLSearchParams(init.form).toString() : undefined;
     const type: Record<string, string> = init.body !== undefined ? { 'content-type': 'application/json' } : init.form ? { 'content-type': 'application/x-www-form-urlencoded' } : {};
     for (let attempt = 0; ; attempt++) {
@@ -105,14 +109,14 @@ export class VendorHttp {
       try {
         r = await f(url, { method, headers: { accept: 'application/json', ...this.o.headers(), ...type }, body });
       } catch (e) {
-        if (attempt >= max) throw new UmzugError(0, `${this.o.vendor} nicht erreichbar: ${(e as Error).message}`, where);
+        if (attempt >= max) throw new UmzugError(0, t('{source} nicht erreichbar: {reason}', { source: vendor, reason: (e as Error).message }), where);
         const wait = Math.min(1000 * 2 ** attempt, 30_000);
         this.waits.push(wait);
         await sleep(wait);
         continue;
       }
       if (r.status === 429 || r.status >= 500) {
-        if (attempt >= max) throw new UmzugError(r.status, r.status === 429 ? `${this.o.vendor}-Limit erreicht – bitte später fortsetzen` : `${this.o.vendor} antwortet mit Fehler ${r.status}`, where);
+        if (attempt >= max) throw new UmzugError(r.status, r.status === 429 ? t('{vendor}-Limit erreicht – bitte später fortsetzen', { vendor }) : t('{vendor} antwortet mit Fehler {status}', { vendor, status: r.status }), where);
         const ra = this.retryAfter(r);
         const wait = ra !== undefined ? Math.min(ra * 1000, 60_000) : Math.min((this.o.retryBaseMs ?? 1000) * 2 ** attempt, Math.max(30_000, (this.o.retryBaseMs ?? 0) * 4));
         this.waits.push(wait);
@@ -121,8 +125,8 @@ export class VendorHttp {
       }
       let j: any = {};
       try {
-        const t = await r.text();
-        j = t ? JSON.parse(t) : {};
+        const raw = await r.text();
+        j = raw ? JSON.parse(raw) : {};
       } catch {
         j = {};
       }
@@ -130,17 +134,17 @@ export class VendorHttp {
         const own = this.o.errorText?.(j) ?? (typeof j?.message === 'string' ? j.message : typeof j?.error === 'string' ? j.error : typeof j?.detail === 'string' ? j.detail : undefined);
         const msg =
           r.status === 401
-            ? `${this.o.vendor}: Zugangsdaten ungültig oder abgelaufen`
+            ? t('{vendor}: Zugangsdaten ungültig oder abgelaufen', { vendor })
             : r.status === 403
-              ? `${this.o.vendor}: fehlende Berechtigung für ${where}${own ? ` (${String(own).slice(0, 120)})` : ''}`
+              ? t('{vendor}: fehlende Berechtigung für {where}', { vendor, where }) + (own ? ` (${String(own).slice(0, 120)})` : '')
               : r.status === 404
-                ? `Bei ${this.o.vendor} nicht vorhanden: ${where}`
+                ? t('Bei {vendor} nicht vorhanden: {where}', { vendor, where })
                 : `${this.o.vendor}: ${String(own ?? `HTTP ${r.status}`).slice(0, 200)}`;
         throw new UmzugError(r.status, msg, where);
       }
       const soft = r.ok ? this.o.softLimit?.(j) : undefined;
       if (soft !== undefined) {
-        if (attempt >= max) throw new UmzugError(429, `${this.o.vendor}-Limit erreicht – bitte später fortsetzen`, where);
+        if (attempt >= max) throw new UmzugError(429, t('{vendor}-Limit erreicht – bitte später fortsetzen', { vendor }), where);
         const wait = Math.min(Math.max(soft, 1) * 1000, 60_000);
         this.waits.push(wait);
         await sleep(wait);

@@ -17,6 +17,7 @@ import { backupKeys, decryptFile, readHeader } from '../services/backup-crypto.j
 import { listSnapshots, offsiteConfig, restoreSnapshot, verifyDb } from '../services/backup-offsite.js';
 import { stampOf } from '../services/backup-retention.js';
 import { S3Client } from '../services/s3-lite.js';
+import { tApp } from '../i18n/index.js';
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(name);
@@ -26,6 +27,7 @@ const value = (name: string) => {
 };
 const target = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--to');
 const dataDir = resolve(process.env.PGHL_DATA_DIR ?? './data');
+const t = tApp();
 
 function fail(msg: string): never {
   console.error(`Fehler: ${msg}`);
@@ -35,18 +37,18 @@ function fail(msg: string): never {
 async function main() {
   const c = offsiteConfig();
   if (flag('--list')) {
-    if (!c.config) fail(c.error ?? 'Off-site-Backup ist nicht eingerichtet (PGHL_BACKUP_S3_* und PGHL_BACKUP_KEY)');
+    if (!c.config) fail(c.error ?? t('Off-site-Backup ist nicht eingerichtet (PGHL_BACKUP_S3_* und PGHL_BACKUP_KEY)'));
     const list = await listSnapshots(new S3Client(c.config.s3), c.config);
     if (!list.length) console.log('Keine Sicherungen im Bucket.');
     for (const s of list) console.log(`${s.stamp}  ${(s.size / 1024 / 1024).toFixed(1)} MB`);
     return;
   }
-  if (!target) fail('Was soll wiederhergestellt werden? latest, ein Zeitstempel (--list zeigt sie) oder eine .enc-Datei');
+  if (!target) fail(t('Was soll wiederhergestellt werden? latest, ein Zeitstempel (--list zeigt sie) oder eine .enc-Datei'));
 
   // A local encrypted file (downloaded from the bucket by hand): only the database.
   if (existsSync(target)) {
     const head = await readHeader(target);
-    if (!head.ok) fail(`${target} ist keine verschlüsselte Sicherung von HyperLevel`);
+    if (!head.ok) fail(t('{target} ist keine verschlüsselte Sicherung von HyperLevel', { target }));
     const dir = resolve(value('--to') ?? join(dataDir, `restore-${stampOf(new Date())}`));
     mkdirSync(dir, { recursive: true });
     const dbFile = join(dir, 'pghl.db');
@@ -57,9 +59,9 @@ async function main() {
     return;
   }
 
-  if (!c.config) fail(c.error ?? 'Off-site-Backup ist nicht eingerichtet (PGHL_BACKUP_S3_* und PGHL_BACKUP_KEY)');
+  if (!c.config) fail(c.error ?? t('Off-site-Backup ist nicht eingerichtet (PGHL_BACKUP_S3_* und PGHL_BACKUP_KEY)'));
   const stamp = target === 'latest' ? undefined : target;
-  if (stamp && !/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z$/.test(stamp)) fail(`Unbekannter Zeitstempel ${stamp} – Format 2026-10-10T14-00-00Z (--list zeigt alle)`);
+  if (stamp && !/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z$/.test(stamp)) fail(t('Unbekannter Zeitstempel {stamp} – Format 2026-10-10T14-00-00Z (--list zeigt alle)', { stamp }));
   const dir = resolve(value('--to') ?? join(dataDir, `restore-${stamp ?? 'latest'}`));
   console.log(`Stelle ${stamp ?? 'die neueste Sicherung'} nach ${dir} wieder her${flag('--files') ? ' (mit Dateien)' : ''} …`);
   const r = await restoreSnapshot(c.config, { stamp, dir, files: flag('--files') });

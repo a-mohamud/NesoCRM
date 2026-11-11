@@ -1,4 +1,5 @@
 import { contentMatches } from '../core/files.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Logo uploads (white-label logo, square mark, favicon): PNG, JPEG, WebP and SVG. Raster files go through the
@@ -103,7 +104,7 @@ export function svgProblem(source: string): string | null {
 
     if (raw.startsWith('/')) {
       const name = raw.slice(1).trim().toLowerCase();
-      if (!ELEMENTS.has(name.replace(/^svg:/, ''))) return `Nicht erlaubtes SVG-Element „${name.slice(0, 30)}“`;
+      if (!ELEMENTS.has(name.replace(/^svg:/, ''))) return tApp()('Nicht erlaubtes SVG-Element „{name}“', { name: name.slice(0, 30) });
       if (stack.pop() !== name) return 'SVG ist kein gültiges XML';
       if (name === 'style') {
         inStyle = false;
@@ -122,7 +123,7 @@ export function svgProblem(source: string): string | null {
     const name = nameMatch[1].toLowerCase();
     const local = name.replace(/^svg:/, '');
     if (++tags > MAX_TAGS) return 'Die SVG-Grafik ist zu komplex';
-    if (!ELEMENTS.has(local)) return `Nicht erlaubtes SVG-Element „${name.slice(0, 30)}“`;
+    if (!ELEMENTS.has(local)) return tApp()('Nicht erlaubtes SVG-Element „{name}“', { name: name.slice(0, 30) });
     if (!sawRoot) {
       if (local !== 'svg') return 'Die Datei ist keine SVG-Grafik';
       sawRoot = true;
@@ -141,7 +142,7 @@ export function svgProblem(source: string): string | null {
       });
       const flat = value.replace(/[\s\u0000-\u001f]+/g, '');
       if (key.startsWith('on')) return 'Nicht erlaubt: Event-Handler in der SVG';
-      if (['src', 'srcdoc', 'formaction', 'action', 'xml:base', 'xlink:actuate', 'xlink:show'].includes(key)) return `Nicht erlaubtes Attribut „${key}“`;
+      if (['src', 'srcdoc', 'formaction', 'action', 'xml:base', 'xlink:actuate', 'xlink:show'].includes(key)) return tApp()('Nicht erlaubtes Attribut „{name}“', { name: key });
       if (DANGEROUS_VALUE.test(flat) || DANGEROUS_VALUE.test(value)) return 'Nicht erlaubt: Skript-Adresse in der SVG';
       if (key === 'href' || key === 'xlink:href') {
         const v = value.trim();
@@ -178,7 +179,7 @@ export function checkLogoDataUrl(dataUrl: unknown): LogoCheck {
   const buf = Buffer.from(m[2], 'base64');
   if (!buf.length) return { ok: false, error: 'Die Datei ist leer' };
   if (mime === 'image/svg+xml') {
-    if (buf.length > LOGO_MAX_SVG) return { ok: false, error: `SVG größer als ${LOGO_MAX_SVG / 1024} KB` };
+    if (buf.length > LOGO_MAX_SVG) return { ok: false, error: tApp()('SVG größer als {kb} KB', { kb: LOGO_MAX_SVG / 1024 }) };
     const problem = svgProblem(buf.toString('utf8'));
     if (problem) return { ok: false, error: problem };
   } else {

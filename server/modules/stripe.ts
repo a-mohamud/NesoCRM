@@ -22,6 +22,7 @@ import {
 } from '../services/stripe.js';
 import { openSecret, sealSecret } from './mail-sync.js';
 import { createInvoice, invoiceSettings, markInvoicePaid, sendInvoice } from './payments.js';
+import { tLoc, tApp } from '../i18n/index.js';
 
 /**
  * Stripe direct payments per sub-account: the sub-account's own Stripe key creates Checkout
@@ -285,14 +286,15 @@ export const stripeModule: Module = {
         invAudit(app, locationId, inv.id, 'payment.mismatch', text, STRIPE_ACTOR);
         if (inv.contact_id) logActivity(app, locationId, inv.contact_id, 'invoice.payment_mismatch', text);
       };
+      const t = tLoc(app, locationId);
       if (isInvoice && amount !== undefined) {
-        const got = `Stripe-Zahlung über ${money(amount, currency)}`;
+        const got = t('Stripe-Zahlung über {amount}', { amount: money(amount, currency) });
         if (currency !== String(inv.currency).toUpperCase() || !(amount > 0)) {
-          flag(`${got} passt nicht zu Rechnung ${inv.number} (${money(open, inv.currency)} offen) – nicht gebucht, bitte prüfen`);
+          flag(t('{got} passt nicht zu Rechnung {number} ({open} offen) – nicht gebucht, bitte prüfen', { got, number: inv.number, open: money(open, inv.currency) }));
           return { handled: 'amount_mismatch', invoiceId: inv.id };
         }
         if (open <= 0) {
-          flag(`${got} für Rechnung ${inv.number}, auf der nichts mehr offen ist – nicht gebucht, bitte erstatten`);
+          flag(t('{got} für Rechnung {number}, auf der nichts mehr offen ist – nicht gebucht, bitte erstatten', { got, number: inv.number }));
           return { handled: inv.status === 'paid' ? 'already_paid' : 'nothing_open', invoiceId: inv.id };
         }
         if (amount < open) {
@@ -302,8 +304,8 @@ export const stripeModule: Module = {
             if (e instanceof HttpError && e.status === 409) return { handled: 'already_paid', invoiceId: inv.id };
             throw e;
           }
-          flag(`${got} ist weniger als der offene Betrag ${money(open, inv.currency)} – als Teilzahlung gebucht, ${money(open - amount, inv.currency)} bleiben offen`);
-          push(locationId, `Teilzahlung auf Rechnung ${inv.number}`, `${money(amount, currency)} über Stripe`, `/app/invoices/${inv.id}`);
+          flag(t('{got} ist weniger als der offene Betrag {open} – als Teilzahlung gebucht, {rest} bleiben offen', { got, open: money(open, inv.currency), rest: money(open - amount, inv.currency) }));
+          push(locationId, t('Teilzahlung auf Rechnung {number}', { number: inv.number }), t('{amount} über Stripe', { amount: money(amount, currency) }), `/app/invoices/${inv.id}`);
           return { handled: 'invoice_partially_paid', invoiceId: inv.id };
         }
       }
@@ -311,8 +313,8 @@ export const stripeModule: Module = {
       const changed = markInvoicePaid(app, locationId, inv.id, 'Stripe');
       if (changed) {
         if (isInvoice && amount !== undefined && amount > open)
-          flag(`Stripe-Zahlung über ${money(amount, currency)} ist mehr als der offene Betrag ${money(open, inv.currency)} – ${money(amount - open, inv.currency)} zu viel gezahlt, bitte erstatten`);
-        push(locationId, `Rechnung ${inv.number} bezahlt`, `${money(amount ?? open, currency)} über Stripe`, `/app/invoices/${inv.id}`);
+          flag(t('Stripe-Zahlung über {amount} ist mehr als der offene Betrag {open} – {extra} zu viel gezahlt, bitte erstatten', { amount: money(amount, currency), open: money(open, inv.currency), extra: money(amount - open, inv.currency) }));
+        push(locationId, t('Rechnung {number} bezahlt', { number: inv.number }), t('{amount} über Stripe', { amount: money(amount ?? open, currency) }), `/app/invoices/${inv.id}`);
       }
       return { handled: changed ? 'invoice_paid' : 'already_paid', invoiceId: inv.id };
     }
@@ -347,7 +349,8 @@ export const stripeModule: Module = {
         row = parseJson(db.get('SELECT * FROM stripe_checkouts WHERE id = ?', session.id), ['meta'])!;
       }
       const product = db.get('SELECT * FROM products WHERE id = ? AND location_id = ?', md.product_id, locationId);
-      const name = String(product?.name ?? md.product_name ?? 'Produkt');
+      const t = tLoc(app, locationId);
+      const name = String(product?.name ?? md.product_name ?? t('Produkt'));
       let contactId: string | null = row.contact_id;
       if (!contactId) {
         contactId = findOrCreateContact(locationId, email, String(session.customer_details?.name ?? ''), String(session.customer_details?.phone ?? ''));
@@ -368,7 +371,7 @@ export const stripeModule: Module = {
           title: name,
           items,
           currency,
-          notes: `Online bezahlt über ${via}. Vielen Dank für deinen Kauf!`,
+          notes: t('Online bezahlt über {via}. Vielen Dank für deinen Kauf!', { via }),
         });
         invoiceId = created.id;
         db.run('UPDATE stripe_checkouts SET invoice_id = ? WHERE id = ?', invoiceId, session.id);
@@ -377,14 +380,14 @@ export const stripeModule: Module = {
       const tag = String(md.tag || tagOf(product ?? { name }, product ? linkOf(product.id) : undefined));
       if (contactId) addTags(app, locationId, contactId, [tag]);
       db.run(`UPDATE stripe_checkouts SET status = 'paid', paid_at = ?, payment_intent = ?, subscription = ? WHERE id = ?`, now(), session.payment_intent ?? null, session.subscription ?? null, session.id);
-      if (contactId) logActivity(app, locationId, contactId, 'product.purchased', `Gekauft: ${name} (${money(amount, currency)}) über ${via}`);
+      if (contactId) logActivity(app, locationId, contactId, 'product.purchased', t('Gekauft: {name} ({amount}) über {via}', { name, amount: money(amount, currency), via }));
       app.events.emit(locationId, 'product.purchased', { contactId, productId: md.product_id, product: { id: md.product_id, name }, invoiceId, amount_cents: amount, currency, tag, sessionId: session.id, metadata: md });
-      push(locationId, `Neuer Kauf: ${name}`, `${email || 'Unbekannt'} · ${money(amount, currency)}`, `/app/invoices/${invoiceId}`);
+      push(locationId, t('Neuer Kauf: {name}', { name }), `${email || t('Unbekannt')} · ${money(amount, currency)}`, `/app/invoices/${invoiceId}`);
       if (contactId && account(locationId)?.options?.auto_send_receipt !== false) {
         const inv = parseJson(db.get('SELECT * FROM invoices WHERE id = ?', invoiceId), ['items']);
         void sendInvoice(app, locationId, inv, {
-          subject: 'Deine Rechnung {{invoice.number}} – vielen Dank für deinen Kauf',
-          body: `Hallo {{contact.first_name|}},\n\nvielen Dank für deinen Kauf von „${name}“. Die Zahlung ist eingegangen – hier ist deine Rechnung:\n{{invoice.url}}\n\nViele Grüße\n{{location.name}}`,
+          subject: t('Deine Rechnung {{invoice.number}} – vielen Dank für deinen Kauf'),
+          body: t('Hallo {{contact.first_name|}},\n\nvielen Dank für deinen Kauf von „{name}“. Die Zahlung ist eingegangen – hier ist deine Rechnung:\n{{invoice.url}}\n\nViele Grüße\n{{location.name}}', { name }),
         }).catch((e) => console.error('[stripe] Rechnung senden', (e as Error).message));
       }
       return { handled: 'product_purchased', invoiceId, contactId };
@@ -405,17 +408,18 @@ export const stripeModule: Module = {
       const row = db.get('SELECT * FROM stripe_checkouts WHERE id = ?', sinv.id)!;
       if (!fresh && row.status === 'paid') return { handled: 'duplicate' };
       const product = db.get('SELECT * FROM products WHERE id = ? AND location_id = ?', md.product_id, locationId);
-      const name = String(product?.name ?? md.product_name ?? 'Abo');
+      const t = tLoc(app, locationId);
+      const name = String(product?.name ?? md.product_name ?? t('Abonnement'));
       const contactId = row.contact_id ?? findOrCreateContact(locationId, normalizeEmail(sinv.customer_email ?? ''), String(sinv.customer_name ?? ''), '');
       let invoiceId = row.invoice_id;
       if (!invoiceId) {
         invoiceId = createInvoice(app, locationId, {
           kind: 'invoice',
           contact_id: contactId,
-          title: `${name} (Verlängerung)`,
+          title: t('{name} (Verlängerung)', { name }),
           items: [{ name, description: product?.description ?? '', qty: 1, price_cents: Number(md.price_cents ?? product?.price_cents ?? 0), tax_rate: Number(md.tax_rate ?? defaultTax(locationId)) }],
           currency: String(sinv.currency ?? 'eur').toUpperCase(),
-          notes: 'Abo-Verlängerung, online bezahlt über Stripe.',
+          notes: t('Abo-Verlängerung, online bezahlt über Stripe.'),
         }).id;
       }
       db.run(`UPDATE stripe_checkouts SET contact_id = ?, invoice_id = ?, status = 'paid', paid_at = ? WHERE id = ?`, contactId, invoiceId, now(), sinv.id);
@@ -431,7 +435,7 @@ export const stripeModule: Module = {
       if (!row?.contact_id) return { handled: 'ignored' };
       const tag = String(row.meta?.tag ?? md.tag ?? '');
       if (tag) removeTags(app, locationId, row.contact_id, [tag]);
-      logActivity(app, locationId, row.contact_id, 'product.subscription_ended', 'Stripe-Abo beendet');
+      logActivity(app, locationId, row.contact_id, 'product.subscription_ended', tLoc(app, locationId)('Stripe-Abo beendet'));
       app.events.emit(locationId, 'product.subscription_ended', { contactId: row.contact_id, productId: row.product_id, subscription: sub.id });
       return { handled: 'subscription_ended' };
     }
@@ -441,7 +445,7 @@ export const stripeModule: Module = {
       const row = db.get('SELECT * FROM stripe_checkouts WHERE location_id = ? AND ((payment_intent IS NOT NULL AND payment_intent = ?) OR id = ?)', locationId, charge.payment_intent ?? '', charge.invoice ?? '');
       if (!row) return { handled: 'ignored' };
       const amount = Number(charge.amount_refunded ?? 0);
-      if (row.contact_id) logActivity(app, locationId, row.contact_id, 'payment.refunded', `Stripe-Erstattung über ${money(amount, String(charge.currency ?? row.currency))}`);
+      if (row.contact_id) logActivity(app, locationId, row.contact_id, 'payment.refunded', tLoc(app, locationId)('Stripe-Erstattung über {amount}', { amount: money(amount, String(charge.currency ?? row.currency)) }));
       app.events.emit(locationId, 'payment.refunded', { contactId: row.contact_id, invoiceId: row.invoice_id, productId: row.product_id, amount_cents: amount, currency: String(charge.currency ?? row.currency).toUpperCase(), full: charge.refunded === true, paymentIntent: charge.payment_intent ?? null });
       return { handled: 'refunded', invoiceId: row.invoice_id };
     }
@@ -454,7 +458,7 @@ export const stripeModule: Module = {
       if (md.location_id && md.location_id !== locationId) return { handled: 'ignored' };
       const first = subId ? db.get(`SELECT * FROM stripe_checkouts WHERE location_id = ? AND subscription = ? AND kind = 'product'`, locationId, subId) : undefined;
       if (!first?.contact_id) return { handled: 'ignored' };
-      logActivity(app, locationId, first.contact_id, 'payment.failed', `Abo-Zahlung fehlgeschlagen (${money(Number(sinv.amount_due ?? 0), String(sinv.currency ?? first.currency))})`);
+      logActivity(app, locationId, first.contact_id, 'payment.failed', tLoc(app, locationId)('Abo-Zahlung fehlgeschlagen ({amount})', { amount: money(Number(sinv.amount_due ?? 0), String(sinv.currency ?? first.currency)) }));
       app.events.emit(locationId, 'payment.failed', { contactId: first.contact_id, productId: first.product_id, subscription: subId, amount_cents: Number(sinv.amount_due ?? 0), currency: String(sinv.currency ?? first.currency).toUpperCase(), reason: String(sinv.last_finalization_error?.code ?? 'renewal_failed'), attempt: Number(sinv.attempt_count ?? 1) });
       return { handled: 'payment_failed' };
     }
@@ -473,7 +477,7 @@ export const stripeModule: Module = {
         if (type.endsWith('failed') && md.invoice_id) {
           const inv = db.get<any>('SELECT contact_id, number, kind, total_cents, paid_cents, credited_cents, deducted_cents, currency FROM invoices WHERE id = ? AND location_id = ?', md.invoice_id, locationId);
           if (inv?.contact_id) {
-            logActivity(app, locationId, inv.contact_id, 'invoice.payment_failed', `Zahlung für Rechnung ${inv.number} fehlgeschlagen (Stripe)`);
+            logActivity(app, locationId, inv.contact_id, 'invoice.payment_failed', tLoc(app, locationId)('Zahlung für Rechnung {number} fehlgeschlagen (Stripe)', { number: inv.number }));
             // what this payment was for: the session's amount (the open amount when it was made)
             app.events.emit(locationId, 'payment.failed', { contactId: inv.contact_id, invoiceId: md.invoice_id, amount_cents: Number(session.amount_total) || openCents(inv), currency: inv.currency, reason: 'async_payment_failed' });
           }
@@ -535,7 +539,7 @@ export const stripeModule: Module = {
       const acc = account(locationId);
       if (!acc?.webhook_secret) throw notFound('Stripe ist für diesen Account nicht eingerichtet');
       const check = verifyStripeSignature(ctx.rawBody, String(ctx.req.headers['stripe-signature'] ?? ''), openSecret(app, acc.webhook_secret));
-      if (!check.ok) throw bad(`Ungültige Stripe-Signatur: ${check.reason}`);
+      if (!check.ok) throw bad(tApp()('Ungültige Stripe-Signatur: {reason}', { reason: tApp()(check.reason ?? '') }));
       let event: any;
       try {
         event = JSON.parse(ctx.rawBody);
@@ -568,7 +572,7 @@ export const stripeModule: Module = {
       if (inv.status === 'paid') return 'Diese Rechnung ist schon bezahlt';
       if (inv.kind !== 'invoice' || inv.status !== 'sent') return 'Diese Rechnung kann nicht online bezahlt werden';
       const open = openCents(inv);
-      return open <= 0 ? 'Für diese Rechnung ist nichts mehr offen' : `Der offene Betrag (${money(open, inv.currency)}) ist zu klein für eine Online-Zahlung`;
+      return open <= 0 ? 'Für diese Rechnung ist nichts mehr offen' : tLoc(app, inv.location_id)('Der offene Betrag ({amount}) ist zu klein für eine Online-Zahlung', { amount: money(open, inv.currency) });
     };
 
     /**
@@ -582,11 +586,12 @@ export const stripeModule: Module = {
 
     app.services.invoicePayHtml = (inv: any) => {
       if (!payable(inv) || !account(inv.location_id)?.secret_key) return '';
-      if (paymentInProgress(inv)) return `<p class="noprint muted" style="margin:10px 0 14px">${escapeHtml(IN_PROGRESS)}</p>`;
+      const t = tLoc(app, inv.location_id);
+      if (paymentInProgress(inv)) return `<p class="noprint muted" style="margin:10px 0 14px">${escapeHtml(t(IN_PROGRESS))}</p>`;
       const open = openCents(inv);
       return `<form method="post" action="/i/${encodeURIComponent(inv.public_token)}/pay" class="noprint" style="margin:10px 0 14px">
-      <button type="submit" style="width:100%;max-width:420px">Jetzt bezahlen (Karte, SEPA, Apple Pay …)</button>
-      <div class="muted" style="font-size:12px;margin-top:6px">${open < inv.total_cents ? `Offener Betrag ${escapeHtml(money(open, inv.currency))} · ` : ''}Sichere Zahlung über Stripe</div></form>`;
+      <button type="submit" style="width:100%;max-width:420px">${escapeHtml(t('Jetzt bezahlen (Karte, SEPA, Apple Pay …)'))}</button>
+      <div class="muted" style="font-size:12px;margin-top:6px">${open < inv.total_cents ? `${escapeHtml(t('Offener Betrag {amount}', { amount: money(open, inv.currency) }))} · ` : ''}${escapeHtml(t('Sichere Zahlung über Stripe'))}</div></form>`;
     };
 
     /** Checkout pages being made right now, per invoice: a double click waits for the same page instead of making a second one. */
@@ -626,7 +631,7 @@ export const stripeModule: Module = {
         success_url: `${base}/stripe?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: base,
         metadata: meta,
-        payment_intent_data: { metadata: meta, description: `${open < inv.total_cents ? 'Restbetrag ' : ''}Rechnung ${inv.number}` },
+        payment_intent_data: { metadata: meta, description: open < inv.total_cents ? tLoc(app, inv.location_id)('Restbetrag Rechnung {number}', { number: inv.number }) : tLoc(app, inv.location_id)('Rechnung {number}', { number: inv.number }) },
       }).catch((e) => {
         throw stripeFail(e);
       });
@@ -636,32 +641,32 @@ export const stripeModule: Module = {
     }
 
     const errorPage = (title: string, msg: string, back?: string, status = 400) =>
-      html(publicPage({ title, body: `<div class="wrap"><div class="card"><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(msg)}</p>${back ? `<p><a class="btn secondary" href="${escapeHtml(back)}">Zurück</a></p>` : ''}</div></div>` }), status);
+      html(publicPage({ title, body: `<div class="wrap"><div class="card"><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(msg)}</p>${back ? `<p><a class="btn secondary" href="${escapeHtml(back)}">${escapeHtml(tApp()('Zurück'))}</a></p>` : ''}</div></div>` }), status);
 
     const invByToken = (token: string) => parseJson(db.get('SELECT * FROM invoices WHERE public_token = ?', token), ['items']);
 
     router.post('/i/:token/pay', 'public', async (ctx) => {
       const inv = invByToken(ctx.params.token);
-      if (!inv || inv.status === 'draft') return errorPage('Nicht gefunden', 'Dieses Dokument gibt es nicht.', undefined, 404);
+      if (!inv || inv.status === 'draft') return errorPage(tApp()('Nicht gefunden'), tApp()('Dieses Dokument gibt es nicht.'), undefined, 404);
       const back = `/i/${encodeURIComponent(inv.public_token)}`;
-      if (throttled(ctx.ip)) return errorPage('Bitte kurz warten', 'Zu viele Versuche – bitte in ein paar Minuten noch einmal.', back, 429);
+      if (throttled(ctx.ip)) return errorPage(tApp()('Bitte kurz warten'), tApp()('Zu viele Versuche – bitte in ein paar Minuten noch einmal.'), back, 429);
       try {
         return redirect(await invoiceCheckout(inv), 303);
       } catch (e) {
-        return errorPage('Online-Zahlung nicht möglich', (e as Error).message, back, e instanceof HttpError && e.status === 409 ? 409 : 400);
+        return errorPage(tApp()('Online-Zahlung nicht möglich'), (e as Error).message, back, e instanceof HttpError && e.status === 409 ? 409 : 400);
       }
     });
 
     /** Back from Stripe: confirm right away (the webhook may be slower or not set up). */
     router.get('/i/:token/stripe', 'public', async (ctx) => {
       const inv = invByToken(ctx.params.token);
-      if (!inv) return errorPage('Nicht gefunden', 'Dieses Dokument gibt es nicht.', undefined, 404);
+      if (!inv) return errorPage(tApp()('Nicht gefunden'), tApp()('Dieses Dokument gibt es nicht.'), undefined, 404);
       const back = `/i/${encodeURIComponent(inv.public_token)}`;
       const sid = String(ctx.query.get('session_id') ?? '');
       const row = /^cs_[A-Za-z0-9_]+$/.test(sid) ? db.get(`SELECT * FROM stripe_checkouts WHERE id = ? AND invoice_id = ?`, sid, inv.id) : undefined;
       if (!row || inv.status === 'paid') return redirect(back);
       const session = await confirmSession(inv.location_id, sid);
-      if (session && !PAID_SESSION.has(session.payment_status) && session.status === 'complete') return pendingPage(back);
+      if (session && !PAID_SESSION.has(session.payment_status) && session.status === 'complete') return pendingPage(back, tLoc(app, inv.location_id));
       return redirect(back);
     });
 
@@ -678,11 +683,11 @@ export const stripeModule: Module = {
       }
     }
 
-    const pendingPage = (back: string) =>
+    const pendingPage = (back: string, t = tApp()) =>
       html(
         publicPage({
-          title: 'Danke!',
-          body: `<div class="wrap"><div class="card"><h1>Danke!</h1><p>Deine Zahlung wird bearbeitet (z. B. SEPA-Lastschrift). Sobald sie bestätigt ist, bekommst du Bescheid.</p><p><a class="btn secondary" href="${escapeHtml(back)}">Zurück</a></p></div></div>`,
+          title: t('Danke!'),
+          body: `<div class="wrap"><div class="card"><h1>${escapeHtml(t('Danke!'))}</h1><p>${escapeHtml(t('Deine Zahlung wird bearbeitet (z. B. SEPA-Lastschrift). Sobald sie bestätigt ist, bekommst du Bescheid.'))}</p><p><a class="btn secondary" href="${escapeHtml(back)}">${escapeHtml(t('Zurück'))}</a></p></div></div>`,
         }),
       );
 
@@ -705,8 +710,10 @@ export const stripeModule: Module = {
 
     function buyPage(ctx: Ctx, p: any, key: string, attr = '') {
       const loc = app.location(p.location_id)!;
+      const t = tLoc(app, p.location_id);
       const { tax, gross } = grossOf(p);
-      const every = p.recurring === 'month' ? ' / Monat' : p.recurring === 'year' ? ' / Jahr' : '';
+      const every = p.recurring === 'month' ? ` / ${t('Monat')}` : p.recurring === 'year' ? ` / ${t('Jahr')}` : '';
+      const taxText = (rate: number) => t('inkl. {rate} % USt.', { rate: t.locale === 'de' ? String(rate).replace('.', ',') : String(rate) });
       const small = !!loc.settings.invoices?.small_business;
       const email = normalizeEmail(ctx.query.get('email') ?? '');
       // Extra fields from other modules (order bump, discount code): app.services.buyPageHtml = [(ctx, product, link, key) => html].
@@ -716,14 +723,14 @@ export const stripeModule: Module = {
   <h1>${escapeHtml(p.name)}</h1>
   ${p.description ? `<p>${escapeHtml(p.description).replace(/\n/g, '<br>')}</p>` : ''}
   <p style="font-size:28px;font-weight:700;margin:18px 0 2px">${escapeHtml(money(gross, p.currency))}<span class="muted" style="font-size:16px;font-weight:400">${every}</span></p>
-  <p class="muted" style="font-size:13px;margin-top:0">${small ? 'Gemäß § 19 UStG ohne Umsatzsteuer' : tax ? `inkl. ${String(tax).replace('.', ',')} % USt.` : ''}</p>
+  <p class="muted" style="font-size:13px;margin-top:0">${escapeHtml(small ? t('Gemäß § 19 UStG ohne Umsatzsteuer') : tax ? taxText(tax) : '')}</p>
   <form method="post" action="/buy/${encodeURIComponent(key)}">
     ${email ? `<input type="hidden" name="email" value="${escapeHtml(email)}">` : ''}
     ${extras}
     ${attr ? `<input type="hidden" name="_a" value="${escapeHtml(attr)}">` : ''}
-    <button type="submit" style="width:100%">${escapeHtml(app.services.buyButtonLabel?.(p, loc) ?? (p.recurring ? 'Jetzt abonnieren' : 'Jetzt kaufen'))}</button>
+    <button type="submit" style="width:100%">${escapeHtml(app.services.buyButtonLabel?.(p, loc) ?? (p.recurring ? t('Jetzt abonnieren') : t('Jetzt kaufen')))}</button>
   </form>
-  <p class="muted" style="font-size:12px;text-align:center;margin-bottom:0">${escapeHtml(app.services.buyPayNote?.(p) ?? 'Sichere Zahlung über Stripe – Karte, SEPA, Apple Pay, Google Pay …')}</p>
+  <p class="muted" style="font-size:12px;text-align:center;margin-bottom:0">${escapeHtml(app.services.buyPayNote?.(p) ?? t('Sichere Zahlung über Stripe – Karte, SEPA, Apple Pay, Google Pay …'))}</p>
 </div></div>`;
       return html(publicPage({ title: `${p.name} – ${loc.name}`, body, color: loc.settings?.branding?.color || undefined, description: String(p.description ?? '').slice(0, 160) }));
     }
@@ -746,7 +753,7 @@ export const stripeModule: Module = {
     const sellable = (p: any) => !!account(p.location_id)?.secret_key || (!p.recurring && (app.services.payRegistry?.ready(p.location_id) ?? []).some((x: string) => x !== 'stripe'));
     router.get('/buy/:key', 'public', (ctx) => {
       const found = resolveProduct(ctx.params.key);
-      if (!found || !sellable(found.p)) return errorPage('Nicht verfügbar', 'Dieses Angebot gibt es (gerade) nicht.', undefined, 404);
+      if (!found || !sellable(found.p)) return errorPage(tApp()('Nicht verfügbar'), tApp()('Dieses Angebot gibt es (gerade) nicht.'), undefined, 404);
       // Visit with UTM / ?ref= (attribution & affiliates); the token rides along to the checkout.
       const r = buyPage(ctx, found.p, ctx.params.key, app.services.attribution?.visit(ctx, found.p.location_id) ?? '');
       r.headers['cache-control'] = 'private, no-cache';
@@ -758,16 +765,16 @@ export const stripeModule: Module = {
       // Another provider chosen on the page (PayPal, Mollie …): the payment registry takes over with the same hooks (modules/pay-registry.ts).
       const provider = String(ctx.body?.provider ?? '');
       if (found && provider && provider !== 'stripe' && app.services.payBuy) {
-        if (throttled(ctx.ip)) return errorPage('Bitte kurz warten', 'Zu viele Versuche – bitte in ein paar Minuten noch einmal.', `/buy/${encodeURIComponent(ctx.params.key)}`, 429);
+        if (throttled(ctx.ip)) return errorPage(tApp()('Bitte kurz warten'), tApp()('Zu viele Versuche – bitte in ein paar Minuten noch einmal.'), `/buy/${encodeURIComponent(ctx.params.key)}`, 429);
         return app.services.payBuy(ctx, found, ctx.params.key);
       }
       const key = secretOf(found ? account(found.p.location_id) : undefined);
-      if (!found || !key) return errorPage('Nicht verfügbar', 'Dieses Angebot gibt es (gerade) nicht.', undefined, 404);
+      if (!found || !key) return errorPage(tApp()('Nicht verfügbar'), tApp()('Dieses Angebot gibt es (gerade) nicht.'), undefined, 404);
       const { p, link } = found;
       const back = `/buy/${encodeURIComponent(ctx.params.key)}`;
-      if (throttled(ctx.ip)) return errorPage('Bitte kurz warten', 'Zu viele Versuche – bitte in ein paar Minuten noch einmal.', back, 429);
+      if (throttled(ctx.ip)) return errorPage(tApp()('Bitte kurz warten'), tApp()('Zu viele Versuche – bitte in ein paar Minuten noch einmal.'), back, 429);
       const { tax, gross } = grossOf(p);
-      if (gross < MIN_AMOUNT_CENTS) return errorPage('Nicht verfügbar', 'Der Preis ist zu klein für eine Online-Zahlung.', back);
+      if (gross < MIN_AMOUNT_CENTS) return errorPage(tApp()('Nicht verfügbar'), tApp()('Der Preis ist zu klein für eine Online-Zahlung.'), back);
       const recurring = p.recurring === 'month' || p.recurring === 'year' ? (p.recurring as 'month' | 'year') : undefined;
       const email = normalizeEmail(ctx.body?.email ?? '');
       const meta: Record<string, any> = { location_id: p.location_id, product_id: p.id, product_name: String(p.name).slice(0, 200), price_cents: p.price_cents, tax_rate: tax, qty: 1, tag: tagOf(p, link).slice(0, 200) };
@@ -775,7 +782,7 @@ export const stripeModule: Module = {
       try {
         const params: Record<string, any> = {
           mode: recurring ? 'subscription' : 'payment',
-          line_items: lineItemParams([{ name: p.name, description: [p.description, tax ? `inkl. ${String(tax).replace('.', ',')} % USt.` : ''].filter(Boolean).join(' · ').slice(0, 500) || undefined, unit_amount: gross, quantity: 1 }], p.currency, recurring),
+          line_items: lineItemParams([{ name: p.name, description: [p.description, tax ? tLoc(app, p.location_id)('inkl. {rate} % USt.', { rate: tLoc(app, p.location_id).locale === 'de' ? String(tax).replace('.', ',') : String(tax) }) : ''].filter(Boolean).join(' · ').slice(0, 500) || undefined, unit_amount: gross, quantity: 1 }], p.currency, recurring),
           ...(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? { customer_email: email } : {}),
           client_reference_id: p.id,
           success_url: `${self}/danke?session_id={CHECKOUT_SESSION_ID}`,
@@ -788,12 +795,12 @@ export const stripeModule: Module = {
         for (const fn of app.services.buyCheckout ?? []) await fn(ctx, { product: p, link, params, meta, key: ctx.params.key });
         const amount = (params.line_items as any[]).reduce((sum, l) => sum + Number(l.quantity) * Number(l.price_data?.unit_amount ?? 0), 0);
         const session = await stripeRequest(key, 'POST', '/v1/checkout/sessions', params);
-        if (!session?.url) throw new Error('Stripe hat keine Bezahlseite geliefert');
+        if (!session?.url) throw new Error(tApp()('Stripe hat keine Bezahlseite geliefert'));
         db.insert('stripe_checkouts', { id: session.id, location_id: p.location_id, kind: 'product', product_id: p.id, url: session.url, mode: recurring ? 'subscription' : 'payment', amount_cents: amount, currency: p.currency, status: 'open', email, meta, created_at: now() });
         app.services.attribution?.checkout(ctx, p.location_id, session.id, ctx.body?._a);
         return redirect(session.url, 303);
       } catch (e) {
-        return errorPage('Kauf gerade nicht möglich', (e as Error).message, back);
+        return errorPage(tApp()('Kauf gerade nicht möglich'), (e as Error).message, back);
       }
     });
 
@@ -816,12 +823,13 @@ export const stripeModule: Module = {
         }
       }
       if (state === 'paid' && found?.link?.redirect_url) return redirect(found.link.redirect_url, 303);
-      const name = found?.p.name ?? 'deinen Kauf';
+      const t = found ? tLoc(app, found.p.location_id) : tApp();
       const msg =
-        state === 'paid' ? 'Die Zahlung ist eingegangen. Du bekommst gleich eine E-Mail mit deiner Rechnung.'
-        : state === 'pending' ? 'Deine Zahlung wird bearbeitet (z. B. SEPA-Lastschrift). Sobald sie bestätigt ist, bekommst du eine E-Mail.'
-        : 'Wir bestätigen gerade deine Zahlung. Du bekommst eine E-Mail, sobald sie eingegangen ist.';
-      return html(publicPage({ title: 'Danke!', body: `<div class="wrap" style="max-width:560px"><div class="card"><h1>Danke für ${escapeHtml(found ? `„${name}“` : name)}!</h1><p>${escapeHtml(msg)}</p></div></div>` }));
+        state === 'paid' ? t('Die Zahlung ist eingegangen. Du bekommst gleich eine E-Mail mit deiner Rechnung.')
+        : state === 'pending' ? t('Deine Zahlung wird bearbeitet (z. B. SEPA-Lastschrift). Sobald sie bestätigt ist, bekommst du eine E-Mail.')
+        : t('Wir bestätigen gerade deine Zahlung. Du bekommst eine E-Mail, sobald sie eingegangen ist.');
+      const thanks = found ? t('Danke für „{name}“!', { name: found.p.name }) : t('Danke für deinen Kauf!');
+      return html(publicPage({ title: t('Danke!'), body: `<div class="wrap" style="max-width:560px"><div class="card"><h1>${escapeHtml(thanks)}</h1><p>${escapeHtml(msg)}</p></div></div>` }));
     });
   },
 };

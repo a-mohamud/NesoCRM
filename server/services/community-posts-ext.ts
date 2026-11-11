@@ -6,6 +6,7 @@ import { escapeHtml } from '../core/template.js';
 import { id, now } from '../core/util.js';
 import { looksLikeVideo, extOf, VIDEO_EXT } from './webinar-video.js';
 import { embedHtml, videoEmbed } from './markdown.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * What a community post can carry besides text and pictures: a poll, a video (YouTube, Vimeo, Loom or MP4 link, or a file the
@@ -32,7 +33,7 @@ export function cleanPoll(input: { question?: unknown; options?: unknown; multi?
   if (question.length < 3) throw bad('Umfrage: bitte eine Frage stellen');
   if (question.length > 200) throw bad('Umfrage: die Frage ist zu lang');
   if (options.length < 2) throw bad('Umfrage: mindestens zwei Antworten');
-  if (options.length > POLL_OPTIONS_MAX) throw bad(`Umfrage: höchstens ${POLL_OPTIONS_MAX} Antworten`);
+  if (options.length > POLL_OPTIONS_MAX) throw bad(tApp()('Umfrage: höchstens {max} Antworten', { max: POLL_OPTIONS_MAX }));
   const days = Math.min(Math.max(Math.round(Number(input.days) || 0), 0), 30);
   return { question, options, multi: input.multi === true || input.multi === '1' || input.multi === 'on' || input.multi === 'true', days };
 }
@@ -122,7 +123,7 @@ export function cleanGifUrl(v: unknown, opts: { extraHosts?: string[]; ownHost?:
     u = new URL(s);
   }
   const allowed = [...GIF_HOSTS, ...(opts.extraHosts ?? []).map((h) => h.toLowerCase()), ...(opts.ownHost ? [opts.ownHost.toLowerCase()] : [])];
-  if (!allowed.includes(u.hostname.toLowerCase())) throw bad(`GIF: dieser Anbieter ist nicht freigegeben (erlaubt: Giphy, Tenor, Imgur – oder ein Link zu einem GIF auf dieser Website)`);
+  if (!allowed.includes(u.hostname.toLowerCase())) throw bad('GIF: dieser Anbieter ist nicht freigegeben (erlaubt: Giphy, Tenor, Imgur – oder ein Link zu einem GIF auf dieser Website)');
   if (!GIF_EXT.test(u.pathname)) throw bad('GIF: der Link muss direkt auf eine Bilddatei zeigen (.gif, .webp …)');
   return u.href;
 }
@@ -158,9 +159,9 @@ export interface VideoUpload {
 
 export function startVideoUpload(app: App, g: { id: string; location_id: string }, contactId: string | null, name: string, size: number): VideoUpload {
   const n = String(name ?? '').trim().slice(0, 200);
-  if (!VIDEO_EXT.includes(extOf(n))) throw bad(`Nur Videodateien (${VIDEO_EXT.join(', ')})`);
+  if (!VIDEO_EXT.includes(extOf(n))) throw bad(tApp()('Nur Videodateien ({types})', { types: VIDEO_EXT.join(', ') }));
   if (!(size > 0)) throw bad('Dateigröße fehlt');
-  if (size > maxVideoMb() * 1024 * 1024) throw bad(`Video größer als ${maxVideoMb()} MB (Grenze einstellbar mit PGHL_COMMUNITY_VIDEO_MB)`);
+  if (size > maxVideoMb() * 1024 * 1024) throw bad(tApp()('Video größer als {n} MB (Grenze einstellbar mit PGHL_COMMUNITY_VIDEO_MB)', { n: maxVideoMb() }));
   // A few unfinished uploads per person, never more.
   const open = app.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM community_videos WHERE group_id = ? AND status = 'open' AND COALESCE(contact_id, '') = ?`, g.id, contactId ?? '')!.n;
   if (open >= 2) throw new HttpError(429, 'Es laufen schon zwei Uploads – bitte warten.');
@@ -182,10 +183,10 @@ export function startVideoUpload(app: App, g: { id: string; location_id: string 
 export function appendVideoChunk(app: App, up: VideoUpload, offset: number, buf: Buffer): { id: string; received: number; complete: boolean } {
   if (up.status !== 'open') return { id: up.id, received: up.received, complete: true };
   if (!buf?.length) throw bad('Daten fehlen');
-  if (buf.length > CHUNK) throw bad(`Höchstens ${CHUNK / 1024 / 1024} MB pro Teil`);
+  if (buf.length > CHUNK) throw bad(tApp()('Höchstens {n} MB pro Teil', { n: CHUNK / 1024 / 1024 }));
   if (offset !== up.received) {
     if (offset + buf.length === up.received) return { id: up.id, received: up.received, complete: false };
-    throw new HttpError(409, `Erwartet wird der Teil ab Byte ${up.received}`);
+    throw new HttpError(409, tApp()('Erwartet wird der Teil ab Byte {n}', { n: up.received }));
   }
   if (offset + buf.length > up.size) throw bad('Mehr Daten als angekündigt');
   if (offset === 0 && !looksLikeVideo(buf)) {
@@ -211,10 +212,10 @@ export const videoPath = (app: App, up: Pick<VideoUpload, 'file'>) => join(video
 export const videoExists = (app: App, up: Pick<VideoUpload, 'file'>) => existsSync(videoPath(app, up)) && statSync(videoPath(app, up)).isFile();
 
 /** The player for a post video; uploads stream from `src(id)`. */
-export function videoHtml(v: PostVideo, src: (uploadId: string) => string, title = 'Video'): string {
+export function videoHtml(v: PostVideo, src: (uploadId: string) => string, title = 'Video', t: STFn = tApp()): string {
   if (v.kind === 'link') {
     const e = videoEmbed(v.url);
-    return e ? embedHtml(e, title) : `<p><a href="${escapeHtml(v.url)}" target="_blank" rel="noopener noreferrer">Video öffnen</a></p>`;
+    return e ? embedHtml(e, title) : `<p><a href="${escapeHtml(v.url)}" target="_blank" rel="noopener noreferrer">${t('Video öffnen')}</a></p>`;
   }
   return `<div class="md-video"><video src="${escapeHtml(src(v.upload_id))}" controls preload="metadata" playsinline></video></div>`;
 }

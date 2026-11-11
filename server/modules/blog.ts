@@ -7,6 +7,7 @@ import { id, now, sha256, slugify } from '../core/util.js';
 import { cssUrl, excerptOf, readingMinutes, renderMarkdown, safeUrl, stripMarkdown } from '../services/markdown.js';
 import { miniMarkdown, pageUrl } from './funnels.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Blog for websites: posts per website (draft, scheduled, published), public index with tags and
@@ -159,7 +160,10 @@ const TOOLS: Tool[] = [
 
 const cleanUrl = (v: unknown, field: string) => {
   const s = str(v, field, { max: 1000 });
-  if (s && !/^(https?:\/\/|\/)[^\s]*$/i.test(s)) throw bad(`${field}: bitte eine https://-Adresse`);
+  if (s && !/^(https?:\/\/|\/)[^\s]*$/i.test(s)) {
+    const t = tApp();
+    throw bad(t('{field}: bitte eine https://-Adresse', { field }));
+  }
   return s;
 };
 const cleanTags = (v: unknown) => {
@@ -217,7 +221,7 @@ export const blogModule: Module = {
     const blogUrl = (f: any) => pageUrl(app, f, { slug: 'blog' });
     const postUrl = (f: any, p: any) => `${blogUrl(f)}/${p.slug}`;
     const previewKey = (p: any) => sha256(`${app.config.secret}:blog-preview:${p.id}`).slice(0, 24);
-    const blogSettings = (f: any) => ({ title: 'Blog', description: '', per_page: 9, ...(f.settings?.blog ?? {}) });
+    const blogSettings = (f: any) => ({ title: tLoc(app, f.location_id)('Blog'), description: '', per_page: 9, ...(f.settings?.blog ?? {}) });
     const out = (f: any, p: any) => {
       const { content: _c, ...rest } = p;
       return { ...rest, url: postUrl(f, p), preview_url: p.status === 'published' ? undefined : `${postUrl(f, p)}?preview=${previewKey(p)}`, excerpt_auto: p.excerpt || excerptOf(stripMarkdown(p.content ?? ''), 200) };
@@ -336,9 +340,9 @@ export const blogModule: Module = {
 
     // --- public rendering ------------------------------------------------------------------
     const tz = (f: any) => app.location(f.location_id)?.timezone || 'Europe/Berlin';
-    const fmtDay = (iso: string, zone: string) => {
+    const fmtDay = (iso: string, zone: string, lang: string) => {
       try {
-        return new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long', year: 'numeric', timeZone: zone }).format(new Date(iso));
+        return new Intl.DateTimeFormat(lang === 'de' ? 'de-DE' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: zone }).format(new Date(iso));
       } catch {
         return String(iso).slice(0, 10);
       }
@@ -347,11 +351,12 @@ export const blogModule: Module = {
     const publicPosts = (fid: string) => parseRows(db.all(`SELECT * FROM blog_posts WHERE funnel_id = ? AND status = 'published' ORDER BY published_at DESC`, fid), ['tags', 'seo']);
 
     const shell = (f: any, opts: { title: string; description?: string; head: string; body: string; status?: number; nav?: 'blog' | 'post' }): RawResult => {
+      const t = tLoc(app, f.location_id);
       const s = f.settings ?? {};
       const site = s.site_name || f.name;
       const home = pageUrl(app, f, undefined, true);
       const bs = blogSettings(f);
-      const header = `<header class="bh"><div class="in"><a class="site" href="${escapeHtml(home)}">${s.favicon ? `<img src="${escapeHtml(safeUrl(s.favicon))}" alt="" style="max-height:26px">` : ''}${escapeHtml(site)}</a><nav><a href="${escapeHtml(home)}">Start</a><a class="on" href="${escapeHtml(blogUrl(f))}">${escapeHtml(bs.title || 'Blog')}</a></nav></div></header>`;
+      const header = `<header class="bh"><div class="in"><a class="site" href="${escapeHtml(home)}">${s.favicon ? `<img src="${escapeHtml(safeUrl(s.favicon))}" alt="" style="max-height:26px">` : ''}${escapeHtml(site)}</a><nav><a href="${escapeHtml(home)}">${escapeHtml(t('Start'))}</a><a class="on" href="${escapeHtml(blogUrl(f))}">${escapeHtml(bs.title || 'Blog')}</a></nav></div></header>`;
       const footer = `<footer class="bf">${s.footer_text ? miniMarkdown(s.footer_text) : `© ${new Date().getFullYear()} ${escapeHtml(site)}`}</footer>`;
       const chat = s.chat_widget ? `<script src="/chat/${encodeURIComponent(f.location_id)}/widget.js" async></script>` : '';
       const font = s.font ? `body{font-family:${escapeHtml(String(s.font)).replace(/[;{}]/g, '')}, system-ui, sans-serif}` : '';
@@ -364,13 +369,15 @@ export const blogModule: Module = {
 
     /** Author · date · reading time; small cards leave the author out so the line doesn't wrap. */
     const meta = (f: any, p: any, short = false) => {
-      const bits = [p.author && !short ? `<span>${escapeHtml(p.author)}</span>` : '', p.published_at ? `<time datetime="${escapeHtml(p.published_at)}">${fmtDay(p.published_at, tz(f))}</time>` : '', `<span>${readingMinutes(p.content)} Min. Lesezeit</span>`];
+      const t = tLoc(app, f.location_id);
+      const bits = [p.author && !short ? `<span>${escapeHtml(p.author)}</span>` : '', p.published_at ? `<time datetime="${escapeHtml(p.published_at)}">${fmtDay(p.published_at, tz(f), t.locale)}</time>` : '', `<span>${escapeHtml(t('{n} Min. Lesezeit', { n: readingMinutes(p.content) }))}</span>`];
       return `<div class="meta">${bits.filter(Boolean).join('<span aria-hidden="true">·</span>')}</div>`;
     };
     const card = (f: any, p: any, feat = false) =>
       `<a class="pc${feat ? ' feat' : ''}" href="${escapeHtml(postUrl(f, p))}"><div class="img"${p.cover_image ? ` style="background-image:url('${cssUrl(p.cover_image)}')"` : ''}></div><div class="b">${p.tags?.[0] ? `<span class="kicker">${escapeHtml(p.tags[0])}</span>` : ''}<h2>${escapeHtml(p.title)}</h2><p>${escapeHtml(p.excerpt || excerptOf(stripMarkdown(p.content), feat ? 260 : 150))}</p>${meta(f, p, !feat)}</div></a>`;
 
     const blogIndex = (f: any, q: URLSearchParams): RawResult => {
+      const t = tLoc(app, f.location_id);
       const s = f.settings ?? {};
       const bs = blogSettings(f);
       const site = s.site_name || f.name;
@@ -382,7 +389,7 @@ export const blogModule: Module = {
       const pageNo = Math.min(Math.max(Math.round(num(q.get('page'), 1)), 1), pages);
       const shown = list.slice((pageNo - 1) * per, pageNo * per);
       const counts = new Map<string, number>();
-      for (const p of all) for (const t of p.tags ?? []) counts.set(t, (counts.get(t) ?? 0) + 1);
+      for (const p of all) for (const tg of p.tags ?? []) counts.set(tg, (counts.get(tg) ?? 0) + 1);
       const href = (params: Record<string, string | number | undefined>) => {
         const u = new URLSearchParams();
         for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '' && !(k === 'page' && v === 1)) u.set(k, String(v));
@@ -390,20 +397,20 @@ export const blogModule: Module = {
         return `${blogUrl(f)}${qs ? `?${qs}` : ''}`;
       };
       const chips = counts.size
-        ? `<div class="chips"><a class="chip${tag ? '' : ' on'}" href="${escapeHtml(href({}))}">Alle</a>${[...counts.entries()]
+        ? `<div class="chips"><a class="chip${tag ? '' : ' on'}" href="${escapeHtml(href({}))}">${escapeHtml(t('Alle'))}</a>${[...counts.entries()]
             .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
             .slice(0, 30)
-            .map(([t, n]) => `<a class="chip${t === tag ? ' on' : ''}" href="${escapeHtml(href({ tag: t }))}">${escapeHtml(t)} <small>${n}</small></a>`)
+            .map(([tg, n]) => `<a class="chip${tg === tag ? ' on' : ''}" href="${escapeHtml(href({ tag: tg }))}">${escapeHtml(tg)} <small>${n}</small></a>`)
             .join('')}</div>`
         : '';
       const grid = shown.length
         ? `<div class="posts">${shown.map((p, i) => card(f, p, i === 0 && pageNo === 1 && !tag && shown.length > 2)).join('')}</div>`
-        : `<div class="empty">${tag ? `Keine Beiträge mit „${escapeHtml(tag)}“.` : 'Hier erscheinen bald die ersten Beiträge.'}</div>`;
+        : `<div class="empty">${tag ? t('Keine Beiträge mit „{tag}“.', { tag: escapeHtml(tag) }) : escapeHtml(t('Hier erscheinen bald die ersten Beiträge.'))}</div>`;
       const pager =
         pages > 1
-          ? `<nav class="pager" aria-label="Seiten">${pageNo > 1 ? `<a class="btn secondary" rel="prev" href="${escapeHtml(href({ tag, page: pageNo - 1 }))}">← Neuere</a>` : ''}<span>Seite ${pageNo} von ${pages}</span>${pageNo < pages ? `<a class="btn secondary" rel="next" href="${escapeHtml(href({ tag, page: pageNo + 1 }))}">Ältere →</a>` : ''}</nav>`
+          ? `<nav class="pager" aria-label="${escapeHtml(t('Seiten'))}">${pageNo > 1 ? `<a class="btn secondary" rel="prev" href="${escapeHtml(href({ tag, page: pageNo - 1 }))}">${escapeHtml(t('← Neuere'))}</a>` : ''}<span>${escapeHtml(t('Seite {page} von {pages}', { page: pageNo, pages }))}</span>${pageNo < pages ? `<a class="btn secondary" rel="next" href="${escapeHtml(href({ tag, page: pageNo + 1 }))}">${escapeHtml(t('Ältere →'))}</a>` : ''}</nav>`
           : '';
-      const title = `${tag ? `${tag} – ` : ''}${bs.title || 'Blog'}${pageNo > 1 ? ` (Seite ${pageNo})` : ''} – ${site}`;
+      const title = `${tag ? `${tag} – ` : ''}${bs.title || 'Blog'}${pageNo > 1 ? ` (${t('Seite {page}', { page: pageNo })})` : ''} – ${site}`;
       const desc = bs.description || s.description || '';
       const canonical = href({ tag, page: pageNo });
       const head = [
@@ -429,6 +436,7 @@ export const blogModule: Module = {
 
     /** `preview`: not public (noindex); `flag`: banner text for shared preview links. */
     function renderPost(f: any, p: any, opts: { preview?: boolean; flag?: string; related?: any[] } = {}): string {
+      const t = tLoc(app, f.location_id);
       const s = f.settings ?? {};
       const site = s.site_name || f.name;
       const seo = p.seo ?? {};
@@ -438,7 +446,7 @@ export const blogModule: Module = {
       const image = seo.og_image || p.cover_image || s.og_image || '';
       const ld = {
         '@context': 'https://schema.org',
-        '@type': 'BlogPosting',
+        '@type': 'BlogPosting', // i18n-ignore
         headline: p.title,
         description: desc,
         datePublished: p.published_at,
@@ -447,7 +455,7 @@ export const blogModule: Module = {
         url,
         ...(image ? { image: [image] } : {}),
         ...(p.author ? { author: { '@type': 'Person', name: p.author } } : {}),
-        publisher: { '@type': 'Organization', name: site },
+        publisher: { '@type': 'Organization', name: site }, // i18n-ignore
         ...(p.tags?.length ? { keywords: p.tags.join(', ') } : {}),
       };
       const head = [
@@ -461,17 +469,17 @@ export const blogModule: Module = {
         p.published_at ? `<meta property="article:published_time" content="${escapeHtml(p.published_at)}">` : '',
         `<meta property="article:modified_time" content="${escapeHtml(p.updated_at)}">`,
         p.author ? `<meta property="article:author" content="${escapeHtml(p.author)}">` : '',
-        ...(p.tags ?? []).map((t: string) => `<meta property="article:tag" content="${escapeHtml(t)}">`),
+        ...(p.tags ?? []).map((tg: string) => `<meta property="article:tag" content="${escapeHtml(tg)}">`),
         `<meta name="twitter:card" content="${image ? 'summary_large_image' : 'summary'}">`,
         seo.noindex || s.noindex || opts.preview ? '<meta name="robots" content="noindex, nofollow">' : '',
         `<script type="application/ld+json">${jsonForScript(ld)}</script>`,
       ].join('');
       const enc = encodeURIComponent;
-      const share = `<div class="share"><span>Teilen:</span><a href="https://www.linkedin.com/sharing/share-offsite/?url=${enc(url)}" target="_blank" rel="noopener">LinkedIn</a><a href="https://www.facebook.com/sharer/sharer.php?u=${enc(url)}" target="_blank" rel="noopener">Facebook</a><a href="https://x.com/intent/post?url=${enc(url)}&text=${enc(p.title)}" target="_blank" rel="noopener">X</a><a href="https://wa.me/?text=${enc(`${p.title} ${url}`)}" target="_blank" rel="noopener">WhatsApp</a><a href="mailto:?subject=${enc(p.title)}&body=${enc(url)}">E-Mail</a></div>`;
-      const related = opts.related?.length ? `<section class="related"><h2>Weitere Beiträge</h2><div class="posts">${opts.related.map((r) => card(f, r)).join('')}</div></section>` : '';
-      const tags = p.tags?.length ? `<div class="chips">${p.tags.map((t: string) => `<a class="chip" href="${escapeHtml(`${blogUrl(f)}?tag=${enc(t)}`)}">${escapeHtml(t)}</a>`).join('')}</div>` : '';
+      const share = `<div class="share"><span>${escapeHtml(t('Teilen:'))}</span><a href="https://www.linkedin.com/sharing/share-offsite/?url=${enc(url)}" target="_blank" rel="noopener">LinkedIn</a><a href="https://www.facebook.com/sharer/sharer.php?u=${enc(url)}" target="_blank" rel="noopener">Facebook</a><a href="https://x.com/intent/post?url=${enc(url)}&text=${enc(p.title)}" target="_blank" rel="noopener">X</a><a href="https://wa.me/?text=${enc(`${p.title} ${url}`)}" target="_blank" rel="noopener">WhatsApp</a><a href="mailto:?subject=${enc(p.title)}&body=${enc(url)}">${escapeHtml(t('E-Mail'))}</a></div>`;
+      const related = opts.related?.length ? `<section class="related"><h2>${escapeHtml(t('Weitere Beiträge'))}</h2><div class="posts">${opts.related.map((r) => card(f, r)).join('')}</div></section>` : '';
+      const tags = p.tags?.length ? `<div class="chips">${p.tags.map((tg: string) => `<a class="chip" href="${escapeHtml(`${blogUrl(f)}?tag=${enc(tg)}`)}">${escapeHtml(tg)}</a>`).join('')}</div>` : '';
       const body = `${opts.flag ? `<div class="preview-flag">${escapeHtml(opts.flag)}</div>` : ''}<article class="post">
-<a class="back" href="${escapeHtml(blogUrl(f))}">← Alle Beiträge</a>
+<a class="back" href="${escapeHtml(blogUrl(f))}">${escapeHtml(t('← Alle Beiträge'))}</a>
 <h1>${escapeHtml(p.title)}</h1>
 ${p.excerpt ? `<p class="lead">${escapeHtml(p.excerpt)}</p>` : ''}
 ${meta(f, p)}
@@ -494,7 +502,7 @@ ${tags}${share}</article>${related}`;
         .join('\n');
       const body = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">
-<channel><title>${escapeHtml(`${site} – ${bs.title || 'Blog'}`)}</title><link>${escapeHtml(blogUrl(f))}</link><description>${escapeHtml(bs.description || s.description || site)}</description><language>de-de</language>
+<channel><title>${escapeHtml(`${site} – ${bs.title || 'Blog'}`)}</title><link>${escapeHtml(blogUrl(f))}</link><description>${escapeHtml(bs.description || s.description || site)}</description><language>${tLoc(app, f.location_id).locale === 'de' ? 'de-de' : 'en-gb'}</language>
 <atom:link href="${escapeHtml(`${blogUrl(f)}/rss.xml`)}" rel="self" type="application/rss+xml"/>${posts[0] ? `<lastBuildDate>${rfc822(posts[0].published_at)}</lastBuildDate>` : ''}
 ${items}
 </channel></rss>`;
@@ -504,8 +512,10 @@ ${items}
     };
 
     const hasBlog = (fid: string) => !!db.get('SELECT id FROM blog_posts WHERE funnel_id = ? LIMIT 1', fid);
-    const missing = (f: any) =>
-      shell(f, { title: 'Beitrag nicht gefunden', head: '<meta name="robots" content="noindex">', status: 404, body: `<main class="bi"><div class="empty"><h1 style="color:var(--text)">Beitrag nicht gefunden</h1><p>Diesen Beitrag gibt es nicht (mehr).</p><a class="btn" href="${escapeHtml(blogUrl(f))}">Zum Blog</a></div></main>` });
+    const missing = (f: any) => {
+      const t = tLoc(app, f.location_id);
+      return shell(f, { title: t('Beitrag nicht gefunden'), head: '<meta name="robots" content="noindex">', status: 404, body: `<main class="bi"><div class="empty"><h1 style="color:var(--text)">${escapeHtml(t('Beitrag nicht gefunden'))}</h1><p>${escapeHtml(t('Diesen Beitrag gibt es nicht (mehr).'))}</p><a class="btn" href="${escapeHtml(blogUrl(f))}">${escapeHtml(t('Zum Blog'))}</a></div></main>` });
+    };
 
     // /blog on the website (funnels.ts hands paths it doesn't know to us).
     app.services.sitePaths = [...(app.services.sitePaths ?? []), (f: any, path: string, q: URLSearchParams) => (path === 'blog' && hasBlog(f.id) ? blogIndex(f, q) : undefined)];
@@ -522,12 +532,12 @@ ${items}
     // Posts in the site search (modules/site-routing.ts): app.services.siteSearchDocs = [(funnel) => SearchDoc[]].
     app.services.siteSearchDocs = [
       ...(app.services.siteSearchDocs ?? []),
-      (f: any) => (f.settings?.noindex ? [] : publicPosts(f.id).filter((p) => !p.seo?.noindex).map((p) => ({ kind: 'post', title: p.title, url: postUrl(f, p), text: `${p.excerpt ?? ''} ${(p.tags ?? []).join(' ')} ${stripMarkdown(p.content ?? '')}`, label: 'Blog' }))),
+      (f: any) => (f.settings?.noindex ? [] : publicPosts(f.id).filter((p) => !p.seo?.noindex).map((p) => ({ kind: 'post', title: p.title, url: postUrl(f, p), text: `${p.excerpt ?? ''} ${(p.tags ?? []).join(' ')} ${stripMarkdown(p.content ?? '')}`, label: tLoc(app, f.location_id)('Blog') }))),
     ];
 
     router.get('/p/:funnel/blog/:slug', 'public', (ctx) => {
       const f = parseJson(db.get('SELECT * FROM funnels WHERE slug = ?', ctx.params.funnel), ['settings']);
-      if (!f) return html('<p>Nicht gefunden</p>', 404);
+      if (!f) return html(`<p>${escapeHtml(tCtx(ctx)('Nicht gefunden'))}</p>`, 404);
       // Redirect rules of the site apply to the blog's paths too (modules/site-routing.ts).
       const moved = app.services.siteRedirect?.(ctx, f, ['blog', ctx.params.slug]);
       if (moved) return moved;
@@ -540,7 +550,7 @@ ${items}
         .filter((x) => x.id !== p.id)
         .sort((a, b) => (b.tags ?? []).filter((t: string) => (p.tags ?? []).includes(t)).length - (a.tags ?? []).filter((t: string) => (p.tags ?? []).includes(t)).length)
         .slice(0, 3);
-      const r = html(renderPost(f, preview ? { ...p, published_at: p.published_at || p.publish_at || p.updated_at } : p, { preview, related, flag: preview ? 'Vorschau – dieser Beitrag ist noch nicht öffentlich' : '' }));
+      const r = html(renderPost(f, preview ? { ...p, published_at: p.published_at || p.publish_at || p.updated_at } : p, { preview, related, flag: preview ? tLoc(app, f.location_id)('Vorschau – dieser Beitrag ist noch nicht öffentlich') : '' }));
       r.headers['content-security-policy'] = 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation allow-modals';
       return r;
     });

@@ -11,6 +11,7 @@
  */
 
 import { DEFAULT_EFFORT, effortFields, isEffortRejection, planEffort, type Effort, type EffortPlan } from './ai-effort.js';
+import { tApp } from '../i18n/index.js';
 
 export const API_URL = 'https://api.anthropic.com/v1/messages';
 export const MODELS_URL = 'https://api.anthropic.com/v1/models';
@@ -139,9 +140,10 @@ export function readUsage(u: any): Usage {
 /** HTTP status from Anthropic → German message (and the status we answer with). */
 export function apiError(status: number, message: string): AiError {
   const detail = message ? `: ${message.slice(0, 200)}` : '';
+  const t = tApp();
   switch (status) {
     case 400:
-      return new AiError(`Anthropic hat die Anfrage abgelehnt${detail}`, 502, 'invalid_request');
+      return new AiError(`${t('Anthropic hat die Anfrage abgelehnt')}${detail}`, 502, 'invalid_request');
     case 401:
       return new AiError('Anthropic-API-Schlüssel ist ungültig. Bitte unter Einstellungen → KI-Assistent prüfen.', 502, 'auth');
     case 402:
@@ -157,7 +159,7 @@ export function apiError(status: number, message: string): AiError {
     case 529:
       return new AiError('Anthropic ist gerade überlastet – bitte gleich noch einmal versuchen.', 503, 'overloaded');
     default:
-      return status >= 500 ? new AiError('Anthropic hat gerade ein Problem – bitte später erneut versuchen.', 503, 'server') : new AiError(`Fehler von Anthropic (${status})${detail}`, 502, 'api_error');
+      return status >= 500 ? new AiError('Anthropic hat gerade ein Problem – bitte später erneut versuchen.', 503, 'server') : new AiError(`${t('Fehler von Anthropic ({status})', { status })}${detail}`, 502, 'api_error');
   }
 }
 
@@ -207,7 +209,7 @@ export async function callClaude(req: ClaudeRequest, fetchImpl: FetchLike = (u, 
           skipEffort = true;
           continue;
         }
-        throw new AiError(`Anthropic: Das Modell „${req.model}“ nimmt die Denkstufe „${plan.applied}“ nicht an (${msg.slice(0, 160)}). Bitte ein anderes Modell wählen oder die Denkstufe unter Einstellungen → KI-Anbieter → Denkstufe ändern.`, 400, 'effort_rejected', ZERO_USAGE, req.model);
+        throw new AiError(tApp()('Anthropic: Das Modell „{model}“ nimmt die Denkstufe „{effort}“ nicht an ({detail}). Bitte ein anderes Modell wählen oder die Denkstufe unter Einstellungen → KI-Anbieter → Denkstufe ändern.', { model: req.model, effort: String(plan.applied), detail: msg.slice(0, 160) }), 400, 'effort_rejected', ZERO_USAGE, req.model);
       }
       throw apiError(r.status, msg);
     }

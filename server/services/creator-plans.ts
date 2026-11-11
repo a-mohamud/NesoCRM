@@ -1,6 +1,7 @@
 import { bad } from '../core/http.js';
 import { MIN_AMOUNT_CENTS } from './stripe.js';
 import { addPeriod, money } from './creator-kit.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Payment plans (Ratenzahlung): "N × amount at an interval", optionally with a different first payment. Pure helpers –
@@ -32,7 +33,7 @@ export const ON_DEFAULT_LABEL: Record<OnDefault, string> = {
 export function cleanPlan(b: any, cur?: Partial<PlanLike> & { name?: string; on_default?: string; active?: number | boolean }) {
   const v = { ...(cur ?? {}), ...(b ?? {}) } as Record<string, any>;
   const installments = Math.round(Number(v.installments));
-  if (!Number.isFinite(installments) || installments < 2 || installments > MAX_INSTALLMENTS) throw bad(`Raten: 2 bis ${MAX_INSTALLMENTS}`);
+  if (!Number.isFinite(installments) || installments < 2 || installments > MAX_INSTALLMENTS) throw bad(tApp()('Raten: 2 bis {max}', { max: MAX_INSTALLMENTS }));
   const interval: PlanInterval = v.interval === 'week' ? 'week' : 'month';
   const count = Math.round(Number(v.interval_count ?? 1));
   if (!Number.isFinite(count) || count < 1 || count > (interval === 'week' ? 52 : 12)) throw bad(interval === 'week' ? 'Abstand: 1 bis 52 Wochen' : 'Abstand: 1 bis 12 Monate');
@@ -52,15 +53,16 @@ export function cleanPlan(b: any, cur?: Partial<PlanLike> & { name?: string; on_
 
 export const totalCents = (p: PlanLike) => (p.first_amount_cents ?? p.amount_cents) + (p.installments - 1) * p.amount_cents;
 
-export function intervalLabel(p: Pick<PlanLike, 'interval' | 'interval_count'>): string {
+/** `t`: the sub-account's language (buyers see these labels on the buy page and invoices). */
+export function intervalLabel(p: Pick<PlanLike, 'interval' | 'interval_count'>, t: STFn = tApp()): string {
   const n = p.interval_count;
-  if (p.interval === 'week') return n === 1 ? 'wöchentlich' : `alle ${n} Wochen`;
-  return n === 1 ? 'monatlich' : n === 12 ? 'jährlich' : `alle ${n} Monate`;
+  if (p.interval === 'week') return n === 1 ? t('wöchentlich') : t('alle {n} Wochen', { n });
+  return n === 1 ? t('monatlich') : n === 12 ? t('jährlich') : t('alle {n} Monate', { n });
 }
 
 /** "3 × 99,00 € monatlich" – with a different first payment "150,00 € + 2 × 99,00 € monatlich". */
-export function planLabel(p: PlanLike, currency = 'EUR'): string {
-  const every = intervalLabel(p);
+export function planLabel(p: PlanLike, currency = 'EUR', t: STFn = tApp()): string {
+  const every = intervalLabel(p, t);
   if (p.first_amount_cents && p.first_amount_cents !== p.amount_cents) {
     return p.installments === 2 ? `${money(p.first_amount_cents, currency)} + ${money(p.amount_cents, currency)} ${every}` : `${money(p.first_amount_cents, currency)} + ${p.installments - 1} × ${money(p.amount_cents, currency)} ${every}`;
   }
@@ -68,7 +70,7 @@ export function planLabel(p: PlanLike, currency = 'EUR'): string {
 }
 
 /** The buyer's choice as one line each: the plan and the lump sum. */
-export const lumpLabel = (gross: number, currency = 'EUR') => `${money(gross, currency)} einmalig`;
+export const lumpLabel = (gross: number, currency = 'EUR', t: STFn = tApp()) => t('{amount} einmalig', { amount: money(gross, currency) });
 
 export interface Instalment {
   n: number;

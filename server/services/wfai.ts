@@ -1,6 +1,10 @@
 import { id as newId } from '../core/util.js';
 import { branchKeys, walk, type Step } from './workflow-engine.js';
 import type { ActionMeta, FieldDef, TriggerMeta } from './wfx-kit.js';
+import { tApp } from '../i18n/index.js';
+
+/** Validation messages (shown to the person and fed back to the model) in the instance language. */
+const tm = tApp();
 
 /**
  * KI-Workflow-Builder – the pure parts: what the AI is told about the workflow catalogue, how its answer is read and checked
@@ -159,11 +163,11 @@ const valueType = (fl: AiField): string => {
     case 'social_channels':
       return '[text]';
     case 'number':
-      return 'zahl';
+      return 'number';
     case 'bool':
       return 'true|false';
     case 'conditions':
-      return '[Bedingung]';
+      return '[condition]';
     case 'weekdays':
       return '[mon..sun]';
     case 'time':
@@ -171,7 +175,7 @@ const valueType = (fl: AiField): string => {
     case 'date':
       return 'YYYY-MM-DD';
     case 'step':
-      return '<Schritt-id>';
+      return '<step-id>';
     case 'pipeline':
     case 'stage':
     case 'calendar':
@@ -187,47 +191,53 @@ const valueType = (fl: AiField): string => {
       return fl.ref ? `<${fl.ref}-id>` : 'text';
   }
 };
-const fieldSpec = (fl: AiField): string => `${fl.key}${fl.required ? '*' : ''}:${valueType(fl)}${fl.showIf ? `{wenn ${fl.showIf.field}=${fl.showIf.in.join('|')}}` : ''}`;
+const fieldSpec = (fl: AiField): string => `${fl.key}${fl.required ? '*' : ''}:${valueType(fl)}${fl.showIf ? `{if ${fl.showIf.field}=${fl.showIf.in.join('|')}}` : ''}`;
 
 /** The catalogue as compact text: one line per trigger and step with its settings (`*` = required). */
 export function catalogText(actions: Map<string, AiAction>, triggers: Map<string, AiTrigger>): string {
   const t = [...triggers.values()].map((x) => `- ${x.type} · ${x.label} · config: ${[...x.fields, ...TRIGGER_COMMON].map(fieldSpec).join(', ')}`);
-  const a = [...actions.values()].map((x) => `- ${x.type} · ${x.label}${x.summary ? ` – ${x.summary}` : ''}${x.needs ? ` (braucht: ${x.needs})` : ''}${x.fields.length ? ` · ${x.fields.map(fieldSpec).join(', ')}` : ''}`);
-  return `AUSLÖSER (type · Name · config):\n${t.join('\n')}\n\nSCHRITTE (type · Name – Zweck · Einstellungen):\n${a.join('\n')}`;
+  const a = [...actions.values()].map((x) => `- ${x.type} · ${x.label}${x.summary ? ` – ${x.summary}` : ''}${x.needs ? ` (needs: ${x.needs})` : ''}${x.fields.length ? ` · ${x.fields.map(fieldSpec).join(', ')}` : ''}`);
+  return `TRIGGERS (type · name · config):\n${t.join('\n')}\n\nSTEPS (type · name – purpose · settings):\n${a.join('\n')}`;
 }
 
 export const REF_TITLES: Record<string, string> = { pipeline: 'Pipelines (mit Stufen)', calendar: 'Kalender', form: 'Formulare', workflow: 'Workflows', product: 'Produkte', course: 'Kurse', group: 'Community-Gruppen', link: 'Trigger-Links', user: 'Team' };
+/** The same titles for the model's context (English prompt). */
+const PROMPT_REF_TITLES: Record<string, string> = { pipeline: 'Pipelines (with stages)', calendar: 'Calendars', form: 'Forms', workflow: 'Workflows', product: 'Products', course: 'Courses', group: 'Community groups', link: 'Trigger links', user: 'Team' }; // i18n-ignore
 
 /** What exists in the sub-account: ids and names, so the AI never invents an id. */
 export function contextText(refs: Refs, settings: { timezone?: string; name?: string } = {}): string {
-  const lines: string[] = [`Sub-Account: ${settings.name ?? ''} · Zeitzone ${settings.timezone ?? 'Europe/Berlin'}`];
-  const list = (title: string, items?: { id: string; name: string; status?: string }[]) => {
+  // i18n-ignore (prompt for the model, in English)
+  const lines: string[] = [`Sub-account: ${settings.name ?? ''} · time zone ${settings.timezone ?? 'Europe/Berlin'}`];
+  const title = (k: string) => PROMPT_REF_TITLES[k] ?? k;
+  const list = (k: string, items?: { id: string; name: string; status?: string }[]) => {
     if (items === undefined) return;
-    lines.push(items.length ? `${title}: ${items.slice(0, 60).map((i) => `${i.id} = „${i.name.slice(0, 60)}“${i.status ? ` (${i.status})` : ''}`).join('; ')}` : `${title}: keine vorhanden`);
+    lines.push(items.length ? `${title(k)}: ${items.slice(0, 60).map((i) => `${i.id} = "${i.name.slice(0, 60)}"${i.status ? ` (${i.status})` : ''}`).join('; ')}` : `${title(k)}: none`);
   };
-  if (refs.pipeline) lines.push(refs.pipeline.length ? `${REF_TITLES.pipeline}: ${refs.pipeline.slice(0, 20).map((p) => `${p.id} = „${p.name}“ [Stufen: ${p.stages.map((s) => `${s.id} = „${s.name}“`).join('; ')}]`).join(' | ')}` : `${REF_TITLES.pipeline}: keine vorhanden`);
-  for (const k of ['calendar', 'form', 'workflow', 'product', 'course', 'group', 'link', 'user'] as const) list(REF_TITLES[k], refs[k]);
-  if (refs.tags?.length) lines.push(`Vorhandene Tags: ${refs.tags.slice(0, 80).join(', ')}`);
-  if (refs.custom_fields?.length) lines.push(`Eigene Kontaktfelder (als custom.<key>): ${refs.custom_fields.slice(0, 60).map((c) => `${c.key} = ${c.label}`).join('; ')}`);
+  if (refs.pipeline) lines.push(refs.pipeline.length ? `${title('pipeline')}: ${refs.pipeline.slice(0, 20).map((p) => `${p.id} = "${p.name}" [stages: ${p.stages.map((s) => `${s.id} = "${s.name}"`).join('; ')}]`).join(' | ')}` : `${title('pipeline')}: none`);
+  for (const k of ['calendar', 'form', 'workflow', 'product', 'course', 'group', 'link', 'user'] as const) list(k, refs[k]);
+  if (refs.tags?.length) lines.push(`Existing tags: ${refs.tags.slice(0, 80).join(', ')}`);
+  if (refs.custom_fields?.length) lines.push(`Custom contact fields (as custom.<key>): ${refs.custom_fields.slice(0, 60).map((c) => `${c.key} = ${c.label}`).join('; ')}`);
   return lines.join('\n');
 }
 
-export const SYSTEM_RULES = `Du bist der Workflow-Builder von HyperLevel, einem CRM mit Automationen. Du baust aus einem Auftrag in Alltagssprache einen Workflow: ein Auslöser und eine Liste von Schritten, die für einen Kontakt nacheinander ablaufen.
+// i18n-ignore (prompt for the model, in English; {lang} = language of texts to customers, {ui_lang} = language of the person)
+export const SYSTEM_RULES = `You are the workflow builder of HyperLevel, a CRM with automations. From a request in everyday language you build a workflow: one trigger and a list of steps that run one after the other for a contact.
 
-ANTWORT: genau ein JSON-Objekt, kein Markdown, kein Text davor oder danach:
-{"name": "kurzer Name", "summary": "2–4 Sätze auf Deutsch: was der Workflow tut und was sich geändert hat", "trigger": {"type": "…", "config": {…}}, "steps": [{"type": "…", …Einstellungen des Schritts}], "settings": {"allow_reentry": false, "stop_on_error": false}, "notes": ["Was die Person vorher einrichten oder prüfen muss"]}
+ANSWER: exactly one JSON object, no Markdown, no text before or after it:
+{"name": "short name", "summary": "2–4 sentences in {ui_lang}: what the workflow does and what changed", "trigger": {"type": "…", "config": {…}}, "steps": [{"type": "…", …settings of the step}], "settings": {"allow_reentry": false, "stop_on_error": false}, "notes": ["What the person has to set up or check first (in {ui_lang})"]}
 
-REGELN
-- Nimm nur Auslöser und Schritte aus dem KATALOG unten, mit genau diesen Einstellungs-Namen. Erfinde keine Typen und keine Felder. Mit * markierte Einstellungen sind Pflicht.
-- IDs (Pipeline, Stufe, Kalender, Formular, Workflow, Produkt, Kurs, Gruppe, Link, Nutzer) nur aus dem KONTEXT. Gibt es das Gewünschte nicht, lass die Einstellung leer und schreibe in "notes", was angelegt werden muss. Erfinde nie eine ID.
-- Texte an Kundinnen und Kunden auf Deutsch (Du, freundlich, kurz), mit Platzhaltern wie {{contact.first_name}} (Fallback: {{contact.first_name|du}}), {{contact.name}}, {{location.name}}, {{event.…}} (Daten des Auslösers) und {{var.…}} (Variablen früherer Schritte). Keine erfundenen Preise, Termine, Links oder Zusagen: nimm Platzhalter oder schreibe es in "notes".
-- Zwischen Nachrichten gehört ein "wait" (Mails/SMS/WhatsApp nie direkt hintereinander). Prüfe mit "goal" oder "if", ob das Ziel schon erreicht ist, bevor nachgefasst wird. Markiere Fortschritt mit Tags.
-- Bedingungen: [{"field": "tag"|"email"|"phone"|"first_name"|"company"|"source"|"custom.<key>"|"event.<feld>"|"var.<name>", "op": "${CONDITION_OPS.join('|')}", "value": "…"}]. Bei field "tag" sind nur has / not_has sinnvoll. Alternativ "expression", z. B. contact.custom.budget > 1000 && "vip" in contact.tags.
-- Verzweigungen tragen ihre Unterschritte als Listen: "if" → "then" und "else"; "split_test" → "variants" [{name, weight}] und je Pfad "b0", "b1", …; "loop" → "each". Ein Schritt, auf den "goto" verweist, braucht eine "id" (kurz, Buchstaben/Ziffern).
-- Höchstens ${LIMITS.steps} Schritte, einfach und nachvollziehbar. Der Workflow wird NICHT veröffentlicht: Die Person prüft ihn erst als Entwurf.
-- settings: allow_reentry = darf derselbe Kontakt den Ablauf mehrfach durchlaufen; stop_on_error = bei einem Fehler abbrechen statt weitermachen.`;
+RULES
+- Use only triggers and steps from the CATALOGUE below, with exactly these setting names. Never invent types or fields. Settings marked with * are required.
+- IDs (pipeline, stage, calendar, form, workflow, product, course, group, link, user) only from the CONTEXT. If what is wanted doesn't exist, leave the setting empty and write in "notes" what has to be created. Never invent an ID.
+- Texts to customers in {lang} (friendly, informal "you", short), with placeholders like {{contact.first_name}} (fallback: {{contact.first_name|there}}), {{contact.name}}, {{location.name}}, {{event.…}} (data of the trigger) and {{var.…}} (variables of earlier steps). No invented prices, dates, links or promises: use placeholders or write it in "notes". Step names in {lang}; "name" in {ui_lang}.
+- Put a "wait" between messages (never send emails/SMS/WhatsApp straight after each other). Check with "goal" or "if" whether the goal has already been reached before following up. Mark progress with tags.
+- Conditions: [{"field": "tag"|"email"|"phone"|"first_name"|"company"|"source"|"custom.<key>"|"event.<field>"|"var.<name>", "op": "${CONDITION_OPS.join('|')}", "value": "…"}]. For field "tag" only has / not_has make sense. Alternatively "expression", e.g. contact.custom.budget > 1000 && "vip" in contact.tags.
+- Branches carry their sub-steps as lists: "if" → "then" and "else"; "split_test" → "variants" [{name, weight}] and per path "b0", "b1", …; "loop" → "each". A step that "goto" points to needs an "id" (short, letters/digits).
+- At most ${LIMITS.steps} steps, simple and easy to follow. The workflow is NOT published: the person reviews it as a draft first.
+- settings: allow_reentry = whether the same contact may run through the flow more than once; stop_on_error = stop on an error instead of carrying on.`;
 
-export const EDIT_RULES = `ÄNDERN: Du bekommst den bisherigen Workflow als JSON. Gib den VOLLSTÄNDIGEN geänderten Workflow zurück (nicht nur die Änderung). Behalte die "id" jedes Schritts, den du nicht entfernst, und ändere nur, was der Auftrag verlangt – Reihenfolge, Texte und Einstellungen der übrigen Schritte bleiben unverändert. "summary" beschreibt, was du geändert hast.`;
+// i18n-ignore (prompt for the model)
+export const EDIT_RULES = `EDITING: You receive the current workflow as JSON. Return the COMPLETE changed workflow (not just the change). Keep the "id" of every step you don't remove, and change only what the request asks for – order, texts and settings of the other steps stay unchanged. "summary" describes what you changed.`;
 
 // --- reading and checking the answer ---------------------------------------------------------------------------------------
 
@@ -271,20 +281,20 @@ const isTemplate = (v: unknown) => typeof v === 'string' && /\{\{[^}]+\}\}/.test
 function checkConditions(v: unknown, where: string, errors: string[], warnings: string[]): { field: string; op: string; value?: string }[] {
   if (v === undefined || v === null || v === '') return [];
   if (!Array.isArray(v)) {
-    errors.push(`${where}: Bedingungen müssen eine Liste sein [{field, op, value}]`);
+    errors.push(tm('{where}: Bedingungen müssen eine Liste sein [{field, op, value}]', { where }));
     return [];
   }
   const out: { field: string; op: string; value?: string }[] = [];
   v.slice(0, 20).forEach((c: any, i) => {
     const field = str(c?.field, 80);
     const op = str(c?.op, 20);
-    if (!field) return void errors.push(`${where}, Bedingung ${i + 1}: „field“ fehlt`);
-    if (!CONDITION_OPS.includes(op)) return void errors.push(`${where}, Bedingung ${i + 1}: Vergleich „${op}“ gibt es nicht (erlaubt: ${CONDITION_OPS.join(', ')})`);
-    if (field === 'tag' && !['has', 'not_has'].includes(op)) warnings.push(`${where}: Beim Feld „tag“ passen nur has / not_has`);
+    if (!field) return void errors.push(tm('{where}, Bedingung {n}: „field“ fehlt', { where, n: i + 1 }));
+    if (!CONDITION_OPS.includes(op)) return void errors.push(tm('{where}, Bedingung {n}: Vergleich „{op}“ gibt es nicht (erlaubt: {allowed})', { where, n: i + 1, op, allowed: CONDITION_OPS.join(', ') }));
+    if (field === 'tag' && !['has', 'not_has'].includes(op)) warnings.push(tm('{where}: Beim Feld „tag“ passen nur has / not_has', { where }));
     const needsValue = !['empty', 'not_empty'].includes(op);
-    if (needsValue && (c?.value === undefined || String(c.value) === '')) return void errors.push(`${where}, Bedingung ${i + 1}: „value“ fehlt`);
+    if (needsValue && (c?.value === undefined || String(c.value) === '')) return void errors.push(tm('{where}, Bedingung {n}: „value“ fehlt', { where, n: i + 1 }));
     const root = field.split('.')[0];
-    if (field.includes('.') && !ROOTS.has(root) && root !== 'custom') warnings.push(`${where}: Feld „${field}“ beginnt weder mit contact, custom, event noch var`);
+    if (field.includes('.') && !ROOTS.has(root) && root !== 'custom') warnings.push(tm('{where}: Feld „{field}“ beginnt weder mit contact, custom, event noch var', { where, field }));
     out.push({ field, op, ...(needsValue ? { value: String(c.value).slice(0, 500) } : {}) });
   });
   return out;
@@ -297,14 +307,14 @@ function refList(kind: RefKind, refs: Refs): { id: string }[] | undefined {
 
 /** One field value, cleaned to what the step stores; null = leave out. */
 function checkValue(fl: AiField, raw: unknown, where: string, env: CheckEnv, sibling: Record<string, unknown>, errors: string[], warnings: string[]): unknown {
-  const label = `${where}, „${fl.label || fl.key}“`;
+  const label = tm('{where}, „{field}“', { where, field: tm(fl.label || fl.key) });
   const missing = raw === undefined || raw === null || raw === '' || (Array.isArray(raw) && !raw.length);
   const refKind: RefKind | undefined = (['pipeline', 'stage', 'calendar', 'form', 'workflow', 'product', 'group', 'user'] as string[]).includes(fl.type) ? (fl.type as RefKind) : fl.ref;
   if (missing) {
     if (fl.required && fl.default === undefined) {
       // Something that has to be chosen in the editor (the sub-account has none, or the AI could not know) is a hint, not a failure.
-      if (refKind) warnings.push(`${label} muss im Editor noch ausgewählt werden`);
-      else errors.push(`${label} fehlt (Pflichtfeld)`);
+      if (refKind) warnings.push(tm('{field} muss im Editor noch ausgewählt werden', { field: label }));
+      else errors.push(tm('{field} fehlt (Pflichtfeld)', { field: label }));
     }
     return fl.required && fl.default !== undefined ? fl.default : null;
   }
@@ -329,25 +339,25 @@ function checkValue(fl: AiField, raw: unknown, where: string, env: CheckEnv, sib
     case 'user':
     case 'step': {
       if (typeof raw === 'object') {
-        errors.push(`${label} muss Text sein`);
+        errors.push(tm('{field} muss Text sein', { field: label }));
         return null;
       }
       const s = str(raw, fl.type === 'textarea' || fl.type === 'code' ? LIMITS.textarea : LIMITS.text);
-      if (fl.type === 'time' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(s)) errors.push(`${label}: Uhrzeit als HH:MM (z. B. 09:00)`);
-      if (fl.type === 'date' && !isTemplate(s) && !/^\d{4}-\d{2}-\d{2}$/.test(s) && !/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(s)) errors.push(`${label}: Datum als YYYY-MM-DD`);
-      if (fl.type === 'contact_field' && !isTemplate(s) && !/^[A-Za-z_][\w.]*$/.test(s)) errors.push(`${label}: kein gültiger Feldname (first_name, company, custom.xyz …)`);
+      if (fl.type === 'time' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(s)) errors.push(tm('{field}: Uhrzeit als HH:MM (z. B. 09:00)', { field: label }));
+      if (fl.type === 'date' && !isTemplate(s) && !/^\d{4}-\d{2}-\d{2}$/.test(s) && !/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(s)) errors.push(tm('{field}: Datum als YYYY-MM-DD', { field: label }));
+      if (fl.type === 'contact_field' && !isTemplate(s) && !/^[A-Za-z_][\w.]*$/.test(s)) errors.push(tm('{field}: kein gültiger Feldname (first_name, company, custom.xyz …)', { field: label }));
       if (refKind) {
         const known = refList(refKind, env.refs);
         if (known && !isTemplate(s) && !known.some((k) => k.id === s)) {
-          if (refKind === 'user') warnings.push(`${label}: Nutzer „${s}“ ist dem Team nicht bekannt`);
+          if (refKind === 'user') warnings.push(tm('{field}: Nutzer „{user}“ ist dem Team nicht bekannt', { field: label, user: s }));
           else {
-            errors.push(`${label}: ${REF_TITLES[refKind] ?? refKind}-ID „${s}“ gibt es in diesem Sub-Account nicht – nimm eine ID aus dem KONTEXT oder lass das Feld leer`);
+            errors.push(tm('{field}: {kind}-ID „{id}“ gibt es in diesem Sub-Account nicht – nimm eine ID aus dem KONTEXT oder lass das Feld leer', { field: label, kind: tm(REF_TITLES[refKind] ?? refKind), id: s }));
             return null;
           }
         }
         if (refKind === 'stage' && env.refs.pipeline && sibling.pipeline_id) {
           const p = env.refs.pipeline.find((x) => x.id === sibling.pipeline_id);
-          if (p && !p.stages.some((x) => x.id === s)) errors.push(`${label}: Stufe „${s}“ gehört nicht zur Pipeline „${p.name}“`);
+          if (p && !p.stages.some((x) => x.id === s)) errors.push(tm('{field}: Stufe „{stage}“ gehört nicht zur Pipeline „{pipeline}“', { field: label, stage: s, pipeline: p.name }));
         }
       }
       return s;
@@ -356,10 +366,10 @@ function checkValue(fl: AiField, raw: unknown, where: string, env: CheckEnv, sib
       if (typeof raw === 'string' && isTemplate(raw)) return raw;
       const n = Number(raw);
       if (!Number.isFinite(n)) {
-        errors.push(`${label} muss eine Zahl sein`);
+        errors.push(tm('{field} muss eine Zahl sein', { field: label }));
         return null;
       }
-      if (fl.min !== undefined && n < fl.min) errors.push(`${label} muss mindestens ${fl.min} sein`);
+      if (fl.min !== undefined && n < fl.min) errors.push(tm('{field} muss mindestens {min} sein', { field: label, min: fl.min }));
       return n;
     }
     case 'bool': {
@@ -367,14 +377,14 @@ function checkValue(fl: AiField, raw: unknown, where: string, env: CheckEnv, sib
       const s = String(raw).toLowerCase();
       if (['true', '1', 'ja', 'yes'].includes(s)) return true;
       if (['false', '0', 'nein', 'no'].includes(s)) return false;
-      errors.push(`${label} muss true oder false sein`);
+      errors.push(tm('{field} muss true oder false sein', { field: label }));
       return null;
     }
     case 'select': {
       const s = String(raw).trim();
       const hit = (fl.options ?? []).find((o) => o[0] === s) ?? (fl.options ?? []).find((o) => o[1].toLowerCase() === s.toLowerCase() || o[0].toLowerCase() === s.toLowerCase());
       if (!hit && !isTemplate(s)) {
-        errors.push(`${label}: „${s}“ ist nicht erlaubt (erlaubt: ${(fl.options ?? []).map((o) => o[0]).join(', ')})`);
+        errors.push(tm('{field}: „{value}“ ist nicht erlaubt (erlaubt: {allowed})', { field: label, value: s, allowed: (fl.options ?? []).map((o) => o[0]).join(', ') }));
         return null;
       }
       return hit ? hit[0] : s;
@@ -383,26 +393,26 @@ function checkValue(fl: AiField, raw: unknown, where: string, env: CheckEnv, sib
     case 'users':
     case 'social_channels': {
       const list = (Array.isArray(raw) ? raw : String(raw).split(',')).map((x) => str(x, 60)).filter(Boolean).slice(0, LIMITS.tags);
-      if (!list.length && fl.required) errors.push(`${label} fehlt (Pflichtfeld)`);
+      if (!list.length && fl.required) errors.push(tm('{field} fehlt (Pflichtfeld)', { field: label }));
       return [...new Set(list)];
     }
     case 'weekdays': {
       const list = (Array.isArray(raw) ? raw : String(raw).split(',')).map((x) => String(x).trim().toLowerCase().slice(0, 3));
       const bad = list.filter((d) => !WEEKDAYS.includes(d));
-      if (bad.length) errors.push(`${label}: Wochentage als mon, tue, wed, thu, fri, sat, sun`);
+      if (bad.length) errors.push(tm('{field}: Wochentage als mon, tue, wed, thu, fri, sat, sun', { field: label }));
       return list.filter((d) => WEEKDAYS.includes(d));
     }
     case 'conditions':
       return checkConditions(raw, label, errors, warnings);
     case 'rows': {
       if (!Array.isArray(raw)) {
-        errors.push(`${label} muss eine Liste sein`);
+        errors.push(tm('{field} muss eine Liste sein', { field: label }));
         return null;
       }
       return raw.slice(0, 50).map((row: any, i) => {
         const out: Record<string, unknown> = {};
         for (const col of fl.rows ?? []) {
-          const v = checkValue({ ...col, required: false }, row?.[col.key], `${label}, Zeile ${i + 1}`, env, out, errors, warnings);
+          const v = checkValue({ ...col, required: false }, row?.[col.key], tm('{field}, Zeile {n}', { field: label, n: i + 1 }), env, out, errors, warnings);
           if (v !== null) out[col.key] = v;
         }
         return out;
@@ -425,7 +435,7 @@ function checkFields(fields: AiField[], src: Record<string, any>, where: string,
   }
   const known = new Set([...fields.map((x) => x.key), ...keep]);
   const dropped = Object.keys(src).filter((k) => !known.has(k));
-  if (dropped.length) warnings.push(`${where}: ${dropped.slice(0, 5).join(', ')} wird nicht verwendet und wurde entfernt`);
+  if (dropped.length) warnings.push(tm('{where}: {keys} wird nicht verwendet und wurde entfernt', { where, keys: dropped.slice(0, 5).join(', ') }));
   return out;
 }
 
@@ -433,25 +443,25 @@ function checkFields(fields: AiField[], src: Record<string, any>, where: string,
 function checkSteps(list: unknown, path: string, depth: number, env: CheckEnv, state: { n: number; ids: Set<string>; gotos: { id: string; key: string; value: string; where: string }[] }, errors: string[], warnings: string[]): Step[] {
   if (list === undefined || list === null) return [];
   if (!Array.isArray(list)) {
-    errors.push(`${path || 'steps'} muss eine Liste sein`);
+    errors.push(tm('{field} muss eine Liste sein', { field: path || 'steps' }));
     return [];
   }
   if (depth > LIMITS.depth) {
-    errors.push(`${path}: zu tief verschachtelt (höchstens ${LIMITS.depth} Ebenen)`);
+    errors.push(tm('{where}: zu tief verschachtelt (höchstens {n} Ebenen)', { where: path, n: LIMITS.depth }));
     return [];
   }
   const out: Step[] = [];
   list.forEach((raw: any, i) => {
-    const where = `${path ? `${path} › ` : ''}Schritt ${i + 1}`;
+    const where = `${path ? `${path} › ` : ''}${tm('Schritt {n}', { n: i + 1 })}`;
     if (++state.n > LIMITS.steps) {
-      if (state.n === LIMITS.steps + 1) errors.push(`Zu viele Schritte (höchstens ${LIMITS.steps})`);
+      if (state.n === LIMITS.steps + 1) errors.push(tm('Zu viele Schritte (höchstens {n})', { n: LIMITS.steps }));
       return;
     }
     const type = str(raw?.type, 60);
-    if (!type) return void errors.push(`${where}: „type“ fehlt`);
+    if (!type) return void errors.push(tm('{where}: „type“ fehlt', { where }));
     const action = env.actions.get(type);
-    if (!action) return void errors.push(`${where}: Schritt-Typ „${type}“ gibt es im Katalog nicht${type.includes('.') ? ' (das sieht nach einem Auslöser aus)' : ''}`);
-    const here = `${where} (${action.label})`;
+    if (!action) return void errors.push(tm('{where}: Schritt-Typ „{type}“ gibt es im Katalog nicht{hint}', { where, type, hint: type.includes('.') ? tm(' (das sieht nach einem Auslöser aus)') : '' }));
+    const here = `${where} (${tm(action.label)})`;
     // `step.name` is the label the person gave the step
     const body = checkFields(action.fields, raw, here, env, errors, warnings, ['id', 'type', 'name', 'then', 'else', 'each', ...Array.from({ length: 5 }, (_, k) => `b${k}`)]);
     let sid = str(raw.id, 24).replace(/[^\w-]/g, '');
@@ -460,7 +470,7 @@ function checkSteps(list: unknown, path: string, depth: number, env: CheckEnv, s
     const step: Step = { ...body, id: sid, type } as Step;
     if (raw.name) step.name = str(raw.name, 120);
     for (const fl of action.fields) if (fl.type === 'step' && step[fl.key]) state.gotos.push({ id: sid, key: fl.key, value: String(step[fl.key]), where: here });
-    for (const k of branchKeys(step)) step[k] = checkSteps(raw[k], `${where} › ${k === 'then' ? 'Dann' : k === 'else' ? 'Sonst' : k === 'each' ? 'Je Element' : `Pfad ${Number(k.slice(1)) + 1}`}`, depth + 1, env, state, errors, warnings);
+    for (const k of branchKeys(step)) step[k] = checkSteps(raw[k], `${where} › ${k === 'then' ? tm('Dann') : k === 'else' ? tm('Sonst') : k === 'each' ? tm('Je Element') : tm('Pfad {n}', { n: Number(k.slice(1)) + 1 })}`, depth + 1, env, state, errors, warnings);
     // a branch list the step does not own is dropped silently (cleanSteps does the same)
     out.push(step);
   });
@@ -471,29 +481,29 @@ function checkSteps(list: unknown, path: string, depth: number, env: CheckEnv, s
 export function checkWorkflow(raw: any, env: CheckEnv): Checked {
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (!raw || typeof raw !== 'object') return { summary: '', notes: [], errors: ['Die Antwort war kein JSON-Objekt'], warnings };
+  if (!raw || typeof raw !== 'object') return { summary: '', notes: [], errors: [tm('Die Antwort war kein JSON-Objekt')], warnings };
   const name = str(raw.name, 200);
-  if (!name) errors.push('„name“ fehlt');
+  if (!name) errors.push(tm('„name“ fehlt'));
   const tType = str(raw.trigger?.type, 60);
   let trigger: WorkflowDraft['trigger'] | undefined;
-  if (!tType) errors.push('„trigger.type“ fehlt');
+  if (!tType) errors.push(tm('„trigger.type“ fehlt'));
   else {
     const meta = env.triggers.get(tType);
-    if (!meta) errors.push(`Auslöser „${tType}“ gibt es im Katalog nicht${env.actions.has(tType) ? ' (das ist ein Schritt, kein Auslöser)' : ''}`);
+    if (!meta) errors.push(tm('Auslöser „{type}“ gibt es im Katalog nicht{hint}', { type: tType, hint: env.actions.has(tType) ? tm(' (das ist ein Schritt, kein Auslöser)') : '' }));
     else {
       const cfg = raw.trigger?.config && typeof raw.trigger.config === 'object' && !Array.isArray(raw.trigger.config) ? raw.trigger.config : {};
-      trigger = { type: tType, config: checkFields([...meta.fields, ...TRIGGER_COMMON], cfg, `Auslöser (${meta.label})`, env, errors, warnings) };
+      trigger = { type: tType, config: checkFields([...meta.fields, ...TRIGGER_COMMON], cfg, tm('Auslöser ({label})', { label: tm(meta.label) }), env, errors, warnings) };
     }
   }
   const state = { n: 0, ids: new Set<string>(), gotos: [] as { id: string; key: string; value: string; where: string }[] };
-  if (!Array.isArray(raw.steps) || !raw.steps.length) errors.push('„steps“ ist leer – ein Workflow braucht mindestens einen Schritt');
+  if (!Array.isArray(raw.steps) || !raw.steps.length) errors.push(tm('„steps“ ist leer – ein Workflow braucht mindestens einen Schritt'));
   const steps = checkSteps(raw.steps, '', 0, env, state, errors, warnings);
-  for (const g of state.gotos) if (!state.ids.has(g.value)) errors.push(`${g.where}: Sprungziel „${g.value}“ ist kein Schritt dieses Workflows (der Zielschritt braucht eine „id“)`);
+  for (const g of state.gotos) if (!state.ids.has(g.value)) errors.push(tm('{where}: Sprungziel „{target}“ ist kein Schritt dieses Workflows (der Zielschritt braucht eine „id“)', { where: g.where, target: g.value }));
   const s = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
   const settings = { allow_reentry: s.allow_reentry === true || s.allow_reentry === 'true', stop_on_error: s.stop_on_error === true || s.stop_on_error === 'true' };
   const notes = (Array.isArray(raw.notes) ? raw.notes : []).map((n: unknown) => str(n, 300)).filter(Boolean).slice(0, 12);
   const summary = str(raw.summary, 1200);
-  if (!summary) warnings.push('Die KI hat keine Zusammenfassung geliefert');
+  if (!summary) warnings.push(tm('Die KI hat keine Zusammenfassung geliefert'));
   if (errors.length || !trigger) return { summary, notes, errors, warnings };
   return { workflow: { name, trigger, steps, settings }, summary, notes, errors, warnings };
 }
@@ -579,5 +589,5 @@ export function diffWorkflows(before: WorkflowDraft | null, after: WorkflowDraft
 
 /** The prompt of a retry: what was wrong with the last answer. */
 export function retryPrompt(base: string, previous: string, errors: string[]): string {
-  return `${base}\n\nDEIN LETZTER ENTWURF WAR NICHT GÜLTIG:\n${previous.slice(0, 14_000)}\n\nFEHLER:\n${errors.slice(0, 15).map((e) => `- ${e}`).join('\n')}\n\nKorrigiere genau diese Punkte und gib den VOLLSTÄNDIGEN Workflow erneut als ein JSON-Objekt aus.`;
+  return `${base}\n\nYOUR LAST DRAFT WAS NOT VALID:\n${previous.slice(0, 14_000)}\n\nERRORS:\n${errors.slice(0, 15).map((e) => `- ${e}`).join('\n')}\n\nFix exactly these points and output the COMPLETE workflow again as one JSON object.`;
 }

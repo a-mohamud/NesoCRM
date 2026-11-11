@@ -6,6 +6,7 @@ import { render } from '../core/template.js';
 import { id as newId, normalizeEmail } from '../core/util.js';
 import { addTags, getContact, logActivity, upsertContact, type Contact } from './contacts.js';
 import { notifyTeam, sendToContact } from './messaging.js';
+import { tLoc } from '../i18n/index.js';
 import { offersSession, sessionEnd, sessionKey, upcomingSessions, type SessionKind } from './webinar-schedule.js';
 import { clock, getRegistration, getWebinar, linksOf, locationTz, timeText, webinarTz, whenText, type Registration, type Webinar } from './webinar-store.js';
 
@@ -114,7 +115,7 @@ export function registerContact(app: App, w: Webinar, input: RegisterInput): Reg
       w.location_id,
       { email: input.email, first_name: input.first_name, last_name: input.last_name, name: input.name, phone: input.phone, ...(input.extra ?? {}) },
       // The registration page is public: it never changes a stored e-mail address or phone number (services/contacts.ts).
-      { source: `Webinar: ${w.title}`.slice(0, 120), tags: w.settings.registration.tags, publicInput: input.source === 'page' },
+      { source: tLoc(app, w.location_id)('Webinar: {title}', { title: w.title }).slice(0, 120), tags: w.settings.registration.tags, publicInput: input.source === 'page' },
     );
     contact = r.contact;
     const have = existing(contact);
@@ -139,10 +140,11 @@ export function registerContact(app: App, w: Webinar, input: RegisterInput): Reg
   app.db.insert('webinar_registrations', row);
   const reg = getRegistration(app, row.id as string)!;
   const links = linksOf(app, w, reg.id);
-  logActivity(app, w.location_id, contact.id, 'webinar.registered', `Für Webinar „${w.title}“ angemeldet (${whenText(start, tz)})`, { webinar_id: w.id, session: start });
+  const t = tLoc(app, w.location_id);
+  logActivity(app, w.location_id, contact.id, 'webinar.registered', t('Für Webinar „{title}“ angemeldet ({when})', { title: w.title, when: whenText(start, tz) }), { webinar_id: w.id, session: start });
   app.events.emit(w.location_id, 'webinar.registered', eventData(app, w, reg, contact, { join_url: links.join_url, replay_url: links.replay_url }));
   if (!input.silent) void sendConfirmation(app, w, reg).catch((e) => console.error('[webinar] confirmation:', e));
-  if (w.settings.registration.notify_team) void notifyTeam(app, w.location_id, `Neue Webinar-Anmeldung: ${w.title}`, `${contact.first_name} ${contact.last_name} <${contact.email}>\nTermin: ${whenText(start, webinarTz(app, w))}`).catch(() => undefined);
+  if (w.settings.registration.notify_team) void notifyTeam(app, w.location_id, t('Neue Webinar-Anmeldung: {title}', { title: w.title }), `${contact.first_name} ${contact.last_name} <${contact.email}>\n${t('Termin: {when}', { when: whenText(start, webinarTz(app, w)) })}`).catch(() => undefined);
   return { registration: reg, contact, created: true, session: { start, kind } };
 }
 
@@ -173,7 +175,7 @@ const linksOnly = (app: App, w: Webinar, reg: Registration) => {
 export function cancelRegistration(app: App, w: Webinar, reg: Registration, by: string) {
   if (reg.status === 'cancelled') return;
   app.db.run(`UPDATE webinar_registrations SET status = 'cancelled' WHERE id = ?`, reg.id);
-  logActivity(app, w.location_id, reg.contact_id, 'webinar.cancelled', `Webinar-Anmeldung „${w.title}“ abgesagt (${by})`, { webinar_id: w.id, session: reg.session_start });
+  logActivity(app, w.location_id, reg.contact_id, 'webinar.cancelled', tLoc(app, w.location_id)('Webinar-Anmeldung „{title}“ abgesagt ({by})', { title: w.title, by }), { webinar_id: w.id, session: reg.session_start });
 }
 
 // --- e-mail and SMS --------------------------------------------------------------------------------
@@ -209,7 +211,7 @@ export function icsOf(app: App, w: Webinar, reg: Registration): string {
     `DTSTART:${fmt(reg.session_start)}`,
     `DTEND:${fmt(end)}`,
     `SUMMARY:${esc(w.title)}`,
-    `DESCRIPTION:${esc(`${w.presenter_name ? `${w.presenter_name}\n` : ''}Automatisiertes Webinar – hier geht es zum Raum: ${links.join_url}`)}`,
+    `DESCRIPTION:${esc(`${w.presenter_name ? `${w.presenter_name}\n` : ''}${tLoc(app, w.location_id)('Automatisiertes Webinar – hier geht es zum Raum: {url}', { url: links.join_url })}`)}`,
     `URL:${links.join_url}`,
     `STATUS:${reg.status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED'}`,
     'BEGIN:VALARM',
@@ -247,12 +249,14 @@ export async function sendConfirmation(app: App, w: Webinar, reg: Registration) 
   if (!contact?.email) return;
   const data = mergeData(app, w, reg, contact);
   const s = w.settings.reminders;
+  // Stored texts are the webinar's own; the untouched defaults still read in the sub-account's language.
+  const t = tLoc(app, w.location_id);
   await sendToContact(app, w.location_id, {
     contactId: contact.id,
     channel: 'email',
-    subject: render(s.confirmation_subject, data),
-    body: render(s.confirmation_body, data),
-    source: 'Webinar-Bestätigung',
+    subject: render(t(s.confirmation_subject), data),
+    body: render(t(s.confirmation_body), data),
+    source: t('Webinar-Bestätigung'),
     ignoreDnd: true,
     attachments: [{ filename: 'webinar.ics', content: icsOf(app, w, reg), contentType: 'text/calendar; charset=utf-8; method=PUBLISH' }],
   });
@@ -312,7 +316,8 @@ export async function sendDueReminders(app: App, at = nowOf(app)): Promise<numbe
         const claimed = app.db.run(`INSERT OR IGNORE INTO webinar_reminders (registration_id, key, channel, status, error, sent_at) VALUES (?, ?, ?, 'sending', '', ?)`, reg.id, item.key, channel, iso(app)).changes > 0;
         if (!claimed) continue;
         try {
-          const out = await sendToContact(app, w.location_id, channel === 'email' ? { contactId: contact.id, channel, subject: render(item.subject, data), body: render(item.body, data), source: 'Webinar-Erinnerung' } : { contactId: contact.id, channel, body: render(item.sms_text, data), source: 'Webinar-Erinnerung' });
+          const t = tLoc(app, w.location_id);
+          const out = await sendToContact(app, w.location_id, channel === 'email' ? { contactId: contact.id, channel, subject: render(t(item.subject), data), body: render(t(item.body), data), source: t('Webinar-Erinnerung') } : { contactId: contact.id, channel, body: render(t(item.sms_text), data), source: t('Webinar-Erinnerung') });
           const failed = (out as { status?: string }).status === 'failed';
           app.db.run('UPDATE webinar_reminders SET status = ?, error = ? WHERE registration_id = ? AND key = ? AND channel = ?', failed ? 'failed' : 'sent', failed ? String((out as { error?: string }).error ?? '').slice(0, 200) : '', reg.id, item.key, channel);
           if (!failed) sent++;

@@ -2,6 +2,7 @@ import type { App } from '../core/app.js';
 import { bad } from '../core/http.js';
 import { id, now } from '../core/util.js';
 import { logActivity } from './contacts.js';
+import { tApp } from '../i18n/index.js';
 import { completedLessonIds, computeProgress, courseOutline, flatLessons, getCourse } from './courses.js';
 
 /**
@@ -37,12 +38,12 @@ const clip = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max);
 
 export function cleanQuestions(input: unknown): Question[] {
   if (!Array.isArray(input) || !input.length) throw bad('Mindestens eine Frage');
-  if (input.length > MAX_QUESTIONS) throw bad(`Höchstens ${MAX_QUESTIONS} Fragen`);
+  if (input.length > MAX_QUESTIONS) throw bad(tApp()('Höchstens {n} Fragen', { n: MAX_QUESTIONS }));
   const seen = new Set<string>();
   return input.map((raw: any, i) => {
     const kind = KINDS.includes(raw?.kind) ? (raw.kind as QuestionKind) : 'single';
     const text = clip(raw?.text, 1000);
-    if (!text) throw bad(`Frage ${i + 1}: Text fehlt`);
+    if (!text) throw bad(tApp()('Frage {n}: Text fehlt', { n: i + 1 }));
     let qid = /^[A-Za-z0-9]{4,24}$/.test(String(raw?.id ?? '')) ? String(raw.id) : id(8);
     while (seen.has(qid)) qid = id(8);
     seen.add(qid);
@@ -50,7 +51,8 @@ export function cleanQuestions(input: unknown): Question[] {
     const base = { id: qid, kind, text, points, explanation: clip(raw?.explanation, 1000), accepted: [] as string[], review: 'auto' as 'auto' | 'manual', options: [] as Option[] };
     if (kind === 'truefalse') {
       const value = raw?.correct_value ?? raw?.options?.find?.((o: any) => o?.id === 'true')?.correct;
-      return { ...base, options: [{ id: 'true', text: 'Wahr', correct: value === true || value === 'true' }, { id: 'false', text: 'Falsch', correct: !(value === true || value === 'true') }] };
+      const t = tApp();
+      return { ...base, options: [{ id: 'true', text: t('Wahr'), correct: value === true || value === 'true' }, { id: 'false', text: t('Falsch'), correct: !(value === true || value === 'true') }] };
     }
     if (kind === 'short') {
       const accepted = [...new Set((Array.isArray(raw?.accepted) ? raw.accepted : String(raw?.accepted ?? '').split('\n')).map((a: unknown) => clip(a, 200)).filter(Boolean))].slice(0, 20) as string[];
@@ -58,11 +60,11 @@ export function cleanQuestions(input: unknown): Question[] {
       return { ...base, accepted, review };
     }
     const list: Option[] = (Array.isArray(raw?.options) ? raw.options : []).slice(0, 10).map((o: any, k: number) => ({ id: /^[A-Za-z0-9]{1,24}$/.test(String(o?.id ?? '')) ? String(o.id) : `o${k + 1}`, text: clip(o?.text, 300), correct: !!o?.correct })).filter((o: Option) => o.text);
-    if (list.length < 2) throw bad(`Frage ${i + 1}: mindestens zwei Antworten`);
+    if (list.length < 2) throw bad(tApp()('Frage {n}: mindestens zwei Antworten', { n: i + 1 }));
     if (new Set(list.map((o) => o.id)).size !== list.length) list.forEach((o, k) => (o.id = `o${k + 1}`));
     const right = list.filter((o) => o.correct).length;
-    if (!right) throw bad(`Frage ${i + 1}: mindestens eine richtige Antwort markieren`);
-    if (kind === 'single' && right !== 1) throw bad(`Frage ${i + 1}: bei „eine Antwort“ genau eine richtige markieren (sonst „mehrere“ wählen)`);
+    if (!right) throw bad(tApp()('Frage {n}: mindestens eine richtige Antwort markieren', { n: i + 1 }));
+    if (kind === 'single' && right !== 1) throw bad(tApp()('Frage {n}: bei „eine Antwort“ genau eine richtige markieren (sonst „mehrere“ wählen)', { n: i + 1 }));
     return { ...base, options: list };
   });
 }

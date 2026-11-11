@@ -37,6 +37,7 @@ import {
 import { getBranding } from './agency.js';
 import { fromStripeSub, saasStripe, stockCount, stripeKeyOf, upsertSubscription } from './saas.js';
 import { ACCEPTED_DOCS } from '../services/cloud-legal.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * The customer's account area (Einstellungen → Cloud-Konto): the team, client sub-accounts and white-label of an Agentur
@@ -127,7 +128,7 @@ export const cloudAccountModule: Module = {
       const b = ctx.body ?? {};
       const email = normalizeEmail(b.email);
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) throw bad('Bitte eine gültige E-Mail-Adresse angeben');
-      if (ent.users !== null && memberRows(t).length >= ent.users) throw new HttpError(403, `${PLAN_INFO[plan(t)].name} ist für ${ent.users} Nutzer. Für mehr Nutzer wechsle auf Cloud Team & Company – ohne Gebühr pro Nutzer.`);
+      if (ent.users !== null && memberRows(t).length >= ent.users) throw new HttpError(403, tCtx(ctx)('{plan} ist für {n} Nutzer. Für mehr Nutzer wechsle auf {team} – ohne Gebühr pro Nutzer.', { plan: PLAN_INFO[plan(t)].name, n: ent.users, team: PLAN_INFO.team.name }));
       if (db.get('SELECT id FROM users WHERE email = ?', email)) throw bad('Diese E-Mail-Adresse hat schon ein Konto');
       const all = tenantLocationIds(app, t.id);
       let locs = all;
@@ -233,7 +234,7 @@ export const cloudAccountModule: Module = {
       readOnly(t);
       const s = cloudSettings(app);
       const ids = tenantLocationIds(app, t.id);
-      if (s.agency_max_clients && ids.length - 1 >= s.agency_max_clients) throw new HttpError(403, `Fair Use: bis ${s.agency_max_clients} Kunden-Accounts sind inklusive – melde dich für mehr beim Support.`);
+      if (s.agency_max_clients && ids.length - 1 >= s.agency_max_clients) throw new HttpError(403, tCtx(ctx)('Fair Use: bis {n} Kunden-Accounts sind inklusive – melde dich für mehr beim Support.', { n: s.agency_max_clients }));
       const b = ctx.body ?? {};
       const name = str(b.name, 'Name', { required: true, max: 120 });
       const tz = str(b.timezone, 'Zeitzone') || 'Europe/Berlin';
@@ -301,7 +302,7 @@ export const cloudAccountModule: Module = {
       readOnly(t);
       applyBranding(app, t, cleanBrand(ctx.body ?? {}));
       logCloudEvent(app, t.id, 'branding_changed', '');
-      app.services.audit?.({ ctx, action: 'cloud.branding', summary: 'White-Label geändert', locationId: t.location_id });
+      app.services.audit?.({ ctx, action: 'cloud.branding', summary: tApp()('White-Label geändert'), locationId: t.location_id });
       const { app_domain: _d, ...mine } = app.location(t.location_id)?.settings?.branding ?? {};
       return mine;
     });
@@ -361,8 +362,8 @@ export const cloudAccountModule: Module = {
       }
       const at = new Date(Date.now() + s.self_delete_days * 864e5).toISOString();
       db.run(`UPDATE cloud_tenants SET deletion_at = ?, deletion_reason = 'self', read_only_since = COALESCE(read_only_since, ?), updated_at = ? WHERE id = ?`, at, now(), now(), t.id);
-      logCloudEvent(app, t.id, 'deletion_scheduled', `Löschung auf Wunsch des Kunden am ${at.slice(0, 10)}`);
-      app.services.audit?.({ ctx, action: 'cloud.delete.request', summary: `Löschung am ${at.slice(0, 10)}`, locationId: t.location_id });
+      logCloudEvent(app, t.id, 'deletion_scheduled', tApp()('Löschung auf Wunsch des Kunden am {date}', { date: at.slice(0, 10) }));
+      app.services.audit?.({ ctx, action: 'cloud.delete.request', summary: tApp()('Löschung am {date}', { date: at.slice(0, 10) }), locationId: t.location_id });
       void sendCloudMail(app, 'self_delete', t.email, { name: ctx.user!.name, company: t.name, delete_at: new Date(at).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' }), link: appLink(app, '/app/settings/cloud') });
       syncChildren(app, t);
       const fresh = db.get<Tenant>('SELECT * FROM cloud_tenants WHERE id = ?', t.id)!;
@@ -386,7 +387,7 @@ export const cloudAccountModule: Module = {
       const until = hours ? new Date(Date.now() + hours * 3600_000).toISOString() : null;
       db.run('UPDATE cloud_tenants SET support_until = ?, updated_at = ? WHERE id = ?', until, now(), t.id);
       logCloudEvent(app, t.id, 'support_consent', hours ? `${hours} Stunden` : 'widerrufen');
-      app.services.audit?.({ ctx, action: hours ? 'cloud.support.allow' : 'cloud.support.revoke', summary: hours ? `Support-Zugriff für ${hours} Stunden freigegeben` : 'Support-Zugriff widerrufen', locationId: t.location_id });
+      app.services.audit?.({ ctx, action: hours ? 'cloud.support.allow' : 'cloud.support.revoke', summary: hours ? tApp()('Support-Zugriff für {n} Stunden freigegeben', { n: hours }) : tApp()('Support-Zugriff widerrufen'), locationId: t.location_id });
       return tenantSummary(app, db.get<Tenant>('SELECT * FROM cloud_tenants WHERE id = ?', t.id)!);
     });
 
@@ -398,7 +399,7 @@ export const cloudAccountModule: Module = {
       const text = legalText(app, row, { company: t.name, email: t.email });
       if (String(ctx.query.get('format')) === 'html') return { __raw: true, status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'content-disposition': 'attachment; filename="avv.html"' }, body: `<!doctype html><meta charset="utf-8"><title>AVV</title><body style="font-family:sans-serif;max-width:760px;margin:30px auto">${renderMarkdown(text)}</body>` };
       const at = now();
-      const page: PageRow = { id: 'avv', location_id: t.location_id, space_id: '', parent_id: null, position: 0, title: `AVV – ${cloudBrand(app)} und ${t.name}`, icon: '', body: text, text: '', version: row.version, trashed_at: null, kb_article_id: null, kb_version: null, created_by: null, created_by_name: '', updated_by: null, updated_by_name: '', created_at: at, updated_at: at };
+      const page: PageRow = { id: 'avv', location_id: t.location_id, space_id: '', parent_id: null, position: 0, title: tCtx(ctx)('AVV – {brand} und {company}', { brand: cloudBrand(app), company: t.name }), icon: '', body: text, text: '', version: row.version, trashed_at: null, kb_article_id: null, kb_version: null, created_by: null, created_by_name: '', updated_by: null, updated_by_name: '', created_at: at, updated_at: at };
       const pdf = buildWikiPdf(app, [page], { space: cloudBrand(app), baseUrl: app.baseUrl(), author: '' });
       return { __raw: true, status: 200, headers: { 'content-type': 'application/pdf', 'content-disposition': `attachment; filename="avv-v${row.version}.pdf"`, 'cache-control': 'no-store' }, body: Buffer.from(pdf) };
     });
@@ -433,7 +434,8 @@ export const cloudAccountModule: Module = {
         items.push({ key: 'client', label: 'Ersten Kunden-Account anlegen', hint: 'Jeder Kunde bekommt ein eigenes, getrenntes Konto.', to: 'settings/cloud', done: tenantLocationIds(app, t.id).length > 1 });
       }
       if (sub?.billing === 'manual' && sub.status === 'trialing') items.push({ key: 'payment', label: 'Tarif und Zahlung wählen', hint: 'Damit nach der Testphase alles weiterläuft.', to: 'settings/cloud', done: false });
-      return { items, done: items.filter((i) => i.done).length, total: items.length };
+      const tr = tCtx(ctx);
+      return { items: items.map((i) => ({ ...i, label: tr(i.label), hint: tr(i.hint) })), done: items.filter((i) => i.done).length, total: items.length };
     });
 
   },

@@ -17,67 +17,67 @@ const agencyOnly = (label: string): Row => [label, 'y', 'n', 'n', 'y'];
 
 const COPY: Record<'de' | 'en', CompareCopy> = {
   de: {
-    summary: 'Alle Funktionen im Vergleich',
-    hint: 'Jeder Tarif hat jede Funktion – nur White-Label, Kunden-Accounts und eigene Domains gibt es allein im Tarif Agentur.',
+    summary: 'Alle Funktionen im Vergleich', // i18n-ignore
+    hint: 'Jeder Tarif hat jede Funktion – nur White-Label, Kunden-Accounts und eigene Domains gibt es allein im Tarif Agentur.', // i18n-ignore
     yes: 'enthalten',
-    no: 'nicht enthalten',
-    feature: 'Funktion',
+    no: 'nicht enthalten', // i18n-ignore
+    feature: 'Funktion', // i18n-ignore
     groups: [
       {
-        title: 'Für alle Tarife',
+        title: 'Für alle Tarife', // i18n-ignore
         rows: [
           ['Nutzer', 'unbegrenzt', '1', 'unbegrenzt', 'unbegrenzt'],
-          all('Kontakte, Funnels und Workflows ohne Limit'),
-          all('CRM, Pipelines und Deals'),
-          all('Funnels, Websites und Blog'),
-          all('E-Mail-Marketing und Kampagnen'),
+          all('Kontakte, Funnels und Workflows ohne Limit'), // i18n-ignore
+          all('CRM, Pipelines und Deals'), // i18n-ignore
+          all('Funnels, Websites und Blog'), // i18n-ignore
+          all('E-Mail-Marketing und Kampagnen'), // i18n-ignore
           all('Posteingang: E-Mail, SMS, WhatsApp, Social'),
-          all('Workflows und Automationen'),
-          all('Kalender und Online-Buchung'),
-          all('Kurse, Mitgliederbereich und Community'),
-          all('Rechnungen, Angebote, ZUGFeRD und XRechnung'),
-          all('Helpdesk und Wissensdatenbank'),
+          all('Workflows und Automationen'), // i18n-ignore
+          all('Kalender und Online-Buchung'), // i18n-ignore
+          all('Kurse, Mitgliederbereich und Community'), // i18n-ignore
+          all('Rechnungen, Angebote, ZUGFeRD und XRechnung'), // i18n-ignore
+          all('Helpdesk und Wissensdatenbank'), // i18n-ignore
           all('Social-Media-Planer'),
-          all('Jarvis, KI-Agenten und Sprachassistent'),
-          all('MCP für Claude, ChatGPT, Codex und Cursor'),
-          all('REST-API und Webhooks'),
-          all('Akademie mit geführten Touren'),
-          all('XR-Modus für Brillen und Headsets'),
-          all('Designs, Themes und Icon-Packs'),
-          all('Android-App und iPhone-Web-App'),
+          all('Jarvis, KI-Agenten und Sprachassistent'), // i18n-ignore
+          all('MCP für Claude, ChatGPT, Codex und Cursor'), // i18n-ignore
+          all('REST-API und Webhooks'), // i18n-ignore
+          all('Akademie mit geführten Touren'), // i18n-ignore
+          all('XR-Modus für Brillen und Headsets'), // i18n-ignore
+          all('Designs, Themes und Icon-Packs'), // i18n-ignore
+          all('Android-App und iPhone-Web-App'), // i18n-ignore
         ],
       },
       {
-        title: 'Agentur und White-Label',
+        title: 'Agentur und White-Label', // i18n-ignore
         rows: [
-          agencyOnly('Kunden-Sub-Accounts mit eigenen Logins'),
-          agencyOnly('White-Label: dein Name, Logo und Farben'),
-          agencyOnly('Eigene Login-Domain und Domains für Kunden'),
-          agencyOnly('App mit deinem Namen und Icon'),
-          ['SaaS-Modus: eigene Tarife über dein Stripe verkaufen', 'y', 'n', 'n', 'n'],
+          agencyOnly('Kunden-Sub-Accounts mit eigenen Logins'), // i18n-ignore
+          agencyOnly('White-Label: dein Name, Logo und Farben'), // i18n-ignore
+          agencyOnly('Eigene Login-Domain und Domains für Kunden'), // i18n-ignore
+          agencyOnly('App mit deinem Namen und Icon'), // i18n-ignore
+          ['SaaS-Modus: eigene Tarife über dein Stripe verkaufen', 'y', 'n', 'n', 'n'], // i18n-ignore
         ],
       },
       {
         title: 'Betrieb',
         rows: [
-          ['Hosting, Updates und Backups', 'machst du', 'y', 'y', 'y'],
-          ['Serverstandort', 'dein Server', 'Frankfurt', 'Frankfurt', 'Frankfurt'],
+          ['Hosting, Updates und Backups', 'machst du', 'y', 'y', 'y'], // i18n-ignore
+          ['Serverstandort', 'dein Server', 'Frankfurt', 'Frankfurt', 'Frankfurt'], // i18n-ignore
           ['Support', 'Community', 'E-Mail', 'E-Mail', 'E-Mail'],
         ],
       },
     ],
   },
   en: {
-    summary: 'Compare every feature',
+    summary: 'Compare every feature', // i18n-ignore
     hint: 'Every plan has every feature – only white-label, client accounts and custom domains are Agency-only.',
     yes: 'included',
     no: 'not included',
-    feature: 'Feature',
+    feature: 'Feature', // i18n-ignore
     groups: [
       {
-        title: 'In every plan',
+        title: 'In every plan', // i18n-ignore
         rows: [
-          ['Users', 'unlimited', '1', 'unlimited', 'unlimited'],
+          ['Users', 'unlimited', '1', 'unlimited', 'unlimited'], // i18n-ignore
           all('Unlimited contacts, funnels and workflows'),
           all('CRM, pipelines and deals'),
           all('Funnels, websites and blog'),
@@ -99,7 +99,7 @@ const COPY: Record<'de' | 'en', CompareCopy> = {
         ],
       },
       {
-        title: 'Agency and white-label',
+        title: 'Agency and white-label', // i18n-ignore
         rows: [
           agencyOnly('Client sub-accounts with their own logins'),
           agencyOnly('White-label: your name, logo and colours'),
@@ -109,10 +109,10 @@ const COPY: Record<'de' | 'en', CompareCopy> = {
         ],
       },
       {
-        title: 'Operations',
+        title: 'Operations', // i18n-ignore
         rows: [
           ['Hosting, updates and backups', 'you', 'y', 'y', 'y'],
-          ['Server location', 'your server', 'Frankfurt', 'Frankfurt', 'Frankfurt'],
+          ['Server location', 'your server', 'Frankfurt', 'Frankfurt', 'Frankfurt'], // i18n-ignore
           ['Support', 'community', 'email', 'email', 'email'],
         ],
       },

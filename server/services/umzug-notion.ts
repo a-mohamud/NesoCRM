@@ -3,6 +3,7 @@ import type { Json } from './umzug-flow.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { counter, priorityWord, seg, stubCtx } from './umzug-lib.js';
 import { clip, fieldKey, toIso } from './umzug-text.js';
+import { translator, tApp } from '../i18n/index.js';
 
 /**
  * Notion (REST API, https://api.notion.com/v1, an internal integration's token): databases with a status property → projects with
@@ -68,7 +69,7 @@ const titleOf = (page: Json): string => {
   for (const p of Object.values((page.properties ?? {}) as Record<string, Json>)) if (p?.type === 'title') return plain(p.title);
   return '';
 };
-const dbTitle = (db: Json): string => plain(db.title).trim() || 'Ohne Namen';
+const dbTitle = (db: Json): string => plain(db.title).trim() || tApp()('Ohne Namen');
 
 /** One property value as something simple (strings, numbers, booleans, lists). */
 export function propValue(p: Json, users?: Map<string, string>): unknown {
@@ -200,19 +201,20 @@ const lines = (s: string, prefix: string) =>
 
 /** The blocks of a page as Markdown. Children are fetched through `env.children` (a call each, bounded). */
 export async function blocksMd(blocks: Json[], env: BlockEnv, depth = 0, indent = ''): Promise<string> {
+  const t = tApp();
   const out: string[] = [];
   let num = 0;
   for (const b of blocks) {
-    const t = String(b.type);
-    const d: Json = b[t] ?? {};
-    if (t !== 'numbered_list_item') num = 0;
+    const bt = String(b.type);
+    const d: Json = b[bt] ?? {};
+    if (bt !== 'numbered_list_item') num = 0;
     const kids = async (more = '  '): Promise<string> => {
-      if (!b.has_children || depth >= DEPTH || t === 'child_page' || t === 'child_database' || env.budget.calls <= 0) return '';
+      if (!b.has_children || depth >= DEPTH || bt === 'child_page' || bt === 'child_database' || env.budget.calls <= 0) return '';
       env.budget.calls--;
       return blocksMd(await env.children(String(b.id)), env, depth + 1, indent + more);
     };
     const text = richMd(d.rich_text);
-    switch (t) {
+    switch (bt) {
       case 'paragraph':
         out.push(`${indent}${text}`.trimEnd() || '');
         if (b.has_children) out.push(await kids(''));
@@ -232,7 +234,7 @@ export async function blocksMd(blocks: Json[], env: BlockEnv, depth = 0, indent 
       case 'bulleted_list_item':
       case 'to_do':
       case 'numbered_list_item': {
-        const mark = t === 'bulleted_list_item' ? '-' : t === 'to_do' ? `- [${d.checked ? 'x' : ' '}]` : `${++num}.`;
+        const mark = bt === 'bulleted_list_item' ? '-' : bt === 'to_do' ? `- [${d.checked ? 'x' : ' '}]` : `${++num}.`;
         const sub = await kids();
         out.push(`${indent}${mark} ${text}${sub ? `\n${sub}` : ''}`);
         break;
@@ -260,7 +262,7 @@ export async function blocksMd(blocks: Json[], env: BlockEnv, depth = 0, indent 
       case 'image': {
         const url = d.external?.url ?? d.file?.url;
         if (url) {
-          out.push(`${indent}![${plain(d.caption) || 'Bild bei Notion'}](${url})`);
+          out.push(`${indent}![${plain(d.caption) || tApp()('Bild bei Notion')}](${url})`);
           if (d.file?.url) env.images.n++;
         }
         break;
@@ -295,10 +297,10 @@ export async function blocksMd(blocks: Json[], env: BlockEnv, depth = 0, indent 
         out.push(await kids(''));
         break;
       case 'child_database':
-        out.push(`${indent}Datenbank „${d.title ?? ''}“ (liegt bei Notion bzw. wurde als Projekt / eigenes Objekt übernommen)`);
+        out.push(`${indent}${t('Datenbank „{title}“ (liegt bei Notion bzw. wurde als Projekt / eigenes Objekt übernommen)', { title: d.title ?? '' })}`);
         break;
       case 'link_to_page':
-        out.push(`${indent}Link zu einer anderen Notion-Seite`);
+        out.push(`${indent}${t('Link zu einer anderen Notion-Seite')}`);
         break;
       default:
         break;
@@ -347,6 +349,7 @@ const ACTIVE = /progress|doing|arbeit|läuft|review|prüf/i;
 const TODO = /to-?do|not started|backlog|offen|geplant|neu/i;
 
 export function notionLayout(db: Json): Layout {
+  const t = tApp();
   const props = Object.entries((db.properties ?? {}) as Record<string, Json>);
   const L: Layout = { peopleProps: [], fields: new Map(), skipped: [] };
   L.titleProp = props.find(([, p]) => p.type === 'title')?.[0];
@@ -401,7 +404,7 @@ export function notionLayout(db: Json): Layout {
         continue;
     }
     if (L.fields.size >= 30) {
-      L.skipped.push(`${name} (mehr als 30 Eigenschaften)`);
+      L.skipped.push(t('{name} (mehr als 30 Eigenschaften)', { name }));
       continue;
     }
     let key = fieldKey(name).slice(0, 36) || 'feld';
@@ -566,8 +569,9 @@ async function* eachDatabase(h: VendorHttp, ctx: StepCtx, kind: 'projects' | 'ob
 
 /** A database the API refuses (several data sources, no access) is skipped with a note; the others carry on. */
 const refused = (e: unknown, ctx: StepCtx, db: Json): boolean => {
+  const t = translator(ctx.lang);
   if (!(e instanceof UmzugError) || !(e.status === 400 || e.skippable)) return false;
-  ctx.warn(`Datenbank „${clip(dbTitle(db), 40)}“ nicht gelesen: ${e.message}`);
+  ctx.warn(t('Datenbank „{db}“ nicht gelesen: {reason}', { db: clip(dbTitle(db), 40), reason: e.message }));
   return true;
 };
 
@@ -577,12 +581,13 @@ const steps = (): StepDef[] => [
     label: 'Datenbanken mit Status → Projekte',
     part: 'projects',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const dbs = (await databases(ctx.http, ctx)).filter(isProject);
       const records: RProject[] = [];
       for (const db of dbs) {
         const L = notionLayout(db);
         records.push(notionProject(db, L));
-        if (L.skipped.length) ctx.warn(`Datenbank „${clip(dbTitle(db), 40)}“: Eigenschaften ohne Gegenstück (nicht übernommen): ${L.skipped.slice(0, 6).join(', ')}${L.skipped.length > 6 ? ' …' : ''}`);
+        if (L.skipped.length) ctx.warn(t('Datenbank „{db}“: Eigenschaften ohne Gegenstück (nicht übernommen): {skipped}{more}', { db: clip(dbTitle(db), 40), skipped: L.skipped.slice(0, 6).join(', '), more: L.skipped.length > 6 ? ' …' : '' }));
       }
       if (records.length) yield { records };
     },
@@ -592,6 +597,7 @@ const steps = (): StepDef[] => [
     label: 'Zeilen → Aufgaben',
     part: 'projects',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const users = await usersOf(ctx.http, ctx);
       const withComments = ctx.parts.includes('comments');
       let budget = ctx.limit < Infinity ? DRY_BODIES : Infinity;
@@ -622,7 +628,7 @@ const steps = (): StepDef[] => [
           yield { records: [], cursor: { db: String(db.id), done: true } };
         }
       }
-      if (images.n) ctx.warn(`${images.n} Bilder und Dateien in Seiteninhalten liegen bei Notion (die Adressen laufen nach einer Stunde ab) – vor dem Kündigen herunterladen`);
+      if (images.n) ctx.warn(t('{n} Bilder und Dateien in Seiteninhalten liegen bei Notion (die Adressen laufen nach einer Stunde ab) – vor dem Kündigen herunterladen', { n: images.n }));
     },
   },
   {
@@ -630,6 +636,7 @@ const steps = (): StepDef[] => [
     label: 'Datenbanken → eigene Objekte',
     part: 'objects',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const records: RObjectType[] = [];
       for (const db of (await databases(ctx.http, ctx)).filter((d) => !isProject(d))) {
         const o = notionObject(db);
@@ -638,7 +645,7 @@ const steps = (): StepDef[] => [
         const skipped = Object.entries((db.properties ?? {}) as Record<string, Json>)
           .filter(([, p]) => !OBJECT_TYPES[String(p.type)] && !['title', 'relation', 'formula'].includes(String(p.type)))
           .map(([n, p]) => `${n} (${p.type})`);
-        if (skipped.length) ctx.warn(`Datenbank „${clip(dbTitle(db), 40)}“: Eigenschaften ohne Gegenstück (nicht übernommen): ${skipped.slice(0, 6).join(', ')}`);
+        if (skipped.length) ctx.warn(t('Datenbank „{db}“: Eigenschaften ohne Gegenstück (nicht übernommen): {skipped}', { db: clip(dbTitle(db), 40), skipped: skipped.slice(0, 6).join(', ') }));
       }
       if (records.length) yield { records };
     },
@@ -715,6 +722,7 @@ const steps = (): StepDef[] => [
     label: 'Seiten → Wiki-Seiten',
     part: 'docs',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const all: Json[] = [];
       for await (const pg of paged(ctx.http, searchOf(ctx.http, 'page'), ctx)) all.push(...pg.items.filter((p) => p.object === 'page' && !p.archived && !p.in_trash && p.parent?.type !== 'database_id'));
       const order = pageOrder(all);
@@ -728,14 +736,14 @@ const steps = (): StepDef[] => [
           try {
             body = await bodyOf(ctx.http, String(page.id), ctx, images);
           } catch (e) {
-            if (e instanceof UmzugError && e.skippable) ctx.warn(`Seite „${clip(titleOf(page), 50)}“ nicht lesbar: ${e.message}`);
+            if (e instanceof UmzugError && e.skippable) ctx.warn(t('Seite „{page}“ nicht lesbar: {reason}', { page: clip(titleOf(page), 50), reason: e.message }));
             else throw e;
           }
           records.push({ kind: 'doc', ext: `pg:${page.id}`, title: titleOf(page) || 'Ohne Titel', body, parent: parent ? `pg:${parent}` : undefined, icon: page.icon?.emoji });
         }
         yield { records, cursor: at + 5 < order.length ? at + 5 : undefined };
       }
-      if (images.n) ctx.warn(`${images.n} Bilder und Dateien in Seiten liegen bei Notion (die Adressen laufen nach einer Stunde ab) – vor dem Kündigen herunterladen`);
+      if (images.n) ctx.warn(t('{n} Bilder und Dateien in Seiten liegen bei Notion (die Adressen laufen nach einer Stunde ab) – vor dem Kündigen herunterladen', { n: images.n }));
     },
   },
 ];

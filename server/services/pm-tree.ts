@@ -9,11 +9,15 @@ export const MAX_SUBTASKS_PER_TASK = 200;
 export type ParentMap = Map<string, string | null | undefined>;
 
 export class TreeError extends Error {
+  /** The message id (German, with `{placeholders}`) and its values – translated by the server (pm-core.ts failOnTree). */
+  readonly key: string;
   constructor(
     public code: 'self' | 'cycle' | 'depth' | 'unknown',
     message: string,
+    public vars?: Record<string, string | number>,
   ) {
-    super(message);
+    super(vars ? message.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : message);
+    this.key = message;
   }
 }
 
@@ -75,7 +79,7 @@ export function assertParent(parentOf: ParentMap, task: string, parent: string |
   if (!parentOf.has(parent)) throw new TreeError('unknown', 'Übergeordnete Aufgabe nicht gefunden');
   if (ancestors(parentOf, parent).includes(task)) throw new TreeError('cycle', 'Die Aufgabe wäre ihre eigene Unteraufgabe (Zirkelbezug)');
   const depth = depthOf(parentOf, parent) + 1 + subtreeHeight(parentOf, task);
-  if (depth > maxDepth) throw new TreeError('depth', `Unteraufgaben lassen sich höchstens ${maxDepth - 1} Ebenen tief verschachteln`);
+  if (depth > maxDepth) throw new TreeError('depth', 'Unteraufgaben lassen sich höchstens {n} Ebenen tief verschachteln', { n: maxDepth - 1 });
 }
 
 /** Is `a` an ancestor or descendant of `b`? (Such tasks may not depend on each other.) */

@@ -6,6 +6,7 @@ import { membersWhere, notifyMember } from './member-notify.js';
 import { getQuote, type QuoteRow } from './quote-engine.js';
 import type { QuoteDoc } from './quote-model.js';
 import { lineAmounts, salesTotals } from './sales-lines.js';
+import { tApp, tUser, type STFn } from '../i18n/index.js';
 
 /**
  * Internal approval of quotes (docs/sales.md#internal-approval): an optional rule per sub-account – quotes above a net amount or with
@@ -68,15 +69,16 @@ export function quoteFigures(doc: QuoteDoc, mode: TaxMode = 'standard'): { max_n
   return { max_net_cents: net, max_discount_percent: r1(disc) };
 }
 
-const eur = (c: number) => `${(c / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
-const pct = (n: number) => `${String(r1(n)).replace('.', ',')} %`;
+// Neso fork: the reasons are read by the team (instance language); German keeps 1.234,50 € and 15,5 %.
+const eur = (t: STFn, c: number) => (t.locale === 'de' ? `${(c / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : (c / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const pct = (t: STFn, n: number) => (t.locale === 'de' ? `${String(r1(n)).replace('.', ',')} %` : `${r1(n)}%`);
 
 /** Why a quote needs approval under a rule (empty: it does not). */
-export function approvalReasons(rule: ApprovalRule, f: { max_net_cents: number; max_discount_percent: number }): string[] {
+export function approvalReasons(rule: ApprovalRule, f: { max_net_cents: number; max_discount_percent: number }, t: STFn = tApp()): string[] {
   if (!rule.enabled) return [];
   const out: string[] = [];
-  if (rule.min_net_cents !== null && f.max_net_cents > rule.min_net_cents) out.push(`Netto-Summe ${eur(f.max_net_cents)} über ${eur(rule.min_net_cents)}`);
-  if (rule.max_discount_percent !== null && f.max_discount_percent > rule.max_discount_percent) out.push(`Rabatt ${pct(f.max_discount_percent)} über ${pct(rule.max_discount_percent)}`);
+  if (rule.min_net_cents !== null && f.max_net_cents > rule.min_net_cents) out.push(t('Netto-Summe {value} über {limit}', { value: eur(t, f.max_net_cents), limit: eur(t, rule.min_net_cents) }));
+  if (rule.max_discount_percent !== null && f.max_discount_percent > rule.max_discount_percent) out.push(t('Rabatt {value} über {limit}', { value: pct(t, f.max_discount_percent), limit: pct(t, rule.max_discount_percent) }));
   return out;
 }
 
@@ -197,7 +199,7 @@ export function approvalState(app: App, loc: string, q: QuoteRow, viewer?: Perso
   const history = app.db.all<ApprovalRow>('SELECT * FROM quote_approvals WHERE quote_id = ? AND location_id = ? ORDER BY requested_at DESC, rowid DESC LIMIT 20', q.id, loc).map((a) => approvalOut(app, a, q));
   const mayDecide = !!viewer && !!out && out.status === 'pending' && !out.stale && holdsRole(app, loc, rule, viewer) && (rule.self_approve || viewer.id !== out.requested_by);
   return {
-    rule: { enabled: rule.enabled, min_net_cents: rule.min_net_cents, max_discount_percent: rule.max_discount_percent, approver_role: rule.approver_role, approver_label: APPROVER_LABEL[rule.approver_role] },
+    rule: { enabled: rule.enabled, min_net_cents: rule.min_net_cents, max_discount_percent: rule.max_discount_percent, approver_role: rule.approver_role, approver_label: tApp()(APPROVER_LABEL[rule.approver_role]) },
     figures,
     required: reasons.length > 0 && q.status === 'draft',
     reasons,
@@ -220,8 +222,9 @@ export function assertSendable(app: App, loc: string, q: QuoteRow): void {
   if (!reasons.length) return;
   const cur = latest(app, loc, q.id);
   if (cur && cur.status === 'approved' && cur.fingerprint === fingerprint(q)) return;
-  const why = cur?.status === 'approved' ? 'Das Angebot wurde nach der Genehmigung geändert – bitte neu genehmigen lassen' : cur?.status === 'pending' ? 'Die interne Genehmigung steht noch aus' : 'Dieses Angebot braucht vor dem Senden eine interne Genehmigung';
-  app.services.audit?.({ action: 'quote.approval.blocked', actor: 'System', locationId: loc, entityId: q.id, summary: `Senden ohne Genehmigung verhindert: ${reasons.join(', ')}` });
+  const t = tApp();
+  const why = cur?.status === 'approved' ? t('Das Angebot wurde nach der Genehmigung geändert – bitte neu genehmigen lassen') : cur?.status === 'pending' ? t('Die interne Genehmigung steht noch aus') : t('Dieses Angebot braucht vor dem Senden eine interne Genehmigung');
+  app.services.audit?.({ action: 'quote.approval.blocked', actor: 'System', locationId: loc, entityId: q.id, summary: t('Senden ohne Genehmigung verhindert: {reasons}', { reasons: reasons.join(', ') }) });
   throw new HttpError(409, `${why} (${reasons.join(', ')})`, { approval_required: true, reasons });
 }
 
@@ -246,7 +249,8 @@ export function requestApproval(app: App, loc: string, q: QuoteRow, comment: str
   if (cur && cur.status === 'pending' && cur.fingerprint === fp) throw new HttpError(409, 'Die Genehmigung ist schon angefragt');
   if (cur && cur.status === 'approved' && cur.fingerprint === fp) throw new HttpError(409, 'Dieses Angebot ist schon genehmigt');
   const approvers = approversOf(app, loc, rule).filter((u) => rule.self_approve || u !== actor?.id);
-  if (!approvers.length) throw bad(`Niemand kann genehmigen – es fehlt eine Person mit der Rolle „${APPROVER_LABEL[rule.approver_role]}“`);
+  const t = tApp();
+  if (!approvers.length) throw bad(t('Niemand kann genehmigen – es fehlt eine Person mit der Rolle „{role}“', { role: t(APPROVER_LABEL[rule.approver_role]) }));
   const row: ApprovalRow = {
     id: newId(),
     location_id: loc,
@@ -268,9 +272,12 @@ export function requestApproval(app: App, loc: string, q: QuoteRow, comment: str
     app.db.run(`UPDATE quote_approvals SET status = 'withdrawn', decided_at = ? WHERE quote_id = ? AND location_id = ? AND status = 'pending'`, now(), q.id, loc);
     app.db.insert('quote_approvals', row);
   });
-  const who = actor?.name ?? 'API-Schlüssel';
-  for (const u of approvers) notifyMember(app, { locationId: loc, userId: u, kind: 'approval', title: `Genehmigung angefragt: Angebot ${label(q)}`, body: `${who}: ${reasons.join(', ')}${row.request_comment ? ` – „${row.request_comment}“` : ''}`, link: quoteLink(q), ref: `quote-approval:${row.id}`, area: 'opportunities', push: 'tasks' });
-  app.services.audit?.({ action: 'quote.approval.requested', actor: who, userId: actor?.id ?? null, locationId: loc, entityId: q.id, summary: `Genehmigung für Angebot ${label(q)} angefragt: ${reasons.join(', ')}` });
+  const who = actor?.name ?? t('API-Schlüssel');
+  for (const u of approvers) {
+    const tu = tUser(app as unknown as Parameters<typeof tUser>[0], u);
+    notifyMember(app, { locationId: loc, userId: u, kind: 'approval', title: tu('Genehmigung angefragt: Angebot {title}', { title: label(q) }), body: `${who}: ${reasons.join(', ')}${row.request_comment ? ` – „${row.request_comment}“` : ''}`, link: quoteLink(q), ref: `quote-approval:${row.id}`, area: 'opportunities', push: 'tasks' });
+  }
+  app.services.audit?.({ action: 'quote.approval.requested', actor: who, userId: actor?.id ?? null, locationId: loc, entityId: q.id, summary: t('Genehmigung für Angebot {title} angefragt: {reasons}', { title: label(q), reasons: reasons.join(', ') }) });
   app.events.emit(loc, 'quote.approval_requested', { contactId: q.contact_id, quote: { id: q.id, title: q.title, deal_id: q.deal_id }, approval: { id: row.id, reasons } });
   return row;
 }
@@ -292,7 +299,8 @@ export function approvalWithQuote(app: App, loc: string, aid: string): { a: Appr
 export function decide(app: App, loc: string, aid: string, decision: 'approved' | 'rejected', comment: string, actor: Actor) {
   const { a, q } = approvalWithQuote(app, loc, aid);
   const rule = ruleOf(app, loc);
-  if (!holdsRole(app, loc, rule, actor)) throw new HttpError(403, `Genehmigen darf nur, wer die Rolle „${APPROVER_LABEL[rule.approver_role]}“ hat`);
+  const t = tApp();
+  if (!holdsRole(app, loc, rule, actor)) throw new HttpError(403, t('Genehmigen darf nur, wer die Rolle „{role}“ hat', { role: t(APPROVER_LABEL[rule.approver_role]) }));
   if (!rule.self_approve && a.requested_by === actor.id) throw new HttpError(403, 'Eigene Angebote genehmigt eine zweite Person');
   if (a.status !== 'pending') throw new HttpError(409, 'Diese Anfrage ist schon entschieden');
   if (q.status !== 'draft') throw new HttpError(409, 'Das Angebot ist kein Entwurf mehr');
@@ -301,11 +309,11 @@ export function decide(app: App, loc: string, aid: string, decision: 'approved' 
   if (decision === 'rejected' && !note) throw bad('Bitte einen Grund für die Ablehnung angeben');
   const done = app.db.run(`UPDATE quote_approvals SET status = ?, decided_by = ?, decision_comment = ?, decided_at = ? WHERE id = ? AND status = 'pending'`, decision, actor.id, note, now(), a.id).changes;
   if (!done) throw new HttpError(409, 'Diese Anfrage ist schon entschieden');
-  const verb = decision === 'approved' ? 'genehmigt' : 'abgelehnt';
   if (a.requested_by && a.requested_by !== actor.id) {
-    notifyMember(app, { locationId: loc, userId: a.requested_by, kind: 'approval', title: `Angebot ${label(q)} ${verb}`, body: `${actor.name}${note ? `: „${note}“` : ''}`, link: quoteLink(q), ref: `quote-approval-decided:${a.id}`, area: 'opportunities', push: 'tasks' });
+    const tu = tUser(app as unknown as Parameters<typeof tUser>[0], a.requested_by);
+    notifyMember(app, { locationId: loc, userId: a.requested_by, kind: 'approval', title: tu(decision === 'approved' ? 'Angebot {title} genehmigt' : 'Angebot {title} abgelehnt', { title: label(q) }), body: `${actor.name}${note ? `: „${note}“` : ''}`, link: quoteLink(q), ref: `quote-approval-decided:${a.id}`, area: 'opportunities', push: 'tasks' });
   }
-  app.services.audit?.({ action: `quote.approval.${decision}`, actor: actor.name, userId: actor.id, locationId: loc, entityId: q.id, summary: `Angebot ${label(q)} ${verb}${note ? `: ${note}` : ''}` });
+  app.services.audit?.({ action: `quote.approval.${decision}`, actor: actor.name, userId: actor.id, locationId: loc, entityId: q.id, summary: `${t(decision === 'approved' ? 'Angebot {title} genehmigt' : 'Angebot {title} abgelehnt', { title: label(q) })}${note ? `: ${note}` : ''}` });
   app.events.emit(loc, 'quote.approval_decided', { contactId: q.contact_id, quote: { id: q.id, title: q.title, deal_id: q.deal_id }, approval: { id: a.id, status: decision, comment: note } });
   return approvalOut(app, approvalRow(app, loc, a.id), q);
 }
@@ -315,6 +323,7 @@ export function withdraw(app: App, loc: string, aid: string, actor: Actor | null
   if (a.status !== 'pending') throw new HttpError(409, 'Diese Anfrage ist schon entschieden');
   if (!manager && a.requested_by !== actor?.id) throw new HttpError(403, 'Zurückziehen kann nur, wer angefragt hat');
   app.db.run(`UPDATE quote_approvals SET status = 'withdrawn', decided_at = ? WHERE id = ? AND status = 'pending'`, now(), a.id);
-  app.services.audit?.({ action: 'quote.approval.withdrawn', actor: actor?.name ?? 'API-Schlüssel', userId: actor?.id ?? null, locationId: loc, entityId: q.id, summary: `Genehmigungsanfrage für Angebot ${label(q)} zurückgezogen` });
+  const t = tApp();
+  app.services.audit?.({ action: 'quote.approval.withdrawn', actor: actor?.name ?? t('API-Schlüssel'), userId: actor?.id ?? null, locationId: loc, entityId: q.id, summary: t('Genehmigungsanfrage für Angebot {title} zurückgezogen', { title: label(q) }) });
   return approvalOut(app, approvalRow(app, loc, a.id), q);
 }

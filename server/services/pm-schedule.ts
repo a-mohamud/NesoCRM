@@ -62,6 +62,7 @@ export function isYmd(s: unknown): s is string {
 /** Whole days since 1970-01-01. */
 export const dayNumber = (ymd: string): number => {
   const m = YMD.exec(ymd);
+  // i18n-ignore (internal invariant: callers pass checked dates)
   if (!m) throw new Error(`Ungültiges Datum: ${ymd}`);
   return Math.round(Date.UTC(+m[1], +m[2] - 1, +m[3]) / DAY_MS);
 };
@@ -133,12 +134,18 @@ export function resizeDates(t: Dates, edge: 'start' | 'end', delta: number, cal:
 
 // --- dependencies ---------------------------------------------------------------------------
 
+/** `{name}` placeholders filled in – the error keeps its message id (`key`) and values for the server's translation. */
+const fillIn = (s: string, vars?: Record<string, string | number>) => (vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s);
+
 export class DepError extends Error {
+  readonly key: string;
   constructor(
     public code: 'self' | 'duplicate' | 'cycle' | 'type' | 'lag' | 'ancestor',
     message: string,
+    public vars?: Record<string, string | number>,
   ) {
-    super(message);
+    super(fillIn(message, vars));
+    this.key = message;
   }
 }
 
@@ -149,7 +156,7 @@ export const cleanDepType = (v: unknown): DepType => {
 };
 export const cleanLag = (v: unknown): number => {
   const n = Number(v ?? 0);
-  if (!Number.isFinite(n) || Math.abs(n) > MAX_LAG_DAYS || Math.round(n) !== n) throw new DepError('lag', `Versatz: ganze Tage zwischen -${MAX_LAG_DAYS} und ${MAX_LAG_DAYS}`);
+  if (!Number.isFinite(n) || Math.abs(n) > MAX_LAG_DAYS || Math.round(n) !== n) throw new DepError('lag', 'Versatz: ganze Tage zwischen -{max} und {max}', { max: MAX_LAG_DAYS });
   return n;
 };
 

@@ -48,6 +48,8 @@ import {
 import { PLAYER_CSS, PLAYER_JS, playerHtml } from '../services/course-player.js';
 import { parseRange } from '../services/genmedia/media.js';
 import { limiter } from '../services/creator-kit.js';
+import { tCtx, tLoc } from '../i18n/index.js';
+import { escapeHtml } from '../core/template.js';
 
 /**
  * Course video on this server (docs/courses.md): chunked upload, signed expiring URLs, range requests, poster, captions (WebVTT/SRT upload or
@@ -230,7 +232,7 @@ export const courseVideoModule: Module = {
     router.post('/api/courses/videos/:vid/captions', 'location', (ctx) => {
       const v = mustVideo(ctx.locationId, ctx.params.vid);
       const body = String(ctx.body?.vtt ?? ctx.body?.text ?? '');
-      if (Buffer.byteLength(body) > CAPTION_MAX_BYTES) throw bad(`Die Untertitel-Datei ist größer als ${CAPTION_MAX_BYTES / 1024} KB`);
+      if (Buffer.byteLength(body) > CAPTION_MAX_BYTES) throw bad(tCtx(ctx)('Die Untertitel-Datei ist größer als {kb} KB', { kb: CAPTION_MAX_BYTES / 1024 }));
       const lang = cleanLang(ctx.body?.lang);
       saveCaption(app, v, lang, str(ctx.body?.label, 'Name', { max: 60 }) || langLabel(lang), body, 'upload');
       return detail(v);
@@ -248,7 +250,7 @@ export const courseVideoModule: Module = {
     });
     router.post('/api/courses/videos/:vid/captions/ai', 'location', async (ctx) => {
       const v = mustVideo(ctx.locationId, ctx.params.vid);
-      const run = await startTranscribe(app, ctx.locationId, v.id, cleanLang(ctx.body?.language ?? 'de'));
+      const run = await startTranscribe(app, ctx.locationId, v.id, cleanLang(ctx.body?.language ?? tLoc(app, ctx.locationId).locale));
       background(run());
       return { ...detail(mustVideo(ctx.locationId, v.id)), started: true };
     });
@@ -338,7 +340,8 @@ export const courseVideoModule: Module = {
       (p: any, m: any, s: any, l: any): string | undefined => {
         if (!l.video_id) return undefined;
         const v = readyVideo(app, p.locationId, l.video_id);
-        if (!v) return '<div class="panel empty"><p class="muted">Dieses Video ist gerade nicht verfügbar.</p></div>';
+        const t = tLoc(app, p.locationId);
+        if (!v) return `<div class="panel empty"><p class="muted">${escapeHtml(t('Dieses Video ist gerade nicht verfügbar.'))}</p></div>`;
         const tok = signMedia(app, v.id, m.contact.id, p.locationId);
         const base = `${p.base}/media/${encodeURIComponent(v.id)}`;
         const q = `?t=${encodeURIComponent(tok)}`;
@@ -360,6 +363,7 @@ export const courseVideoModule: Module = {
             watched: pb.watched_sec,
             furthest: pb.furthest_sec,
             done: s.done.has(l.id),
+            t,
           })
         );
       },
@@ -371,11 +375,12 @@ export const courseVideoModule: Module = {
     app.services.lessonCompleteBlock = [...((app.services.lessonCompleteBlock as unknown[] | undefined) ?? []), blockManual];
     app.services.lessonExtras = [
       ...((app.services.lessonExtras as unknown[] | undefined) ?? []),
-      (_p: any, _m: any, s: any, l: any) => {
+      (p: any, _m: any, s: any, l: any) => {
         if (!rule(l)) return undefined;
         const pb = getPlayback(app, s.enrollment.id, l.id);
         const done = s.done.has(l.id);
-        const note = done ? '<span class="pill ok">✓ Erledigt</span>' : `<span class="muted small">Gesehen: ${watchedPercent(pb)} % von ${l.complete_percent} % – die Lektion schließt sich von selbst ab.</span>`;
+        const t = tLoc(app, p.locationId);
+        const note = done ? `<span class="pill ok">${escapeHtml(t('✓ Erledigt'))}</span>` : `<span class="muted small">${escapeHtml(t('Gesehen: {pct} % von {need} % – die Lektion schließt sich von selbst ab.', { pct: watchedPercent(pb), need: l.complete_percent }))}</span>`;
         return { html: `<p style="margin:22px 0 0">${note}</p>`, hideMark: true };
       },
     ];

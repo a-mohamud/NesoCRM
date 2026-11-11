@@ -6,6 +6,7 @@ import { id, now } from '../core/util.js';
 import { logActivity } from '../services/contacts.js';
 import { ensureText, metaOf } from '../services/consent.js';
 import { sendToContact } from '../services/messaging.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Checkout rules for sales to consumers in Germany, on the buy page (/buy/<product>) through its hooks (buyPageHtml, buyCheckout):
@@ -42,7 +43,8 @@ const TYPES: ContentType[] = ['none', 'digital', 'service', 'physical'];
 const url = (v: unknown) => (/^https?:\/\/[^\s"'<>]{3,500}$/i.test(String(v ?? '').trim()) ? String(v).trim() : '');
 
 /** The button has to name the payment obligation unmistakably (§ 312j Abs. 3 BGB): "zahlungspflichtig/kostenpflichtig" + an order verb. */
-export const buttonOk = (t: string) => /(zahlungs|kosten)pflichtig/i.test(t) && /(bestell|kauf|abonnier|buch|abschlie|bezahl)/i.test(t);
+// German: the § 312j BGB wording; English: a label that names the payment ("Place order and pay", "Buy now", "Subscribe and pay").
+export const buttonOk = (t: string) => (/(zahlungs|kosten)pflichtig/i.test(t) && /(bestell|kauf|abonnier|buch|abschlie|bezahl)/i.test(t)) || /\b(pay|buy|purchase|subscribe)\b/i.test(t);
 
 export function cleanLaw(raw: unknown): LawSettings {
   const r: any = raw && typeof raw === 'object' ? raw : {};
@@ -60,15 +62,15 @@ export function cleanLaw(raw: unknown): LawSettings {
   };
 }
 
-export const termsLabel = (href: string) => `Ich habe die <a href="${escapeHtml(href)}" target="_blank" rel="noopener">Allgemeinen Geschäftsbedingungen</a> gelesen und akzeptiere sie.`;
-export const termsPlain = 'Ich habe die Allgemeinen Geschäftsbedingungen gelesen und akzeptiere sie.';
+export const termsLabel = (href: string, t: STFn = tApp()) => t('Ich habe die {link}Allgemeinen Geschäftsbedingungen{end} gelesen und akzeptiere sie.', { link: `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">`, end: '</a>' });
+export const termsPlain = (t: STFn = tApp()) => t('Ich habe die Allgemeinen Geschäftsbedingungen gelesen und akzeptiere sie.');
 
 /** The wording of the box that asks for the start before the end of the withdrawal period (§ 356 Abs. 4 / 5 BGB). */
-export function waiverText(kind: 'digital' | 'service', company: string): string {
-  const who = company.trim() || 'der Anbieter';
+export function waiverText(kind: 'digital' | 'service', company: string, t: STFn = tApp()): string {
+  const who = company.trim() || t('der Anbieter');
   return kind === 'digital'
-    ? `Ich stimme ausdrücklich zu, dass ${who} vor Ablauf der Widerrufsfrist mit der Ausführung des Vertrags (Bereitstellung der digitalen Inhalte) beginnt. Mir ist bekannt, dass ich mit Beginn der Ausführung des Vertrags mein Widerrufsrecht verliere.`
-    : `Ich verlange ausdrücklich, dass ${who} vor Ablauf der Widerrufsfrist mit der Ausführung der Dienstleistung beginnt. Mir ist bekannt, dass mein Widerrufsrecht bei vollständiger Vertragserfüllung erlischt und ich bei einem Widerruf nach Beginn der Ausführung einen angemessenen Wertersatz zahlen muss.`;
+    ? t('Ich stimme ausdrücklich zu, dass {company} vor Ablauf der Widerrufsfrist mit der Ausführung des Vertrags (Bereitstellung der digitalen Inhalte) beginnt. Mir ist bekannt, dass ich mit Beginn der Ausführung des Vertrags mein Widerrufsrecht verliere.', { company: who })
+    : t('Ich verlange ausdrücklich, dass {company} vor Ablauf der Widerrufsfrist mit der Ausführung der Dienstleistung beginnt. Mir ist bekannt, dass mein Widerrufsrecht bei vollständiger Vertragserfüllung erlischt und ich bei einem Widerruf nach Beginn der Ausführung einen angemessenen Wertersatz zahlen muss.', { company: who });
 }
 
 export const checkoutLawModule: Module = {
@@ -106,7 +108,8 @@ export const checkoutLawModule: Module = {
     // The label of the order button (stripe.ts asks): only the button text, nothing else changes without settings.
     app.services.buyButtonLabel = (p: { location_id: string }) => {
       const s = lawOf(p.location_id);
-      return s.enabled ? s.button_text : undefined;
+      // the default wording in the sub-account's language; a text of the owner's own stays as written
+      return s.enabled ? (s.button_text === DEFAULT_BUTTON ? tLoc(app, p.location_id)(DEFAULT_BUTTON) : s.button_text) : undefined;
     };
 
     // --- the boxes and links on the buy page ----------------------------------------------------------------------------
@@ -116,19 +119,20 @@ export const checkoutLawModule: Module = {
         const s = lawOf(p.location_id);
         if (!s.enabled) return '';
         const loc = app.location(p.location_id);
+        const t = tLoc(app, p.location_id);
         const type = typeOf(s, p.id);
         const l = links(p.location_id, s);
         const rows: string[] = [];
-        if (s.terms_url) rows.push(`<label class="check"><input type="checkbox" name="law_terms" value="1" required> <span>${termsLabel(s.terms_url)}</span></label>`);
-        if (type === 'digital' || type === 'service') rows.push(`<label class="check" style="margin-top:8px"><input type="checkbox" name="law_waiver" value="1" required> <span>${escapeHtml(waiverText(type, loc?.name ?? ''))}</span></label>`);
+        if (s.terms_url) rows.push(`<label class="check"><input type="checkbox" name="law_terms" value="1" required> <span>${termsLabel(s.terms_url, t)}</span></label>`);
+        if (type === 'digital' || type === 'service') rows.push(`<label class="check" style="margin-top:8px"><input type="checkbox" name="law_waiver" value="1" required> <span>${escapeHtml(waiverText(type, loc?.name ?? '', t))}</span></label>`);
         const small = !!loc?.settings.invoices?.small_business;
         const info = [
-          l.withdrawal ? `Informationen zum <a href="${escapeHtml(l.withdrawal)}" target="_blank" rel="noopener">Widerrufsrecht</a>` : '',
-          l.privacy ? `<a href="${escapeHtml(l.privacy)}" target="_blank" rel="noopener">Datenschutz</a>` : '',
-          l.imprint ? `<a href="${escapeHtml(l.imprint)}" target="_blank" rel="noopener">Impressum</a>` : '',
+          l.withdrawal ? t('Informationen zum {link}Widerrufsrecht{end}', { link: `<a href="${escapeHtml(l.withdrawal)}" target="_blank" rel="noopener">`, end: '</a>' }) : '',
+          l.privacy ? `<a href="${escapeHtml(l.privacy)}" target="_blank" rel="noopener">${t('Datenschutz')}</a>` : '',
+          l.imprint ? `<a href="${escapeHtml(l.imprint)}" target="_blank" rel="noopener">${t('Impressum')}</a>` : '',
         ].filter(Boolean);
-        const vat = small ? 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.' : 'Alle Preise inklusive der gesetzlichen Umsatzsteuer.';
-        const ship = type === 'physical' ? ' Zuzüglich etwaiger Versandkosten.' : type === 'digital' || type === 'service' ? ' Keine Versandkosten.' : '';
+        const vat = small ? t('Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.') : t('Alle Preise inklusive der gesetzlichen Umsatzsteuer.');
+        const ship = type === 'physical' ? ` ${t('Zuzüglich etwaiger Versandkosten.')}` : type === 'digital' || type === 'service' ? ` ${t('Keine Versandkosten.')}` : '';
         return `<div class="pghl-law" style="margin:14px 0;font-size:14px">${rows.join('')}<p class="muted" style="font-size:12px;margin:10px 0 0">${escapeHtml(vat)}${escapeHtml(ship)}${info.length ? ` ${info.join(' · ')}` : ''}</p></div>`;
       },
     ];
@@ -141,15 +145,16 @@ export const checkoutLawModule: Module = {
         const s = lawOf(o.product.location_id);
         if (!s.enabled) return;
         const loc = app.location(o.product.location_id);
+        const t = tLoc(app, o.product.location_id);
         const type = typeOf(s, o.product.id);
         const body = ctx.body ?? {};
-        if (s.terms_url && !ticked(body.law_terms)) throw new Error('Bitte bestätige, dass du die AGB gelesen hast und akzeptierst.');
+        if (s.terms_url && !ticked(body.law_terms)) throw new Error(t('Bitte bestätige, dass du die AGB gelesen hast und akzeptierst.'));
         const waiver = type === 'digital' || type === 'service' ? type : '';
-        if (waiver && !ticked(body.law_waiver)) throw new Error(waiver === 'digital' ? 'Bitte stimme der sofortigen Bereitstellung der digitalen Inhalte und dem Erlöschen des Widerrufsrechts zu.' : 'Bitte bestätige den Beginn der Dienstleistung vor Ablauf der Widerrufsfrist.');
+        if (waiver && !ticked(body.law_waiver)) throw new Error(waiver === 'digital' ? t('Bitte stimme der sofortigen Bereitstellung der digitalen Inhalte und dem Erlöschen des Widerrufsrechts zu.') : t('Bitte bestätige den Beginn der Dienstleistung vor Ablauf der Widerrufsfrist.'));
         if (!s.terms_url && !waiver) return;
         const loc2 = o.product.location_id as string;
-        const terms = s.terms_url ? ensureText(app, loc2, 'checkout:terms', termsPlain) : null;
-        const w = waiver ? ensureText(app, loc2, `checkout:waiver:${waiver}`, waiverText(waiver, loc?.name ?? '')) : null;
+        const terms = s.terms_url ? ensureText(app, loc2, 'checkout:terms', termsPlain(t)) : null;
+        const w = waiver ? ensureText(app, loc2, `checkout:waiver:${waiver}`, waiverText(waiver, loc?.name ?? '', t)) : null;
         const meta = metaOf(ctx);
         const row = {
           id: id(),
@@ -184,28 +189,29 @@ export const checkoutLawModule: Module = {
       const buyer = d.contactId ? db.get<{ email: string }>('SELECT email FROM contacts WHERE id = ? AND location_id = ?', d.contactId, e.locationId) : undefined;
       db.run('UPDATE checkout_acceptances SET session_id = ?, invoice_id = ?, contact_id = ?, email = ? WHERE id = ?', d.sessionId ?? null, d.invoiceId ?? null, d.contactId ?? null, buyer?.email || row.email, row.id);
       if (!d.contactId) return;
-      const parts = [row.terms_version ? `AGB (Version ${row.terms_version})` : '', row.waiver_kind ? `${row.waiver_kind === 'digital' ? 'Zustimmung zur sofortigen Bereitstellung / Verzicht auf das Widerrufsrecht' : 'Beginn der Dienstleistung vor Ablauf der Widerrufsfrist'} (Version ${row.waiver_version})` : ''].filter(Boolean);
-      logActivity(app, e.locationId, d.contactId, 'checkout.accepted', `Bei der Bestellung bestätigt: ${parts.join(', ')}`, { acceptance_id: row.id, session_id: d.sessionId });
+      const t = tLoc(app, e.locationId);
+      const parts = [row.terms_version ? t('AGB (Version {version})', { version: row.terms_version }) : '', row.waiver_kind ? t('{what} (Version {version})', { what: row.waiver_kind === 'digital' ? t('Zustimmung zur sofortigen Bereitstellung / Verzicht auf das Widerrufsrecht') : t('Beginn der Dienstleistung vor Ablauf der Widerrufsfrist'), version: row.waiver_version }) : ''].filter(Boolean);
+      logActivity(app, e.locationId, d.contactId, 'checkout.accepted', t('Bei der Bestellung bestätigt: {items}', { items: parts.join(', ') }), { acceptance_id: row.id, session_id: d.sessionId });
       const s = lawOf(e.locationId);
       if (!s.confirmation_mail) return;
       const loc = app.location(e.locationId);
       const l = links(e.locationId, s);
       const lines = [
-        `Hallo {{contact.first_name|}},`,
+        `${t('Hallo')} {{contact.first_name|}},`,
         '',
-        `vielen Dank für deine Bestellung von „${String(d.product?.name ?? 'deinem Produkt')}“ bei ${loc?.name ?? ''}. Hier die Bestätigung zu deinem Vertrag:`,
+        t('vielen Dank für deine Bestellung von „{product}“ bei {company}. Hier die Bestätigung zu deinem Vertrag:', { product: String(d.product?.name ?? t('deinem Produkt')), company: loc?.name ?? '' }),
         '',
-        ...(row.terms_url ? [`- AGB: ${row.terms_url} (bei der Bestellung akzeptiert)`] : []),
-        ...(l.withdrawal ? [`- Widerrufsbelehrung und Muster-Widerrufsformular: ${l.withdrawal}`] : []),
-        ...(row.waiver_kind ? [`- ${waiverText(row.waiver_kind, loc?.name ?? '')}`, '  (bei der Bestellung ausdrücklich bestätigt)'] : []),
+        ...(row.terms_url ? [`- ${t('AGB: {url} (bei der Bestellung akzeptiert)', { url: row.terms_url })}`] : []),
+        ...(l.withdrawal ? [`- ${t('Widerrufsbelehrung und Muster-Widerrufsformular: {url}', { url: l.withdrawal })}`] : []),
+        ...(row.waiver_kind ? [`- ${waiverText(row.waiver_kind, loc?.name ?? '', t)}`, `  ${t('(bei der Bestellung ausdrücklich bestätigt)')}`] : []),
         '',
-        'Bitte bewahre diese E-Mail auf.',
+        t('Bitte bewahre diese E-Mail auf.'),
         '',
-        'Viele Grüße',
+        t('Viele Grüße'),
         `${loc?.name ?? ''}`,
       ];
       try {
-        await sendToContact(app, e.locationId, { contactId: d.contactId, channel: 'email', subject: `Bestätigung deiner Bestellung bei ${loc?.name ?? ''}`.slice(0, 200), body: lines.join('\n').replace('{{contact.first_name|}}', ''), source: 'Bestellbestätigung', ignoreDnd: true, purpose: 'transactional' });
+        await sendToContact(app, e.locationId, { contactId: d.contactId, channel: 'email', subject: t('Bestätigung deiner Bestellung bei {company}', { company: loc?.name ?? '' }).slice(0, 200), body: lines.join('\n').replace('{{contact.first_name|}}', ''), source: t('Bestellbestätigung'), ignoreDnd: true, purpose: 'transactional' });
       } catch (err) {
         console.error('[checkout-law] Bestätigung:', (err as Error).message);
       }

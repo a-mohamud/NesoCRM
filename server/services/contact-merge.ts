@@ -1,4 +1,5 @@
 import type { App } from '../core/app.js';
+import { tApp, tLoc } from '../i18n/index.js';
 import type { Row } from '../core/db.js';
 import { HttpError, bad, notFound } from '../core/http.js';
 import { now } from '../core/util.js';
@@ -265,7 +266,9 @@ export function mergeContacts(app: App, loc: string, o: MergeInput): MergeResult
   if (!keep || !from) throw notFound('Kontakt nicht gefunden');
   const frozen = frozenInvoices(app, from.id);
   if (frozen && !o.confirmDetach) {
-    throw new HttpError(409, `Der zweite Kontakt hat ${frozen} festgeschriebene ${frozen === 1 ? 'Rechnung' : 'Rechnungen'}. Festgeschriebene Rechnungen lassen sich nicht auf einen anderen Kontakt umstellen – sie würden beim Zusammenführen die Verknüpfung zum Kontakt verlieren. Behalte lieber den Kontakt mit den Rechnungen (Rollen tauschen) oder bestätige das Lösen der Verknüpfung.`, { code: 'frozen_invoices', count: frozen });
+    const t = tApp();
+    const msg = t.plural(frozen, { one: 'Der zweite Kontakt hat {n} festgeschriebene Rechnung.', other: 'Der zweite Kontakt hat {n} festgeschriebene Rechnungen.' });
+    throw new HttpError(409, `${msg} ${t('Festgeschriebene Rechnungen lassen sich nicht auf einen anderen Kontakt umstellen – sie würden beim Zusammenführen die Verknüpfung zum Kontakt verlieren. Behalte lieber den Kontakt mit den Rechnungen (Rollen tauschen) oder bestätige das Lösen der Verknüpfung.')}`, { code: 'frozen_invoices', count: frozen });
   }
   const picks = o.picks ?? {};
   const cmp = compareFields(keep, from);
@@ -310,7 +313,7 @@ export function mergeContacts(app: App, loc: string, o: MergeInput): MergeResult
     // number of the one that left may be exactly what the person picked.
     db.run('DELETE FROM contacts WHERE id = ? AND location_id = ?', from.id, loc);
     db.update('contacts', keep.id, { ...patch, updated_at: now() }, loc);
-    logActivity(app, loc, keep.id, 'contact.merged', `„${contactName(from)}“ zusammengeführt`, {
+    logActivity(app, loc, keep.id, 'contact.merged', tLoc(app, loc)('„{name}“ zusammengeführt', { name: contactName(from) }), {
       from: { id: from.id, first_name: from.first_name, last_name: from.last_name, email: from.email, phone: from.phone, company: from.company, address: from.address, city: from.city, postal_code: from.postal_code, tags: from.tags, custom: from.custom, assigned_to: from.assigned_to, created_at: from.created_at },
       moved,
       user_id: o.userId ?? null,
@@ -319,7 +322,7 @@ export function mergeContacts(app: App, loc: string, o: MergeInput): MergeResult
   const contact = getContact(app, loc, keep.id)!;
   // "Nicht stören" is not announced as a change: the consent ledger of the second contact came along with its proof, a second
   // "revoked" entry would only clutter it (and an undo could not take it back) – but running sequences must stop.
-  if (patch.dnd) (app.services.sequences as { stopContact?: (l: string, c: string, r: string, o?: unknown) => void } | undefined)?.stopContact?.(loc, keep.id, 'unsubscribed', { detail: 'Nicht stören (zusammengeführt)' });
+  if (patch.dnd) (app.services.sequences as { stopContact?: (l: string, c: string, r: string, o?: unknown) => void } | undefined)?.stopContact?.(loc, keep.id, 'unsubscribed', { detail: tLoc(app, loc)('Nicht stören (zusammengeführt)') });
   app.events.emit(loc, 'contact.updated', { contactId: keep.id, contact, previous: keep, changed: ['merged', ...Object.keys(patch).filter((k) => k !== 'dnd')] });
   app.events.emit(loc, 'contact.merged', { contactId: keep.id, contact, fromId: from.id });
   return { contact, moved, other, dropped: counts.dropped, detached };

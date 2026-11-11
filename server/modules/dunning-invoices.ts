@@ -9,6 +9,7 @@ import { daysOverdue, deadlineOf, nextLevel, noticeAmounts, type DunningSettings
 import { openCents, overdueBefore } from '../services/invoice-model.js';
 import { sendToContact } from '../services/messaging.js';
 import { registerActions, registerTriggers, text as fill } from '../services/wfx-kit.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Mahnstufen for invoices: Zahlungserinnerung, 1. und 2. Mahnung after configurable days past the due date, with a fee per
@@ -131,9 +132,13 @@ export const dunningInvoicesModule: Module = {
       const brand = loc.settings.branding ?? {};
       const s = settings(n.location_id).inv;
       const level = s.levels.find((l) => l.key === n.level_key) ?? s.levels[n.level - 1] ?? s.levels[0];
+      const tl = tLoc(app, n.location_id);
+      // the two link lines of the e-mail have no place on paper (in German and in the sub-account's language)
+      // i18n-ignore – the German prefixes match texts stored before the translation
+      const linkLines = ['Rechnung ansehen und bezahlen', 'Schreiben als PDF', tl('Rechnung ansehen und bezahlen: {{invoice.url}}').split(':')[0], tl('Schreiben als PDF: {{notice.pdf_url}}').split(':')[0]];
       const body = renderText(n, { ...level, subject: '', body: level.body }, inv, contact, n.location_id)
         .body.split('\n')
-        .filter((l) => !/^(Rechnung ansehen und bezahlen|Schreiben als PDF):/.test(l))
+        .filter((l) => !linkLines.some((x) => l.startsWith(`${x}:`)))
         .join('\n')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
@@ -151,6 +156,7 @@ export const dunningInvoicesModule: Module = {
         body,
         invoiceUrl: `${app.baseUrl()}/i/${inv.public_token}`,
         smallBusiness: !!inf.small_business,
+        t: tl,
       });
     }
 
@@ -189,8 +195,9 @@ export const dunningInvoicesModule: Module = {
 
     async function sendNotice(n: Notice, by: string): Promise<Notice> {
       const inv = invoiceOf(n.location_id, n.invoice_id);
+      const tl = tLoc(app, n.location_id);
       const cancel = (why: string) => {
-        db.run(`UPDATE dunning_notices SET status = 'canceled', error = ?, decided_by = ? WHERE id = ?`, why, by, n.id);
+        db.run(`UPDATE dunning_notices SET status = 'canceled', error = ?, decided_by = ? WHERE id = ?`, tl(why), by, n.id);
         return db.get<Notice>('SELECT * FROM dunning_notices WHERE id = ?', n.id)!;
       };
       if (!inv || inv.status === 'paid' || inv.status === 'void') return cancel(inv?.status === 'paid' ? 'Rechnung ist bezahlt' : 'Rechnung ist storniert');
@@ -214,13 +221,13 @@ export const dunningInvoicesModule: Module = {
         if (!ok) error = String(m.error ?? '');
       }
       if (s.sms && contact.phone) {
-        const m = await sendToContact(app, n.location_id, { contactId: contact.id, channel: 'sms', body: `${level.label} zu Rechnung ${inv.number}: ${money(a.total_cents, inv.currency)} bis ${deDate(deadline, app.location(n.location_id)?.timezone)}. ${app.baseUrl()}/i/${inv.public_token}`, source: level.label, ignoreDnd: true });
+        const m = await sendToContact(app, n.location_id, { contactId: contact.id, channel: 'sms', body: tl('{label} zu Rechnung {number}: {amount} bis {date}. {url}', { label: level.label, number: inv.number, amount: money(a.total_cents, inv.currency), date: deDate(deadline, app.location(n.location_id)?.timezone), url: `${app.baseUrl()}/i/${inv.public_token}` }), source: level.label, ignoreDnd: true });
         channels.push('sms');
         ok = ok || m.status !== 'failed';
       }
       if (!ok) {
-        db.run(`UPDATE dunning_notices SET status = 'failed', error = ?, decided_by = ? WHERE id = ?`, error || 'Kein Kanal erreichbar (E-Mail oder Telefon fehlt)', by, n.id);
-        auditLog(app, undefined, n.location_id, 'dunning.notice_failed', `${level.label} zu ${inv.number} nicht gesendet: ${error || 'kein Kanal'}`, n.id, by);
+        db.run(`UPDATE dunning_notices SET status = 'failed', error = ?, decided_by = ? WHERE id = ?`, error || tl('Kein Kanal erreichbar (E-Mail oder Telefon fehlt)'), by, n.id);
+        auditLog(app, undefined, n.location_id, 'dunning.notice_failed', tl('{label} zu {number} nicht gesendet: {error}', { label: level.label, number: inv.number, error: error || tl('kein Kanal') }), n.id, by);
         return db.get<Notice>('SELECT * FROM dunning_notices WHERE id = ?', n.id)!;
       }
       db.run(
@@ -228,8 +235,8 @@ export const dunningInvoicesModule: Module = {
         now(), JSON.stringify(channels), by, t.subject, t.body, fresh.principal_cents, fresh.prior_fee_cents, fresh.fee_cents, fresh.interest_cents, fresh.flat_fee_cents, fresh.total_cents, fresh.interest_rate, fresh.days_overdue, fresh.deadline_at, n.id,
       );
       const sent = db.get<Notice>('SELECT * FROM dunning_notices WHERE id = ?', n.id)!;
-      logActivity(app, n.location_id, contact.id, 'invoice.dunning', `${level.label} zu Rechnung ${inv.number} gesendet (Forderung ${money(sent.total_cents, sent.currency)}, fällig bis ${deDate(sent.deadline_at, app.location(n.location_id)?.timezone)})`);
-      auditLog(app, undefined, n.location_id, 'dunning.notice_sent', `${level.label} zu ${inv.number} gesendet (${money(sent.total_cents, sent.currency)}, ${channels.join('+')})`, n.id, by);
+      logActivity(app, n.location_id, contact.id, 'invoice.dunning', tl('{label} zu Rechnung {number} gesendet (Forderung {amount}, fällig bis {date})', { label: level.label, number: inv.number, amount: money(sent.total_cents, sent.currency), date: deDate(sent.deadline_at, app.location(n.location_id)?.timezone) }));
+      auditLog(app, undefined, n.location_id, 'dunning.notice_sent', tl('{label} zu {number} gesendet ({amount}, {channels})', { label: level.label, number: inv.number, amount: money(sent.total_cents, sent.currency), channels: channels.join('+') }), n.id, by);
       app.events.emit(n.location_id, 'invoice.dunning_sent', {
         contactId: contact.id,
         noticeId: n.id,
@@ -294,18 +301,19 @@ export const dunningInvoicesModule: Module = {
       if (o.dry) return { mode: s.mode, dry_run: true, due: view, created: [], sent: [], skipped: list.filter((c) => c.held).length };
       const created: any[] = [];
       const sent: any[] = [];
+      const tl = tLoc(app, loc);
       for (const c of list) {
         if (c.held) continue;
         const exists = db.get('SELECT 1 FROM dunning_notices WHERE invoice_id = ? AND level = ?', c.invoice.id, c.index + 1);
         if (exists) continue;
         const n = create(loc, c.invoice, c.index, o.force ? 'manual' : 'auto');
         created.push({ id: n.id, invoice_id: n.invoice_id, number: c.invoice.number, label: n.label });
-        auditLog(app, undefined, loc, 'dunning.notice_created', `${n.label} zu ${c.invoice.number} angelegt (${mode === 'auto' ? 'Versand' : 'zur Freigabe'})`, n.id, o.by);
+        auditLog(app, undefined, loc, 'dunning.notice_created', tl(mode === 'auto' ? '{label} zu {number} angelegt (Versand)' : '{label} zu {number} angelegt (zur Freigabe)', { label: n.label, number: c.invoice.number }), n.id, o.by);
         if (mode === 'auto') {
-          const r = await send(n, o.by ?? 'Automatik');
+          const r = await send(n, o.by ?? tl('Automatik'));
           sent.push({ id: r.id, number: c.invoice.number, label: r.label, status: r.status });
         } else {
-          void Promise.resolve(app.services.pushNotify?.({ locationId: loc, kind: 'payments', title: `${n.label} wartet auf Freigabe`, body: `Rechnung ${c.invoice.number}`, url: '/app/dunning', tag: `dunning-${n.id}` })).catch(() => undefined);
+          void Promise.resolve(app.services.pushNotify?.({ locationId: loc, kind: 'payments', title: tl('{label} wartet auf Freigabe', { label: n.label }), body: tl('Rechnung {number}', { number: c.invoice.number }), url: '/app/dunning', tag: `dunning-${n.id}` })).catch(() => undefined);
         }
       }
       return { mode: s.mode, created, sent, skipped: list.filter((c) => c.held).length };
@@ -328,13 +336,16 @@ export const dunningInvoicesModule: Module = {
     app.events.on('invoice.paid', (e) => {
       const inv = e.data.invoice;
       if (!inv?.id) return;
-      const n = db.run(`UPDATE dunning_notices SET status = 'canceled', error = 'Rechnung ist bezahlt' WHERE invoice_id = ? AND status = 'pending'`, inv.id).changes;
-      if (n) auditLog(app, undefined, e.locationId, 'dunning.stopped', `Rechnung ${inv.number} bezahlt – ${n} offene Mahnung(en) zurückgezogen`, inv.id);
+      const tl = tLoc(app, e.locationId);
+      const n = db.run(`UPDATE dunning_notices SET status = 'canceled', error = ? WHERE invoice_id = ? AND status = 'pending'`, tl('Rechnung ist bezahlt'), inv.id).changes;
+      if (n) auditLog(app, undefined, e.locationId, 'dunning.stopped', tl.plural(n, { one: 'Rechnung {number} bezahlt – {n} offene Mahnung zurückgezogen', other: 'Rechnung {number} bezahlt – {n} offene Mahnungen zurückgezogen' }, { number: inv.number }), inv.id);
     });
     // …and when nothing is owed any more for another reason: cancelled by a Storno, or credited (Gutschrift) down to nothing.
-    const withdraw = (locationId: string, inv: { id: string; number: string }, why: string) => {
+    const withdraw = (locationId: string, inv: { id: string; number: string }, whyId: string) => {
+      const tl = tLoc(app, locationId);
+      const why = tl(whyId);
       const n = db.run(`UPDATE dunning_notices SET status = 'canceled', error = ? WHERE invoice_id = ? AND status = 'pending'`, why, inv.id).changes;
-      if (n) auditLog(app, undefined, locationId, 'dunning.stopped', `Rechnung ${inv.number}: ${why} – ${n} offene Mahnung(en) zurückgezogen`, inv.id);
+      if (n) auditLog(app, undefined, locationId, 'dunning.stopped', tl.plural(n, { one: 'Rechnung {number}: {why} – {n} offene Mahnung zurückgezogen', other: 'Rechnung {number}: {why} – {n} offene Mahnungen zurückgezogen' }, { number: inv.number, why }), inv.id);
     };
     app.events.on('invoice.cancelled', (e) => {
       if (e.data.invoice?.id) withdraw(e.locationId, e.data.invoice, 'Rechnung ist storniert');
@@ -382,7 +393,7 @@ export const dunningInvoicesModule: Module = {
       const n = mustNotice(ctx);
       if (n.status !== 'pending' && n.status !== 'failed') throw bad('Diese Mahnung wurde schon bearbeitet');
       const r = await send(n, ctx.user?.name ?? 'API');
-      if (r.status === 'canceled' || r.status === 'failed') throw bad(`Nicht gesendet: ${r.error}`);
+      if (r.status === 'canceled' || r.status === 'failed') throw bad(tLoc(app, ctx.locationId)('Nicht gesendet: {error}', { error: r.error }));
       return noticeOut(r);
     });
     router.post('/api/dunning/notices/:id/resend', 'location', async (ctx) => {
@@ -390,7 +401,7 @@ export const dunningInvoicesModule: Module = {
       if (n.status !== 'sent') throw bad('Nur gesendete Mahnungen lassen sich erneut senden');
       db.run(`UPDATE dunning_notices SET status = 'pending' WHERE id = ?`, n.id);
       const r = await send({ ...n, status: 'pending' }, ctx.user?.name ?? 'API');
-      if (r.status !== 'sent') throw bad(`Nicht gesendet: ${r.error}`);
+      if (r.status !== 'sent') throw bad(tLoc(app, ctx.locationId)('Nicht gesendet: {error}', { error: r.error }));
       return noticeOut(r);
     });
     router.post('/api/dunning/notices/:id/dismiss', 'location', (ctx) => {
@@ -433,7 +444,7 @@ export const dunningInvoicesModule: Module = {
         return {
           id: inv.id, number: inv.number, title: inv.title, total_cents: inv.total_cents, currency: inv.currency, due_at: inv.due_at, days_overdue: daysOverdue(inv.due_at, new Date(), tzOf(ctx.locationId)), url: `${app.baseUrl()}/i/${inv.public_token}`,
           contact: { id: inv.contact_id, name: [inv.first_name, inv.last_name].filter(Boolean).join(' ') || inv.email || '', company: inv.company ?? '' },
-          level: last?.level ?? 0, level_label: last ? last.label : 'noch keine', last_status: last?.status ?? null, last_sent_at: last?.sent_at ?? null,
+          level: last?.level ?? 0, level_label: last ? last.label : tLoc(app, ctx.locationId)('noch keine'), last_status: last?.status ?? null, last_sent_at: last?.sent_at ?? null,
           next_label: (last?.level ?? 0) >= s.levels.length ? null : s.levels[nextIdx].label, next_total_cents: a.total_cents, held: !!holdOf(inv.id),
         };
       });
@@ -458,7 +469,7 @@ export const dunningInvoicesModule: Module = {
       const on = ctx.body?.on !== false;
       db.run('DELETE FROM dunning_holds WHERE invoice_id = ?', inv.id);
       if (on) db.insert('dunning_holds', { invoice_id: inv.id, location_id: ctx.locationId, reason: clip(ctx.body?.reason, 200), created_at: now(), user_id: ctx.user?.id ?? null });
-      auditLog(app, ctx, ctx.locationId, 'dunning.hold', `Mahnstopp ${on ? 'gesetzt' : 'aufgehoben'} (${inv.number})${ctx.body?.reason ? `: ${clip(ctx.body.reason, 100)}` : ''}`, inv.id);
+      auditLog(app, ctx, ctx.locationId, 'dunning.hold', `${tLoc(app, ctx.locationId)(on ? 'Mahnstopp gesetzt ({number})' : 'Mahnstopp aufgehoben ({number})', { number: inv.number })}${ctx.body?.reason ? `: ${clip(ctx.body.reason, 100)}` : ''}`, inv.id);
       return { ok: true, held: on };
     });
 
@@ -501,22 +512,23 @@ export const dunningInvoicesModule: Module = {
           sample: { mode: 'draft' },
         },
         run: async (run, step, vars) => {
+          const tl = tLoc(app, run.location_id);
           const invoiceId = fill(step.invoice_id || '{{event.invoice.id}}', vars).trim();
-          if (!invoiceId) throw new Error('Keine Rechnung im Ereignis – bitte „Rechnung“ ausfüllen');
+          if (!invoiceId) throw new Error(tl('Keine Rechnung im Ereignis – bitte „Rechnung“ ausfüllen'));
           const inv = invoiceOf(run.location_id, invoiceId);
-          if (!inv) throw new Error('Rechnung nicht gefunden');
-          if (!unpaid(inv)) return `Rechnung ${inv.number} ist nicht offen – keine Mahnung`;
-          if (holdOf(inv.id)) return `Mahnstopp bei ${inv.number}`;
+          if (!inv) throw new Error(tl('Rechnung nicht gefunden'));
+          if (!unpaid(inv)) return tl('Rechnung {number} ist nicht offen – keine Mahnung', { number: inv.number });
+          if (holdOf(inv.id)) return tl('Mahnstopp bei {number}', { number: inv.number });
           const last = lastNotice(inv.id);
           const s = settings(run.location_id).inv;
-          if ((last?.level ?? 0) >= s.levels.length) return `Alle Mahnstufen für ${inv.number} sind schon durch`;
-          if (last?.status === 'pending') return `Eine Mahnung zu ${inv.number} wartet schon auf Freigabe`;
+          if ((last?.level ?? 0) >= s.levels.length) return tl('Alle Mahnstufen für {number} sind schon durch', { number: inv.number });
+          if (last?.status === 'pending') return tl('Eine Mahnung zu {number} wartet schon auf Freigabe', { number: inv.number });
           const n = create(run.location_id, inv, last?.level ?? 0, 'workflow');
-          auditLog(app, undefined, run.location_id, 'dunning.notice_created', `${n.label} zu ${inv.number} angelegt (Workflow)`, n.id, 'Workflow');
-          if (step.mode === 'draft') return { result: `${n.label} zur Freigabe abgelegt`, vars: { dunning_level: n.level } };
+          auditLog(app, undefined, run.location_id, 'dunning.notice_created', tl('{label} zu {number} angelegt (Workflow)', { label: n.label, number: inv.number }), n.id, 'Workflow');
+          if (step.mode === 'draft') return { result: tl('{label} zur Freigabe abgelegt', { label: n.label }), vars: { dunning_level: n.level } };
           const r = await send(n, 'Workflow');
-          if (r.status !== 'sent') throw new Error(r.error || 'Nicht gesendet');
-          return { result: `${r.label} gesendet`, vars: { dunning_level: r.level } };
+          if (r.status !== 'sent') throw new Error(r.error || tl('Nicht gesendet'));
+          return { result: tl('{label} gesendet', { label: r.label }), vars: { dunning_level: r.level } };
         },
       },
     ]);

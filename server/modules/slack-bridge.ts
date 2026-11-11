@@ -4,6 +4,7 @@ import { now } from '../core/util.js';
 import { channelSend } from './channels.js';
 import { channelFetch, deleteAccount, firstSeen, getAccount, header, noteError, noteWebhook, saveAccount, type ChannelAccount } from '../services/channel-kit.js';
 import { contactName, getContact } from '../services/contacts.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 import { BOT_TOKEN, CHANNEL_ID, SIGNING_SECRET, fromSlack, isSlackWebhook, slackCall, slackEscape, slackQuote, verifySlack } from '../services/slack.js';
 
 /**
@@ -40,7 +41,7 @@ export const slackBridgeModule: Module = {
     const api = <T = any>(a: ChannelAccount, method: string, body: Record<string, unknown>) => slackCall<T>(fetcher(), a.secrets.bot_token, method, body);
     const postWebhook = async (a: ChannelAccount, text: string) => {
       const r = await fetcher()(a.secrets.webhook_url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }), signal: AbortSignal.timeout(10_000) });
-      if (!r.ok) throw new Error(`Slack-Webhook ${r.status}: ${(await r.text().catch(() => '')).slice(0, 100)}`);
+      if (!r.ok) throw new Error(tApp()('Slack-Webhook {status}: {error}', { status: r.status, error: (await r.text().catch(() => '')).slice(0, 100) }));
     };
 
     const out = (loc: string, a: ChannelAccount | undefined) => ({
@@ -68,21 +69,24 @@ export const slackBridgeModule: Module = {
       if (filter.length && !filter.includes(m.channel)) return;
       const c = data.contact ?? getContact(app, loc, m.contact_id);
       const who = slackEscape(contactName(c));
+      const t = tLoc(app, loc);
+      const via = t(label(m.channel));
+      const open = t('Im CRM öffnen');
       const url = `${app.baseUrl()}/app/conversations/${m.conversation_id}`;
-      const body = String(m.body ?? '').replace(/<[^>]+>/g, ' ').replace(/[ \t]+/g, ' ').trim() || (m.subject ? '' : '(ohne Text)');
+      const body = String(m.body ?? '').replace(/<[^>]+>/g, ' ').replace(/[ \t]+/g, ' ').trim() || (m.subject ? '' : t('(ohne Text)'));
       const quote = slackQuote(`${m.subject ? `${m.subject}\n` : ''}${body}`);
       try {
         if (mode(a) === 'webhook') {
-          await postWebhook(a, `:speech_balloon: *${who}* über *${label(m.channel)}*\n${quote}\n<${url}|Im CRM öffnen>`);
+          await postWebhook(a, `:speech_balloon: ${t('*{who}* über *{channel}*', { who, channel: via })}\n${quote}\n<${url}|${open}>`);
           return;
         }
         const thread = db.get('SELECT * FROM slack_threads WHERE location_id = ? AND conversation_id = ?', loc, m.conversation_id);
         if (thread && thread.slack_channel === a.config.channel) {
-          await api(a, 'chat.postMessage', { channel: thread.slack_channel, thread_ts: thread.thread_ts, text: `*${who}* (${label(m.channel)}):\n${quote}`, unfurl_links: false });
+          await api(a, 'chat.postMessage', { channel: thread.slack_channel, thread_ts: thread.thread_ts, text: `*${who}* (${via}):\n${quote}`, unfurl_links: false });
           return;
         }
-        const hint = a.secrets.signing_secret ? ` · _Im Thread antworten = an ${who} senden (// am Anfang bleibt intern)_` : '';
-        const r = await api(a, 'chat.postMessage', { channel: a.config.channel, text: `:speech_balloon: *${who}* über *${label(m.channel)}*\n${quote}\n<${url}|Im CRM öffnen>${hint}`, unfurl_links: false });
+        const hint = a.secrets.signing_secret ? ` · _${t('Im Thread antworten = an {who} senden (// am Anfang bleibt intern)', { who })}_` : '';
+        const r = await api(a, 'chat.postMessage', { channel: a.config.channel, text: `:speech_balloon: ${t('*{who}* über *{channel}*', { who, channel: via })}\n${quote}\n<${url}|${open}>${hint}`, unfurl_links: false });
         if (r?.ts) {
           db.run(
             `INSERT INTO slack_threads (location_id, conversation_id, slack_channel, thread_ts, created_at) VALUES (?, ?, ?, ?, ?)
@@ -91,7 +95,7 @@ export const slackBridgeModule: Module = {
           );
         }
       } catch (e) {
-        noteError(app, loc, CH, `Weiterleitung an Slack fehlgeschlagen: ${(e as Error).message}`);
+        noteError(app, loc, CH, t('Weiterleitung an Slack fehlgeschlagen: {error}', { error: (e as Error).message }));
       }
     };
     app.events.on('message.inbound', (e) => forward(e.locationId, e.data));
@@ -113,10 +117,11 @@ export const slackBridgeModule: Module = {
       const conv = db.get('SELECT * FROM conversations WHERE id = ? AND location_id = ?', thread.conversation_id, loc);
       if (!conv) return;
       const channel = replyChannel(conv.id);
+      const t = tLoc(app, loc);
       let subject: string | undefined;
       if (channel === 'email') {
         const prev = db.get(`SELECT subject FROM messages WHERE conversation_id = ? AND channel = 'email' AND direction = 'in' AND subject != '' ORDER BY created_at DESC LIMIT 1`, conv.id)?.subject;
-        subject = prev ? (/^(re|aw):/i.test(prev) ? prev : `Re: ${prev}`) : `Nachricht von ${app.location(loc)?.name ?? ''}`.trim();
+        subject = prev ? (/^(re|aw):/i.test(prev) ? prev : `Re: ${prev}`) : t('Nachricht von {name}', { name: app.location(loc)?.name ?? '' }).trim();
       }
       let result: any;
       try {
@@ -125,10 +130,10 @@ export const slackBridgeModule: Module = {
         result = { status: 'failed', error: e instanceof HttpError ? e.message : (e as Error).message };
       }
       try {
-        if (result?.status === 'failed') await api(a, 'chat.postMessage', { channel: thread.slack_channel, thread_ts: thread.thread_ts, text: `:warning: Nicht gesendet (${label(channel)}): ${slackEscape(String(result.error ?? 'unbekannter Fehler'))}` });
+        if (result?.status === 'failed') await api(a, 'chat.postMessage', { channel: thread.slack_channel, thread_ts: thread.thread_ts, text: `:warning: ${t('Nicht gesendet ({channel}): {error}', { channel: t(label(channel)), error: slackEscape(t(String(result.error ?? 'unbekannter Fehler'))) })}` });
         else await api(a, 'reactions.add', { channel: thread.slack_channel, timestamp: String(ev.ts), name: 'white_check_mark' });
       } catch (e) {
-        noteError(app, loc, CH, `Slack-Rückmeldung fehlgeschlagen: ${(e as Error).message}`);
+        noteError(app, loc, CH, t('Slack-Rückmeldung fehlgeschlagen: {error}', { error: (e as Error).message }));
       }
     };
 
@@ -149,7 +154,7 @@ export const slackBridgeModule: Module = {
         await handleReply(a, ev);
       } catch (e) {
         console.error('[slack] reply failed', e);
-        noteError(app, a.location_id, CH, `Antwort aus Slack fehlgeschlagen: ${(e as Error).message}`);
+        noteError(app, a.location_id, CH, tLoc(app, a.location_id)('Antwort aus Slack fehlgeschlagen: {error}', { error: (e as Error).message }));
       }
       return { ok: true };
     });
@@ -191,7 +196,7 @@ export const slackBridgeModule: Module = {
           const r = await slackCall(fetcher(), t, 'auth.test');
           info = { team: String(r.team ?? '').slice(0, 80), bot_user_id: String(r.user_id ?? ''), bot: String(r.user ?? '').slice(0, 80) };
         } catch (e) {
-          throw bad(`Slack lehnt den Token ab: ${(e as Error).message}`);
+          throw bad(tCtx(ctx)('Slack lehnt den Token ab: {error}', { error: (e as Error).message }));
         }
         secrets.bot_token = t;
       }
@@ -206,7 +211,8 @@ export const slackBridgeModule: Module = {
     router.post('/api/settings/channels/slack/test', 'location', async (ctx) => {
       const a = getAccount(app, ctx.locationId, CH);
       if (!ready(a)) throw bad('Slack ist noch nicht vollständig eingerichtet');
-      const text = `:white_check_mark: Test von ${slackEscape(app.location(ctx.locationId)?.name ?? 'Neso CRM')}: Neue Nachrichten aus dem Posteingang erscheinen hier.`;
+      const tl = tLoc(app, ctx.locationId);
+      const text = `:white_check_mark: ${tl('Test von {name}: Neue Nachrichten aus dem Posteingang erscheinen hier.', { name: slackEscape(app.location(ctx.locationId)?.name ?? 'Neso CRM') })}`;
       try {
         if (mode(a) === 'webhook') await postWebhook(a, text);
         else await api(a, 'chat.postMessage', { channel: a.config.channel, text });
@@ -214,19 +220,21 @@ export const slackBridgeModule: Module = {
         throw new HttpError(502, (e as Error).message);
       }
       noteError(app, ctx.locationId, CH, null);
-      return { ok: true, info: mode(a) === 'webhook' ? 'Testnachricht gesendet' : `Testnachricht in ${a.config.channel}${a.info.team ? ` (${a.info.team})` : ''} gesendet` };
+      const tc = tCtx(ctx);
+      return { ok: true, info: mode(a) === 'webhook' ? tc('Testnachricht gesendet') : a.info.team ? tc('Testnachricht in {channel} ({team}) gesendet', { channel: a.config.channel, team: a.info.team }) : tc('Testnachricht in {channel} gesendet', { channel: a.config.channel }) };
     });
 
     app.services.catalogExtra = [
       ...(app.services.catalogExtra ?? []),
       {
         entry: { key: 'slack', name: 'Slack (Team)', category: 'Kommunikation', icon: 'slack', scope: 'location', setup: { location: 'settings/more-channels' }, description: 'Neue Kundennachrichten als Thread in einem Slack-Kanal; Antworten im Thread gehen an den Kunden zurück.', credentials: 'Bot-Token (xoxb-…), Kanal-ID und Signing Secret – oder nur eine Incoming-Webhook-Adresse – unter Einstellungen → Weitere Kanäle.', docs: 'docs/channels.md#slack' },
-        location: (_ctx: Ctx, loc: string) => {
+        location: (ctx: Ctx, loc: string) => {
           const a = getAccount(app, loc, CH);
-          if (!ready(a)) return { status: 'missing', detail: 'Nicht eingerichtet' };
-          if (a.last_error) return { status: 'partial', detail: `Fehler: ${a.last_error.slice(0, 80)}` };
-          if (mode(a) === 'webhook') return { status: 'ok', detail: 'Benachrichtigungen per Webhook' };
-          return a.secrets.signing_secret ? { status: 'ok', detail: `${a.info.team || 'Slack'} · Antworten aus Slack an` } : { status: 'partial', detail: 'Nur Benachrichtigungen – Signing Secret fehlt für Antworten' };
+          const t = tCtx(ctx);
+          if (!ready(a)) return { status: 'missing', detail: t('Nicht eingerichtet') };
+          if (a.last_error) return { status: 'partial', detail: t('Fehler: {error}', { error: a.last_error.slice(0, 80) }) };
+          if (mode(a) === 'webhook') return { status: 'ok', detail: t('Benachrichtigungen per Webhook') };
+          return a.secrets.signing_secret ? { status: 'ok', detail: t('{team} · Antworten aus Slack an', { team: a.info.team || 'Slack' }) } : { status: 'partial', detail: t('Nur Benachrichtigungen – Signing Secret fehlt für Antworten') };
         },
       },
     ];

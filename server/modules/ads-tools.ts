@@ -4,6 +4,7 @@ import { HttpError, bad, notFound, str } from '../core/http.js';
 import { bodyLocation, callRoute } from '../services/mobile.js';
 import { CTA_LABEL, GOALS, KINDS } from '../services/ads-manager.js';
 import type { Caller } from './mcp.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * MCP tools of the ads manager (HyperLevel Agent, Claude, ChatGPT, Codex), the AI copy suggestions of the wizard and the
@@ -126,12 +127,12 @@ const TOOLS = [
       if (a.publish_paused === true) {
         if (!rv.ready) {
           result.published = false;
-          result.message = 'Nicht angelegt: erst die Fehler beheben (Entwurf bleibt gespeichert, mit der Oberfläche oder erneutem Aufruf korrigieren).';
+          result.message = tApp()('Nicht angelegt: erst die Fehler beheben (Entwurf bleibt gespeichert, mit der Oberfläche oder erneutem Aufruf korrigieren).');
         } else {
           const done = await call.api('POST', `/api/ads/campaigns/${draft.id}/publish`, { location: a.location_id, body: { review_hash: rv.hash } });
           Object.assign(result, { status: done.status, published: true, remote_id: done.remote_id, message: done.message });
         }
-      } else result.message = 'Entwurf gespeichert. Prüfen und pausiert anlegen in der Oberfläche unter Anzeigen – oder erneut mit publish_paused=true.';
+      } else result.message = tApp()('Entwurf gespeichert. Prüfen und pausiert anlegen in der Oberfläche unter Anzeigen – oder erneut mit publish_paused=true.');
       return result;
     },
   },
@@ -168,11 +169,14 @@ const TOOLS = [
   },
 ];
 
-const COPY_SYSTEM = [
-  'Du schreibst deutsche Anzeigentexte für bezahlte Werbung (Meta und Google).',
-  'Regeln: konkret und ehrlich, keine übertriebenen Versprechen, keine Heilversprechen, keine Anspielung auf persönliche Eigenschaften der Leser (Gesundheit, Finanzen, Herkunft), keine Großbuchstaben-Schreierei, höchstens ein Ausrufezeichen.',
-  'Halte die Zeichenlimits strikt ein. Jede Variante setzt einen anderen Schwerpunkt (Nutzen, Problem, Beweis, Angebot, Dringlichkeit).',
-].join(' ');
+/** The language the ad copy is written in: the sub-account's language (tLoc). */
+const LANGUAGE_NAME: Record<string, string> = { en: 'English', de: 'German' }; // i18n-ignore
+const copySystem = (language: string) =>
+  [
+    `You write ad copy in ${language} for paid advertising (Meta and Google).`,
+    'Rules: concrete and honest, no exaggerated promises, no health claims, no references to personal characteristics of the reader (health, finances, origin), no shouting in capital letters, at most one exclamation mark.',
+    'Stick strictly to the character limits. Each variant takes a different angle (benefit, problem, proof, offer, urgency).',
+  ].join(' ');
 
 export const adsToolsModule: Module = {
   name: 'ads-tools',
@@ -186,7 +190,7 @@ export const adsToolsModule: Module = {
       if (!f) return '';
       const p = pageId ? app.db.get('SELECT * FROM funnel_pages WHERE id = ? AND funnel_id = ?', pageId, f.id) : app.db.get('SELECT * FROM funnel_pages WHERE funnel_id = ? ORDER BY position, created_at LIMIT 1', f.id);
       const blocks: any[] = p ? parseJson({ ...p }, ['blocks']).blocks : [];
-      const parts: string[] = [`Funnel: ${f.name}`, p ? `Seite: ${p.name}` : ''];
+      const parts: string[] = [`Funnel: ${f.name}`, p ? `Page: ${p.name}` : ''];
       for (const b of Array.isArray(blocks) ? blocks : []) {
         for (const k of ['title', 'headline', 'subtitle', 'text', 'body', 'cta', 'label']) if (typeof b?.[k] === 'string' && b[k].trim()) parts.push(String(b[k]).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300));
         if (Array.isArray(b?.items)) for (const it of b.items.slice(0, 6)) if (typeof it?.title === 'string') parts.push(it.title.slice(0, 120));
@@ -221,9 +225,10 @@ export const adsToolsModule: Module = {
         ? { type: 'object', properties: { primary_texts: { type: 'array', items: { type: 'string' } }, headlines: { type: 'array', items: { type: 'string' } }, descriptions: { type: 'array', items: { type: 'string' } } }, required: ['primary_texts', 'headlines', 'descriptions'], additionalProperties: false }
         : { type: 'object', properties: { headlines: { type: 'array', items: { type: 'string' } }, long_headlines: { type: 'array', items: { type: 'string' } }, descriptions: { type: 'array', items: { type: 'string' } }, keywords: { type: 'array', items: { type: 'string' } }, negative_keywords: { type: 'array', items: { type: 'string' } } }, required: ['headlines', 'descriptions', 'keywords'], additionalProperties: false };
       const limits = meta
-        ? `Meta (Facebook/Instagram), Ziel ${goal}. Liefere ${count} Haupttexte (höchstens 125 Zeichen), ${count} Überschriften (höchstens 40 Zeichen) und ${count} Beschreibungen (höchstens 30 Zeichen).`
-        : `Google Ads Suchnetzwerk, Ziel ${goal}. Liefere 10 Überschriften (höchstens 30 Zeichen), 3 lange Überschriften (höchstens 90 Zeichen), 4 Beschreibungen (höchstens 90 Zeichen), 12 passende Suchbegriffe (Keywords, ohne Anführungszeichen) und 8 ausschließende Suchbegriffe.`;
-      const user = [COPY_SYSTEM, limits, brief ? `Was beworben wird:\n${brief}` : '', page ? `Inhalt der Zielseite:\n${page}` : ''].filter(Boolean).join('\n\n');
+        ? `Meta (Facebook/Instagram), goal ${goal}. Provide ${count} primary texts (at most 125 characters), ${count} headlines (at most 40 characters) and ${count} descriptions (at most 30 characters).`
+        : `Google Ads search network, goal ${goal}. Provide 10 headlines (at most 30 characters), 3 long headlines (at most 90 characters), 4 descriptions (at most 90 characters), 12 matching search terms (keywords, without quotation marks) and 8 negative keywords.`;
+      const language = LANGUAGE_NAME[tLoc(app, ctx.locationId).locale] ?? 'English';
+      const user = [copySystem(language), limits, brief ? `What is being advertised:\n${brief}` : '', page ? `Content of the landing page:\n${page}` : ''].filter(Boolean).join('\n\n');
       const r = await app.services.aiRun({ locationId: ctx.locationId, purpose: 'ads_copy', user, schema, maxTokens: 1800, userId: ctx.user?.id ?? null, timeoutMs: 90_000 });
       let j: any = {};
       try {

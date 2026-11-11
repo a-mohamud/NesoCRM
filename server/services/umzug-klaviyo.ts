@@ -4,6 +4,7 @@ import { UmzugError, VendorHttp } from './umzug-http.js';
 import { cell, type Json } from './umzug-flow.js';
 import { counter, paramOf, stubCtx, walkCount } from './umzug-lib.js';
 import { toIso } from './umzug-text.js';
+import { translator, type ServerLocale, tApp } from '../i18n/index.js';
 
 /**
  * Klaviyo (REST API, https://a.klaviyo.com/api, header `Authorization: Klaviyo-API-Key pk_…` plus a dated `revision`): profiles with
@@ -72,7 +73,7 @@ export function klaviyoConsent(a: Json): { consent: Consent; native?: string; pr
     if (sup.length) {
       const reason = String(sup[0].reason ?? '').toUpperCase();
       consent = /SPAM|COMPLAIN/.test(reason) ? 'complained' : /BOUNCE|INVALID/.test(reason) ? 'bounced' : /UNSUB/.test(reason) ? 'unsubscribed' : 'blocked';
-      proof.push({ basis: 'revoked', at: toIso(sup[0].timestamp), reason: SUPPRESSION[reason] ?? `gesperrt (${reason.toLowerCase() || 'Suppression'})`, method });
+      proof.push({ basis: 'revoked', at: toIso(sup[0].timestamp), reason: SUPPRESSION[reason] ?? tApp()('gesperrt ({reason})', { reason: reason.toLowerCase() || 'Suppression' }), method });
     } else if (c === 'UNSUBSCRIBED') {
       consent = 'unsubscribed';
       proof.push({ basis: 'revoked', at: toIso(em.consent_timestamp ?? em.last_updated), reason: 'hat sich abgemeldet', method });
@@ -83,7 +84,7 @@ export function klaviyoConsent(a: Json): { consent: Consent; native?: string; pr
       } else {
         consent = 'ok';
         const explicit = em.double_optin === true || EXPLICIT.test(String(em.method ?? ''));
-        proof.push({ basis: explicit ? 'confirmed' : 'legacy', at: toIso(em.consent_timestamp), method: [method, em.double_optin === true ? 'Double-Opt-in bestätigt' : undefined].filter(Boolean).join(', ') || undefined });
+        proof.push({ basis: explicit ? 'confirmed' : 'legacy', at: toIso(em.consent_timestamp), method: [method, em.double_optin === true ? tApp()('Double-Opt-in bestätigt') : undefined].filter(Boolean).join(', ') || undefined });
       }
     } else if (c === 'NEVER_SUBSCRIBED') proof.push({ basis: 'none', method });
   }
@@ -99,7 +100,8 @@ export function klaviyoConsent(a: Json): { consent: Consent; native?: string; pr
 
 const guessType = (v: unknown): FieldType => (typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'checkbox' : typeof v === 'string' && /^\d{4}-\d{2}-\d{2}(T|$)/.test(v) ? 'date' : typeof v === 'string' && /^https?:\/\/\S+$/.test(v) ? 'url' : 'text');
 
-async function describe(h: VendorHttp, parts: PartKey[]) {
+async function describe(h: VendorHttp, parts: PartKey[], lang?: ServerLocale) {
+  const t = translator(lang);
   const counts: CountRow[] = [];
   const fields: SourceField[] = [];
   const warnings: string[] = [];
@@ -139,10 +141,10 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
         if (++walked >= 5 || pg.next === undefined) break;
       }
       for (const [k, e] of [...seen.entries()].slice(0, 100)) fields.push({ ref: `p:${k}`, label: k, type: e.type, sample: e.sample, group: 'custom' });
-      if (seen.size) warnings.push(`Eigene Profil-Eigenschaften: die ersten Profile zeigen ${seen.size} verschiedene – weitere, die erst später vorkommen, kannst du nach dem Probelauf im Bericht nachziehen.`);
+      if (seen.size) warnings.push(t('Eigene Profil-Eigenschaften: die ersten Profile zeigen {n} verschiedene – weitere, die erst später vorkommen, kannst du nach dem Probelauf im Bericht nachziehen.', { n: seen.size }));
     } catch (e) {
       if (!(e instanceof UmzugError && e.skippable)) throw e;
-      warnings.push(`Profil-Eigenschaften nicht lesbar: ${e.message}`);
+      warnings.push(t('Profil-Eigenschaften nicht lesbar: {reason}', { reason: e.message }));
     }
   }
   if (parts.includes('segments')) await count('segments', 'segments', 'Segmente', async () => (await walkCount(pages(h, '/segments/', {}, s))).n);
@@ -160,8 +162,9 @@ const steps = (): StepDef[] => [
     label: 'Listen → Tags',
     part: 'contacts',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const records: RTagRec[] = [];
-      for (const pg of await everything(ctx.http, '/lists/', {}, ctx)) for (const l of pg.items) records.push({ kind: 'tag', name: `Liste: ${l.attributes?.name ?? l.id}` });
+      for (const pg of await everything(ctx.http, '/lists/', {}, ctx)) for (const l of pg.items) records.push({ kind: 'tag', name: t('Liste: {name}', { name: l.attributes?.name ?? l.id }) });
       yield { records, cursor: undefined };
     },
   },
@@ -188,11 +191,12 @@ const steps = (): StepDef[] => [
     label: 'Listen zuordnen',
     part: 'contacts',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const lists = (await everything(ctx.http, '/lists/', {}, ctx)).flatMap((pg) => pg.items);
       const cur = (ctx.cursor ?? { li: 0 }) as { li: number; after?: string };
       for (let li = cur.li; li < lists.length; li++) {
         const l = lists[li];
-        const tag = `Liste: ${l.attributes?.name ?? l.id}`;
+        const tag = t('Liste: {name}', { name: l.attributes?.name ?? l.id });
         for await (const pg of pages(ctx.http, `/lists/${l.id}/profiles/`, MEMBER_QUERY, ctx, li === cur.li ? cur.after : undefined)) {
           const records: RMembership[] = pg.items.map((p) => ({ kind: 'membership', contact: `p:${p.id}`, tags: [tag] }));
           yield { records, cursor: pg.next ? { li, after: pg.next } : li + 1 < lists.length ? { li: li + 1 } : undefined };
@@ -205,14 +209,15 @@ const steps = (): StepDef[] => [
     label: 'Segmente → Tags und Smart Lists',
     part: 'segments',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const segs = (await everything(ctx.http, '/segments/', {}, ctx)).flatMap((pg) => pg.items);
       const cur = (ctx.cursor ?? { si: 0 }) as { si: number; after?: string };
       for (let si = cur.si; si < segs.length; si++) {
         const sg = segs[si];
         const name = String(sg.attributes?.name ?? sg.id);
-        const tag = `Segment: ${name}`;
+        const tag = t('Segment: {name}', { name });
         if (si !== cur.si || !cur.after) {
-          ctx.warn(`Segment „${name}“ ist in Klaviyo eine Regel: übernommen als feste Liste der aktuellen Mitglieder (Tag „${tag}“), nicht als dynamische Regel`);
+          ctx.warn(t('Segment „{name}“ ist in Klaviyo eine Regel: übernommen als feste Liste der aktuellen Mitglieder (Tag „{tag}“), nicht als dynamische Regel', { name, tag }));
           yield { records: [{ kind: 'tag', name: tag } satisfies RTagRec, { kind: 'smart_list', ext: `s:${sg.id}`, name, tag } satisfies RSmartList], cursor: { si, after: undefined } };
         }
         for await (const pg of pages(ctx.http, `/segments/${sg.id}/profiles/`, MEMBER_QUERY, ctx, si === cur.si ? cur.after : undefined)) {
@@ -227,9 +232,10 @@ const steps = (): StepDef[] => [
     label: 'E-Mail-Vorlagen',
     part: 'templates',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of pages(ctx.http, '/templates/', { 'page[size]': 10, 'fields[template]': 'name,html,text,editor_type' }, ctx, ctx.cursor ? String(ctx.cursor) : undefined)) {
-        const records: RTemplate[] = pg.items.map((t) => ({ kind: 'template', ext: `t:${t.id}`, name: String(t.attributes?.name ?? `Vorlage ${t.id}`), subject: '', html: String(t.attributes?.html ?? ''), text: t.attributes?.text ? String(t.attributes.text) : undefined }));
-        for (const t of pg.items) if (!t.attributes?.html) ctx.warn(`Vorlage „${String(t.attributes?.name ?? t.id).slice(0, 60)}“ liefert kein HTML (Klaviyo-Editor) – bitte neu aufbauen`);
+        const records: RTemplate[] = pg.items.map((tpl) => ({ kind: 'template', ext: `t:${tpl.id}`, name: String(tpl.attributes?.name ?? t('Vorlage {id}', { id: tpl.id })), subject: '', html: String(tpl.attributes?.html ?? ''), text: tpl.attributes?.text ? String(tpl.attributes.text) : undefined }));
+        for (const tpl of pg.items) if (!tpl.attributes?.html) ctx.warn(t('Vorlage „{name}“ liefert kein HTML (Klaviyo-Editor) – bitte neu aufbauen', { name: String(tpl.attributes?.name ?? tpl.id).slice(0, 60) }));
         yield { records, cursor: pg.next };
       }
     },
@@ -239,6 +245,7 @@ const steps = (): StepDef[] => [
     label: 'Flows → Referenzliste',
     part: 'reference',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const rows: string[] = [];
       let n = 0;
       for await (const pg of pages(ctx.http, '/flows/', { 'page[size]': 50, include: 'flow-actions', 'fields[flow]': 'name,status,archived,trigger_type,created,updated', 'fields[flow-action]': 'action_type,status' }, ctx)) {
@@ -250,19 +257,21 @@ const steps = (): StepDef[] => [
           const acts = ids.map((r) => byId.get(String(r.id))).filter(Boolean) as Json[];
           const kinds = acts.map((x) => ACTION[String(x.attributes?.action_type)] ?? String(x.attributes?.action_type ?? '?'));
           const count = (k: string) => kinds.filter((x) => x === k).length;
-          const status = a.archived ? 'archiviert' : String(a.status ?? '–');
-          rows.push(`| ${cell(a.name) || f.id} | ${cell(status)} | ${cell(TRIGGER[String(a.trigger_type ?? '').toLowerCase()] ?? a.trigger_type ?? '–')} | ${count('E-Mail')} E-Mail${count('E-Mail') === 1 ? '' : 's'}, ${count('SMS')} SMS, ${count('Warten')}× Warten, ${count('Verzweigung')}× Verzweigung | ${cell(kinds.join(' → ')) || '–'} |`);
+          const status = a.archived ? t('archiviert') : String(a.status ?? '–');
+          const trigger = TRIGGER[String(a.trigger_type ?? '').toLowerCase()];
+          const scope = [t.plural(count('E-Mail'), { one: '{n} E-Mail', other: '{n} E-Mails' }), `${count('SMS')} SMS`, t('{n}× Warten', { n: count('Warten') }), t('{n}× Verzweigung', { n: count('Verzweigung') })].join(', ');
+          rows.push(`| ${cell(a.name) || f.id} | ${cell(status)} | ${cell(trigger ? t(trigger) : (a.trigger_type ?? '–'))} | ${scope} | ${cell(kinds.map((k) => t(k)).join(' → ')) || '–'} |`);
         }
       }
       const body = [
-        '# Flows aus Klaviyo',
+        t('# Flows aus Klaviyo'),
         '',
-        `Stand: ${new Date().toISOString().slice(0, 10)}. Diese Liste ist eine **Gedächtnisstütze**: die Schritte, Texte und Bedingungen eines Flows liefert die Klaviyo-API nicht in einer Form, aus der sich ein Workflow bauen ließe. Bau jeden aktiven Flow in HyperLevel als Workflow nach (Auslöser, E-Mails, Wartezeiten, Wenn/Sonst) und prüfe vor dem Kündigen, dass nichts fehlt.`,
+        t('Stand: {date}. Diese Liste ist eine **Gedächtnisstütze**: die Schritte, Texte und Bedingungen eines Flows liefert die Klaviyo-API nicht in einer Form, aus der sich ein Workflow bauen ließe. Bau jeden aktiven Flow in HyperLevel als Workflow nach (Auslöser, E-Mails, Wartezeiten, Wenn/Sonst) und prüfe vor dem Kündigen, dass nichts fehlt.', { date: new Date().toISOString().slice(0, 10) }),
         '',
-        ...(rows.length ? ['| Flow | Status | Auslöser | Umfang | Ablauf |', '| --- | --- | --- | --- | --- |', ...rows] : ['_Im Konto gibt es keine Flows._']),
+        ...(rows.length ? [t('| Flow | Status | Auslöser | Umfang | Ablauf |'), '| --- | --- | --- | --- | --- |', ...rows] : [t('_Im Konto gibt es keine Flows._')]),
       ].join('\n');
-      if (n) ctx.warn(`Flows: ${n} Flow${n === 1 ? '' : 's'} als Referenzliste im Wiki (Bereich „Umzug“) – nachbauen musst du sie selbst.`);
-      yield { records: [{ kind: 'reference', ext: 'flows', title: 'Flows aus Klaviyo', body } satisfies RReference], cursor: undefined };
+      if (n) ctx.warn(t.plural(n, { one: 'Flows: {n} Flow als Referenzliste im Wiki (Bereich „Umzug“) – nachbauen musst du ihn selbst.', other: 'Flows: {n} Flows als Referenzliste im Wiki (Bereich „Umzug“) – nachbauen musst du sie selbst.' }));
+      yield { records: [{ kind: 'reference', ext: 'flows', title: t('Flows aus Klaviyo'), body } satisfies RReference], cursor: undefined };
     },
   },
 ];
@@ -310,6 +319,6 @@ export const KLAVIYO: SourceDef = {
     }
     return { account: /^[A-Za-z0-9]{3,20}$/.test(id) ? id.toLowerCase() : `key-${createHash('sha256').update(key).digest('hex').slice(0, 10)}`, label: label || 'Klaviyo-Konto', meta: {} };
   },
-  describe: (h, parts) => describe(h, parts),
+  describe: (h, parts, c) => describe(h, parts, c.lang),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),
 };

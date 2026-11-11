@@ -2,6 +2,7 @@ import type { Module } from '../core/app.js';
 import { cached } from '../core/cache.js';
 import { toCsv } from '../core/csv.js';
 import { bad, ymdParam, type Ctx, type RawResult } from '../core/http.js';
+import { tCtx } from '../i18n/index.js';
 import { actorOf, getSettings, todayIn, tzOf } from '../services/pm-core.js';
 import {
   addEntry,
@@ -80,9 +81,11 @@ export const pmTimeModule: Module = {
     });
     router.get('/api/pm/time/export.csv', 'location', (ctx): RawResult => {
       const entries = listEntries(app, ctx.locationId, { ...timeFilter(ctx.query), limit: 5000 }, viewerOf(ctx));
-      const rows = entries.map((e) => [e.day, e.user_name, e.project_name, e.task_title, e.note, (e.seconds / 3600).toFixed(2).replace('.', ','), e.billable ? 'ja' : 'nein', e.approval, e.invoice_number ?? '']);
-      const body = '\uFEFF' + toCsv([['Datum', 'Person', 'Projekt', 'Aufgabe', 'Notiz', 'Stunden', 'Abrechenbar', 'Freigabe', 'Rechnung'], ...rows]);
-      return { __raw: true, status: 200, headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="zeiten.csv"' }, body };
+      const t = tCtx(ctx);
+      const hours = (s: number) => (t.locale === 'de' ? (s / 3600).toFixed(2).replace('.', ',') : (s / 3600).toFixed(2));
+      const rows = entries.map((e) => [e.day, e.user_name, e.project_name, e.task_title, e.note, hours(e.seconds), e.billable ? t('ja') : t('nein'), e.approval, e.invoice_number ?? '']);
+      const body = '\uFEFF' + toCsv([[t('Datum'), t('Person'), t('Projekt'), t('Aufgabe'), t('Notiz'), t('Stunden'), t('Abrechenbar'), t('Freigabe'), t('Rechnung')], ...rows]);
+      return { __raw: true, status: 200, headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${t('zeiten.csv')}"` }, body };
     });
 
     // --- timesheets -----------------------------------------------------------------------------------

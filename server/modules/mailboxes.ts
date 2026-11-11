@@ -14,6 +14,7 @@ import { mailboxMailModule } from './mailbox-mail.js';
 import { mailboxPushModule } from './mailbox-push.js';
 import { clientConfig, canManageLocation, redirectUriFor } from './oauth-connect.js';
 import { openSecret, sealSecret } from './mail-sync.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * Native mailboxes: Gmail and Outlook / Microsoft 365 through their official APIs instead of IMAP/SMTP.
@@ -177,7 +178,7 @@ export const mailboxesModule: Module = {
         if (!reconnect || !mailboxManageable(ctx, reconnect)) throw notFound('Postfach nicht gefunden');
       }
       const cfg = clientConfig(app, provider);
-      if (!cfg) throw new HttpError(409, `Die Agentur hat noch keine ${PROVIDER_LABEL[provider]}-App hinterlegt (Agentur → Integrationen)`);
+      if (!cfg) throw new HttpError(409, tCtx(ctx)('Die Agentur hat noch keine {provider}-App hinterlegt (Agentur → Integrationen)', { provider: PROVIDER_LABEL[provider] }));
       const sid = ctx.cookies[SESSION_COOKIE];
       if (!sid) throw new HttpError(403, 'Verbinden geht nur angemeldet im Browser');
       // Come back on the address the person is signed in on (main address or agency domain).
@@ -202,39 +203,41 @@ export const mailboxesModule: Module = {
     /** Called by the shared /oauth/:provider/callback for purpose "mail", after the state and the pending flow were checked. */
     async function callback(a: { ctx: Ctx; user: any; provider: Provider; pending: any; back: (p: Record<string, string>) => unknown }) {
       const { ctx, provider, pending, back } = a;
+      // The message travels back to the settings page in the URL and is shown as is: in the person's language.
+      const tr = tCtx(ctx);
       const mp = db.get<any>('SELECT * FROM mailbox_pending WHERE nonce = ?', pending.nonce);
       db.run('DELETE FROM mailbox_pending WHERE nonce = ?', pending.nonce);
-      if (!mp || mp.user_id !== a.user.id || Date.parse(mp.expires_at) < Date.now()) return back({ oauth: 'error', msg: 'Die Anmeldung ist abgelaufen oder wurde schon benutzt – bitte noch einmal verbinden' });
+      if (!mp || mp.user_id !== a.user.id || Date.parse(mp.expires_at) < Date.now()) return back({ oauth: 'error', msg: tr('Die Anmeldung ist abgelaufen oder wurde schon benutzt – bitte noch einmal verbinden') });
       if (ctx.query.get('error')) {
         const denied = ctx.query.get('error') === 'access_denied';
-        return back({ oauth: 'error', msg: denied ? 'Zugriff wurde nicht erlaubt' : `${PROVIDER_LABEL[provider]}: ${String(ctx.query.get('error_description') || ctx.query.get('error')).slice(0, 200)}` });
+        return back({ oauth: 'error', msg: denied ? tr('Zugriff wurde nicht erlaubt') : `${PROVIDER_LABEL[provider]}: ${String(ctx.query.get('error_description') || ctx.query.get('error')).slice(0, 200)}` });
       }
       const code = String(ctx.query.get('code') ?? '');
-      if (!code) return back({ oauth: 'error', msg: 'Kein Code erhalten' });
+      if (!code) return back({ oauth: 'error', msg: tr('Kein Code erhalten') });
       const cfg = clientConfig(app, provider);
-      if (!cfg) return back({ oauth: 'error', msg: `Die ${PROVIDER_LABEL[provider]}-App der Agentur fehlt` });
+      if (!cfg) return back({ oauth: 'error', msg: tr('Die {provider}-App der Agentur fehlt', { provider: PROVIDER_LABEL[provider] }) });
       const user: User = { id: a.user.id, email: a.user.email, name: a.user.name, role: a.user.role, locations: JSON.parse(a.user.locations || '[]'), permissions: a.user.permissions ? JSON.parse(a.user.permissions) : null };
       try {
-        if (mp.scope === 'location' && (!mp.location_id || !app.location(mp.location_id) || !canManageLocation(user, mp.location_id))) throw new Error('Kein Zugriff auf diesen Sub-Account');
+        if (mp.scope === 'location' && (!mp.location_id || !app.location(mp.location_id) || !canManageLocation(user, mp.location_id))) throw new Error(tr('Kein Zugriff auf diesen Sub-Account'));
         const t = await exchangeCode(fetcher(), provider, cfg, { code, verifier: pending.verifier, redirectUri: pending.redirect_uri, scopes: JSON.parse(mp.scopes) });
         const missing = t.scope ? missingMailScopes(provider, mp.access, !!mp.shared_address, t.scope) : [];
         if (missing.length) {
           await revokeToken(fetcher(), provider, cfg, t.refresh_token ?? t.access_token);
-          return back({ oauth: 'error', msg: `Bitte beim Verbinden alle Berechtigungen für E-Mails erlauben (${mp.access === 'full' ? 'lesen, senden und verwalten' : mp.access === 'readonly' ? 'lesen' : 'senden'})` });
+          return back({ oauth: 'error', msg: tr('Bitte beim Verbinden alle Berechtigungen für E-Mails erlauben ({what})', { what: mp.access === 'full' ? tr('lesen, senden und verwalten') : mp.access === 'readonly' ? tr('lesen') : tr('senden') }) });
         }
-        if (!t.refresh_token) return back({ oauth: 'error', msg: `${PROVIDER_LABEL[provider]} hat keinen dauerhaften Zugriff erteilt – bitte noch einmal verbinden` });
+        if (!t.refresh_token) return back({ oauth: 'error', msg: tr('{provider} hat keinen dauerhaften Zugriff erteilt – bitte noch einmal verbinden', { provider: PROVIDER_LABEL[provider] }) });
         const claims = idTokenClaims(t.id_token);
         // The mailbox's own address: the shared mailbox that was asked for, else the account that signed in.
         const probe = provider === 'google' ? gmailApi(fetcher(), async () => t.access_token) : graphApi(fetcher(), async () => t.access_token, mp.shared_address);
         let address = mp.shared_address || claims.email.toLowerCase();
         if (!address && canRead(mp.access)) address = (await probe.profile()).address;
-        if (!address) throw new Error('Die E-Mail-Adresse des Postfachs konnte nicht ermittelt werden');
+        if (!address) throw new Error(tr('Die E-Mail-Adresse des Postfachs konnte nicht ermittelt werden'));
         // A shared mailbox must really be reachable with this login.
         if (mp.shared_address && canRead(mp.access)) {
           try {
             await probe.folders();
           } catch (e) {
-            if (e instanceof MailError && (e.status === 403 || e.status === 404)) throw new Error(`Kein Zugriff auf das gemeinsame Postfach ${mp.shared_address} – Vollzugriff bzw. „Senden als“ im Exchange-Admin-Center erteilen`);
+            if (e instanceof MailError && (e.status === 403 || e.status === 404)) throw new Error(tr('Kein Zugriff auf das gemeinsame Postfach {address} – Vollzugriff bzw. „Senden als“ im Exchange-Admin-Center erteilen', { address: mp.shared_address }));
             throw e;
           }
         }
@@ -243,7 +246,7 @@ export const mailboxesModule: Module = {
         const existing: MailboxRow | undefined = mp.mailbox_id
           ? getMailbox(app, mp.mailbox_id)
           : (parseJson(db.get(`SELECT * FROM mailboxes WHERE ${mine} AND provider = ? AND address = ? AND shared_address = ?`, mp.scope === 'location' ? mp.location_id : user.id, provider, address, mp.shared_address), ['folders', 'rules', 'state', 'push', 'last_result']) as MailboxRow | undefined);
-        if (mp.mailbox_id && (!existing || existing.address !== address)) throw new Error(`Das Konto ${address} ist nicht das Konto dieses Postfachs (${existing?.address ?? ''}) – bitte mit demselben Konto verbinden`);
+        if (mp.mailbox_id && (!existing || existing.address !== address)) throw new Error(tr('Das Konto {address} ist nicht das Konto dieses Postfachs ({mailbox}) – bitte mit demselben Konto verbinden', { address, mailbox: existing?.address ?? '' }));
         let mailboxId: string;
         if (existing) {
           // Same mailbox again: new tokens, everything else (rules, folders, sync state) stays.
@@ -345,7 +348,7 @@ export const mailboxesModule: Module = {
       if (b.signature !== undefined) patch.signature = str(b.signature, 'Signatur', { max: 2000 });
       if (b.track_engagement !== undefined && !!b.track_engagement !== !!mb.track_engagement) {
         patch.track_engagement = b.track_engagement ? 1 : 0;
-        audit(ctx, 'mailbox.tracking', `${mb.shared_address || mb.address}: Öffnungen und Klicks ${b.track_engagement ? 'werden verfolgt' : 'werden nicht verfolgt'}`, mb);
+        audit(ctx, 'mailbox.tracking', `${mb.shared_address || mb.address}: ${b.track_engagement ? tApp()('Öffnungen und Klicks werden verfolgt') : tApp()('Öffnungen und Klicks werden nicht verfolgt')}`, mb);
       }
       if (reimport) {
         // A new folder or a longer window needs a fresh read (known mail is recognised, nothing is duplicated).
@@ -387,7 +390,7 @@ export const mailboxesModule: Module = {
         return { result, mailbox: mailboxOut(app, getMailbox(app, mb.id)!, ctx) };
       } catch (e) {
         if (e instanceof HttpError) throw e;
-        throw new HttpError(502, `Postfach: ${(e as Error).message}`);
+        throw new HttpError(502, tCtx(ctx)('Postfach: {error}', { error: (e as Error).message }));
       }
     });
 
@@ -403,7 +406,7 @@ export const mailboxesModule: Module = {
         return { folders, labels, selected: mb.folders };
       } catch (e) {
         if (e instanceof OAuthError) throw new HttpError(409, e.needsReconnect ? 'Zugriff abgelaufen oder entzogen – bitte neu verbinden' : e.message);
-        throw new HttpError(502, `Postfach: ${(e as Error).message}`);
+        throw new HttpError(502, tCtx(ctx)('Postfach: {error}', { error: (e as Error).message }));
       }
     });
 
@@ -454,12 +457,12 @@ export const mailboxesModule: Module = {
     ];
 
     // --- status in the integrations catalogue -----------------------------------------------------------------
-    const probe = (loc: string) => {
+    const probe = (loc: string, t: STFn) => {
       const rows = db.all<MailboxRow>('SELECT * FROM mailboxes WHERE scope = ? AND location_id = ?', 'location', loc);
-      if (!rows.length) return { status: 'missing' as const, detail: 'Kein Postfach verbunden' };
+      if (!rows.length) return { status: 'missing' as const, detail: t('Kein Postfach verbunden') };
       const bad = rows.filter((r) => r.status === 'error');
-      if (bad.length) return { status: 'partial' as const, detail: `${bad[0].shared_address || bad[0].address}: ${(bad[0].last_error ?? 'Fehler').slice(0, 80)}` };
-      return { status: 'ok' as const, detail: `${rows.length} ${rows.length === 1 ? 'Postfach' : 'Postfächer'} (${rows.map((r) => (r.provider === 'google' ? 'Gmail' : 'Outlook')).join(', ')})` };
+      if (bad.length) return { status: 'partial' as const, detail: `${bad[0].shared_address || bad[0].address}: ${(bad[0].last_error ?? t('Fehler')).slice(0, 80)}` };
+      return { status: 'ok' as const, detail: `${t.plural(rows.length, { one: '{n} Postfach', other: '{n} Postfächer' })} (${rows.map((r) => (r.provider === 'google' ? 'Gmail' : 'Outlook')).join(', ')})` };
     };
     app.services.catalogExtra = [
       ...list<unknown>(app.services.catalogExtra),
@@ -475,10 +478,11 @@ export const mailboxesModule: Module = {
           credentials: 'Google-/Microsoft-OAuth-App der Agentur (Agentur → Integrationen); verbinden unter Einstellungen → E-Mail & SMS → Postfach verbinden. Push optional über Pub/Sub bzw. Graph-Benachrichtigungen.',
           docs: 'docs/mailbox-sync.md',
         },
-        location: (_ctx: Ctx, loc: string) => probe(loc),
+        location: (ctx: Ctx, loc: string) => probe(loc, tCtx(ctx)),
         agency: () => {
+          const t = tApp();
           const n = Number(db.get('SELECT COUNT(*) AS n FROM mailboxes')?.n ?? 0);
-          return { status: n ? ('ok' as const) : ('info' as const), detail: n ? `${n} ${n === 1 ? 'Postfach' : 'Postfächer'} verbunden` : 'Bereit – Postfach unter Einstellungen verbinden' };
+          return { status: n ? ('ok' as const) : ('info' as const), detail: n ? t.plural(n, { one: '{n} Postfach verbunden', other: '{n} Postfächer verbunden' }) : t('Bereit – Postfach unter Einstellungen verbinden') };
         },
       },
     ];

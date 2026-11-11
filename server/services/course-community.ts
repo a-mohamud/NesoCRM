@@ -1,4 +1,5 @@
 import { bad } from '../core/http.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Discussion under a lesson and reviews of a course – the pure parts: cleaning what members write, building the thread tree
@@ -17,8 +18,9 @@ export function cleanText(v: unknown, field: string, opts: { min?: number; max: 
     .replace(/\r\n?/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-  if (opts.min && s.length < opts.min) throw bad(`${field}: bitte etwas schreiben`);
-  if (s.length > opts.max) throw bad(`${field}: höchstens ${opts.max} Zeichen`);
+  const t = tApp();
+  if (opts.min && s.length < opts.min) throw bad(t('{field}: bitte etwas schreiben', { field: t(field) }));
+  if (s.length > opts.max) throw bad(t('{field}: höchstens {max} Zeichen', { field: t(field), max: opts.max }));
   return s;
 }
 

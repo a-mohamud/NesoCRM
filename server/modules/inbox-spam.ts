@@ -7,6 +7,7 @@ import { tableEntity } from '../services/undo-table.js';
 import { twiml } from '../services/twilio.js';
 import { registerActions, text, type ActionDef } from '../services/wfx-kit.js';
 import { syncMessage, type CallRouteInput } from './telephony.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Mark as spam and block sender (docs/team-inbox.md#spam-and-blocked-senders). A blocked contact's new messages are stored but
@@ -66,12 +67,15 @@ export const inboxSpamModule: Module = {
         else db.insert('blocked_contacts', { id: id(), location_id: locationId, contact_id: contactId, reason, note, source: o.source, blocked_by: o.by ?? null, created_at: now() });
         for (const c of db.all<{ id: string }>('SELECT id FROM conversations WHERE location_id = ? AND contact_id = ?', locationId, contactId)) archiveConversation(c.id);
       });
-      if (!cur) logActivity(app, locationId, contactId, 'contact.blocked', `Als ${REASON_TEXT[reason]} markiert und blockiert`);
+      if (!cur) {
+        const t = tLoc(app, locationId);
+        logActivity(app, locationId, contactId, 'contact.blocked', t('Als {reason} markiert und blockiert', { reason: t(REASON_TEXT[reason]) }));
+      }
       return { ...blockOf(locationId, contactId), blocked: true };
     };
     const unblock = (locationId: string, contactId: string) => {
       const n = db.run('DELETE FROM blocked_contacts WHERE location_id = ? AND contact_id = ?', locationId, contactId).changes;
-      if (n) logActivity(app, locationId, contactId, 'contact.unblocked', 'Blockierung aufgehoben');
+      if (n) logActivity(app, locationId, contactId, 'contact.unblocked', tLoc(app, locationId)('Blockierung aufgehoben'));
       return n > 0;
     };
 
@@ -159,7 +163,8 @@ export const inboxSpamModule: Module = {
         },
         run: (run, step, vars) => {
           block(run.location_id, run.contact_id, { reason: step.reason, note: text(step.note, vars), source: 'workflow' });
-          return { result: `Blockiert (${REASON_TEXT[BLOCK_REASONS.includes(step.reason) ? step.reason : 'spam']})` };
+          const t = tLoc(app, run.location_id);
+          return { result: t('Blockiert ({reason})', { reason: t(REASON_TEXT[BLOCK_REASONS.includes(step.reason) ? step.reason : 'spam']) }) };
         },
       },
       {
@@ -174,7 +179,10 @@ export const inboxSpamModule: Module = {
           fields: [],
           sample: {},
         },
-        run: (run) => ({ result: unblock(run.location_id, run.contact_id) ? 'Blockierung aufgehoben' : 'War nicht blockiert' }),
+        run: (run) => {
+          const t = tLoc(app, run.location_id);
+          return { result: unblock(run.location_id, run.contact_id) ? t('Blockierung aufgehoben') : t('War nicht blockiert') };
+        },
       },
     ];
     registerActions(app, steps);

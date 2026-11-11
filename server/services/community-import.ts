@@ -6,6 +6,7 @@ import { grantAccess } from './courses.js';
 import { cleanGroupAccess } from './community.js';
 import { checkLevel, ensureProfile } from './community-actions.js';
 import { communityMail, membershipOf, portalCommunityUrl, tiersOf, type Tier } from './community-tiers.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Moving in: a CSV list of members (name, e-mail, member since, tier, optional points) and, if wanted, posts as Markdown files.
@@ -57,7 +58,7 @@ export function parseCsv(input: string): string[][] {
       field = '';
       if (row.some((x) => x.trim() !== '')) rows.push(row);
       row = [];
-      if (rows.length > MAX_ROWS + 1) throw bad(`Zu viele Zeilen (höchstens ${MAX_ROWS} Mitglieder pro Import)`);
+      if (rows.length > MAX_ROWS + 1) throw bad(tApp()('Zu viele Zeilen (höchstens {max} Mitglieder pro Import)', { max: MAX_ROWS }));
     } else field += c;
   }
   if (quoted) throw bad('Die CSV-Datei ist unvollständig (ein Anführungszeichen wurde nicht geschlossen)');
@@ -76,6 +77,7 @@ const ALIASES: Record<Field, string[]> = {
   first_name: ['firstname', 'first name', 'first_name', 'vorname', 'given name'],
   last_name: ['lastname', 'last name', 'last_name', 'nachname', 'familienname', 'surname', 'family name'],
   name: ['name', 'fullname', 'full name', 'member', 'member name', 'displayname', 'display name', 'mitglied', 'anzeigename'],
+  // i18n-ignore – header names to recognise (German and English), not texts
   joined: ['joined', 'join date', 'joined date', 'joined at', 'date joined', 'member since', 'membersince', 'created', 'created at', 'registered', 'signup date', 'sign up date', 'beigetreten', 'beitritt', 'mitglied seit', 'beitrittsdatum', 'datum'],
   tier: ['tier', 'plan', 'membership', 'membership level', 'abo', 'stufe', 'mitgliedschaft', 'product'],
   tags: ['tags', 'tag', 'labels'],
@@ -93,7 +95,7 @@ export function detectColumns(header: string[], mapping: Partial<Record<Field, s
     const want = mapping[f];
     if (want) {
       const i = h.indexOf(norm(want));
-      if (i < 0) throw bad(`Die Spalte „${want}“ gibt es in der Datei nicht`);
+      if (i < 0) throw bad(tApp()('Die Spalte „{column}“ gibt es in der Datei nicht', { column: want }));
       out[f] = i;
       continue;
     }
@@ -182,11 +184,12 @@ export interface MemberInput {
 }
 
 export function planMembers(app: App, g: any, input: MemberInput): MemberPlan {
+  const t = tLoc(app, g.location_id);
   const rows = parseCsv(String(input.csv ?? ''));
   if (rows.length < 2) throw bad('Die Datei braucht eine Kopfzeile und mindestens eine Zeile mit einem Mitglied');
   const header = rows[0].map((x) => x.trim());
   const cols = detectColumns(header, input.mapping ?? {});
-  if (cols.email === undefined) throw bad('In der Datei fehlt eine E-Mail-Spalte (z. B. „Email“). Die Kopfzeile lautet: ' + header.join(', '));
+  if (cols.email === undefined) throw bad(tApp()('In der Datei fehlt eine E-Mail-Spalte (z. B. „Email“). Die Kopfzeile lautet: {header}', { header: header.join(', ') }));
   const order = input.date_order === 'dmy' || input.date_order === 'mdy' ? input.date_order : 'auto';
   const tiers = tiersOf(app, g.id);
   const byName = new Map(tiers.map((t) => [norm(t.name), t]));
@@ -229,16 +232,16 @@ export function planMembers(app: App, g: any, input: MemberInput): MemberPlan {
       tier_id: (match ?? defaultTier)?.id ?? null,
       tier_match: match ? 'exact' : defaultTier ? 'default' : 'none',
     };
-    if (!EMAIL_RE.test(email) || email.length > 200) return { ...item, state: 'invalid', reason: email ? 'Keine gültige E-Mail-Adresse' : 'E-Mail fehlt' };
-    if (seen.has(email)) return { ...item, state: 'duplicate', reason: 'Steht schon weiter oben in der Datei' };
+    if (!EMAIL_RE.test(email) || email.length > 200) return { ...item, state: 'invalid', reason: email ? t('Keine gültige E-Mail-Adresse') : t('E-Mail fehlt') };
+    if (seen.has(email)) return { ...item, state: 'duplicate', reason: t('Steht schon weiter oben in der Datei') };
     seen.add(email);
-    if (cell(r, 'joined') && !item.joined_at) item.reason = `Datum „${cell(r, 'joined')}“ nicht erkannt – es gilt heute`;
+    if (cell(r, 'joined') && !item.joined_at) item.reason = t('Datum „{date}“ nicht erkannt – es gilt heute', { date: cell(r, 'joined') });
     const c = app.db.get<{ id: string }>('SELECT id FROM contacts WHERE location_id = ? AND email = ?', g.location_id, email);
     if (c) {
       const m = membershipOf(app, g.id, c.id);
-      if (m && (m.status === 'active' || m.status === 'trialing' || m.status === 'past_due')) return { ...item, state: 'member_exists', reason: 'Ist schon Mitglied' };
-      if (app.db.get('SELECT 1 FROM community_members WHERE group_id = ? AND contact_id = ? AND banned_at IS NOT NULL', g.id, c.id)) return { ...item, state: 'member_exists', reason: 'Ist in dieser Gruppe gesperrt' };
-      if (app.db.get('SELECT 1 FROM community_members WHERE group_id = ? AND contact_id = ?', g.id, c.id)) return { ...item, state: 'member_exists', reason: 'Ist schon in der Gruppe' };
+      if (m && (m.status === 'active' || m.status === 'trialing' || m.status === 'past_due')) return { ...item, state: 'member_exists', reason: t('Ist schon Mitglied') };
+      if (app.db.get('SELECT 1 FROM community_members WHERE group_id = ? AND contact_id = ? AND banned_at IS NOT NULL', g.id, c.id)) return { ...item, state: 'member_exists', reason: t('Ist in dieser Gruppe gesperrt') };
+      if (app.db.get('SELECT 1 FROM community_members WHERE group_id = ? AND contact_id = ?', g.id, c.id)) return { ...item, state: 'member_exists', reason: t('Ist schon in der Gruppe') };
       return { ...item, state: 'contact_exists' };
     }
     return item;
@@ -247,10 +250,10 @@ export function planMembers(app: App, g: any, input: MemberInput): MemberPlan {
   for (const it of items) counts[it.state]++;
   const mode = cleanGroupAccess(g.access).mode;
   const warnings: string[] = [];
-  if (mode !== 'join' && mode !== 'tags') warnings.push('Diese Gruppe lässt Mitglieder über Kurse oder alle Portal-Mitglieder herein. Importierte Personen bekämen keinen Zugang. Stelle den Zugang zuerst auf „Beitritt über die Community-Seite“ um (Community → Beitritt).');
-  if (mode === 'tags') warnings.push('Die Gruppe lässt Mitglieder über Tags herein: Die importierten Personen bekommen den ersten Zugangs-Tag.');
-  if (!tiers.length && mode === 'join') warnings.push('Es gibt noch keine Stufe – die Personen werden ohne Stufe aufgenommen. Lege unter Beitritt eine Stufe an, wenn du sie zuordnen willst.');
-  if (items.some((i) => i.points > 0)) warnings.push('Punkte aus der Datei werden als Startguthaben gutgeschrieben und können Level auslösen.');
+  if (mode !== 'join' && mode !== 'tags') warnings.push(t('Diese Gruppe lässt Mitglieder über Kurse oder alle Portal-Mitglieder herein. Importierte Personen bekämen keinen Zugang. Stelle den Zugang zuerst auf „Beitritt über die Community-Seite“ um (Community → Beitritt).'));
+  if (mode === 'tags') warnings.push(t('Die Gruppe lässt Mitglieder über Tags herein: Die importierten Personen bekommen den ersten Zugangs-Tag.'));
+  if (!tiers.length && mode === 'join') warnings.push(t('Es gibt noch keine Stufe – die Personen werden ohne Stufe aufgenommen. Lege unter Beitritt eine Stufe an, wenn du sie zuordnen willst.'));
+  if (items.some((i) => i.points > 0)) warnings.push(t('Punkte aus der Datei werden als Startguthaben gutgeschrieben und können Level auslösen.'));
   return {
     access_mode: mode,
     warnings,
@@ -321,13 +324,14 @@ export async function runMembers(app: App, g: any, plan: MemberPlan, opts: RunOp
       res.points += it.points;
       checkLevel(app, g, contact.id);
     }
-    logActivity(app, g.location_id, contact.id, 'community.imported', `In die Community „${g.name}“ übernommen (Import, Mitglied seit ${joined.slice(0, 10)})`);
+    logActivity(app, g.location_id, contact.id, 'community.imported', tLoc(app, g.location_id)('In die Community „{group}“ übernommen (Import, Mitglied seit {date})', { group: g.name, date: joined.slice(0, 10) }));
     created ? res.created++ : res.updated++;
     // Contacts who asked not to be disturbed (dnd) are moved over like everybody else but get no mail.
     if (opts.send_mail && it.email && !contact.dnd) mailTo.push({ email: it.email, first: it.first_name });
   }
   for (const m of mailTo.slice(0, 2000)) {
-    const ok = await communityMail(app, g.location_id, m.email, `Willkommen in der Community „${g.name}“`, [`${m.first ? `Hallo ${m.first}` : 'Hallo'},`, `deine Mitgliedschaft in „${g.name}“ ist umgezogen – du bist schon drin. Melde dich einfach mit dieser E-Mail-Adresse an: du bekommst einen Link per Mail, ein Passwort brauchst du nicht.`], { label: 'Zur Community', url: portalCommunityUrl(app, g) });
+    const t = tLoc(app, g.location_id);
+    const ok = await communityMail(app, g.location_id, m.email, t('Willkommen in der Community „{group}“', { group: g.name }), [`${m.first ? t('Hallo {name}', { name: m.first }) : t('Hallo')},`, t('deine Mitgliedschaft in „{group}“ ist umgezogen – du bist schon drin. Melde dich einfach mit dieser E-Mail-Adresse an: du bekommst einen Link per Mail, ein Passwort brauchst du nicht.', { group: g.name })], { label: t('Zur Community'), url: portalCommunityUrl(app, g) });
     if (ok) res.mails++;
   }
   return res;
@@ -371,45 +375,46 @@ export function parseMarkdownPost(name: string, content: string): { meta: Record
 }
 
 export function planPosts(app: App, g: any, input: { files?: unknown; channel_id?: string; keep_dates?: boolean }): PostPlanItem[] {
+  const t = tLoc(app, g.location_id);
   const files = Array.isArray(input.files) ? (input.files as PostFile[]) : [];
   if (!files.length) throw bad('Bitte mindestens eine Markdown-Datei angeben');
-  if (files.length > MAX_POST_FILES) throw bad(`Zu viele Dateien (höchstens ${MAX_POST_FILES})`);
+  if (files.length > MAX_POST_FILES) throw bad(t('Zu viele Dateien (höchstens {max})', { max: MAX_POST_FILES }));
   const channels = app.db.all<{ id: string; name: string; slug: string; admin_only: number }>('SELECT id, name, slug, admin_only FROM community_channels WHERE group_id = ? ORDER BY position, created_at', g.id);
   const fallback = (input.channel_id && channels.find((c) => c.id === input.channel_id)) || channels.find((c) => !c.admin_only) || channels[0];
   if (input.channel_id && !channels.some((c) => c.id === input.channel_id)) throw bad('Kanal nicht gefunden');
   if (!fallback) throw bad('Die Gruppe hat keinen Kanal');
   const members = new Map(app.db.all<{ email: string; contact_id: string; display_name: string }>(`SELECT k.email, m.contact_id, p.display_name FROM community_members m JOIN contacts k ON k.id = m.contact_id LEFT JOIN community_profiles p ON p.location_id = m.location_id AND p.contact_id = m.contact_id WHERE m.group_id = ? AND m.banned_at IS NULL`, g.id).map((r) => [r.email, r]));
   return files.map((f, i) => {
-    const name = String(f?.name ?? `Datei ${i + 1}`).slice(0, 200);
-    const out: PostPlanItem = { file: name, title: '', body: '', created_at: now(), channel_id: fallback.id, channel_name: fallback.name, author_contact_id: null, author_name: 'Team', pinned: false, warnings: [] };
+    const name = String(f?.name ?? t('Datei {n}', { n: i + 1 })).slice(0, 200);
+    const out: PostPlanItem = { file: name, title: '', body: '', created_at: now(), channel_id: fallback.id, channel_name: fallback.name, author_contact_id: null, author_name: t('Team'), pinned: false, warnings: [] };
     const content = String(f?.content ?? '');
-    if (content.length > MAX_POST_BYTES) return { ...out, problem: 'Die Datei ist größer als 120 KB' };
+    if (content.length > MAX_POST_BYTES) return { ...out, problem: t('Die Datei ist größer als 120 KB') };
     const { meta, body } = parseMarkdownPost(name, content);
     const h1 = /^#\s+(.+)$/m.exec(body);
     const title = (meta.title || h1?.[1] || name.replace(/\.(md|markdown|txt)$/i, '').replace(/[-_]+/g, ' ')).trim().slice(0, 160);
     const text = !meta.title && h1 && body.startsWith(h1[0]) ? body.slice(h1[0].length).trim() : body;
-    if (!title) return { ...out, problem: 'Es gibt keinen Titel' };
-    if (!text) return { ...out, title, problem: 'Der Beitrag hat keinen Text' };
+    if (!title) return { ...out, problem: t('Es gibt keinen Titel') };
+    if (!text) return { ...out, title, problem: t('Der Beitrag hat keinen Text') };
     out.title = title;
     out.body = text.slice(0, 20_000);
-    if (text.length > 20_000) out.warnings.push('Der Text wurde auf 20.000 Zeichen gekürzt');
+    if (text.length > 20_000) out.warnings.push(t('Der Text wurde auf 20.000 Zeichen gekürzt'));
     if (meta.date && input.keep_dates !== false) {
       const d = parseDate(meta.date);
       if (d) out.created_at = d;
-      else out.warnings.push(`Datum „${meta.date}“ nicht erkannt – es gilt heute`);
+      else out.warnings.push(t('Datum „{date}“ nicht erkannt – es gilt heute', { date: meta.date }));
     }
     if (meta.channel) {
       const c = channels.find((x) => norm(x.name) === norm(meta.channel) || x.slug === norm(meta.channel).replace(/ /g, '-'));
       if (c) (out.channel_id = c.id, (out.channel_name = c.name));
-      else out.warnings.push(`Kanal „${meta.channel}“ gibt es nicht – der Beitrag kommt nach „${fallback.name}“`);
+      else out.warnings.push(t('Kanal „{channel}“ gibt es nicht – der Beitrag kommt nach „{fallback}“', { channel: meta.channel, fallback: fallback.name }));
     }
     if (meta.author) {
       const mem = members.get(normalizeEmail(meta.author));
       if (mem) (out.author_contact_id = mem.contact_id, (out.author_name = mem.display_name || meta.author));
-      else out.author_name = meta.author.includes('@') ? 'Team' : meta.author.slice(0, 60);
+      else out.author_name = meta.author.includes('@') ? t('Team') : meta.author.slice(0, 60);
     }
     out.pinned = /^(1|true|yes|ja)$/i.test(meta.pinned ?? '');
-    if (/!\[[^\]]*\]\((?!https?:\/\/)/.test(text)) out.warnings.push('Bilder mit lokalem Pfad werden nicht übernommen');
+    if (/!\[[^\]]*\]\((?!https?:\/\/)/.test(text)) out.warnings.push(t('Bilder mit lokalem Pfad werden nicht übernommen'));
     return out;
   });
 }
@@ -456,8 +461,10 @@ export function exportMembersCsv(app: App, g: any): string {
      LEFT JOIN community_tiers t ON t.id = ms.tier_id WHERE m.group_id = ? ORDER BY m.joined_at`,
     g.id,
   );
+  // i18n-ignore – column names of the import format (re-importable here and in other community tools)
   const head = ['FirstName', 'LastName', 'Email', 'Joined', 'Tier', 'Level', 'Points', 'Status'];
-  const lines = rows.map((r) => [r.first_name, r.last_name, r.email, String(r.joined_at ?? '').slice(0, 10), r.tier ?? '', r.level, r.points, r.banned_at ? 'gesperrt' : r.membership ?? 'Mitglied'].map(csvCell).join(','));
+  const t = tLoc(app, g.location_id);
+  const lines = rows.map((r) => [r.first_name, r.last_name, r.email, String(r.joined_at ?? '').slice(0, 10), r.tier ?? '', r.level, r.points, r.banned_at ? t('gebannt') : r.membership ?? t('Mitglied')].map(csvCell).join(','));
   return `﻿${[head.join(','), ...lines].join('\r\n')}\r\n`;
 }
 

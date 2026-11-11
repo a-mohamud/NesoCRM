@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { tApp } from '../i18n/index.js';
 
 /**
  * OAuth 2.0 authorization-code flow with PKCE (RFC 7636) for Google and Microsoft (Entra ID).
@@ -170,7 +171,7 @@ async function tokenCall(fetcher: typeof fetch, provider: Provider, cfg: ClientC
       signal: AbortSignal.timeout(15_000),
     });
   } catch (e) {
-    throw new OAuthError(`${PROVIDER_LABEL[provider]} nicht erreichbar: ${(e as Error).message}`, 'network');
+    throw new OAuthError(tApp()('{service} nicht erreichbar: {error}', { service: PROVIDER_LABEL[provider], error: (e as Error).message }), 'network');
   }
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j.access_token) {

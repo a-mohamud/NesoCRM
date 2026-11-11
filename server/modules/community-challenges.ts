@@ -26,6 +26,7 @@ import {
   type Challenge,
 } from '../services/community-challenges.js';
 import { communityUi, kitOf, type PortalCtx, type PortalMember } from '../services/community-ui.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Challenges: admin API and the member pages (list, detail with the day grid, today's task, check-in, board). Rules and points:
@@ -164,10 +165,11 @@ export const communityChallengesModule: Module = {
 
     // --- member pages -------------------------------------------------------------------------------------------------------------
     const visibleIn = (gid: string) => db.all<Challenge>(`SELECT * FROM community_challenges WHERE group_id = ? AND status != 'draft' ORDER BY starts_on DESC LIMIT 100`, gid);
-    ui.tabs.push((p, _m, g) => (visibleIn(g.id).length ? [{ key: 'challenges', href: `${kitOf(app).gHref(p, g)}/challenges`, label: '🔥 Challenges' }] : []));
+    ui.tabs.push((p, _m, g) => (visibleIn(g.id).length ? [{ key: 'challenges', href: `${kitOf(app).gHref(p, g)}/challenges`, label: `🔥 ${tLoc(app, g.location_id)('Challenges')}` }] : []));
 
     const range = (c: Challenge) => {
-      const f = (ymd: string) => formatInTz(`${ymd}T12:00:00Z`, 'UTC', { weekday: undefined, hour: undefined, minute: undefined, year: undefined, day: 'numeric', month: 'short' });
+      const locale = tLoc(app, c.location_id).locale;
+      const f = (ymd: string) => (locale === 'de' ? formatInTz(`${ymd}T12:00:00Z`, 'UTC', { weekday: undefined, hour: undefined, minute: undefined, year: undefined, day: 'numeric', month: 'short' }) : new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short' }));
       return `${f(c.starts_on)} – ${f(c.ends_on)}`;
     };
     const card = (p: PortalCtx, m: PortalMember, g: any, c: Challenge) => {
@@ -177,8 +179,9 @@ export const communityChallengesModule: Module = {
       const counts = challengeCounts(app, c.id);
       const pct = me ? Math.min(100, Math.round((me.checkins / Math.max(1, c.goal_days)) * 100)) : 0;
       const today = todayOf(app, c.location_id);
-      const label = me?.completed_at ? 'Geschafft 🎉' : phase === 'upcoming' ? `Startet am ${range(c).split(' – ')[0]}` : phase === 'over' ? 'Beendet' : me ? (me.last_day === today ? 'Heute erledigt ✓' : 'Heute einchecken') : 'Mitmachen';
-      return `<a class="cm-chc" href="${kit.gHref(p, g)}/challenges/${encodeURIComponent(c.id)}"><span class="em">${escapeHtml(c.emoji || '🔥')}</span><h3>${escapeHtml(c.title)}</h3><div class="muted small">${escapeHtml(range(c))} · ${totalDays(c)} Tage · ${counts.members} ${counts.members === 1 ? 'Teilnehmer' : 'Teilnehmer'}</div>${me ? `<div class="bar"><i style="width:${pct}%"></i></div><div class="muted small">${me.checkins} von ${c.goal_days} Tagen${me.streak > 1 ? ` · 🔥 ${me.streak} in Folge` : ''}</div>` : ''}<span class="btn${me && me.last_day === today ? ' ghost' : ''}" style="align-self:flex-start">${label}</span></a>`;
+      const t = tLoc(app, c.location_id);
+      const label = me?.completed_at ? t('Geschafft 🎉') : phase === 'upcoming' ? t('Startet am {date}', { date: range(c).split(' – ')[0] }) : phase === 'over' ? t('Beendet') : me ? (me.last_day === today ? t('Heute erledigt ✓') : t('Heute einchecken')) : t('Mitmachen');
+      return `<a class="cm-chc" href="${kit.gHref(p, g)}/challenges/${encodeURIComponent(c.id)}"><span class="em">${escapeHtml(c.emoji || '🔥')}</span><h3>${escapeHtml(c.title)}</h3><div class="muted small">${escapeHtml(range(c))} · ${t.plural(totalDays(c), { one: '{n} Tag', other: '{n} Tage' })} · ${t.plural(counts.members, { one: '{n} Teilnehmer', other: '{n} Teilnehmer' })}</div>${me ? `<div class="bar"><i style="width:${pct}%"></i></div><div class="muted small">${t('{n} von {goal} Tagen', { n: me.checkins, goal: c.goal_days })}${me.streak > 1 ? ` · 🔥 ${t('{n} in Folge', { n: me.streak })}` : ''}</div>` : ''}<span class="btn${me && me.last_day === today ? ' ghost' : ''}" style="align-self:flex-start">${label}</span></a>`;
     };
 
     router.get('/portal/:p/community/g/:group/challenges', 'public', (ctx) =>
@@ -187,8 +190,9 @@ export const communityChallengesModule: Module = {
         const all = visibleIn(g.id);
         const by = (phase: string) => all.filter((c) => c.status === 'active' && phaseOf(app, c) === phase);
         const over = all.filter((c) => c.status === 'archived' || phaseOf(app, c) === 'over').slice(0, 12);
+        const t = tLoc(app, g.location_id);
         const sec = (title: string, list: Challenge[]) => (list.length ? `<h2 style="margin:18px 0 10px">${title}</h2><div class="cm-chs">${list.map((c) => card(p, m, g, c)).join('')}</div>` : '');
-        return kit.frame(p, m, `Challenges · ${g.name}`, `${kit.groupHead(p, g)}${kit.groupTabs(p, m, g, 'challenges')}${sec('Läuft gerade', by('running'))}${sec('Startet bald', by('upcoming'))}${sec('Beendet', over)}${all.length ? '' : '<div class="cm-box cm-empty"><p><strong>Gerade läuft keine Challenge.</strong></p></div>'}`);
+        return kit.frame(p, m, `${t('Challenges')} · ${g.name}`, `${kit.groupHead(p, g)}${kit.groupTabs(p, m, g, 'challenges')}${sec(t('Läuft gerade'), by('running'))}${sec(t('Startet bald'), by('upcoming'))}${sec(t('Beendet'), over)}${all.length ? '' : `<div class="cm-box cm-empty"><p><strong>${t('Gerade läuft keine Challenge.')}</strong></p></div>`}`);
       }),
     );
 
@@ -207,30 +211,31 @@ export const communityChallengesModule: Module = {
       const doneToday = !!me && me.last_day === today;
       const csrf = kit.tokenInput(m);
       const base = `${kit.gHref(p, g)}/challenges/${encodeURIComponent(c.id)}`;
+      const t = tLoc(app, c.location_id);
       const form =
         c.status !== 'active' || phase === 'over'
-          ? `<p class="muted">Diese Challenge ist beendet.${me?.completed_at ? ' Du hast sie geschafft 🎉' : ''}</p>`
+          ? `<p class="muted">${t('Diese Challenge ist beendet.')}${me?.completed_at ? ` ${t('Du hast sie geschafft 🎉')}` : ''}</p>`
           : phase === 'upcoming'
-            ? `<p class="muted">Die Challenge startet am ${escapeHtml(range(c).split(' – ')[0])}.</p>${me ? '<p><strong>Du bist dabei.</strong></p>' : `<form method="post" action="${base}/join">${csrf}<button class="btn">Mitmachen</button></form>`}`
+            ? `<p class="muted">${t('Die Challenge startet am {date}.', { date: escapeHtml(range(c).split(' – ')[0]) })}</p>${me ? `<p><strong>${t('Du bist dabei.')}</strong></p>` : `<form method="post" action="${base}/join">${csrf}<button class="btn">${t('Mitmachen')}</button></form>`}`
             : doneToday
-              ? `<p><strong>Heute erledigt ✓</strong> – bis morgen!</p>`
-              : `<form method="post" action="${base}/checkin">${csrf}<label for="note">${c.require_note ? 'Was hast du heute gemacht?' : 'Notiz (freiwillig)'}</label><textarea id="note" name="note" rows="2" maxlength="600" class="cm-in"${c.require_note ? ' required' : ''} placeholder="Ein, zwei Sätze für die Gruppe …"></textarea><p style="margin:10px 0 0"><button class="btn">Heute einchecken ✓</button></p></form>`;
+              ? `<p><strong>${t('Heute erledigt ✓')}</strong> – ${t('bis morgen!')}</p>`
+              : `<form method="post" action="${base}/checkin">${csrf}<label for="note">${c.require_note ? t('Was hast du heute gemacht?') : t('Notiz (freiwillig)')}</label><textarea id="note" name="note" rows="2" maxlength="600" class="cm-in"${c.require_note ? ' required' : ''} placeholder="${t('Ein, zwei Sätze für die Gruppe …')}"></textarea><p style="margin:10px 0 0"><button class="btn">${t('Heute einchecken ✓')}</button></p></form>`;
       const medal = ['🥇', '🥈', '🥉'];
       return kit.frame(
         p,
         m,
         `${c.title} · ${g.name}`,
-        `${kit.groupHead(p, g)}${kit.groupTabs(p, m, g, 'challenges')}<div class="crumb"><a href="${kit.gHref(p, g)}/challenges">Alle Challenges</a></div>
+        `${kit.groupHead(p, g)}${kit.groupTabs(p, m, g, 'challenges')}<div class="crumb"><a href="${kit.gHref(p, g)}/challenges">${t('Alle Challenges')}</a></div>
 <div class="cm-grid"><section>
-${flash.ok ? `<div class="cm-ok" role="status">${escapeHtml(flash.ok)}</div>` : ''}${flash.error ? `<div class="cm-err" role="alert">${escapeHtml(flash.error)}</div>` : ''}
-<div class="cm-box"><h1 style="margin:0 0 4px">${escapeHtml(c.emoji || '🔥')} ${escapeHtml(c.title)}</h1><div class="muted small">${escapeHtml(range(c))} · ${totalDays(c)} Tage · Ziel: ${c.goal_days} Check-ins${dayNo ? ` · heute ist Tag ${dayNo}` : ''}</div>
+${flash.ok ? `<div class="cm-ok" role="status">${escapeHtml(t(flash.ok))}</div>` : ''}${flash.error ? `<div class="cm-err" role="alert">${escapeHtml(t(flash.error))}</div>` : ''}
+<div class="cm-box"><h1 style="margin:0 0 4px">${escapeHtml(c.emoji || '🔥')} ${escapeHtml(c.title)}</h1><div class="muted small">${escapeHtml(range(c))} · ${t.plural(totalDays(c), { one: '{n} Tag', other: '{n} Tage' })} · ${t('Ziel: {n} Check-ins', { n: c.goal_days })}${dayNo ? ` · ${t('heute ist Tag {day}', { day: dayNo })}` : ''}</div>
 ${c.description ? `<div class="prose" style="margin-top:10px">${kit.renderText(p, c.description, false)}</div>` : ''}</div>
-<div class="cm-box">${me ? `<div class="cm-pr"><div><b>${me.checkins}</b><span class="muted small">von ${c.goal_days} Tagen</span></div><div><b>${me.streak}</b><span class="muted small">in Folge</span></div>${rank ? `<div><b>#${rank}</b><span class="muted small">Platz</span></div>` : ''}</div>` : ''}
-<div class="cm-days" role="img" aria-label="Deine Tage">${dayStates(app, c, m.contact.id, today).map((d) => `<span class="cm-day ${d.state}" title="Tag ${d.n}: ${escapeHtml(tasks.get(d.n)?.title ?? '')}">${d.n}</span>`).join('')}</div>
-${task ? `<div class="cm-task"><h3>Heute · Tag ${dayNo}: ${escapeHtml(task.title)}</h3>${task.body ? `<div class="prose small">${kit.renderText(p, task.body, false)}</div>` : ''}</div>` : ''}
+<div class="cm-box">${me ? `<div class="cm-pr"><div><b>${me.checkins}</b><span class="muted small">${t('von {goal} Tagen', { goal: c.goal_days })}</span></div><div><b>${me.streak}</b><span class="muted small">${t('in Folge')}</span></div>${rank ? `<div><b>#${rank}</b><span class="muted small">${t('Platz')}</span></div>` : ''}</div>` : ''}
+<div class="cm-days" role="img" aria-label="${t('Deine Tage')}">${dayStates(app, c, m.contact.id, today).map((d) => `<span class="cm-day ${d.state}" title="${t('Tag {day}: {task}', { day: d.n, task: escapeHtml(tasks.get(d.n)?.title ?? '') })}">${d.n}</span>`).join('')}</div>
+${task ? `<div class="cm-task"><h3>${t('Heute · Tag {day}: {task}', { day: dayNo, task: escapeHtml(task.title) })}</h3>${task.body ? `<div class="prose small">${kit.renderText(p, task.body, false)}</div>` : ''}</div>` : ''}
 ${form}</div>
-${notes.length ? `<div class="cm-box"><h3>Aus der Gruppe</h3>${notes.map((n) => { const pr = kit.profile(p, n.contact_id); const name = pr?.display_name ?? 'Mitglied'; return `<div class="cm-note">${kit.avatar(p, name, pr, 's')}<div><strong>${escapeHtml(name)}</strong> <span class="muted small">· ${kit.when(p, n.checked_at)}</span><div class="prose small">${kit.renderText(p, n.note, true)}</div></div></div>`; }).join('')}</div>` : ''}
-</section><aside class="cm-side"><div class="cm-box"><h3>Rangliste</h3>${board.length ? `<ol class="cm-lb">${board.map((r, i) => { const pr = kit.profile(p, r.contact_id); const name = pr?.display_name ?? 'Mitglied'; return `<li class="${r.contact_id === m.contact.id ? 'me' : ''}"><span class="r${i < 3 ? ' top' : ''}">${i < 3 ? medal[i] : i + 1}</span>${kit.avatar(p, name, pr, 's')}<a href="${pr ? `${kit.cbase(p)}/u/${encodeURIComponent(pr.handle)}` : '#'}" style="color:inherit;text-decoration:none;font-weight:600">${escapeHtml(name)}</a><span class="p">${r.checkins}</span></li>`; }).join('')}</ol>` : '<p class="muted small">Noch niemand eingecheckt – sei die Erste oder der Erste!</p>'}<p class="muted small" style="margin:10px 0 0">${counts.members} ${counts.members === 1 ? 'Person macht' : 'Personen machen'} mit${counts.done ? ` · ${counts.done} geschafft` : ''}</p></div></aside></div>`,
+${notes.length ? `<div class="cm-box"><h3>${t('Aus der Gruppe')}</h3>${notes.map((n) => { const pr = kit.profile(p, n.contact_id); const name = pr?.display_name ?? t('Mitglied'); return `<div class="cm-note">${kit.avatar(p, name, pr, 's')}<div><strong>${escapeHtml(name)}</strong> <span class="muted small">· ${kit.when(p, n.checked_at)}</span><div class="prose small">${kit.renderText(p, n.note, true)}</div></div></div>`; }).join('')}</div>` : ''}
+</section><aside class="cm-side"><div class="cm-box"><h3>${t('Rangliste')}</h3>${board.length ? `<ol class="cm-lb">${board.map((r, i) => { const pr = kit.profile(p, r.contact_id); const name = pr?.display_name ?? t('Mitglied'); return `<li class="${r.contact_id === m.contact.id ? 'me' : ''}"><span class="r${i < 3 ? ' top' : ''}">${i < 3 ? medal[i] : i + 1}</span>${kit.avatar(p, name, pr, 's')}<a href="${pr ? `${kit.cbase(p)}/u/${encodeURIComponent(pr.handle)}` : '#'}" style="color:inherit;text-decoration:none;font-weight:600">${escapeHtml(name)}</a><span class="p">${r.checkins}</span></li>`; }).join('')}</ol>` : `<p class="muted small">${t('Noch niemand eingecheckt – sei die Erste oder der Erste!')}</p>`}<p class="muted small" style="margin:10px 0 0">${t.plural(counts.members, { one: '{n} Person macht mit', other: '{n} Personen machen mit' })}${counts.done ? ` · ${t('{n} geschafft', { n: counts.done })}` : ''}</p></div></aside></div>`,
         status,
       );
     };
@@ -245,7 +250,7 @@ ${notes.length ? `<div class="cm-box"><h3>Aus der Gruppe</h3>${notes.map((n) => 
     router.get('/portal/:p/community/g/:group/challenges/:cid', 'public', (ctx) =>
       withChallenge(ctx, (p, m, g, c) => {
         const ok = ctx.query.get('ok');
-        return detail(p, m, g, c, { ok: ok === 'checkin' ? 'Check-in gespeichert – stark!' : ok === 'done' ? 'Geschafft! Du hast die Challenge abgeschlossen. 🎉' : ok === 'join' ? 'Du bist dabei!' : undefined });
+        return detail(p, m, g, c, { ok: ok === 'checkin' ? 'Check-in gespeichert – stark!' : ok === 'done' ? 'Geschafft! Du hast die Challenge abgeschlossen. 🎉' : ok === 'join' ? 'Du bist dabei!' : undefined }); // detail() translates the flash
       }),
     );
     router.post('/portal/:p/community/g/:group/challenges/:cid/join', 'public', (ctx) =>
@@ -278,11 +283,13 @@ ${notes.length ? `<div class="cm-box"><h3>Aus der Gruppe</h3>${notes.map((n) => 
       const due = dueToday(app, g.id, m.contact.id)[0];
       if (due) {
         const day = daysBetween(due.starts_on, todayOf(app, due.location_id)) + 1;
-        return `<div class="cm-box cm-ch"><span style="font-size:28px">${escapeHtml(due.emoji || '🔥')}</span><div class="grow"><strong>Tag ${day} von ${totalDays(due)}: ${escapeHtml(due.title)}</strong><div class="muted small">Dein Check-in für heute wartet.</div></div><a class="btn" href="${kit.gHref(p, g)}/challenges/${encodeURIComponent(due.id)}">Einchecken</a></div>`;
+        const t = tLoc(app, due.location_id);
+        return `<div class="cm-box cm-ch"><span style="font-size:28px">${escapeHtml(due.emoji || '🔥')}</span><div class="grow"><strong>${t('Tag {day} von {days}: {title}', { day, days: totalDays(due), title: escapeHtml(due.title) })}</strong><div class="muted small">${t('Dein Check-in für heute wartet.')}</div></div><a class="btn" href="${kit.gHref(p, g)}/challenges/${encodeURIComponent(due.id)}">${t('Einchecken')}</a></div>`;
       }
       const open = visibleIn(g.id).find((c) => c.status === 'active' && phaseOf(app, c) === 'running' && !participantOf(app, c.id, m.contact.id));
       if (!open) return '';
-      return `<div class="cm-box cm-ch"><span style="font-size:28px">${escapeHtml(open.emoji || '🔥')}</span><div class="grow"><strong>${escapeHtml(open.title)}</strong><div class="muted small">Läuft gerade – mach mit!</div></div><a class="btn ghost" href="${kit.gHref(p, g)}/challenges/${encodeURIComponent(open.id)}">Ansehen</a></div>`;
+      const t = tLoc(app, open.location_id);
+      return `<div class="cm-box cm-ch"><span style="font-size:28px">${escapeHtml(open.emoji || '🔥')}</span><div class="grow"><strong>${escapeHtml(open.title)}</strong><div class="muted small">${t('Läuft gerade – mach mit!')}</div></div><a class="btn ghost" href="${kit.gHref(p, g)}/challenges/${encodeURIComponent(open.id)}">${t('Ansehen')}</a></div>`;
     });
     ui.notificationTarget.push((p, n) => {
       if (n.kind !== 'challenge') return undefined;

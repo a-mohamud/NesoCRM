@@ -1,5 +1,6 @@
 import { escapeHtml as h } from '../core/template.js';
 import type { PlanKey } from './cloud.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Cloud waitlist mode, the pure parts: when the mode is on, the texts of the waitlist form (German and English, shared by the
@@ -66,6 +67,7 @@ export interface WaitlistText {
   refused: string;
 }
 
+/** The German texts are also catalog keys (server/i18n/en) mapped to the English ones below; the form picks its language itself. */
 export const WL_TEXT: Record<WlLang, WaitlistText> = {
   de: {
     h2: 'Cloud: auf die Warteliste',
@@ -114,20 +116,20 @@ export const WL_TEXT: Record<WlLang, WaitlistText> = {
     lead: 'The hosted {b} cloud is being prepared. Nobody can create an account, enter payment details or pay for it yet. Join the list – we will let you know as soon as it launches.',
     selfLead: "Don't want to wait? Self-hosted, {b} is free today, with every feature.",
     name: 'Name (optional)',
-    firstName: 'First name',
-    email: 'E-mail',
+    firstName: 'First name', // i18n-ignore (English text)
+    email: 'Email', // i18n-ignore (English text)
     plan: 'Which plan interests you? (optional)',
-    planAny: 'Not sure yet',
-    plans: { solo: 'Cloud Solo', team: 'Cloud Team & Company', agency: 'Cloud Agency' },
-    consent: 'Yes, e-mail me as soon as the cloud launches. Only the details in this form are stored; I can unsubscribe at any time.',
-    privacyPrefix: 'More in the',
+    planAny: 'Not sure yet', // i18n-ignore (English text)
+    plans: { solo: 'Cloud Solo', team: 'Cloud Team & Company', agency: 'Cloud Agency' }, // i18n-ignore (English text)
+    consent: 'Yes, email me as soon as the cloud launches. Only the details in this form are stored; I can unsubscribe at any time.',
+    privacyPrefix: 'More in the', // i18n-ignore (English text)
     privacy: 'privacy policy',
-    submit: 'Join the waitlist',
+    submit: 'Join the waitlist', // i18n-ignore (English text)
     note: 'No newsletter, no marketing – just one message at launch. This page sets no cookies.',
     ok: "Thanks! We'll be in touch as soon as the cloud launches.",
-    doi: 'Please confirm your e-mail address with the link in the e-mail we just sent you.',
+    doi: 'Please confirm your email address with the link in the email we just sent you.',
     errors: {
-      email: 'Please enter a valid e-mail address.',
+      email: 'Please enter a valid email address.',
       consent: 'Please tick the consent box – without it we may not notify you.',
       name: 'Please enter your first name.',
       stale: 'That was too fast or the page is out of date – please send it again.',
@@ -135,19 +137,19 @@ export const WL_TEXT: Record<WlLang, WaitlistText> = {
       closed: 'The waitlist is not active right now.',
       error: 'That did not work – please try again later.',
     },
-    soon: 'Coming soon',
+    soon: 'Coming soon', // i18n-ignore (English text)
     planned: 'planned',
-    join: 'Join the waitlist',
-    selfCta: 'Self-host for free',
-    hp: 'Leave this empty',
+    join: 'Join the waitlist', // i18n-ignore (English text)
+    selfCta: 'Self-host for free', // i18n-ignore (English text)
+    hp: 'Leave this empty', // i18n-ignore (English text)
     page: {
-      title: 'Waitlist',
+      title: 'Waitlist', // i18n-ignore (English text)
       h1: 'The cloud is coming soon',
       lead: 'We are preparing the hosted {b} cloud. Accounts cannot be created yet, and nothing is charged. Join the waitlist – we will let you know as soon as it launches.',
-      sideH: 'Get going today',
+      sideH: 'Get going today', // i18n-ignore (English text)
       side: 'Self-hosted, {b} is free: every feature, your server, your data (open source, AGPL-3.0).',
-      login: 'Already have an account?',
-      account: 'Sign in',
+      login: 'Already have an account?', // i18n-ignore (English text)
+      account: 'Sign in', // i18n-ignore (English text)
     },
     refused: 'The cloud is not available yet: new accounts, sub-accounts and payments are blocked. Join the waitlist – or self-host {b} for free.',
   },
@@ -160,7 +162,8 @@ export function wlText(lang: WlLang, brand: string): WaitlistText {
   return fill(WL_TEXT[lang]) as WaitlistText;
 }
 
-export const wlLang = (v: unknown): WlLang => (v === 'en' ? 'en' : 'de');
+/** An explicit language, else the instance language (server/i18n). */
+export const wlLang = (v: unknown): WlLang => (v === 'en' ? 'en' : v === 'de' ? 'de' : tApp().locale === 'de' ? 'de' : 'en');
 export const wlPlan = (v: unknown): WlPlan | '' => (WL_PLANS.includes(v as WlPlan) ? (v as WlPlan) : '');
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;

@@ -11,6 +11,7 @@ import type { AssociationsService } from './associations.js';
 import type { ObjectSchema } from './object-schema.js';
 import type { Tool } from './mcp.js';
 import type { Plan } from './forms.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Form fields that write to a company, a deal (opportunity) or a custom object – not only to the contact (HighLevel parity,
@@ -57,7 +58,7 @@ export const PROTECTED_CONTACT_KEYS = ['assigned_to'] as const;
 export const isProtectedContactKey = (name: string) => (PROTECTED_CONTACT_KEYS as readonly string[]).includes(name);
 /** Save check of the contact targets: throws a German message for a field that writes to a protected contact column. */
 export function checkContactFields(fields: FormField[]): void {
-  for (const f of fields) if (isProtectedContactKey(f.name)) throw bad(`„${f.label || f.name}“: Kontakt-Feld „${f.name}“ ist geschützt – ein Formular kann es nicht setzen`);
+  for (const f of fields) if (isProtectedContactKey(f.name)) throw bad(tApp()('„{field}“: Kontakt-Feld „{key}“ ist geschützt – ein Formular kann es nicht setzen', { field: f.label || f.name, key: f.name }));
 }
 
 /** Named on purpose so a refusal can say why. */
@@ -66,7 +67,7 @@ const PROTECTED = ['id', 'location_id', 'owner_id', 'assigned_to', 'lifecycle_st
 const NO_FORM_TYPES = ['user', 'file'];
 /** Field types without an answer that could go anywhere. */
 const NO_ANSWER = ['heading', 'page_break', 'payment', 'file', 'signature'];
-const TARGET_LABEL: Record<MapTarget, string> = { company: 'Firma', opportunity: 'Deal', object: 'Objekt' };
+const TARGET_LABEL: Record<MapTarget, string> = { company: 'Firma', opportunity: 'Deal', object: 'Eigenes Objekt' };
 
 const schema = (app: App): ObjectSchema => app.services.objectSchema;
 const assoc = (app: App): AssociationsService => app.services.associations;
@@ -74,24 +75,27 @@ const isEmpty = (v: unknown) => v === undefined || v === null || v === '' || (Ar
 
 /** Who a key belongs to: a standard column, a custom property (with its definition) or nothing a form may write. */
 function resolveKey(app: App, loc: string, target: MapTarget, key: string, object?: string): { std?: string; def?: PropertyDef; label: string } | string {
+  const tr = tApp();
+  const typeName = (type: string) => tr(type === 'user' ? 'Nutzer' : 'Datei');
   if (target === 'object') {
     const t = object && CUSTOM_OBJECT_RE.test(object) ? objectType(app, loc, object) : undefined;
-    if (!t) return 'das Objekt gibt es in diesem Sub-Account nicht';
+    if (!t) return tr('das Objekt gibt es in diesem Sub-Account nicht');
     const def = schema(app).defs(loc, t.key).find((d) => d.key === key);
-    if (!def) return `die Eigenschaft „${key}“ gibt es bei ${t.singular} nicht`;
-    if (NO_FORM_TYPES.includes(def.type)) return `„${def.label}“ (${def.type === 'user' ? 'Nutzer' : 'Datei'}) kann ein Formular nicht setzen`;
+    if (!def) return tr('die Eigenschaft „{key}“ gibt es bei {object} nicht', { key, object: t.singular });
+    if (NO_FORM_TYPES.includes(def.type)) return tr('„{label}“ ({type}) kann ein Formular nicht setzen', { label: def.label, type: typeName(def.type) });
     return { def, label: `${t.singular}: ${def.label}` };
   }
   const obj = target;
   if (key.startsWith('custom.')) {
     const def = schema(app).defs(loc, obj).find((d) => d.key === key.slice(7));
-    if (!def) return `die Eigenschaft „${key.slice(7)}“ gibt es nicht`;
-    if (NO_FORM_TYPES.includes(def.type)) return `„${def.label}“ (${def.type === 'user' ? 'Nutzer' : 'Datei'}) kann ein Formular nicht setzen`;
-    return { def, label: `${TARGET_LABEL[target]}: ${def.label}` };
+    if (!def) return tr('die Eigenschaft „{key}“ gibt es nicht', { key: key.slice(7) });
+    if (NO_FORM_TYPES.includes(def.type)) return tr('„{label}“ ({type}) kann ein Formular nicht setzen', { label: def.label, type: typeName(def.type) });
+    return { def, label: `${tr(TARGET_LABEL[target])}: ${def.label}` };
   }
   const allowed: readonly string[] = target === 'company' ? COMPANY_KEYS : DEAL_KEYS;
-  if (!allowed.includes(key)) return PROTECTED.includes(key) || STANDARD_PROPS[obj]?.some((p) => p.key === key) ? `„${key}“ ist geschützt – ein Formular kann es nicht setzen` : `das Feld „${key}“ gibt es nicht`;
-  return { std: key, label: `${TARGET_LABEL[target]}: ${STANDARD_PROPS[obj]?.find((p) => p.key === key)?.label ?? key}` };
+  if (!allowed.includes(key)) return PROTECTED.includes(key) || STANDARD_PROPS[obj]?.some((p) => p.key === key) ? tr('„{key}“ ist geschützt – ein Formular kann es nicht setzen', { key }) : tr('das Feld „{key}“ gibt es nicht', { key });
+  const std = STANDARD_PROPS[obj]?.find((p) => p.key === key)?.label;
+  return { std: key, label: `${tr(TARGET_LABEL[target])}: ${std ? tr(std) : key}` };
 }
 
 /**
@@ -100,8 +104,9 @@ function resolveKey(app: App, loc: string, target: MapTarget, key: string, objec
  */
 export function cleanMapping(app: App, loc: string, input: any, fields: FormField[], opts: { lenient?: boolean; legacyPipeline?: string; legacyStage?: string } = {}): FormMapping | undefined {
   if (!input || typeof input !== 'object') return undefined;
+  const t = tApp();
   const fail = (msg: string) => {
-    if (!opts.lenient) throw bad(`Zuordnung: ${msg}`);
+    if (!opts.lenient) throw bad(t('Zuordnung: {msg}', { msg }));
   };
   const byId = new Map(fields.map((f) => [f.id, f]));
   const out: FormMapping = { fields: {} };
@@ -113,12 +118,12 @@ export function cleanMapping(app: App, loc: string, input: any, fields: FormFiel
     if (!f) continue; // the field was removed
     const label = f.label || f.name;
     if (NO_ANSWER.includes(f.type)) {
-      fail(`„${label}“ hat keine Antwort, die gespeichert werden kann`);
+      fail(t('„{field}“ hat keine Antwort, die gespeichert werden kann', { field: label }));
       continue;
     }
     const target = String(m.target) as MapTarget;
     if (!['company', 'opportunity', 'object'].includes(target)) {
-      fail(`„${label}“: unbekanntes Ziel`);
+      fail(t('„{field}“: unbekanntes Ziel', { field: label }));
       continue;
     }
     const key = String(m.key ?? '').trim().slice(0, 70);
@@ -137,7 +142,7 @@ export function cleanMapping(app: App, loc: string, input: any, fields: FormFiel
   for (const [fid, m] of Object.entries(out.fields)) {
     const k = `${m.target}:${m.object ?? ''}:${m.key}`;
     if (seen.has(k)) {
-      fail(`zwei Felder schreiben in dasselbe Ziel (${resolveLabel(app, loc, m)})`);
+      fail(t('zwei Felder schreiben in dasselbe Ziel ({target})', { target: resolveLabel(app, loc, m) }));
       delete out.fields[fid];
     }
     seen.add(k);
@@ -147,12 +152,12 @@ export function cleanMapping(app: App, loc: string, input: any, fields: FormFiel
     const pid = String(d.pipeline_id || opts.legacyPipeline || '');
     const p = pid ? getPipeline(app, loc, pid) : undefined;
     if (!p) {
-      fail('für Deal-Felder bitte eine Pipeline wählen');
+      fail(t('für Deal-Felder bitte eine Pipeline wählen'));
       for (const [fid, m] of Object.entries(out.fields)) if (m.target === 'opportunity') delete out.fields[fid];
     } else {
       const sid = String(d.stage_id || (d.pipeline_id ? '' : opts.legacyStage) || '');
       const stage = p.stages.find((s: any) => s.id === sid) ?? p.stages[0];
-      if (sid && stage?.id !== sid) fail('die Stufe gehört nicht zur Pipeline');
+      if (sid && stage?.id !== sid) fail(t('die Stufe gehört nicht zur Pipeline'));
       out.deal = { mode: d.mode === 'open' ? 'open' : 'new', pipeline_id: p.id, stage_id: stage?.id ?? '' };
     }
   }
@@ -161,7 +166,7 @@ export function cleanMapping(app: App, loc: string, input: any, fields: FormFiel
   // A new record needs every required property: say so at save, not at the first submission.
   if (!opts.lenient) {
     const need = (obj: string, mapped: string[], what: string) => {
-      for (const d of schema(app).defs(loc, obj)) if (d.required && !mapped.includes(d.key)) fail(`${what}: die Pflicht-Eigenschaft „${d.label}“ fehlt in der Zuordnung`);
+      for (const d of schema(app).defs(loc, obj)) if (d.required && !mapped.includes(d.key)) fail(t('{what}: die Pflicht-Eigenschaft „{label}“ fehlt in der Zuordnung', { what: t(what), label: d.label }));
     };
     const keysOf = (target: MapTarget, object?: string) => Object.values(out.fields).filter((m) => m.target === target && m.object === object).map((m) => (target === 'object' ? m.key : m.key.replace(/^custom\./, '')));
     if (list.some((m) => m.target === 'company')) need('company', keysOf('company'), 'Firma');
@@ -175,7 +180,7 @@ export function cleanMapping(app: App, loc: string, input: any, fields: FormFiel
 
 function resolveLabel(app: App, loc: string, m: FieldMap): string {
   const r = resolveKey(app, loc, m.target, m.key, m.object);
-  return typeof r === 'string' ? `${TARGET_LABEL[m.target]}: ${m.key}` : r.label;
+  return typeof r === 'string' ? `${tApp()(TARGET_LABEL[m.target])}: ${m.key}` : r.label;
 }
 
 /** The mapping in words (editor list, agent tools): field → target. */
@@ -305,7 +310,8 @@ export function applySubmission(app: App, form: any, plan: Plan, contactId: stri
   if (!p || !m) return undefined;
   const loc = form.location_id;
   const overwrite = !!m.overwrite;
-  const source = `Formular: ${form.name}`.slice(0, 80);
+  const t = tLoc(app, loc);
+  const source = t('Formular: {name}', { name: form.name }).slice(0, 80);
   const contact = { type: 'contact', id: contactId };
   const res: MappingResult = {};
   const errors = [...p.skipped];
@@ -313,7 +319,7 @@ export function applySubmission(app: App, form: any, plan: Plan, contactId: stri
     try {
       fn();
     } catch (e) {
-      errors.push(`${what}: ${(e as Error).message}`);
+      errors.push(`${t(what)}: ${(e as Error).message}`);
     }
   };
   if (p.company && (Object.keys(p.company.std).length || Object.keys(p.company.custom).length)) {
@@ -339,7 +345,7 @@ export function applySubmission(app: App, form: any, plan: Plan, contactId: stri
     const cfg = m.deal;
     attempt('Deal', () => {
       const pipe = getPipeline(app, loc, cfg.pipeline_id);
-      if (!pipe) throw new Error('Pipeline nicht gefunden');
+      if (!pipe) throw new Error(t('Pipeline nicht gefunden'));
       const open =
         cfg.mode === 'open' ? app.db.get('SELECT * FROM opportunities WHERE location_id = ? AND contact_id = ? AND pipeline_id = ? AND status = ? ORDER BY updated_at DESC LIMIT 1', loc, contactId, pipe.id, 'open') : undefined;
       let opp: any;
@@ -366,41 +372,41 @@ export function applySubmission(app: App, form: any, plan: Plan, contactId: stri
         changed.push(...Object.keys(patch).map((k) => `custom.${k}`));
       }
       if (open && changed.length) {
-        schema(app).log(loc, 'opportunity', opp.id, 'opportunity.updated', `Aus ${source} ergänzt: ${changed.join(', ')}`.slice(0, 480), { changed });
+        schema(app).log(loc, 'opportunity', opp.id, 'opportunity.updated', t('Aus {source} ergänzt: {fields}', { source, fields: changed.join(', ') }).slice(0, 480), { changed });
         app.events.emit(loc, 'opportunity.updated', { contactId, opportunity: app.db.get('SELECT * FROM opportunities WHERE id = ?', opp.id), changed, source: 'form' });
       }
     });
   }
   for (const [key, props] of Object.entries(p.objects)) {
     attempt(key, () => {
-      const t = objectType(app, loc, key);
-      if (!t || t.key !== key) throw new Error('Objekt nicht gefunden');
+      const ot = objectType(app, loc, key);
+      if (!ot || ot.key !== key) throw new Error(t('Objekt nicht gefunden'));
       const mode = m.objects?.[key]?.mode ?? 'new';
-      const linked = new Set(assoc(app).ids(loc, contact, t.key));
+      const linked = new Set(assoc(app).ids(loc, contact, ot.key));
       // A unique value that already exists: the record is updated only when it belongs to this contact.
       let target: any;
-      for (const d of schema(app).defs(loc, t.key).filter((x) => x.unique)) {
+      for (const d of schema(app).defs(loc, ot.key).filter((x) => x.unique)) {
         const v = props[d.key];
         if (isEmpty(v)) continue;
-        const hit = app.db.get(`SELECT id FROM object_records WHERE type_id = ? AND lower(CAST(json_extract(properties, '$.${d.key}') AS TEXT)) = lower(?) LIMIT 1`, t.id, String(v).trim());
-        if (hit && !linked.has(hit.id)) throw new Error(`„${d.label}“ „${String(v).slice(0, 60)}“ gehört zu einem anderen Datensatz – nicht geändert`);
-        if (hit) target = getRecord(app, loc, t.id, hit.id);
+        const hit = app.db.get(`SELECT id FROM object_records WHERE type_id = ? AND lower(CAST(json_extract(properties, '$.${d.key}') AS TEXT)) = lower(?) LIMIT 1`, ot.id, String(v).trim());
+        if (hit && !linked.has(hit.id)) throw new Error(t('„{label}“ „{value}“ gehört zu einem anderen Datensatz – nicht geändert', { label: d.label, value: String(v).slice(0, 60) }));
+        if (hit) target = getRecord(app, loc, ot.id, hit.id);
       }
       if (!target && mode === 'linked' && linked.size) {
-        const last = app.db.get(`SELECT id FROM object_records WHERE type_id = ? AND location_id = ? AND id IN (${[...linked].map(() => '?').join(',')}) ORDER BY updated_at DESC LIMIT 1`, t.id, loc, ...linked);
-        if (last) target = getRecord(app, loc, t.id, last.id);
+        const last = app.db.get(`SELECT id FROM object_records WHERE type_id = ? AND location_id = ? AND id IN (${[...linked].map(() => '?').join(',')}) ORDER BY updated_at DESC LIMIT 1`, ot.id, loc, ...linked);
+        if (last) target = getRecord(app, loc, ot.id, last.id);
       }
       let rec: any;
       let created = false;
       if (target) {
         const patch = fillOnly(target.properties ?? {}, props, overwrite);
-        rec = Object.keys(patch).length ? updateRecord(app, loc, t, target.id, { properties: patch }) : target;
+        rec = Object.keys(patch).length ? updateRecord(app, loc, ot, target.id, { properties: patch }) : target;
       } else {
-        rec = createRecord(app, loc, t, { properties: props });
+        rec = createRecord(app, loc, ot, { properties: props });
         created = true;
       }
-      if (!linked.has(rec.id)) assoc(app).link(loc, contact, { type: t.key, id: rec.id });
-      (res.records ??= []).push({ object: t.key, id: rec.id, created });
+      if (!linked.has(rec.id)) assoc(app).link(loc, contact, { type: ot.key, id: rec.id });
+      (res.records ??= []).push({ object: ot.key, id: rec.id, created });
     });
   }
   if (errors.length) {

@@ -6,6 +6,7 @@ import { AiError } from '../services/anthropic.js';
 import type { Usage } from '../services/anthropic.js';
 import { DEFAULT_MODEL, KEY_RE, MODELS, MODEL_RE, callOpenAi, checkKey, costMicros, type OpenAiRequest } from '../services/openai.js';
 import { openSecret, sealSecret } from './mail-sync.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * AI provider for the KI-Assistent: Anthropic (Claude, built into ai-assistant.ts) or OpenAI (Responses API),
@@ -143,12 +144,13 @@ export const aiProvidersModule: Module = {
         },
         location: (_ctx: unknown, loc: string) => {
           const r = resolve(loc);
-          if (r.provider !== 'openai') return { status: 'info', detail: 'Nicht gewählt (Claude aktiv)' };
-          return r.apiKey ? { status: 'ok', detail: `${r.model} · ${r.keySource === 'account' ? 'eigener Schlüssel' : r.keySource === 'agency' ? 'Agentur-Schlüssel' : 'Server-Schlüssel'}` } : { status: 'missing', detail: 'Kein OpenAI-Schlüssel' };
+          const t = tApp();
+          if (r.provider !== 'openai') return { status: 'info', detail: t('Nicht gewählt (Claude aktiv)') };
+          return r.apiKey ? { status: 'ok', detail: `${r.model} · ${t(r.keySource === 'account' ? 'eigener Schlüssel' : r.keySource === 'agency' ? 'Agentur-Schlüssel' : 'Server-Schlüssel')}` } : { status: 'missing', detail: t('Kein OpenAI-Schlüssel') };
         },
         agency: () => {
           const a = agency();
-          return a.provider === 'openai' ? { status: a.openai_key || envKey() ? 'ok' : 'missing', detail: `Standard: OpenAI ${a.openai_model || DEFAULT_MODEL}` } : { status: 'info', detail: 'Standard: Claude' };
+          return a.provider === 'openai' ? { status: a.openai_key || envKey() ? 'ok' : 'missing', detail: tApp()('Standard: {provider}', { provider: `OpenAI ${a.openai_model || DEFAULT_MODEL}` }) } : { status: 'info', detail: tApp()('Standard: {provider}', { provider: 'Claude' }) };
         },
       },
     ];

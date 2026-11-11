@@ -32,6 +32,7 @@ import {
   type WsFactory,
   type WsLike,
 } from '../services/discord.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Discord as an inbox channel for a community server: the bot listens (Gateway) to direct messages
@@ -87,7 +88,7 @@ export const discordModule: Module = {
         });
       } catch (e) {
         console.error('[discord] message failed', e);
-        noteError(app, loc, CH, `Eingang fehlgeschlagen: ${(e as Error).message}`);
+        noteError(app, loc, CH, tApp()('Eingang fehlgeschlagen: {error}', { error: (e as Error).message }));
       }
     };
     const ensure = (loc: string) => {
@@ -106,7 +107,7 @@ export const discordModule: Module = {
           if (t === 'MESSAGE_CREATE') onMessage(loc, d);
         },
         onState: (status, error) => {
-          if (status === 'error') noteError(app, loc, CH, error ?? 'Gateway-Fehler');
+          if (status === 'error') noteError(app, loc, CH, error ?? tApp()('Gateway-Fehler'));
           if (status === 'ready') noteError(app, loc, CH, null);
         },
       });
@@ -152,7 +153,7 @@ export const discordModule: Module = {
       const config: Record<string, any> = {};
       if (b.channel_ids !== undefined) {
         const ids = (Array.isArray(b.channel_ids) ? b.channel_ids : String(b.channel_ids).split(/[\s,]+/)).map((x: unknown) => String(x).trim()).filter(Boolean);
-        for (const x of ids) if (!SNOWFLAKE.test(x)) throw bad(`Kanal-ID „${x.slice(0, 30)}“ ist ungültig (Rechtsklick auf den Kanal → ID kopieren)`);
+        for (const x of ids) if (!SNOWFLAKE.test(x)) throw bad(tCtx(ctx)('Kanal-ID „{id}“ ist ungültig (Rechtsklick auf den Kanal → ID kopieren)', { id: x.slice(0, 30) }));
         config.channel_ids = [...new Set(ids)].slice(0, 20);
       }
       if (b.reply_in_channel !== undefined) config.reply_in_channel = !!b.reply_in_channel;
@@ -172,7 +173,7 @@ export const discordModule: Module = {
           info = { bot_id: String(me?.id ?? ''), bot_name: String(me?.username ?? '').slice(0, 80), app_id: String(appInfo?.id ?? ''), app_name: String(appInfo?.name ?? '').slice(0, 80) };
           if (appInfo?.verify_key && /^[0-9a-f]{64}$/i.test(appInfo.verify_key)) config.public_key = String(appInfo.verify_key).toLowerCase();
         } catch (e) {
-          throw bad(`Discord lehnt den Token ab: ${(e as Error).message}`);
+          throw bad(tCtx(ctx)('Discord lehnt den Token ab: {error}', { error: (e as Error).message }));
         }
         secrets.bot_token = t;
       }
@@ -214,7 +215,8 @@ export const discordModule: Module = {
         const me = await rest(a, 'GET', '/users/@me');
         const guilds = await rest<any[]>(a, 'GET', '/users/@me/guilds');
         const g = gateways.get(ctx.locationId);
-        return { ok: true, info: `${me?.username ?? 'Bot'} · ${guilds?.length ?? 0} Server${g?.status === 'ready' ? ' · verbunden' : g?.error ? ` · ${g.error}` : ' · verbindet …'}` };
+        const t = tCtx(ctx);
+        return { ok: true, info: `${me?.username ?? 'Bot'} · ${t.plural(guilds?.length ?? 0, { one: '{n} Server', other: '{n} Server' })}${g?.status === 'ready' ? ` · ${t('verbunden')}` : g?.error ? ` · ${g.error}` : ` · ${t('verbindet …')}`}` };
       } catch (e) {
         throw new HttpError(502, (e as Error).message);
       }
@@ -230,7 +232,7 @@ export const discordModule: Module = {
       if (!ident) throw bad('Kontakt hat noch nicht über Discord geschrieben');
       const body = String(input.body ?? '').trim();
       if (!body) throw bad('Nachricht fehlt');
-      if (body.length > TEXT_LIMIT) throw bad(`Zu lang für Discord: ${body.length} von max. ${TEXT_LIMIT} Zeichen`);
+      if (body.length > TEXT_LIMIT) throw bad(tApp()('Zu lang für Discord: {length} von max. {limit} Zeichen', { length: body.length, limit: TEXT_LIMIT }));
       const rec = recordOutbound(app, loc, c, CH, body, { userId: input.userId, source: input.source });
       if (c.dnd && !input.ignoreDnd) return finishOutbound(app, rec, { ok: false, error: 'Kontakt hat „Nicht stören“ aktiv' });
       try {
@@ -278,7 +280,7 @@ export const discordModule: Module = {
         return {
           configured: true,
           reachable: !!ident,
-          reason: ident ? undefined : 'Kontakt hat noch nicht über Discord geschrieben',
+          reason: ident ? undefined : tApp()('Kontakt hat noch nicht über Discord geschrieben'),
           limit: TEXT_LIMIT,
           handle: ident?.handle ? `@${ident.handle}` : ident?.name ?? '',
           where: a.config.reply_in_channel && ident?.data?.last_from === 'channel' ? 'channel' : 'dm',
@@ -305,9 +307,9 @@ export const discordModule: Module = {
       const user = i.member?.user ?? i.user;
       const text = Array.isArray(i.data?.options) ? String(i.data.options.find((o: any) => o?.name === 'nachricht')?.value ?? '') : '';
       if (i.type !== 2 || i.data?.name !== 'support' || !user || !SNOWFLAKE.test(String(user.id ?? '')) || !text.trim()) {
-        return { type: 4, data: { content: 'Diesen Befehl kenne ich nicht.', flags: 64 } };
+        return { type: 4, data: { content: tLoc(app, a.location_id)('Diesen Befehl kenne ich nicht.'), flags: 64 } };
       }
-      if (!a.enabled) return { type: 4, data: { content: 'Gerade nicht erreichbar.', flags: 64 } };
+      if (!a.enabled) return { type: 4, data: { content: tLoc(app, a.location_id)('Gerade nicht erreichbar.'), flags: 64 } };
       const dm = !i.guild_id;
       try {
         receiveChat(app, a.location_id, {
@@ -321,9 +323,9 @@ export const discordModule: Module = {
           identityData: dm ? { dm_channel_id: String(i.channel_id ?? ''), last_from: 'dm' } : { last_from: 'command' },
         });
       } catch (e) {
-        noteError(app, a.location_id, CH, `Eingang fehlgeschlagen: ${(e as Error).message}`);
+        noteError(app, a.location_id, CH, tApp()('Eingang fehlgeschlagen: {error}', { error: (e as Error).message }));
       }
-      const reply = String(a.config.command_reply || 'Danke! Wir antworten dir per Direktnachricht.');
+      const reply = String(a.config.command_reply || tLoc(app, a.location_id)('Danke! Wir antworten dir per Direktnachricht.'));
       return { type: 4, data: { content: render(reply, {}).slice(0, TEXT_LIMIT), flags: 64 } };
     });
 
@@ -340,12 +342,13 @@ export const discordModule: Module = {
       ...(app.services.catalogExtra ?? []),
       {
         entry: { key: 'discord', name: 'Discord', category: 'Kommunikation', icon: 'discord', scope: 'location', setup: { location: 'settings/more-channels' }, description: 'Bot für deinen Community-Server: Direktnachrichten, gewählte Kanäle und /support landen im Posteingang, Antworten gehen zurück.', credentials: 'Bot-Token aus dem Discord Developer Portal (Message Content Intent an) unter Einstellungen → Weitere Kanäle.', docs: 'docs/channels.md#discord' },
-        location: (_ctx: Ctx, loc: string) => {
+        location: (ctx: Ctx, loc: string) => {
+          const t = tCtx(ctx);
           const a = getAccount(app, loc, CH);
-          if (!configured(a)) return { status: 'missing', detail: 'Kein Bot-Token' };
+          if (!configured(a)) return { status: 'missing', detail: t('Kein Bot-Token') };
           const g = gateways.get(loc);
-          if (g?.status === 'error' || a.last_error) return { status: 'partial', detail: `Fehler: ${(g?.error || a.last_error || '').slice(0, 80)}` };
-          return { status: 'ok', detail: `${a.info.bot_name || 'Bot'}${g?.status === 'ready' ? ' · verbunden' : ''}` };
+          if (g?.status === 'error' || a.last_error) return { status: 'partial', detail: t('Fehler: {error}', { error: (g?.error || a.last_error || '').slice(0, 80) }) };
+          return { status: 'ok', detail: `${a.info.bot_name || 'Bot'}${g?.status === 'ready' ? ` · ${t('verbunden')}` : ''}` };
         },
       },
     ];

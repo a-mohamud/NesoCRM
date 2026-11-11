@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Composio (composio.dev) over its REST API v3.1 – plain fetch, no SDK. Every Composio HTTP call
@@ -46,28 +47,29 @@ export function errorFor(status: number, body: any): ComposioError {
   const fix = String(e.suggested_fix ?? '').trim().slice(0, 200);
   const detail = msg ? `: ${msg}${fix ? ` (${fix})` : ''}` : '';
   const slug = String(e.slug ?? '');
+  const t = tApp();
   switch (status) {
     case 400:
     case 422:
-      return new ComposioError(`Composio hat die Anfrage abgelehnt${detail}`, 400, slug, false, status);
+      return new ComposioError(t('Composio hat die Anfrage abgelehnt{detail}', { detail }), 400, slug, false, status);
     case 401:
       return new ComposioError('Der Composio-API-Schlüssel ist ungültig (Agentur → Integrationen oder Apps → Composio prüfen).', 502, slug, false, status);
     case 402:
-      return new ComposioError(`Composio: Kontingent oder Guthaben aufgebraucht${detail}`, 402, slug, false, status);
+      return new ComposioError(t('Composio: Kontingent oder Guthaben aufgebraucht{detail}', { detail }), 402, slug, false, status);
     case 403:
-      return new ComposioError(`Composio verweigert den Zugriff${detail}`, 403, slug, false, status);
+      return new ComposioError(t('Composio verweigert den Zugriff{detail}', { detail }), 403, slug, false, status);
     case 404:
-      return new ComposioError(`Bei Composio nicht gefunden${detail}`, 404, slug, false, status);
+      return new ComposioError(t('Bei Composio nicht gefunden{detail}', { detail }), 404, slug, false, status);
     case 408:
       return new ComposioError('Die App hat bei Composio zu lange gebraucht – bitte erneut versuchen.', 504, slug, true, status);
     case 410:
-      return new ComposioError(`Diese Aktion gibt es bei Composio nicht mehr${detail}`, 410, slug, false, status);
+      return new ComposioError(t('Diese Aktion gibt es bei Composio nicht mehr{detail}', { detail }), 410, slug, false, status);
     case 429:
       return new ComposioError('Zu viele Anfragen bei Composio – bitte kurz warten.', 429, slug, true, status);
     default:
       return status >= 500
-        ? new ComposioError(`Composio oder die App hat gerade ein Problem${detail}`, 503, slug, status !== 500 && status !== 501, status)
-        : new ComposioError(`Fehler von Composio (${status})${detail}`, 502, slug, false, status);
+        ? new ComposioError(t('Composio oder die App hat gerade ein Problem{detail}', { detail }), 503, slug, status !== 500 && status !== 501, status)
+        : new ComposioError(t('Fehler von Composio ({status}){detail}', { status, detail }), 502, slug, false, status);
   }
 }
 
@@ -259,7 +261,7 @@ export function composioClient(o: ClientOptions) {
         body: { user_id: p.userId, ...(p.connectedAccountId ? { connected_account_id: p.connectedAccountId } : {}), arguments: p.arguments },
         timeoutMs: 120_000,
       });
-      return { successful: r?.successful !== false && !r?.error, data: r?.data ?? null, error: r?.error ? String(r.error) : r?.successful === false ? 'Die App hat die Aktion abgelehnt.' : null, log_id: String(r?.log_id ?? '') };
+      return { successful: r?.successful !== false && !r?.error, data: r?.data ?? null, error: r?.error ? String(r.error) : r?.successful === false ? tApp()('Die App hat die Aktion abgelehnt.') : null, log_id: String(r?.log_id ?? '') };
     },
 
     // --- triggers --------------------------------------------------------------------------
@@ -524,7 +526,7 @@ export function cleanAllow(input: unknown): string[] {
     const s = String(raw ?? '').trim();
     if (/^[a-z0-9_-]{1,80}:\*$/i.test(s)) out.add(s.toLowerCase());
     else if (/^[A-Za-z0-9_]{2,150}$/.test(s)) out.add(s.toUpperCase());
-    else if (s) throw new Error(`Ungültiger Eintrag: ${s.slice(0, 60)}`);
+    else if (s) throw new Error(tApp()('Ungültiger Eintrag: {entry}', { entry: s.slice(0, 60) }));
   }
   return [...out];
 }

@@ -1,4 +1,5 @@
 import { createCipheriv, createECDH, createPrivateKey, generateKeyPairSync, hkdfSync, randomBytes, sign } from 'node:crypto';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Web Push without dependencies: VAPID (RFC 8292, ES256 JWT) and payload encryption
@@ -115,7 +116,7 @@ export interface PushResult {
 }
 
 export async function sendWebPush(sub: PushSubscriptionKeys, payload: string, keys: VapidKeys, subject: string, opts: { ttl?: number; urgency?: 'very-low' | 'low' | 'normal' | 'high'; topic?: string } = {}): Promise<PushResult> {
-  if (!isPushEndpoint(sub.endpoint)) return { status: 0, gone: true, error: 'Unbekannter Push-Dienst' };
+  if (!isPushEndpoint(sub.endpoint)) return { status: 0, gone: true, error: tApp()('Unbekannter Push-Dienst') };
   const body = encryptPayload(payload, sub.p256dh, sub.auth);
   const headers: Record<string, string> = {
     authorization: vapidAuthorization(sub.endpoint, subject, keys),

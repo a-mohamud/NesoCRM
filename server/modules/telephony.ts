@@ -27,6 +27,7 @@ import {
 } from '../services/twilio.js';
 import { openSecret, sealSecret } from './mail-sync.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Telephony over Twilio Voice: click-to-call (your phone rings first, then the contact is bridged),
@@ -84,7 +85,7 @@ const DEFAULTS: TelephonySettings = {
 
 export const DEFAULT_RECORD_NOTICE = 'Dieses Gespräch wird zur Qualitätssicherung aufgezeichnet. Wenn Sie damit nicht einverstanden sind, beenden Sie bitte jetzt das Gespräch.';
 /** What is said before a recorded call is connected. */
-export const recordNotice = (s: Pick<TelephonySettings, 'record_announce_text'>) => s.record_announce_text.trim() || DEFAULT_RECORD_NOTICE;
+export const recordNotice = (s: Pick<TelephonySettings, 'record_announce_text'>) => s.record_announce_text.trim() || tApp()(DEFAULT_RECORD_NOTICE);
 
 const MASK = '••••••';
 const FINAL = ['completed', 'missed', 'voicemail', 'busy', 'no-answer', 'failed', 'canceled'];
@@ -138,7 +139,7 @@ export function telephonyConfig(app: App, locationId: string): Config {
 const phoneList = (v: unknown, field: string): string[] => {
   const raw = Array.isArray(v) ? v : String(v ?? '').split(/[,;\n]/);
   const list = uniq(raw.map((x) => normalizePhone(String(x))).filter(Boolean));
-  for (const n of list) if (!E164.test(n)) throw bad(`${field}: ${n} ist keine gültige Nummer (Format +49…)`);
+  for (const n of list) if (!E164.test(n)) throw bad(tApp()('{field}: {number} ist keine gültige Nummer (Format +49…)', { field: tApp()(field), number: n }));
   return list.slice(0, 10);
 };
 const hm = (v: unknown, fallback: string) => {
@@ -183,28 +184,29 @@ function cleanSettings(b: any, cur: TelephonySettings): TelephonySettings {
 
 type CallRow = Record<string, any>;
 
-function describe(c: CallRow, who: string): { subject: string; body: string } {
+/** The call's entry in Konversationen and the timeline: a record of the sub-account, in its language. */
+function describe(c: CallRow, who: string, t: STFn): { subject: string; body: string } {
   const inbound = c.direction === 'in';
-  const party = inbound ? `von ${c.from_number || 'unbekannter Nummer'}` : `an ${who || c.to_number}`;
+  const party = inbound ? t('von {who}', { who: c.from_number || t('unbekannter Nummer') }) : t('an {who}', { who: who || c.to_number });
   switch (c.status) {
     case 'missed':
-      return { subject: 'Verpasster Anruf', body: `Verpasster Anruf ${party}${c.reason === 'closed' ? ' (außerhalb der Geschäftszeiten)' : ''}` };
+      return { subject: t('Verpasster Anruf'), body: `${t('Verpasster Anruf {party}', { party })}${c.reason === 'closed' ? ` ${t('(außerhalb der Geschäftszeiten)')}` : ''}` };
     case 'voicemail':
-      return { subject: `Voicemail (${mmss(c.recording_duration)})`, body: c.transcription || `Voicemail ${party}` };
+      return { subject: `Voicemail (${mmss(c.recording_duration)})`, body: c.transcription || t('Voicemail {party}', { party }) };
     case 'completed':
-      return { subject: `${inbound ? 'Eingehender' : 'Ausgehender'} Anruf (${mmss(c.duration)})`, body: c.transcription || `Anruf ${party}${c.recording_sid ? ' · aufgezeichnet' : ''}` };
+      return { subject: `${inbound ? t('Eingehender Anruf') : t('Ausgehender Anruf')} (${mmss(c.duration)})`, body: c.transcription || `${t('Anruf {party}', { party })}${c.recording_sid ? ` · ${t('aufgezeichnet')}` : ''}` };
     case 'in-progress':
-      return { subject: 'Anruf läuft', body: inbound ? `Anruf ${party}` : `Verbinde ${party}` };
+      return { subject: t('Anruf läuft'), body: inbound ? t('Anruf {party}', { party }) : t('Verbinde {party}', { party }) };
     case 'busy':
-      return { subject: 'Besetzt', body: `Anruf ${party}: besetzt` };
+      return { subject: t('Besetzt'), body: t('Anruf {party}: besetzt', { party }) };
     case 'no-answer':
-      return { subject: 'Nicht erreicht', body: c.reason === 'agent' ? `Anruf ${party}: du hast nicht abgenommen` : `Anruf ${party}: keine Antwort` };
+      return { subject: t('Nicht erreicht'), body: c.reason === 'agent' ? t('Anruf {party}: du hast nicht abgenommen', { party }) : t('Anruf {party}: keine Antwort', { party }) };
     case 'failed':
-      return { subject: 'Anruf fehlgeschlagen', body: c.error || `Anruf ${party} fehlgeschlagen` };
+      return { subject: t('Anruf fehlgeschlagen'), body: c.error || t('Anruf {party} fehlgeschlagen', { party }) };
     case 'canceled':
-      return { subject: 'Anruf abgebrochen', body: `Anruf ${party} abgebrochen` };
+      return { subject: t('Anruf abgebrochen'), body: t('Anruf {party} abgebrochen', { party }) };
     default:
-      return inbound ? { subject: 'Eingehender Anruf', body: `Anruf ${party}` } : { subject: 'Ausgehender Anruf', body: `Anruf ${party} – dein Telefon klingelt zuerst` };
+      return inbound ? { subject: t('Eingehender Anruf'), body: t('Anruf {party}', { party }) } : { subject: t('Ausgehender Anruf'), body: t('Anruf {party} – dein Telefon klingelt zuerst', { party }) };
   }
 }
 
@@ -215,7 +217,8 @@ export function syncMessage(app: App, c: CallRow, opts: { unread?: boolean } = {
   if (!c.contact_id) return;
   const contact = getContact(app, c.location_id, c.contact_id);
   if (!contact) return;
-  const { subject, body } = describe(c, contactName(contact));
+  const tl = tLoc(app, c.location_id);
+  const { subject, body } = describe(c, contactName(contact), tl);
   const conv = getOrCreateConversation(app, c.location_id, c.contact_id);
   if (!c.message_id) {
     const mid = id();
@@ -230,7 +233,7 @@ export function syncMessage(app: App, c: CallRow, opts: { unread?: boolean } = {
       body,
       status: c.status,
       error: c.error ?? '',
-      source: 'Telefon',
+      source: tl('Telefon'),
       provider_id: c.sid ?? c.id,
       user_id: c.user_id ?? null,
       created_at: c.started_at,
@@ -276,17 +279,18 @@ export function finalizeCall(app: App, call: CallRow, status: string, patch: { d
   const missed = c.direction === 'in' && !c.answered;
   syncMessage(app, c, { unread: missed });
   const contact = c.contact_id ? getContact(app, c.location_id, c.contact_id) : undefined;
-  const who = contact ? contactName(contact) : c.from_number || 'Unbekannt';
+  const t = tLoc(app, c.location_id);
+  const who = contact ? contactName(contact) : c.from_number || t('Unbekannt');
   if (missed) {
-    if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'call.missed', `Verpasster Anruf${c.reason === 'closed' ? ' (außerhalb der Geschäftszeiten)' : ''}`);
+    if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'call.missed', `${t('Verpasster Anruf')}${c.reason === 'closed' ? ` ${t('(außerhalb der Geschäftszeiten)')}` : ''}`);
     app.events.emit(c.location_id, 'call.missed', eventData(c));
     const cfg = telephonyConfig(app, c.location_id);
-    if (cfg.s.notify_missed && c.status === 'missed') void notifyTeam(app, c.location_id, `Verpasster Anruf: ${who}`, `${who} (${c.from_number || 'Nummer unterdrückt'}) hat angerufen.\n\n${app.baseUrl()}/app/calls`);
+    if (cfg.s.notify_missed && c.status === 'missed') void notifyTeam(app, c.location_id, t('Verpasster Anruf: {who}', { who }), `${t('{who} ({number}) hat angerufen.', { who, number: c.from_number || t('Nummer unterdrückt') })}\n\n${app.baseUrl()}/app/calls`);
   } else if (c.answered) {
-    if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'call.completed', `${c.direction === 'in' ? 'Eingehender' : 'Ausgehender'} Anruf (${mmss(c.duration)})`);
+    if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'call.completed', `${c.direction === 'in' ? t('Eingehender Anruf') : t('Ausgehender Anruf')} (${mmss(c.duration)})`);
     app.events.emit(c.location_id, 'call.completed', eventData(c));
   } else if (c.contact_id) {
-    logActivity(app, c.location_id, c.contact_id, 'call.failed', describe(c, who).body);
+    logActivity(app, c.location_id, c.contact_id, 'call.failed', describe(c, who, t).body);
   }
   return true;
 }
@@ -327,11 +331,12 @@ function storeRecording(app: App, cfg: Config, call: CallRow, p: Record<string, 
   }
   const v = getCall(app, c.id);
   const contact = v.contact_id ? getContact(app, v.location_id, v.contact_id) : undefined;
-  const who = contact ? contactName(contact) : v.from_number || 'Unbekannt';
-  if (v.contact_id) logActivity(app, v.location_id, v.contact_id, 'call.voicemail', `Voicemail erhalten (${mmss(v.recording_duration)})`);
+  const t = tLoc(app, v.location_id);
+  const who = contact ? contactName(contact) : v.from_number || t('Unbekannt');
+  if (v.contact_id) logActivity(app, v.location_id, v.contact_id, 'call.voicemail', t('Voicemail erhalten ({duration})', { duration: mmss(v.recording_duration) }));
   app.events.emit(v.location_id, 'call.voicemail', eventData(v));
   app.events.emit(v.location_id, 'call.recorded', { contactId: v.contact_id ?? undefined, callId: v.id, voicemail: true, direction: v.direction, duration: v.recording_duration ?? 0, channels: 1 });
-  if (cfg.s.notify_voicemail) void notifyTeam(app, v.location_id, `Neue Voicemail${v.voicemail_box ? ` (${v.voicemail_box})` : ''}: ${who}`, `${who} (${v.from_number || 'Nummer unterdrückt'}) hat eine Voicemail hinterlassen (${mmss(v.recording_duration)}).\n\nAnhören: ${app.baseUrl()}/app/calls`);
+  if (cfg.s.notify_voicemail) void notifyTeam(app, v.location_id, v.voicemail_box ? t('Neue Voicemail ({box}): {who}', { box: v.voicemail_box, who }) : t('Neue Voicemail: {who}', { who }), `${t('{who} ({number}) hat eine Voicemail hinterlassen ({duration}).', { who, number: v.from_number || t('Nummer unterdrückt'), duration: mmss(v.recording_duration) })}\n\n${t('Anhören:')} ${app.baseUrl()}/app/calls`);
 }
 
 function callOut(c: CallRow) {
@@ -534,15 +539,17 @@ export const telephonyModule: Module = {
 
     app.services.mcpTools = [...(app.services.mcpTools ?? []), ...TOOLS];
     app.services.workflowTriggers = [...(app.services.workflowTriggers ?? []), ...CALL_TRIGGERS];
+    // The recipe becomes a workflow of a sub-account (texts for its contacts): in the instance language, which is the sub-accounts' language.
+    const tr = tApp();
     app.services.workflowRecipes = {
       ...(app.services.workflowRecipes ?? {}),
       missed_call: {
-        name: 'Verpasster Anruf: SMS zurück + Rückruf-Aufgabe',
+        name: tr('Verpasster Anruf: SMS zurück + Rückruf-Aufgabe'),
         trigger: { type: 'call.missed', config: {} },
         settings: { allow_reentry: true },
         steps: [
-          { type: 'send_sms', body: 'Hallo {{contact.first_name|}}, sorry, wir haben deinen Anruf gerade verpasst. Wir rufen so schnell wie möglich zurück – oder antworte einfach hier per SMS. {{location.name}}' },
-          { type: 'create_task', title: 'Rückruf: {{contact.name}} ({{contact.phone}})', due_in_days: 0 },
+          { type: 'send_sms', body: tr('Hallo {{contact.first_name|}}, sorry, wir haben deinen Anruf gerade verpasst. Wir rufen so schnell wie möglich zurück – oder antworte einfach hier per SMS. {{location.name}}') },
+          { type: 'create_task', title: tr('Rückruf: {{contact.name}} ({{contact.phone}})'), due_in_days: 0 },
         ],
       },
     };
@@ -552,6 +559,7 @@ export const telephonyModule: Module = {
     // --- settings -----------------------------------------------------------------
     const settingsOut = (locationId: string) => {
       const cfg = telephonyConfig(app, locationId);
+      const t = tLoc(app, locationId);
       return {
         ...cfg.s,
         auth_token: cfg.ownToken ? MASK : '',
@@ -559,9 +567,9 @@ export const telephonyModule: Module = {
         uses_sms_credentials: cfg.smsFallback,
         effective_numbers: cfg.numbers,
         ready: cfg.ready,
-        missing: cfg.missing,
-        default_greeting: DEFAULT_GREETING,
-        default_record_notice: DEFAULT_RECORD_NOTICE,
+        missing: cfg.missing.map((m) => t(m)),
+        default_greeting: t(DEFAULT_GREETING),
+        default_record_notice: t(DEFAULT_RECORD_NOTICE),
         webhooks: { voice: hook('voice', locationId), status: hook('voice-status', locationId) },
       };
     };
@@ -605,11 +613,12 @@ export const telephonyModule: Module = {
     router.post('/api/telephony/numbers/:sid/connect', 'location', async (ctx) => {
       if (!NUMBER_SID.test(ctx.params.sid)) throw bad('Nummer unbekannt');
       const cfg = telephonyConfig(app, ctx.locationId);
+      // Twilio API field names (not translated).
       const j = await twilioApi(cfg, 'POST', `/IncomingPhoneNumbers/${ctx.params.sid}.json`, [
-        ['VoiceUrl', hook('voice', ctx.locationId)],
-        ['VoiceMethod', 'POST'],
-        ['StatusCallback', hook('voice-status', ctx.locationId)],
-        ['StatusCallbackMethod', 'POST'],
+        ['VoiceUrl', hook('voice', ctx.locationId)], // i18n-ignore
+        ['VoiceMethod', 'POST'], // i18n-ignore
+        ['StatusCallback', hook('voice-status', ctx.locationId)], // i18n-ignore
+        ['StatusCallbackMethod', 'POST'], // i18n-ignore
       ]);
       if (E164.test(j.phone_number ?? '') && !cfg.s.numbers.includes(j.phone_number)) {
         if (cfg.s.forward_to.includes(j.phone_number)) throw bad('Diese Nummer ist als Weiterleitung eingetragen');
@@ -619,12 +628,15 @@ export const telephonyModule: Module = {
     });
     router.post('/api/telephony/test-call', 'location', async (ctx) => {
       const cfg = telephonyConfig(app, ctx.locationId);
-      if (!cfg.ready) throw bad(`Es fehlt noch: ${cfg.missing.join(', ')}`);
+      const t = tCtx(ctx);
+      if (!cfg.ready) throw bad(t('Es fehlt noch: {list}', { list: cfg.missing.map((m) => t(m)).join(', ') }));
       const loc = app.location(ctx.locationId)!;
+      // Spoken by Twilio's voice (instance language).
+      const spoken = tLoc(app, ctx.locationId)('Hallo! Die Telefonie von {name} ist eingerichtet. Anrufe auf {number} kommen bei dir an.', { name: loc.name, number: cfg.numbers[0].split('').join(' ') });
       const j = await twilioApi(cfg, 'POST', '/Calls.json', [
-        ['To', cfg.forward[0]],
-        ['From', cfg.numbers[0]],
-        ['Twiml', hangup(`Hallo! Die Telefonie von ${loc.name} ist eingerichtet. Anrufe auf ${cfg.numbers[0].split('').join(' ')} kommen bei dir an.`)],
+        ['To', cfg.forward[0]], // i18n-ignore
+        ['From', cfg.numbers[0]], // i18n-ignore
+        ['Twiml', hangup(spoken)], // i18n-ignore
       ]);
       return { ok: true, sid: j.sid };
     });
@@ -681,7 +693,7 @@ export const telephonyModule: Module = {
     /** Click-to-call: Twilio rings your own phone first, announces the contact, then bridges the call. */
     router.post('/api/calls', 'location', async (ctx) => {
       const cfg = telephonyConfig(app, ctx.locationId);
-      if (!cfg.ready) throw bad(`Telefonie ist noch nicht eingerichtet – es fehlt: ${cfg.missing.join(', ')} (Einstellungen → Telefonie)`);
+      if (!cfg.ready) throw bad(tCtx(ctx)('Telefonie ist noch nicht eingerichtet – es fehlt: {list} (Einstellungen → Telefonie)', { list: cfg.missing.map((m) => tCtx(ctx)(m)).join(', ') }));
       const contact = getContact(app, ctx.locationId, str(ctx.body.contact_id, 'Kontakt', { required: true }));
       if (!contact) throw notFound('Kontakt nicht gefunden');
       const to = normalizePhone(contact.phone);
@@ -718,14 +730,16 @@ export const telephonyModule: Module = {
       };
       db.insert('calls', row);
       syncMessage(app, getCall(app, row.id));
+      const tl = tLoc(app, ctx.locationId);
+      // Twilio API field names (not translated); the announcement is spoken to the person calling.
       const params: [string, string][] = [
-        ['To', cfg.forward[0]],
-        ['From', from],
-        ['Twiml', bridgeTwiml({ announce: `Verbinde mit ${contactName(contact)}.`, callerId: from, number: to, action: hook('voice-dial', ctx.locationId), record, recordingCallback: `${hook('voice-recording', ctx.locationId)}?kind=dial`, announceUrl: cfg.s.record_announce ? hook('voice-announce', ctx.locationId) : undefined })],
-        ['StatusCallback', hook('voice-status', ctx.locationId)],
-        ['StatusCallbackMethod', 'POST'],
-        ...['initiated', 'ringing', 'answered', 'completed'].map((e): [string, string] => ['StatusCallbackEvent', e]),
-        ['Timeout', '25'],
+        ['To', cfg.forward[0]], // i18n-ignore
+        ['From', from], // i18n-ignore
+        ['Twiml', bridgeTwiml({ announce: tl('Verbinde mit {name}.', { name: contactName(contact) }), callerId: from, number: to, action: hook('voice-dial', ctx.locationId), record, recordingCallback: `${hook('voice-recording', ctx.locationId)}?kind=dial`, announceUrl: cfg.s.record_announce ? hook('voice-announce', ctx.locationId) : undefined })],
+        ['StatusCallback', hook('voice-status', ctx.locationId)], // i18n-ignore
+        ['StatusCallbackMethod', 'POST'], // i18n-ignore
+        ...['initiated', 'ringing', 'answered', 'completed'].map((e): [string, string] => ['StatusCallbackEvent', e]), // i18n-ignore
+        ['Timeout', '25'], // i18n-ignore
       ];
       try {
         const j = await twilioApi(cfg, 'POST', '/Calls.json', params);
@@ -736,7 +750,7 @@ export const telephonyModule: Module = {
         finalizeCall(app, getCall(app, row.id), 'failed', { reason: 'api' });
         throw e;
       }
-      logActivity(app, ctx.locationId, contact.id, 'call.started', `Anruf gestartet${ctx.user ? ` von ${ctx.user.name}` : ''}${record ? ' (mit Aufzeichnung)' : ''}`);
+      logActivity(app, ctx.locationId, contact.id, 'call.started', `${ctx.user ? tl('Anruf gestartet von {name}', { name: ctx.user.name }) : tl('Anruf gestartet')}${record ? ` ${tl('(mit Aufzeichnung)')}` : ''}`);
       return callOut(findCall(ctx.locationId, row.id)!);
     });
 
@@ -758,7 +772,7 @@ export const telephonyModule: Module = {
         'content-length': String(body.length),
         'accept-ranges': 'bytes',
         'cache-control': 'private, max-age=3600',
-        'content-disposition': `inline; filename="anruf-${c.started_at.slice(0, 10)}.mp3"`,
+        'content-disposition': `inline; filename="${tCtx(ctx)('anruf')}-${c.started_at.slice(0, 10)}.mp3"`,
       };
       const cr = r.headers.get('content-range');
       if (cr) headers['content-range'] = cr;
@@ -793,7 +807,7 @@ export const telephonyModule: Module = {
     const callBySid = (loc: string, sid: string | undefined) => (sid ? db.get<CallRow>('SELECT * FROM calls WHERE location_id = ? AND sid = ?', loc, sid) : undefined);
     /** Greeting + voicemail recording. An IVR branch brings its own greeting, mailbox name and `record` (a branch always records). */
     const voicemail = (loc: LocationRow, cfg: Config, call: CallRow, o: { greeting?: string; box?: string; record?: boolean } = {}) => {
-      const greeting = render(o.greeting || cfg.s.greeting || DEFAULT_GREETING, { location: loc });
+      const greeting = render(o.greeting || cfg.s.greeting || tLoc(app, loc.id)(DEFAULT_GREETING), { location: loc });
       const record = o.record ?? cfg.s.voicemail;
       // Without voicemail the caller only hears the greeting – the call counts as missed right away.
       if (!record) finalizeCall(app, call, 'missed');
@@ -892,7 +906,7 @@ export const telephonyModule: Module = {
         db.run('UPDATE calls SET transcription = ?, updated_at = ? WHERE id = ?', String(p.TranscriptionText).slice(0, 5000), now(), call.id);
         syncMessage(app, getCall(app, call.id));
       }
-      return hangup('Vielen Dank für Ihre Nachricht. Auf Wiederhören.');
+      return hangup(tApp()('Vielen Dank für Ihre Nachricht. Auf Wiederhören.'));
     });
 
     /** Call progress; the final status settles anything the other callbacks didn't. */

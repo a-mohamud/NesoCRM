@@ -9,6 +9,7 @@ import { getOrCreateConversation, sendToContact } from './messaging.js';
 import {
   OPEN_KINDS,
   PRIORITIES,
+  PRIORITY_LABELS,
   cleanSource,
   defaultStages,
   emailMatchesRule,
@@ -28,6 +29,7 @@ import {
 } from './helpdesk.js';
 import { shiftAfterPause, slaDeadlines, slaState, type WorkCalendar } from './helpdesk-sla.js';
 import { hiddenUser } from '../core/permissions.js';
+import { tApp, tLoc, tUser } from '../i18n/index.js';
 
 /**
  * Ticket data layer shared by the helpdesk modules (tickets, SLA, portal, CSAT, health score):
@@ -322,7 +324,7 @@ function cleanDue(v: unknown): string | null {
 }
 
 function notifyOwner(app: App, locationId: string, ownerId: string, t: any, title: string) {
-  void Promise.resolve(app.services.pushNotify?.({ userIds: [ownerId], kind: 'tasks', title, body: `#${t.number} ${t.subject}`, url: `/app/tickets/${t.id}`, tag: `ticket-${t.id}` })).catch(() => {});
+  void Promise.resolve(app.services.pushNotify?.({ userIds: [ownerId], kind: 'tasks', title: tUser(app as never, ownerId)(title), body: `#${t.number} ${t.subject}`, url: `/app/tickets/${t.id}`, tag: `ticket-${t.id}` })).catch(() => {});
 }
 
 // --- create & update --------------------------------------------------------------------------
@@ -411,7 +413,7 @@ export function createTicket(app: App, locationId: string, input: TicketInput, a
   db.insert('tickets', row);
   addTicketEvent(app, row as any, 'created', { body: description, userId: actor.userId ?? null, data: { source, via: actor.via ?? 'user', stage: stage.name, priority } });
   if (opts.messageId) addTicketEvent(app, row as any, 'customer_reply', { messageId: opts.messageId, body: description, data: { origin: true } });
-  if (contact) logActivity(app, locationId, contact.id, 'ticket.created', `Ticket #${number} „${subject}“ angelegt`, { ticketId: row.id });
+  if (contact) logActivity(app, locationId, contact.id, 'ticket.created', tLoc(app, locationId)('Ticket #{n} „{subject}“ angelegt', { n: number, subject }), { ticketId: row.id });
   const t = getTicketRow(app, locationId, row.id);
   const brief = ticketBrief(app, t);
   app.events.emit(locationId, 'ticket.created', { contactId: t.contact_id, ticketId: t.id, ticket: brief });
@@ -433,6 +435,7 @@ export function updateTicket(app: App, locationId: string, ticketId: string, pat
   const t = getTicketRow(app, locationId, ticketId);
   if (!t) throw notFound('Ticket nicht gefunden');
   const s = loadHelpdeskSettings(app, locationId);
+  const tl = tLoc(app, locationId);
   const cal = workCalendar(app, locationId, s);
   const upd: Record<string, any> = {};
   const events: [string, string, Record<string, any>][] = [];
@@ -443,7 +446,7 @@ export function updateTicket(app: App, locationId: string, ticketId: string, pat
   if (patch.description !== undefined) upd.description = str(patch.description, 'Beschreibung', { max: 50_000 });
   if (patch.category !== undefined) {
     const c = str(patch.category, 'Kategorie', { max: 60 });
-    if (c !== t.category) (upd.category = c), events.push(['field', `Kategorie: ${c || '–'}`, { field: 'category', from: t.category, to: c }]);
+    if (c !== t.category) (upd.category = c), events.push(['field', tl('Kategorie: {category}', { category: c || '–' }), { field: 'category', from: t.category, to: c }]);
   }
   if (patch.tags !== undefined) upd.tags = cleanTags(patch.tags);
   if (patch.due_at !== undefined) upd.due_at = cleanDue(patch.due_at);
@@ -511,7 +514,7 @@ export function updateTicket(app: App, locationId: string, ticketId: string, pat
         if (!t.first_response_at) Object.assign(upd, { first_response_due_at: d.first_response_due_at, first_response_warn_at: d.first_response_warn_at, sla_first_state: '' });
         if (!t.resolved_at && !t.closed_at) Object.assign(upd, { resolution_due_at: d.resolution_due_at, resolution_warn_at: d.resolution_warn_at, sla_resolution_state: '' });
       }
-      events.push(['priority', `Priorität: ${t.priority} → ${p}`, { from: t.priority, to: p }]);
+      events.push(['priority', tl('Priorität: {from} → {to}', { from: PRIORITY_LABELS[t.priority as Priority] ? tl(PRIORITY_LABELS[t.priority as Priority]) : t.priority, to: tl(PRIORITY_LABELS[p]) }), { from: t.priority, to: p }]);
     }
   }
 
@@ -538,7 +541,7 @@ export function updateTicket(app: App, locationId: string, ticketId: string, pat
   for (const [type, data] of emits) app.events.emit(locationId, type, { contactId: next.contact_id, ticketId: next.id, ticket: brief, ...data });
   if (upd.owner_id && upd.owner_id !== t.owner_id && upd.owner_id !== actor.userId) notifyOwner(app, locationId, upd.owner_id, next, 'Ticket an dich zugewiesen');
   if (next.contact_id && upd.status_kind && upd.status_kind !== t.status_kind && (upd.status_kind === 'resolved' || upd.status_kind === 'closed')) {
-    logActivity(app, locationId, next.contact_id, 'ticket.resolved', `Ticket #${next.number} ${upd.status_kind === 'closed' ? 'geschlossen' : 'gelöst'}`, { ticketId: next.id });
+    logActivity(app, locationId, next.contact_id, 'ticket.resolved', tl(upd.status_kind === 'closed' ? 'Ticket #{n} geschlossen' : 'Ticket #{n} gelöst', { n: next.number }), { ticketId: next.id });
   }
   return next;
 }
@@ -582,7 +585,7 @@ export async function replyToTicket(app: App, locationId: string, ticketId: stri
     });
   } else {
     const ext = app.services.messageChannels?.[channel];
-    if (!ext) throw bad(`Kanal „${channel}“ ist nicht verfügbar`);
+    if (!ext) throw bad(tApp()('Kanal „{channel}“ ist nicht verfügbar', { channel }));
     msg = await ext({ locationId, body: { contact_id: contact.id, body }, user: actor.userId ? { id: actor.userId } : undefined, method: 'POST', query: new URLSearchParams() });
   }
   const failed = msg?.status === 'failed';
@@ -680,11 +683,11 @@ export function mergeTickets(app: App, locationId: string, targetId: string, sou
     for (const src of sources) {
       db.run('UPDATE ticket_events SET ticket_id = ? WHERE ticket_id = ?', target.id, src.id);
       tags = uniq([...tags, ...(src.tags ?? [])]);
-      addTicketEvent(app, target, 'merged', { body: `Ticket #${src.number} „${src.subject}“ zusammengeführt${src.description ? `\n\n${src.description}` : ''}`, userId: actor.userId ?? null, data: { from: src.id, number: src.number } });
+      addTicketEvent(app, target, 'merged', { body: `${tLoc(app, locationId)('Ticket #{n} „{subject}“ zusammengeführt', { n: src.number, subject: src.subject })}${src.description ? `\n\n${src.description}` : ''}`, userId: actor.userId ?? null, data: { from: src.id, number: src.number } });
       const pipe = pipelineOf(app, locationId, src.pipeline_id);
       const closed = firstOfKind(pipe.stages, 'closed', 'resolved');
       db.update('tickets', src.id, { merged_into: target.id, stage_id: closed.id, status_kind: closed.kind, closed_at: now(), resolved_at: src.resolved_at ?? now(), updated_at: now() }, locationId);
-      addTicketEvent(app, src, 'merged', { body: `Zusammengeführt in Ticket #${target.number}`, userId: actor.userId ?? null, data: { into: target.id } });
+      addTicketEvent(app, src, 'merged', { body: tLoc(app, locationId)('Zusammengeführt in Ticket #{n}', { n: target.number }), userId: actor.userId ?? null, data: { into: target.id } });
     }
     db.update('tickets', target.id, { tags, contact_id: target.contact_id ?? sources.find((x) => x.contact_id)?.contact_id ?? null, updated_at: now() }, locationId);
   });

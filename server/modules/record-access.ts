@@ -28,6 +28,7 @@ import {
   type Resolved,
 } from '../services/record-access.js';
 import type { Tool } from './mcp.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Datensatz-Zugriff (docs/sales.md): who sees which contacts, companies, deals, tasks and conversations – everything, the team's or
@@ -216,7 +217,10 @@ export const recordAccessModule: Module = {
       return async (ctx) => {
         const r = who(ctx);
         if (!r) return next(ctx);
-        if (refused) throw new HttpError(403, `Mit eingeschränktem Datensatz-Zugriff nicht erlaubt: ${refused.what}`);
+        if (refused) {
+          const t = tCtx(ctx);
+          throw new HttpError(403, t('Mit eingeschränktem Datensatz-Zugriff nicht erlaubt: {what}', { what: t(refused.what) }));
+        }
         // 1. the record the path names
         if (rec && limits(r, rec.entity) && ctx.params.id) denyUnless(permits(app, r, rec.entity, ctx.params.id));
         if (child && limits(r, child.entity)) {
@@ -242,7 +246,7 @@ export const recordAccessModule: Module = {
         const entity = writeEntity(route.method, pattern);
         if (entity) {
           const hidden = hiddenFieldsIn(r, entity, ctx.body);
-          if (hidden.length) throw new HttpError(403, `Das Feld „${hidden[0]}“ ist für dich ausgeblendet – du kannst es nicht ändern`);
+          if (hidden.length) throw new HttpError(403, tCtx(ctx)('Das Feld „{field}“ ist für dich ausgeblendet – du kannst es nicht ändern', { field: hidden[0] }));
         }
         // 5. a new contact must not merge into somebody else's (the upsert would show it to the person who typed the address)
         if (key === 'POST /api/contacts') assertContactUpsertAllowed(app, r, ctx.body);
@@ -433,11 +437,12 @@ export const recordAccessModule: Module = {
 
     router.get('/api/sales/access', 'location', (ctx) => {
       const s = settingsOf(app, ctx.locationId);
+      const t = tCtx(ctx);
       return {
         enabled: s.enabled,
         unassigned: s.unassigned_visible ? 'show' : 'hide',
-        entities: ENTITIES.map((e) => ({ key: e, label: ENTITY_LABEL[e], hideable: HIDEABLE[e] })),
-        levels: LEVELS.map((l) => ({ key: l, label: LEVEL_LABEL[l] })),
+        entities: ENTITIES.map((e) => ({ key: e, label: t(ENTITY_LABEL[e]), hideable: HIDEABLE[e].map((h) => ({ ...h, label: t(h.label) })) })),
+        levels: LEVELS.map((l) => ({ key: l, label: t(LEVEL_LABEL[l]) })),
         custom_fields: customFields(ctx.locationId),
         rules: rulesOut(ctx.locationId),
         people: peopleOf(app, ctx.locationId, '').map((p) => ({ id: p.id, name: p.name, email: p.email, role: p.role })),

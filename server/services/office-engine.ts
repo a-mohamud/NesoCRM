@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HttpError } from '../core/http.js';
 import { KINDS, type OfficeCommand, type OfficeKind } from './office-model.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * The adapter between HyperLevel and the optional headless Office engines (one command-line program per kind of file, from
@@ -24,7 +25,7 @@ export const ENGINE_LIMITS = {
 
 export class EngineMissing extends HttpError {
   constructor(kind: OfficeKind) {
-    super(503, `Die Office-Engine für ${KINDS[kind].label} ist nicht installiert (PGHL_OFFICE_BIN_DIR) – Dateien verwalten und im Browser bearbeiten geht trotzdem; Einrichtung: docs/office.md`);
+    super(503, tApp()('Die Office-Engine für {kind} ist nicht installiert (PGHL_OFFICE_BIN_DIR) – Dateien verwalten und im Browser bearbeiten geht trotzdem; Einrichtung: docs/office.md', { kind: tApp()(KINDS[kind].label) }));
   }
 }
 
@@ -75,7 +76,7 @@ function runProgram(file: string, args: string[], cwd: string, timeoutMs: number
     };
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
-      finish(() => reject(new HttpError(504, `Die Office-Engine hat nicht innerhalb von ${Math.round(timeoutMs / 1000)} s geantwortet`)));
+      finish(() => reject(new HttpError(504, tApp()('Die Office-Engine hat nicht innerhalb von {n} s geantwortet', { n: Math.round(timeoutMs / 1000) }))));
     }, timeoutMs);
     timer.unref?.();
     const take = (list: Buffer[]) => (b: Buffer) => {
@@ -89,7 +90,7 @@ function runProgram(file: string, args: string[], cwd: string, timeoutMs: number
     };
     child.stdout.on('data', take(out));
     child.stderr.on('data', take(err));
-    child.on('error', (e) => finish(() => reject(new HttpError(502, `Die Office-Engine ließ sich nicht starten: ${(e as NodeJS.ErrnoException).code ?? e.message}`))));
+    child.on('error', (e) => finish(() => reject(new HttpError(502, tApp()('Die Office-Engine ließ sich nicht starten: {error}', { error: (e as NodeJS.ErrnoException).code ?? e.message })))));
     child.on('close', (code) => finish(() => resolve({ code: code ?? 1, stdout: Buffer.concat(out).toString('utf8'), stderr: Buffer.concat(err).toString('utf8') })));
   });
 }
@@ -97,7 +98,7 @@ function runProgram(file: string, args: string[], cwd: string, timeoutMs: number
 /** The program's own error text, shortened and without the temp folder's path. */
 function engineError(kind: OfficeKind, r: RunResult, dir: string): HttpError {
   const msg = (r.stderr || r.stdout).split(dir).join('').replace(/\s+/g, ' ').trim().slice(0, 400) || `Exit-Code ${r.code}`;
-  return new HttpError(422, `Die Office-Engine (${KINDS[kind].label}) hat abgelehnt: ${msg}`);
+  return new HttpError(422, tApp()('Die Office-Engine ({kind}) hat abgelehnt: {error}', { kind: tApp()(KINDS[kind].label), error: msg }));
 }
 
 export interface EngineOptions {
@@ -125,9 +126,9 @@ function readOut(path: string, maxBytes: number, kind: OfficeKind): Buffer {
   try {
     st = statSync(path);
   } catch {
-    throw new HttpError(502, `Die Office-Engine (${KINDS[kind].label}) hat keine Datei geschrieben`);
+    throw new HttpError(502, tApp()('Die Office-Engine ({kind}) hat keine Datei geschrieben', { kind: tApp()(KINDS[kind].label) }));
   }
-  if (st.size > maxBytes) throw new HttpError(413, `Das Ergebnis ist größer als ${Math.round(maxBytes / 1024 / 1024)} MB`);
+  if (st.size > maxBytes) throw new HttpError(413, tApp()('Das Ergebnis ist größer als {n} MB', { n: Math.round(maxBytes / 1024 / 1024) }));
   return readFileSync(path);
 }
 

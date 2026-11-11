@@ -35,6 +35,8 @@ import {
 import { docPdf } from '../services/legal-pdf.js';
 import { settingsOf as consentSettings } from '../services/consent.js';
 import { cleanCmp } from '../services/cmp.js';
+import { escapeHtml } from '../core/template.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Legal pages: Impressum, Datenschutzerklärung (lists the services the sub-account actually uses – Stripe, mail sender,
@@ -273,18 +275,19 @@ export const legalPagesModule: Module = {
       const kind = str(ctx.body?.kind, 'Dokument', { required: true });
       const doc = generate(ctx.locationId, kind, ctx.body ?? {});
       // External source (eRecht24 …): only when the owner switched it on and a module registered a provider – by default nothing is called.
-      let external: { used: boolean; reason: string } = { used: false, reason: 'Keine externe Quelle eingerichtet' };
+      const t = tCtx(ctx);
+      let external: { used: boolean; reason: string } = { used: false, reason: t('Keine externe Quelle eingerichtet') };
       const profile = profileOf(ctx.locationId).profile;
       const ext = profile.external;
       if (ext.enabled && (kind === 'impressum' || kind === 'datenschutz')) {
         const provider = Object.hasOwn(providers, ext.provider) ? providers[ext.provider] : undefined;
-        if (!provider) external = { used: false, reason: 'Schnittstelle ist nur ein Platzhalter – es wurde nichts abgerufen, die Vorlage von HyperLevel wird verwendet' };
+        if (!provider) external = { used: false, reason: t('Schnittstelle ist nur ein Platzhalter – es wurde nichts abgerufen, die Vorlage von HyperLevel wird verwendet') };
         else {
           try {
             const r = await provider(kind, { ...profile });
-            if (r?.sections?.length) (doc.sections = r.sections), (external = { used: true, reason: 'Text von der externen Quelle' });
+            if (r?.sections?.length) (doc.sections = r.sections), (external = { used: true, reason: t('Text von der externen Quelle') });
           } catch (e) {
-            external = { used: false, reason: `Externe Quelle nicht erreichbar: ${(e as Error).message}` };
+            external = { used: false, reason: t('Externe Quelle nicht erreichbar: {error}', { error: (e as Error).message }) };
           }
         }
       }
@@ -310,10 +313,14 @@ export const legalPagesModule: Module = {
     router.get('/legal/:loc/:kind', 'public', (ctx) => {
       const kind = ctx.params.kind;
       const loc = app.location(ctx.params.loc);
-      if (!loc || !['impressum', 'datenschutz', 'widerruf'].includes(kind)) return html(publicPage({ title: 'Nicht gefunden', body: '<div class="wrap"><div class="card"><h1>Nicht gefunden</h1></div></div>' }), 404);
+      if (!loc || !['impressum', 'datenschutz', 'widerruf'].includes(kind)) {
+        const tn = tCtx(ctx);
+        return html(publicPage({ title: tn('Nicht gefunden'), body: `<div class="wrap"><div class="card"><h1>${escapeHtml(tn('Nicht gefunden'))}</h1></div></div>` }), 404);
+      }
       const profile = profileOf(loc.id).profile;
       // Nothing is published before the owner entered at least the name and one way to reach them.
-      if (!ready(profile)) return html(publicPage({ title: 'Noch nicht eingerichtet', body: '<div class="wrap"><div class="card"><h1>Noch nicht eingerichtet</h1><p class="muted">Diese Seite wird vom Betreiber noch vorbereitet.</p></div></div>' }), 404);
+      const tl = tLoc(app, loc.id);
+      if (!ready(profile)) return html(publicPage({ title: tl('Noch nicht eingerichtet'), body: `<div class="wrap"><div class="card"><h1>${escapeHtml(tl('Noch nicht eingerichtet'))}</h1><p class="muted">${escapeHtml(tl('Diese Seite wird vom Betreiber noch vorbereitet.'))}</p></div></div>` }), 404);
       // Anybody can ask for this page, and generating it looks at the sub-account's data: keep the result for half a minute.
       const doc = db.memo(`legal-page:${loc.id}:${kind}`, 30_000, () => {
         const d = generate(loc.id, kind, {});

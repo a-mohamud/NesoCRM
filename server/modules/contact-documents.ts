@@ -1,4 +1,5 @@
 import type { Module } from '../core/app.js';
+import { tCtx } from '../i18n/index.js';
 import { bad, notFound, type Ctx, type RawResult } from '../core/http.js';
 import { contentMatches } from '../core/files.js';
 import { id, now } from '../core/util.js';
@@ -134,7 +135,7 @@ export const contactDocumentsModule: Module = {
       if (typeof ctx.body?.data !== 'string' || !ctx.body.data) throw bad('data: Inhalt als Base64 angeben');
       const buf = Buffer.from(ctx.body.data.replace(/^data:[^,]*;base64,/, '').replace(/\s+/g, ''), 'base64');
       if (!buf.length) throw bad('Die Datei ist leer');
-      if (buf.length > DOC_MAX) throw bad(`Die Datei ist zu groß (höchstens ${DOC_MAX / MB} MB)`);
+      if (buf.length > DOC_MAX) throw bad(tCtx(ctx)('Die Datei ist zu groß (höchstens {mb} MB)', { mb: DOC_MAX / MB }));
       if (!contentMatches(mime, buf)) throw bad('Der Inhalt passt nicht zum Dateityp');
       let noteId: string | null = null;
       if (ctx.body?.note_id) {
@@ -142,7 +143,7 @@ export const contactDocumentsModule: Module = {
         if (!n) throw bad('Die Notiz gehört nicht zu diesem Kontakt');
         noteId = n.id;
       }
-      if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM contact_documents WHERE contact_id = ?', c.id)!.n >= PER_CONTACT) throw bad(`Höchstens ${PER_CONTACT} Dateien je Kontakt`);
+      if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM contact_documents WHERE contact_id = ?', c.id)!.n >= PER_CONTACT) throw bad(tCtx(ctx)('Höchstens {n} Dateien je Kontakt', { n: PER_CONTACT }));
       const cap = docsCap();
       if (cap !== null) {
         const used = db.get<{ s: number }>('SELECT COALESCE(SUM(size), 0) AS s FROM contact_documents WHERE location_id = ?', ctx.locationId)!.s;

@@ -544,7 +544,7 @@ async function handleRequest(app: App, req: IncomingMessage, res: ServerResponse
     }
     if (requestId) {
       console.error(`[request ${requestId}]`, e);
-      return send(res, 500, { error: `Interner Fehler (Request-ID ${requestId})`, request_id: requestId }, { 'x-request-id': requestId });
+      return send(res, 500, { error: translator(requestLocale(ctx.req))('Interner Fehler (Request-ID {id})', { id: requestId }), request_id: requestId }, { 'x-request-id': requestId });
     }
     throw e;
   }

@@ -5,6 +5,7 @@ import { HttpError, redirect, type Ctx, type RawResult } from '../core/http.js';
 import { now, sha256, token } from '../core/util.js';
 import { DEMO_EMAIL_DEFAULT, DEMO_PASSWORD_DEFAULT, seedDemo } from '../services/demo-seed.js';
 import { blockedConnections, installOutboundGuard, outboundGuardActive } from '../services/outbound-guard.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Demo mode (PGHL_DEMO_MODE=1) for a public try-it-out instance:
@@ -55,12 +56,12 @@ export const DEMO_PAGE_NOTE = 'Demo-Instanz: Alle Daten werden mehrmals täglich
 
 /** What a public demo page shows to someone outside the demo (no demo session): a link to it proves nothing and asks for nothing. */
 export const DEMO_OUTSIDE_NOTE = 'Diese Seite gehört zur öffentlichen HyperLevel-Demo und ist nur innerhalb der Demo sichtbar.';
-const demoOutsideHtml = () =>
-  `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>HyperLevel Demo</title></head>` +
+const demoOutsideHtml = (t = tApp()) =>
+  `<!doctype html><html lang="${t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>HyperLevel Demo</title></head>` +
   `<body style="margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;background:#f6f7f9;color:#1d2433">` +
-  `<main style="max-width:32rem;padding:2rem;text-align:center"><p>${DEMO_OUTSIDE_NOTE}</p><p><a href="/demo" style="color:#2563eb">Demo öffnen</a></p></main></body></html>`;
-const demoNoteHtml = () =>
-  `<div role="note" data-pghl-demo style="position:relative;z-index:2147483647;margin:0;padding:8px 14px;background:#fff7d6;color:#3d2e00;border-bottom:1px solid #e9d27a;font:600 14px/1.4 system-ui,sans-serif;text-align:center">${DEMO_PAGE_NOTE}</div>`;
+  `<main style="max-width:32rem;padding:2rem;text-align:center"><p>${t(DEMO_OUTSIDE_NOTE)}</p><p><a href="/demo" style="color:#2563eb">${t('Demo öffnen')}</a></p></main></body></html>`;
+const demoNoteHtml = (t = tApp()) =>
+  `<div role="note" data-pghl-demo style="position:relative;z-index:2147483647;margin:0;padding:8px 14px;background:#fff7d6;color:#3d2e00;border-bottom:1px solid #e9d27a;font:600 14px/1.4 system-ui,sans-serif;text-align:center">${t(DEMO_PAGE_NOTE)}</div>`;
 
 /** Adds the demo note right after <body …> (or at the very top when there is no body tag). */
 export function withDemoNote(html: string): string {
@@ -256,7 +257,7 @@ export const demoModule: Module = {
     app.onTick(async () => {
       const slot = dueResetSlot(new Date(), tz(), resetHours());
       if (!slot || getState(RESET_KEY) === slot || !getState(SEEDED_KEY)) return;
-      await reset('zurückgesetzt');
+      await reset('zurückgesetzt'); // i18n-ignore (log text)
     });
   },
 };

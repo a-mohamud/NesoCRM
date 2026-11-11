@@ -26,6 +26,7 @@ import { cancelRun, candidateOut, candidates, createRun, createTransfer, markPai
 import { registerTriggers } from '../services/wfx-kit.js';
 import { sepaPublicModule } from './sepa-public.js';
 import { sepaToolsModule } from './sepa-tools.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * SEPA without Stripe (docs/sepa.md): direct-debit mandates per contact (paper or online with proof), collection runs as
@@ -125,15 +126,22 @@ export const sepaModule: Module = {
     };
 
     const sendLink = async (loc: string, m: MandateRow) => {
-      if (!m.contact_id || !m.capture_token) return { sent: false, error: 'Kein Kontakt' };
+      const t = tLoc(app, loc);
+      if (!m.contact_id || !m.capture_token) return { sent: false, error: t('Kein Kontakt') };
       const cr = creditorOf(app, loc);
       const L = app.location(loc)!;
       const c = db.get<{ first_name: string; email: string }>('SELECT first_name, email FROM contacts WHERE id = ? AND location_id = ?', m.contact_id, loc);
-      if (!c?.email) return { sent: false, error: 'Der Kontakt hat keine E-Mail-Adresse – bitte den Link selbst weitergeben' };
-      const body = `Hallo${c.first_name ? ` ${c.first_name}` : ''},\n\n${cr.name || L.name} bittet dich um ein SEPA-Lastschriftmandat (Mandatsreferenz ${m.reference}). Über diesen Link liest du den Mandatstext, trägst dein Konto ein und bestätigst:\n\n${captureUrl(app, m.capture_token)}\n\nDer Link gilt bis ${deDate(m.capture_expires_at, L.timezone || 'Europe/Berlin')}.\n\nViele Grüße\n${L.name}`;
+      if (!c?.email) return { sent: false, error: t('Der Kontakt hat keine E-Mail-Adresse – bitte den Link selbst weitergeben') };
+      const body = [
+        c.first_name ? t('Hallo {name},', { name: c.first_name }) : t('Hallo,'),
+        t('{creditor} bittet dich um ein SEPA-Lastschriftmandat (Mandatsreferenz {reference}). Über diesen Link liest du den Mandatstext, trägst dein Konto ein und bestätigst:', { creditor: cr.name || L.name, reference: m.reference }),
+        captureUrl(app, m.capture_token),
+        t('Der Link gilt bis {date}.', { date: deDate(m.capture_expires_at, L.timezone || 'Europe/Berlin') }),
+        `${t('Viele Grüße')}\n${L.name}`,
+      ].join('\n\n');
       try {
-        const r = await sendToContact(app, loc, { contactId: m.contact_id, channel: 'email', subject: `Bitte SEPA-Lastschriftmandat erteilen – ${cr.name || L.name}`, body, source: 'SEPA-Mandat', ignoreDnd: true, purpose: 'transactional' });
-        return r.status === 'failed' ? { sent: false, error: String(r.error ?? 'Versand fehlgeschlagen') } : { sent: true };
+        const r = await sendToContact(app, loc, { contactId: m.contact_id, channel: 'email', subject: t('Bitte SEPA-Lastschriftmandat erteilen – {creditor}', { creditor: cr.name || L.name }), body, source: t('SEPA-Mandat'), ignoreDnd: true, purpose: 'transactional' });
+        return r.status === 'failed' ? { sent: false, error: String(r.error ?? t('Versand fehlgeschlagen')) } : { sent: true };
       } catch (e) {
         return { sent: false, error: (e as Error).message };
       }
@@ -166,7 +174,12 @@ export const sepaModule: Module = {
     router.get('/api/sepa/settings', 'location', (ctx) => {
       const s = settingsOf(app, ctx.locationId);
       const cr = creditorOf(app, ctx.locationId, s);
-      return { settings: s, defaults: DEFAULT_SETTINGS, creditor: { name: cr.name, address: cr.address, creditor_id: cr.creditor_id, iban: cr.iban, bic: cr.bic, problems: cr.problems }, return_codes: RETURN_CODES };
+      // default texts and code labels in the sub-account's language (the pre-notification goes to its contacts)
+      const t = tLoc(app, ctx.locationId);
+      const tx = (v: string) => (v === DEFAULT_SETTINGS.prenotify_subject || v === DEFAULT_SETTINGS.prenotify_body ? t(v) : v);
+      const defaults = { ...DEFAULT_SETTINGS, prenotify_subject: t(DEFAULT_SETTINGS.prenotify_subject), prenotify_body: t(DEFAULT_SETTINGS.prenotify_body) };
+      const return_codes = Object.fromEntries(Object.entries(RETURN_CODES).map(([k, v]) => [k, { ...v, label: t(v.label) }]));
+      return { settings: { ...s, prenotify_subject: tx(s.prenotify_subject), prenotify_body: tx(s.prenotify_body) }, defaults, creditor: { name: cr.name, address: cr.address, creditor_id: cr.creditor_id, iban: cr.iban, bic: cr.bic, problems: cr.problems }, return_codes };
     });
     router.put('/api/sepa/settings', 'location', (ctx) => ({ settings: saveSettings(app, ctx.locationId, ctx.body ?? {}) }));
 

@@ -21,6 +21,7 @@ import {
   type WorkflowDraft,
 } from '../services/wfai.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * KI-Workflow-Builder: "Wenn jemand … dann …" in Alltagssprache → ein Workflow. The AI (BYOK, routed under the use "Workflows",
@@ -75,7 +76,7 @@ const TOOLS: Tool[] = [
         steps: r.workflow.steps,
         settings: r.workflow.settings,
         applied,
-        hint: applied ? 'Als Entwurf gespeichert – nicht veröffentlicht. Prüfen und veröffentlichen im Workflow-Editor.' : 'Nur eine Vorschau. Mit apply=true (oder im Editor) als Entwurf speichern.',
+        hint: applied ? tApp()('Als Entwurf gespeichert – nicht veröffentlicht. Prüfen und veröffentlichen im Workflow-Editor.') : tApp()('Nur eine Vorschau. Mit apply=true (oder im Editor) als Entwurf speichern.'), // i18n-ignore (keys below)
       };
     },
   },
@@ -173,16 +174,19 @@ export const wfaiModule: Module = {
       const run = app.services.aiRun as ((i: any) => Promise<{ text: string; model: string; usage?: { input_tokens?: number; output_tokens?: number } }>) | undefined;
       if (!run) throw new HttpError(409, 'Der KI-Assistent ist nicht verfügbar.');
       const loc = ctx.locationId;
+      const t = tCtx(ctx);
+      const langName = (l: string) => (l === 'de' ? 'German' : 'English');
       const base = input.workflowId ? baseOf(ctx, input.workflowId) : null;
       const baseJson = base ? JSON.stringify(base.draft) : '';
       if (baseJson.length > 60_000) throw bad('Dieser Workflow ist für eine KI-Änderung zu groß (über 60 KB) – bitte in kleineren Teilen ändern.');
       const [{ actions, triggers }, refs] = await Promise.all([loadCatalog(ctx), loadRefs(ctx)]);
       const l = app.location(loc);
       const system = [
-        { text: `${SYSTEM_RULES}${base ? `\n\n${EDIT_RULES}` : ''}\n\nKATALOG\n${catalogText(actions, triggers)}`, cache: true },
-        { text: `KONTEXT DES SUB-ACCOUNTS\n${contextText(refs, { name: l?.name, timezone: l?.timezone })}` },
+        // texts to customers in the sub-account's language, summary and notes in the person's
+        { text: `${SYSTEM_RULES.replaceAll('{lang}', langName(tLoc(app, loc).locale)).replaceAll('{ui_lang}', langName(t.locale))}${base ? `\n\n${EDIT_RULES}` : ''}\n\nCATALOGUE\n${catalogText(actions, triggers)}`, cache: true },
+        { text: `SUB-ACCOUNT CONTEXT\n${contextText(refs, { name: l?.name, timezone: l?.timezone })}` },
       ];
-      const first = `AUFTRAG:\n${input.prompt}${base ? `\n\nBISHERIGER WORKFLOW (JSON):\n${baseJson}` : ''}`;
+      const first = `REQUEST:\n${input.prompt}${base ? `\n\nCURRENT WORKFLOW (JSON):\n${baseJson}` : ''}`;
       let user = first;
       let errors: string[] = [];
       let warnings: string[] = [];
@@ -197,7 +201,7 @@ export const wfaiModule: Module = {
         last = r.text ?? '';
         const raw = parseAnswer(last);
         errors = [];
-        if (!raw) errors.push('Die Antwort war kein einzelnes JSON-Objekt. Antworte ausschließlich mit dem JSON-Objekt.');
+        if (!raw) errors.push(t('Die Antwort war kein einzelnes JSON-Objekt. Antworte ausschließlich mit dem JSON-Objekt.'));
         else {
           const checked = checkWorkflow(raw, { actions, triggers, refs });
           errors = checked.errors;
@@ -222,20 +226,22 @@ export const wfaiModule: Module = {
         }
         user = retryPrompt(first, last, errors);
       }
-      const message = `Die KI hat nach ${ATTEMPTS} Versuchen keinen gültigen Workflow geliefert: ${errors.slice(0, 4).join(' · ')}`;
+      const message = t('Die KI hat nach {n} Versuchen keinen gültigen Workflow geliefert: {errors}', { n: ATTEMPTS, errors: errors.slice(0, 4).join(' · ') });
       db.insert('wfai_runs', { id: id(), location_id: loc, user_id: ctx.user?.id ?? null, user_name: ctx.user?.name ?? '', workflow_id: base?.id ?? null, mode: base ? 'edit' : 'create', prompt: clip(input.prompt, LIMITS.prompt), status: 'failed', attempts: ATTEMPTS, error: message.slice(0, 1500), model, tokens, result: '{}', applied_workflow_id: null, applied_at: null, created_at: now() });
       throw new HttpError(422, message);
     }
 
     // --- routes ------------------------------------------------------------------------------------------------------
     router.get('/api/workflow-ai/status', 'location', (ctx) => {
-      const reason: string | null = app.services.aiReady?.(ctx.locationId) ?? (app.services.aiRun ? null : 'Der KI-Assistent ist nicht verfügbar.');
+      const t = tCtx(ctx);
+      const ready: string | null = app.services.aiReady?.(ctx.locationId) ?? (app.services.aiRun ? null : 'Der KI-Assistent ist nicht verfügbar.');
+      const reason = ready ? t(ready) : null;
       const p = app.services.aiProvider?.(ctx.locationId, 'workflow_builder') as { label: string; model: string; connectionId?: string } | null | undefined;
       return {
         ready: !reason,
         reason,
         provider: p ? { label: p.label, model: p.model, byok: !!p.connectionId } : { label: 'Claude', model: '', byok: false },
-        examples: EXAMPLES,
+        examples: EXAMPLES.map((e) => t(e)),
         limits: { per_hour: 20, attempts: ATTEMPTS, max_steps: LIMITS.steps },
       };
     });
@@ -286,8 +292,9 @@ export const wfaiModule: Module = {
         target = wid;
       }
       db.run(`UPDATE wfai_runs SET status = 'applied', applied_workflow_id = ?, applied_at = ? WHERE id = ?`, target, now(), r.id);
-      auditLog(app, ctx, ctx.locationId, 'workflow_ai.apply', r.mode === 'create' ? `KI-Entwurf „${wf.name}“ als neuen Workflow-Entwurf angelegt` : `KI-Änderung an „${wf.name}“ als Entwurf gespeichert`, target);
-      return { ok: true, mode: r.mode, workflow_id: target, status: r.mode === 'create' ? 'draft' : undefined, replaced_draft: replacedDraft, message: r.mode === 'create' ? 'Als Entwurf angelegt – noch nicht aktiv. Prüfen, testen und dann aktivieren.' : 'Als Entwurf des Workflows gespeichert – veröffentlichen im Editor, wenn alles stimmt.' };
+      const t = tCtx(ctx);
+      auditLog(app, ctx, ctx.locationId, 'workflow_ai.apply', r.mode === 'create' ? t('KI-Entwurf „{name}“ als neuen Workflow-Entwurf angelegt', { name: wf.name }) : t('KI-Änderung an „{name}“ als Entwurf gespeichert', { name: wf.name }), target);
+      return { ok: true, mode: r.mode, workflow_id: target, status: r.mode === 'create' ? 'draft' : undefined, replaced_draft: replacedDraft, message: r.mode === 'create' ? t('Als Entwurf angelegt – noch nicht aktiv. Prüfen, testen und dann aktivieren.') : t('Als Entwurf des Workflows gespeichert – veröffentlichen im Editor, wenn alles stimmt.') };
     });
 
     app.onTick(() => {

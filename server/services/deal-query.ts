@@ -1,5 +1,6 @@
 import type { App } from '../core/app.js';
 import { filterSql, KEY_RE, parseFilters, sortSql, type FieldExpr, type PropertyDef, type PropertyType } from './objects.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Filters and sorting of the deal list (`GET /api/opportunities?filters=[…]&sort=-value`, its CSV export and the bulk actions).
@@ -71,7 +72,7 @@ export function dealListSql(app: App, locationId: string, q: URLSearchParams, de
   const props = dealProps(app, locationId);
   const all = dealFieldExpr(props);
   const expr: FieldExpr = (field) => {
-    if (deny.includes(field)) throw new Error(`Das Feld „${field}“ ist für dich ausgeblendet`);
+    if (deny.includes(field)) throw new Error(tApp()('Das Feld „{field}“ ist für dich ausgeblendet', { field }));
     return all(field);
   };
   const filters = parseFilters(q.get('filters') ?? '');

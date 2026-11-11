@@ -4,6 +4,7 @@ import { UmzugError, VendorHttp, networkFetch } from './umzug-http.js';
 import { counter } from './umzug-lib.js';
 import type { Json } from './umzug-flow.js';
 import { clip, stripHtml, toDay, toIso } from './umzug-text.js';
+import { translator, tApp, type ServerLocale } from '../i18n/index.js';
 
 /**
  * Zoho CRM (REST API v6, https://www.zohoapis.<region>/crm/v6, OAuth with a refresh token): accounts → companies, contacts and leads →
@@ -19,23 +20,25 @@ const PAGE = 200;
 const MAX_FIELDS = 50;
 
 export function zohoRegion(v: unknown): string {
+  const t = tApp();
   const r = String(v ?? '').trim().toLowerCase().replace(/^\.|^zoho\.|^https?:\/\/(www\.)?(accounts\.)?zoho(apis)?\./, '').replace(/[/?#].*$/, '') || 'com';
-  if (!REGIONS.includes(r)) throw new UmzugError(400, `Die Zoho-Region ist eine von: ${REGIONS.join(', ')} – so endet die Adresse, mit der du dich bei Zoho anmeldest (zoho.eu → eu)`);
+  if (!REGIONS.includes(r)) throw new UmzugError(400, t('Die Zoho-Region ist eine von: {REGIONS} – so endet die Adresse, mit der du dich bei Zoho anmeldest (zoho.eu → eu)', { REGIONS: REGIONS.join(', ') }));
   return r;
 }
 
 const accountsHost = (region: string) => `https://accounts.zoho.${region}`;
 
 async function token(creds: Record<string, string>, region: string, fetchFn: any, grant: Record<string, string>): Promise<any> {
+  const t = tApp();
   const f = fetchFn ?? networkFetch;
   let r;
   try {
     r = await f(`${accountsHost(region)}/oauth/v2/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: new URLSearchParams({ client_id: creds.client_id ?? '', client_secret: creds.client_secret ?? '', ...grant }).toString() });
   } catch (e) {
-    throw new UmzugError(0, `Zoho nicht erreichbar: ${(e as Error).message}`);
+    throw new UmzugError(0, t('Zoho nicht erreichbar: {reason}', { reason: (e as Error).message }));
   }
   const j: any = await r.json().catch(() => ({}));
-  if (!r.ok || j.error || !j.access_token) throw new UmzugError(401, `Zoho: Anmeldung abgelehnt${j?.error ? ` (${String(j.error).slice(0, 80)})` : ''} – Client-ID, Client-Secret, Region und den Code prüfen (der Code gilt nur zehn Minuten und nur einmal)`);
+  if (!r.ok || j.error || !j.access_token) throw new UmzugError(401, t('Zoho: Anmeldung abgelehnt{details} – Client-ID, Client-Secret, Region und den Code prüfen (der Code gilt nur zehn Minuten und nur einmal)', { details: j?.error ? ` (${String(j.error).slice(0, 80)})` : '' }));
   return j;
 }
 
@@ -80,7 +83,9 @@ async function fieldsOf(h: VendorHttp, module: string): Promise<ZField[] | undef
 const FT = (t: string): FieldType => (/^(integer|bigint|double|currency|percent|decimal)/.test(t) ? 'number' : /^(date|datetime)$/.test(t) ? 'date' : t === 'boolean' ? 'checkbox' : t === 'email' ? 'email' : t === 'phone' ? 'phone' : t === 'website' ? 'url' : /textarea/.test(t) ? 'textarea' : /^picklist$/.test(t) ? 'select' : 'text');
 const SKIP_TYPES = new Set(['lookup', 'ownerlookup', 'userlookup', 'multiselectlookup', 'subform', 'fileupload', 'imageupload', 'profileimage', 'autonumber', 'formula', 'rollup_summary', 'multi_module_lookup']);
 
+// i18n-ignore (Zoho API field names)
 const CONTACT_STD = ['First_Name', 'Last_Name', 'Email', 'Phone', 'Mobile', 'Title', 'Department', 'Mailing_Street', 'Mailing_City', 'Mailing_Zip', 'Mailing_Country', 'Email_Opt_Out', 'Date_of_Birth', 'Lead_Source', 'Description', 'Account_Name', 'Created_Time'];
+// i18n-ignore (Zoho API field names)
 const LEAD_STD = ['First_Name', 'Last_Name', 'Company', 'Email', 'Phone', 'Mobile', 'Title', 'Street', 'City', 'Zip_Code', 'Country', 'Website', 'Lead_Status', 'Lead_Source', 'Email_Opt_Out', 'Description', 'Created_Time', 'Converted__s'];
 const LEAD_ADDRESS: Record<string, string> = { Street: 'Mailing_Street', City: 'Mailing_City', Zip_Code: 'Mailing_Zip', Country: 'Mailing_Country' };
 const STD: Record<string, StdTarget> = { Email: 'email', First_Name: 'first_name', Last_Name: 'last_name', Phone: 'phone', Mailing_Street: 'address', Mailing_City: 'city', Mailing_Zip: 'postal_code', Mailing_Country: 'country', Date_of_Birth: 'date_of_birth', Lead_Source: 'source', Website: 'website' };
@@ -109,7 +114,8 @@ async function* pages(h: VendorHttp, module: string, fields: string[], ctx: Step
 }
 const countOf = async (h: VendorHttp, module: string) => Number((await h.get(`/${module}/actions/count`))?.count ?? 0);
 
-async function describe(h: VendorHttp, parts: PartKey[]) {
+async function describe(h: VendorHttp, parts: PartKey[], lang?: ServerLocale) {
+  const t = translator(lang);
   const counts: CountRow[] = [];
   const fields: SourceField[] = [];
   const warnings: string[] = [];
@@ -123,6 +129,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
       if (!fields.some((x) => x.ref === ref)) fields.push({ ref, label, type, std, group: std ? 'standard' : 'custom' });
     };
     add('f:Email', 'E-Mail', 'email', 'email');
+    // i18n-ignore (Zoho API field names)
     for (const name of ['First_Name', 'Last_Name', 'Phone', 'Mailing_Street', 'Mailing_City', 'Mailing_Zip', 'Mailing_Country']) add(`f:${name}`, LABELS[name] ?? name, 'text', STD[name]);
     add('org_name', 'Firma', 'text', 'company');
     add('f:Mobile', 'Mobiltelefon', 'phone');
@@ -134,7 +141,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
     add('f:Website', 'Webseite', 'url', 'website');
     for (const f of [...(cf ?? []), ...(lf ?? [])]) if (f.custom && !SKIP_TYPES.has(f.type)) add(`f:${f.api}`, f.label, FT(f.type));
     if (!cf) warnings.push('Die Feldliste der Kontakte ließ sich nicht lesen – es kommen die Standardfelder mit; eigene Felder fehlen.');
-    if ((cf ?? []).filter((f) => f.custom).length + CONTACT_STD.length > MAX_FIELDS) warnings.push(`Zoho erlaubt höchstens ${MAX_FIELDS} Felder je Abruf – bei mehr eigenen Feldern kommen die ersten mit.`);
+    if ((cf ?? []).filter((f) => f.custom).length + CONTACT_STD.length > MAX_FIELDS) warnings.push(t('Zoho erlaubt höchstens {MAX_FIELDS} Felder je Abruf – bei mehr eigenen Feldern kommen die ersten mit.', { MAX_FIELDS }));
   }
   if (parts.includes('companies')) await count('companies', 'accounts', 'Accounts → Firmen', () => countOf(h, 'Accounts'));
   if (parts.includes('deals')) await count('deals', 'deals', 'Deals', () => countOf(h, 'Deals'));
@@ -161,8 +168,10 @@ const steps = (): StepDef[] => [
     label: 'Accounts → Firmen',
     part: 'companies',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
+      // i18n-ignore (Zoho API field names)
       for await (const pg of pages(ctx.http, 'Accounts', ['Account_Name', 'Website', 'Phone', 'Billing_Street', 'Billing_City', 'Billing_Code', 'Billing_Country', 'Industry'], ctx, {}, ctx.cursor ? String(ctx.cursor) : undefined)) {
-        const records: RCompany[] = pg.items.map((a) => ({ kind: 'company', ext: `a:${a.id}`, name: String(a.Account_Name ?? `Account ${a.id}`), website: a.Website || undefined, phone: a.Phone || undefined, address: a.Billing_Street || undefined, city: a.Billing_City || undefined, postal_code: a.Billing_Code || undefined, country: a.Billing_Country || undefined, industry: a.Industry || undefined }));
+        const records: RCompany[] = pg.items.map((a) => ({ kind: 'company', ext: `a:${a.id}`, name: String(a.Account_Name ?? t('Account {id}', { id: a.id })), website: a.Website || undefined, phone: a.Phone || undefined, address: a.Billing_Street || undefined, city: a.Billing_City || undefined, postal_code: a.Billing_Code || undefined, country: a.Billing_Country || undefined, industry: a.Industry || undefined }));
         yield { records, cursor: pg.next };
       }
     },
@@ -187,6 +196,7 @@ const steps = (): StepDef[] => [
     label: 'Leads',
     part: 'contacts',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const fields = select(LEAD_STD, await fieldsOf(ctx.http, 'Leads'));
       for await (const pg of pages(ctx.http, 'Leads', fields, ctx, {}, ctx.cursor ? String(ctx.cursor) : undefined)) {
         const records: RContact[] = pg.items
@@ -195,7 +205,7 @@ const steps = (): StepDef[] => [
             const x = crmConsent('Zoho CRM', l.Email_Opt_Out);
             const v = values(l, l.Company ? String(l.Company) : undefined);
             for (const [from, to] of Object.entries(LEAD_ADDRESS)) if (l[from]) (v[`f:${to}`] = l[from], delete v[`f:${from}`]);
-            return { kind: 'contact', ext: `l:${l.id}`, values: v, tags: ['Zoho: Lead', ...(l.Lead_Status ? [`Lead-Status: ${l.Lead_Status}`] : [])], consent: l.Email ? x.consent : 'unknown', native_status: x.native, created_at: toIso(l.Created_Time), proof: l.Email ? x.proof : undefined };
+            return { kind: 'contact', ext: `l:${l.id}`, values: v, tags: [t('Zoho: Lead'), ...(l.Lead_Status ? [t('Lead-Status: {status}', { status: l.Lead_Status })] : [])], consent: l.Email ? x.consent : 'unknown', native_status: x.native, created_at: toIso(l.Created_Time), proof: l.Email ? x.proof : undefined };
           });
         yield { records, cursor: pg.next };
       }
@@ -231,6 +241,7 @@ const steps = (): StepDef[] => [
       }
       // Pipelines and stages that only deals mention (or all of them when the settings are closed).
       const seen = new Map<string, Set<string>>();
+      // i18n-ignore (Zoho API field names)
       for await (const pg of pages(ctx.http, 'Deals', ['Pipeline', 'Stage'], ctx)) {
         for (const d of pg.items) {
           const pn = String(d.Pipeline ?? 'Zoho');
@@ -244,6 +255,7 @@ const steps = (): StepDef[] => [
         for (const st of stages) if (st && !p.stages.some((s) => s.name === st)) p.stages.push({ ext: `st:${name}:${st}`, name: st });
       }
       if (cur.phase === 'pipes') yield { records: pipes, cursor: { phase: 'deals' } };
+      // i18n-ignore (Zoho API field names)
       const fields = ['Deal_Name', 'Amount', 'Stage', 'Pipeline', 'Closing_Date', 'Account_Name', 'Contact_Name', 'Probability', 'Currency', 'Lead_Source', 'Created_Time'];
       for await (const pg of pages(ctx.http, 'Deals', fields, ctx, {}, cur.phase === 'deals' ? cur.after : undefined)) {
         const records: RDeal[] = pg.items.map((d) => {
@@ -262,6 +274,7 @@ const steps = (): StepDef[] => [
     label: 'Aufgaben',
     part: 'tasks',
     async *run(ctx): AsyncGenerator<Batch> {
+      // i18n-ignore (Zoho API field names)
       for await (const pg of pages(ctx.http, 'Tasks', ['Subject', 'Due_Date', 'Status', 'Description', 'Who_Id', 'What_Id', '$se_module', 'Created_Time'], ctx, {}, ctx.cursor ? String(ctx.cursor) : undefined)) {
         const records: RTask[] = pg.items.map((t) => ({
           kind: 'task',
@@ -350,6 +363,6 @@ export const ZOHO: SourceDef = {
     const id = String(org.zgid ?? org.id ?? '');
     return { account: /^\d{3,25}$/.test(id) ? `org-${id}` : `org-${region}-${kept.client_id.slice(-8)}`.toLowerCase().replace(/[^a-z0-9.-]/g, ''), label: String(org.company_name ?? 'Zoho-CRM-Organisation').slice(0, 120), meta: {}, secrets: kept };
   },
-  describe: (h, parts) => describe(h, parts),
+  describe: (h, parts, c) => describe(h, parts, c.lang),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),
 };

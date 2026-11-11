@@ -3,6 +3,7 @@ import { HttpError, type Ctx, type RawResult } from '../core/http.js';
 import { escapeHtml } from '../core/template.js';
 import { dayOf, statusesOf, team, tzOf } from '../services/pm-core.js';
 import type { Member, Portal } from './portal.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * "Meine Projekte" in the member portal (/portal/<id>/projects): the customer sees the boards of projects the
@@ -91,18 +92,28 @@ export const pmPortalModule: Module = {
     };
     const day = (p: Portal, iso: string | null) => {
       const d = dayOf(iso, tzOf(app, p.locationId));
-      return d ? d.split('-').reverse().join('.') : '';
+      const t = tLoc(app, p.locationId);
+      return d ? d.split('-').reverse().join(t.locale === 'de' ? '.' : '/') : '';
     };
 
     // --- portal hooks -------------------------------------------------------------------------------
-    app.services.portalHeader = [...(app.services.portalHeader ?? []), (p: Portal, m: Member) => (sharedWith(p.locationId, m.contact.id).length ? `<a class="pj-link" href="${base(p)}" aria-label="Meine Projekte">${ICON}<span>Meine Projekte</span></a>` : '')];
+    app.services.portalHeader = [
+      ...(app.services.portalHeader ?? []),
+      (p: Portal, m: Member) => {
+        if (!sharedWith(p.locationId, m.contact.id).length) return '';
+        const t = tLoc(app, p.locationId);
+        const label = escapeHtml(t('Meine Projekte'));
+        return `<a class="pj-link" href="${base(p)}" aria-label="${label}">${ICON}<span>${label}</span></a>`;
+      },
+    ];
     app.services.portalDashboard = [
       ...(app.services.portalDashboard ?? []),
       (p: Portal, m: Member) => {
         const list = sharedWith(p.locationId, m.contact.id);
         if (!list.length) return '';
         const open = list.map((x) => progressOf(x.id)).reduce((s, x) => s + (x.total - x.done), 0);
-        return `<section class="pj-dash"><h2>${ICON} Meine Projekte</h2><div class="pj-card"><div><strong>${list.length} ${list.length === 1 ? 'Projekt' : 'Projekte'}</strong><div class="muted small">${open} ${open === 1 ? 'Aufgabe' : 'Aufgaben'} noch offen</div></div><a class="btn" href="${base(p)}">Projekte ansehen</a></div></section>`;
+        const t = tLoc(app, p.locationId);
+        return `<section class="pj-dash"><h2>${ICON} ${escapeHtml(t('Meine Projekte'))}</h2><div class="pj-card"><div><strong>${escapeHtml(t.plural(list.length, { one: '{n} Projekt', other: '{n} Projekte' }))}</strong><div class="muted small">${escapeHtml(t.plural(open, { one: '{n} Aufgabe noch offen', other: '{n} Aufgaben noch offen' }))}</div></div><a class="btn" href="${base(p)}">${escapeHtml(t('Projekte ansehen'))}</a></div></section>`;
       },
     ];
     app.services.portalMemberCheck = [...(app.services.portalMemberCheck ?? []), (loc: string, cid: string) => sharedWith(loc, cid).length > 0];
@@ -121,13 +132,20 @@ export const pmPortalModule: Module = {
     router.get('/portal/:p/projects', 'public', (ctx) =>
       withMember(ctx, (p, m) => {
         const list = sharedWith(p.locationId, m.contact.id);
+        const t = tLoc(app, p.locationId);
         const tiles = list
           .map((x) => {
             const pr = progressOf(x.id);
-            return `<a class="pj-tile" style="--pc:${escapeHtml(x.color)}" href="${base(p)}/${encodeURIComponent(x.id)}"><h2>${escapeHtml(x.name)}</h2>${x.description ? `<div class="muted small">${escapeHtml(String(x.description).slice(0, 160))}</div>` : ''}<div class="bar"><i style="width:${pr.pct}%"></i></div><div class="pj-meta"><span>${pr.done} von ${pr.total} Aufgaben erledigt</span>${x.due_at ? `<span>bis ${day(p, x.due_at)}</span>` : ''}</div></a>`;
+            return `<a class="pj-tile" style="--pc:${escapeHtml(x.color)}" href="${base(p)}/${encodeURIComponent(x.id)}"><h2>${escapeHtml(x.name)}</h2>${x.description ? `<div class="muted small">${escapeHtml(String(x.description).slice(0, 160))}</div>` : ''}<div class="bar"><i style="width:${pr.pct}%"></i></div><div class="pj-meta"><span>${escapeHtml(t('{done} von {total} Aufgaben erledigt', { done: pr.done, total: pr.total }))}</span>${x.due_at ? `<span>${escapeHtml(t('bis {date}', { date: day(p, x.due_at) }))}</span>` : ''}</div></a>`;
           })
           .join('');
-        return frame(p, m, 'Meine Projekte', `<div class="crumb"><a href="${p.base}">Start</a></div><h1>Meine Projekte</h1><p class="muted" style="margin:0 0 20px">So weit sind deine Projekte – immer aktuell.</p>${tiles ? `<div class="pj-grid">${tiles}</div>` : '<div class="panel empty"><h2>Noch kein Projekt freigegeben</h2><p class="muted">Sobald wir ein Projekt mit dir teilen, siehst du es hier.</p></div>'}`);
+        const title = escapeHtml(t('Meine Projekte'));
+        return frame(
+          p,
+          m,
+          t('Meine Projekte'),
+          `<div class="crumb"><a href="${p.base}">${escapeHtml(t('Start'))}</a></div><h1>${title}</h1><p class="muted" style="margin:0 0 20px">${escapeHtml(t('So weit sind deine Projekte – immer aktuell.'))}</p>${tiles ? `<div class="pj-grid">${tiles}</div>` : `<div class="panel empty"><h2>${escapeHtml(t('Noch kein Projekt freigegeben'))}</h2><p class="muted">${escapeHtml(t('Sobald wir ein Projekt mit dir teilen, siehst du es hier.'))}</p></div>`}`,
+        );
       }),
     );
 
@@ -136,6 +154,7 @@ export const pmPortalModule: Module = {
         const proj = sharedWith(p.locationId, m.contact.id).find((x) => x.id === ctx.params.id);
         if (!proj) return kit().notFoundPage(p, m);
         const tz = tzOf(app, p.locationId);
+        const tl = tLoc(app, p.locationId);
         const today = new Date().toISOString();
         const statuses = statusesOf(app, proj.id);
         const names = new Map(team(app, p.locationId).map((u) => [u.id, u.name.split(' ')[0]]));
@@ -148,12 +167,12 @@ export const pmPortalModule: Module = {
         const card = (t: any) => {
           const s = subs.get(t.id);
           const who = (assignee.get(t.id) ?? []).map((u) => names.get(u)).filter(Boolean).join(', ');
-          return `<div class="pj-task${t.done ? ' done' : ''}"><strong>${t.milestone ? '◆ ' : ''}${escapeHtml(t.title)}</strong><div class="m">${t.due_at ? `<span class="${late(t) ? 'pj-late' : ''}">${t.milestone ? 'am' : 'bis'} ${day(p, t.due_at)}</span>` : ''}${s ? `<span>${s.d}/${s.n} Unteraufgaben</span>` : ''}${who ? `<span>${escapeHtml(who)}</span>` : ''}</div></div>`;
+          return `<div class="pj-task${t.done ? ' done' : ''}"><strong>${t.milestone ? '◆ ' : ''}${escapeHtml(t.title)}</strong><div class="m">${t.due_at ? `<span class="${late(t) ? 'pj-late' : ''}">${escapeHtml(t.milestone ? tl('am {date}', { date: day(p, t.due_at) }) : tl('bis {date}', { date: day(p, t.due_at) }))}</span>` : ''}${s ? `<span>${escapeHtml(tl('{done}/{total} Unteraufgaben', { done: s.d, total: s.n }))}</span>` : ''}${who ? `<span>${escapeHtml(who)}</span>` : ''}</div></div>`;
         };
         const cols = statuses
           .map((st) => {
             const list = tasks.filter((t) => t.status_id === st.id);
-            return `<div class="pj-col" style="--sc:${escapeHtml(st.color)}"><h3><span style="color:var(--text)"><i></i>${escapeHtml(st.name)}</span><span>${list.length}</span></h3>${list.map(card).join('') || '<div class="muted small" style="padding:4px 6px">Nichts</div>'}</div>`;
+            return `<div class="pj-col" style="--sc:${escapeHtml(st.color)}"><h3><span style="color:var(--text)"><i></i>${escapeHtml(st.name)}</span><span>${list.length}</span></h3>${list.map(card).join('') || `<div class="muted small" style="padding:4px 6px">${escapeHtml(tl('Nichts'))}</div>`}</div>`;
           })
           .join('');
         const milestones = tasks
@@ -165,11 +184,11 @@ export const pmPortalModule: Module = {
           p,
           m,
           proj.name,
-          `<div class="crumb"><a href="${p.base}">Start</a> / <a href="${base(p)}">Meine Projekte</a></div>
+          `<div class="crumb"><a href="${p.base}">${escapeHtml(tl('Start'))}</a> / <a href="${base(p)}">${escapeHtml(tl('Meine Projekte'))}</a></div>
 <div class="pj-head"><div><h1>${escapeHtml(proj.name)}</h1>${proj.description ? `<p class="muted" style="margin:4px 0 0;max-width:720px">${escapeHtml(String(proj.description).slice(0, 600))}</p>` : ''}</div></div>
-<div class="pj-stats"><div><strong>${pr.pct} %</strong><span>erledigt</span></div><div><strong>${pr.done}/${pr.total}</strong><span>Aufgaben</span></div>${proj.due_at ? `<div><strong>${day(p, proj.due_at)}</strong><span>Zieltermin</span></div>` : ''}</div>
+<div class="pj-stats"><div><strong>${pr.pct} %</strong><span>${escapeHtml(tl('erledigt'))}</span></div><div><strong>${pr.done}/${pr.total}</strong><span>${escapeHtml(tl('Aufgaben'))}</span></div>${proj.due_at ? `<div><strong>${day(p, proj.due_at)}</strong><span>${escapeHtml(tl('Zieltermin'))}</span></div>` : ''}</div>
 <div class="bar" style="margin-bottom:22px"><i style="width:${pr.pct}%"></i></div>
-${milestones ? `<section class="panel" style="margin-bottom:22px"><h2>Meilensteine</h2>${milestones}</section>` : ''}
+${milestones ? `<section class="panel" style="margin-bottom:22px"><h2>${escapeHtml(tl('Meilensteine'))}</h2>${milestones}</section>` : ''}
 <div class="pj-board">${cols}</div>`,
         );
       }),

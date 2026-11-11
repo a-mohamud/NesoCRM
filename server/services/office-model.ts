@@ -4,6 +4,7 @@
  * with it, the web app (web/src/pages/Office*.tsx) reads the same tables. Contract and limits: docs/office.md.
  */
 
+import { tApp, type STFn } from '../i18n/index.js';
 export type OfficeKind = 'docx' | 'xlsx' | 'pptx' | 'pdf';
 export const OFFICE_KINDS: OfficeKind[] = ['docx', 'xlsx', 'pptx', 'pdf'];
 
@@ -52,6 +53,7 @@ export const LIMITS = {
   listMax: 200,
 };
 
+/** German message ids – cleanName gives them in the instance language. */
 const DEFAULT_NAMES: Record<OfficeKind, string> = { docx: 'Neues Dokument', xlsx: 'Neue Tabelle', pptx: 'Neue Präsentation', pdf: 'Neues PDF' };
 
 /** A file name as people give it: trimmed, no path or control characters, and ending in the kind's extension. */
@@ -65,7 +67,7 @@ export function cleanName(raw: unknown, kind: OfficeKind): string {
   s = s.replace(/^\.+/, '').trim();
   const ext = `.${KINDS[kind].ext}`;
   if (s.toLowerCase().endsWith(ext)) s = s.slice(0, -ext.length).trim();
-  if (!s) s = DEFAULT_NAMES[kind];
+  if (!s) s = tApp()(DEFAULT_NAMES[kind]);
   return `${s.slice(0, LIMITS.name - ext.length)}${ext}`;
 }
 
@@ -85,20 +87,20 @@ export interface OfficeCommand {
 const COMMAND_ID = /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/;
 
 function checkParams(v: unknown, at: string, depth = 0): void {
-  if (depth > 8) throw new Error(`${at}: Parameter zu tief verschachtelt`);
+  if (depth > 8) throw new Error(tApp()('{at}: Parameter zu tief verschachtelt', { at }));
   if (Array.isArray(v)) {
-    if (v.length > 10_000) throw new Error(`${at}: zu viele Werte`);
+    if (v.length > 10_000) throw new Error(tApp()('{at}: zu viele Werte', { at }));
     v.forEach((x, i) => checkParams(x, `${at}[${i}]`, depth + 1));
     return;
   }
   if (v && typeof v === 'object') {
     for (const [k, x] of Object.entries(v)) {
-      if (PATH_KEYS.has(k.toLowerCase()) || PATH_KEY_RE.test(k)) throw new Error(`${at}: Parameter „${k}“ ist nicht erlaubt (Dateien und Adressen setzt der Server)`);
+      if (PATH_KEYS.has(k.toLowerCase()) || PATH_KEY_RE.test(k)) throw new Error(tApp()('{at}: Parameter „{key}“ ist nicht erlaubt (Dateien und Adressen setzt der Server)', { at, key: k }));
       checkParams(x, `${at}.${k}`, depth + 1);
     }
     return;
   }
-  if (typeof v === 'string' && v.length > 200_000) throw new Error(`${at}: Text zu lang`);
+  if (typeof v === 'string' && v.length > 200_000) throw new Error(tApp()('{at}: Text zu lang', { at }));
 }
 
 /**
@@ -108,16 +110,16 @@ function checkParams(v: unknown, at: string, depth = 0): void {
 export function cleanCommands(raw: unknown, kind: OfficeKind): OfficeCommand[] {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) throw new Error('commands muss eine Liste sein');
-  if (raw.length > LIMITS.commands) throw new Error(`Höchstens ${LIMITS.commands} Befehle auf einmal`);
+  if (raw.length > LIMITS.commands) throw new Error(tApp()('Höchstens {n} Befehle auf einmal', { n: LIMITS.commands }));
   return raw.map((c, i) => {
-    const at = `Befehl ${i + 1}`;
+    const at = tApp()('Befehl {n}', { n: i + 1 });
     const obj = typeof c === 'string' ? { command: c } : c;
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error(`${at}: erwartet {command, params}`);
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error(tApp()('{at}: erwartet {command, params}', { at }));
     const id = String((obj as any).command ?? (obj as any).tool ?? '').trim();
-    if (!COMMAND_ID.test(id)) throw new Error(`${at}: ungültiger Befehlsname`);
-    if (kind === 'pdf' ? !PDF_TOOLS.test(id) : BLOCKED_PREFIX.test(id)) throw new Error(`${at}: „${id}“ ist hier nicht erlaubt – Öffnen, Speichern und Export übernimmt HyperLevel`);
+    if (!COMMAND_ID.test(id)) throw new Error(tApp()('{at}: ungültiger Befehlsname', { at }));
+    if (kind === 'pdf' ? !PDF_TOOLS.test(id) : BLOCKED_PREFIX.test(id)) throw new Error(tApp()('{at}: „{command}“ ist hier nicht erlaubt – Öffnen, Speichern und Export übernimmt HyperLevel', { at, command: id }));
     const params = (obj as any).params ?? (obj as any).args ?? {};
-    if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error(`${at}: params muss ein Objekt sein`);
+    if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error(tApp()('{at}: params muss ein Objekt sein', { at }));
     checkParams(params, at);
     return { command: id, params: params as Record<string, unknown> };
   });
@@ -127,19 +129,19 @@ export function cleanCommands(raw: unknown, kind: OfficeKind): OfficeCommand[] {
 export function writesToCommands(raw: unknown): OfficeCommand[] {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) throw new Error('writes muss eine Liste sein');
-  if (raw.length > LIMITS.commands) throw new Error(`Höchstens ${LIMITS.commands} Bereiche auf einmal`);
+  if (raw.length > LIMITS.commands) throw new Error(tApp()('Höchstens {n} Bereiche auf einmal', { n: LIMITS.commands }));
   const out: OfficeCommand[] = [];
   raw.forEach((w, i) => {
-    const at = `Bereich ${i + 1}`;
-    if (!w || typeof w !== 'object' || Array.isArray(w)) throw new Error(`${at}: erwartet {range, values}`);
+    const at = tApp()('Bereich {n}', { n: i + 1 });
+    if (!w || typeof w !== 'object' || Array.isArray(w)) throw new Error(tApp()('{at}: erwartet {range, values}', { at }));
     const range = String((w as any).range ?? '').trim().toUpperCase();
-    if (!/^\$?[A-Z]{1,3}\$?\d{1,7}(:\$?[A-Z]{1,3}\$?\d{1,7})?$/.test(range)) throw new Error(`${at}: ungültiger Zellbereich (z. B. A1 oder A1:C3)`);
+    if (!/^\$?[A-Z]{1,3}\$?\d{1,7}(:\$?[A-Z]{1,3}\$?\d{1,7})?$/.test(range)) throw new Error(tApp()('{at}: ungültiger Zellbereich (z. B. A1 oder A1:C3)', { at }));
     const values = (w as any).values;
-    if (!Array.isArray(values) || !values.every((r) => Array.isArray(r))) throw new Error(`${at}: values muss eine Liste von Zeilen sein`);
-    for (const row of values) for (const v of row) if (v !== null && !['string', 'number', 'boolean'].includes(typeof v)) throw new Error(`${at}: Zellwerte müssen Text, Zahl, Wahrheitswert oder leer sein`);
+    if (!Array.isArray(values) || !values.every((r) => Array.isArray(r))) throw new Error(tApp()('{at}: values muss eine Liste von Zeilen sein', { at }));
+    for (const row of values) for (const v of row) if (v !== null && !['string', 'number', 'boolean'].includes(typeof v)) throw new Error(tApp()('{at}: Zellwerte müssen Text, Zahl, Wahrheitswert oder leer sein', { at }));
     const sheet = (w as any).sheet;
     if (sheet !== undefined && sheet !== null && sheet !== '') {
-      if (typeof sheet !== 'string' || sheet.length > 100) throw new Error(`${at}: ungültiger Blattname`);
+      if (typeof sheet !== 'string' || sheet.length > 100) throw new Error(tApp()('{at}: ungültiger Blattname', { at }));
       out.push({ command: 'sheet.activate', params: { sheet } });
     }
     checkParams(values, at);
@@ -165,10 +167,12 @@ export const lockAllows = (l: LockRow | undefined | null, userId: string | null 
   return !a || (!!userId && a.user_id === userId);
 };
 
-export const lockMessage = (l: LockRow) => `${l.user_name || 'Jemand'} bearbeitet die Datei gerade – sie ist bis ${new Date(l.expires_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })} Uhr gesperrt. Schreibgeschützt öffnen oder später erneut versuchen.`;
+export const lockMessage = (l: LockRow, t: STFn = tApp()) =>
+  t('{name} bearbeitet die Datei gerade – sie ist bis {time} Uhr gesperrt. Schreibgeschützt öffnen oder später erneut versuchen.', { name: l.user_name || t('Jemand'), time: new Date(l.expires_at).toLocaleTimeString(t.locale === 'de' ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }) });
 
 /** How a version's author shows in the history. */
 export function authorLabel(v: { author_name: string; author_kind: string }): string {
-  if (v.author_kind === 'agent' && !v.author_name.endsWith('(KI-App)') && !v.author_name.startsWith('KI-Agent')) return `KI-Agent (im Auftrag von ${v.author_name})`;
-  return v.author_name || 'Unbekannt';
+  // The stored names are compared as stored (German); the label reads in the instance language.
+  if (v.author_kind === 'agent' && !v.author_name.endsWith('(KI-App)') && !v.author_name.startsWith('KI-Agent')) return tApp()('KI-Agent (im Auftrag von {name})', { name: v.author_name });
+  return v.author_name || tApp()('Unbekannt');
 }

@@ -164,7 +164,7 @@ describe('versions, draft and publish', () => {
     await t.api.patch(`/api/workflows/${wf.id}`, { trigger: { type: 'contact.created', config: {} }, steps: second.steps.slice(0, 1) });
     const v = (await t.api.get(`/api/workflows/${wf.id}/versions`)).data;
     expect(v.versions.map((x: any) => x.version)).toEqual([3, 2, 1]);
-    expect(v.versions[2].summary).toMatch(/^Erste Version · 1 Schritte/);
+    expect(v.versions[2].summary).toMatch(/^Erste Version · 1 Schritt\b/);
     expect(v.versions[1].summary).toBe('1 Schritt neu');
     expect(v.versions[0].summary).toMatch(/Auslöser geändert/);
     expect(v.versions[0].summary).toMatch(/1 entfernt/);
@@ -205,7 +205,7 @@ describe('versions, draft and publish', () => {
 
   it('summarises differences between versions', () => {
     const step = (id: string, value = '1') => ({ id, type: 'set_variable', rows: [{ name: 'a', value }] });
-    expect(diffSummary(undefined, { trigger: {}, steps: [step('a')] })).toBe('Erste Version · 1 Schritte');
+    expect(diffSummary(undefined, { trigger: {}, steps: [step('a')] })).toBe('Erste Version · 1 Schritt');
     expect(diffSummary({ trigger: { type: 'x' }, steps: [step('a')] }, { trigger: { type: 'x' }, steps: [step('a')] })).toBe('Keine inhaltliche Änderung');
     expect(diffSummary({ trigger: {}, steps: [step('a')] }, { trigger: {}, steps: [step('a', '2'), step('b')] })).toBe('1 Schritt neu · 1 geändert');
     expect(diffSummary({ trigger: {}, steps: [step('a')], settings: {} }, { trigger: {}, steps: [step('a')], settings: { stop_on_error: true } })).toBe('Einstellungen geändert');

@@ -39,17 +39,17 @@ const todayAt = (k: Kit) => Math.min(Date.parse(k.inDays(0, 9)), k.nowMs - 60_00
 export function seedRevenueHistory(k: Kit, products: any[], jobs: Job[]) {
   const spec = REVENUE[k.plan.key];
   if (!spec) return;
-  // one-off work only: the subscription products have their own invoices
-  products = products.filter((p) => !/((Monat|monatlich|Jahr))/.test(p.name));
+  // one-off work only: the subscription products have their own invoices (told apart by the German name of the plan)
+  products = products.filter((p) => !/((Monat|monatlich|Jahr))/.test(p.de ?? p.name));
   // The line items rotate through the price list (not at random), so every month gets a comparable mix and no month is up to luck.
   const line = (m: number, j: number, second = false) => {
     const turn = m * 2 + j * 3 + (second ? 1 : 0);
     if (spec.custom && (!products.length || turn % 10 < 7)) {
       const [name, cents] = spec.custom[turn % spec.custom.length];
-      return { name, qty: 1, price_cents: cents, tax_rate: 19 };
+      return { name: k.t(name), qty: 1, price_cents: cents, tax_rate: k.vat };
     }
     const p = products[turn % products.length];
-    return { name: p.name, qty: 1 + Math.floor(k.rand() * spec.qtyMax), price_cents: p.price_cents, tax_rate: 19 };
+    return { name: p.name, qty: 1 + Math.floor(k.rand() * spec.qtyMax), price_cents: p.price_cents, tax_rate: k.vat };
   };
   for (let m = 11; m >= 0; m--) {
     const n = Math.round(spec.perMonth * 1.075 ** (11 - m));
@@ -86,7 +86,7 @@ export function subscription(k: Kit, jobs: Job[], product: { name: string; price
   }
   let next = d;
   while (Date.parse(next) <= Math.max(todayAt(k), Date.now())) next = advanceDate(next, interval, day);
-  const items = [{ name: product.name, qty: o.qty ?? 1, price_cents: product.price_cents, tax_rate: 19 }];
+  const items = [{ name: product.name, qty: o.qty ?? 1, price_cents: product.price_cents, tax_rate: k.vat }];
   let parentId = '';
   jobs.push({
     at: startIso,
@@ -120,7 +120,7 @@ export function subscription(k: Kit, jobs: Job[], product: { name: string; price
 /** Maintenance contracts, coaching memberships, coffee subscriptions: a handful of monthly subscriptions per business. */
 export function seedSubscriptions(k: Kit, products: any[], jobs: Job[]) {
   const spec = SUBSCRIPTIONS[k.plan.key];
-  const p = spec && products.find((x) => x.name === spec.product);
+  const p = spec && products.find((x) => (x.de ?? x.name) === spec.product);
   if (!spec || !p) return;
   for (let i = 0; i < spec.n; i++) {
     const startBack = 20 + Math.round(300 * (1 - (i / spec.n) ** 0.7));
@@ -151,7 +151,7 @@ export async function seedDealHistory(k: Kit, pipe: any, deals: DealRef[]) {
       const [kind, min, max] = pickOf(k, kinds);
       const value = Math.round((min + k.rand() * (max - min)) / 10) * 10;
       const c = k.contact(Math.floor(k.rand() * 1000));
-      const name = `${kind} – ${whoOf(c)}`;
+      const name = `${k.t(kind)} – ${whoOf(c)}`;
       const roll = k.rand();
       const status = roll < pWon ? 'won' : roll < pWon + pLost ? 'lost' : 'open';
       const stage = status === 'won' ? last : stages[Math.floor(k.rand() * (stages.length - 1))];
@@ -182,14 +182,14 @@ export async function seedDealHistory(k: Kit, pipe: any, deals: DealRef[]) {
  */
 export async function seedSaasBook(k: Kit, products: any[], pipe: any, jobs: Job[]): Promise<DealRef[]> {
   const refs: DealRef[] = [];
-  const by = (prefix: string) => products.find((p) => p.name.startsWith(prefix));
+  const by = (prefix: string) => products.find((p) => (p.de ?? p.name).startsWith(prefix));
   const tiers = { starter: by('Taktwerk Starter'), team: by('Taktwerk Team (Monat)'), business: by('Taktwerk Business (Monat)'), teamY: by('Taktwerk Team (Jahr)'), businessY: by('Taktwerk Business (Jahr)') };
   if (!pipe || Object.values(tiers).some((t) => !t)) return refs;
   const stage = (id: string) => pipe.stages.find((s: any) => s.id === id)?.id ?? pipe.stages[0].id;
   const tagsOf = (c: any, extra: string[]) => [...new Set([...(Array.isArray(c.tags) ? c.tags : []), ...extra])];
   const ENDED: Record<number, number> = { 3: 205, 9: 140, 15: 26, 22: 12, 31: 3 };
   const N = 40;
-  const company = (i: number) => CUSTOMER_POOL[(i * 7 + 3) % CUSTOMER_POOL.length];
+  const company = (i: number) => k.t(CUSTOMER_POOL[(i * 7 + 3) % CUSTOMER_POOL.length]);
   const planTag = { starter: 'plan:solo', team: 'plan:team', business: 'plan:agency' } as const;
   const today = todayAt(k);
 
@@ -234,7 +234,7 @@ export async function seedSaasBook(k: Kit, products: any[], pipe: any, jobs: Job
       await k.call('PATCH', `/api/contacts/${c.id}`, { tags: tagsOf(c, [tag]) });
       // the plan's own ten deals (demo-seed-data.ts) are the open trials and the first waiting-list entries
       const planned = k.plan.deals[tag === TAG.trial ? i : 8 + i];
-      const name = planned ? planned[0] : `${company(from + i + 11)} – ${tag === TAG.trial ? 'Testphase' : 'Warteliste'}`;
+      const name = planned ? planned[0] : `${company(from + i + 11)} – ${tag === TAG.trial ? k.t('Testphase') : k.t('Warteliste')}`;
       const value = planned ? planned[1] : tag === TAG.trial ? [1188, 4788, 1188, 588, 4788][i % 5] : [588, 1188, 2388][i % 3];
       const o = await k.call('POST', '/api/opportunities', { contact_id: c.id, pipeline_id: pipe.id, stage_id: stage(st), name, value, source: pickOf(k, k.plan.sources) });
       if (!o?.id) continue;
@@ -246,7 +246,7 @@ export async function seedSaasBook(k: Kit, products: any[], pipe: any, jobs: Job
   }
   for (let i = 0; i < 7; i++) {
     const c = k.contact(N + 14 + i);
-    const name = `${company(N + i + 20)} – Testphase beendet`;
+    const name = `${company(N + i + 20)} – ${k.t('Testphase beendet')}`;
     const o = await k.call('POST', '/api/opportunities', { contact_id: c.id, pipeline_id: pipe.id, stage_id: stage(STAGE.trial), name, value: [588, 1188, 1188, 4788][i % 4], status: 'lost', lost_reason: DEFAULT_LOST_REASONS[(i + 2) % DEFAULT_LOST_REASONS.length] });
     if (!o?.id) continue;
     const back = 20 + i * 41;

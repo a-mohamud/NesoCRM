@@ -7,6 +7,7 @@ import { activeTypes, askableTypes, CATALOG, cleanBaseUrl, datasetName, isType, 
 import { recall } from '../services/cognee/recall.js';
 import { getSettings, getState, itemCounts, pendingDeletions, resetCursor, saveSettings } from '../services/cognee/store.js';
 import { queuePurge, reconcile } from '../services/cognee/sync.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Wissensgedächtnis (Cognee): the connection (agency), the opt-ins and the governance status (per sub-account), asking
@@ -106,11 +107,11 @@ const canRemember = (ctx: Ctx) => {
 };
 
 const boolOf = (v: unknown, name: string): boolean => {
-  if (typeof v !== 'boolean') throw bad(`${name}: ja oder nein`);
+  if (typeof v !== 'boolean') throw bad(tApp()('{name}: ja oder nein', { name }));
   return v;
 };
 
-export function settingsOut(app: App, loc: string) {
+export function settingsOut(app: App, loc: string, t: STFn = tApp()) {
   const s = getSettings(app, loc);
   const conn = readConn(app);
   return {
@@ -118,7 +119,7 @@ export function settingsOut(app: App, loc: string) {
     types: s.types,
     redact: s.redact,
     members_ask: s.members_ask,
-    catalog: TYPES.map((t) => ({ key: t, label: CATALOG[t].label, description: CATALOG[t].description, warning: CATALOG[t].warning ?? '', personal: CATALOG[t].personal, area: CATALOG[t].area, default_on: CATALOG[t].defaultOn, redact_default: CATALOG[t].redactDefault })),
+    catalog: TYPES.map((k) => ({ key: k, label: t(CATALOG[k].label), description: t(CATALOG[k].description), warning: CATALOG[k].warning ? t(CATALOG[k].warning) : '', personal: CATALOG[k].personal, area: CATALOG[k].area, default_on: CATALOG[k].defaultOn, redact_default: CATALOG[k].redactDefault })),
     connection: { configured: !!conn, locations_may_enable: conn ? conn.locations_may_enable : true, account: readOverride(app, loc) ? 'override' : 'agency' },
   };
 }
@@ -132,9 +133,9 @@ export function applySettings(app: App, ctx: Ctx | undefined, loc: string, body:
   if (b.members_ask !== undefined) next.members_ask = boolOf(b.members_ask, 'members_ask');
   for (const [field, target] of [['types', next.types], ['redact', next.redact]] as const) {
     if (b[field] === undefined) continue;
-    if (!b[field] || typeof b[field] !== 'object' || Array.isArray(b[field])) throw bad(`${field}: Objekt erwartet`);
+    if (!b[field] || typeof b[field] !== 'object' || Array.isArray(b[field])) throw bad(tApp()('{field}: Objekt erwartet', { field }));
     for (const [k, v] of Object.entries(b[field])) {
-      if (!isType(k)) throw bad(`Unbekannter Datentyp: ${str(k, 'Typ', { max: 40 })}`);
+      if (!isType(k)) throw bad(tApp()('Unbekannter Datentyp: {type}', { type: str(k, 'Typ', { max: 40 }) }));
       target[k] = boolOf(v, `${field}.${k}`);
     }
   }
@@ -148,40 +149,42 @@ export function applySettings(app: App, ctx: Ctx | undefined, loc: string, body:
   saveSettings(app, loc, next, ctx?.user?.id ?? null);
   // A changed redaction rule applies to what is already in Cognee too: the records are sent again in their new form.
   for (const t of redactChanged) resetCursor(app, loc, t);
+  const t = tLoc(app, loc);
+  const labels = (list: CogneeType[]) => list.map((k) => t(CATALOG[k].label)).join(', ');
   const parts = [
-    next.enabled !== cur.enabled && (next.enabled ? 'Wissensgedächtnis eingeschaltet' : 'Wissensgedächtnis ausgeschaltet'),
-    on.length && `Daten freigegeben: ${on.map((t) => CATALOG[t].label).join(', ')}`,
-    off.length && `Freigabe beendet: ${off.map((t) => CATALOG[t].label).join(', ')}`,
-    redactChanged.length && `Schwärzung geändert: ${redactChanged.map((t) => `${CATALOG[t].label} ${next.redact[t] ? 'an' : 'aus'}`).join(', ')}`,
-    next.members_ask !== cur.members_ask && `Fragen für Mitglieder ${next.members_ask ? 'erlaubt' : 'gesperrt'}`,
+    next.enabled !== cur.enabled && (next.enabled ? t('Wissensgedächtnis eingeschaltet') : t('Wissensgedächtnis ausgeschaltet')),
+    on.length && t('Daten freigegeben: {types}', { types: labels(on) }),
+    off.length && t('Freigabe beendet: {types}', { types: labels(off) }),
+    redactChanged.length && t('Schwärzung geändert: {changes}', { changes: redactChanged.map((k) => `${t(CATALOG[k].label)} ${next.redact[k] ? t('an') : t('aus')}`).join(', ') }),
+    next.members_ask !== cur.members_ask && (next.members_ask ? t('Fragen für Mitglieder erlaubt') : t('Fragen für Mitglieder gesperrt')),
   ].filter(Boolean);
   if (parts.length) app.services.audit?.({ ctx, action: 'cognee.settings', locationId: loc, summary: parts.join(' · ') });
   // Types that stopped being shared but still have data in Cognee: the UI offers to delete it.
   const counts = itemCounts(app, loc);
   const offer = TYPES.filter((t) => !after.has(t) && (counts[t] > 0 || getState(app, loc, t).dataset_id !== ''));
-  return { settings: settingsOut(app, loc), turned_on: on, turned_off: off, offer_delete: offer };
+  return { settings: settingsOut(app, loc, ctx ? tCtx(ctx) : t), turned_on: on, turned_off: off, offer_delete: offer };
 }
 
-export function governanceStatus(app: App, loc: string) {
+export function governanceStatus(app: App, loc: string, t: STFn = tApp()) {
   const s = getSettings(app, loc);
   const conn = readConn(app);
   const counts = itemCounts(app, loc);
   const failing = app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM cognee_deletions WHERE location_id = ? AND attempts > 0', loc)!.n;
-  const types = TYPES.map((t) => {
-    const st = getState(app, loc, t);
-    const c = CATALOG[t];
+  const types = TYPES.map((k) => {
+    const st = getState(app, loc, k);
+    const c = CATALOG[k];
     return {
-      key: t,
-      label: c.label,
-      description: c.description,
-      warning: c.warning ?? '',
+      key: k,
+      label: t(c.label),
+      description: t(c.description),
+      warning: c.warning ? t(c.warning) : '',
       personal: c.personal,
-      enabled: s.types[t],
-      active: s.enabled && s.types[t],
-      redact: s.redact[t],
-      items: counts[t],
-      dataset: datasetName(loc, t),
-      has_data: counts[t] > 0 || st.dataset_id !== '',
+      enabled: s.types[k],
+      active: s.enabled && s.types[k],
+      redact: s.redact[k],
+      items: counts[k],
+      dataset: datasetName(loc, k),
+      has_data: counts[k] > 0 || st.dataset_id !== '',
       last_sync_at: st.last_sync_at,
       last_error: st.last_error,
       last_error_at: st.last_error_at,
@@ -195,22 +198,22 @@ export function governanceStatus(app: App, loc: string) {
   if (conn && posture?.state === 'open') {
     warnings.push({
       level: 'critical',
-      text: `Der Cognee-Server antwortet ohne Anmeldung – die Zugriffskontrolle (ENABLE_BACKEND_ACCESS_CONTROL=true) ist aus, die Daten verschiedener Sub-Accounts liegen dort nicht getrennt. ${conn.allow_open_server ? 'Die Agentur hat das Übertragen trotzdem erlaubt.' : 'Es wird nichts übertragen, bis das behoben ist.'}`,
+      text: `${t('Der Cognee-Server antwortet ohne Anmeldung – die Zugriffskontrolle (ENABLE_BACKEND_ACCESS_CONTROL=true) ist aus, die Daten verschiedener Sub-Accounts liegen dort nicht getrennt.')} ${conn.allow_open_server ? t('Die Agentur hat das Übertragen trotzdem erlaubt.') : t('Es wird nichts übertragen, bis das behoben ist.')}`,
     });
   } else if (conn && (!posture || posture.state === 'unknown')) {
-    warnings.push({ level: 'warning', text: `Ob die Zugriffskontrolle auf dem Cognee-Server aktiv ist, konnte nicht geprüft werden. ${ACCESS_CONTROL_HINT}` });
+    warnings.push({ level: 'warning', text: `${t('Ob die Zugriffskontrolle auf dem Cognee-Server aktiv ist, konnte nicht geprüft werden.')} ${t(ACCESS_CONTROL_HINT)}` });
   }
-  if (s.enabled && !conn) warnings.push({ level: 'warning', text: 'Der Cognee-Server ist noch nicht eingerichtet – die Agentur trägt ihn unter Agentur → Integrationen → Einrichtung ein. Bis dahin wird nichts übertragen.' });
+  if (s.enabled && !conn) warnings.push({ level: 'warning', text: t('Der Cognee-Server ist noch nicht eingerichtet – die Agentur trägt ihn unter Agentur → Integrationen → Einrichtung ein. Bis dahin wird nichts übertragen.') });
   const personal = types.filter((t) => t.active && t.personal).map((t) => t.label);
-  if (personal.length) warnings.push({ level: 'info', text: `Personenbezogene Daten werden geteilt: ${personal.join(', ')}. Auftragsverarbeitung und Rechtsgrundlage sollten geklärt sein.` });
-  if (failing) warnings.push({ level: 'warning', text: `${failing} Löschung(en) in Cognee sind noch nicht durch – sie werden automatisch wiederholt.` });
+  if (personal.length) warnings.push({ level: 'info', text: t('Personenbezogene Daten werden geteilt: {types}. Auftragsverarbeitung und Rechtsgrundlage sollten geklärt sein.', { types: personal.join(', ') }) });
+  if (failing) warnings.push({ level: 'warning', text: t.plural(failing, { one: '{n} Löschung in Cognee ist noch nicht durch – sie wird automatisch wiederholt.', other: '{n} Löschungen in Cognee sind noch nicht durch – sie werden automatisch wiederholt.' }) });
   // Our own lines carry a summary; the generic "route was called" lines of the audit hook do not and are left out here.
   const audit = app.db.all(`SELECT at, action, actor, summary FROM audit_log WHERE location_id = ? AND action LIKE 'cognee.%' AND summary != '' ORDER BY at DESC LIMIT 12`, loc);
   return {
     enabled: s.enabled,
     members_ask: s.members_ask,
     connection: conn ? { configured: true, account: readOverride(app, loc) ? 'override' : 'agency', last_test_ok: conn.last_test?.ok ?? null } : { configured: false },
-    access_control: { state: posture?.state ?? 'unknown', reason: posture?.reason ?? '', checked_at: posture?.at ?? null, hint: ACCESS_CONTROL_HINT },
+    access_control: { state: posture?.state ?? 'unknown', reason: posture?.reason ?? '', checked_at: posture?.at ?? null, hint: t(ACCESS_CONTROL_HINT) },
     types,
     pending_deletions: pendingDeletions(app, loc),
     failing_deletions: failing,
@@ -238,7 +241,7 @@ interface Step {
 }
 
 /** Health, access control, login, dataset list – each its own step, so the answer says where it fails. */
-export async function testConnection(app: App, c: Pick<AgencyConn, 'base_url' | 'allow_private'> & { auth_mode: AuthMode; email: string; secret: string }) {
+export async function testConnection(app: App, c: Pick<AgencyConn, 'base_url' | 'allow_private'> & { auth_mode: AuthMode; email: string; secret: string }, t: STFn = tApp()) {
   const client = new CogneeClient(clientOptions(app, c));
   const steps: Step[] = [];
   let version = '';
@@ -248,32 +251,32 @@ export async function testConnection(app: App, c: Pick<AgencyConn, 'base_url' | 
   try {
     const h = await client.health();
     version = h.version;
-    steps.push({ key: 'health', label: 'Server erreichbar', ok: h.ok, detail: h.ok ? `Cognee ${h.version || ''} ist bereit (${h.detail}).`.replace('  ', ' ') : `Cognee meldet sich, ist aber nicht bereit: ${h.detail}` });
+    steps.push({ key: 'health', label: t('Server erreichbar'), ok: h.ok, detail: h.ok ? t('Cognee {version} ist bereit ({detail}).', { version: h.version || '', detail: h.detail }).replace('  ', ' ') : t('Cognee meldet sich, ist aber nicht bereit: {detail}', { detail: h.detail }) });
   } catch (e) {
-    fail('health', 'Server erreichbar', e);
+    fail('health', t('Server erreichbar'), e);
   }
   if (steps[0].ok) {
     const p = await client.probeOpen();
     posture = { state: p.state, reason: p.reason, at: now() };
     steps.push({
       key: 'access',
-      label: 'Zugriffskontrolle',
+      label: t('Zugriffskontrolle'),
       ok: p.state !== 'open',
       warn: p.state === 'unknown',
-      detail: p.state === 'closed' ? 'Der Server verlangt eine Anmeldung (ENABLE_BACKEND_ACCESS_CONTROL ist an).' : p.state === 'open' ? `${p.reason} ENABLE_BACKEND_ACCESS_CONTROL=true setzen – sonst teilen sich alle Sub-Accounts einen Graphen.` : `${p.reason} ${ACCESS_CONTROL_HINT}`,
+      detail: p.state === 'closed' ? t('Der Server verlangt eine Anmeldung (ENABLE_BACKEND_ACCESS_CONTROL ist an).') : p.state === 'open' ? `${t(p.reason)} ${t('ENABLE_BACKEND_ACCESS_CONTROL=true setzen – sonst teilen sich alle Sub-Accounts einen Graphen.')}` : `${t(p.reason)} ${t(ACCESS_CONTROL_HINT)}`,
     });
     try {
       const me = await client.me();
-      steps.push({ key: 'login', label: 'Anmeldung', ok: true, detail: `Angemeldet${me.email ? ` als ${me.email}` : ''}.` });
+      steps.push({ key: 'login', label: t('Login'), ok: true, detail: me.email ? t('Angemeldet als {email}.', { email: me.email }) : t('Angemeldet.') });
       try {
         const list = await client.listDatasets();
         datasets = { total: list.length, gohigh: list.filter((d) => d.name.startsWith('gh_')).length };
-        steps.push({ key: 'datasets', label: 'Datasets lesen', ok: true, detail: `${list.length} Dataset(s) sichtbar, davon ${datasets.gohigh} von HyperLevel.` });
+        steps.push({ key: 'datasets', label: t('Datasets lesen'), ok: true, detail: t('{total} Dataset(s) sichtbar, davon {own} von HyperLevel.', { total: list.length, own: datasets.gohigh }) });
       } catch (e) {
-        fail('datasets', 'Datasets lesen', e);
+        fail('datasets', t('Datasets lesen'), e);
       }
     } catch (e) {
-      fail('login', 'Anmeldung', e);
+      fail('login', t('Login'), e);
     }
   }
   return { ok: steps.length >= 4 && steps.every((s) => s.ok || s.warn), steps, version, posture, datasets };
@@ -327,11 +330,12 @@ export const cogneeModule: Module = {
       sessionOnly(ctx);
       const cur = readConn(app);
       const c = readConnBody(ctx.body ?? {}, cur);
-      const changed = [!cur || cur.base_url !== c.base_url ? 'Adresse' : '', !cur || cur.auth_mode !== c.auth_mode || cur.email !== c.email || cur.secret !== c.secret ? 'Zugang' : '', cur && cur.locations_may_enable !== c.locations_may_enable ? 'Sub-Accounts dürfen einschalten' : '', cur && cur.allow_open_server !== c.allow_open_server ? 'Offener Server erlaubt' : ''].filter(Boolean);
+      const t = tApp();
+      const changed = [!cur || cur.base_url !== c.base_url ? t('Adresse') : '', !cur || cur.auth_mode !== c.auth_mode || cur.email !== c.email || cur.secret !== c.secret ? t('Zugang') : '', cur && cur.locations_may_enable !== c.locations_may_enable ? t('Sub-Accounts dürfen einschalten') : '', cur && cur.allow_open_server !== c.allow_open_server ? t('Offener Server erlaubt') : ''].filter(Boolean);
       // A new address or login is a new server: what was learned about the old one does not carry over.
       const same = cur && cur.base_url === c.base_url;
       writeConn(app, { ...c, posture: same ? cur.posture : undefined, last_test: same ? cur.last_test : undefined, updated_at: now() });
-      app.services.audit?.({ ctx, action: 'cognee.connection', summary: `Verbindung gespeichert${changed.length ? ` (${changed.join(', ')})` : ''}` });
+      app.services.audit?.({ ctx, action: 'cognee.connection', summary: changed.length ? t('Verbindung gespeichert ({changes})', { changes: changed.join(', ') }) : t('Verbindung gespeichert') });
       try {
         await refreshPosture(app, readConn(app)!);
       } catch {
@@ -345,10 +349,10 @@ export const cogneeModule: Module = {
       const sharing = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM cognee_settings WHERE enabled = 1')!.n;
       const data = db.get<{ n: number }>('SELECT (SELECT COUNT(*) FROM cognee_items) + (SELECT COUNT(*) FROM cognee_deletions) AS n')!.n;
       if ((sharing || data) && ctx.query.get('force') !== '1') {
-        throw new HttpError(409, `Noch ${sharing} Sub-Account(s) teilen Daten und ${data} Einträge/Löschungen sind offen. Erst dort das Gedächtnis ausschalten und „Daten in Cognee löschen“ wählen – sonst bleiben die Daten auf dem Server und lassen sich nicht mehr löschen.`);
+        throw new HttpError(409, tCtx(ctx)('Noch {sharing} Sub-Account(s) teilen Daten und {data} Einträge/Löschungen sind offen. Erst dort das Gedächtnis ausschalten und „Daten in Cognee löschen“ wählen – sonst bleiben die Daten auf dem Server und lassen sich nicht mehr löschen.', { sharing, data }));
       }
       clearConn(app);
-      app.services.audit?.({ ctx, action: 'cognee.connection', summary: 'Verbindung entfernt' });
+      app.services.audit?.({ ctx, action: 'cognee.connection', summary: tApp()('Verbindung entfernt') });
       return { ok: true };
     });
 
@@ -359,7 +363,7 @@ export const cogneeModule: Module = {
       const given = Object.keys(body).length > 0;
       const c = given ? readConnBody(body, cur) : cur;
       if (!c) throw bad('Erst die Adresse und den Zugang des Cognee-Servers eintragen.');
-      const r = await testConnection(app, c);
+      const r = await testConnection(app, c, tCtx(ctx));
       const saved = readConn(app);
       // A test of the saved connection is remembered (and its access-control finding is what the status panels show).
       if (!given && saved) writeConn(app, { ...saved, posture: r.posture ?? saved.posture, last_test: { at: now(), ok: r.ok, summary: r.steps.map((s) => `${s.label}: ${s.ok ? 'ok' : 'Fehler'}`).join(', '), version: r.version || undefined } });
@@ -380,7 +384,7 @@ export const cogneeModule: Module = {
       const email = auth_mode === 'password' ? str(b.email, 'E-Mail', { required: true, max: 200 }).toLowerCase() : '';
       const secret = auth_mode === 'password' ? str(b.password, 'Passwort', { required: true, max: 300 }) : str(b.api_key, 'API-Schlüssel', { required: true, max: 500 });
       writeOverride(app, { location_id: ctx.params.id, auth_mode, email, secret, hint: secretHint(secret) });
-      app.services.audit?.({ ctx, action: 'cognee.account', locationId: ctx.params.id, summary: 'Eigener Cognee-Zugang für diesen Sub-Account gesetzt' });
+      app.services.audit?.({ ctx, action: 'cognee.account', locationId: ctx.params.id, summary: tLoc(app, ctx.params.id)('Eigener Cognee-Zugang für diesen Sub-Account gesetzt') });
       return { ok: true, account: 'override', email, hint: secretHint(secret) };
     });
 
@@ -389,7 +393,7 @@ export const cogneeModule: Module = {
       const busy = db.get<{ n: number }>('SELECT (SELECT COUNT(*) FROM cognee_items WHERE location_id = ?) + (SELECT COUNT(*) FROM cognee_deletions WHERE location_id = ?) AS n', ctx.params.id, ctx.params.id)!.n;
       if (busy) throw new HttpError(409, 'In Cognee liegen noch Daten dieses Sub-Accounts. Erst „Daten in Cognee löschen“, dann den Zugang entfernen.');
       db.run('DELETE FROM cognee_accounts WHERE location_id = ?', ctx.params.id);
-      app.services.audit?.({ ctx, action: 'cognee.account', locationId: ctx.params.id, summary: 'Eigener Cognee-Zugang entfernt' });
+      app.services.audit?.({ ctx, action: 'cognee.account', locationId: ctx.params.id, summary: tLoc(app, ctx.params.id)('Eigener Cognee-Zugang entfernt') });
       return { ok: true };
     });
 
@@ -400,7 +404,7 @@ export const cogneeModule: Module = {
       if (!acct) throw bad('Erst den Cognee-Server der Agentur einrichten.');
       const o = readOverride(app, ctx.params.id);
       const conn = readConn(app)!;
-      return testConnection(app, o ? { ...conn, auth_mode: o.auth_mode, email: o.email, secret: o.secret } : conn);
+      return testConnection(app, o ? { ...conn, auth_mode: o.auth_mode, email: o.email, secret: o.secret } : conn, tCtx(ctx));
     });
 
     // --- agency: all sub-accounts at a glance -------------------------------------------------------------------------------
@@ -491,7 +495,10 @@ export const cogneeModule: Module = {
       const mode = ctx.query.get('mode') === 'answer' && !compact ? 'answer' : 'snippets';
       const out = await upstream(() => recall(app, acct.client, { query: ctx.query.get('q') ?? '', types, limit, mode, compact }));
       // Counts, never the question or the passages.
-      app.services.audit?.({ ctx, action: 'cognee.search', route: 'GET /api/cognee/recall', locationId: loc, summary: `Gedächtnis befragt: ${out.results.length} Treffer in ${out.searched.map((x) => CATALOG[x].label).join(', ') || 'nichts durchsucht'}${out.answer ? ', mit Antwort' : ''}` });
+      app.services.audit?.({ ctx, action: 'cognee.search', route: 'GET /api/cognee/recall', locationId: loc, summary: (() => {
+        const t = tLoc(app, loc);
+        return t('Gedächtnis befragt: {n} Treffer in {types}', { n: out.results.length, types: out.searched.map((x) => t(CATALOG[x].label)).join(', ') || t('nichts durchsucht') }) + (out.answer ? t(', mit Antwort') : '');
+      })() });
       return out;
     });
 
@@ -504,7 +511,7 @@ export const cogneeModule: Module = {
       const text = str(ctx.body?.text, 'Text', { required: true, max: MEMORY_MAX });
       const row = { id: id(), location_id: loc, text, created_by: ctx.user?.id ?? null, created_by_name: ctx.user?.name ?? '', created_at: now(), updated_at: now() };
       db.insert('cognee_memories', row);
-      app.services.audit?.({ ctx, action: 'cognee.remember', locationId: loc, entityId: row.id, summary: `Hinweis zum Merken gespeichert (${text.length} Zeichen)` });
+      app.services.audit?.({ ctx, action: 'cognee.remember', locationId: loc, entityId: row.id, summary: tLoc(app, loc)('Hinweis zum Merken gespeichert ({n} Zeichen)', { n: text.length }) });
       kick(loc);
       return { ok: true, id: row.id, queued: true };
     });
@@ -519,7 +526,7 @@ export const cogneeModule: Module = {
       notReadOnly(ctx);
       if (!canRemember(ctx)) throw new HttpError(403, 'Kein Zugriff auf die gemerkten Hinweise.');
       if (!db.run('DELETE FROM cognee_memories WHERE id = ? AND location_id = ?', ctx.params.id, ctx.locationId).changes) throw notFound('Hinweis nicht gefunden');
-      app.services.audit?.({ ctx, action: 'cognee.forget', locationId: ctx.locationId, entityId: ctx.params.id, summary: 'Gemerkten Hinweis gelöscht' });
+      app.services.audit?.({ ctx, action: 'cognee.forget', locationId: ctx.locationId, entityId: ctx.params.id, summary: tLoc(app, ctx.locationId)('Gemerkten Hinweis gelöscht') });
       // The sync notices the missing record and queues the removal in Cognee.
       kick(ctx.locationId);
       return { ok: true };
@@ -527,7 +534,7 @@ export const cogneeModule: Module = {
 
     // --- sub-account: governance (area Einstellungen, see core/permissions.ts) --------------------------------------------
 
-    router.get('/api/cognee/admin/settings', 'location', (ctx) => settingsOut(app, ctx.locationId));
+    router.get('/api/cognee/admin/settings', 'location', (ctx) => settingsOut(app, ctx.locationId, tCtx(ctx)));
 
     router.put('/api/cognee/admin/settings', 'location', (ctx) => {
       sessionOnly(ctx);
@@ -536,7 +543,7 @@ export const cogneeModule: Module = {
       return r;
     });
 
-    router.get('/api/cognee/admin/status', 'location', (ctx) => governanceStatus(app, ctx.locationId));
+    router.get('/api/cognee/admin/status', 'location', (ctx) => governanceStatus(app, ctx.locationId, tCtx(ctx)));
 
     router.post('/api/cognee/admin/sync', 'location', (ctx) => {
       sessionOnly(ctx);
@@ -544,7 +551,7 @@ export const cogneeModule: Module = {
       if (!s.enabled) throw bad('Das Wissensgedächtnis ist nicht eingeschaltet.');
       if (!accountFor(app, ctx.locationId)) throw bad('Der Cognee-Server ist noch nicht eingerichtet.');
       // "Alles neu abgleichen": every record is looked at again, unchanged ones cost nothing.
-      app.services.audit?.({ ctx, action: 'cognee.sync', locationId: ctx.locationId, summary: ctx.body?.full ? 'Vollständigen Abgleich angestoßen' : 'Abgleich angestoßen' });
+      app.services.audit?.({ ctx, action: 'cognee.sync', locationId: ctx.locationId, summary: ctx.body?.full ? tLoc(app, ctx.locationId)('Vollständigen Abgleich angestoßen') : tLoc(app, ctx.locationId)('Abgleich angestoßen') });
       kick(ctx.locationId, { full: !!ctx.body?.full });
       return { ok: true, started: true };
     });
@@ -558,9 +565,9 @@ export const cogneeModule: Module = {
       const active = new Set(activeTypes(getSettings(app, loc)));
       // Deleting what is still shared would only fill it again.
       const still = (want as CogneeType[]).filter((t) => active.has(t));
-      if (still.length) throw bad(`Erst die Freigabe beenden: ${still.map((t) => CATALOG[t].label).join(', ')}`);
+      if (still.length) throw bad(tCtx(ctx)('Erst die Freigabe beenden: {types}', { types: still.map((k) => tCtx(ctx)(CATALOG[k].label)).join(', ') }));
       const r = queuePurge(app, loc, want as CogneeType[]);
-      app.services.audit?.({ ctx, action: 'cognee.purge', locationId: loc, summary: `Daten in Cognee löschen angestoßen: ${r.types.map((t) => CATALOG[t].label).join(', ')} (${r.items} Einträge)` });
+      app.services.audit?.({ ctx, action: 'cognee.purge', locationId: loc, summary: tLoc(app, loc)('Daten in Cognee löschen angestoßen: {types} ({n} Einträge)', { types: r.types.map((k) => tLoc(app, loc)(CATALOG[k].label)).join(', '), n: r.items }) });
       kick(loc);
       return { ok: true, ...r };
     };

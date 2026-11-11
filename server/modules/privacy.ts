@@ -6,6 +6,7 @@ import { extFor } from '../core/files.js';
 import { normalizeEmail, now } from '../core/util.js';
 import { contactFiles } from '../services/contacts.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * GDPR helpers (Art. 15 access, Art. 17 erasure) for one contact – across every module:
@@ -140,7 +141,7 @@ export function exportContact(app: App, locationId: string, contactId: string, v
     location: { id: locationId, name: app.location(locationId)?.name ?? '' },
     contact: clean(contact),
     data,
-    note: 'Auskunft nach Art. 15 DSGVO: alle gespeicherten Daten zu dieser Person in diesem Sub-Account. Dateien sind als Liste enthalten.',
+    note: tLoc(app, locationId)('Auskunft nach Art. 15 DSGVO: alle gespeicherten Daten zu dieser Person in diesem Sub-Account. Dateien sind als Liste enthalten.'),
   };
 }
 
@@ -185,7 +186,7 @@ export function eraseContact(app: App, locationId: string, contactId: string) {
       for (const a of affs) {
         if (has('affiliate_sessions')) db.run('DELETE FROM affiliate_sessions WHERE affiliate_id = ?', a.id);
         if (has('affiliate_login_tokens')) db.run('DELETE FROM affiliate_login_tokens WHERE affiliate_id = ?', a.id);
-        db.run(`UPDATE affiliates SET name = 'Gelöscht (DSGVO)', email = ?, iban = '', paypal_email = '', login_ip_hash = '', contact_id = NULL, status = 'disabled' WHERE id = ?`, `deleted-${a.id}@invalid`, a.id);
+        db.run(`UPDATE affiliates SET name = ?, email = ?, iban = '', paypal_email = '', login_ip_hash = '', contact_id = NULL, status = 'disabled' WHERE id = ?`, tLoc(app, locationId)('Gelöscht (DSGVO)'), `deleted-${a.id}@invalid`, a.id);
         count('affiliates', 1);
       }
     }
@@ -197,14 +198,16 @@ export function eraseContact(app: App, locationId: string, contactId: string) {
     // The audit log keeps that something happened, not who it was about: entries about the contact itself and every summary that
     // names the person ("Termin … – Dora Muster", "Zertifikat … für Dora Muster", the e-mail address, the phone number).
     const named = mentionsOf(contact);
+    // The redaction marker, in the sub-account's language.
+    const gone = tLoc(app, locationId)('[gelöscht]');
     const anyNamed = named.map(() => ' OR instr(lower(summary), lower(?)) > 0').join('');
-    count('audit_log', db.run(`UPDATE audit_log SET summary = '[gelöscht]' WHERE location_id = ? AND summary != '[gelöscht]' AND (entity_id = ?${anyNamed})`, locationId, contactId, ...named).changes);
+    count('audit_log', db.run(`UPDATE audit_log SET summary = ? WHERE location_id = ? AND summary != ? AND (entity_id = ?${anyNamed})`, gone, locationId, gone, contactId, ...named).changes);
     // Timelines of other records (the company the contact was linked to, the member a message went to) keep the event, not the name.
     for (const t of ['activities', 'record_activities']) {
       if (!has(t)) continue;
       for (const m of named) {
-        count(t, db.run(`UPDATE "${t}" SET summary = replace(summary, ?, '[gelöscht]') WHERE location_id = ? AND instr(summary, ?) > 0`, m, locationId, m).changes);
-        count(t, db.run(`UPDATE "${t}" SET summary = '[gelöscht]' WHERE location_id = ? AND instr(lower(summary), lower(?)) > 0`, locationId, m).changes);
+        count(t, db.run(`UPDATE "${t}" SET summary = replace(summary, ?, ?) WHERE location_id = ? AND instr(summary, ?) > 0`, m, gone, locationId, m).changes);
+        count(t, db.run(`UPDATE "${t}" SET summary = ? WHERE location_id = ? AND instr(lower(summary), lower(?)) > 0`, gone, locationId, m).changes);
       }
     }
     // Notes, activity and properties the relational CRM keeps per record (object "contact").

@@ -4,6 +4,7 @@ import { bad, notFound, text } from '../core/http.js';
 import { now, token } from '../core/util.js';
 import { icsFeed, parseIcsBusy } from '../services/ical.js';
 import { safeFetch } from '../services/net.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Two-way-ish calendar sync without OAuth apps:
@@ -20,7 +21,7 @@ export function importUrl(raw: string): string {
   try {
     url = new URL(u);
   } catch {
-    throw new Error(`Keine gültige Adresse: ${raw}`);
+    throw new Error(tApp()('Keine gültige Adresse: {url}', { url: raw }));
   }
   if (url.protocol !== 'https:') throw new Error('Nur https://- oder webcal://-Adressen');
   if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1)/.test(url.hostname)) throw new Error('Interne Adressen sind nicht erlaubt');
@@ -43,7 +44,7 @@ export async function syncCalendar(app: App, calId: string, fetchImpl: IcsFetch 
     try {
       const url = importUrl(raw);
       const r = await fetchImpl(url, { headers: { accept: 'text/calendar' } });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`); // i18n-ignore
       const body = await r.text();
       if (body.length > MAX_BYTES) throw new Error('Kalender zu groß');
       if (!body.includes('BEGIN:VCALENDAR')) throw new Error('Keine iCal-Datei');

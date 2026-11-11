@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { safeFetch, type SafeResponse } from '../net.js';
+import { tApp } from '../../i18n/index.js';
 import { datasetName, isUuid, ownedDataset, type CogneeType, type OwnedDataset } from './model.js';
 
 /**
@@ -49,10 +50,11 @@ export function detailOf(body: any): string {
 export function errorFor(status: number, body: any, what = ''): CogneeError {
   const detail = detailOf(body);
   const tail = detail ? `: ${detail}` : '';
+  const t = tApp();
   switch (status) {
     case 400:
       if (/LOGIN_BAD_CREDENTIALS/.test(detail)) return new CogneeError('E-Mail oder Passwort bei Cognee stimmen nicht.', 502, status);
-      return new CogneeError(`Cognee hat die Anfrage abgelehnt${tail}`, 502, status);
+      return new CogneeError(`${t('Cognee hat die Anfrage abgelehnt')}${tail}`, 502, status);
     case 401:
       return new CogneeError('Cognee lehnt die Anmeldung ab – Zugangsdaten prüfen.', 502, status);
     case 402:
@@ -60,15 +62,15 @@ export function errorFor(status: number, body: any, what = ''): CogneeError {
     case 403:
       return new CogneeError('Cognee verweigert den Zugriff – dem Cognee-Nutzer fehlen Rechte auf das Dataset.', 502, status);
     case 404:
-      return new CogneeError(`Bei Cognee nicht gefunden${what ? ` (${what})` : ''}.`, 502, status);
+      return new CogneeError(what ? t('Bei Cognee nicht gefunden ({what}).', { what }) : t('Bei Cognee nicht gefunden.'), 502, status);
     case 409:
-      return new CogneeError(`Cognee meldet einen Konflikt${tail}`, 502, status);
+      return new CogneeError(`${t('Cognee meldet einen Konflikt')}${tail}`, 502, status);
     case 422:
-      return new CogneeError(`Cognee hat die Daten abgelehnt${tail}`, 502, status);
+      return new CogneeError(`${t('Cognee hat die Daten abgelehnt')}${tail}`, 502, status);
     case 429:
       return new CogneeError('Cognee ist ausgelastet (zu viele Anfragen) – später erneut.', 429, status, true);
     default:
-      return status >= 500 ? new CogneeError(`Cognee hat gerade ein Problem (${status})${tail}`, 502, status, true) : new CogneeError(`Fehler von Cognee (${status})${tail}`, 502, status);
+      return status >= 500 ? new CogneeError(`${t('Cognee hat gerade ein Problem ({status})', { status })}${tail}`, 502, status, true) : new CogneeError(`${t('Fehler von Cognee ({status})', { status })}${tail}`, 502, status);
   }
 }
 
@@ -207,13 +209,13 @@ export class CogneeClient {
         // The API key never follows a redirect to another origin (safeFetch drops it there, like the Authorization header).
         res = await this.fetchImpl(url, { method, headers: h, body, timeoutMs: c.timeoutMs ?? 30_000, maxBytes: 8 * 1024 * 1024, allowPrivate: this.o.allowPrivate, secretHeaders: ['x-api-key'] });
       } catch (e) {
-        const msg = (e as Error).message || 'Netzwerkfehler';
+        const msg = (e as Error).message || tApp()('Netzwerkfehler');
         if (attempt < retries) {
           await this.sleep(400 * 2 ** attempt);
           continue;
         }
-        const hint = /intern|EPRIVATE/i.test(msg) ? ' – für einen Server im eigenen Netz „Internes Netz erlauben“ ankreuzen.' : '';
-        throw new CogneeError(`Cognee ist nicht erreichbar: ${clip(msg, 140)}${hint}`, 502, 0, !/intern|EPRIVATE|Ungültige URL|Nur http/i.test(msg));
+        const hint = /intern|EPRIVATE/i.test(msg) ? ` – ${tApp()('für einen Server im eigenen Netz „Internes Netz erlauben“ ankreuzen.')}` : '';
+        throw new CogneeError(`${tApp()('Cognee ist nicht erreichbar: {error}', { error: clip(msg, 140) })}${hint}`, 502, 0, !/intern|EPRIVATE|Ungültige URL|Nur http/i.test(msg));
       }
       const text = await res.text();
       let data: any = text;
@@ -258,11 +260,11 @@ export class CogneeClient {
   async probeOpen(): Promise<{ state: 'closed' | 'open' | 'unknown'; reason: string }> {
     try {
       const r = await this.send('GET', '/api/v1/datasets', { auth: 'none', timeoutMs: 15_000, retries: 0, accept: [200, 401, 403] });
-      if (r.status === 200) return { state: 'open', reason: 'Der Server beantwortet Anfragen ohne Anmeldung.' };
+      if (r.status === 200) return { state: 'open', reason: tApp()('Der Server beantwortet Anfragen ohne Anmeldung.') };
       const posture = /auth posture: ([^)]+)\)/.exec(detailOf(r.data))?.[1] ?? '';
       // Authentication was asked for explicitly, which does not say whether per-dataset isolation is on.
-      if (/^explicit REQUIRE_AUTHENTICATION/i.test(posture)) return { state: 'unknown', reason: 'Anmeldung ist Pflicht, ob die Zugriffskontrolle je Dataset aktiv ist, lässt sich nicht erkennen.' };
-      return { state: 'closed', reason: 'Der Server verlangt eine Anmeldung.' };
+      if (/^explicit REQUIRE_AUTHENTICATION/i.test(posture)) return { state: 'unknown', reason: tApp()('Anmeldung ist Pflicht, ob die Zugriffskontrolle je Dataset aktiv ist, lässt sich nicht erkennen.') };
+      return { state: 'closed', reason: tApp()('Der Server verlangt eine Anmeldung.') };
     } catch (e) {
       return { state: 'unknown', reason: (e as Error).message };
     }
@@ -326,7 +328,7 @@ export class CogneeClient {
     const r = await this.send('POST', '/api/v1/cognify', { json: { datasetIds: [datasetId], runInBackground: true }, timeoutMs: 60_000 });
     const runs = r.data && typeof r.data === 'object' ? Object.values(r.data) : [];
     const bad = runs.find((x: any) => /Errored/i.test(String(x?.status ?? '')));
-    if (bad) throw new CogneeError(`Cognee konnte den Wissensgraphen nicht bauen${(bad as any).payload ? `: ${clip((bad as any).payload, 160)}` : '.'}`, 502, r.status);
+    if (bad) throw new CogneeError((bad as any).payload ? tApp()('Cognee konnte den Wissensgraphen nicht bauen: {error}', { error: clip((bad as any).payload, 160) }) : tApp()('Cognee konnte den Wissensgraphen nicht bauen.'), 502, r.status);
   }
 
   /** GET /api/v1/datasets/status?dataset=<id>&pipeline=cognify_pipeline → `{<id>: "DATASET_PROCESSING_COMPLETED" | …}`. */

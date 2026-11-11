@@ -24,6 +24,7 @@ import {
 } from '../services/social-comments.js';
 import { registerTriggers } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Social comments inbox: comments under the sub-account's own Facebook and Instagram posts (the Meta webhook it already receives –
@@ -280,10 +281,10 @@ export const socialCommentsModule: Module = {
     // --- YouTube and LinkedIn through Nango ----------------------------------------------------------------------------
     const nango = async (loc: string, provider: 'youtube' | 'linkedin', method: string, path: string, query?: Record<string, string>, body?: unknown) => {
       const conn = nangoConn(loc, provider);
-      if (!conn || !app.services.nango?.request) throw new HttpError(409, `${PLATFORM_LABEL[provider]} ist nicht über Nango verbunden (Apps → Nango)`);
+      if (!conn || !app.services.nango?.request) throw new HttpError(409, tApp()('{platform} ist nicht über Nango verbunden (Apps → Nango)', { platform: PLATFORM_LABEL[provider] }));
       const headers = provider === 'linkedin' ? { 'LinkedIn-Version': LINKEDIN_VERSION, 'X-Restli-Protocol-Version': '2.0.0' } : undefined;
       const r = await app.services.nango.request(loc, { integration: conn.integration, method, path, query, headers, body }, { source: 'api' });
-      if (!r.ok) throw new HttpError(502, `${PLATFORM_LABEL[provider]}: ${r.data?.error?.message || r.data?.message || `Fehler ${r.status}`}`);
+      if (!r.ok) throw new HttpError(502, `${PLATFORM_LABEL[provider]}: ${r.data?.error?.message || r.data?.message || tApp()('Fehler {status}', { status: r.status })}`);
       return r.data;
     };
     const pollYouTube = async (loc: string, since: string | null) => {
@@ -418,10 +419,10 @@ export const socialCommentsModule: Module = {
       let messageId: string | null = null;
       if (contactId && getContact(app, ctx.locationId, contactId)) {
         const conversationId = getOrCreateConversation(app, ctx.locationId, contactId);
-        const msg = { id: id(), location_id: ctx.locationId, conversation_id: conversationId, contact_id: contactId, channel: CHANNEL, direction: 'out', subject: '', body: text, status: 'sent', error: '', source: `Antwort auf ${PLATFORM_LABEL[c.platform]}-Kommentar`, user_id: ctx.user?.id ?? null, created_at: now() };
+        const msg = { id: id(), location_id: ctx.locationId, conversation_id: conversationId, contact_id: contactId, channel: CHANNEL, direction: 'out', subject: '', body: text, status: 'sent', error: '', source: tLoc(app, ctx.locationId)('Antwort auf {platform}-Kommentar', { platform: PLATFORM_LABEL[c.platform] }), user_id: ctx.user?.id ?? null, created_at: now() };
         db.insert('messages', msg);
         db.run('UPDATE conversations SET last_message = ?, last_message_at = ? WHERE id = ?', preview(text), msg.created_at, conversationId);
-        logActivity(app, ctx.locationId, contactId, 'comment.replied', `Öffentlich auf ${PLATFORM_LABEL[c.platform]} geantwortet`);
+        logActivity(app, ctx.locationId, contactId, 'comment.replied', tLoc(app, ctx.locationId)('Öffentlich auf {platform} geantwortet', { platform: PLATFORM_LABEL[c.platform] }));
         messageId = msg.id;
       }
       db.run(`UPDATE social_comments SET reply_text = ?, reply_id = ?, reply_message_id = ?, replied_at = ?, replied_by = ?, suggestion = '', updated_at = ? WHERE id = ?`, text, replyId.slice(0, 300), messageId, now(), ctx.user?.id ?? null, now(), c.id);
@@ -431,7 +432,7 @@ export const socialCommentsModule: Module = {
     router.post('/api/social-comments/:id/hide', 'location', async (ctx) => {
       const c = commentOf(ctx.locationId, ctx.params.id);
       const hidden = ctx.body?.hidden !== false;
-      if (!CAN_HIDE[c.platform]) throw bad(`${PLATFORM_LABEL[c.platform]} erlaubt kein Ausblenden über die API – bitte auf der Plattform löschen`);
+      if (!CAN_HIDE[c.platform]) throw bad(tApp()('{platform} erlaubt kein Ausblenden über die API – bitte auf der Plattform löschen', { platform: PLATFORM_LABEL[c.platform] }));
       if (c.platform === 'facebook' || c.platform === 'instagram') {
         if (!kit()) throw new HttpError(409, 'Meta-Kanäle sind nicht verfügbar');
         await kit()!.graph(ctx.locationId, metaChannel(c.platform), 'POST', c.comment_id, c.platform === 'instagram' ? { hide: hidden } : { is_hidden: hidden }, c.account_id);

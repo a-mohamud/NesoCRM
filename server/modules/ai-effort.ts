@@ -1,6 +1,7 @@
 import type { Module } from '../core/app.js';
 import { HttpError, bad } from '../core/http.js';
 import { now } from '../core/util.js';
+import { tApp, tCtx } from '../i18n/index.js';
 import {
   DEFAULT_EFFORT,
   EFFORTS,
@@ -95,17 +96,17 @@ export const aiEffortModule: Module = {
       const own = load(locationId);
       const ag = load(AGENCY);
       return {
-        efforts: EFFORTS.map((id) => ({ id, label: EFFORT_LABELS[id] })),
+        efforts: EFFORTS.map((id) => ({ id, label: tApp()(EFFORT_LABELS[id]) })),
         builtin_default: DEFAULT_EFFORT,
         default: own.default ?? ag.default ?? DEFAULT_EFFORT,
         own: { default: own.default ?? null },
         agency: { default: ag.default ?? null },
         caps: EFFORT_CAPS.map((c) => {
           const eff = forCap(locationId, c.id);
-          return { id: c.id, label: c.label, strict: eff.strict, effective: eff.effort, source: eff.source, own: own.caps?.[c.id] ?? null, agency: ag.caps?.[c.id] ?? null };
+          return { id: c.id, label: tApp()(c.label), strict: eff.strict, effective: eff.effort, source: eff.source, own: own.caps?.[c.id] ?? null, agency: ag.caps?.[c.id] ?? null };
         }),
         strict_min: 'high',
-        note: EFFORT_COST_NOTE,
+        note: tApp()(EFFORT_COST_NOTE),
       };
     };
 
@@ -120,7 +121,7 @@ export const aiEffortModule: Module = {
       const next: EffortSettings = { ...(cur.default ? { default: cur.default } : {}), caps: { ...(cur.caps ?? {}) } };
       const level = (v: unknown, what: string): Effort | null => {
         if (v === '' || v === null) return null;
-        if (!isEffort(v)) throw bad(`${what}: ${EFFORTS.join(', ')} oder leer (= Standard).`);
+        if (!isEffort(v)) throw bad(tCtx(ctx)('{what}: {levels} oder leer (= Standard).', { what, levels: EFFORTS.join(', ') }));
         return v;
       };
       if (b.default !== undefined) {
@@ -132,7 +133,7 @@ export const aiEffortModule: Module = {
         if (!b.caps || typeof b.caps !== 'object' || Array.isArray(b.caps)) throw bad('Denkstufen je Bereich als Objekt angeben.');
         for (const [k, v] of Object.entries(b.caps)) {
           if (!isEffortCap(k)) throw bad(`Unbekannter Bereich: ${k} (erlaubt: ${EFFORT_CAP_IDS.join(', ')}).`);
-          const e = level(v, EFFORT_CAPS.find((c) => c.id === k)!.label);
+          const e = level(v, tCtx(ctx)(EFFORT_CAPS.find((c) => c.id === k)!.label));
           if (e) next.caps![k] = e;
           else delete next.caps![k];
         }

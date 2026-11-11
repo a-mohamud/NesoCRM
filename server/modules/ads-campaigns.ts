@@ -5,6 +5,7 @@ import { id, now } from '../core/util.js';
 import { cleanSpec, type AdSpec } from '../services/ads-manager.js';
 import { applyStatus, campaignOut, decide, localOf, mustCampaign, publish, refreshRemote, review, spend, type CampaignRow } from '../services/ads-ops.js';
 import { PLATFORMS, activity, audit, canManage, connected, googleCreds, loadConnection, maxDailyBudget, metaCreds, type Platform } from '../services/ads-store.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Campaign manager: drafts, the review before publishing, publishing (always PAUSED), the campaign list with metrics
@@ -81,7 +82,7 @@ export const adsCampaignsModule: Module = {
         location_id: ctx.locationId,
         platform: spec.platform,
         kind: spec.kind,
-        name: spec.name || 'Neue Kampagne',
+        name: spec.name || tLoc(app, ctx.locationId)('Neue Kampagne'),
         goal: spec.goal,
         status: 'draft',
         spec: JSON.stringify(spec),
@@ -93,8 +94,8 @@ export const adsCampaignsModule: Module = {
         updated_at: now(),
       };
       db.insert('ads_campaigns', row);
-      audit(app, ctx, 'ads.campaign.draft', `Kampagnen-Entwurf „${row.name}“ (${spec.platform === 'meta' ? 'Meta' : 'Google Ads'}) angelegt`, { locationId: ctx.locationId, entityId: row.id });
-      activity(app, ctx.locationId, { campaignId: row.id, platform: spec.platform, kind: 'draft', summary: `Entwurf „${row.name}“ angelegt`, actor: ctx.user?.name, via: ctx.via });
+      audit(app, ctx, 'ads.campaign.draft', tApp()('Kampagnen-Entwurf „{name}“ ({platform}) angelegt', { name: row.name, platform: spec.platform === 'meta' ? 'Meta' : 'Google Ads' }), { locationId: ctx.locationId, entityId: row.id });
+      activity(app, ctx.locationId, { campaignId: row.id, platform: spec.platform, kind: 'draft', summary: tLoc(app, ctx.locationId)('Entwurf „{name}“ angelegt', { name: row.name }), actor: ctx.user?.name, via: ctx.via });
       return mustCampaign(app, ctx.locationId, row.id);
     };
 
@@ -145,16 +146,16 @@ export const adsCampaignsModule: Module = {
       const c = mustCampaign(app, ctx.locationId, ctx.params.id);
       if (c.status !== 'draft' && c.status !== 'error') throw new HttpError(409, 'Eine angelegte Kampagne bitte in Meta bzw. Google Ads löschen – hier lässt sie sich pausieren');
       db.run('DELETE FROM ads_campaigns WHERE id = ? AND location_id = ?', c.id, ctx.locationId);
-      audit(app, ctx, 'ads.campaign.delete', `Kampagnen-Entwurf „${c.name}“ gelöscht`, { locationId: ctx.locationId, entityId: c.id });
+      audit(app, ctx, 'ads.campaign.delete', tApp()('Kampagnen-Entwurf „{name}“ gelöscht', { name: c.name }), { locationId: ctx.locationId, entityId: c.id });
       return { ok: true };
     });
 
     router.post('/api/ads/campaigns/:id/duplicate', 'location', (ctx) => {
       const c = mustCampaign(app, ctx.locationId, ctx.params.id);
-      const spec = cleanSpec({ ...c.spec, name: `${c.name} (Kopie)` });
+      const spec = cleanSpec({ ...c.spec, name: tLoc(app, ctx.locationId)('{name} (Kopie)', { name: c.name }) });
       // A copy is a fresh draft: nothing of the original's platform ids, always paused when published.
       const copy = create(ctx, spec);
-      audit(app, ctx, 'ads.campaign.duplicate', `Kampagne „${c.name}“ dupliziert`, { locationId: ctx.locationId, entityId: copy.id });
+      audit(app, ctx, 'ads.campaign.duplicate', tApp()('Kampagne „{name}“ dupliziert', { name: c.name }), { locationId: ctx.locationId, entityId: copy.id });
       return campaignOut(copy);
     });
 
@@ -162,7 +163,7 @@ export const adsCampaignsModule: Module = {
     router.post('/api/ads/campaigns/:id/publish', 'location', async (ctx) => {
       const c = mustCampaign(app, ctx.locationId, ctx.params.id);
       const done = await publish(app, ctx, c, String(ctx.body?.review_hash ?? ''));
-      return { ...campaignOut(done), message: 'Pausiert angelegt – es wird nichts ausgegeben, bis du die Kampagne aktivierst.' };
+      return { ...campaignOut(done), message: tCtx(ctx)('Pausiert angelegt – es wird nichts ausgegeben, bis du die Kampagne aktivierst.') };
     });
 
     // --- status & budget ------------------------------------------------------------------------------------------------
@@ -173,7 +174,7 @@ export const adsCampaignsModule: Module = {
       if (status === 'paused') {
         // Stopping never costs money: no confirmation, whoever asks.
         await applyStatus(app, ctx, { locationId: ctx.locationId, platform: t.platform, remoteId: t.remoteId, status: 'paused' });
-        return { status: 'done', summary: `„${t.name}“ pausiert` };
+        return { status: 'done', summary: tCtx(ctx)('„{name}“ pausiert', { name: t.name }) };
       }
       return spend(app, ctx, { locationId: ctx.locationId, platform: t.platform, remoteId: t.remoteId, action: 'activate' }, ctx.body?.confirm === true);
     });

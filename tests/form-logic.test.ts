@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TEMPLATES, templateById, templateCard } from '../server/services/form-templates.js';
+import { translator } from '../server/i18n/index.js';
 import { cleanAnswer, cleanFields, cleanFormSettings, type FormField } from '../server/services/form-fields.js';
 import {
   CLIENT_LOGIC,
@@ -523,7 +524,7 @@ describe('template gallery', () => {
       expect(t.fields.some((x) => x.required), where).toBe(true);
       // every template has a consent or opt-in field when it collects contact data
       if (t.fields.some((x) => x.name === 'email')) expect(t.fields.some((x) => x.type === 'consent' || x.name === 'newsletter') || t.id === 'nps-umfrage' || t.id === 'produkt-feedback', `${where} consent`).toBe(true);
-      expect(templateCard(t).fields, where).toBeGreaterThan(2);
+      expect(templateCard(t, translator('de')).fields, where).toBeGreaterThan(2);
     }
     expect(templateById('lead-qualifizierung')?.fields.some((x) => x.jumps?.length)).toBe(true);
     expect(templateById('preisrechner-maler')?.fields.some((x) => x.type === 'calculator')).toBe(true);

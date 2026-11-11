@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Account, Batch, Consent, CountRow, FieldType, PartKey, RContact, RMembership, RNote, RSmartList, RTagRec, RTemplate, SourceDef, SourceField, StepCtx, StepDef } from './umzug-core.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { toDay, toIso } from './umzug-text.js';
+import { translator, tApp, type ServerLocale } from '../i18n/index.js';
 
 /**
  * Mailchimp (Marketing API v3, https://<dc>.api.mailchimp.com/3.0): audiences → tags (and a tag per
@@ -51,7 +52,8 @@ async function lists(h: VendorHttp): Promise<List[]> {
 
 const total = async (h: VendorHttp, path: string, query: Record<string, unknown> = {}) => Number((await h.get(path, { count: 1, fields: 'total_items', ...query })).total_items ?? 0);
 
-async function describe(h: VendorHttp, parts: PartKey[]) {
+async function describe(h: VendorHttp, parts: PartKey[], lang?: ServerLocale) {
+  const t = translator(lang);
   const ls = await lists(h);
   const counts: CountRow[] = [];
   const warnings: string[] = [];
@@ -68,12 +70,12 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
         for (const m of j.merge_fields ?? []) {
           const tag = String(m.tag);
           if (m.type === 'address') {
-            add({ ref: `merge:${tag}.addr1`, label: `${m.name} – Straße`, type: 'text', std: 'address', group: 'standard' });
-            add({ ref: `merge:${tag}.addr2`, label: `${m.name} – Zusatz`, type: 'text', group: 'custom' });
-            add({ ref: `merge:${tag}.city`, label: `${m.name} – Ort`, type: 'text', std: 'city', group: 'standard' });
-            add({ ref: `merge:${tag}.state`, label: `${m.name} – Bundesland`, type: 'text', group: 'custom' });
-            add({ ref: `merge:${tag}.zip`, label: `${m.name} – PLZ`, type: 'text', std: 'postal_code', group: 'standard' });
-            add({ ref: `merge:${tag}.country`, label: `${m.name} – Land`, type: 'text', std: 'country', group: 'standard' });
+            add({ ref: `merge:${tag}.addr1`, label: t('{name} – Straße', { name: m.name }), type: 'text', std: 'address', group: 'standard' });
+            add({ ref: `merge:${tag}.addr2`, label: t('{name} – Zusatz', { name: m.name }), type: 'text', group: 'custom' });
+            add({ ref: `merge:${tag}.city`, label: t('{name} – Ort', { name: m.name }), type: 'text', std: 'city', group: 'standard' });
+            add({ ref: `merge:${tag}.state`, label: t('{name} – Bundesland', { name: m.name }), type: 'text', group: 'custom' });
+            add({ ref: `merge:${tag}.zip`, label: t('{name} – PLZ', { name: m.name }), type: 'text', std: 'postal_code', group: 'standard' });
+            add({ ref: `merge:${tag}.country`, label: t('{name} – Land', { name: m.name }), type: 'text', std: 'country', group: 'standard' });
           } else {
             const std = tag === 'FNAME' ? 'first_name' : tag === 'LNAME' ? 'last_name' : tag === 'PHONE' ? 'phone' : tag === 'COMPANY' ? 'company' : tag === 'BIRTHDAY' || m.type === 'birthday' ? 'date_of_birth' : undefined;
             add({ ref: `merge:${tag}`, label: String(m.name || tag), type: mergeType(String(m.type)), std, group: std ? 'standard' : 'custom' });
@@ -81,7 +83,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
         }
       } catch (e) {
         if (!(e instanceof UmzugError && e.skippable)) throw e;
-        warnings.push(`Felder von „${l.name}“ nicht lesbar: ${e.message}`);
+        warnings.push(t('Felder von „{name}“ nicht lesbar: {reason}', { name: l.name, reason: e.message }));
       }
     }
     add({ ref: 'member:language', label: 'Sprache', type: 'text', preset: '', group: 'custom' });
@@ -98,6 +100,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
 }
 
 const flatMember = (m: any, listName: string): RContact => {
+  const t = tApp();
   const values: Record<string, unknown> = { 'member:email': m.email_address, 'member:language': m.language, 'member:vip': m.vip };
   for (const [tag, v] of Object.entries(m.merge_fields ?? {})) {
     if (v && typeof v === 'object') for (const [k, x] of Object.entries(v as Record<string, unknown>)) values[`merge:${tag}.${k}`] = x;
@@ -108,7 +111,7 @@ const flatMember = (m: any, listName: string): RContact => {
     kind: 'contact',
     ext: `m:${m.id ?? md5(m.email_address)}`,
     values,
-    tags: [`Liste: ${listName}`, ...(m.tags ?? []).map((t: any) => String(t.name))],
+    tags: [t('Liste: {listName}', { listName }), ...(m.tags ?? []).map((t: any) => String(t.name))],
     consent: CONSENT[status] ?? 'unknown',
     native_status: status,
     consent_at: toIso(m.timestamp_opt ?? m.timestamp_signup),
@@ -134,10 +137,11 @@ const steps = (): StepDef[] => [
     label: 'Tags und Audiences',
     part: 'contacts',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const records: RTagRec[] = [];
       for (const l of await lists(ctx.http)) {
-        records.push({ kind: 'tag', name: `Liste: ${l.name}` });
-        for await (const pg of paged(ctx.http, `/lists/${l.id}/tag-search`, 'tags', {}, ctx)) for (const t of pg.items) records.push({ kind: 'tag', name: String(t.name) });
+        records.push({ kind: 'tag', name: t('Liste: {name}', { name: l.name }) });
+        for await (const pg of paged(ctx.http, `/lists/${l.id}/tag-search`, 'tags', {}, ctx)) for (const tg of pg.items) records.push({ kind: 'tag', name: String(tg.name) });
       }
       yield { records, cursor: undefined };
     },
@@ -163,6 +167,7 @@ const steps = (): StepDef[] => [
     label: 'Segmente',
     part: 'segments',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const ls = await lists(ctx.http);
       const cur = (ctx.cursor ?? { li: 0, si: 0 }) as { li: number; si: number };
       for (let li = cur.li; li < ls.length; li++) {
@@ -172,10 +177,10 @@ const steps = (): StepDef[] => [
         for (let si = li === cur.li ? cur.si : 0; si < segs.length; si++) {
           const s = segs[si];
           if (s.type === 'fuzzy') continue;
-          const tag = `Segment: ${s.name}`;
+          const tag = t('Segment: {name}', { name: s.name });
           const records: (RMembership | RSmartList | RTagRec)[] = [{ kind: 'tag', name: tag }];
           for await (const pg of paged(ctx.http, `/lists/${l.id}/segments/${s.id}/members`, 'members', { fields: 'members.id,members.email_address,total_items' }, ctx)) for (const m of pg.items) records.push({ kind: 'membership', contact: `m:${m.id ?? md5(m.email_address)}`, tags: [tag] });
-          if (s.type === 'saved') ctx.warn(`Segment „${s.name}“ hat Bedingungen in Mailchimp: übernommen als feste Liste der aktuellen Mitglieder (Tag „${tag}“), nicht als dynamische Regel`);
+          if (s.type === 'saved') ctx.warn(t('Segment „{name}“ hat Bedingungen in Mailchimp: übernommen als feste Liste der aktuellen Mitglieder (Tag „{tag}“), nicht als dynamische Regel', { name: s.name, tag }));
           records.push({ kind: 'smart_list', ext: `s:${l.id}:${s.id}`, name: `${s.name} (${l.name})`, tag });
           yield { records, cursor: si + 1 < segs.length ? { li, si: si + 1 } : li + 1 < ls.length ? { li: li + 1, si: 0 } : undefined };
         }
@@ -187,16 +192,17 @@ const steps = (): StepDef[] => [
     label: 'E-Mail-Vorlagen',
     part: 'templates',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const cur = Number(ctx.cursor ?? 0);
       for await (const pg of paged(ctx.http, '/templates', 'templates', { type: 'user', fields: 'templates.id,templates.name,templates.type,total_items' }, ctx, cur)) {
         const records: RTemplate[] = [];
-        for (const t of pg.items) {
+        for (const tpl of pg.items) {
           try {
-            const c = await ctx.http.get(`/templates/${t.id}/default-content`);
-            records.push({ kind: 'template', ext: `t:${t.id}`, name: String(t.name), html: String(c.html ?? ''), subject: '' });
+            const c = await ctx.http.get(`/templates/${tpl.id}/default-content`);
+            records.push({ kind: 'template', ext: `t:${tpl.id}`, name: String(tpl.name), html: String(c.html ?? ''), subject: '' });
           } catch (e) {
             if (!(e instanceof UmzugError && e.skippable)) throw e;
-            ctx.warn(`Vorlage „${t.name}“ nicht lesbar: ${e.message}`);
+            ctx.warn(t('Vorlage „{name}“ nicht lesbar: {reason}', { name: tpl.name, reason: e.message }));
           }
         }
         yield { records, cursor: pg.next, total: pg.total };
@@ -208,6 +214,7 @@ const steps = (): StepDef[] => [
     label: 'Kampagnen-Verlauf',
     part: 'campaigns',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const j = await ctx.http.get('/campaigns', { count: 20, status: 'sent', sort_field: 'send_time', sort_dir: 'DESC', fields: 'campaigns.id,campaigns.settings.subject_line,campaigns.settings.title,campaigns.send_time' });
       const camps: any[] = j.campaigns ?? [];
       const from = Number(ctx.cursor ?? 0);
@@ -220,7 +227,7 @@ const steps = (): StepDef[] => [
             ext: `c:${c.id}:${md5(r.email_address)}`,
             contact: `m:${md5(r.email_address)}`,
             at: toIso(c.send_time),
-            body: `Mailchimp-Kampagne „${title}“${c.settings?.subject_line && c.settings.subject_line !== title ? ` (Betreff: ${c.settings.subject_line})` : ''} erhalten${Number(r.open_count) > 0 ? `, ${r.open_count}× geöffnet` : ''}${/bounce/i.test(String(r.status)) ? ' – unzustellbar' : ''}.`,
+            body: `${c.settings?.subject_line && c.settings.subject_line !== title ? t('Mailchimp-Kampagne „{title}“ (Betreff: {subject}) erhalten', { title, subject: c.settings.subject_line }) : t('Mailchimp-Kampagne „{title}“ erhalten', { title })}${Number(r.open_count) > 0 ? t(', {n}× geöffnet', { n: r.open_count }) : ''}${/bounce/i.test(String(r.status)) ? t(' – unzustellbar') : ''}.`,
           }));
           yield { records: notes, cursor: pg.next === undefined ? (i + 1 < camps.length ? i + 1 : undefined) : i, total: pg.total };
         }
@@ -252,7 +259,7 @@ export const MAILCHIMP: SourceDef = {
     const j = await h.get('/', { fields: 'account_id,account_name,email,login_id' });
     return { account: String(j.account_id ?? j.login_id ?? mailchimpBase(creds.api_key)), label: String(j.account_name ?? j.email ?? 'Mailchimp'), meta: {} };
   },
-  describe: (h, parts) => describe(h, parts),
+  describe: (h, parts, c) => describe(h, parts, c.lang),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),
 };
 

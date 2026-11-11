@@ -3,6 +3,16 @@
  * Dates are `YYYY-MM-DD` strings; the callers keep a task's time of day (if any) themselves.
  */
 
+/**
+ * A translator as server/i18n hands it out (STFn). Kept structural so the web app can import this file's types without
+ * pulling the server's language layer in; server callers pass tApp()/tLoc()/tUser(), and without one the text stays German.
+ */
+export interface RecurTr {
+  (text: string, vars?: Record<string, string | number>): string;
+  readonly locale?: string;
+}
+const GERMAN: RecurTr = Object.assign((text: string, vars?: Record<string, string | number>) => (vars ? text.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : text), { locale: 'de' });
+
 export const FREQS = ['daily', 'weekly', 'monthly', 'yearly'] as const;
 export type Freq = (typeof FREQS)[number];
 
@@ -109,29 +119,29 @@ export function nextOccurrence(rule: Recurrence, from: string): string | null {
 
 const WEEKDAYS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
-/** "Alle 2 Wochen (Mo, Do)" – for the task card. */
-export function describeRecurrence(rule: Recurrence | null | undefined): string {
+/** "Alle 2 Wochen (Mo, Do)" / "Every 2 weeks (Mon, Thu)" – for the task card, in the given language. */
+export function describeRecurrence(rule: Recurrence | null | undefined, t: RecurTr = GERMAN): string {
   if (!rule) return '';
   const n = rule.interval;
   let s: string;
   switch (rule.freq) {
     case 'daily':
-      s = n === 1 ? 'Täglich' : `Alle ${n} Tage`;
+      s = n === 1 ? t('Täglich') : t('Alle {n} Tage', { n });
       break;
     case 'weekly':
-      s = n === 1 ? 'Wöchentlich' : `Alle ${n} Wochen`;
-      if (rule.weekdays?.length) s += ` (${rule.weekdays.map((w) => WEEKDAYS[w]).join(', ')})`;
+      s = n === 1 ? t('Wöchentlich') : t('Alle {n} Wochen', { n });
+      if (rule.weekdays?.length) s += ` (${rule.weekdays.map((w) => t(WEEKDAYS[w])).join(', ')})`;
       break;
     case 'monthly':
-      s = n === 1 ? 'Monatlich' : `Alle ${n} Monate`;
-      if (rule.day_of_month) s += ` am ${rule.day_of_month}.`;
+      s = n === 1 ? t('Monatlich') : t('Alle {n} Monate', { n });
+      if (rule.day_of_month) s += t(' am {day}.', { day: rule.day_of_month });
       break;
     case 'yearly':
-      s = n === 1 ? 'Jährlich' : `Alle ${n} Jahre`;
+      s = n === 1 ? t('Jährlich') : t('Alle {n} Jahre', { n });
       break;
   }
-  if (rule.mode === 'completion') s += ', ab Erledigung';
+  if (rule.mode === 'completion') s += t(', ab Erledigung');
   if (rule.end.type === 'count') s += `, ${rule.end.count}×`;
-  if (rule.end.type === 'date') s += `, bis ${rule.end.date.split('-').reverse().join('.')}`;
+  if (rule.end.type === 'date') s += t(', bis {date}', { date: rule.end.date.split('-').reverse().join(t.locale === 'de' ? '.' : '/') });
   return s;
 }

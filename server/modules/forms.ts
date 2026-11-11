@@ -17,6 +17,7 @@ import { cleanAnswer, cleanFields, cleanFormSettings, type FormField } from '../
 import { computeValues, formatValue, interpolate, isVisible, pickEnding, reachedFields, varName, type Ending } from '../services/form-logic.js';
 import { renderForm, pageStyle, type FormRuntime } from '../services/form-render.js';
 import { FONTS, cleanTheme, contrastWarnings, themeOf, themeVars } from '../services/form-themes.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 export type { FormField };
 export { isVisible, renderForm };
@@ -33,6 +34,9 @@ export const DEFAULT_FIELDS: FormField[] = [
   { id: 'f5', type: 'textarea', label: 'Nachricht', name: 'message' },
   { id: 'f6', type: 'consent', label: 'Ich stimme der Verarbeitung meiner Daten gemäß Datenschutzerklärung zu.', name: 'consent', required: true },
 ];
+
+/** The default fields of a new form, in the sub-account's language. */
+export const defaultFields = (t: STFn): FormField[] => DEFAULT_FIELDS.map((f) => ({ ...f, label: t(f.label) }));
 
 const RESIZE_SCRIPT = `<script>new ResizeObserver(()=>parent.postMessage({pghlHeight:document.documentElement.scrollHeight},'*')).observe(document.body);</script>`;
 
@@ -51,7 +55,8 @@ function runtimeOf(app: App, f: { id?: string; location_id: string; fields: Form
     const found = app.services.stripeBuy?.resolveProduct(pay.product_id);
     if (found && found.p.location_id === f.location_id) {
       const gross = app.services.stripeBuy.grossOf(found.p).gross as number;
-      rt.products = { [pay.product_id!]: { name: found.p.name, price: `${centsToMoney(gross, found.p.currency)}${found.p.recurring === 'month' ? ' / Monat' : found.p.recurring === 'year' ? ' / Jahr' : ''}` } };
+      const t = tLoc(app, f.location_id);
+      rt.products = { [pay.product_id!]: { name: found.p.name, price: `${centsToMoney(gross, found.p.currency)}${found.p.recurring === 'month' ? t(' / Monat') : found.p.recurring === 'year' ? t(' / Jahr') : ''}` } };
     }
   }
   return rt;
@@ -88,13 +93,14 @@ function formFileDir(app: App) {
 function saveFormFile(app: App, form: any, submissionId: string, f: FormField, v: any, maxBytes = FILE_MAX): string {
   // A signature arrives as a plain PNG data URL.
   if (typeof v === 'string' && v.startsWith('data:')) v = { name: 'unterschrift.png', data: v };
+  const t = tLoc(app, form.location_id);
   const m = String(v?.data ?? '').match(/^data:([\w/+.-]+);base64,(.+)$/);
-  if (!m) throw bad(`„${f.label}“: Datei fehlt`);
-  if (!FILE_TYPES.test(m[1])) throw bad(`„${f.label}“: Dateityp nicht erlaubt (Bilder, PDF, Office, ZIP, TXT)`);
+  if (!m) throw bad(t('„{label}“: Datei fehlt', { label: f.label }));
+  if (!FILE_TYPES.test(m[1])) throw bad(t('„{label}“: Dateityp nicht erlaubt (Bilder, PDF, Office, ZIP, TXT)', { label: f.label }));
   const buf = Buffer.from(m[2], 'base64');
-  if (buf.length > maxBytes) throw bad(`„${f.label}“: Datei größer als ${Math.round(maxBytes / 1024 / (maxBytes >= 1024 * 1024 ? 1024 : 1))} ${maxBytes >= 1024 * 1024 ? 'MB' : 'KB'}`);
+  if (buf.length > maxBytes) throw bad(t('„{label}“: Datei größer als {size}', { label: f.label, size: `${Math.round(maxBytes / 1024 / (maxBytes >= 1024 * 1024 ? 1024 : 1))} ${maxBytes >= 1024 * 1024 ? 'MB' : 'KB'}` }));
   // The bytes must match the claimed type (an "image" that is really HTML is refused).
-  if (!contentMatches(m[1], buf)) throw bad(`„${f.label}“: Dateiinhalt passt nicht zum Dateityp`);
+  if (!contentMatches(m[1], buf)) throw bad(t('„{label}“: Dateiinhalt passt nicht zum Dateityp', { label: f.label }));
   const name = String(v.name || 'datei').replace(/[\\/\r\n"]/g, '_').slice(0, 150);
   const row = { id: id(20), location_id: form.location_id, form_id: form.id, submission_id: submissionId, field: f.name, name, mime: m[1], size: buf.length, created_at: now() };
   mkdirSync(formFileDir(app), { recursive: true });
@@ -118,7 +124,8 @@ export interface Plan {
 }
 
 /** Checks a submission against the form: the path through it (jumps, show_if), required fields, the format of every answer. Throws a German message. */
-export function planSubmission(form: any, raw: Record<string, any>): Plan {
+export function planSubmission(form: any, raw: Record<string, any>, app?: App): Plan {
+  const t = tLoc(app, form.location_id);
   const s = form.settings ?? {};
   const fields = form.fields as FormField[];
   const reached = reachedFields(fields, s.mode === 'typeform' ? 'typeform' : 'classic', raw);
@@ -132,7 +139,7 @@ export function planSubmission(form: any, raw: Record<string, any>): Plan {
     }
     const v = raw[f.name];
     if (isEmpty(v)) {
-      if (f.required && f.type !== 'hidden') throw bad(`Bitte „${f.label}“ ausfüllen`);
+      if (f.required && f.type !== 'hidden') throw bad(t('Bitte „{label}“ ausfüllen', { label: f.label }));
       continue;
     }
     if (f.type === 'file' || f.type === 'signature' || f.type === 'hidden') continue;
@@ -148,6 +155,7 @@ const asText = (v: string | string[]) => (Array.isArray(v) ? v.join(', ') : v);
 /** Writes a checked submission: files, contact, opportunity, the submission itself, notifications and events. */
 export function storeSubmission(app: App, plan: Plan, meta: { ip?: string } = {}) {
   const { form, raw, reached, cleaned, values, calculators, ending, pay } = plan;
+  const t = tLoc(app, form.location_id);
   const s = form.settings ?? {};
   const subId = id();
   const answers: Record<string, any> = {};
@@ -182,7 +190,7 @@ export function storeSubmission(app: App, plan: Plan, meta: { ip?: string } = {}
     const val = f.type === 'hidden' ? (Array.isArray(v) ? v.map(String) : String(v).slice(0, 10000)) : cleaned.get(f.id)!;
     answers[label(f)] = val;
     // Owner and lead source stay the team's (modules/form-mapping.ts): an older form that maps there skips them and says so.
-    if (isProtectedContactKey(f.name)) refused.push(`${label(f)}: Kontakt-Feld „${f.name}“ ist geschützt – nicht übernommen`);
+    if (isProtectedContactKey(f.name)) refused.push(t('{label}: Kontakt-Feld „{field}“ ist geschützt – nicht übernommen', { label: label(f), field: f.name }));
     else if ((CONTACT_FIELDS as readonly string[]).includes(f.name) || f.name === 'name') contactInput[f.name] = asText(val);
     else if (f.name.startsWith('custom.')) contactInput.custom[f.name.slice(7)] = asText(val);
   }
@@ -192,7 +200,7 @@ export function storeSubmission(app: App, plan: Plan, meta: { ip?: string } = {}
   const shown: Record<string, string> = {};
   if (scored) {
     const hasPoints = s.variables?.some((v: any) => varName(v.name) === 'score') || reached.some((f) => f.points || f.weight);
-    if (hasPoints) shown.Punkte = formatValue(values.score ?? 0);
+    if (hasPoints) shown[t('Punkte')] = formatValue(values.score ?? 0);
     for (const v of s.variables ?? []) if (varName(v.name) !== 'score') shown[v.name] = formatValue(values[varName(v.name)] ?? 0);
   }
   let payment: Record<string, any> | undefined;
@@ -202,21 +210,21 @@ export function storeSubmission(app: App, plan: Plan, meta: { ip?: string } = {}
     if (found && found.p.location_id === form.location_id) {
       const gross = app.services.stripeBuy.grossOf(found.p).gross as number;
       payment = { status: 'pending', product_id: found.p.id, product: found.p.name, amount_cents: gross, currency: found.p.currency };
-      answers[label(pay)] = `${found.p.name} – ${centsToMoney(gross, found.p.currency)} (Zahlung offen)`;
-    } else answers[label(pay)] = 'Zahlung nicht eingerichtet';
+      answers[label(pay)] = t('{product} – {amount} (Zahlung offen)', { product: found.p.name, amount: centsToMoney(gross, found.p.currency) });
+    } else answers[label(pay)] = t('Zahlung nicht eingerichtet');
   }
   let contactId: string | null = null;
   let mapped: { dealHandled?: boolean; [k: string]: unknown } | undefined;
   const tags = [...(s.tags ?? []), ...(ending?.tag ? [ending.tag] : [])];
   if (contactInput.email || contactInput.phone || contactInput.first_name || contactInput.name) {
     // Public input: never changes a stored e-mail address or phone number (services/contacts.ts).
-    const { contact } = upsertContact(app, form.location_id, contactInput, { source: `Formular: ${form.name}`, tags, publicInput: true });
+    const { contact } = upsertContact(app, form.location_id, contactInput, { source: t('Formular: {name}', { name: form.name }), tags, publicInput: true });
     contactId = contact.id;
-    logActivity(app, form.location_id, contact.id, 'form.submitted', `Formular „${form.name}“ ausgefüllt`, { answers });
+    logActivity(app, form.location_id, contact.id, 'form.submitted', t('Formular „{name}“ ausgefüllt', { name: form.name }), { answers });
     mapped = app.services.formMapping?.apply(form, plan, contact.id);
     if (s.pipeline_id && !mapped?.dealHandled) {
       try {
-        createOpportunity(app, form.location_id, { pipeline_id: s.pipeline_id, stage_id: s.stage_id, contact_id: contact.id, source: `Formular: ${form.name}` });
+        createOpportunity(app, form.location_id, { pipeline_id: s.pipeline_id, stage_id: s.stage_id, contact_id: contact.id, source: t('Formular: {name}', { name: form.name }) });
       } catch (e) {
         console.warn('[forms] opportunity:', (e as Error).message);
       }
@@ -243,17 +251,17 @@ export function storeSubmission(app: App, plan: Plan, meta: { ip?: string } = {}
     payUrl = found ? `${app.baseUrl()}/buy/${encodeURIComponent(key)}?fs=${encodeURIComponent(token)}${email}` : undefined;
   }
   if (s.notify_team !== false) {
-    void notifyTeam(app, form.location_id, `Neue Anfrage: ${form.name}`, Object.entries(answers).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('\n'), s.notify_email);
+    void notifyTeam(app, form.location_id, t('Neue Anfrage: {name}', { name: form.name }), Object.entries(answers).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('\n'), s.notify_email);
   }
   app.events.emit(form.location_id, 'form.submitted', { contactId, formId: form.id, submission: sub, answers });
   if (scored) app.events.emit(form.location_id, 'form.scored', { contactId, formId: form.id, submissionId: subId, values: submissionMeta.score?.values ?? {}, ending: ending ? { title: ending.title, tag: ending.tag ?? '' } : null });
-  const result = ending || s.show_result ? { title: ending?.title || 'Dein Ergebnis', text: interpolate(ending?.text ?? '', values), redirect_url: ending?.redirect_url ?? '', ...(s.show_result && Object.keys(shown).length ? { values: shown } : {}) } : undefined;
+  const result = ending || s.show_result ? { title: ending?.title || t('Dein Ergebnis'), text: interpolate(ending?.text ?? '', values), redirect_url: ending?.redirect_url ?? '', ...(s.show_result && Object.keys(shown).length ? { values: shown } : {}) } : undefined;
   return { ok: true as const, id: sub.id, contactId, ...(result ? { result } : {}), ...(payUrl ? { pay_url: payUrl } : {}) };
 }
 
 export function submitForm(app: App, form: any, raw: Record<string, any>, meta: { ip?: string } = {}) {
   if (raw._hp) return { ok: true as const, spam: true as const };
-  return storeSubmission(app, planSubmission(form, raw), meta);
+  return storeSubmission(app, planSubmission(form, raw, app), meta);
 }
 
 export const formsModule: Module = {
@@ -314,8 +322,9 @@ export const formsModule: Module = {
       return { ...withUrls(f), capabilities: { captcha: !!captchaKeys(app, f.location_id), stripe: !!app.services.stripeKey?.(f.location_id) } };
     });
     router.post('/api/forms', 'location', (ctx) => {
-      const settingsIn = { submit_text: 'Absenden', thank_you: 'Danke! Wir melden uns in Kürze.', tags: [], notify_team: true, ...(ctx.body.settings ?? {}) };
-      const fields = ctx.body.fields ? cleanFields(ctx.body.fields, { productOk: productOk(ctx.locationId), mode: modeOf(settingsIn) }) : DEFAULT_FIELDS;
+      const t = tLoc(app, ctx.locationId);
+      const settingsIn = { submit_text: t('Absenden'), thank_you: t('Danke! Wir melden uns in Kürze.'), tags: [], notify_team: true, ...(ctx.body.settings ?? {}) };
+      const fields = ctx.body.fields ? cleanFields(ctx.body.fields, { productOk: productOk(ctx.locationId), mode: modeOf(settingsIn) }) : defaultFields(t);
       checkContactFields(fields);
       const settings = cleanFormSettings(settingsIn, fields);
       if (settings.theme !== undefined) settings.theme = cleanTheme(settings.theme);
@@ -403,7 +412,7 @@ export const formsModule: Module = {
 
     router.get('/f/:id', 'public', (ctx) => {
       const f = getForm(app, ctx.params.id);
-      if (!f) return html(messagePage('Nicht gefunden', 'Dieses Formular gibt es nicht.'), 404);
+      if (!f) return html(messagePage(tCtx(ctx)('Nicht gefunden'), tCtx(ctx)('Dieses Formular gibt es nicht.')), 404);
       const embed = ctx.query.get('embed') === '1';
       const s = f.settings ?? {};
       const theme = themeOf(s);
@@ -425,7 +434,7 @@ export const formsModule: Module = {
       if (raw._hp) res = { ok: true, spam: true };
       else {
         // Check everything first, then the captcha (its token can be used once), then write.
-        const plan = planSubmission(f, raw);
+        const plan = planSubmission(f, raw, app);
         const keys = f.settings?.captcha?.enabled ? captchaKeys(app, f.location_id) : null;
         if (keys) await verifyTurnstile(app, keys.secret, raw._ts, ctx.ip);
         res = storeSubmission(app, plan, { ip: ctx.ip });

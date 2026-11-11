@@ -3,6 +3,7 @@ import { bad, type Ctx, type User } from '../../core/http.js';
 import { requiredPermission } from '../../core/permissions.js';
 import { callRoute } from '../mobile.js';
 import { backgroundContext } from './bridge.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * Stage 1 „Einrichtung“: a wish that existing building blocks can fulfil – workflows, custom fields and
@@ -21,7 +22,7 @@ export interface BlockCall {
 }
 export interface BlockDef {
   label: string;
-  /** Parameter reference for the AI prompt (German, with an example). */
+  /** Parameter reference for the AI prompt (English, with an example). */
   doc: string;
   build: (p: P) => BlockCall;
   /** What the route returned → one line for the result list. */
@@ -34,19 +35,19 @@ export interface BlockDef {
 
 const str = (v: unknown, field: string, max = 200, required = true): string => {
   const s = String(v ?? '').trim();
-  if (required && !s) throw bad(`„${field}“ fehlt.`);
+  if (required && !s) throw bad(tApp()('„{field}“ fehlt.', { field }));
   return s.slice(0, max);
 };
 const obj = (v: unknown, field: string): P => {
-  if (!v || typeof v !== 'object' || Array.isArray(v)) throw bad(`„${field}“ muss ein Objekt sein.`);
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw bad(tApp()('„{field}“ muss ein Objekt sein.', { field }));
   return v as P;
 };
 const list = (v: unknown, field: string, max: number, required = false): any[] => {
   if (v === undefined || v === null) {
-    if (required) throw bad(`„${field}“ fehlt.`);
+    if (required) throw bad(tApp()('„{field}“ fehlt.', { field }));
     return [];
   }
-  if (!Array.isArray(v)) throw bad(`„${field}“ muss eine Liste sein.`);
+  if (!Array.isArray(v)) throw bad(tApp()('„{field}“ muss eine Liste sein.', { field }));
   return v.slice(0, max);
 };
 const textList = (v: unknown, field: string, max = 50) => list(v, field, max).map((x) => String(x).slice(0, 100));
@@ -56,42 +57,42 @@ export const BLOCKS: Record<string, BlockDef> = {
   workflow: {
     label: 'Automation (Workflow)',
     note: 'wird als Entwurf angelegt – du schaltest sie nach dem Prüfen selbst ein',
-    doc: 'workflow: { name, trigger:{type, config?}, steps:[{type, …}] } – Auslöser z. B. form.submitted, contact.tag_added (config {tag}), appointment.booked, opportunity.status_changed (config {status}), task.completed. Schritte: add_tag {tags:[]}, remove_tag, create_task {title, due_in_days}, add_note {body}, notify {subject, body}, send_email {subject, body}, send_sms {body}, wait {amount, unit:"minutes|hours|days"}, create_opportunity, update_field {field, value}. Platzhalter: {{contact.first_name|du}}, {{location.name}}. Beispiel: {"name":"Neuer Lead: Aufgabe","trigger":{"type":"form.submitted","config":{}},"steps":[{"type":"add_tag","tags":["lead"]},{"type":"create_task","title":"{{contact.name}} anrufen","due_in_days":1}]}',
+    doc: 'workflow: { name, trigger:{type, config?}, steps:[{type, …}] } – triggers e.g. form.submitted, contact.tag_added (config {tag}), appointment.booked, opportunity.status_changed (config {status}), task.completed. Steps: add_tag {tags:[]}, remove_tag, create_task {title, due_in_days}, add_note {body}, notify {subject, body}, send_email {subject, body}, send_sms {body}, wait {amount, unit:"minutes|hours|days"}, create_opportunity, update_field {field, value}. Placeholders: {{contact.first_name|there}}, {{location.name}}. Example: {"name":"New lead: task","trigger":{"type":"form.submitted","config":{}},"steps":[{"type":"add_tag","tags":["lead"]},{"type":"create_task","title":"Call {{contact.name}}","due_in_days":1}]}',
     build: (p) => ({ method: 'POST', path: '/api/workflows', body: { name: str(p.name, 'name', 120), trigger: obj(p.trigger, 'trigger'), steps: list(p.steps, 'steps', 100, true), settings: p.settings && typeof p.settings === 'object' ? p.settings : undefined } }),
     result: (r) => ({ id: idOf(r), name: String(r?.name ?? ''), url: `workflows/${idOf(r)}` }),
     undo: (id) => `/api/workflows/${id}`,
   },
   custom_field: {
     label: 'Eigenes Kontaktfeld',
-    doc: 'custom_field: { label, key? (a-z0-9_), type: text|textarea|number|date|select|checkbox|email|phone|url, options?:[…] für select } – Beispiel: {"label":"Budget","type":"number"}',
+    doc: 'custom_field: { label, key? (a-z0-9_), type: text|textarea|number|date|select|checkbox|email|phone|url, options?:[…] for select } – example: {"label":"Budget","type":"number"}',
     build: (p) => ({ method: 'POST', path: '/api/custom-fields', body: { label: str(p.label, 'label', 100), ...(p.key ? { key: str(p.key, 'key', 60) } : {}), type: str(p.type || 'text', 'type', 20), options: textList(p.options, 'options') } }),
     result: (r) => ({ id: idOf(r), name: String(r?.label ?? '') }),
     undo: (id) => `/api/custom-fields/${id}`,
   },
   object_type: {
     label: 'Eigenes Objekt',
-    doc: 'object_type: { singular, plural?, icon?, description?, properties:[{key (a-z0-9_), label, type: text|textarea|number|date|select|checkbox|email|phone|url, options?:[…]}] } – Beispiel: {"singular":"Projekt","plural":"Projekte","properties":[{"key":"budget","label":"Budget","type":"number"},{"key":"status","label":"Status","type":"select","options":["Geplant","Läuft","Fertig"]}]}',
+    doc: 'object_type: { singular, plural?, icon?, description?, properties:[{key (a-z0-9_), label, type: text|textarea|number|date|select|checkbox|email|phone|url, options?:[…]}] } – example: {"singular":"Project","plural":"Projects","properties":[{"key":"budget","label":"Budget","type":"number"},{"key":"status","label":"Status","type":"select","options":["Planned","Running","Done"]}]}',
     build: (p) => ({ method: 'POST', path: '/api/object-types', body: { singular: str(p.singular, 'singular', 60), ...(p.plural ? { plural: str(p.plural, 'plural', 60) } : {}), ...(p.icon ? { icon: str(p.icon, 'icon', 30) } : {}), ...(p.description ? { description: str(p.description, 'description', 500) } : {}), properties: list(p.properties, 'properties', 50).map((x) => obj(x, 'properties[]')) } }),
     result: (r) => ({ id: idOf(r), name: String(r?.plural ?? r?.singular ?? ''), url: `objects/${String(r?.key ?? '')}` }),
     undo: (id) => `/api/object-types/${id}`,
   },
   property: {
     label: 'Eigenschaft an Kontakt/Firma/Objekt',
-    doc: 'property: { object: "contact"|"company"|"p_<objekt>", key, label, type, options?:[…] } – Beispiel: {"object":"company","key":"umsatz","label":"Jahresumsatz","type":"number"}',
+    doc: 'property: { object: "contact"|"company"|"p_<object>", key, label, type, options?:[…] } – example: {"object":"company","key":"revenue","label":"Annual revenue","type":"number"}',
     build: (p) => ({ method: 'POST', path: '/api/properties', body: { object: str(p.object, 'object', 60), key: str(p.key, 'key', 60), label: str(p.label, 'label', 100), type: str(p.type || 'text', 'type', 20), options: textList(p.options, 'options') } }),
     result: (r) => ({ id: idOf(r), name: String(r?.label ?? '') }),
     undo: (id) => `/api/properties/${id}`,
   },
   report: {
     label: 'Bericht',
-    doc: 'report: { name, description?, viz: table|bar|line|pie|kpi, query:{source, measures:["count"|"sum:feld"|"avg:feld"], group_by?:["feld" oder "created_at:month"], filters?:[], range?:"last_30_days"|"last_month"|"this_year"|"all"} } – Quellen z. B. contacts, opportunities, tasks, tickets, invoices (genaue Felder liefert das Werkzeug create_report_from_question). Beispiel: {"name":"Leads je Quelle","viz":"bar","query":{"source":"contacts","measures":["count"],"group_by":["source"],"range":"last_30_days"}}',
+    doc: 'report: { name, description?, viz: table|bar|line|pie|kpi, query:{source, measures:["count"|"sum:field"|"avg:field"], group_by?:["field" or "created_at:month"], filters?:[], range?:"last_30_days"|"last_month"|"this_year"|"all"} } – sources e.g. contacts, opportunities, tasks, tickets, invoices (the tool create_report_from_question gives the exact fields). Example: {"name":"Leads by source","viz":"bar","query":{"source":"contacts","measures":["count"],"group_by":["source"],"range":"last_30_days"}}',
     build: (p) => ({ method: 'POST', path: '/api/reports/library', body: { name: str(p.name, 'name', 120), description: str(p.description, 'description', 1000, false), config: { viz: str(p.viz || 'table', 'viz', 20), query: obj(p.query, 'query') }, visibility: 'private' } }),
     result: (r) => ({ id: idOf(r), name: String(r?.name ?? ''), url: `reports/r/${idOf(r)}` }),
     undo: (id) => `/api/reports/library/${id}`,
   },
   dashboard: {
     label: 'Dashboard',
-    doc: 'dashboard: { name, widgets:[{title, viz, query, w?(1-12), h?(1-12)}] } – query wie bei report. Beispiel: {"name":"Vertrieb","widgets":[{"title":"Neue Kontakte","viz":"kpi","query":{"source":"contacts","measures":["count"],"range":"last_30_days"},"w":4,"h":2}]}',
+    doc: 'dashboard: { name, widgets:[{title, viz, query, w?(1-12), h?(1-12)}] } – query as for report. Example: {"name":"Sales","widgets":[{"title":"New contacts","viz":"kpi","query":{"source":"contacts","measures":["count"],"range":"last_30_days"},"w":4,"h":2}]}',
     build: (p) => ({
       method: 'POST',
       path: '/api/reports/dashboards',
@@ -100,7 +101,7 @@ export const BLOCKS: Record<string, BlockDef> = {
         visibility: 'private',
         widgets: list(p.widgets, 'widgets', 20, true).map((w, i) => {
           const o = obj(w, 'widgets[]');
-          return { title: str(o.title || `Bericht ${i + 1}`, 'title', 120), config: { viz: str(o.viz || 'table', 'viz', 20), query: obj(o.query, 'query') }, w: Number(o.w) || 6, h: Number(o.h) || 4, x: (i % 2) * 6, y: Math.floor(i / 2) * 4 };
+          return { title: str(o.title || tApp()('Bericht {n}', { n: i + 1 }), 'title', 120), config: { viz: str(o.viz || 'table', 'viz', 20), query: obj(o.query, 'query') }, w: Number(o.w) || 6, h: Number(o.h) || 4, x: (i % 2) * 6, y: Math.floor(i / 2) * 4 };
         }),
       },
     }),
@@ -110,7 +111,7 @@ export const BLOCKS: Record<string, BlockDef> = {
   agent: {
     label: 'KI-Agent',
     note: 'wird privat angelegt, ohne Auto-Antwort und Zeitplan',
-    doc: 'agent: { name, emoji?, description (Rolle), instructions (Anweisungen), mode?: "read"|"ask" (Standard ask), starters?:[Startfragen] } – Beispiel: {"name":"Angebots-Helfer","emoji":"📝","description":"Hilft beim Formulieren von Angeboten","instructions":"Fasse Kundenwünsche zusammen und schlage Angebotstexte vor.","mode":"ask"}',
+    doc: 'agent: { name, emoji?, description (role), instructions, mode?: "read"|"ask" (default ask), starters?:[starter questions] } – example: {"name":"Quote helper","emoji":"📝","description":"Helps you word quotes","instructions":"Summarise what the customer wants and suggest quote wording.","mode":"ask"}',
     build: (p) => ({
       method: 'POST',
       path: '/api/agents',
@@ -121,28 +122,28 @@ export const BLOCKS: Record<string, BlockDef> = {
   },
   template: {
     label: 'Vorlage (E-Mail/SMS)',
-    doc: 'template: { name, channel: "email"|"sms", subject? (E-Mail), body } – Platzhalter {{contact.first_name|du}}. Beispiel: {"name":"Termin-Erinnerung","channel":"sms","body":"Hallo {{contact.first_name|}}, wir sehen uns morgen!"}',
+    doc: 'template: { name, channel: "email"|"sms", subject? (email), body } – placeholders {{contact.first_name|there}}. Example: {"name":"Appointment reminder","channel":"sms","body":"Hi {{contact.first_name|}}, see you tomorrow!"}',
     build: (p) => ({ method: 'POST', path: '/api/templates', body: { name: str(p.name, 'name', 120), channel: p.channel === 'sms' ? 'sms' : 'email', subject: str(p.subject, 'subject', 200, false), body: str(p.body, 'body', 20_000) } }),
     result: (r) => ({ id: idOf(r), name: String(r?.name ?? ''), url: 'campaigns' }),
     undo: (id) => `/api/templates/${id}`,
   },
   form: {
     label: 'Formular',
-    doc: 'form: { name, kind?: "form"|"survey", fields:[{type: text|email|phone|textarea|select|checkbox|consent, label, name, required?, options?:[…]}], settings?:{thank_you?} } – name ist der interne Name (first_name, last_name, email, phone, message, company wirken auf den Kontakt). Beispiel: {"name":"Rückruf-Wunsch","fields":[{"type":"text","label":"Vorname","name":"first_name","required":true},{"type":"phone","label":"Telefon","name":"phone","required":true}]}',
+    doc: 'form: { name, kind?: "form"|"survey", fields:[{type: text|email|phone|textarea|select|checkbox|consent, label, name, required?, options?:[…]}], settings?:{thank_you?} } – name is the internal name (first_name, last_name, email, phone, message, company update the contact). Example: {"name":"Callback request","fields":[{"type":"text","label":"First name","name":"first_name","required":true},{"type":"phone","label":"Phone","name":"phone","required":true}]}',
     build: (p) => ({ method: 'POST', path: '/api/forms', body: { name: str(p.name, 'name', 120), kind: p.kind === 'survey' ? 'survey' : 'form', fields: list(p.fields, 'fields', 40, true).map((f) => obj(f, 'fields[]')), ...(p.settings && typeof p.settings === 'object' ? { settings: { thank_you: str((p.settings as P).thank_you, 'thank_you', 500, false) || undefined } } : {}) } }),
     result: (r) => ({ id: idOf(r), name: String(r?.name ?? ''), url: `forms/${idOf(r)}` }),
     undo: (id) => `/api/forms/${id}`,
   },
   pipeline: {
     label: 'Pipeline',
-    doc: 'pipeline: { name, stages:[Phasen-Namen] } – Beispiel: {"name":"Aufträge","stages":["Anfrage","Angebot","Beauftragt","Erledigt"]}',
+    doc: 'pipeline: { name, stages:[stage names] } – example: {"name":"Jobs","stages":["Enquiry","Quote","Booked","Done"]}',
     build: (p) => ({ method: 'POST', path: '/api/pipelines', body: { name: str(p.name, 'name', 100), stages: textList(p.stages, 'stages', 20) } }),
     result: (r) => ({ id: idOf(r), name: String(r?.name ?? ''), url: 'opportunities' }),
     undo: (id) => `/api/pipelines/${id}`,
   },
   tag: {
     label: 'Tag',
-    doc: 'tag: { name } – Beispiel: {"name":"vip"}',
+    doc: 'tag: { name } – example: {"name":"vip"}',
     build: (p) => ({ method: 'POST', path: '/api/tags', body: { name: str(p.name, 'name', 80) } }),
     result: (r) => ({ id: idOf(r), name: String(r?.name ?? '') }),
     undo: (id) => `/api/tags/${id}`,
@@ -163,10 +164,10 @@ export interface PlanStep {
 export function checkStep(raw: { block?: unknown; title?: unknown; params?: unknown }): PlanStep {
   const key = String(raw.block ?? '');
   const def = BLOCKS[key];
-  if (!def) throw bad(`Unbekannter Baustein „${key}“ – möglich sind: ${BLOCK_KEYS.join(', ')}.`);
+  if (!def) throw bad(tApp()('Unbekannter Baustein „{key}“ – möglich sind: {list}.', { key, list: BLOCK_KEYS.join(', ') }));
   const params = obj(raw.params, 'params');
   const call = def.build(params);
-  return { block: key, title: String(raw.title ?? '').trim().slice(0, 140) || def.label, params, area: requiredPermission(call.method, call.path.split('?')[0]) ?? null };
+  return { block: key, title: String(raw.title ?? '').trim().slice(0, 140) || tApp()(def.label), params, area: requiredPermission(call.method, call.path.split('?')[0]) ?? null };
 }
 
 /** Does the user have every area the steps need? Names the first one missing. */
@@ -186,7 +187,7 @@ export interface Created {
 /** The context stage 1 runs under: the requester's rights, shown in the audit log as the Werkstatt. */
 export function buildContext(base: Ctx | undefined, user: User, locationId: string, label: string): Ctx {
   const b = base ?? backgroundContext(user, locationId);
-  return { ...b, user: { ...user, name: `${label} (im Auftrag von ${user.name})`.slice(0, 200) }, via: 'werkstatt' as Ctx['via'], viaApiKey: false, scope: undefined, locationId, skipAfterWrite: false };
+  return { ...b, user: { ...user, name: tApp()('{label} (im Auftrag von {name})', { label: tApp()(label), name: user.name }).slice(0, 200) }, via: 'werkstatt' as Ctx['via'], viaApiKey: false, scope: undefined, locationId, skipAfterWrite: false };
 }
 
 /** Routes stage 1 may call (the catalogue's creates and their undo) – a guard checks this for via "werkstatt". */
@@ -201,17 +202,19 @@ export async function executeSteps(app: App, o: { user: User; locationId: string
   const ctx = buildContext(o.baseCtx, o.user, o.locationId, o.label);
   for (const [i, step] of o.steps.entries()) {
     const def = BLOCKS[step.block];
-    o.progress?.(i + 1, o.steps.length, `Schritt ${i + 1} von ${o.steps.length}: ${step.title || def.label}`);
+    const t = tApp();
+    const vars = { n: i + 1, total: o.steps.length, block: t(def.label) };
+    o.progress?.(i + 1, o.steps.length, t('Schritt {n} von {total}: {title}', { ...vars, title: step.title || t(def.label) }));
     try {
       const call = def.build(step.params);
       const r = await callRoute(app, ctx, call.method, call.path, { locationId: o.locationId, body: call.body });
       const res = def.result(r, step.params);
       created.push({ block: step.block, ...res });
-      o.log(`Schritt ${i + 1}/${o.steps.length}: ${def.label} „${res.name}“ angelegt.`);
+      o.log(t('Schritt {n}/{total}: {block} „{name}“ angelegt.', { ...vars, name: res.name }));
     } catch (e) {
-      const msg = (e as Error).message || 'Fehler';
-      o.log(`Schritt ${i + 1}/${o.steps.length} (${def.label}) fehlgeschlagen: ${msg}`, 'error');
-      return { created, error: `Schritt ${i + 1} (${step.title}): ${msg}` };
+      const msg = t((e as Error).message || 'Fehler');
+      o.log(t('Schritt {n}/{total} ({block}) fehlgeschlagen: {message}', { ...vars, message: msg }), 'error');
+      return { created, error: t('Schritt {n} ({title}): {message}', { n: i + 1, title: step.title, message: msg }) };
     }
   }
   return { created };

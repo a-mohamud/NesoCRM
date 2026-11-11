@@ -33,6 +33,7 @@ import {
 import { notify } from '../services/community-actions.js';
 import { communityUi, kitOf } from '../services/community-ui.js';
 import { getContact } from '../services/contacts.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Badges (by hand or by rule), perks and channels that open with a level, the monthly leaderboard and its archive – the admin API
@@ -131,8 +132,9 @@ export const communityGamifyModule: Module = {
       if (!g) return;
       const u = unlocksAt(app, g, Number(e.data.level));
       // Courses open with their own message elsewhere; channels and perks are announced here.
-      const parts = [...u.channels.map((c) => `Kanal ${c}`), ...u.perks.map((p) => p.title)];
-      if (parts.length) notify(app, g, [String(e.data.contactId)], { kind: 'perk', text: `Neu freigeschaltet: ${parts.join(', ')}` });
+      const t = tLoc(app, g.location_id);
+      const parts = [...u.channels.map((c) => t('Kanal {channel}', { channel: c })), ...u.perks.map((p) => p.title)];
+      if (parts.length) notify(app, g, [String(e.data.contactId)], { kind: 'perk', text: t('Neu freigeschaltet: {items}', { items: parts.join(', ') }) });
     });
 
     // Hourly: the counters that no event moves (comments, likes, days, streaks) and the archive of finished months.
@@ -150,7 +152,8 @@ export const communityGamifyModule: Module = {
     // --- admin API: badges --------------------------------------------------------------------------------------------------------
     router.get('/api/community/groups/:id/badges', 'location', (ctx) => {
       const g = mustGroup(ctx.locationId, ctx.params.id);
-      return { rules: RULE_LABELS, badges: badgesOf(app, g.id).map(badgeOut) };
+      const t = tCtx(ctx);
+      return { rules: Object.fromEntries(Object.entries(RULE_LABELS).map(([k, v]) => [k, t(v)])), badges: badgesOf(app, g.id).map(badgeOut) };
     });
     router.post('/api/community/groups/:id/badges', 'location', (ctx) => {
       const g = mustGroup(ctx.locationId, ctx.params.id);
@@ -224,7 +227,8 @@ export const communityGamifyModule: Module = {
     };
     router.get('/api/community/groups/:id/perks', 'location', (ctx) => {
       const g = mustGroup(ctx.locationId, ctx.params.id);
-      return { kinds: PERK_KINDS, perks: perksOf(app, g.id).map(perkOut), max_file_bytes: PERK_FILE_MAX };
+      const t = tCtx(ctx);
+      return { kinds: Object.fromEntries(Object.entries(PERK_KINDS).map(([k, v]) => [k, t(v)])), perks: perksOf(app, g.id).map(perkOut), max_file_bytes: PERK_FILE_MAX };
     });
     router.post('/api/community/groups/:id/perks', 'location', (ctx) => {
       const g = mustGroup(ctx.locationId, ctx.params.id);
@@ -291,11 +295,12 @@ export const communityGamifyModule: Module = {
 
     // --- member pages -------------------------------------------------------------------------------------------------------------
     const perkCount = (gid: string) => db.get<{ n: number }>('SELECT COUNT(*) AS n FROM community_perks WHERE group_id = ?', gid)!.n + db.get<{ n: number }>('SELECT COUNT(*) AS n FROM community_channel_rules WHERE group_id = ? AND min_level > 1', gid)!.n;
-    ui.tabs.push((p, _m, g) => (perkCount(g.id) || groupSettings(g as any).level_unlocks.length ? [{ key: 'perks', href: `${kitOf(app).gHref(p, g)}/perks`, label: '🎁 Vorteile' }] : []));
+    ui.tabs.push((p, _m, g) => (perkCount(g.id) || groupSettings(g as any).level_unlocks.length ? [{ key: 'perks', href: `${kitOf(app).gHref(p, g)}/perks`, label: `🎁 ${tLoc(app, g.location_id)('Vorteile')}` }] : []));
 
     router.get('/portal/:p/community/g/:group/perks', 'public', (ctx) =>
       kitOf(app).withGroup(ctx, (p, m, g) => {
         const kit = kitOf(app);
+        const t = tLoc(app, g.location_id);
         const s = groupSettings(g as any);
         const mine = memberPoints(app, g.id, m.contact.id);
         const myLvl = levelFor(mine, s.levels);
@@ -307,23 +312,23 @@ export const communityGamifyModule: Module = {
             if (!u.courses.length && !u.channels.length && !u.perks.length) return '';
             const open = level <= myLvl || staff;
             const rows = [
-              ...u.courses.map((c) => `<div class="cm-perk${open ? '' : ' locked'}"><span class="ic">🎓</span><div class="bd"><strong>Kurs: ${escapeHtml(c)}</strong><div class="muted small">${open ? 'Ist in deinem Kursbereich freigeschaltet.' : 'Öffnet sich automatisch.'}</div></div></div>`),
-              ...u.channels.map((c) => `<div class="cm-perk${open ? '' : ' locked'}"><span class="ic">💬</span><div class="bd"><strong>Kanal: ${escapeHtml(c)}</strong><div class="muted small">${open ? 'Du findest ihn im Feed.' : 'Öffnet sich automatisch.'}</div></div></div>`),
+              ...u.courses.map((c) => `<div class="cm-perk${open ? '' : ' locked'}"><span class="ic">🎓</span><div class="bd"><strong>${t('Kurs: {course}', { course: escapeHtml(c) })}</strong><div class="muted small">${open ? t('Ist in deinem Kursbereich freigeschaltet.') : t('Öffnet sich automatisch.')}</div></div></div>`),
+              ...u.channels.map((c) => `<div class="cm-perk${open ? '' : ' locked'}"><span class="ic">💬</span><div class="bd"><strong>${t('Kanal: {channel}', { channel: escapeHtml(c) })}</strong><div class="muted small">${open ? t('Du findest ihn im Feed.') : t('Öffnet sich automatisch.')}</div></div></div>`),
               ...u.perks.map((pk) => {
                 let body = '';
                 if (open) {
                   if (pk.kind === 'coupon') body = `<div class="cm-code">${escapeHtml(pk.body)}</div>`;
-                  else if (pk.kind === 'link') body = `<p style="margin:6px 0 0"><a class="btn" href="${escapeHtml(pk.body)}" target="_blank" rel="noopener noreferrer">Öffnen</a></p>`;
-                  else if (pk.kind === 'file') body = pk.file ? `<p style="margin:6px 0 0"><a class="btn" href="${kit.gHref(p, g)}/perks/${encodeURIComponent(pk.id)}/download">Herunterladen${pk.filename ? ` (${escapeHtml(pk.filename)})` : ''}</a></p>` : '';
+                  else if (pk.kind === 'link') body = `<p style="margin:6px 0 0"><a class="btn" href="${escapeHtml(pk.body)}" target="_blank" rel="noopener noreferrer">${t('Öffnen')}</a></p>`;
+                  else if (pk.kind === 'file') body = pk.file ? `<p style="margin:6px 0 0"><a class="btn" href="${kit.gHref(p, g)}/perks/${encodeURIComponent(pk.id)}/download">${t('Herunterladen')}${pk.filename ? ` (${escapeHtml(pk.filename)})` : ''}</a></p>` : '';
                   else body = `<div class="prose small">${kit.renderText(p, pk.body, false)}</div>`;
                 }
-                return `<div class="cm-perk${open ? '' : ' locked'}"><span class="ic">${KIND_ICON[pk.kind] ?? '🎁'}</span><div class="bd"><strong>${escapeHtml(pk.title)}</strong>${pk.note && open ? `<div class="muted small">${escapeHtml(pk.note)}</div>` : ''}${open ? body : `<div class="muted small">🔒 Wird mit Level ${level} freigeschaltet.</div>`}</div></div>`;
+                return `<div class="cm-perk${open ? '' : ' locked'}"><span class="ic">${KIND_ICON[pk.kind] ?? '🎁'}</span><div class="bd"><strong>${escapeHtml(pk.title)}</strong>${pk.note && open ? `<div class="muted small">${escapeHtml(pk.note)}</div>` : ''}${open ? body : `<div class="muted small">🔒 ${t('Wird mit Level {level} freigeschaltet.', { level })}</div>`}</div></div>`;
               }),
             ].join('');
-            return `<section class="cm-box cm-lvl"><h3>${open ? '✅' : '🔒'} ${escapeHtml(l.name)} <small>ab ${l.points} Punkten${open ? '' : ` · noch ${Math.max(0, l.points - mine)}`}</small></h3>${rows}</section>`;
+            return `<section class="cm-box cm-lvl"><h3>${open ? '✅' : '🔒'} ${escapeHtml(l.name)} <small>${t('ab {points} Punkten', { points: l.points })}${open ? '' : ` · ${t('noch {n}', { n: Math.max(0, l.points - mine) })}`}</small></h3>${rows}</section>`;
           })
           .join('');
-        return kit.frame(p, m, `Vorteile · ${g.name}`, `${kit.groupHead(p, g)}${kit.groupTabs(p, m, g, 'perks')}<div style="max-width:760px"><p class="muted">Du bist auf Level ${myLvl} mit ${mine} Punkten. Mit jedem Level öffnet sich mehr.</p>${blocks || '<div class="cm-box cm-empty"><p>Hier gibt es noch keine Vorteile.</p></div>'}</div>`);
+        return kit.frame(p, m, `${t('Vorteile')} · ${g.name}`, `${kit.groupHead(p, g)}${kit.groupTabs(p, m, g, 'perks')}<div style="max-width:760px"><p class="muted">${t('Du bist auf Level {level} mit {points} Punkten. Mit jedem Level öffnet sich mehr.', { level: myLvl, points: mine })}</p>${blocks || `<div class="cm-box cm-empty"><p>${t('Hier gibt es noch keine Vorteile.')}</p></div>`}</div>`);
       }),
     );
     router.get('/portal/:p/community/g/:group/perks/:pid/download', 'public', (ctx) =>
@@ -331,19 +336,20 @@ export const communityGamifyModule: Module = {
         const kit = kitOf(app);
         const pk = db.get<Perk>('SELECT * FROM community_perks WHERE id = ? AND group_id = ?', ctx.params.pid, g.id);
         const lvl = levelFor(memberPoints(app, g.id, m.contact.id), groupSettings(g as any).levels);
-        if (!pk || pk.kind !== 'file' || (lvl < pk.level && !CAN.moderate(kit.roleOf(g, m.contact.id)))) return kit.errorPage(p, m, 'Diese Datei gibt es nicht oder sie ist noch gesperrt.', 404);
-        return perkFileResponse(app, pk) ?? kit.errorPage(p, m, 'Die Datei fehlt.', 404);
+        if (!pk || pk.kind !== 'file' || (lvl < pk.level && !CAN.moderate(kit.roleOf(g, m.contact.id)))) return kit.errorPage(p, m, tLoc(app, g.location_id)('Diese Datei gibt es nicht oder sie ist noch gesperrt.'), 404);
+        return perkFileResponse(app, pk) ?? kit.errorPage(p, m, tLoc(app, g.location_id)('Die Datei fehlt.'), 404);
       }),
     );
 
     // Badges on the profile, and what comes next in the side column.
-    ui.profileView.push((_p, _m, groups, them) => {
+    ui.profileView.push((p, _m, groups, them) => {
       const e = earnedBy(app, groups.map((g) => g.id), them.id);
       if (!e.length) return '';
-      return `<div class="cm-box" style="margin:0 0 18px"><strong>Abzeichen</strong><div class="cm-badges" style="margin-top:8px">${e.map((x) => `<span class="cm-badge" title="${escapeHtml(x.badge.description)}"><i${x.badge.color ? ` style="background:${escapeHtml(x.badge.color)}"` : ''}>${escapeHtml(x.badge.emoji || '🏅')}</i>${escapeHtml(x.badge.name)}</span>`).join('')}</div></div>`;
+      return `<div class="cm-box" style="margin:0 0 18px"><strong>${tLoc(app, p.locationId)('Abzeichen')}</strong><div class="cm-badges" style="margin-top:8px">${e.map((x) => `<span class="cm-badge" title="${escapeHtml(x.badge.description)}"><i${x.badge.color ? ` style="background:${escapeHtml(x.badge.color)}"` : ''}>${escapeHtml(x.badge.emoji || '🏅')}</i>${escapeHtml(x.badge.name)}</span>`).join('')}</div></div>`;
     });
     ui.side.push((p, m, g) => {
       const kit = kitOf(app);
+      const t = tLoc(app, g.location_id);
       const s = groupSettings(g as any);
       const pts = memberPoints(app, g.id, m.contact.id);
       const lvl = levelFor(pts, s.levels);
@@ -352,7 +358,7 @@ export const communityGamifyModule: Module = {
       const mine = earnedBy(app, [g.id], m.contact.id).slice(0, 6);
       const open = badgesOf(app, g.id).length - earnedBy(app, [g.id], m.contact.id).length;
       if (!items.length && !mine.length) return '';
-      return `${items.length ? `<div class="cm-box"><h3>Bei Level ${lvl + 1} öffnet sich</h3><ul class="small" style="margin:0;padding-left:18px">${items.slice(0, 5).map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul><p class="muted small" style="margin:8px 0 0">Noch ${Math.max(0, (s.levels[lvl]?.points ?? 0) - pts)} Punkte · <a href="${kit.gHref(p, g)}/perks">alle Vorteile</a></p></div>` : ''}${mine.length ? `<div class="cm-box"><h3>Meine Abzeichen</h3><div class="cm-badges">${mine.map((x) => `<span class="cm-badge" title="${escapeHtml(x.badge.description)}"><i${x.badge.color ? ` style="background:${escapeHtml(x.badge.color)}"` : ''}>${escapeHtml(x.badge.emoji || '🏅')}</i>${escapeHtml(x.badge.name)}</span>`).join('')}</div>${open > 0 ? `<p class="muted small" style="margin:8px 0 0">${open} weitere zu holen</p>` : ''}</div>` : ''}`;
+      return `${items.length ? `<div class="cm-box"><h3>${t('Bei Level {level} öffnet sich', { level: lvl + 1 })}</h3><ul class="small" style="margin:0;padding-left:18px">${items.slice(0, 5).map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul><p class="muted small" style="margin:8px 0 0">${t('Noch {n} Punkte', { n: Math.max(0, (s.levels[lvl]?.points ?? 0) - pts) })} · <a href="${kit.gHref(p, g)}/perks">${t('alle Vorteile')}</a></p></div>` : ''}${mine.length ? `<div class="cm-box"><h3>${t('Meine Abzeichen')}</h3><div class="cm-badges">${mine.map((x) => `<span class="cm-badge" title="${escapeHtml(x.badge.description)}"><i${x.badge.color ? ` style="background:${escapeHtml(x.badge.color)}"` : ''}>${escapeHtml(x.badge.emoji || '🏅')}</i>${escapeHtml(x.badge.name)}</span>`).join('')}</div>${open > 0 ? `<p class="muted small" style="margin:8px 0 0">${t('{n} weitere zu holen', { n: open })}</p>` : ''}</div>` : ''}`;
     });
     ui.notificationIcon.push((k) => (k === 'badge' ? '🏅' : k === 'perk' ? '🎁' : undefined));
     ui.notificationTarget.push((p, n) => {

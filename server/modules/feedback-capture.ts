@@ -4,6 +4,7 @@ import { id, now } from '../core/util.js';
 import { RateLimiter, cleanClientError, cleanDiagnostics, cleanUrl, fingerprint, normalizeMessage, redact, topFrame, type Diagnostics } from '../services/feedback.js';
 import { autoCaptureOn, canonical, createItem, getItem, link, loadFeedbackSettings, roleLabel, serverVersion, setStatus, statusOf, ticketOf } from '../services/feedback-store.js';
 import { addTicketEvent } from '../services/tickets.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Automatic error capture for „Fehler & Wünsche“: uncaught browser errors (sent by the web app for
@@ -38,7 +39,7 @@ export function ignorable(e: { message: string; stack?: string; source?: string 
 
 export function captureError(app: App, input: CaptureInput, newTickets: RateLimiter): { id: string; created: boolean; dropped?: boolean } | null {
   const { db } = app;
-  const message = redact(input.message, 500) || 'Unbekannter Fehler';
+  const message = redact(input.message, 500) || tApp()('Unbekannter Fehler');
   const stack = redact(input.stack ?? '', 6000);
   const fp = fingerprint(input.source, message, stack);
   const user = input.user ?? null;
@@ -70,13 +71,13 @@ export function captureError(app: App, input: CaptureInput, newTickets: RateLimi
     const t = ticketOf(app, f);
     if (t && MILESTONES.includes(n)) {
       const users = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM feedback_links WHERE feedback_id = ?', f.id)!.n;
-      addTicketEvent(app, t, 'note', { body: `Dieser Fehler ist jetzt ${n}× aufgetreten (${Object.keys(d.locations ?? {}).length} Sub-Accounts, ${users} Nutzer mit Fehlerberichten).`, data: { via: 'system', occurrences: n } });
+      addTicketEvent(app, t, 'note', { body: tApp()('Dieser Fehler ist jetzt {n}× aufgetreten ({locations} Sub-Accounts, {users} Nutzer mit Fehlerberichten).', { n, locations: Object.keys(d.locations ?? {}).length, users }), data: { via: 'system', occurrences: n } });
     }
     // Fixed, but it happens again: back to work (the people affected only hear about the next fix).
     const st = statusOf(app, f, t);
     if (t && (st.key === 'behoben' || st.key === 'ausgeliefert')) {
       db.run('UPDATE feedback_items SET fixed_at = NULL WHERE id = ?', f.id);
-      setStatus(app, f, 'bestaetigt', { via: 'system' }, { note: `Der Fehler tritt wieder auf${f.version ? ` (war behoben in Version ${f.version})` : ''}.` });
+      setStatus(app, f, 'bestaetigt', { via: 'system' }, { note: f.version ? tApp()('Der Fehler tritt wieder auf (war behoben in Version {version}).', { version: f.version }) : tApp()('Der Fehler tritt wieder auf.') });
     }
     return { id: f.id, created: false };
   }
@@ -84,11 +85,12 @@ export function captureError(app: App, input: CaptureInput, newTickets: RateLimi
   if (!newTickets.take('new')) return { id: '', created: false, dropped: true };
   const prefix = input.source === 'server' ? '[Server]' : input.source === 'android' ? '[Android]' : '[Browser]';
   const frame = topFrame(stack);
+  const t = tApp();
   const body = [
-    `${input.source === 'server' ? 'Unerwarteter Server-Fehler' : input.source === 'android' ? 'Fehler in der Android-App' : 'Fehler im Browser'} – automatisch erfasst.`,
+    t(input.source === 'server' ? 'Unerwarteter Server-Fehler – automatisch erfasst.' : input.source === 'android' ? 'Fehler in der Android-App – automatisch erfasst.' : 'Fehler im Browser – automatisch erfasst.'),
     '',
-    `Meldung: ${message}`,
-    frame ? `Stelle: ${frame}` : '',
+    t('Meldung: {message}', { message }),
+    frame ? t('Stelle: {frame}', { frame }) : '',
     sample.route ? `Route: ${sample.route}` : '',
     input.requestId ? `Request-ID: ${input.requestId}` : '',
     sample.version ? `Version: ${sample.version}` : '',

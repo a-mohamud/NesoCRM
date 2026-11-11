@@ -222,7 +222,7 @@ export type Mapping = Record<MappingKey, string>;
 
 export const MAPPING_LABELS: Record<MappingKey, string> = {
   bank: 'Bank',
-  cash: 'Kasse',
+  cash: 'Kasse (Bargeld)',
   transit: 'Geldtransit (Stripe & Co.)',
   receivable: 'Forderungen aus Lieferungen und Leistungen',
   payable: 'Verbindlichkeiten aus Lieferungen und Leistungen',

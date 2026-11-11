@@ -5,6 +5,7 @@ import { HttpError, bad, notFound, str, type Ctx } from '../core/http.js';
 import { parseJson, parseRows } from '../core/db.js';
 import { id, now } from '../core/util.js';
 import * as os from '../services/openshorts.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Optional Video-Studio tabs on top of OpenShorts' API: YouTube-Studio (title ideas with a
@@ -89,7 +90,8 @@ export const videoStudioToolsModule: Module = {
     };
     // A restart drops running background calls: free the task so it can be retried.
     app.onTick(() => {
-      db.run(`UPDATE video_tasks SET busy = NULL, error = 'Abgebrochen (Neustart) – bitte erneut versuchen', status = CASE WHEN status = 'analyzing' THEN 'failed' ELSE status END WHERE busy IS NOT NULL AND updated_at < ?`, new Date(Date.now() - 60 * 60_000).toISOString());
+      const t = tApp();
+      db.run(`UPDATE video_tasks SET busy = NULL, error = ?, status = CASE WHEN status = 'analyzing' THEN 'failed' ELSE status END WHERE busy IS NOT NULL AND updated_at < ?`, t('Abgebrochen (Neustart) – bitte erneut versuchen'), new Date(Date.now() - 60 * 60_000).toISOString());
     });
 
     router.get('/api/video-studio/tasks', 'location', (ctx) => {

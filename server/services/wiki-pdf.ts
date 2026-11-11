@@ -9,6 +9,7 @@ import type { Prim } from './canvas-render.js';
 import { textWidth } from './canvas-text.js';
 import { parseHtml, renderMarkdown, type HNode } from './wiki-markdown.js';
 import type { PageRow } from './wiki-store.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * PDF export of wiki pages without a library: the page is rendered to its (sanitised) HTML, parsed back into
@@ -228,7 +229,8 @@ export function buildWikiPdf(app: App, pages: PageRow[], opts: { space: string; 
     return cache.get(src) ?? undefined;
   };
   const L = new Layout();
-  const day = (iso: string) => new Date(iso).toLocaleDateString('de-DE', { timeZone: app.location(pages[0]?.location_id ?? '')?.timezone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' });
+  const t = tLoc(app, pages[0]?.location_id ?? '');
+  const day = (iso: string) => new Date(iso).toLocaleDateString(t.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: app.location(pages[0]?.location_id ?? '')?.timezone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const emitLines = (lines: Line[], x: number, size: number, lh: number) => {
     for (const ln of lines) {
@@ -454,7 +456,7 @@ export function buildWikiPdf(app: App, pages: PageRow[], opts: { space: string; 
     const titleLines = wrap(tokens([{ tag: '#text', attrs: {}, children: [], text: p.title }], { bold: true }), CW, 26);
     emitLines(titleLines, ML, 26, 33);
     L.y += 2;
-    paragraph([{ tag: '#text', attrs: {}, children: [], text: [opts.space, `Aktualisiert am ${day(p.updated_at)}`, p.updated_by_name].filter(Boolean).join(' · ') }], ML, CW, 10.5, { color: MUTED }, 6);
+    paragraph([{ tag: '#text', attrs: {}, children: [], text: [opts.space, t('Aktualisiert am {date}', { date: day(p.updated_at) }), p.updated_by_name].filter(Boolean).join(' · ') }], ML, CW, 10.5, { color: MUTED }, 6);
     L.page.prims.push({ t: 'path', d: [['M', ML, L.y], ['L', ML + CW, L.y]], stroke: '#e2e8f0', sw: 1 });
     L.y += 14;
     // the PDF is a copy: no live data, no links into the app
@@ -463,7 +465,7 @@ export function buildWikiPdf(app: App, pages: PageRow[], opts: { space: string; 
 
   const total = L.pages.length;
   const out: PdfPage[] = L.pages.slice(0, 400).map((pg, i) => {
-    const footer: Prim = { t: 'text', x: W / 2, y: H - 46, lines: [clean(`${pages[0]?.title ?? ''}  ·  Seite ${i + 1} von ${total}`)], size: 9, font: 'sans', anchor: 'middle', color: MUTED, lh: 12 };
+    const footer: Prim = { t: 'text', x: W / 2, y: H - 46, lines: [clean(`${pages[0]?.title ?? ''}  ·  ${t('Seite {n} von {total}', { n: i + 1, total })}`)], size: 9, font: 'sans', anchor: 'middle', color: MUTED, lh: 12 };
     return { width: W, height: H, prims: [...pg.behind, ...pg.prims, footer] };
   });
   const images = new Map<string, PdfImage>();

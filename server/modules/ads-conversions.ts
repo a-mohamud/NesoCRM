@@ -19,6 +19,7 @@ import {
 import { fetcherOf, googleAuth, googleCreds, googleReady, loadConnection } from '../services/ads-store.js';
 import type { TouchRow } from '../services/attribution.js';
 import { getContact } from '../services/contacts.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Google Ads offline conversions – the Google counterpart of the Meta Conversions API in ads.ts: configurable CRM events (deal
@@ -94,7 +95,7 @@ export const adsConversionsModule: Module = {
         `INSERT INTO ads_gconv_queue (id, location_id, event, order_id, contact_id, conversion_action, value, currency, occurred_at, status, next_at, error, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(location_id, order_id, conversion_action) DO NOTHING`,
         id(), loc, ev, o.orderId.slice(0, 64), o.contactId, cfg.action, o.value ?? null, (o.currency || s.config.currency || 'EUR').toUpperCase(), o.at ?? t,
-        allowed ? 'pending' : 'blocked', t, allowed ? '' : 'Keine Einwilligung (Marketing) – nicht hochgeladen', t,
+        allowed ? 'pending' : 'blocked', t, allowed ? '' : tLoc(app, loc)('Keine Einwilligung (Marketing) – nicht hochgeladen'), t,
       );
       if (allowed) await run(loc).catch((e) => console.warn('[ads-conversions]', loc, (e as Error).message));
     }
@@ -105,7 +106,7 @@ export const adsConversionsModule: Module = {
     /** Builds the upload for the rows; rows that may not or cannot go are settled here (blocked / skipped). */
     function prepare(loc: string, rows: Row[], cfg: GConvConfig, settle: boolean): Prepared[] {
       const out: Prepared[] = [];
-      const mark = (r: Row, status: string, error: string) => settle && db.run('UPDATE ads_gconv_queue SET status = ?, error = ?, next_at = ? WHERE id = ?', status, error, now(), r.id);
+      const mark = (r: Row, status: string, error: string) => settle && db.run('UPDATE ads_gconv_queue SET status = ?, error = ?, next_at = ? WHERE id = ?', status, tLoc(app, loc)(error), now(), r.id);
       for (const r of rows) {
         const c = r.contact_id ? getContact(app, loc, r.contact_id) : undefined;
         if (!c) {
@@ -159,7 +160,7 @@ export const adsConversionsModule: Module = {
       if (!rows.length) return undefined;
       const c = conn(loc);
       if (!googleReady(app, c)) {
-        db.run('UPDATE ads_gconv_settings SET last_error = ?, last_run_at = ? WHERE location_id = ?', 'Google Ads ist nicht verbunden (Anzeigen → Verbindungen)', now(), loc);
+        db.run('UPDATE ads_gconv_settings SET last_error = ?, last_run_at = ? WHERE location_id = ?', tLoc(app, loc)('Google Ads ist nicht verbunden (Anzeigen → Verbindungen)'), now(), loc);
         return undefined;
       }
       const prepared = prepare(loc, rows, cfg, true);
@@ -247,7 +248,7 @@ export const adsConversionsModule: Module = {
       return {
         enabled: s?.enabled ?? false,
         config: s?.config ?? DEFAULT_GCONV,
-        events: G_EVENTS.map((k) => ({ key: k, label: G_EVENT_LABEL[k] })),
+        events: G_EVENTS.map((k) => ({ key: k, label: tApp()(G_EVENT_LABEL[k]) })),
         google: { connected: googleReady(app, c), customer_id: g.customerId, login_customer_id: g.loginCustomerId, last_error: c?.last_error ?? null },
         consent_module: !!app.services.consent?.status,
         last_run_at: s?.row.last_run_at ?? null,

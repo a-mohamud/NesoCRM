@@ -22,6 +22,7 @@ import {
   type Purpose,
 } from '../services/oauth.js';
 import { openSecret, sealSecret } from './mail-sync.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * One OAuth layer for Google and Microsoft: the agency enters its OAuth apps once (client id/secret,
@@ -54,10 +55,13 @@ export interface OAuthConnection {
   updated_at: string;
 }
 
+/** A stored error that needs a new login: the German message or its English translation (stored in the instance language). */
+export const RECONNECT = /neu verbinden|reconnect/i;
+
 /** What the browser may see of a connection (never tokens). */
 export function connectionOut(c: any) {
   const { access_token: _a, refresh_token: _r, state: _s, ...rest } = c;
-  return { ...rest, needs_reconnect: c.status === 'error' && /neu verbinden/.test(c.last_error ?? '') };
+  return { ...rest, needs_reconnect: c.status === 'error' && RECONNECT.test(c.last_error ?? '') };
 }
 
 function savedClients(app: App): Record<string, any> {
@@ -141,11 +145,11 @@ export const oauthConnectModule: Module = {
       if (running) return running;
       const p = (async () => {
         if (!c.refresh_token) {
-          markError(cid, `${PROVIDER_LABEL[c.provider]}: Zugriff abgelaufen – bitte neu verbinden`);
-          throw new OAuthError('Zugriff abgelaufen – bitte neu verbinden', 'invalid_grant');
+          markError(cid, `${PROVIDER_LABEL[c.provider]}: ${tApp()('Zugriff abgelaufen – bitte neu verbinden')}`);
+          throw new OAuthError(tApp()('Zugriff abgelaufen – bitte neu verbinden'), 'invalid_grant');
         }
         const cfg = clientConfig(app, c.provider);
-        if (!cfg) throw new OAuthError(`Die ${PROVIDER_LABEL[c.provider]}-App der Agentur fehlt (Agentur → Integrationen)`, 'invalid_client');
+        if (!cfg) throw new OAuthError(tApp()('Die {provider}-App der Agentur fehlt (Agentur → Integrationen)', { provider: PROVIDER_LABEL[c.provider] }), 'invalid_client');
         try {
           const t = await refreshTokens(fetcher(), c.provider, cfg, { refreshToken: openSecret(app, c.refresh_token), scopes: scopesFor(c.provider, c.purpose) });
           db.run(
@@ -158,7 +162,7 @@ export const oauthConnectModule: Module = {
           );
           return t.access_token;
         } catch (e) {
-          if (e instanceof OAuthError && e.needsReconnect) markError(cid, `${PROVIDER_LABEL[c.provider]}: Zugriff abgelaufen oder entzogen – bitte neu verbinden`);
+          if (e instanceof OAuthError && e.needsReconnect) markError(cid, `${PROVIDER_LABEL[c.provider]}: ${tApp()('Zugriff abgelaufen oder entzogen – bitte neu verbinden')}`);
           throw e;
         }
       })().finally(() => inflight.delete(cid));
@@ -171,7 +175,8 @@ export const oauthConnectModule: Module = {
       get,
       fetcher,
       markError,
-      clearError: (cid: string) => db.run(`UPDATE oauth_connections SET status = 'ok', last_error = NULL WHERE id = ? AND status = 'error' AND last_error NOT LIKE '%neu verbinden%'`, cid),
+      // i18n-ignore (SQL)
+      clearError: (cid: string) => db.run(`UPDATE oauth_connections SET status = 'ok', last_error = NULL WHERE id = ? AND status = 'error' AND last_error NOT LIKE '%neu verbinden%' AND last_error NOT LIKE '%reconnect%'`, cid),
       configured: (p: Provider) => !!clientConfig(app, p),
       /** The Business Profile connection of a sub-account (Google), if any. */
       business: (locationId: string) => parseJson(db.get(`SELECT * FROM oauth_connections WHERE purpose = 'business' AND provider = 'google' AND location_id = ?`, locationId), ['settings', 'state']) as OAuthConnection | undefined,
@@ -245,7 +250,7 @@ export const oauthConnectModule: Module = {
         if (!canManageLocation(ctx.user, locationId)) throw new HttpError(403, 'Kein Zugriff auf die Einstellungen dieses Sub-Accounts');
       }
       const cfg = clientConfig(app, provider);
-      if (!cfg) throw new HttpError(409, `Die Agentur hat noch keine ${PROVIDER_LABEL[provider]}-App hinterlegt (Agentur → Integrationen)`);
+      if (!cfg) throw new HttpError(409, tApp()('Die Agentur hat noch keine {provider}-App hinterlegt (Agentur → Integrationen)', { provider: PROVIDER_LABEL[provider] }));
       // Come back on the address the user is signed in on (main address or agency domain).
       const host = String(ctx.req.headers.host ?? '').toLowerCase();
       const origin = origins(app).find((o) => new URL(o).host === host) ?? app.baseUrl();
@@ -268,20 +273,21 @@ export const oauthConnectModule: Module = {
       return { url: authorizeUrl(provider, cfg, { redirectUri, scopes: scopesFor(provider, purpose), state, challenge, loginHint: ctx.body.login_hint ? String(ctx.body.login_hint).slice(0, 200) : undefined }) };
     });
 
-    const back = (to: string, params: Record<string, string>) => redirect(`${to}?${new URLSearchParams(params)}`);
+    // The message is translated here (a German message id or an already translated error).
+    const back = (to: string, params: Record<string, string>) => redirect(`${to}?${new URLSearchParams(params.msg ? { ...params, msg: tApp()(params.msg) } : params)}`);
 
     router.get('/oauth/:provider/callback', 'public', async (ctx: Ctx) => {
       const provider = ctx.params.provider as Provider;
       if (!PROVIDERS.includes(provider)) throw notFound();
       const sid = ctx.cookies[SESSION_COOKIE];
       const user = sid ? db.get(`SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`, sha256(sid), now()) : undefined;
-      if (!user) return html(messagePage('Nicht angemeldet', 'Bitte zuerst anmelden und dann noch einmal verbinden.'), 401);
+      if (!user) return html(messagePage(tCtx(ctx)('Nicht angemeldet'), tCtx(ctx)('Bitte zuerst anmelden und dann noch einmal verbinden.')), 401);
       let payload;
       try {
         payload = verifyState(app.config.secret, String(ctx.query.get('state') ?? ''), { sessionHash: sha256(sid!) });
         if (payload.p !== provider || payload.u !== user.id) throw new Error('Ungültige Anfrage (state passt nicht)');
       } catch (e) {
-        return html(messagePage('Verbinden fehlgeschlagen', (e as Error).message), 400);
+        return html(messagePage(tCtx(ctx)('Verbinden fehlgeschlagen'), tCtx(ctx)((e as Error).message)), 400);
       }
       const pending = db.get('SELECT * FROM oauth_pending WHERE nonce = ?', payload.n);
       db.run('DELETE FROM oauth_pending WHERE nonce = ?', payload.n);
@@ -300,7 +306,7 @@ export const oauthConnectModule: Module = {
       const code = String(ctx.query.get('code') ?? '');
       if (!code) return back(returnTo, { oauth: 'error', msg: 'Kein Code erhalten' });
       const cfg = clientConfig(app, provider);
-      if (!cfg) return back(returnTo, { oauth: 'error', msg: `Die ${PROVIDER_LABEL[provider]}-App der Agentur fehlt` });
+      if (!cfg) return back(returnTo, { oauth: 'error', msg: tApp()('Die {provider}-App der Agentur fehlt', { provider: PROVIDER_LABEL[provider] }) });
       try {
         const t = await exchangeCode(fetcher(), provider, cfg, { code, verifier: pending.verifier, redirectUri: pending.redirect_uri, scopes: scopesFor(provider, purpose) });
         if (t.scope) {
@@ -310,7 +316,7 @@ export const oauthConnectModule: Module = {
             return back(returnTo, { oauth: 'error', msg: 'Bitte beim Verbinden alle Berechtigungen erlauben (Kalender lesen und Termine eintragen bzw. Unternehmensprofil verwalten)' });
           }
         }
-        if (!t.refresh_token) return back(returnTo, { oauth: 'error', msg: `${PROVIDER_LABEL[provider]} hat keinen dauerhaften Zugriff erteilt – bitte noch einmal verbinden` });
+        if (!t.refresh_token) return back(returnTo, { oauth: 'error', msg: tApp()('{provider} hat keinen dauerhaften Zugriff erteilt – bitte noch einmal verbinden', { provider: PROVIDER_LABEL[provider] }) });
         const claims = idTokenClaims(t.id_token);
         const locationId = purpose === 'business' ? (pending.location_id as string) : null;
         if (purpose === 'business') {
@@ -352,7 +358,7 @@ export const oauthConnectModule: Module = {
             ...tokens,
           });
         }
-        app.services.audit?.({ ctx, action: 'oauth.connect', summary: `${PROVIDER_LABEL[provider]} (${purpose === 'calendar' ? 'Kalender' : 'Unternehmensprofil'}): ${claims.email}`, userId: user.id, actor: user.name, locationId, entityId: cid });
+        app.services.audit?.({ ctx, action: 'oauth.connect', summary: `${PROVIDER_LABEL[provider]} (${tApp()(purpose === 'calendar' ? 'Kalender' : 'Unternehmensprofil')}): ${claims.email}`, userId: user.id, actor: user.name, locationId, entityId: cid });
         return back(returnTo, { oauth: 'ok', provider, connection: cid });
       } catch (e) {
         return back(returnTo, { oauth: 'error', msg: (e as Error).message.slice(0, 300) });

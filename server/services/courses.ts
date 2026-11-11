@@ -5,6 +5,7 @@ import { zonedToUtc } from '../core/time.js';
 import { id, now } from '../core/util.js';
 import { contactVars, getContact, logActivity } from './contacts.js';
 import { sendToContact } from './messaging.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Courses & membership area: shared logic for the admin module (courses.ts), the member portal
@@ -26,8 +27,10 @@ export interface CourseAccess {
   welcome_body: string;
 }
 
+// German = message ids; the sub-account's language is applied where they are used (tLoc).
 export const DEFAULT_WELCOME_SUBJECT = 'Dein Zugang zu „{{course.title}}“';
-export const DEFAULT_WELCOME_BODY =
+// Multi-line text: its exact form (with line breaks) is the catalog key.
+export const DEFAULT_WELCOME_BODY = // i18n-ignore
   'Hallo {{contact.first_name|du}},\n\ndein Zugang zum Kurs „{{course.title}}“ ist freigeschaltet.\n\nHier geht es zum Mitgliederbereich – einfach mit dieser E-Mail-Adresse anmelden, du bekommst dann einen Login-Link:\n{{portal_url}}\n\nViel Erfolg!\n{{location.name}}';
 
 export function cleanAccess(input: any, cur: Partial<CourseAccess> = {}): CourseAccess {
@@ -188,7 +191,9 @@ export function grantAccess(app: App, locationId: string, courseId: string, cont
   }
   const enrollment = getEnrollment(app, courseId, contactId)!;
   if (changed) {
-    logActivity(app, locationId, contactId, 'course.enrolled', `Kurszugang „${course.title}“ ${changed === 'created' ? 'erhalten' : 'wieder freigeschaltet'} (${SOURCE_LABEL[source] ?? source})`);
+    const t = tLoc(app, locationId);
+    const via = SOURCE_LABEL[source] ? t(SOURCE_LABEL[source]) : source;
+    logActivity(app, locationId, contactId, 'course.enrolled', changed === 'created' ? t('Kurszugang „{title}“ erhalten ({via})', { title: course.title, via }) : t('Kurszugang „{title}“ wieder freigeschaltet ({via})', { title: course.title, via }));
     app.events.emit(locationId, 'course.enrolled', { contactId, courseId, course: { id: course.id, title: course.title, slug: course.slug }, source });
     if (course.access?.welcome_email) void sendWelcome(app, locationId, course, contactId);
   }
@@ -200,7 +205,8 @@ export function revokeAccess(app: App, locationId: string, courseId: string, con
   if (!cur || cur.status !== 'active' || cur.location_id !== locationId) return false;
   app.db.run(`UPDATE course_enrollments SET status = 'revoked', revoked_at = ? WHERE id = ?`, now(), cur.id);
   const course = getCourse(app, locationId, courseId);
-  logActivity(app, locationId, contactId, 'course.revoked', `Kurszugang „${course?.title ?? ''}“ entzogen${why ? ` (${why})` : ''}`);
+  const t = tLoc(app, locationId);
+  logActivity(app, locationId, contactId, 'course.revoked', why ? t('Kurszugang „{title}“ entzogen ({why})', { title: course?.title ?? '', why }) : t('Kurszugang „{title}“ entzogen', { title: course?.title ?? '' }));
   app.events.emit(locationId, 'course.access_revoked', { contactId, courseId, course: course ? { id: course.id, title: course.title } : undefined });
   return true;
 }
@@ -213,8 +219,8 @@ async function sendWelcome(app: App, locationId: string, course: any, contactId:
     await sendToContact(app, locationId, {
       contactId,
       channel: 'email',
-      subject: render(course.access.welcome_subject || DEFAULT_WELCOME_SUBJECT, vars),
-      body: render(course.access.welcome_body || DEFAULT_WELCOME_BODY, vars),
+      subject: render(course.access.welcome_subject || tLoc(app, locationId)(DEFAULT_WELCOME_SUBJECT), vars),
+      body: render(course.access.welcome_body || tLoc(app, locationId)(DEFAULT_WELCOME_BODY), vars),
       source: 'Kurse',
       // Access details are transactional: sent even with „Nicht stören“.
       ignoreDnd: true,

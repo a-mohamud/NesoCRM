@@ -8,6 +8,7 @@ import { userById, type TeamUser } from '../services/collab-actor.js';
 import { PresenceHub, type PresenceSub } from '../services/presence-hub.js';
 import { CLIENT_ID_RE, cleanCursor, cleanPage, cleanPresencePrefs, presencePrefsOf, type PresencePrefs } from '../services/presence-model.js';
 import { loginOf, sweepOnLoginChange } from '../services/stream-login.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Live-Zusammenarbeit überall (docs/collaboration.md): who of the team is on which page of the app right now, who is
@@ -218,7 +219,7 @@ export const presenceModule: Module = {
       hub.publish('settings', { enabled: on }, (s) => s.locationId === ctx.locationId);
       // a sub-account setting like any other: one audit line, saying what changed (instead of the generic one without it)
       ctx.skipAfterWrite = true;
-      app.services.audit?.({ ctx, action: 'presence.settings.update', route: 'PUT /api/presence/settings', summary: `Live-Zusammenarbeit ${on ? 'eingeschaltet' : 'ausgeschaltet'}${was === on ? ' (unverändert)' : ''}` });
+      app.services.audit?.({ ctx, action: 'presence.settings.update', route: 'PUT /api/presence/settings', summary: tApp()(on ? 'Live-Zusammenarbeit eingeschaltet' : 'Live-Zusammenarbeit ausgeschaltet') + (was === on ? ` ${tApp()('(unverändert)')}` : '') });
       return { enabled: on };
     });
 

@@ -1,4 +1,5 @@
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign as edSign, verify as edVerify, type KeyObject } from 'node:crypto';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * Signed plugin bundles (Ed25519). HyperLevel signs the plugins of its catalogue; this installation checks the
@@ -100,6 +101,6 @@ export function checkSignature(bundle: SignableBundle, trusted: PublicKey[]): Si
     if (ok) return { state: 'signed', key_id: k.id, label: k.label, gohigh: !!k.gohigh, warning: '' };
   }
   // A signature by a key we do not know cannot be checked – "ungeprüft", not "gefälscht".
-  if (!known.length) return { state: 'untrusted', key_id, label: '', gohigh: false, warning: `Ungeprüft: Das Paket ist mit dem Schlüssel „${key_id}“ signiert, dem diese Installation nicht vertraut. Es stammt nicht nachweislich von HyperLevel.` };
+  if (!known.length) return { state: 'untrusted', key_id, label: '', gohigh: false, warning: tApp()('Ungeprüft: Das Paket ist mit dem Schlüssel „{key_id}“ signiert, dem diese Installation nicht vertraut. Es stammt nicht nachweislich von HyperLevel.', { key_id }) };
   return bad('Die Signatur stimmt nicht mit dem Inhalt überein – das Paket wurde nach dem Signieren verändert oder ist gefälscht. Es wird nicht installiert.');
 }

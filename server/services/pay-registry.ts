@@ -6,6 +6,7 @@ import { centsToMoney, now, token } from '../core/util.js';
 import { logActivity } from './contacts.js';
 import { invAudit, loadInvoice, recordPayment, type Actor } from './invoice-flow.js';
 import { openCents } from './invoice-model.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Payment provider registry (docs/payment-providers.md). A provider (Stripe, PayPal, Mollie …) is a small object: make a hosted
@@ -137,7 +138,7 @@ export async function payJson(app: App, label: string, url: string, init: { meth
   try {
     r = await payFetch(app)(url, { ...init, signal: AbortSignal.timeout(15_000) });
   } catch (e) {
-    throw new PayError(0, `${label} nicht erreichbar: ${(e as Error).message}`);
+    throw new PayError(0, tApp()('{provider} nicht erreichbar: {error}', { provider: label, error: (e as Error).message }));
   }
   const text = await r.text();
   let j: any = {};
@@ -147,8 +148,8 @@ export async function payJson(app: App, label: string, url: string, init: { meth
     j = {};
   }
   if (!r.ok) {
-    const msg = j?.message || j?.detail || j?.error_description || j?.details?.[0]?.description || j?.title || `${label}-Fehler ${r.status}`;
-    throw new PayError(r.status, r.status === 401 ? `${label} lehnt die Zugangsdaten ab (401) – bitte prüfen` : String(msg).slice(0, 300));
+    const msg = j?.message || j?.detail || j?.error_description || j?.details?.[0]?.description || j?.title || tApp()('{provider}-Fehler {status}', { provider: label, status: r.status });
+    throw new PayError(r.status, r.status === 401 ? tApp()('{provider} lehnt die Zugangsdaten ab (401) – bitte prüfen', { provider: label }) : String(msg).slice(0, 300));
   }
   return j;
 }
@@ -262,14 +263,14 @@ export async function checkoutSession(app: App, s: PaySession, providerId: strin
     await r.pending;
     return { url: String(s.meta.return_url ?? '/'), settled: true };
   }
-  if (s.amount_cents < MIN_CENTS) throw bad(`Der Betrag (${centsToMoney(s.amount_cents, s.currency)}) ist zu klein für eine Online-Zahlung`);
+  if (s.amount_cents < MIN_CENTS) throw bad(tLoc(app, s.location_id)('Der Betrag ({amount}) ist zu klein für eine Online-Zahlung', { amount: centsToMoney(s.amount_cents, s.currency) }));
   const p = payProviders(app).get(providerId);
   if (!p || !p.ready(app, s.location_id)) throw bad('Diese Zahlungsart ist nicht verfügbar');
   if (s.provider === providerId && s.url && s.status === 'open') return { url: s.url };
   const made = await p.create(app, s).catch((e) => {
     throw failHttp(e);
   });
-  if (!made.url) throw new HttpError(502, `${p.label} hat keine Bezahlseite geliefert`);
+  if (!made.url) throw new HttpError(502, tApp()('{provider} hat keine Bezahlseite geliefert', { provider: p.label }));
   app.db.tx(() => {
     app.db.run('UPDATE pay_sessions SET provider = ?, provider_ref = ?, url = ?, updated_at = ? WHERE id = ?', providerId, made.provider_ref, made.url, now(), s.id);
     app.db.run('INSERT OR IGNORE INTO pay_refs (provider, ref, session_id, location_id, created_at) VALUES (?, ?, ?, ?, ?)', providerId, made.provider_ref, s.id, s.location_id, now());
@@ -340,7 +341,7 @@ export async function refundSession(app: App, s: PaySession, amountCents?: numbe
   const left = s.received_cents - s.refunded_cents;
   const amount = amountCents === undefined ? left : Math.round(amountCents);
   if (!Number.isInteger(amount) || amount <= 0) throw bad('Der Betrag muss größer als 0 sein');
-  if (amount > left) throw bad(`Höchstens ${centsToMoney(left, s.currency)} lassen sich noch erstatten`);
+  if (amount > left) throw bad(tApp()('Höchstens {amount} lassen sich noch erstatten', { amount: centsToMoney(left, s.currency) }));
   const p = payProviders(app).get(s.provider);
   if (!p) throw new HttpError(409, 'Diese Zahlung lief nicht über einen Zahlungsanbieter');
   const r = await p.refund(app, s, amount).catch((e) => {
@@ -380,20 +381,21 @@ export const sessionOut = (app: App, s: PaySession) => ({
 export function bookInvoicePayment(app: App, locationId: string, invoiceId: string, o: { amount: number; currency: string; via: string; note?: string }): string {
   const inv = loadInvoice(app, locationId, invoiceId);
   if (!inv || inv.kind !== 'invoice') return 'unknown_invoice';
-  const actor: Actor = { id: null, name: `Automatik (${o.via})` };
+  const t = tLoc(app, locationId);
+  const actor: Actor = { id: null, name: t('Automatik ({via})', { via: o.via }) };
   const money = (c: number, cur = inv.currency) => centsToMoney(c, String(cur).toUpperCase());
   const flag = (text: string) => {
     invAudit(app, locationId, inv.id, 'payment.mismatch', text, actor);
     if (inv.contact_id) logActivity(app, locationId, inv.contact_id, 'invoice.payment_mismatch', text);
   };
   const open = inv.status !== 'paid' && inv.status !== 'void' ? openCents(inv) : 0;
-  const got = `${o.via}-Zahlung über ${money(o.amount, o.currency)}`;
+  const got = t('{via}-Zahlung über {amount}', { via: o.via, amount: money(o.amount, o.currency) });
   if (o.currency.toUpperCase() !== String(inv.currency).toUpperCase() || !(o.amount > 0)) {
-    flag(`${got} passt nicht zu Rechnung ${inv.number} (${money(open)} offen) – nicht gebucht, bitte prüfen`);
+    flag(t('{payment} passt nicht zu Rechnung {number} ({open} offen) – nicht gebucht, bitte prüfen', { payment: got, number: inv.number, open: money(open) }));
     return 'amount_mismatch';
   }
   if (open <= 0) {
-    flag(`${got} für Rechnung ${inv.number}, auf der nichts mehr offen ist – nicht gebucht, bitte erstatten`);
+    flag(t('{payment} für Rechnung {number}, auf der nichts mehr offen ist – nicht gebucht, bitte erstatten', { payment: got, number: inv.number }));
     return 'nothing_open';
   }
   const amount = Math.min(o.amount, open);
@@ -403,7 +405,7 @@ export function bookInvoicePayment(app: App, locationId: string, invoiceId: stri
     if (e instanceof HttpError && e.status === 409) return 'already_paid';
     throw e;
   }
-  if (o.amount > open) flag(`${got} ist mehr als der offene Betrag ${money(open)} – ${money(o.amount - open)} zu viel gezahlt, bitte erstatten`);
-  else if (o.amount < open) flag(`${got} ist weniger als der offene Betrag ${money(open)} – als Teilzahlung gebucht, ${money(open - o.amount)} bleiben offen`);
+  if (o.amount > open) flag(t('{payment} ist mehr als der offene Betrag {open} – {extra} zu viel gezahlt, bitte erstatten', { payment: got, open: money(open), extra: money(o.amount - open) }));
+  else if (o.amount < open) flag(t('{payment} ist weniger als der offene Betrag {open} – als Teilzahlung gebucht, {rest} bleiben offen', { payment: got, open: money(open), rest: money(open - o.amount) }));
   return o.amount < open ? 'invoice_partially_paid' : 'invoice_paid';
 }

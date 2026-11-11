@@ -1,4 +1,5 @@
 import type { WsClientFactory, WsClientLike } from './voice-ws.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Gemini Live API adapter (docs/living-boards.md#echtzeit-stimme) – the protocol framing of Google's bidirectional streaming endpoint
@@ -165,7 +166,8 @@ export class GeminiLiveSession {
         this.closed = true;
         if (!ready) {
           clearTimeout(timer);
-          reject(new Error(`Live-Dienst hat die Verbindung beendet${ev?.reason ? `: ${String(ev.reason).slice(0, 120)}` : ''}`));
+          const t = tApp();
+          reject(new Error(ev?.reason ? t('Live-Dienst hat die Verbindung beendet: {reason}', { reason: String(ev.reason).slice(0, 120) }) : t('Live-Dienst hat die Verbindung beendet')));
         }
         if (wasOpen) this.o.onClose?.(Number(ev?.code ?? 1006), String(ev?.reason ?? ''));
       };

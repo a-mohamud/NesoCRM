@@ -8,6 +8,7 @@ import { fromB64u, generateVapidKeys, isPushEndpoint, sendWebPush, type VapidKey
 import { effectiveBranding } from './agency.js';
 import { openSecret, sealSecret } from './mail-sync.js';
 import { hiddenUser } from '../core/permissions.js';
+import { tApp, tCtx, tUser } from '../i18n/index.js';
 
 /**
  * Installable app + push notifications. The web app ships a manifest and a service worker; each
@@ -106,7 +107,7 @@ export const pushModule: Module = {
 
     async function pushNotify(input: PushInput) {
       const users = (input.userIds ?? (input.locationId ? audience(input.locationId, input.kind) : [])).filter((u) => input.kind === 'test' || prefsOf(u)[input.kind] !== false);
-      const title = str(input.title, 'Titel').slice(0, 120) || 'Benachrichtigung';
+      const title = str(input.title, 'Titel').slice(0, 120) || tApp()('Benachrichtigung');
       const body = String(input.body ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
       const url = String(input.url ?? '/app').startsWith('/') ? String(input.url ?? '/app') : '/app';
       const actions = (input.actions ?? [])
@@ -157,7 +158,7 @@ export const pushModule: Module = {
       key: keys.publicKey,
       devices: devices(ctx.user!.id),
       prefs: prefsOf(ctx.user!.id),
-      kinds: Object.fromEntries(Object.entries(PUSH_KINDS).map(([k, v]) => [k, v.label])),
+      kinds: Object.fromEntries(Object.entries(PUSH_KINDS).map(([k, v]) => [k, tCtx(ctx)(v.label)])),
     }));
     router.post('/api/push/subscribe', 'user', (ctx) => {
       const sub = ctx.body?.subscription ?? ctx.body ?? {};
@@ -194,10 +195,11 @@ export const pushModule: Module = {
     });
     router.post('/api/push/test', 'user', async (ctx) => {
       if (!db.get('SELECT id FROM push_subscriptions WHERE user_id = ?', ctx.user!.id)) throw bad('Benachrichtigungen sind noch auf keinem Gerät eingeschaltet');
-      const r = await pushNotify({ userIds: [ctx.user!.id], kind: 'test', title: 'Test-Benachrichtigung', body: 'So sehen Benachrichtigungen auf diesem Gerät aus.', url: '/app/settings/account', tag: 'test' });
+      const t = tCtx(ctx);
+      const r = await pushNotify({ userIds: [ctx.user!.id], kind: 'test', title: t('Test-Benachrichtigung'), body: t('So sehen Benachrichtigungen auf diesem Gerät aus.'), url: '/app/settings/account', tag: 'test' });
       if (!r.sent) {
         const err = db.get(`SELECT last_error FROM push_subscriptions WHERE user_id = ? AND last_error != '' ORDER BY created_at DESC`, ctx.user!.id)?.last_error;
-        throw bad(`Senden fehlgeschlagen${err ? `: ${err}` : ' – bitte Benachrichtigungen auf dem Gerät neu einschalten'}`);
+        throw bad(err ? t('Senden fehlgeschlagen: {error}', { error: err }) : t('Senden fehlgeschlagen – bitte Benachrichtigungen auf dem Gerät neu einschalten'));
       }
       return r;
     });
@@ -221,16 +223,18 @@ export const pushModule: Module = {
         lastConv.set(conv, Date.now());
         if (lastConv.size > 5000) lastConv.clear();
       }
-      const who = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || c.phone || 'Unbekannt';
-      const label = m.channel === 'email' ? 'Neue E-Mail' : m.channel === 'sms' ? 'Neue SMS' : m.channel === 'chat' ? 'Neue Chat-Nachricht' : 'Neue Nachricht';
       // Assigned contacts notify their owner only; everyone else's go to the team.
       // A conversation with an assignee (Team-Posteingang) tells only them; otherwise the contact's owner, otherwise the team.
       const owner = (conv ? (app.services.inboxAudience?.(e.locationId, conv) as string[] | undefined) : undefined) ?? (c.assigned_to && mayAccess(c.assigned_to, e.locationId) ? [c.assigned_to as string] : undefined);
+      // Several people may get it: then the instance language; a single recipient gets theirs.
+      const t = owner?.length === 1 ? tUser(app as never, owner[0]) : tApp();
+      const who = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || c.phone || t('Unbekannt');
+      const label = m.channel === 'email' ? t('Neue E-Mail von {who}', { who }) : m.channel === 'sms' ? t('Neue SMS von {who}', { who }) : m.channel === 'chat' ? t('Neue Chat-Nachricht von {who}', { who }) : t('Neue Nachricht von {who}', { who });
       return fire({
         locationId: e.locationId,
         userIds: owner,
         kind: 'messages',
-        title: `${label} von ${who}${projectSuffix(e.locationId)}`,
+        title: `${label}${projectSuffix(e.locationId)}`,
         body: [m.subject, preview(m.body)].filter(Boolean).join(' – '),
         url: conv ? `/app/conversations/${conv}` : '/app/conversations',
         tag: conv ? `conv-${conv}` : undefined,
@@ -238,12 +242,13 @@ export const pushModule: Module = {
     });
 
     const uptime = (down: boolean) => (e: { locationId: string; data: Record<string, any> }) => {
-      const name = app.location(e.locationId)?.name ?? 'Projekt';
+      const t = tApp();
+      const name = app.location(e.locationId)?.name ?? t('Projekt');
       return fire({
         locationId: e.locationId,
         kind: 'uptime',
-        title: down ? `⚠️ ${name} ist nicht erreichbar` : `✅ ${name} ist wieder online`,
-        body: `${e.data.website ?? ''} – Status ${e.data.status || 'keine Antwort'}${e.data.ms ? ` (${e.data.ms} ms)` : ''}`,
+        title: down ? t('⚠️ {name} ist nicht erreichbar', { name }) : t('✅ {name} ist wieder online', { name }),
+        body: `${e.data.website ?? ''} – ${t('Status {status}', { status: e.data.status || t('keine Antwort') })}${e.data.ms ? ` (${e.data.ms} ms)` : ''}`,
         url: '/app/project',
         tag: `uptime-${e.locationId}`,
         urgency: down ? 'high' : 'normal',
@@ -254,17 +259,18 @@ export const pushModule: Module = {
 
     // Tasks: assigned to someone else (through the app, API or MCP) …
     const seen = (taskId: string, kind: string) => db.run('INSERT OR IGNORE INTO push_task_seen (task_id, kind, at) VALUES (?, ?, ?)', taskId, kind, now()).changes === 0;
-    const due = (d: string | null) => (d ? new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '');
+    const due = (d: string | null, locale = 'en') => (d ? new Date(d).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit' }) : '');
     function taskAssigned(locationId: string, task: any, actorId?: string) {
       if (!task?.assigned_to || task.done) return;
       if (seen(task.id, `assigned:${task.assigned_to}`)) return;
       if (task.assigned_to === actorId || !mayAccess(task.assigned_to, locationId)) return;
+      const t = tUser(app as never, task.assigned_to);
       void fire({
         locationId,
         userIds: [task.assigned_to],
         kind: 'tasks',
-        title: `Neue Aufgabe für dich${projectSuffix(locationId)}`,
-        body: `${task.title}${task.due_at ? ` · fällig ${due(task.due_at)}` : ''}`,
+        title: `${t('Neue Aufgabe für dich')}${projectSuffix(locationId)}`,
+        body: `${task.title}${task.due_at ? ` · ${t('fällig {date}', { date: due(task.due_at, t.locale) })}` : ''}`,
         url: '/app/tasks',
         tag: `task-${task.id}`,
       });
@@ -294,11 +300,12 @@ export const pushModule: Module = {
         for (const t of rows) byUser.set(t.assigned_to, [...(byUser.get(t.assigned_to) ?? []), t]);
         for (const [userId, list] of byUser) {
           if (!mayAccess(userId, loc.id)) continue;
+          const tu = tUser(app as never, userId);
           await pushNotify({
             locationId: loc.id,
             userIds: [userId],
             kind: 'tasks',
-            title: list.length === 1 ? `Heute fällig: ${list[0].title}` : `${list.length} Aufgaben heute fällig${projectSuffix(loc.id)}`,
+            title: list.length === 1 ? tu('Heute fällig: {title}', { title: list[0].title }) : `${tu('{n} Aufgaben heute fällig', { n: list.length })}${projectSuffix(loc.id)}`,
             body: list.length === 1 ? (list[0].description || app.location(loc.id)?.name || '') : list.map((t) => t.title).join(' · '),
             url: '/app/tasks',
             tag: `due-${loc.id}-${today}`,

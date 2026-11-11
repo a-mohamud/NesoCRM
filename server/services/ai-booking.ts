@@ -1,7 +1,8 @@
 import type { App } from '../core/app.js';
 import { parseJson } from '../core/db.js';
 import { HttpError, bad } from '../core/http.js';
-import { addDaysYmd, formatInTz, hmInTz, ymdInTz, zonedToUtc } from '../core/time.js';
+import { addDaysYmd, hmInTz, ymdInTz, zonedToUtc } from '../core/time.js';
+import { tLoc } from '../i18n/index.js';
 import { bookAppointment, busyFor, computeSlots, type CalendarRow } from '../modules/calendars.js';
 import { getContact, type Contact } from './contacts.js';
 import { slotLines } from './voice-ai.js';
@@ -26,7 +27,7 @@ export interface AiBookingSettings {
 export const DEFAULT_AI_BOOKING: AiBookingSettings = { chat_bot: false, calendars: [], per_contact_day: 2 };
 /** Bookings by AI per sub-account and hour (all channels together). */
 export const PER_LOCATION_HOUR = 30;
-export const AI_SOURCES = ['KI-Telefonagent', 'KI-Assistent', 'KI-Agent', 'KI-Buchung'];
+export const AI_SOURCES = ['KI-Telefonagent', 'KI-Assistent', 'KI-Agent', 'KI-Buchung']; // stored source codes – i18n-ignore
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -98,15 +99,16 @@ export function freeDays(app: App, cal: CalendarRow, from: string, days: number,
   return out;
 }
 
-export const calLabel = (c: CalendarRow) => `Kalender „${c.name}“ (calendar_id: ${c.id}, ${c.duration} Minuten, Zeitzone ${c.timezone})`;
+/** Texts for the model (tool results, prompt blocks) are English; the model answers in the visitor's language. */
+export const calLabel = (c: CalendarRow) => `Calendar "${c.name}" (calendar_id: ${c.id}, ${c.duration} minutes, time zone ${c.timezone})`;
 
 /** The free times of the next two weeks per calendar, for a prompt. */
 export function slotsBlock(app: App, cals: CalendarRow[]): string {
   const parts = cals.map((c) => {
     const lines = slotLines(freeDays(app, c, ymdInTz(new Date(), c.timezone), 14, 4, 5));
-    return `${calLabel(c)}:\n${lines || 'in den nächsten 14 Tagen nichts frei'}`;
+    return `${calLabel(c)}:\n${lines || 'nothing free in the next 14 days'}`;
   });
-  return `<freie_termine>\n${parts.join('\n\n')}\nWeitere Zeiten eines Tages liefert check_slots.\n</freie_termine>`;
+  return `<freie_termine>\n${parts.join('\n\n')}\ncheck_slots returns more times for a day.\n</freie_termine>`;
 }
 
 /** The calendar the model named – only one of the released ones; without a name the only released calendar. */
@@ -122,8 +124,8 @@ export function checkSlots(app: App, cal: CalendarRow, date: string) {
   const day = freeDays(app, cal, date, 1, 16, 1)[0];
   const next = day ? [] : freeDays(app, cal, addDaysYmd(date, 1), 14, 4, 3);
   const text = day
-    ? `Freie Zeiten in ${calLabel(cal)}:\n${slotLines([day])}`
-    : `Am ${date} ist in ${calLabel(cal)} nichts frei.${next.length ? ` Nächste freie Tage:\n${slotLines(next)}` : ' In den 14 Tagen danach auch nicht.'}`;
+    ? `Free times in ${calLabel(cal)}:\n${slotLines([day])}`
+    : `Nothing is free on ${date} in ${calLabel(cal)}.${next.length ? ` Next free days:\n${slotLines(next)}` : ' Nor in the 14 days after that.'}`;
   return { calendar_id: cal.id, date, times: day?.times ?? [], next, text };
 }
 
@@ -136,8 +138,9 @@ export function links(app: App, appt: { manage_token: string }) {
 /** The confirmation the contact gets in the channel they wrote in – always with the links to reschedule and to cancel. */
 export function confirmationText(app: App, appt: { start_at: string; manage_token: string }, cal: CalendarRow): string {
   const l = links(app, appt);
-  const when = formatInTz(appt.start_at, cal.timezone, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  return `Termin gebucht: ${cal.name} am ${when} Uhr (${cal.timezone}).\nVerschieben: ${l.reschedule_url}\nAbsagen: ${l.cancel_url}`;
+  const t = tLoc(app, cal.location_id);
+  const when = new Intl.DateTimeFormat(t.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: cal.timezone, weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(appt.start_at));
+  return t('Termin gebucht: {calendar} am {when} Uhr ({timezone}).\nVerschieben: {reschedule}\nAbsagen: {cancel}', { calendar: cal.name, when, timezone: cal.timezone, reschedule: l.reschedule_url, cancel: l.cancel_url });
 }
 
 export interface BookRequest {
@@ -173,19 +176,19 @@ function usage(app: App, locationId: string, contactId: string | null) {
  */
 export function bookSlot(app: App, locationId: string, r: BookRequest, s: AiBookingSettings = loadSettings(app, locationId)): BookOutcome {
   const cals = bookableCalendars(app, locationId, s);
-  const fail = (error: string, extra = ''): BookOutcome => ({ ok: false, error, text: `Buchung nicht möglich: ${error}${extra}` });
-  if (!cals.length) return fail('Für die KI ist kein Kalender freigegeben.');
+  const fail = (error: string, extra = ''): BookOutcome => ({ ok: false, error, text: `Booking not possible: ${error}${extra}` });
+  if (!cals.length) return fail('No calendar is released for the AI.');
   const cal = pickCalendar(cals, r.calendarId);
-  if (!cal) return fail(`Kalender unbekannt. Erlaubt: ${cals.map((c) => `${c.name} (${c.id})`).join(', ')}`);
+  if (!cal) return fail(`Unknown calendar. Allowed: ${cals.map((c) => `${c.name} (${c.id})`).join(', ')}`);
   const date = String(r.date ?? '');
   const time = String(r.time ?? '');
-  if (!validDay(date)) return fail('Datum als JJJJ-MM-TT angeben.');
-  if (!HM.test(time)) return fail('Uhrzeit als HH:MM angeben.');
+  if (!validDay(date)) return fail('Give the date as YYYY-MM-DD.');
+  if (!HM.test(time)) return fail('Give the time as HH:MM.');
   const known = 'id' in r.contact && typeof r.contact.id === 'string' ? getContact(app, locationId, r.contact.id) : undefined;
-  if ('id' in r.contact && r.contact.id && !known) return fail('Kontakt nicht gefunden.');
+  if ('id' in r.contact && r.contact.id && !known) return fail('Contact not found.');
   const u = usage(app, locationId, known?.id ?? null);
-  if (u.perContact >= s.per_contact_day) return fail(`Für diesen Kontakt wurden heute schon ${u.perContact} Termine von der KI gebucht – weitere Wünsche bitte an das Team übergeben.`);
-  if (u.perLocation >= PER_LOCATION_HOUR) return fail('Zu viele Buchungen durch die KI in dieser Stunde – bitte an das Team übergeben.');
+  if (u.perContact >= s.per_contact_day) return fail(`The AI has already booked ${u.perContact} appointments for this contact today – please hand further requests over to the team.`);
+  if (u.perLocation >= PER_LOCATION_HOUR) return fail('Too many AI bookings this hour – please hand over to the team.');
   const start = zonedToUtc(date, time, cal.timezone);
   try {
     const appt = bookAppointment(app, cal, {
@@ -197,9 +200,9 @@ export function bookSlot(app: App, locationId: string, r: BookRequest, s: AiBook
     });
     return { ok: true, appointment: appt, calendar: cal, confirmation: confirmationText(app, appt, cal), ...links(app, appt) };
   } catch (e) {
-    const msg = e instanceof HttpError && e.status === 409 ? 'Diese Zeit ist leider nicht (mehr) frei.' : (e as Error).message;
+    const msg = e instanceof HttpError && e.status === 409 ? 'Sorry, this time is no longer free.' : (e as Error).message;
     const alt = freeDays(app, cal, date, 7, 6, 2);
-    return fail(msg, alt.length ? ` Freie Zeiten in ${calLabel(cal)}:\n${slotLines(alt)}` : '');
+    return fail(msg, alt.length ? ` Free times in ${calLabel(cal)}:\n${slotLines(alt)}` : '');
   }
 }
 

@@ -2,6 +2,7 @@ import type { App } from '../core/app.js';
 import type { Ctx, User } from '../core/http.js';
 import { sha256 } from '../core/util.js';
 import { hiddenUser } from '../core/permissions.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Who is acting, for Wiki and Team-Chat: a person, the HyperLevel Agent on behalf of a person, an AI app
@@ -21,10 +22,10 @@ export function actorOf(app: App, ctx: Ctx): Actor {
     if (ctx.user) return { id: null, name: ctx.user.name.slice(0, 200), kind: 'bot' };
     const bearer = String(ctx.req.headers.authorization ?? '').match(/^Bearer\s+(.+)$/i)?.[1];
     const key = bearer ? app.db.get<{ name: string }>('SELECT name FROM api_keys WHERE key_hash = ?', sha256(bearer)) : undefined;
-    return { id: null, name: key ? `API: ${key.name}`.slice(0, 200) : 'KI-App', kind: 'bot' };
+    return { id: null, name: key ? `API: ${key.name}`.slice(0, 200) : tCtx(ctx)('KI-App'), kind: 'bot' };
   }
   if (via === 'agent') return { id: ctx.user.id, name: ctx.user.name.slice(0, 200), kind: 'agent' };
-  if (via === 'mcp') return { id: ctx.user.id, name: `${ctx.user.name} (KI-App)`.slice(0, 200), kind: 'agent' };
+  if (via === 'mcp') return { id: ctx.user.id, name: tCtx(ctx)('{name} (KI-App)', { name: ctx.user.name }).slice(0, 200), kind: 'agent' };
   return { id: ctx.user.id, name: ctx.user.name.slice(0, 200), kind: 'user' };
 }
 

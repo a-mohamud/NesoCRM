@@ -2,6 +2,7 @@ import type { Module } from '../core/app.js';
 import { bad, type RawResult } from '../core/http.js';
 import { now } from '../core/util.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Provider sign-up links ("Konto anlegen") next to every place where HyperLevel asks for a third-party
@@ -346,14 +347,14 @@ export function patchConfig(prev: ReferralConfig, body: unknown): ReferralConfig
     links = {};
     for (const [k, v] of Object.entries(b.links as Record<string, unknown>)) {
       const p = BY_ID.get(k);
-      if (!p) throw bad(`Unbekannter Anbieter: ${k.slice(0, 40)}`);
+      if (!p) throw bad(tApp()('Unbekannter Anbieter: {provider}', { provider: k.slice(0, 40) }));
       if (v === null || v === undefined) continue;
       if (v === '') {
         links[k] = '';
         continue;
       }
       const url = safeHttpsUrl(v);
-      if (!url) throw bad(`${p.name}: nur https-Links sind erlaubt`);
+      if (!url) throw bad(tApp()('{provider}: nur https-Links sind erlaubt', { provider: p.name }));
       links[k] = url;
     }
   }
@@ -435,7 +436,8 @@ export const referralsModule: Module = {
     });
 
     // --- agency: catalogue, defaults, overrides, clicks ------------------------------------------
-    const overview = () => {
+    const overview = (ctx: Parameters<typeof tCtx>[0]) => {
+      const t = tCtx(ctx);
       const c = config();
       const e = env();
       const clicks = new Map(db.all('SELECT * FROM referral_clicks').map((r) => [r.provider as string, r]));
@@ -445,7 +447,7 @@ export const referralsModule: Module = {
         return {
           id: p.id,
           name: p.name,
-          category: p.category,
+          category: t(p.category),
           signup: p.signup,
           default_url: Object.hasOwn(defaults(), p.id) ? safeHttpsUrl(defaults()[p.id]) : null,
           env_url: Object.hasOwn(e.links, p.id) ? e.links[p.id] : null,
@@ -464,7 +466,7 @@ export const referralsModule: Module = {
         disabled_by_env: referralsDisabledByEnv(),
         env_set: Object.keys(e.links).length > 0,
         env_invalid: e.invalid,
-        categories: REFERRAL_CATEGORIES.filter((cat) => providers.some((p) => p.category === cat)),
+        categories: REFERRAL_CATEGORIES.filter((cat) => REFERRAL_PROVIDERS.some((p) => p.category === cat)).map((cat) => t(cat)),
         total_clicks: providers.reduce((n, p) => n + p.clicks, 0),
         providers,
       };
@@ -472,11 +474,11 @@ export const referralsModule: Module = {
     router.get('/api/agency/referrals', 'admin', overview);
     router.put('/api/agency/referrals', 'admin', (ctx) => {
       save(patchConfig(config(), ctx.body));
-      return overview();
+      return overview(ctx);
     });
-    router.delete('/api/agency/referrals/clicks', 'admin', () => {
+    router.delete('/api/agency/referrals/clicks', 'admin', (ctx) => {
       db.run('DELETE FROM referral_clicks');
-      return overview();
+      return overview(ctx);
     });
 
     // --- MCP: the agent recommends the right sign-up link ------------------------------------------
@@ -484,29 +486,31 @@ export const referralsModule: Module = {
       {
         name: 'ghl_provider_signup_link',
         title: 'Anmelde-Link eines Anbieters',
-        description: `Link „Konto anlegen“ für einen Anbieter, den der Nutzer für eine Integration braucht (z. B. KI-Schlüssel, E-Mail/SMS-Versand, Zahlungen). Gibt die Weiterleitung /go/<id> zurück. is_referral=true heißt: Partner-Link (sponsor gohigh = Maintainer von HyperLevel, operator = Betreiber dieser Installation) – beim Empfehlen offen als Partner-Link kennzeichnen. Anbieter-IDs: ${REFERRAL_PROVIDERS.map((p) => p.id).join(', ')}.`,
+        description: tApp()('Link „Konto anlegen“ für einen Anbieter, den der Nutzer für eine Integration braucht (z. B. KI-Schlüssel, E-Mail/SMS-Versand, Zahlungen). Gibt die Weiterleitung /go/<id> zurück. is_referral=true heißt: Partner-Link (sponsor gohigh = Maintainer von HyperLevel, operator = Betreiber dieser Installation) – beim Empfehlen offen als Partner-Link kennzeichnen. Anbieter-IDs: {ids}.', { ids: REFERRAL_PROVIDERS.map((p) => p.id).join(', ') }),
         inputSchema: { type: 'object', properties: { provider: { type: 'string', description: 'Anbieter-ID oder Name, z. B. kie, fal, openai, twilio, resend, stripe' } }, required: ['provider'], additionalProperties: false },
         annotations: { readOnlyHint: true, openWorldHint: false },
         run: async (_call, a) => {
           const q = String(a.provider ?? '').trim().toLowerCase();
           const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
           const p = referralProvider(q) ?? REFERRAL_PROVIDERS.find((x) => norm(x.name) === norm(q) || (norm(q).length >= 3 && norm(x.name).startsWith(norm(q))));
-          if (!p) throw bad(`Unbekannter Anbieter „${q.slice(0, 40)}“ – bekannt: ${REFERRAL_PROVIDERS.map((x) => x.id).join(', ')}`);
+          if (!p) throw bad(tApp()('Unbekannter Anbieter „{provider}“ – bekannt: {known}', { provider: q.slice(0, 40), known: REFERRAL_PROVIDERS.map((x) => x.id).join(', ') }));
           const r = resolve(p);
-          if (!r.url) throw bad(`Für ${p.name} ist kein Anmelde-Link hinterlegt`);
+          if (!r.url) throw bad(tApp()('Für {provider} ist kein Anmelde-Link hinterlegt', { provider: p.name }));
           return {
             provider: p.id,
             name: p.name,
-            category: p.category,
+            category: tApp()(p.category),
             url: `${app.baseUrl()}/go/${p.id}`,
             is_referral: r.is_referral,
             ...(r.is_referral ? { sponsor: r.source === 'default' ? 'gohigh' : 'operator' } : {}),
-            label: r.is_referral ? 'Partner-Link' : 'Anmelde-Link',
-            note: !r.is_referral
-              ? 'Normaler Anmelde-Link des Anbieters.'
-              : r.source === 'default'
-                ? 'Partner-Link: Über diesen Link unterstützt der Nutzer die Entwicklung von HyperLevel – für ihn ändert sich nichts. Bitte als Partner-Link kennzeichnen.'
-                : 'Partner-Link des Betreibers dieser Installation – für den Nutzer ändert sich nichts. Bitte als Partner-Link kennzeichnen.',
+            label: r.is_referral ? tApp()('Partner-Link') : tApp()('Anmelde-Link'),
+            note: tApp()(
+              !r.is_referral
+                ? 'Normaler Anmelde-Link des Anbieters.'
+                : r.source === 'default'
+                  ? 'Partner-Link: Über diesen Link unterstützt der Nutzer die Entwicklung von HyperLevel – für ihn ändert sich nichts. Bitte als Partner-Link kennzeichnen.'
+                  : 'Partner-Link des Betreibers dieser Installation – für den Nutzer ändert sich nichts. Bitte als Partner-Link kennzeichnen.',
+            ),
           };
         },
       },

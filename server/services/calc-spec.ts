@@ -151,10 +151,14 @@ const PLAN: ObjNode = obj('Tarif / Staffel', {
 });
 const DEFAULT_PLAN = { name: 'Standard', mix: 100, base_price: 49, included_units: 0, unit_price: 0, cap: 0, setup_fee: 0, users: 1, avg_units: 0, extra_cost: 0, note: '' };
 
+// i18n-ignore – the three computed descriptions per cost line ("Hosting: pro Kunde und Monat" …) are catalog keys of their own.
 const costLine = (what: string, c: number, u: number, n: number): ObjNode =>
   obj(what, {
+    // i18n-ignore
     per_customer: num(c, `${what}: pro Kunde und Monat`, { unit: EURM, max: 1_000_000 }),
+    // i18n-ignore
     per_user: num(u, `${what}: pro Nutzer und Monat`, { unit: EURM, max: 1_000_000 }),
+    // i18n-ignore
     per_unit: num(n, `${what}: pro Einheit (Standort/Account) und Monat`, { unit: EURM, max: 1_000_000 }),
   });
 
@@ -308,6 +312,15 @@ export const SPEC: ObjNode = obj('Eingaben des Gewinnrechners', {
 
 // --- defaults, schema -----------------------------------------------------------------------------------------------
 
+/**
+ * A translator for the texts of the calculator (labels, descriptions, problems, warnings). The German texts are the
+ * message ids; the server passes its translator (server/i18n), the browser may pass its own – without one the text stays.
+ */
+export type Tr = ((text: string, vars?: Record<string, string | number>) => string) & { locale?: string };
+export const plainTr: Tr = (text, vars) => (vars ? text.replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m)) : text);
+/** Number format of a translator's language. */
+export const numLocale = (t: Tr) => (t.locale && t.locale !== 'de' ? 'en-GB' : 'de-DE');
+
 function defaultsOf(n: Node): any {
   if (n.kind === 'object') return Object.fromEntries(Object.entries(n.props).map(([k, v]) => [k, defaultsOf(v)]));
   if (n.kind === 'array') return JSON.parse(JSON.stringify(n.def));
@@ -316,10 +329,10 @@ function defaultsOf(n: Node): any {
 /** The defaults of every field (a fresh copy per call). */
 export const defaultInput = (): CalcInput => defaultsOf(SPEC) as CalcInput;
 
-function schemaOf(n: Node): any {
-  if (n.kind === 'object') return { type: 'object', description: n.desc, properties: Object.fromEntries(Object.entries(n.props).map(([k, v]) => [k, schemaOf(v)])), additionalProperties: false };
-  if (n.kind === 'array') return { type: 'array', description: n.desc, items: schemaOf(n.item), minItems: n.min, maxItems: n.max, default: n.def };
-  const s: any = { type: n.kind === 'enum' ? 'string' : n.kind, description: n.unit ? `${n.desc} [${n.unit}]` : n.desc, default: n.def };
+function schemaOf(n: Node, t: Tr): any {
+  if (n.kind === 'object') return { type: 'object', description: t(n.desc), properties: Object.fromEntries(Object.entries(n.props).map(([k, v]) => [k, schemaOf(v, t)])), additionalProperties: false };
+  if (n.kind === 'array') return { type: 'array', description: t(n.desc), items: schemaOf(n.item, t), minItems: n.min, maxItems: n.max, default: n.def };
+  const s: any = { type: n.kind === 'enum' ? 'string' : n.kind, description: n.unit ? `${t(n.desc)} [${t(n.unit)}]` : t(n.desc), default: n.def };
   if (n.kind === 'enum') s.enum = n.values;
   if (n.min !== undefined) s.minimum = n.min;
   if (n.max !== undefined) s.maximum = n.max;
@@ -327,10 +340,10 @@ function schemaOf(n: Node): any {
   return s;
 }
 /** JSON Schema (draft 2020-12) of the input; every field carries `description` and `default`. All fields are optional. */
-export const inputSchema = () => ({ $schema: 'https://json-schema.org/draft/2020-12/schema', title: 'HyperLevel Gewinnrechner', ...schemaOf(SPEC) });
+export const inputSchema = (t: Tr = plainTr) => ({ $schema: 'https://json-schema.org/draft/2020-12/schema', title: t('HyperLevel Gewinnrechner'), ...schemaOf(SPEC, t) });
 
 /** Leaf fields as `path` rows with default and description (the docs table is generated from this). */
-export function specRows(): { path: string; type: string; unit: string; def: string; desc: string }[] {
+export function specRows(t: Tr = plainTr): { path: string; type: string; unit: string; def: string; desc: string }[] {
   const rows: { path: string; type: string; unit: string; def: string; desc: string }[] = [];
   const show = (v: unknown) => (Array.isArray(v) ? (v.length ? JSON.stringify(v).replace(/"/g, '').slice(0, 90) : '[]') : String(v));
   const walk = (n: Node, path: string) => {
@@ -338,10 +351,10 @@ export function specRows(): { path: string; type: string; unit: string; def: str
       for (const [k, v] of Object.entries(n.props)) walk(v, path ? `${path}.${k}` : k);
     } else if (n.kind === 'array') {
       if (n.item.kind === 'object') {
-        rows.push({ path: `${path}[]`, type: 'Liste', unit: '', def: show(n.def.map((d: any) => d?.name ?? d?.label ?? d)), desc: n.desc });
+        rows.push({ path: `${path}[]`, type: t('Liste'), unit: '', def: show(n.def.map((d: any) => d?.name ?? d?.label ?? d)), desc: t(n.desc) });
         for (const [k, v] of Object.entries(n.item.props)) walk(v, `${path}[].${k}`);
-      } else rows.push({ path, type: 'Liste', unit: n.item.kind === 'number' && (n.item as Leaf).unit ? String((n.item as Leaf).unit) : '', def: show(n.def), desc: n.desc });
-    } else rows.push({ path, type: n.kind === 'enum' ? n.values!.join(' \\| ') : n.kind === 'integer' ? 'Zahl (ganz)' : n.kind === 'number' ? 'Zahl' : n.kind === 'boolean' ? 'ja/nein' : 'Text', unit: n.unit ?? '', def: show(n.def), desc: n.desc });
+      } else rows.push({ path, type: t('Liste'), unit: n.item.kind === 'number' && (n.item as Leaf).unit ? t(String((n.item as Leaf).unit)) : '', def: show(n.def), desc: t(n.desc) });
+    } else rows.push({ path, type: n.kind === 'enum' ? n.values!.join(' \\| ') : n.kind === 'integer' ? t('Zahl (ganz)') : n.kind === 'number' ? t('Zahl') : n.kind === 'boolean' ? t('ja/nein') : t('Text'), unit: n.unit ? t(n.unit) : '', def: show(n.def), desc: t(n.desc) });
   };
   walk(SPEC, '');
   return rows;
@@ -357,34 +370,34 @@ export function specMarkdown(): string {
 // --- validation -----------------------------------------------------------------------------------------------------
 
 export class CalcInputError extends Error {
-  constructor(public problems: string[]) {
-    super(problems.slice(0, 6).join('; ') + (problems.length > 6 ? ` (+${problems.length - 6} weitere)` : ''));
+  constructor(public problems: string[], t: Tr = plainTr) {
+    super(problems.slice(0, 6).join('; ') + (problems.length > 6 ? ` ${t('(+{n} weitere)', { n: problems.length - 6 })}` : ''));
   }
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
-function norm(n: Node, raw: unknown, base: unknown, path: string, problems: string[]): any {
+function norm(n: Node, raw: unknown, base: unknown, path: string, problems: string[], t: Tr): any {
   const given = raw !== undefined && raw !== null;
   if (n.kind === 'object') {
     if (given && !isObj(raw)) {
-      problems.push(`${path || 'Eingabe'}: Objekt erwartet`);
+      problems.push(t('{path}: Objekt erwartet', { path: path || t('Eingabe') }));
       return defaultsOf(n);
     }
     const src = (given ? raw : {}) as Record<string, unknown>;
     const b = isObj(base) ? base : {};
-    for (const k of Object.keys(src)) if (!(k in n.props)) problems.push(`${path ? `${path}.` : ''}${k}: unbekanntes Feld (gültig: ${Object.keys(n.props).join(', ')})`);
-    return Object.fromEntries(Object.entries(n.props).map(([k, v]) => [k, norm(v, src[k], b[k], path ? `${path}.${k}` : k, problems)]));
+    for (const k of Object.keys(src)) if (!(k in n.props)) problems.push(t('{path}: unbekanntes Feld (gültig: {keys})', { path: `${path ? `${path}.` : ''}${k}`, keys: Object.keys(n.props).join(', ') }));
+    return Object.fromEntries(Object.entries(n.props).map(([k, v]) => [k, norm(v, src[k], b[k], path ? `${path}.${k}` : k, problems, t)]));
   }
   if (n.kind === 'array') {
     if (!given) return Array.isArray(base) ? JSON.parse(JSON.stringify(base)) : JSON.parse(JSON.stringify(n.def));
     if (!Array.isArray(raw)) {
-      problems.push(`${path}: Liste erwartet`);
+      problems.push(t('{path}: Liste erwartet', { path }));
       return JSON.parse(JSON.stringify(n.def));
     }
-    if (raw.length > n.max) problems.push(`${path}: höchstens ${n.max} Einträge`);
-    if (raw.length < n.min) problems.push(`${path}: mindestens ${n.min} Eintrag`);
-    return raw.slice(0, n.max).map((x, i) => norm(n.item, x, undefined, `${path}[${i}]`, problems));
+    if (raw.length > n.max) problems.push(t('{path}: höchstens {n} Einträge', { path, n: n.max }));
+    if (raw.length < n.min) problems.push(t('{path}: mindestens {n} Eintrag', { path, n: n.min }));
+    return raw.slice(0, n.max).map((x, i) => norm(n.item, x, undefined, `${path}[${i}]`, problems, t));
   }
   const fallback = base !== undefined && base !== null ? base : n.def;
   if (!given) return fallback;
@@ -393,33 +406,33 @@ function norm(n: Node, raw: unknown, base: unknown, path: string, problems: stri
       if (typeof raw === 'boolean') return raw;
       if (raw === 'true' || raw === 1) return true;
       if (raw === 'false' || raw === 0) return false;
-      problems.push(`${path}: ja/nein erwartet`);
+      problems.push(t('{path}: ja/nein erwartet', { path }));
       return fallback;
     case 'string': {
       if (typeof raw !== 'string' && typeof raw !== 'number') {
-        problems.push(`${path}: Text erwartet`);
+        problems.push(t('{path}: Text erwartet', { path }));
         return fallback;
       }
       const s = String(raw).trim();
-      if (n.maxLen && s.length > n.maxLen) problems.push(`${path}: höchstens ${n.maxLen} Zeichen`);
+      if (n.maxLen && s.length > n.maxLen) problems.push(t('{path}: höchstens {n} Zeichen', { path, n: n.maxLen }));
       return s.slice(0, n.maxLen ?? 200);
     }
     case 'enum':
       if (typeof raw === 'string' && n.values!.includes(raw)) return raw;
-      problems.push(`${path}: einer von ${n.values!.join(', ')} erwartet`);
+      problems.push(t('{path}: einer von {values} erwartet', { path, values: n.values!.join(', ') }));
       return fallback;
     default: {
       const v = typeof raw === 'string' && raw.trim() !== '' ? Number(raw.replace(',', '.')) : raw;
       if (typeof v !== 'number' || !Number.isFinite(v)) {
-        problems.push(`${path}: Zahl erwartet`);
+        problems.push(t('{path}: Zahl erwartet', { path }));
         return fallback;
       }
       if (n.kind === 'integer' && !Number.isInteger(v)) {
-        problems.push(`${path}: ganze Zahl erwartet`);
+        problems.push(t('{path}: ganze Zahl erwartet', { path }));
         return Math.round(v);
       }
       if ((n.min !== undefined && v < n.min) || (n.max !== undefined && v > n.max)) {
-        problems.push(`${path}: muss zwischen ${n.min ?? '−∞'} und ${n.max ?? '∞'} liegen`);
+        problems.push(t('{path}: muss zwischen {min} und {max} liegen', { path, min: n.min ?? '−∞', max: n.max ?? '∞' }));
         return Math.min(n.max ?? v, Math.max(n.min ?? v, v));
       }
       return v;
@@ -452,15 +465,15 @@ export function expandTaxYear(patch: unknown): unknown {
  * unknown fields and wrong types are errors with a German message – an agent typing `custmers` must not get a
  * silently wrong answer. `tax.est.year` alone loads the built-in tariff of that year (2024–2026).
  */
-export function normalizeInput(raw: unknown, base?: CalcInput): CalcInput {
+export function normalizeInput(raw: unknown, base?: CalcInput, t: Tr = plainTr): CalcInput {
   const problems: string[] = [];
   const patch: any = expandTaxYear(raw ?? {});
-  if (!isObj(patch)) throw new CalcInputError(['Eingabe: Objekt erwartet']);
-  const out = norm(SPEC, patch, base, '', problems) as CalcInput;
+  if (!isObj(patch)) throw new CalcInputError([t('{path}: Objekt erwartet', { path: t('Eingabe') })], t);
+  const out = norm(SPEC, patch, base, '', problems, t) as CalcInput;
   const plans = out.pricing.plans;
-  if (out.matrix.plan_index >= plans.length) problems.push(`matrix.plan_index: es gibt nur ${plans.length} Tarif(e)`);
-  if (out.tax.est.zone2_end < out.tax.est.grundfreibetrag || out.tax.est.zone3_end < out.tax.est.zone2_end || out.tax.est.zone4_end < out.tax.est.zone3_end) problems.push('tax.est: die Zonen müssen aufsteigend sein');
-  if (problems.length) throw new CalcInputError(problems);
+  if (out.matrix.plan_index >= plans.length) problems.push(t('matrix.plan_index: es gibt nur {n} Tarif(e)', { n: plans.length }));
+  if (out.tax.est.zone2_end < out.tax.est.grundfreibetrag || out.tax.est.zone3_end < out.tax.est.zone2_end || out.tax.est.zone4_end < out.tax.est.zone3_end) problems.push(t('tax.est: die Zonen müssen aufsteigend sein'));
+  if (problems.length) throw new CalcInputError(problems, t);
   return out;
 }
 

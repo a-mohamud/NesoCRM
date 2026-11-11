@@ -184,7 +184,7 @@ export interface SitePlan {
 }
 const hero = (heading: string, subheading: string, extra: Record<string, any> = {}) => ({ type: 'hero', heading, subheading, align: 'center', ...extra });
 const webinar = (title: string, sub: string, thanks: string, replay: string): NonNullable<SitePlan['pages']> => [
-  { name: 'Anmeldung', slug: 'anmeldung', blocks: [hero(title, sub, { button_text: 'Platz sichern', button_url: '#anmeldung' }), { type: 'form', form_id: '', heading: 'Jetzt anmelden' }] },
+  { name: 'Anmeldung', slug: 'anmeldung', blocks: [hero(title, sub, { button_text: 'Platz sichern', button_url: '#anmeldung' }), { type: 'form', form_id: '', heading: 'Kostenlos anmelden' }] },
   { name: 'Danke', slug: 'danke', blocks: [hero('Du bist dabei! 🎉', thanks)] },
   { name: 'Replay', slug: 'replay', blocks: [hero('Das Replay', replay)] },
 ];

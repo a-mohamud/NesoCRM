@@ -71,7 +71,7 @@ beforeAll(async () => {
   t.app.services.aiConnectionsFetch = (async (url: string, init: any = {}) => {
     const body = JSON.parse(init.body);
     const sys = String(body.messages?.[0]?.content ?? '');
-    const kind: Kind = sys.includes('Bau-Assistent') ? 'plan' : sys.includes('Sicherheitsprüfer') ? 'review' : sys.includes('Coding-Agent-Team') ? 'spec' : 'build';
+    const kind: Kind = sys.includes('build assistant') ? 'plan' : sys.includes('security reviewer') ? 'review' : sys.includes('coding-agent team') ? 'spec' : 'build';
     sent.push({ url: String(url), kind, body, auth: String(new Headers(init.headers).get('authorization') ?? '') });
     const text = await handler(kind, body);
     return new Response(JSON.stringify({ id: `gen-${sent.length}`, model: body.model, choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }], usage: { prompt_tokens: 6200, completion_tokens: 2400 } }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -195,7 +195,7 @@ describe('the member flow: wish → plan → approval → private plugin', () =>
     expect(sent[0].auth).toBe('Bearer sk-or-v1-testkey-abcdef123456');
     expect(sent[0].body.model).toBe('anthropic/claude-opus-5.5');
     expect(JSON.stringify(sent[0].body.messages)).toContain('Deals als Ampel');
-    expect(JSON.stringify(sent[1].body.messages)).toContain('Dein letzter Plan war ungültig');
+    expect(JSON.stringify(sent[1].body.messages)).toContain('Your last plan was invalid');
   });
 
   it('an unusable structure beyond the repair rounds ends with a readable error – and the log stays', async () => {
@@ -395,8 +395,8 @@ describe('Stufe 3: "Als Kernfeature vorschlagen" opens a GitHub issue', () => {
     expect(issues[0].url).toBe('https://api.github.com/repos/acme/gohigh/issues');
     expect(issues[0].body.title).toContain('[Kernfeature]');
     expect(issues[0].body.body).toContain('Deal-Ampel');
-    expect(issues[0].body.body).toContain('2 Installationen');
-    expect(issues[0].body.body).toMatch(/@codex Setze die oben beschriebene/);
+    expect(issues[0].body.body).toContain('2 installs');
+    expect(issues[0].body.body).toMatch(/@codex Implement the specification above/);
     expect(issues[0].body.labels).toEqual(['kernfeature', 'plugin']);
     const list = (await admin('GET', '/api/werkstatt/core')).data;
     expect(list.proposals[0]).toMatchObject({ plugin_id: pluginId, issue_url: 'https://github.com/acme/gohigh/issues/42' });

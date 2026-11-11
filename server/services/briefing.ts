@@ -64,9 +64,12 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 /** "seit 3 Stunden" / "for 2 days". */
 function waited(ms: number, lang: Lang): string {
   const h = Math.floor(ms / 3600_000);
+  // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
   if (h < 1) return lang === 'en' ? 'for less than an hour' : 'seit weniger als einer Stunde';
+  // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
   if (h < 48) return lang === 'en' ? `for ${h} ${plural(h, 'hour', 'hours')}` : `seit ${h} ${plural(h, 'Stunde', 'Stunden')}`;
   const d = Math.floor(h / 24);
+  // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
   return lang === 'en' ? `for ${d} days` : `seit ${d} Tagen`;
 }
 
@@ -93,12 +96,15 @@ const overdueTasks: Collector = async ({ get, L, now }) => {
   const title = clip(top.title, 80);
   return {
     key: 'overdue_tasks',
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     title: L(`${total} überfällige ${plural(total, 'Aufgabe', 'Aufgaben')}`, `${total} overdue ${plural(total, 'task', 'tasks')}`),
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     detail: L(`Am längsten offen: „${title}“ (${days} ${plural(days, 'Tag', 'Tage')} drüber)`, `Oldest: “${title}” (${days} ${plural(days, 'day', 'days')} late)`),
     count: total,
     score: 50 + Math.min(total, 10) * 4 + Math.min(days, 10),
     url: 'pm/my',
     tile: { type: 'tasks', title: L('Meine überfälligen Aufgaben', 'My overdue tasks'), config: { due: 'overdue', mine: true, limit: 6 } },
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     step: { key: `task:${top.id}`, label: L(`„${clip(top.title, 40)}“ angehen`, `Tackle “${clip(top.title, 40)}”`), prompt: L('Was steht bei der ausgewählten überfälligen Aufgabe an? Fasse sie kurz zusammen und schlag mir den nächsten Schritt vor.', 'What is the selected overdue task about? Summarise it briefly and suggest the next step.'), entity: { type: 'task', id: String(top.id), label: title } },
     sig: `t:${total}:${tasks.map((t) => t.id).join(',')}`,
   };
@@ -115,12 +121,15 @@ const invoices: Collector = async ({ get, L, lang }) => {
   const amount = euro(Number(top.open_cents) / 100, lang);
   return {
     key: 'overdue_invoices',
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     title: L(`${late.length} überfällige ${plural(late.length, 'Rechnung', 'Rechnungen')} · ${euro(sum, lang)} offen`, `${late.length} overdue ${plural(late.length, 'invoice', 'invoices')} · ${euro(sum, lang)} open`),
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     detail: L(`Am längsten offen: ${num} von ${who} (${amount}, ${top.days_overdue} Tage)`, `Longest open: ${num} from ${who} (${amount}, ${top.days_overdue} days)`),
     count: late.length,
     score: 52 + Math.min(late.length, 10) * 3 + (sum >= 1000 ? 10 : 0) + Math.min(Number(top.days_overdue), 30) / 3,
     url: 'invoices',
     tile: { type: 'kpi', title: L('Überfällige Rechnungen', 'Overdue invoices'), config: { preset: 'overdue_invoices' } },
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     step: { key: `invoice:${top.id}`, label: L(`Erinnerung an ${clip(who, 30)} senden`, `Send ${clip(who, 30)} a reminder`), prompt: L(`Schick dem Kunden der ausgewählten Rechnung ${num} (${amount}, ${top.days_overdue} Tage überfällig) eine freundliche Zahlungserinnerung.`, `Send the customer of the selected invoice ${num} (${amount}, ${top.days_overdue} days overdue) a friendly payment reminder.`), entity: { type: 'invoice', id: String(top.id), label: String(num) } },
     sig: `i:${late.length}:${late.slice(0, 5).map((i) => i.id).join(',')}`,
   };
@@ -131,10 +140,12 @@ const dunning: Collector = async ({ get, L }) => {
   const failed = (Number(o?.cases?.failed) || 0) + (Number(o?.cases?.open) || 0);
   const pending = Number(o?.notices?.pending) || 0;
   if (!failed && !pending) return null;
+  // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
   const parts = [failed ? L(`${failed} fehlgeschlagene ${plural(failed, 'Zahlung', 'Zahlungen')}`, `${failed} failed ${plural(failed, 'payment', 'payments')}`) : '', pending ? L(`${pending} ${plural(pending, 'Mahnung wartet', 'Mahnungen warten')} auf Freigabe`, `${pending} dunning ${plural(pending, 'notice awaits', 'notices await')} approval`) : ''].filter(Boolean);
   return {
     key: 'dunning',
     title: parts.join(' · '),
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     detail: L('Im Mahnwesen prüfen und freigeben', 'Check and approve in dunning'),
     count: failed + pending,
     score: 48 + failed * 4 + pending * 3,
@@ -153,6 +164,7 @@ const inbox: Collector = async ({ get, L, lang, now }) => {
   return {
     key: 'inbox',
     title: L(`${list.length}${list.length >= 50 ? '+' : ''} ungelesene ${plural(list.length, 'Konversation', 'Konversationen')}`, `${list.length}${list.length >= 50 ? '+' : ''} unread ${plural(list.length, 'conversation', 'conversations')}`),
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     detail: L(`Wartet am längsten: ${who} (${waited(wait, lang)})`, `Waiting longest: ${who} (${waited(wait, lang)})`),
     count: list.length,
     score: 44 + Math.min(list.length, 10) * 3 + (wait > 24 * 3600_000 ? 16 : wait > 4 * 3600_000 ? 8 : 0),
@@ -176,11 +188,13 @@ const deals: Collector = async ({ get, L, lang, now, tz }) => {
   return {
     key: 'deals',
     title: L(`${late.length} ${plural(late.length, 'Deal braucht', 'Deals brauchen')} Pflege`, `${late.length} ${plural(late.length, 'deal needs', 'deals need')} attention`),
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     detail: past ? L(`Größter: „${name}“ (${value}) – Abschlussdatum überschritten`, `Biggest: “${name}” (${value}) – close date passed`) : L(`Größter: „${name}“ (${value}) – seit ${idle(hot)} Tagen unberührt`, `Biggest: “${name}” (${value}) – untouched for ${idle(hot)} days`),
     count: late.length,
     score: 40 + Math.min(late.length, 10) * 2 + (Number(hot.value) >= 5000 ? 14 : 6),
     url: `opportunities?pipeline=${hot.pipeline_id}`,
     tile: { type: 'list', title: L('Deals seit 14 Tagen unberührt', 'Deals untouched for 14 days'), config: { entity: 'deals', status: 'open', stale_days: 14, sort: 'oldest', limit: 6 } },
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     step: { key: `deal:${hot.id}`, label: L(`„${clip(hot.name, 32)}“ nachfassen`, `Follow up “${clip(hot.name, 32)}”`), prompt: L(`Hilf mir, den ausgewählten Deal (${value}) nachzufassen: Fasse den Stand zusammen und entwirf eine kurze Nachricht an den Kontakt – noch nicht senden.`, `Help me follow up the selected deal (${value}): summarise where it stands and draft a short message to the contact – do not send it yet.`), entity: { type: 'opportunity', id: String(hot.id), label: name } },
     sig: `o:${late.length}:${hot.id}`,
   };
@@ -198,12 +212,15 @@ const appointments: Collector = async ({ get, L, now, tz }) => {
   const title = clip(a.title || nameOf(a) || L('Termin', 'appointment'), 60);
   return {
     key: 'appointments',
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     title: L(`${next.length} ${plural(next.length, 'Termin', 'Termine')} heute noch`, `${next.length} more ${plural(next.length, 'appointment', 'appointments')} today`),
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     detail: mins <= 90 ? L(`Gleich: ${time} „${title}“ (in ${mins} Minuten)`, `Soon: ${time} “${title}” (in ${mins} minutes)`) : L(`Nächster: ${time} „${title}“`, `Next: ${time} “${title}”`),
     count: next.length,
     score: mins <= 60 ? 72 : mins <= 180 ? 46 : 24 + next.length * 2,
     url: 'calendars',
     tile: { type: 'agenda', title: L('Heute', 'Today'), config: { days: 1 } },
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     step: { key: `meeting:${a.id}`, label: L(`Termin um ${time} vorbereiten`, `Prepare the ${time} meeting`), prompt: L(`Bereite mich auf den ausgewählten Termin um ${time} vor: Wer ist dabei, was ist der Stand, worauf sollte ich achten?`, `Prepare me for the selected appointment at ${time}: who is it, where do things stand, what should I watch out for?`), entity: { type: 'appointment', id: String(a.id), label: title } },
     sig: `a:${next.length}:${a.id}`,
   };
@@ -221,12 +238,14 @@ const tickets: Collector = async ({ get, L }) => {
   const subject = clip(top.subject, 60);
   return {
     key: 'tickets',
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     title: breached.length || warning.length ? L(`${breached.length + warning.length} ${plural(breached.length + warning.length, 'Ticket', 'Tickets')} an oder über der SLA-Frist`, `${breached.length + warning.length} ${plural(breached.length + warning.length, 'ticket', 'tickets')} at or past the SLA`) : L(`${urgent.length} ${plural(urgent.length, 'dringendes Ticket', 'dringende Tickets')}`, `${urgent.length} urgent ${plural(urgent.length, 'ticket', 'tickets')}`),
     detail: L(`Zuerst: #${top.number} „${subject}“`, `First: #${top.number} “${subject}”`),
     count: hot.length,
     score: 50 + breached.length * 6 + warning.length * 3 + urgent.length * 3,
     url: `tickets/${top.id}`,
     tile: { type: 'list', title: L('Offene Tickets nach Priorität', 'Open tickets by priority'), config: { entity: 'tickets', ticket_state: 'open', sort: 'priority', limit: 6 } },
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     step: { key: `ticket:${top.id}`, label: L(`Ticket #${top.number} beantworten`, `Answer ticket #${top.number}`), prompt: L(`Fasse das ausgewählte Ticket #${top.number} zusammen und entwirf eine Antwort – noch nicht senden.`, `Summarise the selected ticket #${top.number} and draft a reply – do not send it yet.`), entity: { type: 'ticket', id: String(top.id), label: `#${top.number} ${subject}` } },
     sig: `k:${hot.map((t) => t.id).slice(0, 5).join(',')}:${breached.length}`,
   };
@@ -248,6 +267,7 @@ const workflowErrors: Collector = async ({ app, ctx, L, now }) => {
   return {
     key: 'workflow_errors',
     title: L(`${n} fehlgeschlagene ${plural(n, 'Automation', 'Automationen')} in 24 Stunden`, `${n} failed automation ${plural(n, 'run', 'runs')} in 24 hours`),
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     detail: L(`Am häufigsten: „${clip(top.name, 60)}“ (${top.n}×)`, `Most often: “${clip(top.name, 60)}” (${top.n}×)`),
     count: n,
     score: 34 + Math.min(n, 10) * 2,
@@ -264,11 +284,14 @@ const website: Collector = async ({ get, L, tz }) => {
   const since = last.at ? hmInTz(new Date(last.at), tz) : '';
   return {
     key: 'website_down',
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     title: L('Website nicht erreichbar', 'Website unreachable'),
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     detail: L(`${clip(p.website, 60)} antwortet nicht${last.status ? ` (Status ${last.status})` : ''}${since ? ` – geprüft ${since}` : ''}`, `${clip(p.website, 60)} does not answer${last.status ? ` (status ${last.status})` : ''}${since ? ` – checked ${since}` : ''}`),
     count: 1,
     score: 85,
     url: 'project',
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     step: { key: 'website', label: L('Website prüfen', 'Check the website'), url: 'project' },
     sig: `u:${last.at ?? ''}`,
   };
@@ -282,10 +305,12 @@ const stock: Collector = async ({ get, L }) => {
   return {
     key: 'low_stock',
     title: L(`${list.length} ${plural(list.length, 'Artikel', 'Artikel')} unter Mindestbestand`, `${list.length} ${plural(list.length, 'item', 'items')} below minimum stock`),
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     detail: L(`Zum Beispiel: ${clip(top.name ?? top.sku, 60)}`, `For example: ${clip(top.name ?? top.sku, 60)}`),
     count: list.length,
     score: 30 + Math.min(list.length, 10) * 2,
     url: 'inventory',
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     step: { key: 'restock', label: L('Nachbestellung vorbereiten', 'Prepare a reorder'), prompt: L('Welche Artikel liegen unter dem Mindestbestand? Schlag mir eine Nachbestellung je Lieferant vor – noch nichts bestellen.', 'Which items are below minimum stock? Suggest a reorder per supplier – do not order anything yet.') },
     sig: `s:${list.length}:${list.slice(0, 5).map((x) => x.id ?? x.sku).join(',')}`,
   };
@@ -296,11 +321,13 @@ const approvals: Collector = async ({ get, L }) => {
   if (!list.length) return null;
   return {
     key: 'approvals',
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     title: L(`${list.length} ${plural(list.length, 'Freigabe wartet', 'Freigaben warten')} auf dich`, `${list.length} ${plural(list.length, 'approval waits', 'approvals wait')} for you`),
     detail: L(`Zuerst: ${clip(list[0].summary || list[0].tool, 80)}`, `First: ${clip(list[0].summary || list[0].tool, 80)}`),
     count: list.length,
     score: 46 + Math.min(list.length, 10) * 3,
     url: 'agents/approvals',
+    // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
     step: { key: 'approvals', label: L('Freigaben prüfen', 'Review approvals'), url: 'agents/approvals' },
     sig: `p:${list.map((x) => x.id).slice(0, 5).join(',')}`,
   };
@@ -346,6 +373,7 @@ export function greetingName(user: { id?: string; name?: string | null } | null 
 export function rulesSay(hotspots: Hotspot[], next: NextStep[], o: { lang: Lang; hm: string; name?: string }): string {
   const L = (de: string, en: string) => (o.lang === 'en' ? en : de);
   const h = Number(o.hm.slice(0, 2));
+  // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
   const hello = h < 11 ? L('Guten Morgen', 'Good morning') : h < 18 ? L('Hallo', 'Hello') : L('Guten Abend', 'Good evening');
   const who = o.name ? `, ${o.name}` : '';
   if (!hotspots.length) return L(`${hello}${who}. Gerade brennt nichts – gute Zeit, um am Wachstum zu arbeiten.`, `${hello}${who}. Nothing is burning right now – a good time to work on growth.`);
@@ -355,6 +383,7 @@ export function rulesSay(hotspots: Hotspot[], next: NextStep[], o: { lang: Lang;
     .map((x) => x.title)
     .join(L(' und ', ' and '));
   const first = next[0] ? L(` Mein Vorschlag: ${next[0].label}.`, ` My suggestion: ${next[0].label}.`) : '';
+  // i18n-ignore – bilingual by design: L(German, English), the caller picks the language
   return L(`${hello}${who}. ${n} ${plural(n, 'Sache braucht', 'Sachen brauchen')} dich: ${top}.${first}`, `${hello}${who}. ${n} ${plural(n, 'thing needs', 'things need')} you: ${top}.${first}`);
 }
 

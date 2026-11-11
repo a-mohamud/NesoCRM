@@ -1,5 +1,6 @@
 import { addDaysYmd, hmInTz, isValidTz, tzOffsetMinutes, weekdayKey, ymdInTz, zonedToUtc, type DayKey } from '../core/time.js';
 import { normalizePhone } from '../core/util.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Pure formatting helpers behind the workflow steps "Text formatieren", "Zahl formatieren",
@@ -233,7 +234,7 @@ export function textOp(op: TextOp | string, input: unknown, a?: unknown, b?: unk
     case 'word_count':
       return s.trim() ? s.trim().split(/\s+/).length : 0;
     default:
-      throw new FormatError(`Unbekannte Text-Aktion: ${op}`);
+      throw new FormatError(tApp()('Unbekannte Text-Aktion: {op}', { op }));
   }
 }
 
@@ -313,7 +314,7 @@ export function formatNumber(n: number, digits: number | undefined, locale = 'de
 
 export function numberOp(op: NumberOp | string, input: unknown, o: NumberOpts = {}): string | number {
   const n = parseNumber(input);
-  if (Number.isNaN(n)) throw new FormatError(str(input).trim() ? `„${str(input).slice(0, 40)}“ ist keine Zahl` : 'Keine Zahl angegeben');
+  if (Number.isNaN(n)) throw new FormatError(str(input).trim() ? tApp()('„{value}“ ist keine Zahl', { value: str(input).slice(0, 40) }) : 'Keine Zahl angegeben');
   switch (op) {
     case 'round':
       return roundTo(n, o.digits ?? 0, o.mode);
@@ -352,7 +353,7 @@ export function numberOp(op: NumberOp | string, input: unknown, o: NumberOpts = 
     case 'fixed':
       return roundTo(n, o.digits ?? 2).toFixed(Math.min(12, Math.max(0, o.digits ?? 2)));
     default:
-      throw new FormatError(`Unbekannte Zahl-Aktion: ${op}`);
+      throw new FormatError(tApp()('Unbekannte Zahl-Aktion: {op}', { op }));
   }
 }
 
@@ -469,7 +470,7 @@ export function addToDate(at: Date, amount: number, unit: DateUnit | string, tz:
     const mo = (total % 12) + 1;
     return fromWall({ ...w, y, mo, d: Math.min(w.d, daysInMonth(y, mo)) }, tz);
   }
-  throw new FormatError(`Unbekannte Einheit: ${unit}`);
+  throw new FormatError(tApp()('Unbekannte Einheit: {unit}', { unit }));
 }
 
 export type DateBoundary = 'day' | 'week' | 'month' | 'year' | 'hour';
@@ -486,7 +487,7 @@ export function startOf(at: Date, unit: DateBoundary | string, tz: string = DEFA
   }
   if (unit === 'month') return fromWall({ ...w, d: 1, h: 0, mi: 0, s: 0 }, tz);
   if (unit === 'year') return fromWall({ y: w.y, mo: 1, d: 1, h: 0, mi: 0, s: 0 }, tz);
-  throw new FormatError(`Unbekannte Einheit: ${unit}`);
+  throw new FormatError(tApp()('Unbekannte Einheit: {unit}', { unit }));
 }
 
 export function endOf(at: Date, unit: DateBoundary | string, tz: string = DEFAULT_TZ): Date {
@@ -529,13 +530,14 @@ export function diffDates(a: Date, b: Date, unit: DiffUnit | string, tz: string 
     else if (months < 0 && rest(wb) > rest(wa)) months += 1;
     return unit === 'years' ? Math.trunc(months / 12) : months;
   }
-  throw new FormatError(`Unbekannte Einheit: ${unit}`);
+  throw new FormatError(tApp()('Unbekannte Einheit: {unit}', { unit }));
 }
 
-const MONTHS_DE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const DAYS_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-const DAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+// Locale data of formatDate (its `lang` option), not UI text.
+const MONTHS_DE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']; // i18n-ignore
+const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']; // i18n-ignore
+const DAYS_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']; // i18n-ignore
+const DAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']; // i18n-ignore
 
 /** ISO weekday 1 (Mon) … 7 (Sun). */
 export const isoWeekday = (ymd: string) => ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(weekdayKey(ymd)) || 7;
@@ -615,7 +617,7 @@ export function dateOp(op: DateOp | string, input: unknown, o: DateOpts = {}): s
   const tz = tzOrDefault(o.tz);
   const holidays = new Set((o.holidays ?? []).map(String));
   const at = parseDate(input === undefined || input === '' ? 'now' : input, tz, o.from);
-  if (!at) throw new FormatError(`„${str(input).slice(0, 40)}“ ist kein Datum`);
+  if (!at) throw new FormatError(tApp()('„{value}“ ist kein Datum', { value: str(input).slice(0, 40) }));
   const iso = (d: Date) => d.toISOString();
   switch (op) {
     case 'add':
@@ -655,7 +657,7 @@ export function dateOp(op: DateOp | string, input: unknown, o: DateOpts = {}): s
       return iso(fromWall({ ...wallClock(at, tz), h: +m[1], mi: +m[2], s: 0 }, tz));
     }
     default:
-      throw new FormatError(`Unbekannte Datums-Aktion: ${op}`);
+      throw new FormatError(tApp()('Unbekannte Datums-Aktion: {op}', { op }));
   }
 }
 

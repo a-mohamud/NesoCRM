@@ -2,6 +2,7 @@ import type { Account, Batch, Consent, CountRow, FieldType, PartKey, RCompany, R
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { mapAutomation } from './umzug-automation.js';
 import { stripHtml, toIso } from './umzug-text.js';
+import { translator, type ServerLocale } from '../i18n/index.js';
 
 /**
  * ActiveCampaign (API v3, https://<account>.api-us1.com/api/3): contacts with lists, tags and custom fields,
@@ -48,7 +49,8 @@ const fieldType = (t: string): FieldType => (t === 'textarea' ? 'textarea' : t =
 
 const total = async (h: VendorHttp, path: string, query: Record<string, unknown> = {}) => Number((await h.get(path, { limit: 1, ...query })).meta?.total ?? 0);
 
-async function describe(h: VendorHttp, parts: PartKey[]) {
+async function describe(h: VendorHttp, parts: PartKey[], lang?: ServerLocale) {
+  const t = translator(lang);
   const counts: CountRow[] = [];
   const fields: SourceField[] = [];
   const warnings: string[] = [];
@@ -70,7 +72,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
       for (const f of j.fields ?? []) fields.push({ ref: `field:${f.id}`, label: String(f.title ?? f.perstag ?? f.id), type: fieldType(String(f.type)), group: 'custom', options: (j.fieldOptions ?? []).filter((o: any) => String(o.field) === String(f.id)).map((o: any) => String(o.label ?? o.value)) });
     } catch (e) {
       if (!(e instanceof UmzugError && e.skippable)) throw e;
-      warnings.push(`Eigene Felder nicht lesbar: ${e.message}`);
+      warnings.push(t('Eigene Felder nicht lesbar: {reason}', { reason: e.message }));
     }
   }
   if (parts.includes('companies')) await ok('companies', 'accounts', 'Firmen (Accounts)', '/accounts');
@@ -100,9 +102,10 @@ const steps = (): StepDef[] => [
     label: 'Tags',
     part: 'contacts',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const tags = await all(ctx.http, '/tags', 'tags', ctx);
       const records: RTagRec[] = tags.map((t) => ({ kind: 'tag', name: String(t.tag) }));
-      for (const l of await all(ctx.http, '/lists', 'lists', ctx)) records.push({ kind: 'tag', name: `Liste: ${l.name}` });
+      for (const l of await all(ctx.http, '/lists', 'lists', ctx)) records.push({ kind: 'tag', name: t('Liste: {name}', { name: l.name }) });
       yield { records, cursor: undefined };
     },
   },
@@ -111,8 +114,9 @@ const steps = (): StepDef[] => [
     label: 'Firmen',
     part: 'companies',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of pages(ctx.http, '/accounts', 'accounts', {}, ctx, Number(ctx.cursor ?? 0))) {
-        const records: RCompany[] = pg.items.map((a) => ({ kind: 'company', ext: `a:${a.id}`, name: String(a.name ?? `Firma ${a.id}`), website: a.accountUrl ? String(a.accountUrl) : undefined, domain: a.accountUrl ? String(a.accountUrl) : undefined }));
+        const records: RCompany[] = pg.items.map((a) => ({ kind: 'company', ext: `a:${a.id}`, name: String(a.name ?? t('Firma {id}', { id: a.id })), website: a.accountUrl ? String(a.accountUrl) : undefined, domain: a.accountUrl ? String(a.accountUrl) : undefined }));
         yield { records, cursor: pg.next, total: pg.total };
       }
     },
@@ -122,6 +126,7 @@ const steps = (): StepDef[] => [
     label: 'Kontakte',
     part: 'contacts',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const tagName = idMap(await all(ctx.http, '/tags', 'tags', ctx), 'tag');
       const listName = idMap(await all(ctx.http, '/lists', 'lists', ctx), 'name');
       // contact → account, when companies were asked for.
@@ -148,7 +153,7 @@ const steps = (): StepDef[] => [
           const { consent, native } = consentOf(subs);
           const values: Record<string, unknown> = { email: c.email, firstName: c.firstName, lastName: c.lastName, phone: c.phone };
           for (const f of fvals.get(id) ?? []) if (f.value !== '' && f.value !== null) values[`field:${f.field}`] = f.value;
-          const tags = [...(ctags.get(id) ?? []).map((t) => tagName.get(String(t.tag))).filter((t): t is string => !!t), ...subs.filter((s: any) => String(s.status) === '1').map((s: any) => (listName.get(String(s.list)) ? `Liste: ${listName.get(String(s.list))}` : '')).filter(Boolean), ...subs.filter((s: any) => String(s.status) === '2').map((s: any) => (listName.get(String(s.list)) ? `Abgemeldet von: ${listName.get(String(s.list))}` : '')).filter(Boolean)];
+          const tags = [...(ctags.get(id) ?? []).map((t) => tagName.get(String(t.tag))).filter((t): t is string => !!t), ...subs.filter((s: any) => String(s.status) === '1').map((s: any) => (listName.get(String(s.list)) ? t('Liste: {list}', { list: listName.get(String(s.list)) ?? '' }) : '')).filter(Boolean), ...subs.filter((s: any) => String(s.status) === '2').map((s: any) => (listName.get(String(s.list)) ? t('Abgemeldet von: {list}', { list: listName.get(String(s.list)) ?? '' }) : '')).filter(Boolean)];
           records.push({ kind: 'contact', ext: `c:${id}`, values, tags, consent, native_status: native, created_at: toIso(c.cdate), org: orgOf.get(id) });
         }
         yield { records, cursor: pg.next, total: pg.total };
@@ -160,6 +165,7 @@ const steps = (): StepDef[] => [
     label: 'Pipelines und Deals',
     part: 'deals',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const cur = (ctx.cursor ?? { phase: 'pipes' }) as { phase: 'pipes' | 'deals'; off?: number };
       if (cur.phase === 'pipes') {
         const groups = await all(ctx.http, '/dealGroups', 'dealGroups', ctx);
@@ -167,7 +173,7 @@ const steps = (): StepDef[] => [
         const records: RPipeline[] = groups.map((g) => ({
           kind: 'pipeline',
           ext: `g:${g.id}`,
-          name: String(g.title ?? `Pipeline ${g.id}`),
+          name: String(g.title ?? t('Pipeline {id}', { id: g.id })),
           stages: stages
             .filter((s) => String(s.group) === String(g.id))
             .sort((a, b) => Number(a.order) - Number(b.order))
@@ -216,6 +222,7 @@ const steps = (): StepDef[] => [
     label: 'Automationen (Entwürfe)',
     part: 'automations',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const tagName = idMap(await all(ctx.http, '/tags', 'tags', ctx), 'tag');
       const listName = idMap(await all(ctx.http, '/lists', 'lists', ctx), 'name');
       for await (const pg of pages(ctx.http, '/automations', 'automations', {}, ctx, Number(ctx.cursor ?? 0))) {
@@ -228,7 +235,7 @@ const steps = (): StepDef[] => [
           } catch (e) {
             if (!(e instanceof UmzugError && e.skippable)) throw e;
           }
-          records.push(mapAutomation('activecampaign', { id: a.id, name: String(a.name ?? `Automation ${a.id}`), blocks, active: String(a.status) === '1' }, { tag: (id) => tagName.get(String(id)), list: (id) => listName.get(String(id)) }));
+          records.push(mapAutomation('activecampaign', { id: a.id, name: String(a.name ?? t('Automation {id}', { id: a.id })), blocks, active: String(a.status) === '1' }, { tag: (id) => tagName.get(String(id)), list: (id) => listName.get(String(id)) }));
         }
         yield { records, cursor: pg.next, total: pg.total };
       }
@@ -264,6 +271,6 @@ export const ACTIVECAMPAIGN: SourceDef = {
     const j = await h.get('/users/me');
     return { account, label: String(j.user?.email ?? j.user?.username ?? account), meta: {} };
   },
-  describe: (h, parts) => describe(h, parts),
+  describe: (h, parts, c) => describe(h, parts, c.lang),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),
 };

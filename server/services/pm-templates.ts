@@ -4,6 +4,7 @@ import { id as newId, now } from '../core/util.js';
 import { FIELD_TYPES, cleanColor, dayOf, fieldsFor, json, statusesOf, todayIn, tzOf, type Actor, type ProjectRow, type StatusCategory } from './pm-core.js';
 import { CALENDAR_DAYS, CALENDAR_WORKDAYS, DEP_TYPES, diffDays, endFromDuration, stepDays, type DepType } from './pm-schedule.js';
 import { announceCreated, createTask, getTask } from './pm-tasks.js';
+import type { STFn } from '../i18n/index.js';
 
 /**
  * Project templates: a recipe of statuses, sections, custom fields, tasks (with subtasks, checklists, estimates,
@@ -119,6 +120,34 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
 ];
 
 export const builtinTemplate = (key: string) => BUILTIN_TEMPLATES.find((t) => t.key === key);
+
+/**
+ * A built-in template in a language: every text people see (statuses, sections, field labels and options, task titles,
+ * descriptions, tags, checklists, automation names and the texts they match or create) – refs, keys and numbers stay.
+ * Names that point at each other (task.section → sections, task.status → statuses) are translated alike, so they still match.
+ */
+export function localizeTemplate(data: TemplateData, t: STFn): TemplateData {
+  const task = (x: TemplateTask): TemplateTask => ({
+    ...x,
+    title: t(x.title),
+    ...(x.description ? { description: t(x.description) } : {}),
+    ...(x.section ? { section: t(x.section) } : {}),
+    ...(x.status ? { status: t(x.status) } : {}),
+    ...(x.tags ? { tags: x.tags.map((g) => t(g)) } : {}),
+    ...(x.checklist ? { checklist: x.checklist.map((c) => ({ title: t(c.title), items: c.items.map((i) => t(i)) })) } : {}),
+    ...(x.subtasks ? { subtasks: x.subtasks.map(task) } : {}),
+  });
+  const textKeys = ['title', 'title_contains', 'message', 'description', 'status', 'tag'];
+  const texts = (o: Record<string, any> | undefined) => (o ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'string' && textKeys.includes(k) ? t(v) : v])) : o);
+  return {
+    ...data,
+    ...(data.statuses ? { statuses: data.statuses.map((s) => ({ ...s, name: t(s.name) })) } : {}),
+    ...(data.sections ? { sections: data.sections.map((s) => t(s)) } : {}),
+    ...(data.fields ? { fields: data.fields.map((f) => ({ ...f, label: t(f.label), ...(f.options ? { options: f.options.map((o) => t(o)) } : {}) })) } : {}),
+    tasks: data.tasks.map(task),
+    ...(data.automations ? { automations: data.automations.map((a) => ({ ...a, name: t(a.name), conditions: texts(a.conditions), actions: a.actions.map((x) => texts(x)!) })) } : {}),
+  };
+}
 
 // --- validation of stored templates ---------------------------------------------------------------
 

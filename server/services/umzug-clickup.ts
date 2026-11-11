@@ -3,6 +3,7 @@ import type { Json } from './umzug-flow.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { counter, seg, stubCtx } from './umzug-lib.js';
 import { clip, fieldKey, toIso } from './umzug-text.js';
+import { translator, tApp } from '../i18n/index.js';
 
 /**
  * ClickUp (REST API v2 and the v3 Docs API, https://api.clickup.com, personal API token): every list → a project (the list's statuses
@@ -69,7 +70,7 @@ async function* lists(h: VendorHttp, ctx: StepCtx): AsyncGenerator<Ctxs> {
   }
 }
 
-const projectName = (c: Ctxs) => clip([c.spaces > 1 ? c.space.name : '', c.folder?.name, c.list.name].filter(Boolean).join(' › '), 120) || `Liste ${c.list.id}`;
+const projectName = (c: Ctxs) => clip([c.spaces > 1 ? c.space.name : '', c.folder?.name, c.list.name].filter(Boolean).join(' › '), 120) || tApp()('Liste {id}', { id: c.list.id });
 
 // --- custom fields ----------------------------------------------------------------------------------------------
 
@@ -137,54 +138,56 @@ async function fieldDefs(h: VendorHttp, listId: string): Promise<CField[]> {
 const category = (t: unknown): 'todo' | 'active' | 'done' => (t === 'open' ? 'todo' : t === 'done' || t === 'closed' ? 'done' : 'active');
 
 async function project(h: VendorHttp, c: Ctxs): Promise<{ rec: RProject; fields: CField[] }> {
+  const t = tApp();
   const l = await h.get(`/list/${seg(c.list.id)}`).catch((e) => {
     if (e instanceof UmzugError && e.skippable) return c.list;
     throw e;
   });
   const fields = await fieldDefs(h, String(c.list.id));
   const statuses = (Array.isArray(l?.statuses) ? l.statuses : []).sort((a: Json, b: Json) => Number(a.orderindex ?? 0) - Number(b.orderindex ?? 0)).map((s: Json) => ({ name: String(s.status), category: category(s.type), color: typeof s.color === 'string' ? s.color : undefined }));
-  const where = [c.space.name ? `Space „${c.space.name}“` : '', c.folder?.name ? `Ordner „${c.folder.name}“` : ''].filter(Boolean).join(' · ');
-  return { rec: { kind: 'project', ext: `l:${c.list.id}`, name: projectName(c), description: [l?.content ? String(l.content) : '', where ? `Aus ClickUp: ${where}` : ''].filter(Boolean).join('\n\n') || undefined, statuses, fields: fields.map((f) => f.field) }, fields };
+  const where = [c.space.name ? t('Space „{name}“', { name: c.space.name }) : '', c.folder?.name ? t('Ordner „{name}“', { name: c.folder.name }) : ''].filter(Boolean).join(' · ');
+  return { rec: { kind: 'project', ext: `l:${c.list.id}`, name: projectName(c), description: [l?.content ? String(l.content) : '', where ? t('Aus ClickUp: {where}', { where }) : ''].filter(Boolean).join('\n\n') || undefined, statuses, fields: fields.map((f) => f.field) }, fields };
 }
 
 // --- tasks ------------------------------------------------------------------------------------------------------
 
-export function clickupTask(t: Json, listId: string, fields: CField[]): RPmTask {
+export function clickupTask(task: Json, listId: string, fields: CField[]): RPmTask {
+  const t = tApp();
   const custom: Record<string, unknown> = {};
-  for (const cf of Array.isArray(t.custom_fields) ? t.custom_fields : []) {
+  for (const cf of Array.isArray(task.custom_fields) ? task.custom_fields : []) {
     const def = fields.find((f) => f.id === String(cf.id));
     if (!def) continue;
     const v = fieldValue(def, cf.value);
     if (v !== undefined) custom[def.field.key] = v;
   }
-  const checklists = (Array.isArray(t.checklists) ? t.checklists : []).map((c: Json) => ({
-    title: String(c.name ?? 'Checkliste'),
+  const checklists = (Array.isArray(task.checklists) ? task.checklists : []).map((c: Json) => ({
+    title: String(c.name ?? t('Checkliste')),
     items: (Array.isArray(c.items) ? c.items : []).flatMap((i: Json) => [{ text: String(i.name ?? ''), done: !!i.resolved }, ...(Array.isArray(i.children) ? i.children : []).map((k: Json) => ({ text: `${String(i.name ?? '')} › ${String(k.name ?? '')}`, done: !!k.resolved }))]).filter((i: { text: string }) => i.text.trim()),
   }));
-  const status = t.status?.status ? String(t.status.status) : undefined;
-  const closed = category(t.status?.type) === 'done';
-  const dueTime = t.due_date_time === true || t.due_date_time === 'true';
-  const startTime = t.start_date_time === true || t.start_date_time === 'true';
+  const status = task.status?.status ? String(task.status.status) : undefined;
+  const closed = category(task.status?.type) === 'done';
+  const dueTime = task.due_date_time === true || task.due_date_time === 'true';
+  const startTime = task.start_date_time === true || task.start_date_time === 'true';
   return {
     kind: 'pm_task',
-    ext: `t:${t.id}`,
+    ext: `t:${task.id}`,
     project: `l:${listId}`,
-    parent: t.parent ? `t:${t.parent}` : undefined,
-    title: String(t.name ?? `Aufgabe ${t.id}`),
-    description: String(t.markdown_description ?? t.text_content ?? t.description ?? '').trim() || undefined,
+    parent: task.parent ? `t:${task.parent}` : undefined,
+    title: String(task.name ?? t('Aufgabe {id}', { id: task.id })),
+    description: String(task.markdown_description ?? task.text_content ?? task.description ?? '').trim() || undefined,
     status,
     done: closed,
-    priority: PRIORITY[String(t.priority?.id ?? '')],
-    start_at: startTime ? toIso(ms(t.start_date)) : dayOf(t.start_date),
-    due_at: dueTime ? toIso(ms(t.due_date)) : dayOf(t.due_date),
-    tags: (Array.isArray(t.tags) ? t.tags : []).map((x: Json) => String(x.name ?? '')).filter(Boolean),
-    estimate_minutes: ms(t.time_estimate) ? Math.round(Number(t.time_estimate) / 60_000) : undefined,
+    priority: PRIORITY[String(task.priority?.id ?? '')],
+    start_at: startTime ? toIso(ms(task.start_date)) : dayOf(task.start_date),
+    due_at: dueTime ? toIso(ms(task.due_date)) : dayOf(task.due_date),
+    tags: (Array.isArray(task.tags) ? task.tags : []).map((x: Json) => String(x.name ?? '')).filter(Boolean),
+    estimate_minutes: ms(task.time_estimate) ? Math.round(Number(task.time_estimate) / 60_000) : undefined,
     checklists: checklists.filter((c: { items: unknown[] }) => c.items.length),
-    assignees: (Array.isArray(t.assignees) ? t.assignees : []).map((a: Json) => ({ name: a.username, email: a.email })),
+    assignees: (Array.isArray(task.assignees) ? task.assignees : []).map((a: Json) => ({ name: a.username, email: a.email })),
     custom,
-    created_at: toIso(ms(t.date_created)),
-    completed_at: closed ? toIso(ms(t.date_closed) ?? ms(t.date_done)) : undefined,
-    url: typeof t.url === 'string' ? t.url : undefined,
+    created_at: toIso(ms(task.date_created)),
+    completed_at: closed ? toIso(ms(task.date_closed) ?? ms(task.date_done)) : undefined,
+    url: typeof task.url === 'string' ? task.url : undefined,
   };
 }
 
@@ -243,9 +246,10 @@ const md = (v: unknown) => String(v ?? '').trim();
 
 /** A ClickUp doc with its pages: one page → one wiki page; several → the doc as a parent with its pages below. */
 export function clickupDocPages(doc: Json, pages: Json[]): RDoc[] {
+  const t = tApp();
   const out: RDoc[] = [];
   const root = `d:${doc.id}`;
-  const title = String(doc.name ?? `Dokument ${doc.id}`);
+  const title = String(doc.name ?? t('Dokument {id}', { id: doc.id }));
   const flat = (list: Json[], parent: string): void => {
     for (const p of list) {
       const ext = `p:${doc.id}:${p.id}`;
@@ -259,7 +263,7 @@ export function clickupDocPages(doc: Json, pages: Json[]): RDoc[] {
     const same = !p.name || String(p.name).trim().toLowerCase() === title.trim().toLowerCase();
     return [{ kind: 'doc', ext: root, title, body: same ? md(p.content) : `# ${p.name}\n\n${md(p.content)}` }];
   }
-  out.push({ kind: 'doc', ext: root, title, body: pages.length ? 'Dieses Dokument aus ClickUp besteht aus mehreren Seiten – sie stehen darunter.' : '' });
+  out.push({ kind: 'doc', ext: root, title, body: pages.length ? t('Dieses Dokument aus ClickUp besteht aus mehreren Seiten – sie stehen darunter.') : '' });
   flat(pages, root);
   return out;
 }
@@ -329,6 +333,7 @@ const steps = (): StepDef[] => [
     label: 'Docs → Wiki-Seiten',
     part: 'docs',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const resume = ctx.cursor as { team?: string; next?: string } | undefined;
       let skipping = !!resume?.team;
       for (const team of await workspaces(ctx.http, ctx.creds)) {
@@ -349,7 +354,7 @@ const steps = (): StepDef[] => [
               const pages = await ctx.http.get(`${V3}/workspaces/${seg(team.id)}/docs/${seg(d.id)}/pages`, { max_page_depth: -1, content_format: 'text/md' });
               records.push(...clickupDocPages(d, Array.isArray(pages) ? pages : Array.isArray(pages?.pages) ? pages.pages : []));
             } catch (e) {
-              if (e instanceof UmzugError && e.skippable) ctx.warn(`Dokument „${clip(d.name, 50)}“ nicht lesbar: ${e.message}`);
+              if (e instanceof UmzugError && e.skippable) ctx.warn(t('Dokument „{name}“ nicht lesbar: {reason}', { name: clip(d.name, 50), reason: e.message }));
               else throw e;
             }
           }

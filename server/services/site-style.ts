@@ -21,8 +21,8 @@ export const SHADOWS = ['none', 'sm', 'md', 'lg'] as const;
 
 /** Modern system font stacks – nothing to download. */
 export const FONT_STACKS: Record<string, { label: string; css: string }> = {
-  system: { label: 'System (Standard)', css: `system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif` },
-  modern: { label: 'Modern (neutral)', css: `Inter,Roboto,"Helvetica Neue","Arial Nova","Nimbus Sans",Arial,sans-serif` },
+  system: { label: 'System (Standard)', css: `system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif` }, // i18n-ignore – CSS font stack
+  modern: { label: 'Modern (neutral)', css: `Inter,Roboto,"Helvetica Neue","Arial Nova","Nimbus Sans",Arial,sans-serif` }, // i18n-ignore – CSS font stack
   humanist: { label: 'Humanistisch', css: `Seravek,"Gill Sans Nova",Ubuntu,Calibri,"DejaVu Sans",source-sans-pro,sans-serif` },
   geometric: { label: 'Geometrisch', css: `Avenir,Montserrat,Corbel,"URW Gothic",source-sans-pro,sans-serif` },
   rounded: { label: 'Rund & freundlich', css: `ui-rounded,"Hiragino Maru Gothic ProN",Quicksand,Comfortaa,Manjari,"Arial Rounded MT","Arial Rounded MT Bold",Calibri,source-sans-pro,sans-serif` },

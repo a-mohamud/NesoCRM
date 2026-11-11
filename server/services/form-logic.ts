@@ -1,5 +1,6 @@
 import { readAsset } from './form-assets.js';
 import type { FormField, FormSettings, Rule } from './form-fields.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Form logic (docs/forms.md): who sees which question (show_if), where an answer sends the visitor (logic jumps), the safe formula
@@ -194,7 +195,7 @@ function tokenize(src: string): Tok[] {
       continue;
     }
     const op = /^(==|!=|<=|>=|&&|\|\||[-+*/%<>!?:(),])/.exec(src.slice(i));
-    if (!op) throw new FormulaError(`Unerwartetes Zeichen „${c}“ in der Formel`);
+    if (!op) throw new FormulaError(tApp()('Unerwartetes Zeichen „{char}“ in der Formel', { char: c }));
     out.push({ k: 'op', v: op[1] });
     i += op[1].length;
   }
@@ -205,8 +206,8 @@ function tokenize(src: string): Tok[] {
 /** Formula text → syntax tree, or a FormulaError with a German message. Numbers use a dot or a comma; `a ? b : c` and `if(a, b, c)` both work. */
 export function parseFormula(src: string): Ast {
   const text = String(src ?? '').trim();
-  if (!text) throw new FormulaError('Die Formel ist leer');
-  if (text.length > MAX_SRC) throw new FormulaError(`Die Formel ist zu lang (höchstens ${MAX_SRC} Zeichen)`);
+  if (!text) throw new FormulaError(tApp()('Die Formel ist leer'));
+  if (text.length > MAX_SRC) throw new FormulaError(tApp()('Die Formel ist zu lang (höchstens {max} Zeichen)', { max: MAX_SRC }));
   const toks = tokenize(text);
   let p = 0;
   let nodes = 0;
@@ -214,11 +215,11 @@ export function parseFormula(src: string): Ast {
   const take = () => toks[p++];
   const isOp = (v: string) => peek().k === 'op' && peek().v === v;
   const count = (depth: number) => {
-    if (++nodes > MAX_NODES) throw new FormulaError('Die Formel ist zu verschachtelt');
-    if (depth > MAX_DEPTH) throw new FormulaError('Die Formel ist zu tief verschachtelt');
+    if (++nodes > MAX_NODES) throw new FormulaError(tApp()('Die Formel ist zu verschachtelt'));
+    if (depth > MAX_DEPTH) throw new FormulaError(tApp()('Die Formel ist zu tief verschachtelt'));
   };
   const expect = (v: string) => {
-    if (!isOp(v)) throw new FormulaError(`„${v}“ fehlt in der Formel`);
+    if (!isOp(v)) throw new FormulaError(tApp()('„{token}“ fehlt in der Formel', { token: v }));
     take();
   };
   const ternary = (d: number): Ast => {
@@ -283,14 +284,14 @@ export function parseFormula(src: string): Ast {
       if (isOp('(')) {
         take();
         const spec = FORMULA_FUNCTIONS[t.v.toLowerCase()];
-        if (!spec) throw new FormulaError(`Die Funktion „${t.v}“ gibt es nicht (${Object.keys(FORMULA_FUNCTIONS).join(', ')})`);
+        if (!spec) throw new FormulaError(tApp()('Die Funktion „{name}“ gibt es nicht ({list})', { name: t.v, list: Object.keys(FORMULA_FUNCTIONS).join(', ') }));
         const args: Ast[] = [];
         if (!isOp(')')) {
           do args.push(ternary(d + 1));
           while (isOp(',') && take());
         }
         expect(')');
-        if (args.length < spec[0] || args.length > spec[1]) throw new FormulaError(`„${t.v}“ braucht ${spec[0] === spec[1] ? spec[0] : `${spec[0]} bis ${spec[1]}`} Werte`);
+        if (args.length < spec[0] || args.length > spec[1]) throw new FormulaError(spec[0] === spec[1] ? tApp().plural(spec[0], { one: '„{name}“ braucht {n} Wert', other: '„{name}“ braucht {n} Werte' }, { name: t.v }) : tApp()('„{name}“ braucht {min} bis {max} Werte', { name: t.v, min: spec[0], max: spec[1] }));
         return { t: 'c', fn: t.v.toLowerCase(), args };
       }
       return { t: 'v', n: t.v };
@@ -300,10 +301,10 @@ export function parseFormula(src: string): Ast {
       expect(')');
       return e;
     }
-    throw new FormulaError(t.k === 'end' ? 'Die Formel endet unerwartet' : `Unerwartetes „${t.v}“ in der Formel`);
+    throw new FormulaError(t.k === 'end' ? tApp()('Die Formel endet unerwartet') : tApp()('Unerwartetes „{token}“ in der Formel', { token: t.v }));
   };
   const ast = ternary(0);
-  if (peek().k !== 'end') throw new FormulaError(`Unerwartetes „${peek().v}“ in der Formel`);
+  if (peek().k !== 'end') throw new FormulaError(tApp()('Unerwartetes „{token}“ in der Formel', { token: peek().v }));
   return ast;
 }
 

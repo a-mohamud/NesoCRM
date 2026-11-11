@@ -24,6 +24,7 @@ import { isAway, peopleOf } from '../services/team-people.js';
 import { dialTwiml, hangup, isOpen, say, twiml } from '../services/twilio.js';
 import { recordNotice, twilioRequest, type CallRouteInput, type Config } from './telephony.js';
 import { audioOf, audioUrl, defaultHoldUrl } from './telephony-audio.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Ring groups and queues: a team that rings together. A group tries its members once (all at the same time, one after the
@@ -150,7 +151,7 @@ export const telephonyQueuesModule: Module = {
       switch (o.kind) {
         case 'voicemail': {
           finish(q, 'voicemail');
-          return kit().voicemail(loc, cfg, callRow(call.id), { greeting: o.say || 'Leider ist gerade niemand erreichbar. Bitte hinterlassen Sie nach dem Signalton eine Nachricht – wir rufen zurück.', box: o.box || g.name, record: true });
+          return kit().voicemail(loc, cfg, callRow(call.id), { greeting: o.say || tLoc(app, loc.id)('Leider ist gerade niemand erreichbar. Bitte hinterlassen Sie nach dem Signalton eine Nachricht – wir rufen zurück.'), box: o.box || g.name, record: true });
         }
         case 'number': {
           finish(q, 'overflow');
@@ -168,7 +169,7 @@ export const telephonyQueuesModule: Module = {
         }
         case 'hangup':
           finish(q, 'overflow');
-          return hangup(o.say || 'Leider ist gerade niemand erreichbar. Bitte rufen Sie später noch einmal an.');
+          return hangup(o.say || tLoc(app, loc.id)('Leider ist gerade niemand erreichbar. Bitte rufen Sie später noch einmal an.'));
         default:
           finish(q, 'overflow');
           return unanswered();
@@ -342,9 +343,10 @@ export const telephonyQueuesModule: Module = {
       const g = groupRow(ctx.locationId, ctx.params.id);
       if (!g) throw notFound('Ruf-Gruppe nicht gefunden');
       const num = db.get<{ number: string }>(`SELECT number FROM phone_numbers WHERE location_id = ? AND route_kind = 'group' AND route_id = ? AND status = 'active'`, ctx.locationId, g.id);
-      if (num) throw bad(`Die Gruppe ist noch der Nummer ${num.number} zugeordnet`);
-      for (const f of db.all<{ name: string; flow: string }>('SELECT name, flow FROM ivr_flows WHERE location_id = ?', ctx.locationId)) if (f.flow.includes(`"group_id":"${g.id}"`)) throw bad(`Die Gruppe wird noch im Telefonmenü „${f.name}“ benutzt`);
-      for (const o of db.all<{ name: string; data: string }>('SELECT name, data FROM call_groups WHERE location_id = ? AND id <> ?', ctx.locationId, g.id)) if (o.data.includes(`"group_id":"${g.id}"`)) throw bad(`Die Gruppe ist der Überlauf von „${o.name}“`);
+      const t = tCtx(ctx);
+      if (num) throw bad(t('Die Gruppe ist noch der Nummer {number} zugeordnet', { number: num.number }));
+      for (const f of db.all<{ name: string; flow: string }>('SELECT name, flow FROM ivr_flows WHERE location_id = ?', ctx.locationId)) if (f.flow.includes(`"group_id":"${g.id}"`)) throw bad(t('Die Gruppe wird noch im Telefonmenü „{name}“ benutzt', { name: f.name }));
+      for (const o of db.all<{ name: string; data: string }>('SELECT name, data FROM call_groups WHERE location_id = ? AND id <> ?', ctx.locationId, g.id)) if (o.data.includes(`"group_id":"${g.id}"`)) throw bad(t('Die Gruppe ist der Überlauf von „{name}“', { name: o.name }));
       db.run('DELETE FROM call_groups WHERE id = ?', g.id);
       return { ok: true };
     });

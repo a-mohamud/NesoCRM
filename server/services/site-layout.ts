@@ -3,6 +3,7 @@ import { id as newId } from '../core/util.js';
 import { escapeHtml } from '../core/template.js';
 import { BG_URL, fsClass, onBg, renderBlocks, safeUrl, type Block, type BlockDef, type BlockEnv, type BlockRegistry } from './site-blocks.js';
 import { cid, colorCss, colorHex, hideClasses, isColor, readableOn, type Breakpoint } from './site-style.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Site builder: nested layout – section → row → columns (1–4) → blocks.
@@ -152,7 +153,7 @@ function cleanSection(s: any, count: { n: number }): Record<string, any> {
 
 function cleanBlock(b: any, count: { n: number }, inColumn: boolean): Record<string, any> | null {
   if (!b || typeof b !== 'object') return null;
-  if (++count.n > MAX_NODES) throw bad(`Die Seite hat zu viele Blöcke (höchstens ${MAX_NODES})`);
+  if (++count.n > MAX_NODES) throw bad(tApp()('Die Seite hat zu viele Blöcke (höchstens {n})', { n: MAX_NODES }));
   if (b.type === 'section') return inColumn ? null : cleanSection(b, count);
   const out: Record<string, any> = { ...b, id: str(b.id, 40) || newId(8), type: str(b.type, 40) || 'text' };
   cleanCommon(b, out);

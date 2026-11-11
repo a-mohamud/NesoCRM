@@ -1,5 +1,6 @@
 import { bad } from '../core/http.js';
 import type { MetaChannel } from './meta.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Comment-to-DM (ManyChat style) – the pure parts: reading the comment and story-reply webhooks of Instagram and Facebook
@@ -41,7 +42,7 @@ export interface RuleInput {
 
 export const LIMITS = { dm: 1000, reply: 300, button: 20, keywords: 20, replies: 10, buttons: 3, tags: 10 };
 
-/** Meta's rules for private replies, shown next to the settings (docs/comment-to-dm.md has the long version). */
+/** Meta's rules for private replies, shown next to the settings (docs/comment-to-dm.md has the long version); German ids, translated where the route returns them. */
 export const POLICY_NOTES = [
   'Eine private Antwort (Private Reply) pro Kommentar – ein zweiter Versuch zum selben Kommentar wird abgelehnt.',
   'Sie muss innerhalb von 7 Tagen nach dem Kommentar gesendet werden; HyperLevel antwortet sofort.',
@@ -57,7 +58,7 @@ const list = (v: unknown, max: number, each: number): string[] =>
   [...new Set((Array.isArray(v) ? v : String(v ?? '').split('\n')).map((x) => clean(x, each)).filter(Boolean))].slice(0, max);
 
 /** Validated rule fields (`cur` fills what a PATCH leaves out). */
-export function cleanRule(b: any, cur?: Partial<RuleInput>): RuleInput {
+export function cleanRule(b: any, cur?: Partial<RuleInput>, t: STFn = tApp()): RuleInput {
   const v = { ...(cur ?? {}), ...(b ?? {}) } as Record<string, any>;
   const kind: RuleKind = v.kind === 'story_reply' ? 'story_reply' : 'comment';
   const platform: Platform = ['instagram', 'facebook', 'both'].includes(v.platform) ? v.platform : 'instagram';
@@ -76,7 +77,7 @@ export function cleanRule(b: any, cur?: Partial<RuleInput>): RuleInput {
   const replies = list(v.public_replies, LIMITS.replies, LIMITS.reply);
   const maxPerHour = Math.round(Number(v.max_per_hour ?? 60));
   if (!Number.isFinite(maxPerHour) || maxPerHour < 1 || maxPerHour > 700) throw bad('Höchstens pro Stunde: 1 bis 700');
-  const name = clean(v.name, 120) || (keywords[0] ? `Stichwort „${keywords[0]}“` : 'Regel');
+  const name = clean(v.name, 120) || (keywords[0] ? t('Stichwort „{keyword}“', { keyword: keywords[0] }) : t('Regel'));
   return {
     name,
     kind,
@@ -89,7 +90,7 @@ export function cleanRule(b: any, cur?: Partial<RuleInput>): RuleInput {
     public_replies: kind === 'story_reply' ? [] : replies,
     dm_text: dm,
     link_url: linkUrl,
-    link_label: clean(v.link_label, LIMITS.button) || 'Jetzt öffnen',
+    link_label: clean(v.link_label, LIMITS.button) || t('Jetzt öffnen'),
     buttons,
     tags: list(v.tags, LIMITS.tags, 60),
     workflow_id: clean(v.workflow_id, 40),
@@ -107,7 +108,7 @@ export function cleanButtons(v: unknown): Button[] {
     if (!title) continue;
     const type: Button['type'] = raw?.type === 'url' ? 'url' : 'reply';
     const value = clean(raw?.value ?? raw?.url, 500);
-    if (type === 'url' && !HTTPS.test(value)) throw bad(`Button „${title}“: Link bitte mit https:// angeben`);
+    if (type === 'url' && !HTTPS.test(value)) throw bad(tApp()('Button „{title}“: Link bitte mit https:// angeben', { title }));
     out.push({ type, title, value: type === 'reply' ? clean(value || title, 200) : value });
   }
   return out;
@@ -212,10 +213,10 @@ export function parseStoryReplies(payload: any): StoryReply[] {
 // --- message bodies ---------------------------------------------------------------------------------------------------
 
 /** The text and the buttons of a rule's direct message: the link is a button, so people don't have to copy it. */
-export function dmContent(rule: Pick<RuleInput, 'dm_text' | 'link_url' | 'link_label' | 'buttons'>): { text: string; buttons: Button[] } {
+export function dmContent(rule: Pick<RuleInput, 'dm_text' | 'link_url' | 'link_label' | 'buttons'>, t: STFn = tApp()): { text: string; buttons: Button[] } {
   const buttons: Button[] = [...rule.buttons];
-  if (rule.link_url) buttons.unshift({ type: 'url', title: rule.link_label || 'Jetzt öffnen', value: rule.link_url });
-  const text = rule.dm_text || (rule.link_url ? rule.link_label || 'Hier ist dein Link:' : 'Hallo!');
+  if (rule.link_url) buttons.unshift({ type: 'url', title: rule.link_label || t('Jetzt öffnen'), value: rule.link_url });
+  const text = rule.dm_text || (rule.link_url ? rule.link_label || t('Hier ist dein Link:') : t('Hallo!'));
   return { text, buttons: buttons.slice(0, LIMITS.buttons) };
 }
 

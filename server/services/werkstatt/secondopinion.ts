@@ -6,6 +6,7 @@ import { proProblem } from './license.js';
 import { loadPolicy } from './policy.js';
 import { reviewsOf } from './badges.js';
 import type { VersionRow } from './store.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * The second opinion before a plugin goes to the Marktplatz (Pro): the same checklist, answered independently by
@@ -36,13 +37,13 @@ export function secondState(app: App, locationId: string, v: VersionRow, user?: 
   const done = reviewsOf(app, v.id).some((r) => r.kind === 'second_opinion');
   const base = { pro: !pro, model, done };
   if (pro) return { ...base, available: false, reason: pro, required: false };
-  if (!routed) return { ...base, available: false, reason: 'Für die Zweitmeinung ist noch kein zweites Modell eingestellt: Einstellungen → KI-Anbieter → Zuordnung „Werkstatt: Zweitmeinung“ ein anderes Spitzenmodell wählen.', required: false };
+  if (!routed) return { ...base, available: false, reason: tApp()('Für die Zweitmeinung ist noch kein zweites Modell eingestellt: Einstellungen → KI-Anbieter → Zuordnung „Werkstatt: Zweitmeinung“ ein anderes Spitzenmodell wählen.'), required: false };
   const gate = gateProblem(app, locationId, 'werkstatt_review2', user);
   if (gate) return { ...base, available: false, reason: gate, required: false };
   const writer = bareModel(v.meta?.ai?.model ?? '');
   const first = reviewsOf(app, v.id).find((r) => r.kind === 'review' || !r.kind);
   const same = [writer, bareModel(first?.model ?? '')].find((m) => m && m === bareModel(model));
-  if (same) return { ...base, available: false, reason: `Die Zweitmeinung muss ein anderes Modell sein als das, das das Plugin geschrieben bzw. zuerst geprüft hat („${model}“). Wähle unter KI-Anbieter für „Werkstatt: Zweitmeinung“ ein anderes Spitzenmodell.`, required: policy.second_opinion };
+  if (same) return { ...base, available: false, reason: tApp()('Die Zweitmeinung muss ein anderes Modell sein als das, das das Plugin geschrieben bzw. zuerst geprüft hat („{model}“). Wähle unter KI-Anbieter für „Werkstatt: Zweitmeinung“ ein anderes Spitzenmodell.', { model }), required: policy.second_opinion };
   return { ...base, available: true, reason: '', required: policy.second_opinion };
 }
 

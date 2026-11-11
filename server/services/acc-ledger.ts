@@ -4,6 +4,7 @@ import { ymdInTz } from '../core/time.js';
 import { id, now, sha256 } from '../core/util.js';
 import { CHARTS, DEFAULT_MAPPING, MAPPING_KEYS, isStandard, type AccKind, type AccType, type Mapping, type Standard } from './acc-chart.js';
 import { TAX_CODES, cleanTaxCode, splitAmount, type TaxCode } from './acc-vat.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * The double-entry journal of the light accounting ("Buchhaltung light, Vorbereitung für Steuerberater").
@@ -84,6 +85,14 @@ export interface AccountRow {
 
 /** Seeds the chart of accounts of `standard` (idempotent: existing numbers are kept). */
 export function seedChart(app: App, locationId: string, standard: Standard): number {
+  // Account names are stored in the sub-account's language; numbers and roles stay DATEV's.
+  const t = tLoc(app, locationId);
+  // Looked up as „Kontenrahmen: <name>“ first: short names such as „Kasse“ mean something else elsewhere in the app.
+  const accountName = (name: string) => {
+    const key = `Kontenrahmen: ${name}`;
+    const hit = t(key);
+    return hit !== key ? hit : t(name);
+  };
   let n = 0;
   for (const a of CHARTS[standard]) {
     const r = app.db.run(
@@ -91,7 +100,7 @@ export function seedChart(app: App, locationId: string, standard: Standard): num
       id(),
       locationId,
       a.n,
-      a.name,
+      accountName(a.name),
       a.type,
       a.kind ?? '',
       a.auto ?? '',
@@ -193,7 +202,7 @@ export interface EntryRow {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export function cleanDate(v: unknown, field = 'Datum'): string {
   const s = String(v ?? '').trim();
-  if (!DATE_RE.test(s) || Number.isNaN(Date.parse(`${s}T00:00:00Z`)) || new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) !== s) throw bad(`${field}: bitte als JJJJ-MM-TT angeben`);
+  if (!DATE_RE.test(s) || Number.isNaN(Date.parse(`${s}T00:00:00Z`)) || new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) !== s) throw bad(tApp()('{field}: bitte als JJJJ-MM-TT angeben', { field: tApp()(field) }));
   return s;
 }
 export const periodOf = (date: string) => date.slice(0, 7);
@@ -235,10 +244,10 @@ export function normalizePosting(p: PostingIn, chart: Map<string, AccountRow>, m
   const credit = String(p.credit ?? '').trim();
   const dAcc = chart.get(debit);
   const cAcc = chart.get(credit);
-  if (!dAcc) throw bad(`Soll-Konto „${debit}“ gibt es nicht im Kontenrahmen`);
-  if (!cAcc) throw bad(`Haben-Konto „${credit}“ gibt es nicht im Kontenrahmen`);
-  if (!dAcc.active) throw bad(`Konto ${debit} ist deaktiviert`);
-  if (!cAcc.active) throw bad(`Konto ${credit} ist deaktiviert`);
+  if (!dAcc) throw bad(tApp()('Soll-Konto „{account}“ gibt es nicht im Kontenrahmen', { account: debit }));
+  if (!cAcc) throw bad(tApp()('Haben-Konto „{account}“ gibt es nicht im Kontenrahmen', { account: credit }));
+  if (!dAcc.active) throw bad(tApp()('Konto {account} ist deaktiviert', { account: debit }));
+  if (!cAcc.active) throw bad(tApp()('Konto {account} ist deaktiviert', { account: credit }));
   if (debit === credit) throw bad('Soll- und Haben-Konto müssen verschieden sein');
   const amount = Number(p.amount_cents);
   if (!Number.isInteger(amount) || amount <= 0) throw bad('Der Betrag muss größer als 0 sein (in Cent, ganze Zahl)');
@@ -263,13 +272,13 @@ export function normalizePosting(p: PostingIn, chart: Map<string, AccountRow>, m
   else taxed = dAcc.type === 'income' || dAcc.type === 'expense' ? 'debit' : cAcc.type === 'income' || cAcc.type === 'expense' ? 'credit' : 'debit';
   const taxedAcc = taxed === 'debit' ? dAcc : cAcc;
   // DATEV "Automatikkonto": the account books its tax by itself, so the tax code has to be the one it expects.
-  if (taxedAcc.auto_tax && taxedAcc.auto_tax !== code) throw bad(`Konto ${taxedAcc.number} (${taxedAcc.name}) bucht automatisch „${TAX_CODES[taxedAcc.auto_tax as TaxCode].label}“ – bitte diesen Steuerschlüssel wählen oder ein anderes Konto`);
+  if (taxedAcc.auto_tax && taxedAcc.auto_tax !== code) throw bad(tApp()('Konto {account} ({name}) bucht automatisch „{code}“ – bitte diesen Steuerschlüssel wählen oder ein anderes Konto', { account: taxedAcc.number, name: taxedAcc.name, code: tApp()(TAX_CODES[taxedAcc.auto_tax as TaxCode].label) }));
   // Revenue carries output codes, expenses and plain assets input codes (and reverse charge).
-  if (def.kind === 'output' && taxedAcc.type !== 'income') throw bad(`Der Steuerschlüssel „${def.label}“ gehört auf ein Erlöskonto, nicht auf ${taxedAcc.number}`);
-  if ((def.kind === 'input' || def.kind === 'rc_in') && spend(taxedAcc) === 0) throw bad(`Vorsteuer gehört auf ein Aufwands- oder Anlagekonto, nicht auf ${taxedAcc.number}`);
+  if (def.kind === 'output' && taxedAcc.type !== 'income') throw bad(tApp()('Der Steuerschlüssel „{code}“ gehört auf ein Erlöskonto, nicht auf {account}', { code: tApp()(def.label), account: taxedAcc.number }));
+  if ((def.kind === 'input' || def.kind === 'rc_in') && spend(taxedAcc) === 0) throw bad(tApp()('Vorsteuer gehört auf ein Aufwands- oder Anlagekonto, nicht auf {account}', { account: taxedAcc.number }));
   const tax = def.rate ? split.tax : 0;
   const accts = taxAccounts(code, mapping);
-  for (const a of [accts.in, accts.out]) if (tax && a && !chart.get(a)) throw bad(`Steuerkonto ${a} fehlt im Kontenrahmen (Einstellungen → Konten zuordnen)`);
+  for (const a of [accts.in, accts.out]) if (tax && a && !chart.get(a)) throw bad(tApp()('Steuerkonto {account} fehlt im Kontenrahmen (Einstellungen → Konten zuordnen)', { account: a }));
   return { debit, credit, amount_cents: amount, tax_code: code, net_cents: split.net, tax_cents: tax, taxed_side: taxed, text: String(p.text ?? '').slice(0, 300) };
 }
 
@@ -433,11 +442,11 @@ export function postEntry(app: App, locationId: string, input: EntryInput): { en
   if (!Array.isArray(input.postings) || !input.postings.length) throw bad('Mindestens eine Buchung');
   if (input.postings.length > 200) throw bad('Zu viele Buchungszeilen (höchstens 200)');
   if (date < '2000-01-01' || date > '2100-12-31') throw bad('Buchungsdatum außerhalb des erlaubten Bereichs');
-  if (lockedPeriod(app, locationId, date)) throw new HttpError(409, `Der Zeitraum ${periodOf(date)} ist festgeschrieben – gebucht werden kann nur in offenen Monaten (Korrekturen per Storno).`);
+  if (lockedPeriod(app, locationId, date)) throw new HttpError(409, tApp()('Der Zeitraum {period} ist festgeschrieben – gebucht werden kann nur in offenen Monaten (Korrekturen per Storno).', { period: periodOf(date) }));
   const chart = chartMap(app, locationId);
   const postings = input.postings.map((p) => normalizePosting(p, chart, settings.mapping));
   const lines = postings.flatMap((p) => expandPosting(p, settings.mapping));
-  for (const l of lines) if (!chart.get(l.account)) throw bad(`Konto ${l.account} fehlt im Kontenrahmen`);
+  for (const l of lines) if (!chart.get(l.account)) throw bad(tApp()('Konto {account} fehlt im Kontenrahmen', { account: l.account }));
   const bal = balance(lines);
   if (!bal.balanced) throw bad('Die Buchung ist nicht ausgeglichen (Soll ≠ Haben)');
   const user = { id: input.user_id ?? null, name: input.actor ?? 'System' };
@@ -538,9 +547,9 @@ export function verifyChain(app: App, locationId: string): { ok: boolean; checke
       /* broken */
     }
     const want = entryHash(prev, { seq: r.seq, number: r.number, date: r.date, doc_date: r.doc_date, text: r.text, doc_ref: r.doc_ref, source_key: r.source_key, postings, lines });
-    if (r.seq !== expectSeq) return { ok: false, checked, broken_at: r.number, reason: `Lücke in der Nummerierung vor ${r.number}` };
-    if (r.prev_hash !== prev || r.hash !== want) return { ok: false, checked, broken_at: r.number, reason: `Buchung ${r.number} wurde nachträglich verändert` };
-    if (!balance(lines).balanced) return { ok: false, checked, broken_at: r.number, reason: `Buchung ${r.number} ist nicht ausgeglichen` };
+    if (r.seq !== expectSeq) return { ok: false, checked, broken_at: r.number, reason: tApp()('Lücke in der Nummerierung vor {number}', { number: r.number }) };
+    if (r.prev_hash !== prev || r.hash !== want) return { ok: false, checked, broken_at: r.number, reason: tApp()('Buchung {number} wurde nachträglich verändert', { number: r.number }) };
+    if (!balance(lines).balanced) return { ok: false, checked, broken_at: r.number, reason: tApp()('Buchung {number} ist nicht ausgeglichen', { number: r.number }) };
     prev = r.hash;
     expectSeq++;
     checked++;

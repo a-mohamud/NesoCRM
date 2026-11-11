@@ -33,8 +33,12 @@ import {
 import { DepError, assertDependency, cascade, cleanDepType, cleanLag, type Calendar, type Dep, type Dates, durationOf, endFromDuration, addDays, diffDays, CALENDAR_DAYS, CALENDAR_WORKDAYS } from './pm-schedule.js';
 import { MAX_SUBTASKS_PER_TASK, assertParent, descendants, related, type ParentMap } from './pm-tree.js';
 import { RecurrenceError, cleanRecurrence, describeRecurrence, nextOccurrence, type Recurrence } from './pm-recur.js';
+import { tApp, tUser, type STFn } from '../i18n/index.js';
 import { DATE_ONLY } from './mobile.js';
 import { resolve, scopeClause, type Who } from './record-access.js';
+
+/** Messages in the instance language (static ids for the catalog). */
+const tm = tApp();
 
 /** Tasks of the project planning feature: the existing `tasks` table with subtasks, statuses, dates, tags … */
 
@@ -194,7 +198,7 @@ export function decorate(app: App, locationId: string, rows: TaskRow[]): TaskOut
       custom: json<Record<string, any>>(r.custom, {}),
       checklists: json<Checklist[]>(r.checklists, []),
       recurrence: rec,
-      recurrence_text: describeRecurrence(rec),
+      recurrence_text: describeRecurrence(rec, tApp()),
       series_id: r.series_id,
       internal: !!r.internal,
       milestone: !!r.milestone,
@@ -431,7 +435,7 @@ export function resolveStatus(statuses: StatusRow[], b: { status_id?: unknown; s
   if (b.status) {
     const name = String(b.status).trim().toLowerCase();
     const s = statuses.find((x) => x.name.toLowerCase() === name) ?? statuses.find((x) => x.category === name);
-    if (!s) throw bad(`Status „${String(b.status)}“ gibt es in diesem Projekt nicht – verfügbar: ${statuses.map((x) => x.name).join(', ')}`);
+    if (!s) throw bad(tm('Status „{status}“ gibt es in diesem Projekt nicht – verfügbar: {list}', { status: String(b.status), list: statuses.map((x) => x.name).join(', ') }));
     return s;
   }
   if (b.category) {
@@ -505,7 +509,7 @@ export function createTask(app: App, locationId: string, b: any, actor: Actor, o
     } catch (e) {
       failOnTree(e);
     }
-    if (Number(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM tasks WHERE parent_id = ?', parent.id)?.n) >= MAX_SUBTASKS_PER_TASK) throw bad(`Höchstens ${MAX_SUBTASKS_PER_TASK} Unteraufgaben je Aufgabe`);
+    if (Number(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM tasks WHERE parent_id = ?', parent.id)?.n) >= MAX_SUBTASKS_PER_TASK) throw bad(tm('Höchstens {n} Unteraufgaben je Aufgabe', { n: MAX_SUBTASKS_PER_TASK }));
   }
   const project = getProject(app, locationId, parent?.project_id ?? b.project_id ?? defaultProject);
   if (project.status === 'archived') throw bad('Das Projekt ist archiviert');
@@ -588,7 +592,9 @@ export function announceCreated(app: App, t: TaskOut, actor: Actor, opts: { auto
 function notifyAssigned(app: App, t: TaskOut, userIds: string[], actor: Actor) {
   for (const u of userIds) {
     if (u === actor.id) continue;
-    notifyUser(app, { locationId: t.location_id, userId: u, kind: 'assigned', title: `Neue Aufgabe für dich: ${t.title}`, body: `${actor.name} hat dir eine Aufgabe zugewiesen${t.due_at ? ` · fällig ${t.due_at.slice(0, 10).split('-').reverse().join('.')}` : ''}`, taskId: t.id, projectId: t.project_id, ref: `assigned:${t.id}:${u}` });
+    const tu = tUser(app as never, u);
+    const due = t.due_at ? tu(' · fällig {date}', { date: t.due_at.slice(0, 10).split('-').reverse().join(tu.locale === 'de' ? '.' : '/') }) : '';
+    notifyUser(app, { locationId: t.location_id, userId: u, kind: 'assigned', title: tu('Neue Aufgabe für dich: {title}', { title: t.title }), body: `${tu('{name} hat dir eine Aufgabe zugewiesen', { name: actor.name })}${due}`, taskId: t.id, projectId: t.project_id, ref: `assigned:${t.id}:${u}` });
   }
 }
 
@@ -678,7 +684,7 @@ export function updateTask(app: App, locationId: string, taskId: string, b: any,
   if (b.recurrence !== undefined) {
     const rule = anchoredRule(app, locationId, ruleFrom(b.recurrence), patch.due_at !== undefined ? patch.due_at : cur.due_at);
     patch.recurrence = rule ? JSON.stringify(rule) : null;
-    changes.recurrence = [before.recurrence_text, describeRecurrence(rule)];
+    changes.recurrence = [before.recurrence_text, describeRecurrence(rule, tApp())];
   }
 
   // --- hierarchy
@@ -693,7 +699,7 @@ export function updateTask(app: App, locationId: string, taskId: string, b: any,
       } catch (e) {
         failOnTree(e);
       }
-      if (Number(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM tasks WHERE parent_id = ?', pid)?.n) >= MAX_SUBTASKS_PER_TASK) throw bad(`Höchstens ${MAX_SUBTASKS_PER_TASK} Unteraufgaben je Aufgabe`);
+      if (Number(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM tasks WHERE parent_id = ?', pid)?.n) >= MAX_SUBTASKS_PER_TASK) throw bad(tm('Höchstens {n} Unteraufgaben je Aufgabe', { n: MAX_SUBTASKS_PER_TASK }));
       // A task and its own parent/child may not depend on each other.
       const depRows = db.all<{ task_id: string; depends_on: string }>('SELECT task_id, depends_on FROM pm_dependencies WHERE task_id = ? OR depends_on = ?', cur.id, cur.id);
       const pm = treeAround(app, locationId, [cur.id, pid]);
@@ -797,8 +803,8 @@ export function updateTask(app: App, locationId: string, taskId: string, b: any,
   if (completedNow) {
     app.events.emit(locationId, 'task.completed', base);
     if (!opts.noRecurrence) spawnNextOccurrence(app, locationId, cur.id, actor, depth, opts.automationChain);
-    notifyWatchers(app, out, actor, `${actor.name} hat „${out.title}“ erledigt`, `done:${out.id}`);
-  } else if (statusChanged) notifyWatchers(app, out, actor, `${actor.name} hat „${out.title}“ auf „${out.status?.name ?? ''}“ gesetzt`, `status:${out.id}:${out.status_id}`);
+    notifyWatchers(app, out, actor, (t) => t('{name} hat „{title}“ erledigt', { name: actor.name, title: out.title }), `done:${out.id}`);
+  } else if (statusChanged) notifyWatchers(app, out, actor, (t) => t('{name} hat „{title}“ auf „{status}“ gesetzt', { name: actor.name, title: out.title, status: out.status?.name ?? '' }), `status:${out.id}:${out.status_id}`);
   if (assigneeDelta?.added.length) {
     app.events.emit(locationId, 'task.assigned', { ...base, userIds: assigneeDelta.added });
     notifyAssigned(app, out, assigneeDelta.added, actor);
@@ -807,10 +813,10 @@ export function updateTask(app: App, locationId: string, taskId: string, b: any,
 }
 
 /** Tell the people who watch a task (never the one who did it) – a status change or completion. */
-export function notifyWatchers(app: App, t: TaskOut, actor: Actor, title: string, refBase: string) {
+export function notifyWatchers(app: App, t: TaskOut, actor: Actor, title: string | ((t: STFn) => string), refBase: string) {
   for (const u of new Set([...t.watchers, ...t.assignees.map((a) => a.id)])) {
     if (u === actor.id) continue;
-    notifyUser(app, { locationId: t.location_id, userId: u, kind: 'status', title, taskId: t.id, projectId: t.project_id, ref: `${refBase}:${u}:${now().slice(0, 16)}`, quiet: true });
+    notifyUser(app, { locationId: t.location_id, userId: u, kind: 'status', title: typeof title === 'function' ? title(tUser(app as never, u)) : title, taskId: t.id, projectId: t.project_id, ref: `${refBase}:${u}:${now().slice(0, 16)}`, quiet: true });
   }
 }
 
@@ -959,7 +965,7 @@ export function moveTaskDates(app: App, locationId: string, taskId: string, b: {
   const ymd = (v: unknown, label: string) => {
     if (v === null || v === undefined || v === '') return null;
     const s = String(v).slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw bad(`${label}: Datum als JJJJ-MM-TT`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw bad(tm('{label}: Datum als JJJJ-MM-TT', { label: tm(label) }));
     return s;
   };
   const start = b.start === undefined ? (dayOf(t.start_at, tz) ?? null) : ymd(b.start, 'Start');

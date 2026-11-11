@@ -6,6 +6,7 @@ import { contactName } from '../services/contacts.js';
 import { CONDITION_TYPES, FIELD_COLUMNS, MAX_DEPTH, MAX_NODES, cleanDefinition, countMembers, describe, getSegment, listMembers, listSegments, memberIds, type Group, type SegmentRow } from '../services/mk-segments.js';
 import { registerTriggers, type TriggerMeta } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * Behaviour segments (docs/email-marketing.md): the saved definitions with their live count, the catalogue the builder needs, and
@@ -42,13 +43,16 @@ const TRIGGERS: TriggerMeta[] = [
   },
 ];
 
+/** The definition format for the MCP tools (in the instance language: the tool texts are fixed when the module loads). */
+const t0 = tApp();
 const DEFINITION_HELP =
-  `Definition: {type:"group", op:"and"|"or", items:[…]} – Elemente sind Bedingungen oder weitere Gruppen (höchstens ${MAX_DEPTH} Ebenen, ${MAX_NODES} Bedingungen). ` +
-  'Bedingungen: {type:"tag", tag, has:true|false} · {type:"field", field:"city"|"custom.key", op:"eq|neq|contains|not_contains|starts|empty|not_empty|gt|lt|gte|lte|before|after", value} · ' +
+  t0('Definition: {type:"group", op:"and"|"or", items:[…]} – Elemente sind Bedingungen oder weitere Gruppen (höchstens {depth} Ebenen, {nodes} Bedingungen).', { depth: MAX_DEPTH, nodes: MAX_NODES }) +
+  ` ${t0('Bedingungen:')} ` +
+  '{type:"tag", tag, has:true|false} · {type:"field", field:"city"|"custom.key", op:"eq|neq|contains|not_contains|starts|empty|not_empty|gt|lt|gte|lte|before|after", value} · ' +
   '{type:"email", event:"opened|clicked|not_opened|received", campaign_id?, days?} · {type:"page", url_contains, days?} · {type:"purchase", product_id?, bought:true|false, days?} · ' +
   '{type:"form", form_id?, submitted:true|false, days?} · {type:"consent", channel:"email|sms|whatsapp", state:"granted|missing"} · {type:"activity", op:"within|older_than|never", days} · ' +
   '{type:"created", op:"within|older_than", days} · {type:"engagement", state:"active|inactive", days, min_received?} · {type:"email_check", verdict:"ok|risky|invalid|unchecked"} · {type:"dnd", value:true|false} · {type:"segment", segment_id}. ' +
-  'Jede Bedingung kann mit negate:true umgekehrt werden.';
+  t0('Jede Bedingung kann mit negate:true umgekehrt werden.');
 
 const TOOLS: Tool[] = [
   {
@@ -65,7 +69,7 @@ const TOOLS: Tool[] = [
   {
     name: 'ghl_segment_count',
     title: 'Segment zählen',
-    description: `Zählt live, wie viele Kontakte ein Segment (segment_id) oder eine noch nicht gespeicherte Definition treffen, mit Beispielkontakten. ${DEFINITION_HELP}`,
+    description: `${t0('Zählt live, wie viele Kontakte ein Segment (segment_id) oder eine noch nicht gespeicherte Definition treffen, mit Beispielkontakten.')} ${DEFINITION_HELP}`,
     inputSchema: { type: 'object', properties: { location_id: { type: 'string' }, segment_id: { type: 'string' }, definition: { type: 'object' } }, additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: false },
     run: async (call, a) => {
@@ -80,7 +84,7 @@ const TOOLS: Tool[] = [
   {
     name: 'ghl_save_segment',
     title: 'Segment speichern',
-    description: `Legt ein Segment an (ohne id) oder ändert es. watch:true startet Workflows mit dem Auslöser „Segment-Beitritt“ bzw. „-Austritt“. ${DEFINITION_HELP}`,
+    description: `${t0('Legt ein Segment an (ohne id) oder ändert es. watch:true startet Workflows mit dem Auslöser „Segment-Beitritt“ bzw. „-Austritt“.')} ${DEFINITION_HELP}`,
     inputSchema: { type: 'object', properties: { location_id: { type: 'string' }, id: { type: 'string', description: 'Segment ändern statt neu anlegen' }, name: { type: 'string' }, description: { type: 'string' }, definition: { type: 'object' }, watch: { type: 'boolean' } }, additionalProperties: false },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     run: async (call, a) => {
@@ -123,7 +127,7 @@ export const mkSegmentsModule: Module = {
     };
 
     /** Names for the plain-language summary (one lookup per kind, only when the definition mentions it). */
-    const summarize = (locationId: string, def: Group): string => {
+    const summarize = (locationId: string, def: Group, t: STFn = tApp()): string => {
       const text = JSON.stringify(def);
       const names = (table: string, col = 'name') => {
         const map = new Map(db.all<{ id: string; n: string }>(`SELECT id, ${col} AS n FROM ${table} WHERE location_id = ?`, locationId).map((r) => [r.id, r.n]));
@@ -134,11 +138,11 @@ export const mkSegmentsModule: Module = {
         form: text.includes('"form_id"') ? names('forms') : undefined,
         product: text.includes('"product_id"') ? names('products') : undefined,
         segment: text.includes('"segment_id"') ? names('mk_segments') : undefined,
-      });
+      }, t);
     };
-    const out = (s: SegmentRow) => ({ ...s, summary: summarize(s.location_id, s.definition) });
+    const out = (s: SegmentRow, t?: STFn) => ({ ...s, summary: summarize(s.location_id, s.definition, t) });
 
-    router.get('/api/segments', 'location', (ctx) => listSegments(app, ctx.locationId).map(out));
+    router.get('/api/segments', 'location', (ctx) => listSegments(app, ctx.locationId).map((s) => out(s, tCtx(ctx))));
 
     /** What the builder needs to offer: condition types and the things a condition can point at. */
     router.get('/api/segments/meta', 'location', (ctx) => {
@@ -160,7 +164,7 @@ export const mkSegmentsModule: Module = {
     router.post('/api/segments/count', 'location', (ctx) => {
       const def = cleanDefinition(ctx.body?.definition);
       const sample = listMembers(app, ctx.locationId, def, { limit: 5 }).map((c) => ({ id: c.id, name: contactName(c), email: c.email }));
-      return { count: countMembers(app, ctx.locationId, def), sample, summary: summarize(ctx.locationId, def) };
+      return { count: countMembers(app, ctx.locationId, def), sample, summary: summarize(ctx.locationId, def, tCtx(ctx)) };
     });
 
     router.post('/api/segments', 'location', (ctx) => {
@@ -169,12 +173,12 @@ export const mkSegmentsModule: Module = {
       if ((db.get<{ n: number }>('SELECT COUNT(*) AS n FROM mk_segments WHERE location_id = ?', ctx.locationId)?.n ?? 0) >= 200) throw bad('Höchstens 200 Segmente');
       const row = { id: id(), location_id: ctx.locationId, name, description: str(ctx.body?.description, 'Beschreibung', { max: 500 }), definition: def, watch: ctx.body?.watch ? 1 : 0, count: countMembers(app, ctx.locationId, def), counted_at: now(), created_at: now(), updated_at: now() };
       db.insert('mk_segments', row);
-      return out(getSegment(app, ctx.locationId, row.id)!);
+      return out(getSegment(app, ctx.locationId, row.id)!, tCtx(ctx));
     });
     router.get('/api/segments/:id', 'location', (ctx) => {
       const s = getSegment(app, ctx.locationId, ctx.params.id);
       if (!s) throw notFound();
-      return out(s);
+      return out(s, tCtx(ctx));
     });
     router.patch('/api/segments/:id', 'location', (ctx) => {
       const s = getSegment(app, ctx.locationId, ctx.params.id);
@@ -202,17 +206,18 @@ export const mkSegmentsModule: Module = {
         }
       }
       db.update('mk_segments', s.id, patch, ctx.locationId);
-      return out(getSegment(app, ctx.locationId, s.id)!);
+      return out(getSegment(app, ctx.locationId, s.id)!, tCtx(ctx));
     });
     router.delete('/api/segments/:id', 'location', (ctx) => {
       const s = getSegment(app, ctx.locationId, ctx.params.id);
       if (!s) return { ok: true };
       const used = db.get<{ name: string }>(`SELECT name FROM campaigns WHERE location_id = ? AND status IN ('draft', 'scheduled', 'sending') AND json_extract(filter, '$.segment_id') = ? LIMIT 1`, ctx.locationId, s.id);
-      if (used) throw bad(`Das Segment wird von der Kampagne „${used.name}“ verwendet`);
+      const t = tCtx(ctx);
+      if (used) throw bad(t('Das Segment wird von der Kampagne „{name}“ verwendet', { name: used.name }));
       const wf = db.get<{ name: string }>(`SELECT name FROM workflows WHERE location_id = ? AND status = 'active' AND json_extract(trigger, '$.config.segment_id') = ? LIMIT 1`, ctx.locationId, s.id);
-      if (wf) throw bad(`Das Segment startet den Workflow „${wf.name}“`);
+      if (wf) throw bad(t('Das Segment startet den Workflow „{name}“', { name: wf.name }));
       const inOther = db.get<{ name: string }>(`SELECT name FROM mk_segments WHERE location_id = ? AND id != ? AND definition LIKE ? LIMIT 1`, ctx.locationId, s.id, `%"segment_id":"${s.id}"%`);
-      if (inOther) throw bad(`Das Segment ist Teil von „${inOther.name}“`);
+      if (inOther) throw bad(t('Das Segment ist Teil von „{name}“', { name: inOther.name }));
       db.run('DELETE FROM mk_segments WHERE id = ? AND location_id = ?', s.id, ctx.locationId);
       return { ok: true };
     });
@@ -224,7 +229,7 @@ export const mkSegmentsModule: Module = {
       const total = countMembers(app, ctx.locationId, def, new Date(), [s.id]);
       db.run('UPDATE mk_segments SET count = ?, counted_at = ? WHERE id = ?', total, now(), s.id);
       const contacts = listMembers(app, ctx.locationId, def, { limit: clampLimit(ctx.query.get('limit'), 50, 200), offset: Math.max(0, Math.floor(Number(ctx.query.get('offset')) || 0)) });
-      return { total, summary: summarize(ctx.locationId, def), contacts: contacts.map((c) => ({ id: c.id, name: contactName(c), email: c.email, phone: c.phone, tags: c.tags })) };
+      return { total, summary: summarize(ctx.locationId, def, tCtx(ctx)), contacts: contacts.map((c) => ({ id: c.id, name: contactName(c), email: c.email, phone: c.phone, tags: c.tags })) };
     });
     router.post('/api/segments/:id/count', 'location', (ctx) => {
       const s = getSegment(app, ctx.locationId, ctx.params.id);

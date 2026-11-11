@@ -4,6 +4,7 @@ import type { App, Module } from '../core/app.js';
 import { HttpError, bad, notFound, str, type Ctx } from '../core/http.js';
 import { id, now } from '../core/util.js';
 import { FONT_STACKS } from '../services/site-style.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Eigene Schriften – docs/sites.md#custom-fonts. Upload a font file (WOFF2, WOFF, TTF, OTF) per sub-account and use it as body or
@@ -105,7 +106,7 @@ export const siteFontsModule: Module = {
       const fam = families(ctx.locationId);
       const pick = (v: unknown) => {
         const s = str(v, 'Schrift', { max: 60 });
-        if (s && !fam.includes(s)) throw bad(`Schrift „${s}“ ist nicht hochgeladen`);
+        if (s && !fam.includes(s)) throw bad(tApp()('Schrift „{font}“ ist nicht hochgeladen', { font: s }));
         return s;
       };
       const body = pick(ctx.body?.body);

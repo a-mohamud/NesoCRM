@@ -4,6 +4,7 @@ import { escapeHtml as esc } from '../core/template.js';
 import { now, sha256, slugify } from '../core/util.js';
 import { renderMarkdown } from '../services/wiki-markdown.js';
 import type { PageRow, SpaceRow } from '../services/wiki-store.js';
+import { tCtx, tLoc, translator, type STFn } from '../i18n/index.js';
 
 /**
  * Public read-only pages of the Wiki: `/wiki/s/<token>` (unguessable token – only its SHA-256 is stored –,
@@ -42,12 +43,13 @@ h1.title{margin:0 0 4px;font-size:clamp(26px,4vw,34px);line-height:1.2}.meta{col
 @media print{body{background:#fff}header,.foot{display:none}article{border:0;padding:0}}
 `;
 
-export function publicPage(o: { title: string; html: string; brand: string; updated: string; pdfUrl?: string; status?: number }): RawResult {
-  const doc = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
+export function publicPage(o: { title: string; html: string; brand: string; updated: string; pdfUrl?: string; status?: number; t?: STFn }): RawResult {
+  const t = o.t ?? translator();
+  const doc = `<!doctype html><html lang="${t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
 <title>${esc(o.title)} – ${esc(o.brand)}</title><style>${PUBLIC_CSS}</style></head><body>
-<header><div class="in"><span>${esc(o.brand)}</span><span class="badge">Nur ansehen</span></div></header>
-<main><article><h1 class="title">${esc(o.title)}</h1>${o.updated ? `<div class="meta">Aktualisiert am ${esc(o.updated)}</div>` : ''}<div class="wk">${o.html}</div></article>
-<div class="foot">Geteilt aus ${esc(o.brand)}${o.pdfUrl ? ` · <a href="${esc(o.pdfUrl)}">Als PDF laden</a>` : ''}</div></main></body></html>`;
+<header><div class="in"><span>${esc(o.brand)}</span><span class="badge">${esc(t('Nur ansehen'))}</span></div></header>
+<main><article><h1 class="title">${esc(o.title)}</h1>${o.updated ? `<div class="meta">${esc(t('Aktualisiert am {date}', { date: o.updated }))}</div>` : ''}<div class="wk">${o.html}</div></article>
+<div class="foot">${esc(t('Geteilt aus {brand}', { brand: o.brand }))}${o.pdfUrl ? ` · <a href="${esc(o.pdfUrl)}">${esc(t('Als PDF laden'))}</a>` : ''}</div></main></body></html>`;
   return {
     __raw: true,
     status: o.status ?? 200,
@@ -76,14 +78,17 @@ export const wikiPublicModule: Module = {
       const sp = p && db.get<SpaceRow>('SELECT * FROM wiki_spaces WHERE id = ?', p.space_id);
       return s && p && sp ? { share: s, page: p, space: sp } : undefined;
     };
-    const day = (iso: string, loc: string) => new Date(iso).toLocaleDateString('de-DE', { timeZone: app.location(loc)?.timezone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const day = (iso: string, loc: string) => new Date(iso).toLocaleDateString(tLoc(app, loc).locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: app.location(loc)?.timezone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' });
 
     router.get('/wiki/s/:token', 'public', (ctx) => {
       const hit = shared(ctx.params.token);
-      if (!hit) return publicPage({ title: 'Link ungültig', html: '<p>Dieser Link ist abgelaufen oder wurde widerrufen.</p>', brand: brand(), updated: '', status: 404 });
+      if (!hit) {
+        const t = tCtx(ctx);
+        return publicPage({ title: t('Link ungültig'), html: `<p>${esc(t('Dieser Link ist abgelaufen oder wurde widerrufen.'))}</p>`, brand: brand(), updated: '', status: 404, t });
+      }
       db.run('UPDATE wiki_shares SET views = views + 1, last_used_at = ? WHERE id = ?', now(), hit.share.id);
       const r = renderMarkdown(hit.page.body, { publicView: true, baseLevel: 2 });
-      return publicPage({ title: hit.page.title, html: r.html, brand: brand(), updated: day(hit.page.updated_at, hit.page.location_id), pdfUrl: `/api/public/wiki/${ctx.params.token}/pdf` });
+      return publicPage({ title: hit.page.title, html: r.html, brand: brand(), updated: day(hit.page.updated_at, hit.page.location_id), pdfUrl: `/api/public/wiki/${ctx.params.token}/pdf`, t: tLoc(app, hit.page.location_id) });
     });
 
     router.get('/api/public/wiki/:token', 'public', (ctx) => {

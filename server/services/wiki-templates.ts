@@ -3,6 +3,8 @@
  * `{{datum}}`, `{{autor}}` and `{{projekt}}` are filled in when a page is created from a template.
  */
 
+import type { STFn } from '../i18n/index.js';
+
 export interface WikiTemplate {
   key: string;
   name: string;
@@ -21,6 +23,7 @@ export const WIKI_TEMPLATES: WikiTemplate[] = [
     description: 'Agenda, Notizen, Entscheidungen und Aufgaben für ein Meeting.',
     icon: '📝',
     title: 'Meeting {{datum}}',
+    // i18n-ignore – the whole Markdown body is a catalog key (localizeWikiTemplate)
     body: `| | |
 |---|---|
 | **Datum** | {{datum}} |
@@ -51,6 +54,7 @@ export const WIKI_TEMPLATES: WikiTemplate[] = [
     description: 'Eine Standardarbeitsanweisung: Zweck, Schritte, Checkliste und häufige Fehler.',
     icon: '📋',
     title: 'Prozess: Name des Ablaufs',
+    // i18n-ignore – the whole Markdown body is a catalog key (localizeWikiTemplate)
     body: `> [!INFO] Zweck
 > In einem Satz: Wofür gibt es diesen Ablauf und wann wird er gebraucht?
 
@@ -89,6 +93,7 @@ Ansprechperson: {{autor}}
     description: 'Ziel, Umfang, Meilensteine und Risiken auf einer Seite.',
     icon: '🎯',
     title: 'Briefing: Projektname',
+    // i18n-ignore – the whole Markdown body is a catalog key (localizeWikiTemplate)
     body: `> [!NOTE] Auf einen Blick
 > Worum geht es, für wen – und woran merken wir, dass es gelungen ist?
 
@@ -133,6 +138,7 @@ Warum jetzt? Was ist der Auslöser?
     description: 'Willkommensseite mit drei Unterseiten: erste Woche, Tools & Zugänge, Team & Kultur.',
     icon: '🚀',
     title: 'Willkommen bei {{projekt}}',
+    // i18n-ignore – the whole Markdown body is a catalog key (localizeWikiTemplate)
     body: `> [!SUCCESS] Schön, dass du da bist!
 > Dieses Handbuch begleitet dich durch die ersten Wochen. Alles Wichtige steht hier – und was fehlt, ergänzt du bitte.
 
@@ -154,6 +160,7 @@ Warum jetzt? Was ist der Auslöser?
       {
         title: 'Erste Woche',
         icon: '📅',
+        // i18n-ignore – the whole Markdown body is a catalog key (localizeWikiTemplate)
         body: `## Tag 1
 - [ ] Zugänge erhalten (E-Mail, CRM, Team-Chat)
 - [ ] Team kennenlernen
@@ -172,6 +179,7 @@ Warum jetzt? Was ist der Auslöser?
       {
         title: 'Tools & Zugänge',
         icon: '🧰',
+        // i18n-ignore – the whole Markdown body is a catalog key (localizeWikiTemplate)
         body: `| Tool | Wofür | Zugang über |
 |---|---|---|
 | HyperLevel | CRM, Posteingang, Aufgaben | {{autor}} |
@@ -185,6 +193,7 @@ Warum jetzt? Was ist der Auslöser?
       {
         title: 'Team & Kultur',
         icon: '🤝',
+        // i18n-ignore – the whole Markdown body is a catalog key (localizeWikiTemplate)
         body: `## Wer macht was
 | Name | Aufgabe | Erreichbar |
 |---|---|---|
@@ -209,6 +218,12 @@ Warum jetzt? Was ist der Auslöser?
 ];
 
 export const templateByKey = (key: string) => WIKI_TEMPLATES.find((t) => t.key === key);
+
+/** A template in a language: the German texts (whole Markdown bodies included) are the message ids of server/i18n. */
+export function localizeWikiTemplate(tpl: WikiTemplate, t: STFn): WikiTemplate {
+  const tx = (s: string) => (s ? t(s) : s);
+  return { ...tpl, name: tx(tpl.name), description: tx(tpl.description), title: tx(tpl.title), body: tx(tpl.body), children: tpl.children?.map((c) => ({ ...c, title: tx(c.title), body: tx(c.body) })) };
+}
 
 /** Fills the placeholders of a template. */
 export function fillTemplate(text: string, vars: { datum: string; autor: string; projekt: string }): string {

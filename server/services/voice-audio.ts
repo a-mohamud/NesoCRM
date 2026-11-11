@@ -10,6 +10,8 @@
 
 // --- G.711 -----------------------------------------------------------------------------------
 
+import { tApp } from '../i18n/index.js';
+
 const ULAW_BIAS = 0x84;
 
 /** ITU-T G.711 µ-law byte → 16-bit linear sample (reference decoder, range ±32124). */
@@ -303,7 +305,7 @@ export function wavToPcm(wav: WavInfo): Int16Array {
     const n = data.length >> 2;
     samples = new Int16Array(n);
     for (let i = 0; i < n; i++) samples[i] = data.readInt32LE(4 * i) >> 16;
-  } else throw new Error(`WAV-Format nicht unterstützt (Format ${format}, ${bits} Bit)`);
+  } else throw new Error(tApp()('WAV-Format nicht unterstützt (Format {format}, {bits} Bit)', { format, bits }));
   if (wav.channels <= 1) return samples;
   const frames = Math.floor(samples.length / wav.channels);
   const mono = new Int16Array(frames);

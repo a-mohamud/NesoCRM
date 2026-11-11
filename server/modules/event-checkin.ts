@@ -6,6 +6,7 @@ import { formatInTz } from '../core/time.js';
 import { callRoute } from '../services/route-call.js';
 import type { Tool } from './mcp.js';
 import { renderQr } from './qr.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Tickets with QR code and check-in for appointments, classes and events (HighLevel "Events/Tickets" parity – the check-in part,
@@ -59,25 +60,28 @@ export const eventCheckinModule: Module = {
 
     router.get('/book/ticket/:token', 'public', async (ctx) => {
       const a = apptByToken(ctx.params.token);
-      if (!a || a.status === 'blocked') return html(messagePage('Nicht gefunden', 'Dieses Ticket gibt es nicht.'), 404);
+      if (!a || a.status === 'blocked') return html(messagePage(tApp()('Nicht gefunden'), tApp()('Dieses Ticket gibt es nicht.')), 404);
       const loc = app.location(a.location_id)!;
+      const t = tLoc(app, a.location_id);
+      const tz = a.timezone || loc.timezone;
+      const when = (iso: string) => (t.locale === 'de' ? formatInTz(iso, tz) : new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)));
       const svg = String(await renderQr(`${app.baseUrl()}/book/ticket/${encodeURIComponent(a.manage_token)}`, { format: 'svg', size: 260, margin: 2, ec: 'M', fg: '#111827', bg: '#ffffff' }));
       const who = [a.first_name, a.last_name].filter(Boolean).join(' ') || a.email || '';
-      const state = a.status === 'cancelled' ? '<p class="error">Dieser Termin wurde abgesagt.</p>' : a.checked_in_at ? `<p class="muted">Eingecheckt am ${escapeHtml(formatInTz(a.checked_in_at, a.timezone || loc.timezone))} Uhr</p>` : '';
+      const state = a.status === 'cancelled' ? `<p class="error">${t('Dieser Termin wurde abgesagt.')}</p>` : a.checked_in_at ? `<p class="muted">${t('Eingecheckt am {time} Uhr', { time: escapeHtml(when(a.checked_in_at)) })}</p>` : '';
       const body = `<div class="wrap" style="max-width:420px"><div class="card" style="text-align:center">
   <p class="muted" style="margin:0">${escapeHtml(loc.name)}</p>
   <h1 style="margin:6px 0 4px">${escapeHtml(a.calendar_name)}</h1>
-  <p style="margin:0 0 12px"><strong>${escapeHtml(formatInTz(a.start_at, a.timezone || loc.timezone))} Uhr</strong></p>
+  <p style="margin:0 0 12px"><strong>${escapeHtml(t('{time} Uhr', { time: when(a.start_at) }))}</strong></p>
   ${who ? `<p style="margin:0 0 12px">${escapeHtml(who)}</p>` : ''}
-  <div style="display:inline-block;background:#fff;padding:8px;border-radius:12px" role="img" aria-label="QR-Code des Tickets">${svg}</div>
+  <div style="display:inline-block;background:#fff;padding:8px;border-radius:12px" role="img" aria-label="${t('QR-Code des Tickets')}">${svg}</div>
   <p style="font-family:ui-monospace,monospace;font-size:20px;letter-spacing:2px;margin:10px 0 4px">${escapeHtml(codeOf(a.manage_token))}</p>
-  <p class="muted" style="font-size:13px;margin:0">Zeig diesen Code beim Einlass.</p>
+  <p class="muted" style="font-size:13px;margin:0">${t('Zeig diesen Code beim Einlass.')}</p>
   ${state}
-  <p style="margin-top:16px"><a href="/book/manage/${encodeURIComponent(a.manage_token)}">Termin verwalten</a></p>
-  ${a.status === 'cancelled' ? '' : `<details style="margin-top:14px;text-align:left"><summary class="muted" style="cursor:pointer;font-size:13px">Für das Team: einchecken</summary><p class="muted" style="font-size:13px">Angemeldet mit dem Team-Konto (im selben Browser) checkst du hier ein.</p><button type="button" id="ci">Einchecken</button><p id="ci-msg" role="status"></p></details>
-  <script>(function(){var b=document.getElementById('ci');if(!b)return;b.onclick=function(){var m=document.getElementById('ci-msg');m.textContent='';fetch('/api/appointment-checkin',{method:'POST',headers:{'content-type':'application/json','x-pghl':'1','x-location-id':${jsonForScript(a.location_id)}},body:JSON.stringify({code:${jsonForScript(a.manage_token)}})}).then(function(r){return r.json().then(function(j){if(r.status===401)throw new Error('Bitte zuerst in HyperLevel anmelden.');if(!r.ok)throw new Error(j.error||'Fehler');m.textContent=j.status==='already'?'Schon eingecheckt.':'Eingecheckt ✓ '+(j.name||'')})}).catch(function(e){m.textContent=e.message})}})();</script>`}
+  <p style="margin-top:16px"><a href="/book/manage/${encodeURIComponent(a.manage_token)}">${t('Termin verwalten')}</a></p>
+  ${a.status === 'cancelled' ? '' : `<details style="margin-top:14px;text-align:left"><summary class="muted" style="cursor:pointer;font-size:13px">${t('Für das Team: einchecken')}</summary><p class="muted" style="font-size:13px">${t('Angemeldet mit dem Team-Konto (im selben Browser) checkst du hier ein.')}</p><button type="button" id="ci">${t('Einchecken')}</button><p id="ci-msg" role="status"></p></details>
+  <script>(function(){var b=document.getElementById('ci');if(!b)return;b.onclick=function(){var m=document.getElementById('ci-msg');m.textContent='';fetch('/api/appointment-checkin',{method:'POST',headers:{'content-type':'application/json','x-pghl':'1','x-location-id':${jsonForScript(a.location_id)}},body:JSON.stringify({code:${jsonForScript(a.manage_token)}})}).then(function(r){return r.json().then(function(j){if(r.status===401)throw new Error(${jsonForScript(t('Bitte zuerst in HyperLevel anmelden.'))});if(!r.ok)throw new Error(j.error||${jsonForScript(t('Unbekannter Fehler'))});m.textContent=j.status==='already'?${jsonForScript(t('Schon eingecheckt.'))}:${jsonForScript(t('Eingecheckt ✓'))}+' '+(j.name||'')})}).catch(function(e){m.textContent=e.message})}})();</script>`}
 </div></div>`;
-      return html(publicPage({ title: `Ticket: ${a.calendar_name}`, body, color: loc.settings?.branding?.color || undefined, head: '<meta name="robots" content="noindex">' }));
+      return html(publicPage({ title: t('Ticket: {name}', { name: a.calendar_name }), body, color: loc.settings?.branding?.color || undefined, head: '<meta name="robots" content="noindex">' }));
     });
 
     router.post('/api/appointment-checkin', 'location', async (ctx) => {
@@ -92,7 +96,7 @@ export const eventCheckinModule: Module = {
       const a = apptByToken(hit.manage_token);
       const who = [a.first_name, a.last_name].filter(Boolean).join(' ') || a.email || '';
       const out = { appointment_id: a.id, name: who, calendar: a.calendar_name, start_at: a.start_at };
-      if (a.status === 'cancelled') throw new HttpError(409, `Abgesagt: ${who || 'dieser Termin'} – ${a.calendar_name}`);
+      if (a.status === 'cancelled') throw new HttpError(409, tCtx(ctx)('Abgesagt: {who} – {calendar}', { who: who || tCtx(ctx)('dieser Termin'), calendar: a.calendar_name }));
       if (a.checked_in_at) return { ...out, status: 'already', checked_in_at: a.checked_in_at };
       await callRoute(app, ctx, 'PATCH', `/api/appointments/${encodeURIComponent(a.id)}`, { status: 'showed' });
       const at = new Date().toISOString();

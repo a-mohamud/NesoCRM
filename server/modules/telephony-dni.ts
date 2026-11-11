@@ -9,6 +9,7 @@ import { dniScript, formatDisplay, matchesSources, pickNumber } from '../service
 import { E164 } from '../services/twilio.js';
 import type { CallRouteInput } from './telephony.js';
 import type { NumberRow } from './telephony-numbers.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Tracking numbers and dynamic number insertion (DNI): which campaign made the phone ring. A static tracking number belongs
@@ -142,7 +143,7 @@ export const telephonyDniModule: Module = {
         if (b[k] === undefined) continue;
         const v = String(b[k] ?? '').trim();
         // The number as printed on the site: any way of writing it, but it must be a phone number.
-        if (v && !/^\+?[\d\s()/.-]{5,25}$/.test(v)) throw bad(`${k === 'default_number' ? 'Nummer auf der Website' : 'Ersatznummer'}: keine Telefonnummer`);
+        if (v && !/^\+?[\d\s()/.-]{5,25}$/.test(v)) throw bad(k === 'default_number' ? 'Nummer auf der Website: keine Telefonnummer' : 'Ersatznummer: keine Telefonnummer');
         out[k] = v;
       }
       if (b.session_minutes !== undefined) out.session_minutes = Math.min(Math.max(Math.round(num(b.session_minutes, 30)), 5), 240);
@@ -359,7 +360,7 @@ export const telephonyDniModule: Module = {
       const labels = new Map(db.all<{ number: string; label: string }>('SELECT number, label FROM phone_numbers WHERE location_id = ?', ctx.locationId).map((n) => [n.number, n.label]));
       const list = rows.map((x) => ({
         key: dims.map((_d, i) => x[`d${i}`]).join('|'),
-        label: group === 'number' ? `${x.d0}${labels.get(x.d0) ? ` (${labels.get(x.d0)})` : ''}` : [sourceLabel(x.d0), group === 'campaign' ? x.d1 : '', group === 'campaign' ? x.d2 : ''].filter((v, i) => i === 0 || v).join(' / ') || '(ohne Quelle)',
+        label: group === 'number' ? `${x.d0}${labels.get(x.d0) ? ` (${labels.get(x.d0)})` : ''}` : [sourceLabel(x.d0), group === 'campaign' ? x.d1 : '', group === 'campaign' ? x.d2 : ''].filter((v, i) => i === 0 || v).join(' / ') || tCtx(ctx)('(ohne Quelle)'),
         calls: Number(x.calls),
         answered: Number(x.answered ?? 0),
         missed: Number(x.missed ?? 0),
@@ -372,8 +373,9 @@ export const telephonyDniModule: Module = {
     router.get('/api/telephony/tracking/report', 'location', (ctx) => report(ctx));
     router.get('/api/telephony/tracking/report.csv', 'location', (ctx) => {
       const r = report(ctx);
-      const out = text('﻿' + toCsv([['Quelle', 'Anrufe', 'Angenommen', 'Verpasst', 'Ø Dauer (s)', 'Anrufer'], ...r.rows.map((x) => [x.label, x.calls, x.answered, x.missed, x.avg_duration, x.callers])]), 'text/csv; charset=utf-8');
-      out.headers['content-disposition'] = `attachment; filename="anrufe-nach-quelle-${r.from}-${r.to}.csv"`;
+      const t = tCtx(ctx);
+      const out = text('﻿' + toCsv([['Quelle', 'Anrufe', 'Angenommen', 'Verpasst', 'Ø Dauer (s)', 'Anrufer'].map((h) => t(h)), ...r.rows.map((x) => [x.label, x.calls, x.answered, x.missed, x.avg_duration, x.callers])]), 'text/csv; charset=utf-8');
+      out.headers['content-disposition'] = `attachment; filename="${t('anrufe-nach-quelle')}-${r.from}-${r.to}.csv"`;
       return out;
     });
   },

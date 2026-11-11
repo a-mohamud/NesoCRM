@@ -1,5 +1,6 @@
 import { domainToASCII } from 'node:url';
 import { DnsFailure, systemResolver, type DnsResolver } from './umzug-mailcheck.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Checks of e-mail addresses before they cost reputation: syntax, a domain that can receive mail (MX, or an A record as
@@ -30,7 +31,7 @@ const LABEL = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /** Role addresses belong to a function, not a person: nobody consents for them, they hit spam traps and complaint buttons more often. */
 const ROLES = new Set([
-  'info', 'kontakt', 'contact', 'office', 'buero', 'büro', 'mail', 'post', 'hallo', 'hello', 'hi', 'support', 'service', 'kundenservice', 'sales', 'vertrieb', 'verkauf', 'marketing', 'admin',
+  'info', 'kontakt', 'contact', 'office', 'buero', 'büro', 'mail', 'post', 'hallo', 'hello', 'hi', 'support', 'service', 'kundenservice', 'sales', 'vertrieb', 'verkauf', 'marketing', 'admin', // i18n-ignore (mailbox names)
   'administrator', 'webmaster', 'postmaster', 'hostmaster', 'abuse', 'noreply', 'no-reply', 'donotreply', 'do-not-reply', 'team', 'bewerbung', 'jobs', 'karriere', 'career', 'buchhaltung',
   'rechnung', 'rechnungen', 'billing', 'accounting', 'invoice', 'newsletter', 'presse', 'press', 'datenschutz', 'privacy', 'impressum', 'security', 'root', 'mailer-daemon', 'empfang', 'zentrale', 'anfrage',
 ]);
@@ -110,7 +111,9 @@ export function isRole(local: string): boolean {
 /** Splits an address and checks its form. Returns the cleaned parts or the problems. */
 export function parseEmail(input: unknown): { ok: true; email: string; local: string; domain: string } | { ok: false; email: string; issues: Issue[] } {
   const raw = String(input ?? '').trim().toLowerCase().replace(/^mailto:/, '');
-  const fail = (code: Issue['code'], text: string) => ({ ok: false as const, email: raw, issues: [{ code, level: 'error' as const, text }] });
+  // The issue texts are stored with the check and shown as they are: written in the instance language (catalog: server/i18n).
+  const t = tApp();
+  const fail = (code: Issue['code'], text: string) => ({ ok: false as const, email: raw, issues: [{ code, level: 'error' as const, text: t(text) }] });
   if (!raw) return fail('syntax', 'Keine Adresse angegeben');
   if (raw.length > 254) return fail('length', 'Die Adresse ist zu lang (höchstens 254 Zeichen)');
   const at = raw.lastIndexOf('@');
@@ -133,11 +136,12 @@ export function checkStatic(input: unknown): Check {
   const issues: Issue[] = [];
   const disposable = isDisposable(p.domain);
   const role = isRole(p.local);
-  if (RESERVED.test(p.domain)) issues.push({ code: 'reserved', level: 'warn', text: 'Beispiel- oder Test-Domain – hier kommt nichts an' });
-  if (disposable) issues.push({ code: 'disposable', level: 'warn', text: 'Wegwerf-Adresse: Das Postfach verschwindet nach kurzer Zeit' });
-  if (role) issues.push({ code: 'role', level: 'warn', text: 'Funktionsadresse (z. B. info@): gehört keiner Person, wird oft als Spam gemeldet' });
+  const t = tApp();
+  if (RESERVED.test(p.domain)) issues.push({ code: 'reserved', level: 'warn', text: t('Beispiel- oder Test-Domain – hier kommt nichts an') });
+  if (disposable) issues.push({ code: 'disposable', level: 'warn', text: t('Wegwerf-Adresse: Das Postfach verschwindet nach kurzer Zeit') });
+  if (role) issues.push({ code: 'role', level: 'warn', text: t('Funktionsadresse (z. B. info@): gehört keiner Person, wird oft als Spam gemeldet') });
   const suggestion = suggestDomain(p.domain);
-  if (suggestion) issues.push({ code: 'typo', level: 'warn', text: `Tippfehler? Meintest du @${suggestion}` });
+  if (suggestion) issues.push({ code: 'typo', level: 'warn', text: t('Tippfehler? Meintest du @{domain}', { domain: suggestion }) });
   return { email: p.email, verdict: issues.length ? 'risky' : 'ok', issues, role, disposable, mx: null, ...(suggestion ? { suggestion: `${p.local}@${suggestion}` } : {}) };
 }
 
@@ -173,7 +177,7 @@ export async function validateEmail(input: unknown, resolver?: DnsResolver | nul
   try {
     const ok = await domainAcceptsMail(domain, resolver);
     if (ok) return { ...base, mx: true };
-    const issues: Issue[] = [{ code: 'no_mx', level: 'error', text: 'Die Domain nimmt keine E-Mails an (kein Mailserver eingetragen)' }, ...base.issues];
+    const issues: Issue[] = [{ code: 'no_mx', level: 'error', text: tApp()('Die Domain nimmt keine E-Mails an (kein Mailserver eingetragen)') }, ...base.issues];
     return { ...base, mx: false, verdict: 'invalid', issues };
   } catch (e) {
     if (e instanceof DnsFailure) return base;

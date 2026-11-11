@@ -1,6 +1,7 @@
 import { authFor, baseOf, jsonCall } from './http.js';
 import { MAX_INPUT_BYTES, pcmToWav } from './media.js';
 import { ProviderError, type Adapter, type AdapterCtx, type Output, type Step } from './types.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * Google Gemini API (https://ai.google.dev/gemini-api/docs), header `x-goog-api-key`:
@@ -40,7 +41,7 @@ function textOf(r: any): string {
 }
 function blocked(r: any): string | null {
   const reason = r?.promptFeedback?.blockReason ?? (r?.candidates?.[0]?.finishReason && !['STOP', 'MAX_TOKENS'].includes(r.candidates[0].finishReason) ? r.candidates[0].finishReason : null);
-  return reason ? `Gemini hat die Anfrage abgelehnt (${reason})` : null;
+  return reason ? tApp()('Gemini hat die Anfrage abgelehnt ({reason})', { reason }) : null;
 }
 
 /** Gemini TTS sends raw PCM (audio/L16;codec=pcm;rate=24000) – wrap it so players understand it. */
@@ -138,7 +139,8 @@ export const geminiAdapter: Adapter = {
     if (ctx.capability === 'stt') {
       if (!ctx.input.audio) throw new ProviderError('Bitte eine Audio- oder Videodatei angeben');
       const audio = await inlineRef(ctx, ctx.input.audio);
-      const ask = `Transkribiere diese Aufnahme wortgetreu${ctx.input.language ? ` (Sprache: ${ctx.input.language})` : ''}. Gib nur den Text zurück.${ctx.input.prompt ? ` Hinweis: ${ctx.input.prompt}` : ''}`;
+      // AI prompt (English; the transcript keeps the language spoken in the recording).
+      const ask = `Transcribe this recording verbatim, in the language that is spoken${ctx.input.language ? ` (language: ${ctx.input.language})` : ''}. Return only the text.${ctx.input.prompt ? ` Note: ${ctx.input.prompt}` : ''}`;
       const r = await call(ctx, `models/${model}:generateContent`, { contents: [{ parts: [{ text: ask }, { inline_data: { mime_type: audio.mimeType, data: audio.data } }] }], ...p });
       const text = textOf(r);
       if (!text) throw new ProviderError(blocked(r) ?? 'Gemini hat keinen Text geliefert');
@@ -152,7 +154,7 @@ export const geminiAdapter: Adapter = {
     if (!/^[\w./-]+$/.test(name) || name.includes('..')) throw new ProviderError('Ungültige Operation');
     const op = await jsonCall(ctx.fetch, 'GET', `${base(ctx)}/${name}`, headers, undefined, 30_000, 'Gemini');
     if (!op.done) return { status: 'pending', state, pollAfterMs: 12_000 };
-    if (op.error) return { status: 'failed', error: `Gemini: ${String(op.error.message ?? 'Fehler').slice(0, 300)}` };
+    if (op.error) return { status: 'failed', error: `Gemini: ${String(op.error.message ?? tApp()('Fehler')).slice(0, 300)}` };
     const res = op.response ?? {};
     const samples = res.generateVideoResponse?.generatedSamples ?? res.generatedVideos ?? res.videos ?? [];
     const outputs: Output[] = [];
@@ -163,7 +165,7 @@ export const geminiAdapter: Adapter = {
     }
     if (!outputs.length) {
       const filtered = res.generateVideoResponse?.raiMediaFilteredReasons?.[0];
-      return { status: 'failed', error: filtered ? `Gemini hat das Video gefiltert: ${filtered}` : 'Gemini hat kein Video geliefert' };
+      return { status: 'failed', error: filtered ? tApp()('Gemini hat das Video gefiltert: {reason}', { reason: filtered }) : 'Gemini hat kein Video geliefert' };
     }
     return { status: 'done', outputs };
   },

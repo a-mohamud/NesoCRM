@@ -29,6 +29,7 @@ import {
   type Tenant,
 } from './cloud.js';
 import { planById, saasSettings, saasStripe, stockCount, stripeKeyOf, upsertSubscription } from './saas.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * The operator console (Agentur → Cloud): customers with plan and status, MRR/ARR, churn, trial conversion, the
@@ -158,14 +159,15 @@ export const cloudConsoleModule: Module = {
       return { total: list.length, items: list.slice(offset, offset + limit) };
     });
 
-    router.get('/api/cloud/console/tenants.csv', 'admin', () => {
+    router.get('/api/cloud/console/tenants.csv', 'admin', (ctx) => {
       const list = rows().map(tenantOut);
+      const t = tCtx(ctx);
       const csv = toCsv([
-        ['Firma', 'E-Mail', 'Tarif', 'Intervall', 'Status', 'Abrechnung', 'MRR (EUR)', 'Testphase bis', 'Laufzeit bis', 'Geschenkt', 'Angelegt'],
-        ...list.map((r) => [csvSafe(r.name), csvSafe(r.email), r.plan_name, r.interval === 'year' ? 'jährlich' : 'monatlich', r.phase_label, r.stripe ? 'Stripe' : 'manuell', (r.mrr_cents / 100).toFixed(2).replace('.', ','), fmtDay(r.trial_end), fmtDay(r.current_period_end), r.comped ? 'ja' : 'nein', fmtDay(r.created_at)]),
+        ['Firma', 'E-Mail', 'Tarif', 'Intervall', 'Status', 'Abrechnung', 'MRR (EUR)', 'Testphase bis', 'Laufzeit bis', 'Geschenkt', 'Angelegt'].map((h) => t(h)),
+        ...list.map((r) => [csvSafe(r.name), csvSafe(r.email), r.plan_name, r.interval === 'year' ? t('jährlich') : t('monatlich'), r.phase_label, r.stripe ? 'Stripe' : t('manuell'), t.locale === 'de' ? (r.mrr_cents / 100).toFixed(2).replace('.', ',') : (r.mrr_cents / 100).toFixed(2), fmtDay(r.trial_end), fmtDay(r.current_period_end), r.comped ? t('ja') : t('nein'), fmtDay(r.created_at)]),
       ]);
       const r = text(`﻿${csv}`, 'text/csv; charset=utf-8');
-      r.headers['content-disposition'] = `attachment; filename="cloud-kunden-${new Date().toISOString().slice(0, 10)}.csv"`;
+      r.headers['content-disposition'] = `attachment; filename="${t('cloud-kunden')}-${new Date().toISOString().slice(0, 10)}.csv"`;
       return r;
     });
 
@@ -219,8 +221,8 @@ export const cloudConsoleModule: Module = {
       db.run(`DELETE FROM cloud_mails WHERE tenant_id = ? AND kind IN ('trial_ending', 'trial_expired')`, t.id);
       db.run('UPDATE cloud_tenants SET read_only_since = NULL, schedule_notified_at = NULL, deletion_at = CASE WHEN deletion_reason = ? THEN deletion_at ELSE NULL END, updated_at = ? WHERE id = ?', 'self', now(), t.id);
       syncChildren(app, t);
-      logCloudEvent(app, t.id, 'trial_extended', `+${days} Tage bis ${fmtDay(end.toISOString())}`);
-      app.services.audit?.({ ctx, action: 'cloud.trial.extend', summary: `Testphase um ${days} Tage verlängert`, entityId: t.id, locationId: t.location_id });
+      logCloudEvent(app, t.id, 'trial_extended', tApp()('+{n} Tage bis {date}', { n: days, date: fmtDay(end.toISOString()) }));
+      app.services.audit?.({ ctx, action: 'cloud.trial.extend', summary: tApp()('Testphase um {n} Tage verlängert', { n: days }), entityId: t.id, locationId: t.location_id });
       return tenantSummary(app, need(t.id));
     });
 
@@ -247,8 +249,8 @@ export const cloudConsoleModule: Module = {
       });
       db.run('UPDATE cloud_tenants SET comped = 1, comp_until = ?, read_only_since = NULL, schedule_notified_at = NULL, deletion_at = NULL, deletion_reason = ?, updated_at = ? WHERE id = ?', until, '', now(), t.id);
       syncChildren(app, t);
-      logCloudEvent(app, t.id, 'comped', `${PLAN_INFO[b.plan as PlanKey].name}${until ? ` bis ${fmtDay(until)}` : ' unbefristet'}`);
-      app.services.audit?.({ ctx, action: 'cloud.comp', summary: `Tarif geschenkt: ${PLAN_INFO[b.plan as PlanKey].name}`, entityId: t.id, locationId: t.location_id });
+      logCloudEvent(app, t.id, 'comped', `${PLAN_INFO[b.plan as PlanKey].name} ${until ? tApp()('bis {date}', { date: fmtDay(until) }) : tApp()('unbefristet')}`);
+      app.services.audit?.({ ctx, action: 'cloud.comp', summary: tApp()('Tarif geschenkt: {plan}', { plan: PLAN_INFO[b.plan as PlanKey].name }), entityId: t.id, locationId: t.location_id });
       return tenantSummary(app, need(t.id));
     });
 
@@ -264,7 +266,7 @@ export const cloudConsoleModule: Module = {
       if (!supportActive(t)) throw new HttpError(403, 'Der Kunde hat den Support-Zugriff nicht freigegeben (Einstellungen → Cloud-Konto → Support-Zugriff).');
       const why = str(ctx.body?.reason, 'Grund', { max: 300 });
       logCloudEvent(app, t.id, 'support_open', why);
-      app.services.audit?.({ ctx, action: 'cloud.support.open', summary: `Support hat das Konto geöffnet${why ? `: ${why}` : ''}`, locationId: t.location_id, entityId: t.id });
+      app.services.audit?.({ ctx, action: 'cloud.support.open', summary: why ? tApp()('Support hat das Konto geöffnet: {why}', { why }) : tApp()('Support hat das Konto geöffnet'), locationId: t.location_id, entityId: t.id });
       return { location_id: t.location_id, url: `${app.baseUrl()}/app?loc=${t.location_id}`, until: t.support_until };
     });
 
@@ -272,8 +274,8 @@ export const cloudConsoleModule: Module = {
       const t = need(ctx.params.id);
       if (str(ctx.body?.confirm, 'Bestätigung') !== t.name) throw bad('Zur Bestätigung den Firmennamen genau eintippen');
       // No name in the log: the entry outlives the customer.
-      app.services.audit?.({ ctx, action: 'cloud.delete.operator', summary: 'Kunden-Konto gelöscht', entityId: t.id });
-      return eraseTenant(app, t, 'Löschung durch den Betreiber');
+      app.services.audit?.({ ctx, action: 'cloud.delete.operator', summary: tApp()('Kunden-Konto gelöscht'), entityId: t.id });
+      return eraseTenant(app, t, tApp()('Löschung durch den Betreiber'));
     });
 
     router.post('/api/cloud/console/reconcile', 'admin', async () => {
@@ -310,13 +312,13 @@ export const cloudConsoleModule: Module = {
       if (next.default_snapshot_id && !db.get('SELECT id FROM snapshots WHERE id = ?', next.default_snapshot_id)) throw bad('Snapshot nicht gefunden');
       if (next.mail_location_id && !app.location(next.mail_location_id)) throw bad('Absender-Sub-Account nicht gefunden');
       saveCloudSettings(app, next);
-      app.services.audit?.({ ctx, action: 'cloud.settings', summary: 'Cloud-Einstellungen geändert' });
+      app.services.audit?.({ ctx, action: 'cloud.settings', summary: tApp()('Cloud-Einstellungen geändert') });
       return settingsOut();
     });
 
     const legalOut = (doc: (typeof LEGAL_DOCS)[number]) => {
       const row = legalCurrent(app, doc);
-      return { doc, title: LEGAL_TITLE[doc], version: row.version, body: row.body, created_at: row.created_at, open_placeholders: openPlaceholders(legalText(app, row)), accepted: Number(db.get<{ n: number }>('SELECT COUNT(DISTINCT tenant_id) AS n FROM cloud_acceptances WHERE doc = ? AND version = ?', doc, row.version)?.n ?? 0) };
+      return { doc, title: tApp()(LEGAL_TITLE[doc]), version: row.version, body: row.body, created_at: row.created_at, open_placeholders: openPlaceholders(legalText(app, row)), accepted: Number(db.get<{ n: number }>('SELECT COUNT(DISTINCT tenant_id) AS n FROM cloud_acceptances WHERE doc = ? AND version = ?', doc, row.version)?.n ?? 0) };
     };
     router.get('/api/cloud/console/legal', 'admin', () => ({ docs: LEGAL_DOCS.map(legalOut) }));
     router.put('/api/cloud/console/legal/:doc', 'admin', (ctx) => {
@@ -325,7 +327,7 @@ export const cloudConsoleModule: Module = {
       if (body.trim().length < 20) throw bad('Der Text ist zu kurz');
       if (body.length > 100_000) throw bad('Der Text ist zu lang');
       setLegal(app, ctx.params.doc, body, ctx.user?.email ?? '');
-      app.services.audit?.({ ctx, action: 'cloud.legal', summary: `${LEGAL_TITLE[ctx.params.doc]} geändert` });
+      app.services.audit?.({ ctx, action: 'cloud.legal', summary: tApp()('{doc} geändert', { doc: tApp()(LEGAL_TITLE[ctx.params.doc]) }) });
       return legalOut(ctx.params.doc);
     });
   },

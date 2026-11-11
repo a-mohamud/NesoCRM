@@ -1,6 +1,7 @@
 import { createSign, sign as edSign } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { connect } from 'node:http2';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Native push for the apps (FCM for Android, APNs for iOS) – used by the push relay (`PGHL_PUSH_RELAY=1`, modules/push-relay.ts)
@@ -77,9 +78,9 @@ export function minimalMessage(input: { kind?: unknown; title?: unknown; body?: 
   if (mode === 'preview') {
     const raw = String(input.url ?? '').split('#')[0];
     const url = raw.startsWith('/app') && !raw.startsWith('//') ? raw.slice(0, 200) : '/app';
-    return { ...base, title: plain(input.title, 80) || GENERIC_TITLES[kind] || DEFAULT_TITLE, body: plain(input.body, 160), url };
+    return { ...base, title: plain(input.title, 80) || tApp()(GENERIC_TITLES[kind] || DEFAULT_TITLE), body: plain(input.body, 160), url };
   }
-  return { ...base, title: GENERIC_TITLES[kind] ?? DEFAULT_TITLE, body: '', url: sectionOf(input.url) };
+  return { ...base, title: tApp()(GENERIC_TITLES[kind] ?? DEFAULT_TITLE), body: '', url: sectionOf(input.url) };
 }
 
 /** Sliding one-minute counters (per instance, per device). */
@@ -131,7 +132,7 @@ export function fcmSender(sa: ServiceAccount, fetchFn: FetchLike = fetch as unkn
       signal: AbortSignal.timeout(15_000),
     });
     const j = JSON.parse((await r.text()) || '{}');
-    if (r.status !== 200 || !j.access_token) throw new Error(`FCM-Anmeldung fehlgeschlagen (${r.status})`);
+    if (r.status !== 200 || !j.access_token) throw new Error(tApp()('FCM-Anmeldung fehlgeschlagen ({status})', { status: r.status }));
     cached = { token: j.access_token, exp: t + Number(j.expires_in ?? 3600) };
     return cached.token;
   }
@@ -260,7 +261,7 @@ export function transportFromEnv(env: NodeJS.ProcessEnv = process.env): NativeTr
   return {
     async send(target, msg) {
       const fn = target.provider === 'fcm' ? loadFcm() : loadApns();
-      if (!fn) return { ok: false, error: `${target.provider.toUpperCase()} ist nicht eingerichtet` };
+      if (!fn) return { ok: false, error: tApp()('{provider} ist nicht eingerichtet', { provider: target.provider.toUpperCase() }) };
       try {
         return await fn(target.token, msg);
       } catch (e) {

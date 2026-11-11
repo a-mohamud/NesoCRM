@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isValidTz, zonedToUtc } from '../core/time.js';
 import type { Provider } from './oauth.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Google Calendar API v3 and Microsoft Graph behind one small interface: list calendars, busy times,
@@ -86,13 +87,13 @@ async function request(label: string, fetcher: typeof fetch, token: TokenFn, url
         signal: AbortSignal.timeout(20_000),
       });
     } catch (e) {
-      throw new ProviderError(`${label} nicht erreichbar: ${(e as Error).message}`, 0);
+      throw new ProviderError(tApp()('{service} nicht erreichbar: {error}', { service: label, error: (e as Error).message }), 0);
     }
     if (r.status === 401 && attempt === 0) continue;
     const json: Json = r.status === 204 ? {} : await r.json().catch(() => ({}));
     if (r.ok || allow.includes(r.status)) return { status: r.status, json };
     const msg = String(json?.error?.message ?? json?.error_description ?? `Fehler ${r.status}`).slice(0, 300);
-    if (r.status === 412) throw new PreconditionFailed(`${label}: Termin wurde dort inzwischen geändert`, 412);
+    if (r.status === 412) throw new PreconditionFailed(tApp()('{service}: Termin wurde dort inzwischen geändert', { service: label }), 412);
     throw new ProviderError(`${label}: ${msg}`, r.status);
   }
   throw new ProviderError(`${label}: Anmeldung abgelehnt`, 401);
@@ -173,7 +174,7 @@ export function googleCalendar(fetcher: typeof fetch, token: TokenFn): CalendarA
         const b = Math.min(a + 60 * 864e5, Date.parse(to));
         const { json } = await req(`${GOOGLE}/freeBusy`, { method: 'POST', body: { timeMin: new Date(a).toISOString(), timeMax: new Date(b).toISOString(), items: ids.slice(0, 50).map((id) => ({ id })) } });
         const cals = Object.values(json.calendars ?? {}) as Json[];
-        if (cals.length && cals.every((c) => c.errors?.length)) throw new ProviderError(`Google Kalender: ${cals[0].errors[0]?.reason ?? 'Kalender nicht lesbar'}`, 400);
+        if (cals.length && cals.every((c) => c.errors?.length)) throw new ProviderError(`Google Kalender: ${cals[0].errors[0]?.reason ?? tApp()('Kalender nicht lesbar')}`, 400);
         for (const c of cals) for (const x of c.busy ?? []) if (iso(x.start) && iso(x.end)) out.push({ start_at: iso(x.start), end_at: iso(x.end) });
       }
       return out;

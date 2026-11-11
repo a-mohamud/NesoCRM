@@ -2,6 +2,7 @@ import type { Module } from '../core/app.js';
 import { notFound, text } from '../core/http.js';
 import { ratingSummary } from '../services/course-community.js';
 import { courseOutline, flatLessons, getCourse } from '../services/courses.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Course analytics (docs/courses.md): per lesson how many opened it, finished it and where they dropped off (with the retention curve of
@@ -175,10 +176,11 @@ export const courseAnalyticsModule: Module = {
     router.get('/api/courses/:id/analytics.csv', 'location', (ctx) => {
       const a = analytics(ctx.locationId, ctx.params.id, cohortArg(ctx, ctx.params.id));
       const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""').replace(/^([=+\-@])/, "'$1")}"`;
-      const head = ['Nr', 'Lektion', 'Modul', 'Geöffnet', 'Abgeschlossen', 'Geöffnet %', 'Abgeschlossen %', 'Abbruch gegenüber Vorgänger %', 'Video gesehen % (Ø)', 'Video-Zuschauer'];
+      const t = tCtx(ctx);
+      const head = ['Nr', 'Lektion', 'Modul', 'Geöffnet', 'Abgeschlossen', 'Geöffnet %', 'Abgeschlossen %', 'Abbruch gegenüber Vorgänger %', 'Video gesehen % (Ø)', 'Video-Zuschauer'].map((x) => t(x));
       const lines = a.lessons.map((l) => [l.position, q(l.title), q(l.module), l.viewed, l.completed, l.viewed_percent, l.completion_percent, l.drop_off_percent, l.video?.avg_watched_percent ?? '', l.video?.viewers ?? ''].join(';'));
       const r = text(`﻿${head.join(';')}\n${lines.join('\n')}\n`, 'text/csv; charset=utf-8');
-      r.headers['content-disposition'] = `attachment; filename="kurs-analyse.csv"`;
+      r.headers['content-disposition'] = `attachment; filename="${t('kurs-analyse')}.csv"`;
       return r;
     });
   },

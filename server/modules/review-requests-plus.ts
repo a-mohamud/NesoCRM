@@ -4,6 +4,7 @@ import { now } from '../core/util.js';
 import { findContacts } from '../services/contacts.js';
 import { sendReviewRequest } from '../services/reviews.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Bewertungsanfragen ausbauen – docs/reputation.md#review-requests-in-bulk-and-reminders. Send review requests to many contacts at
@@ -50,7 +51,8 @@ export const reviewRequestsPlusModule: Module = {
       let ids: string[] = Array.isArray(ctx.body?.contact_ids) ? [...new Set(ctx.body.contact_ids.map(String))] as string[] : [];
       if (!ids.length && tag) ids = findContacts(app, ctx.locationId, { tags: [tag], limit: MAX_BULK + 1, noTotal: true, who: ctx }).contacts.map((c: any) => String(c.id));
       if (!ids.length) throw bad('Keine Kontakte gewählt');
-      if (ids.length > MAX_BULK) throw bad(`Höchstens ${MAX_BULK} Kontakte auf einmal`);
+      const t = tCtx(ctx);
+      if (ids.length > MAX_BULK) throw bad(t('Höchstens {n} Kontakte auf einmal', { n: MAX_BULK }));
       const { skip_days } = settingsOf(ctx.locationId);
       const since = new Date(Date.now() - skip_days * 864e5).toISOString();
       const sent: string[] = [];
@@ -58,15 +60,15 @@ export const reviewRequestsPlusModule: Module = {
       for (const cid of ids) {
         const c = db.get<{ id: string; email: string | null; phone: string | null }>('SELECT id, email, phone FROM contacts WHERE id = ? AND location_id = ?', cid, ctx.locationId);
         if (!c) {
-          skipped.push({ contact_id: cid, reason: 'Kontakt nicht gefunden' });
+          skipped.push({ contact_id: cid, reason: t('Kontakt nicht gefunden') });
           continue;
         }
         if (channel === 'email' ? !c.email : !c.phone) {
-          skipped.push({ contact_id: cid, reason: channel === 'email' ? 'Keine E-Mail-Adresse' : 'Keine Telefonnummer' });
+          skipped.push({ contact_id: cid, reason: channel === 'email' ? t('Keine E-Mail-Adresse') : t('Keine Telefonnummer') });
           continue;
         }
         if (skip_days > 0 && db.get('SELECT 1 FROM review_requests WHERE location_id = ? AND contact_id = ? AND created_at >= ?', ctx.locationId, cid, since)) {
-          skipped.push({ contact_id: cid, reason: `Schon in den letzten ${skip_days} Tagen gefragt` });
+          skipped.push({ contact_id: cid, reason: t('Schon in den letzten {n} Tagen gefragt', { n: skip_days }) });
           continue;
         }
         try {
@@ -123,7 +125,7 @@ export const reviewRequestsPlusModule: Module = {
       {
         name: 'ghl_review_request_bulk',
         title: 'Bewertungsanfragen an viele Kontakte senden',
-        description: `Sendet Bewertungsanfragen an gewählte Kontakte (contact_ids) oder alle mit einem Tag (tag), höchstens ${MAX_BULK}. Überspringt Kontakte ohne Adresse und solche, die kürzlich gefragt wurden – mit Grund. Verschickt echt.`,
+        description: tApp()('Sendet Bewertungsanfragen an gewählte Kontakte (contact_ids) oder alle mit einem Tag (tag), höchstens {n}. Überspringt Kontakte ohne Adresse und solche, die kürzlich gefragt wurden – mit Grund. Verschickt echt.', { n: MAX_BULK }),
         inputSchema: { type: 'object', properties: { location_id: { type: 'string' }, contact_ids: { type: 'array', items: { type: 'string' } }, tag: { type: 'string' }, channel: { type: 'string', enum: ['email', 'sms'] } }, required: ['location_id'], additionalProperties: false },
         annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
         run: (call, a) => call.api('POST', '/api/reviews/request/bulk', { location: a.location_id, body: { contact_ids: a.contact_ids, tag: a.tag, channel: a.channel } }),

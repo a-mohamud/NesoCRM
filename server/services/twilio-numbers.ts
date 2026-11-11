@@ -1,6 +1,7 @@
 import type { App } from '../core/app.js';
 import { HttpError } from '../core/http.js';
 import { ACCOUNT_SID, E164 } from './twilio.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Buying and releasing phone numbers through the connected Twilio account: the request parameters, the mapping of
@@ -8,7 +9,7 @@ import { ACCOUNT_SID, E164 } from './twilio.js';
  * through `app.services.twilioFetch` (the test hook) – tests never reach Twilio. No database here.
  */
 
-export const NUMBER_TYPES = { local: 'Local', mobile: 'Mobile', toll_free: 'TollFree' } as const;
+export const NUMBER_TYPES = { local: 'Local', mobile: 'Mobile', toll_free: 'TollFree' } as const; // i18n-ignore – Twilio's path segments
 export type NumberType = keyof typeof NUMBER_TYPES;
 export const NUMBER_TYPE_LABEL: Record<NumberType, string> = { local: 'Ortsnummer', mobile: 'Mobilnummer', toll_free: 'Gebührenfrei' };
 export const ADDRESS_SID = /^AD[0-9a-fA-F]{32}$/;
@@ -31,11 +32,12 @@ export interface AvailableNumber {
 
 /** The query of a search ("Vorwahl 30", "enthält 1234"); only what Twilio understands and what we validated. */
 export function searchParams(o: { area_code?: string; contains?: string; limit?: number }): [string, string][] {
+  // i18n-ignore – Twilio's query parameters
   const p: [string, string][] = [['VoiceEnabled', 'true'], ['PageSize', String(Math.min(Math.max(1, Math.round(o.limit ?? 20)), 50))]];
   const area = String(o.area_code ?? '').replace(/\D/g, '').slice(0, 6);
-  if (area) p.push(['AreaCode', area]);
+  if (area) p.push(['AreaCode', area]); // i18n-ignore
   const contains = String(o.contains ?? '').replace(/[^0-9*]/g, '').slice(0, 15);
-  if (contains) p.push(['Contains', contains]);
+  if (contains) p.push(['Contains', contains]); // i18n-ignore
   return p;
 }
 
@@ -102,7 +104,8 @@ export function regulatoryError(code: unknown, message: string, country: string)
   const c = Number(code);
   if (!REGULATORY_CODES.has(c) && !/\b(address|bundle|regulat)/i.test(message)) return null;
   const rule = regulatoryRule(country);
-  return `Twilio verkauft diese Nummer erst, wenn die gesetzlichen Nachweise stimmen (${message.replace(/^Twilio:\s*/, '')}). ${rule?.text ?? 'Lege Adresse und Regulatory Bundle in der Twilio-Konsole an (Phone Numbers → Regulatory Compliance) und wähle sie hier aus.'}`;
+  const t = tApp();
+  return `${t('Twilio verkauft diese Nummer erst, wenn die gesetzlichen Nachweise stimmen ({message}).', { message: message.replace(/^Twilio:\s*/, '') })} ${t(rule?.text ?? 'Lege Adresse und Regulatory Bundle in der Twilio-Konsole an (Phone Numbers → Regulatory Compliance) und wähle sie hier aus.')}`;
 }
 
 // --- requests -------------------------------------------------------------------------------------------------------
@@ -121,7 +124,7 @@ export async function twilioHostRequest(app: App, cfg: { accountSid: string; tok
     signal: AbortSignal.timeout(15_000),
   });
   const j: any = r.status === 204 ? {} : await r.json().catch(() => ({}));
-  if (!r.ok) throw new HttpError(502, `Twilio: ${j.message || `Fehler ${r.status}`}`, { twilio_code: j.code ?? null });
+  if (!r.ok) throw new HttpError(502, `Twilio: ${j.message || tApp()('Fehler {status}', { status: r.status })}`, { twilio_code: j.code ?? null });
   return j;
 }
 

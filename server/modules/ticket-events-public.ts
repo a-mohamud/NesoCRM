@@ -8,6 +8,7 @@ import { getSession, refreshSession } from '../services/pay-registry.js';
 import { afterConfirmed, cleanBuyer, orderByToken, orderUrl, placeOrder, startPayment, ticketUrl, ticketsOfOrder, typesWithState, type OrderRow } from '../services/ticket-events-core.js';
 import type { TicketEventRow } from '../services/ticket-events-model.js';
 import { renderQr } from './qr.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * The buyer's side of event tickets (docs/booking.md#ticket-types): `/book/event/<slug>` (pick ticket types and quantities, name
@@ -34,7 +35,9 @@ export const ticketEventsPublicModule: Module = {
     const { db, router } = app;
     const activeEvent = (slug: string) => db.get<TicketEventRow>('SELECT * FROM tix_events WHERE slug = ? AND active = 1', slug);
     const tzOf = (loc: string) => app.location(loc)?.timezone || 'Europe/Berlin';
-    const money = (c: number, cur: string) => (c ? centsToMoney(c, cur) : 'kostenlos');
+    const money = (c: number, cur: string, t: STFn = tApp()) => (c ? centsToMoney(c, cur) : t('kostenlos'));
+    /** "Mo., 12.03.2026, 18:00" + " Uhr" in German, the bare date in English. */
+    const at = (t: STFn, when: string) => t('{when} Uhr', { when });
     const page = (ev: TicketEventRow, title: string, body: string, status = 200) => {
       const r = html(publicPage({ title, body, color: app.location(ev.location_id)?.settings?.branding?.color || undefined, head: noIndex }), status);
       r.headers['cache-control'] = 'no-store';
@@ -43,7 +46,7 @@ export const ticketEventsPublicModule: Module = {
 
     /** Places the order and says where the buyer goes: the tickets (free) or the payment. */
     async function order(ctx: Ctx, ev: TicketEventRow) {
-      if (throttled(`${ctx.ip}:${ev.id}`, 40)) throw new HttpError(429, 'Zu viele Bestellungen – bitte später noch einmal versuchen');
+      if (throttled(`${ctx.ip}:${ev.id}`, 40)) throw new HttpError(429, tLoc(app, ev.location_id)('Zu viele Bestellungen – bitte später noch einmal versuchen'));
       const b = ctx.body ?? {};
       const buyer = cleanBuyer(b);
       const o = placeOrder(app, ev, b, buyer);
@@ -57,37 +60,38 @@ export const ticketEventsPublicModule: Module = {
 
     function eventPage(ev: TicketEventRow, error = '', values: Record<string, any> = {}, status = 200) {
       const loc = app.location(ev.location_id)!;
+      const tl = tLoc(app, ev.location_id);
       const types = typesWithState(app, ev).filter((t) => t.state !== 'inactive');
       const onSale = types.some((t) => t.max_pick > 0);
       const rows = types
         .map((t) => {
-          const note = t.state === 'on_sale' ? (t.left !== null && t.left <= 10 ? `noch ${t.left}` : '') : t.state === 'not_yet' && t.sale_start ? `Verkauf ab ${formatInTz(t.sale_start, tzOf(ev.location_id))} Uhr` : t.state_label;
+          const note = t.state === 'on_sale' ? (t.left !== null && t.left <= 10 ? tl('noch {n} verfügbar', { n: t.left }) : '') : t.state === 'not_yet' && t.sale_start ? tl('Verkauf ab {when}', { when: at(tl, formatInTz(t.sale_start, tzOf(ev.location_id))) }) : t.state_label;
           const opts = Array.from({ length: t.max_pick + 1 }, (_, i) => `<option value="${i}"${Number(values[`qty_${t.id}`] ?? 0) === i ? ' selected' : ''}>${i}</option>`).join('');
           return `<tr><td><strong>${escapeHtml(t.name)}</strong>${t.description ? `<br><span class="muted" style="font-size:14px">${escapeHtml(t.description)}</span>` : ''}${note ? `<br><span class="muted" style="font-size:13px">${escapeHtml(note)}</span>` : ''}</td>
-<td style="white-space:nowrap">${escapeHtml(money(t.price_cents, ev.currency))}</td>
-<td style="width:90px">${t.max_pick > 0 ? `<label for="q_${escapeHtml(t.id)}" style="position:absolute;left:-9999px">Anzahl ${escapeHtml(t.name)}</label><select id="q_${escapeHtml(t.id)}" name="qty_${escapeHtml(t.id)}">${opts}</select>` : '–'}</td></tr>`;
+<td style="white-space:nowrap">${escapeHtml(money(t.price_cents, ev.currency, tl))}</td>
+<td style="width:90px">${t.max_pick > 0 ? `<label for="q_${escapeHtml(t.id)}" style="position:absolute;left:-9999px">${escapeHtml(tl('Anzahl {name}', { name: t.name }))}</label><select id="q_${escapeHtml(t.id)}" name="qty_${escapeHtml(t.id)}">${opts}</select>` : '–'}</td></tr>`;
         })
         .join('');
       const body = `<div class="wrap" style="max-width:640px"><div class="card">
 <p class="muted" style="margin:0">${escapeHtml(loc.name)}</p>
 <h1>${escapeHtml(ev.name)}</h1>
-<p style="margin:0 0 4px"><strong>${escapeHtml(formatInTz(ev.starts_at, tzOf(ev.location_id)))} Uhr</strong>${ev.venue ? ` · ${escapeHtml(ev.venue)}` : ''}</p>
+<p style="margin:0 0 4px"><strong>${escapeHtml(at(tl, formatInTz(ev.starts_at, tzOf(ev.location_id))))}</strong>${ev.venue ? ` · ${escapeHtml(ev.venue)}` : ''}</p>
 ${ev.description ? `<p class="muted" style="white-space:pre-line">${escapeHtml(ev.description)}</p>` : ''}
 ${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ''}
 ${
   types.length
     ? `<form method="post" action="/book/event/${escapeHtml(ev.slug)}">
-<table><thead><tr><th>Ticket</th><th>Preis</th><th>Anzahl</th></tr></thead><tbody>${rows}</tbody></table>
+<table><thead><tr><th>${escapeHtml(tl('Ticket'))}</th><th>${escapeHtml(tl('Preis'))}</th><th>${escapeHtml(tl('Anzahl'))}</th></tr></thead><tbody>${rows}</tbody></table>
 ${
   onSale
-    ? `<label for="tn">Name</label><input id="tn" name="name" autocomplete="name" required maxlength="200" value="${escapeHtml(String(values.name ?? ''))}">
-<label for="te">E-Mail</label><input id="te" name="email" type="email" autocomplete="email" required maxlength="200" value="${escapeHtml(String(values.email ?? ''))}">
-<p class="muted" style="font-size:13px">Deine Tickets mit QR-Code bekommst du per E-Mail und auf der nächsten Seite.</p>
-<button type="submit" style="width:100%">Tickets bestellen</button>`
-    : '<p class="muted">Gerade sind keine Tickets im Verkauf.</p>'
+    ? `<label for="tn">${escapeHtml(tl('Name'))}</label><input id="tn" name="name" autocomplete="name" required maxlength="200" value="${escapeHtml(String(values.name ?? ''))}">
+<label for="te">${escapeHtml(tl('E-Mail'))}</label><input id="te" name="email" type="email" autocomplete="email" required maxlength="200" value="${escapeHtml(String(values.email ?? ''))}">
+<p class="muted" style="font-size:13px">${escapeHtml(tl('Deine Tickets mit QR-Code bekommst du per E-Mail und auf der nächsten Seite.'))}</p>
+<button type="submit" style="width:100%">${escapeHtml(tl('Tickets bestellen'))}</button>`
+    : `<p class="muted">${escapeHtml(tl('Gerade sind keine Tickets im Verkauf.'))}</p>`
 }
 </form>`
-    : '<p class="muted">Für dieses Event gibt es noch keine Tickets.</p>'
+    : `<p class="muted">${escapeHtml(tl('Für dieses Event gibt es noch keine Tickets.'))}</p>`
 }
 </div></div>`;
       return page(ev, ev.name, body, status);
@@ -95,12 +99,12 @@ ${
 
     router.get('/book/event/:slug', 'public', (ctx) => {
       const ev = activeEvent(ctx.params.slug);
-      if (!ev) return html(messagePage('Nicht gefunden', 'Dieses Event gibt es nicht (mehr).'), 404);
+      if (!ev) return html(messagePage(tApp()('Nicht gefunden'), tApp()('Dieses Event gibt es nicht (mehr).')), 404);
       return eventPage(ev);
     });
     router.post('/book/event/:slug', 'public', async (ctx) => {
       const ev = activeEvent(ctx.params.slug);
-      if (!ev) return html(messagePage('Nicht gefunden', 'Dieses Event gibt es nicht (mehr).'), 404);
+      if (!ev) return html(messagePage(tApp()('Nicht gefunden'), tApp()('Dieses Event gibt es nicht (mehr).')), 404);
       try {
         const r = await order(ctx, ev);
         return redirect(r.next, 303);
@@ -134,7 +138,7 @@ ${
 
     router.get('/book/event-order/:token', 'public', async (ctx) => {
       let o = orderByToken(app, ctx.params.token);
-      if (!o) return html(messagePage('Nicht gefunden', 'Diese Bestellung gibt es nicht.'), 404);
+      if (!o) return html(messagePage(tApp()('Nicht gefunden'), tApp()('Diese Bestellung gibt es nicht.')), 404);
       // Back from the provider before its webhook: ask once in a while.
       if (o.status === 'pending' && o.pay_session_id && !throttled(`ord:${ctx.ip}`, 120)) {
         const s = getSession(app, o.pay_session_id);
@@ -144,36 +148,37 @@ ${
       const ev = db.get<TicketEventRow>('SELECT * FROM tix_events WHERE id = ?', o.event_id)!;
       const s = o.pay_session_id ? getSession(app, o.pay_session_id) : undefined;
       const tickets = ticketsOfOrder(app, o.id);
+      const tl = tLoc(app, o.location_id);
       let list = '';
       if (o.status === 'paid') {
         const cards = await Promise.all(
           tickets.map(async (t) => {
             const svg = String(await renderQr(ticketUrl(app, t.token), { format: 'svg', size: 180, margin: 2, ec: 'M', fg: '#111827', bg: '#ffffff' }));
             return `<div style="border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center;margin:10px 0"><strong>${escapeHtml(t.type_name)}</strong>
-<div style="display:inline-block;background:#fff;padding:6px;margin-top:6px" role="img" aria-label="QR-Code: ${escapeHtml(t.type_name)}">${svg}</div>
+<div style="display:inline-block;background:#fff;padding:6px;margin-top:6px" role="img" aria-label="${escapeHtml(tl('QR-Code: {name}', { name: t.type_name }))}">${svg}</div>
 <p style="font-family:ui-monospace,monospace;font-size:18px;letter-spacing:2px;margin:6px 0">${escapeHtml(t.code)}</p>
-<a href="/book/event-ticket/${encodeURIComponent(t.token)}">Einzelnes Ticket öffnen</a></div>`;
+<a href="/book/event-ticket/${encodeURIComponent(t.token)}">${escapeHtml(tl('Einzelnes Ticket öffnen'))}</a></div>`;
           }),
         );
         list = cards.join('');
       }
       const state =
         o.status === 'paid'
-          ? '<p class="ok">Deine Tickets sind bestätigt. Zeig beim Einlass den QR-Code oder den Code.</p>'
+          ? `<p class="ok">${escapeHtml(tl('Deine Tickets sind bestätigt. Zeig beim Einlass den QR-Code oder den Code.'))}</p>`
           : o.status === 'pending'
             ? s?.status === 'pending'
-              ? '<p>Deine Zahlung wird bearbeitet. Sobald sie bestätigt ist, bekommst du deine Tickets per E-Mail.</p>'
-              : `<p>Die Zahlung steht noch aus – die Tickets sind bis ${escapeHtml(formatInTz(o.expires_at, tzOf(o.location_id), { weekday: undefined }))} Uhr für dich reserviert.</p>${s && s.status === 'open' ? `<p><a class="btn" href="/pay/${escapeHtml(s.id)}">Jetzt bezahlen</a></p>` : ''}`
-            : `<p class="muted">Diese Bestellung ist ${o.status === 'refunded' ? 'erstattet' : 'abgelaufen oder abgebrochen'}.</p><p><a class="btn secondary" href="/book/event/${escapeHtml(ev.slug)}">Neu bestellen</a></p>`;
+              ? `<p>${escapeHtml(tl('Deine Zahlung wird bearbeitet. Sobald sie bestätigt ist, bekommst du deine Tickets per E-Mail.'))}</p>`
+              : `<p>${escapeHtml(tl('Die Zahlung steht noch aus – die Tickets sind bis {when} Uhr für dich reserviert.', { when: formatInTz(o.expires_at, tzOf(o.location_id), { weekday: undefined }) }))}</p>${s && s.status === 'open' ? `<p><a class="btn" href="/pay/${escapeHtml(s.id)}">${escapeHtml(tl('Jetzt bezahlen'))}</a></p>` : ''}`
+            : `<p class="muted">${escapeHtml(tl(o.status === 'refunded' ? 'Diese Bestellung ist erstattet.' : 'Diese Bestellung ist abgelaufen oder abgebrochen.'))}</p><p><a class="btn secondary" href="/book/event/${escapeHtml(ev.slug)}">${escapeHtml(tl('Neu bestellen'))}</a></p>`;
       const body = `<div class="wrap" style="max-width:520px"><div class="card">
 <p class="muted" style="margin:0">${escapeHtml(app.location(o.location_id)?.name ?? '')}</p>
 <h1>${escapeHtml(ev.name)}</h1>
-<p style="margin:0 0 10px"><strong>${escapeHtml(formatInTz(ev.starts_at, tzOf(o.location_id)))} Uhr</strong>${ev.venue ? ` · ${escapeHtml(ev.venue)}` : ''}</p>
+<p style="margin:0 0 10px"><strong>${escapeHtml(at(tl, formatInTz(ev.starts_at, tzOf(o.location_id))))}</strong>${ev.venue ? ` · ${escapeHtml(ev.venue)}` : ''}</p>
 ${state}
-<p class="muted">${tickets.length} Ticket(s) · ${escapeHtml(money(o.total_cents, o.currency))}</p>
+<p class="muted">${escapeHtml(tl.plural(tickets.length, { one: '{n} Ticket', other: '{n} Tickets' }))} · ${escapeHtml(money(o.total_cents, o.currency, tl))}</p>
 ${list}
 </div></div>`;
-      return page(ev, `Tickets: ${ev.name}`, body);
+      return page(ev, tl('Tickets: {event}', { event: ev.name }), body);
     });
 
     router.get('/book/event-ticket/:token', 'public', async (ctx) => {
@@ -182,28 +187,29 @@ ${list}
          JOIN tix_types y ON y.id = t.type_id JOIN tix_events e ON e.id = t.event_id JOIN tix_orders o ON o.id = t.order_id WHERE t.token = ?`,
         ctx.params.token,
       );
-      if (!t || t.status === 'held') return html(messagePage('Nicht gefunden', 'Dieses Ticket gibt es nicht (oder es ist noch nicht bezahlt).'), 404);
+      if (!t || t.status === 'held') return html(messagePage(tApp()('Nicht gefunden'), tApp()('Dieses Ticket gibt es nicht (oder es ist noch nicht bezahlt).')), 404);
       const ev = db.get<TicketEventRow>('SELECT * FROM tix_events WHERE id = ?', t.event_id)!;
       const tz = tzOf(t.loc);
+      const tl = tLoc(app, t.loc);
       const svg = String(await renderQr(ticketUrl(app, t.token), { format: 'svg', size: 260, margin: 2, ec: 'M', fg: '#111827', bg: '#ffffff' }));
-      const state = t.status !== 'valid' ? '<p class="error">Dieses Ticket wurde storniert.</p>' : t.checked_in_at ? `<p class="muted">Eingecheckt am ${escapeHtml(formatInTz(t.checked_in_at, tz))} Uhr</p>` : '';
+      const state = t.status !== 'valid' ? `<p class="error">${escapeHtml(tl('Dieses Ticket wurde storniert.'))}</p>` : t.checked_in_at ? `<p class="muted">${escapeHtml(tl('Eingecheckt am {when} Uhr', { when: formatInTz(t.checked_in_at, tz) }))}</p>` : '';
       const team =
         t.status === 'valid'
-          ? `<details style="margin-top:14px;text-align:left"><summary class="muted" style="cursor:pointer;font-size:13px">Für das Team: einchecken</summary><p class="muted" style="font-size:13px">Angemeldet mit dem Team-Konto (im selben Browser) checkst du hier ein.</p><button type="button" id="ci">Einchecken</button><p id="ci-msg" role="status"></p></details>
-<script>(function(){var b=document.getElementById('ci');if(!b)return;b.onclick=function(){var m=document.getElementById('ci-msg');m.textContent='';fetch('/api/ticket-events/checkin',{method:'POST',headers:{'content-type':'application/json','x-pghl':'1','x-location-id':${jsonForScript(t.loc)}},body:JSON.stringify({code:${jsonForScript(t.token)}})}).then(function(r){return r.json().then(function(j){if(r.status===401)throw new Error('Bitte zuerst in HyperLevel anmelden.');if(!r.ok)throw new Error(j.error||'Fehler');m.textContent=(j.status==='already'?'Schon eingecheckt: ':'Eingecheckt ✓ ')+(j.type||'')+' · '+(j.name||'')})}).catch(function(e){m.textContent=e.message})}})();</script>`
+          ? `<details style="margin-top:14px;text-align:left"><summary class="muted" style="cursor:pointer;font-size:13px">${escapeHtml(tl('Für das Team: einchecken'))}</summary><p class="muted" style="font-size:13px">${escapeHtml(tl('Angemeldet mit dem Team-Konto (im selben Browser) checkst du hier ein.'))}</p><button type="button" id="ci">${escapeHtml(tl('Einchecken'))}</button><p id="ci-msg" role="status"></p></details>
+<script>(function(){var b=document.getElementById('ci');if(!b)return;b.onclick=function(){var m=document.getElementById('ci-msg');m.textContent='';fetch('/api/ticket-events/checkin',{method:'POST',headers:{'content-type':'application/json','x-pghl':'1','x-location-id':${jsonForScript(t.loc)}},body:JSON.stringify({code:${jsonForScript(t.token)}})}).then(function(r){return r.json().then(function(j){if(r.status===401)throw new Error(${jsonForScript(tl('Bitte zuerst in HyperLevel anmelden.'))});if(!r.ok)throw new Error(j.error||${jsonForScript(tl('Fehler'))});m.textContent=(j.status==='already'?${jsonForScript(tl('Schon eingecheckt: '))}:${jsonForScript(tl('Eingecheckt ✓ '))})+(j.type||'')+' · '+(j.name||'')})}).catch(function(e){m.textContent=e.message})}})();</script>`
           : '';
       const body = `<div class="wrap" style="max-width:420px"><div class="card" style="text-align:center">
   <p class="muted" style="margin:0">${escapeHtml(app.location(t.loc)?.name ?? '')}</p>
   <h1 style="margin:6px 0 4px">${escapeHtml(t.event_name)}</h1>
-  <p style="margin:0 0 6px"><strong>${escapeHtml(formatInTz(t.starts_at, tz))} Uhr</strong>${t.venue ? `<br>${escapeHtml(t.venue)}` : ''}</p>
+  <p style="margin:0 0 6px"><strong>${escapeHtml(at(tl, formatInTz(t.starts_at, tz)))}</strong>${t.venue ? `<br>${escapeHtml(t.venue)}` : ''}</p>
   <p style="margin:0 0 12px;font-size:18px"><strong>${escapeHtml(t.type_name)}</strong>${t.holder ? ` · ${escapeHtml(t.holder)}` : ''}</p>
-  <div style="display:inline-block;background:#fff;padding:8px;border-radius:12px" role="img" aria-label="QR-Code des Tickets">${svg}</div>
+  <div style="display:inline-block;background:#fff;padding:8px;border-radius:12px" role="img" aria-label="${escapeHtml(tl('QR-Code des Tickets'))}">${svg}</div>
   <p style="font-family:ui-monospace,monospace;font-size:20px;letter-spacing:2px;margin:10px 0 4px">${escapeHtml(t.code)}</p>
-  <p class="muted" style="font-size:13px;margin:0">Zeig diesen Code beim Einlass.</p>
+  <p class="muted" style="font-size:13px;margin:0">${escapeHtml(tl('Zeig diesen Code beim Einlass.'))}</p>
   ${state}
   ${team}
 </div></div>`;
-      return page(ev, `Ticket: ${t.event_name}`, body);
+      return page(ev, tl('Ticket: {event}', { event: t.event_name }), body);
     });
   },
 };

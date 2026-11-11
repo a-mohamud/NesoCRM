@@ -9,6 +9,7 @@ import { designIssues, normalizeDesign, renderEmailHtml, renderEmailText, type E
 import { STARTERS } from '../services/email-starters.js';
 import { composeEmail, deliverEmail } from '../services/messaging.js';
 import type { Tool } from './mcp.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Drag-and-drop email builder: starter designs, reusable sections, server-side rendering and test
@@ -16,7 +17,12 @@ import type { Tool } from './mcp.js';
  * see services/email-design.ts); this module only adds what the editor needs around them.
  */
 
-const SAMPLE_CONTACT = { first_name: 'Max', last_name: 'Mustermann', name: 'Max Mustermann', full_name: 'Max Mustermann', email: 'max@example.com', phone: '+49 151 23456789', company_name: 'Musterfirma', custom: {} };
+/** The sample contact of a test mail, in the sub-account's language (a Kenyan sample person in English). */
+const sampleContact = (t: STFn) => {
+  const name = t('Max Mustermann');
+  const [first, ...rest] = name.split(' ');
+  return { first_name: first, last_name: rest.join(' '), name, full_name: name, email: `${first.toLowerCase()}@example.com`, phone: t('+49 151 23456789'), company_name: t('Musterfirma'), custom: {} };
+};
 
 /** At most this many test mails per sub-account and 10 minutes (no misuse as a mail relay). */
 const TEST_LIMIT = 20;
@@ -99,7 +105,13 @@ export const emailBuilderModule: Module = {
     /** Renders a design like the server does on save – for API users and checks before sending. */
     router.post('/api/email-builder/render', 'location', (ctx) => {
       const design = parseDesign(ctx.body.design);
-      return { design, html: renderEmailHtml(design), text: renderEmailText(design), issues: designIssues(design, { campaign: !!ctx.body.campaign }) };
+      const t = tCtx(ctx);
+      // the findings come in German (shared with the web); the button one carries the button label
+      const issueText = (text: string) => {
+        const button = /^Button „(.*)“: Link fehlt oder ist ungültig \(https:\/\/, mailto: oder tel:\)$/s.exec(text);
+        return button ? t('Button „{label}“: Link fehlt oder ist ungültig (https://, mailto: oder tel:)', { label: button[1] }) : t(text);
+      };
+      return { design, html: renderEmailHtml(design), text: renderEmailText(design), issues: designIssues(design, { campaign: !!ctx.body.campaign }).map((i) => ({ ...i, text: issueText(i.text) })) };
     });
 
     router.post('/api/email-builder/test', 'location', async (ctx) => {
@@ -113,7 +125,7 @@ export const emailBuilderModule: Module = {
       testHits.set(ctx.locationId, [...hits, t]);
       const contact = ctx.body.contact_id ? getContact(app, ctx.locationId, String(ctx.body.contact_id)) : undefined;
       if (ctx.body.contact_id && !contact) throw notFound('Kontakt nicht gefunden');
-      const vars = { contact: contact ? contactVars(contact) : SAMPLE_CONTACT, location: loc };
+      const vars = { contact: contact ? contactVars(contact) : sampleContact(tLoc(app, ctx.locationId)), location: loc };
       const mail = composeEmail({
         body: render(renderEmailHtml(design), vars, { escape: true }),
         text: render(renderEmailText(design), vars),

@@ -1,6 +1,7 @@
 import { googleEmail, googlePhone, sha256 } from './ads-hash.js';
 import type { GoogleApi } from './ads-google.js';
 import type { TouchRow } from './attribution.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Google Ads offline conversion upload (ConversionUploadService.UploadClickConversions, REST) – the pure part plus the call:
@@ -69,11 +70,11 @@ export function cleanConfig(input: Record<string, any> | undefined, cur: Partial
     if (e.action !== undefined) next.action = actionName(e.action, customerId);
     if (e.value !== undefined) {
       const v = Number(String(e.value).replace(',', '.'));
-      if (!Number.isFinite(v) || v < 0 || v > 1e9) throw new Error(`${G_EVENT_LABEL[ev]}: Wert muss eine Zahl ≥ 0 sein`);
+      if (!Number.isFinite(v) || v < 0 || v > 1e9) throw new Error(tApp()('{event}: Wert muss eine Zahl ≥ 0 sein', { event: tApp()(G_EVENT_LABEL[ev]) }));
       next.value = Math.round(v * 100) / 100;
     }
     if (e.form_ids !== undefined) next.form_ids = (Array.isArray(e.form_ids) ? e.form_ids : String(e.form_ids).split(/[\s,]+/)).map((x: unknown) => String(x).trim()).filter((x: string) => /^[\w-]{4,64}$/.test(x)).slice(0, 50);
-    if (next.enabled && !next.action) throw new Error(`${G_EVENT_LABEL[ev]}: Conversion-Aktion fehlt`);
+    if (next.enabled && !next.action) throw new Error(tApp()('{event}: Conversion-Aktion fehlt', { event: tApp()(G_EVENT_LABEL[ev]) }));
     base.events[ev] = next;
   }
   return base;
@@ -201,9 +202,9 @@ export function splitResults(resp: any, count: number): RowResult[] {
     const e = errs.get(i);
     if (e) {
       const duplicate = DUPLICATE_CODES.has(e.code);
-      out.push({ ok: duplicate, code: e.code, message: `${HINT[e.code] ?? e.message ?? e.code}`.slice(0, 300) || e.code, retry: RETRY_CODES.has(e.code), duplicate });
+      out.push({ ok: duplicate, code: e.code, message: `${HINT[e.code] ? tApp()(HINT[e.code]) : e.message ?? e.code}`.slice(0, 300) || e.code, retry: RETRY_CODES.has(e.code), duplicate });
     } else if (results.length && results[i] && Object.keys(results[i]).length === 0) {
-      out.push({ ok: false, code: 'UNKNOWN', message: String(resp?.partialFailureError?.message ?? 'Von Google abgelehnt').slice(0, 300), retry: false, duplicate: false });
+      out.push({ ok: false, code: 'UNKNOWN', message: String(resp?.partialFailureError?.message ?? tApp()('Von Google abgelehnt')).slice(0, 300), retry: false, duplicate: false });
     } else out.push({ ok: true, code: '', message: '', retry: false, duplicate: false });
   }
   return out;

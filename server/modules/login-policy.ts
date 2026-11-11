@@ -20,6 +20,7 @@ import { getBranding } from './agency.js';
 import { startSession } from './core.js';
 import { openSecret, sealSecret } from './mail-sync.js';
 import { clientConfig, redirectUriFor } from './oauth-connect.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Sign-in policy for the whole installation: allowed methods (also per client login domain), who gets
@@ -170,7 +171,7 @@ export const loginPolicyModule: Module = {
     function refusal(u: any, o: FinishOptions, host?: HostInfo): string | null {
       if (breakGlass() && u.role === 'admin') return null;
       const sso = enforced(u.email);
-      if (sso && !(o.method === 'sso' && o.provider === sso.id)) return `Für @${emailDomain(u.email)} ist die Anmeldung über „${sso.label}“ vorgeschrieben`;
+      if (sso && !(o.method === 'sso' && o.provider === sso.id)) return tApp()('Für @{domain} ist die Anmeldung über „{provider}“ vorgeschrieben', { domain: emailDomain(u.email), provider: sso.label });
       if (host) {
         const m = hostMethods(policy(), host.locationId);
         if (o.method === 'password' && !m.password) return 'Anmelden mit Passwort ist hier ausgeschaltet';
@@ -250,7 +251,7 @@ export const loginPolicyModule: Module = {
       const m = hostMethods(policy(), hostInfo(app, ctx).locationId);
       if (!m.password) return 'Anmelden mit Passwort ist ausgeschaltet – bitte eine andere Anmeldeart wählen';
       const sso = enforced(email);
-      return sso ? `Für @${emailDomain(email)} ist die Anmeldung über „${sso.label}“ vorgeschrieben` : null;
+      return sso ? tCtx(ctx)('Für @{domain} ist die Anmeldung über „{provider}“ vorgeschrieben', { domain: emailDomain(email), provider: sso.label }) : null;
     };
 
     // --- 2FA duty for admins: until set up, only the setup screens work ---------------------------------
@@ -367,7 +368,7 @@ export const loginPolicyModule: Module = {
         throw bad((e as Error).message);
       }
       save(next);
-      app.services.audit?.({ ctx, action: 'login_policy.update', summary: 'Anmelde-Einstellungen geändert' });
+      app.services.audit?.({ ctx, action: 'login_policy.update', summary: tApp()('Anmelde-Einstellungen geändert') });
       return out();
     });
 

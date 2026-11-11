@@ -3,6 +3,7 @@ import type { Json } from './umzug-flow.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { counter, nameParts, seg, stubCtx } from './umzug-lib.js';
 import { clip, toIso } from './umzug-text.js';
+import { translator, tApp } from '../i18n/index.js';
 
 /**
  * Calendly (REST API v2, https://api.calendly.com, a personal access token): event types → calendars (saved INACTIVE, without messages,
@@ -52,7 +53,7 @@ const LOCATION: Record<string, string> = { zoom_conference: 'Zoom', google_confe
 
 export function locationText(l: Json | undefined | null): string {
   if (!l) return '';
-  const label = LOCATION[String(l.type ?? l.kind)] ?? String(l.type ?? l.kind ?? '');
+  const label = LOCATION[String(l.type ?? l.kind)] ? tApp()(LOCATION[String(l.type ?? l.kind)]) : String(l.type ?? l.kind ?? '');
   const detail = l.location ?? l.join_url ?? l.phone_number ?? '';
   return [label, detail].filter(Boolean).join(': ').trim();
 }
@@ -90,12 +91,13 @@ async function hoursOf(h: VendorHttp, eventTypeUri: string, userUri: string): Pr
 }
 
 export function calendarOf(et: Json, hours: Awaited<ReturnType<typeof hoursOf>>, userTz?: string): RCalendar {
+  const t = tApp();
   const loc = locationText(Array.isArray(et.locations) ? et.locations[0] : undefined);
-  const where = [typeof et.scheduling_url === 'string' ? `Buchungsseite bei Calendly: ${et.scheduling_url}` : '', et.pooling_type ? `Art: ${et.pooling_type === 'round_robin' ? 'Round Robin' : et.pooling_type === 'collective' ? 'Gemeinsam (Team)' : et.pooling_type}` : '', et.secret ? 'bei Calendly versteckt' : '', et.active === false ? 'bei Calendly deaktiviert' : ''].filter(Boolean).join(' · ');
+  const where = [typeof et.scheduling_url === 'string' ? t('Buchungsseite bei Calendly: {url}', { url: et.scheduling_url }) : '', et.pooling_type ? t('Art: {kind}', { kind: et.pooling_type === 'round_robin' ? 'Round Robin' : et.pooling_type === 'collective' ? t('Gemeinsam (Team)') : et.pooling_type }) : '', et.secret ? t('bei Calendly versteckt') : '', et.active === false ? t('bei Calendly deaktiviert') : ''].filter(Boolean).join(' · ');
   return {
     kind: 'calendar',
     ext: `et:${uuidOf(et.uri)}`,
-    name: String(et.name ?? 'Termin'),
+    name: String(et.name ?? t('Termin')),
     description: [String(et.description_plain ?? '').trim(), where].filter(Boolean).join('\n\n'),
     duration: Number(et.duration) || 30,
     color: typeof et.color === 'string' ? et.color : undefined,
@@ -109,21 +111,22 @@ export function calendarOf(et: Json, hours: Awaited<ReturnType<typeof hoursOf>>,
 // --- appointments -----------------------------------------------------------------------------------------------
 
 export function appointmentOf(ev: Json, inv: Json | undefined, calendar: string): RAppointment {
+  const t = tApp();
   const cancelled = ev.status === 'canceled' || inv?.status === 'canceled';
   const notes: string[] = [];
   const loc = locationText(ev.location);
-  if (loc) notes.push(`Ort: ${loc}`);
+  if (loc) notes.push(t('Ort: {location}', { location: loc }));
   for (const qa of Array.isArray(inv?.questions_and_answers) ? [...inv.questions_and_answers].sort((a: Json, b: Json) => Number(a.position ?? 0) - Number(b.position ?? 0)) : []) if (qa?.question && qa?.answer) notes.push(`${String(qa.question).trim()}: ${String(qa.answer).trim()}`);
-  if (inv?.text_reminder_number) notes.push(`Telefon für SMS-Erinnerung: ${inv.text_reminder_number}`);
-  if (Array.isArray(ev.event_guests) && ev.event_guests.length) notes.push(`Weitere Gäste: ${ev.event_guests.map((g: Json) => g.email).filter(Boolean).join(', ')}`);
+  if (inv?.text_reminder_number) notes.push(t('Telefon für SMS-Erinnerung: {text_reminder_number}', { text_reminder_number: inv.text_reminder_number }));
+  if (Array.isArray(ev.event_guests) && ev.event_guests.length) notes.push(t('Weitere Gäste: {event_guests}', { event_guests: ev.event_guests.map((g: Json) => g.email).filter(Boolean).join(', ') }));
   const reason = inv?.cancellation?.reason ?? ev.cancellation?.reason;
   const by = inv?.cancellation?.canceled_by ?? ev.cancellation?.canceled_by;
-  if (cancelled && (reason || by)) notes.push(`Abgesagt${by ? ` von ${by}` : ''}${reason ? `: ${reason}` : ''}`);
-  if (inv?.rescheduled) notes.push('Wurde verschoben (der neue Termin steht separat)');
-  if (ev.meeting_notes_plain) notes.push(`Notizen: ${String(ev.meeting_notes_plain).trim()}`);
+  if (cancelled && (reason || by)) notes.push(`${by ? t('Abgesagt von {by}', { by }) : t('Abgesagt')}${reason ? `: ${reason}` : ''}`);
+  if (inv?.rescheduled) notes.push(t('Wurde verschoben (der neue Termin steht separat)'));
+  if (ev.meeting_notes_plain) notes.push(t('Notizen: {notes}', { notes: String(ev.meeting_notes_plain).trim() }));
   const host = (Array.isArray(ev.event_memberships) ? ev.event_memberships : []).map((m: Json) => m.user_name).filter(Boolean).join(', ');
-  if (host) notes.push(`Gastgeber: ${host}`);
-  const name = String(ev.name ?? 'Termin');
+  if (host) notes.push(t('Gastgeber: {host}', { host }));
+  const name = String(ev.name ?? t('Termin'));
   return {
     kind: 'appointment',
     ext: inv ? `${uuidOf(ev.uri)}:${uuidOf(inv.uri)}` : uuidOf(ev.uri),
@@ -176,6 +179,7 @@ const steps = (parts: PartKey[]): StepDef[] => {
       label: 'Termine',
       part: 'appointments',
       async *run(ctx): AsyncGenerator<Batch> {
+        const t = translator(ctx.lang);
         const user = await me(ctx.http);
         const wantContacts = ctx.parts.includes('contacts');
         let budget = ctx.limit < Infinity ? DRY_EVENTS : Infinity;
@@ -201,8 +205,8 @@ const steps = (parts: PartKey[]): StepDef[] => {
               records.push({
                 kind: 'calendar',
                 ext: calendar,
-                name: gone ? `Termine „${clip(ev.name ?? 'ohne Termintyp', 80)}“` : (typeNames.get(type) ?? 'Termin'),
-                description: gone ? 'Der Termintyp existiert bei Calendly nicht mehr; die Termine liegen hier.' : undefined,
+                name: gone ? t('Termine „{name}“', { name: clip(ev.name ?? t('ohne Termintyp'), 80) }) : (typeNames.get(type) ?? t('Termin')),
+                description: gone ? t('Der Termintyp existiert bei Calendly nicht mehr; die Termine liegen hier.') : undefined,
                 duration: Math.max(5, Math.round((Date.parse(ev.end_time) - Date.parse(ev.start_time)) / 60_000) || 30),
               });
             }

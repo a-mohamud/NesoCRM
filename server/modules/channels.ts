@@ -2,6 +2,7 @@ import type { App, Module } from '../core/app.js';
 import { bad, notFound, str, type Ctx } from '../core/http.js';
 import { getContact, type Contact } from '../services/contacts.js';
 import { sendToContact } from '../services/messaging.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Base of the extra channels (Telegram, Discord, Slack, email/SMS providers, push to contacts):
@@ -31,7 +32,7 @@ export async function channelSend(app: App, locationId: string, input: ChannelSe
     return sendToContact(app, locationId, { contactId: input.contactId, channel, subject: input.subject, body: input.body, userId: input.userId ?? undefined, source: input.source, ignoreDnd: input.ignoreDnd });
   }
   const ext = app.services.messageChannels ?? {};
-  if (!Object.hasOwn(ext, channel)) throw bad(`Kanal „${channel}“ ist nicht verfügbar`);
+  if (!Object.hasOwn(ext, channel)) throw bad(tApp()('Kanal „{channel}“ ist nicht verfügbar', { channel }));
   // The same shape tickets use: the handler reads locationId, body and user.
   return ext[channel]({ locationId, body: { contact_id: input.contactId, body: input.body, subject: input.subject, ignoreDnd: input.ignoreDnd, source: input.source }, user: input.userId ? { id: input.userId } : undefined, method: 'POST', query: new URLSearchParams() } as unknown as Ctx);
 }

@@ -4,6 +4,7 @@ import { CUSTOM_OBJECT_RE, ValueError, coerceValue, keyFromLabel, type PropertyD
 import type { RObjectLink, RObjectRecord, RObjectType } from './umzug-core.js';
 import type { ExtraEnv, Host, UndoHelpers } from './umzug-extra.js';
 import { clip } from './umzug-text.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Tables and databases of the switch-over importers (Airtable tables, Notion databases) as custom objects: an object type with
@@ -59,6 +60,7 @@ export class ObjectsWriter {
   // --- object types -----------------------------------------------------------------------------------------------
 
   type(rec: RObjectType) {
+    const t = tLoc(this.app, this.loc);
     const known = this.host.getId('object_type', rec.ext);
     if (this.env.dry) {
       this.host.stat('object_types', known ? 'updated' : 'created');
@@ -66,7 +68,7 @@ export class ObjectsWriter {
     }
     if (!this.available()) {
       this.host.stat('object_types', 'skipped');
-      return void this.env.warn(`Tabelle „${clip(rec.singular, 60)}“ nicht angelegt: eigene Objekte sind in dieser Installation nicht verfügbar`);
+      return void this.env.warn(t('Tabelle „{name}“ nicht angelegt: eigene Objekte sind in dieser Installation nicht verfügbar', { name: clip(rec.singular, 60) }));
     }
     const there = known && !known.local.startsWith('dry:') ? this.db.get<{ id: string; key: string }>('SELECT id, key FROM object_types WHERE id = ? AND location_id = ?', known.local, this.loc) : undefined;
     let key: string;
@@ -74,9 +76,9 @@ export class ObjectsWriter {
       key = there.key;
       this.host.stat('object_types', 'updated');
     } else {
-      const singular = clip(rec.singular, 60).trim() || 'Eintrag';
+      const singular = clip(rec.singular, 60).trim() || t('Eintrag');
       const plural = clip(rec.plural || rec.singular, 60).trim() || singular;
-      if (Number(this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM object_types WHERE location_id = ?', this.loc)?.n) >= MAX_TYPES) throw new Error(`Höchstens ${MAX_TYPES} eigene Objekte – „${plural}“ passt nicht mehr hinein`);
+      if (Number(this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM object_types WHERE location_id = ?', this.loc)?.n) >= MAX_TYPES) throw new Error(t('Höchstens {n} eigene Objekte – „{name}“ passt nicht mehr hinein', { n: MAX_TYPES, name: plural }));
       const base = `p_${keyFromLabel(plural)}`.slice(0, 38);
       key = base;
       for (let i = 2; this.db.get('SELECT 1 FROM object_types WHERE location_id = ? AND key = ?', this.loc, key); i++) key = `${base}_${i}`;
@@ -92,12 +94,12 @@ export class ObjectsWriter {
           plural,
           icon: 'layers',
           primary_property: 'name',
-          description: clip(rec.description || `Aus ${this.env.label} übernommen`, 500),
+          description: clip(rec.description || t('Aus {source} übernommen', { source: this.env.label }), 500),
           position: this.db.get<{ n: number }>('SELECT COALESCE(MAX(position), 0) + 1 AS n FROM object_types WHERE location_id = ?', this.loc)!.n,
           created_at: now(),
           updated_at: now(),
         });
-        this.db.insert('object_properties', { id: id(), location_id: this.loc, object_key: key, key: 'name', label: clip(primary?.label || 'Name', 100), type: 'text', options: [], group_key: '', description: '', is_required: 0, is_unique: 0, position: 0, created_at: now(), updated_at: now() });
+        this.db.insert('object_properties', { id: id(), location_id: this.loc, object_key: key, key: 'name', label: clip(primary?.label || t('Name'), 100), type: 'text', options: [], group_key: '', description: '', is_required: 0, is_unique: 0, position: 0, created_at: now(), updated_at: now() });
       });
       this.host.setId('object_type', rec.ext, tid, key);
       this.host.item('object_type', tid, rec.ext, true);
@@ -112,7 +114,7 @@ export class ObjectsWriter {
       if (p === primary && !there) continue;
       if (there && this.host.getId('object_prop', `${rec.ext}:${p.ext}`)) continue;
       if (n >= MAX_PROPS) {
-        this.tell(`props:${rec.ext}`, `„${clip(rec.singular, 60)}“: mehr als ${MAX_PROPS} Spalten – die übrigen wurden nicht übernommen`);
+        this.tell(`props:${rec.ext}`, t('„{name}“: mehr als {n} Spalten – die übrigen wurden nicht übernommen', { name: clip(rec.singular, 60), n: MAX_PROPS }));
         break;
       }
       let pk = keyFromLabel(p.label).slice(0, 56);
@@ -124,7 +126,7 @@ export class ObjectsWriter {
         n++;
         this.host.setId('object_prop', `${rec.ext}:${p.ext}`, pk);
       } catch (e) {
-        this.tell(`prop:${rec.ext}:${p.ext}`, `Spalte „${clip(p.label, 40)}“ in „${clip(rec.singular, 40)}“ nicht angelegt: ${(e as Error).message}`);
+        this.tell(`prop:${rec.ext}:${p.ext}`, t('Spalte „{column}“ in „{name}“ nicht angelegt: {reason}', { column: clip(p.label, 40), name: clip(rec.singular, 40), reason: t((e as Error).message) }));
       }
     }
     this.defsOf(key, true);
@@ -152,7 +154,8 @@ export class ObjectsWriter {
           }
         }
       }
-      this.tell(`val:${typeKey}:${d.key}`, `${where}: ein Wert in „${d.label}“ passt nicht zum Typ und wurde weggelassen (${e.message.slice(0, 100)})`);
+      const t = tLoc(this.app, this.loc);
+      this.tell(`val:${typeKey}:${d.key}`, t('{where}: ein Wert in „{field}“ passt nicht zum Typ und wurde weggelassen ({reason})', { where, field: d.label, reason: e.message.slice(0, 100) }));
       return undefined;
     }
   }
@@ -163,14 +166,15 @@ export class ObjectsWriter {
       this.host.stat('object_records', known ? 'updated' : 'created');
       return void this.host.virtual.add(`object_record:${rec.ext}`);
     }
-    const t = this.host.getId('object_type', rec.type);
-    if (!t || t.local.startsWith('dry:') || !t.extra) {
+    const t = tLoc(this.app, this.loc);
+    const ty = this.host.getId('object_type', rec.type);
+    if (!ty || ty.local.startsWith('dry:') || !ty.extra) {
       this.host.stat('object_records', 'skipped');
-      return void this.tell(`notype:${rec.type}`, `Datensätze übersprungen: die Tabelle „${clip(rec.type, 40)}“ ist nicht angelegt`);
+      return void this.tell(`notype:${rec.type}`, t('Datensätze übersprungen: die Tabelle „{name}“ ist nicht angelegt', { name: clip(rec.type, 40) }));
     }
-    const typeKey = t.extra;
+    const typeKey = ty.extra;
     const defs = this.defsOf(typeKey);
-    const where = `Tabelle „${typeKey.slice(2)}“`;
+    const where = t('Tabelle „{name}“', { name: typeKey.slice(2) });
     const props: Record<string, unknown> = {};
     for (const [pext, raw] of Object.entries(rec.values)) {
       const pk = this.host.getId('object_prop', `${rec.type}:${pext}`)?.local;
@@ -239,8 +243,8 @@ export function undoObjects(app: App, loc: string, items: Item[], h: UndoHelpers
   }
   for (const it of items.filter((i) => i.kind === 'object_type' && i.created)) {
     try {
-      const t = db.get<{ key: string }>('SELECT key FROM object_types WHERE id = ? AND location_id = ?', it.local_id, loc);
-      if (!t) continue;
+      const ot = db.get<{ key: string }>('SELECT key FROM object_types WHERE id = ? AND location_id = ?', it.local_id, loc);
+      if (!ot) continue;
       if (db.get('SELECT 1 FROM object_records WHERE type_id = ? LIMIT 1', it.local_id)) {
         h.keep('object_types');
         h.notes.push('Ein eigenes Objekt bleibt, weil es noch Datensätze enthält, die nicht aus dem Umzug stammen.');
@@ -248,8 +252,8 @@ export function undoObjects(app: App, loc: string, items: Item[], h: UndoHelpers
       }
       db.tx(() => {
         db.run('DELETE FROM object_types WHERE id = ?', it.local_id);
-        for (const table of ['object_properties', 'property_groups', 'object_views']) db.run(`DELETE FROM ${table} WHERE location_id = ? AND object_key = ?`, loc, t.key);
-        db.run('DELETE FROM association_labels WHERE location_id = ? AND (a_type = ? OR b_type = ?)', loc, t.key, t.key);
+        for (const table of ['object_properties', 'property_groups', 'object_views']) db.run(`DELETE FROM ${table} WHERE location_id = ? AND object_key = ?`, loc, ot.key);
+        db.run('DELETE FROM association_labels WHERE location_id = ? AND (a_type = ? OR b_type = ?)', loc, ot.key, ot.key);
       });
       h.del('object_types');
       h.gone.push(it.local_id);

@@ -5,6 +5,7 @@ import type { App, Module } from '../core/app.js';
 import { HttpError, bad, notFound, type Ctx } from '../core/http.js';
 import { id, now, sha256, token } from '../core/util.js';
 import { createLocation } from './core.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Akademie: guided in-app tours. The tours themselves live in the web app (web/src/tour/*);
@@ -22,9 +23,10 @@ function tourId(v: unknown): string {
   return s;
 }
 
-function int(v: unknown, field: string, min: number, max: number): number {
+/** `message` is the whole error (static, so core/app.ts can translate it). */
+function int(v: unknown, message: string, min: number, max: number): number {
   const n = Number(v);
-  if (!Number.isInteger(n) || n < min || n > max) throw bad(`${field} ungültig`);
+  if (!Number.isInteger(n) || n < min || n > max) throw bad(message);
   return n;
 }
 
@@ -54,11 +56,12 @@ function docsDir(): string | undefined {
   return candidates.find((d) => existsSync(join(d, 'academy.md')) || existsSync(join(d, 'api.md')));
 }
 
-function docFile(name: string): string | undefined {
+function docFile(name: string, german = false): string | undefined {
   const dir = docsDir();
   if (!dir || !/^[A-Za-z0-9-]{1,60}$/.test(name)) return undefined;
-  // The UI is German: prefer the German README (README.de.md) next to the English one.
-  const readme = [resolve(dir, '..', 'README.de.md'), resolve(dir, '..', 'README.md')].find((f) => existsSync(f)) ?? resolve(dir, '..', 'README.md');
+  // English first; a German reader gets the German README (README.de.md) when there is one.
+  const readmes = german ? ['README.de.md', 'README.md'] : ['README.md', 'README.de.md'];
+  const readme = readmes.map((f) => resolve(dir, '..', f)).find((f) => existsSync(f)) ?? resolve(dir, '..', 'README.md');
   const file = name === 'README' ? readme : join(dir, `${name}.md`);
   return existsSync(file) ? file : undefined;
 }
@@ -95,33 +98,52 @@ export async function seedSandbox(app: App, locationId: string): Promise<number>
       return undefined;
     }
   };
+  // Every visible text goes through the sub-account's language (the German text is the key; the English catalog turns
+  // the practice company into a small business in Kenya, a Somali catalog can do the same).
+  const t = tLoc(app, locationId);
+  /** 'Anna Beispiel' → ['Wanjiku', 'Kamau'] in the sub-account's language (first word = first name). */
+  const person = (full: string): [string, string] => {
+    const s = t(full).trim();
+    const i = s.indexOf(' ');
+    return i < 0 ? [s, ''] : [s.slice(0, i), s.slice(i + 1)];
+  };
+  const mailPart = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/ä/g, 'ae')
+      .replace(/ö/g, 'oe')
+      .replace(/ü/g, 'ue')
+      .replace(/ß/g, 'ss')
+      .normalize('NFD')
+      .replace(/[^a-z0-9]+/g, '');
   try {
-    await call('PUT', '/api/project', { status: 'idee', category: 'Übung', tagline: 'Spielwiese der Akademie – keine echten Kunden, alles darf ausprobiert werden.', description: 'Diese Firma hat die Akademie angelegt. Alle Kontakte, Deals und Rechnungen sind erfunden (…@example.com). E-Mails und SMS werden hier nur gespeichert, nie verschickt. Du kannst sie in der Akademie jederzeit wieder löschen.' });
+    await call('PUT', '/api/project', { status: 'idee', category: t('Übung'), tagline: t('Spielwiese der Akademie – keine echten Kunden, alles darf ausprobiert werden.'), description: t('Diese Firma hat die Akademie angelegt. Alle Kontakte, Deals und Rechnungen sind erfunden (…@example.com). E-Mails und SMS werden hier nur gespeichert, nie verschickt. Du kannst sie in der Akademie jederzeit wieder löschen.') });
     const people = [
-      ['Anna', 'Beispiel', 'Bäckerei Beispiel', ['Neukunde', 'VIP'], 'Website'],
-      ['Ben', 'Muster', 'Muster & Söhne GmbH', ['Interessent'], 'Empfehlung'],
-      ['Clara', 'Probe', 'Probe Design', ['Interessent'], 'Google'],
-      ['David', 'Test', '', ['Neukunde'], 'Instagram'],
-      ['Eva', 'Demo', 'Demo Immobilien', ['Interessent', 'Newsletter'], 'Formular'],
-      ['Felix', 'Übung', 'Übung Handwerk', ['Newsletter'], 'Messe'],
-      ['Greta', 'Fiktiv', 'Fiktiv Coaching', ['VIP'], 'Empfehlung'],
-      ['Hannes', 'Platzhalter', '', ['Interessent'], 'Live-Chat'],
+      ['Anna Beispiel', 'Bäckerei Beispiel', ['Neukunde', 'VIP'], 'Website'],
+      ['Ben Muster', 'Muster & Söhne GmbH', ['Interessent'], 'Empfehlung'],
+      ['Clara Probe', 'Probe Design', ['Interessent'], 'Google'],
+      ['David Test', '', ['Neukunde'], 'Instagram'],
+      ['Eva Demo', 'Demo Immobilien', ['Interessent', 'Newsletter'], 'Formular'],
+      ['Felix Übung', 'Übung Handwerk', ['Newsletter'], 'Messe'],
+      ['Greta Fiktiv', 'Fiktiv Coaching', ['VIP'], 'Empfehlung'],
+      ['Hannes Platzhalter', '', ['Interessent'], 'Live-Chat'],
     ] as const;
     const contacts: any[] = [];
-    for (const [i, [first, last, company, tags, source]] of people.entries()) {
+    for (const [i, [full, company, tags, source]] of people.entries()) {
+      const [first, last] = person(full);
       const c = await call('POST', '/api/contacts', {
         first_name: first,
         last_name: last,
-        email: `${first.toLowerCase().replace('ü', 'ue')}.${last.toLowerCase().replace('ü', 'ue')}@example.com`,
-        phone: `+49 151 0000 00${String(i + 10)}`,
-        company,
-        tags: [...tags],
-        source,
+        email: `${mailPart(first)}.${mailPart(last)}@example.com`,
+        phone: t('+49 151 0000 00{n}', { n: String(i + 10) }),
+        company: company ? t(company) : '',
+        tags: tags.map((x) => t(x)),
+        source: t(source),
       });
       if (c?.id) contacts.push(c);
     }
     const [anna, ben, clara, david, eva] = contacts;
-    if (anna) await call('POST', `/api/contacts/${anna.id}/notes`, { body: 'Möchte im Frühjahr eine neue Website. Ruft am liebsten vormittags an. (Übungsnotiz)' });
+    if (anna) await call('POST', `/api/contacts/${anna.id}/notes`, { body: t('Möchte im Frühjahr eine neue Website. Ruft am liebsten vormittags an. (Übungsnotiz)') });
 
     const pipelines = await call('GET', '/api/pipelines');
     const pipe = Array.isArray(pipelines) ? pipelines[0] : undefined;
@@ -134,64 +156,69 @@ export async function seedSandbox(app: App, locationId: string): Promise<number>
       ] as const;
       for (const [c, name, cents, stage] of deals) {
         if (!c) continue;
-        await call('POST', '/api/opportunities', { contact_id: c.id, pipeline_id: pipe.id, stage_id: pipe.stages[Math.min(stage, pipe.stages.length - 1)]?.id, name, value: cents / 100 });
+        await call('POST', '/api/opportunities', { contact_id: c.id, pipeline_id: pipe.id, stage_id: pipe.stages[Math.min(stage, pipe.stages.length - 1)]?.id, name: t(name), value: cents / 100 });
       }
     }
-    await call('POST', '/api/tasks', { title: 'Angebot an Ben Muster schicken', contact_id: ben?.id, due_at: day(-1) });
-    await call('POST', '/api/tasks', { title: 'Clara wegen Logo-Entwürfen anrufen', contact_id: clara?.id, due_at: day(0, 15) });
-    await call('POST', '/api/tasks', { title: 'Newsletter für nächsten Monat vorbereiten', due_at: day(6) });
+    await call('POST', '/api/tasks', { title: t('Angebot an Ben Muster schicken'), contact_id: ben?.id, due_at: day(-1) });
+    await call('POST', '/api/tasks', { title: t('Clara wegen Logo-Entwürfen anrufen'), contact_id: clara?.id, due_at: day(0, 15) });
+    await call('POST', '/api/tasks', { title: t('Newsletter für nächsten Monat vorbereiten'), due_at: day(6) });
 
-    const cal = await call('POST', '/api/calendars', { name: 'Erstgespräch (Übung)', duration: 30, description: 'Kostenloses Kennenlernen – 30 Minuten per Telefon oder Video.' });
-    if (cal?.id && anna) await call('POST', '/api/appointments', { calendar_id: cal.id, contact_id: anna.id, start: day(2, 10), notes: 'Übungstermin', force: true });
+    const cal = await call('POST', '/api/calendars', { name: t('Erstgespräch (Übung)'), duration: 30, description: t('Kostenloses Kennenlernen – 30 Minuten per Telefon oder Video.') });
+    if (cal?.id && anna) await call('POST', '/api/appointments', { calendar_id: cal.id, contact_id: anna.id, start: day(2, 10), notes: t('Übungstermin'), force: true });
 
-    await call('POST', '/api/forms', { name: 'Kontaktformular (Übung)' });
-    await call('POST', '/api/funnels', { name: 'Übungs-Website', kind: 'website' });
+    await call('POST', '/api/forms', { name: t('Kontaktformular (Übung)') });
+    await call('POST', '/api/funnels', { name: t('Übungs-Website'), kind: 'website' });
 
-    const product = await call('POST', '/api/products', { name: 'Beratungspaket', description: '3 Stunden Beratung inkl. Protokoll', price_cents: 49000, tax_rate: 19 });
-    await call('POST', '/api/products', { name: 'Website-Check', description: 'Kurzer Check von Technik, Texten und SEO', price_cents: 9900, tax_rate: 19 });
-    if (ben) await call('POST', '/api/invoices', { contact_id: ben.id, title: 'Beratung (Übung)', items: [{ name: product?.name ?? 'Beratungspaket', qty: 1, price_cents: 49000, tax_rate: 19 }] });
+    // VAT of the practice company's country: 19 % in Germany, 16 % in Kenya (every other language plays in East Africa).
+    const vat = t.locale === 'de' ? 19 : 16;
+    const product = await call('POST', '/api/products', { name: t('Beratungspaket'), description: t('3 Stunden Beratung inkl. Protokoll'), price_cents: 49000, tax_rate: vat });
+    await call('POST', '/api/products', { name: t('Website-Check'), description: t('Kurzer Check von Technik, Texten und SEO'), price_cents: 9900, tax_rate: vat });
+    if (ben) await call('POST', '/api/invoices', { contact_id: ben.id, title: t('Beratung (Übung)'), items: [{ name: product?.name ?? t('Beratungspaket'), qty: 1, price_cents: 49000, tax_rate: vat }] });
 
-    await call('POST', '/api/courses', { title: 'Kundenschulung (Übung)' });
-    await call('POST', '/api/community/groups', { name: 'Übungs-Community', description: 'Zum Ausprobieren – hier schreibt niemand Echtes.' });
-    await call('POST', '/api/contracts', { kind: 'template', title: 'Dienstleistungsvertrag (Übung)', content: '# Dienstleistungsvertrag\n\nZwischen {{location.name}} und {{contact.first_name}} {{contact.last_name}}.\n\n## Leistung\nBeratung wie besprochen.\n\nOrt, Datum: ________________' });
-    await call('POST', '/api/campaigns', { name: 'Newsletter Herbst (Übung)', channel: 'email', subject: 'Neuigkeiten aus der Übungs-Firma', body: 'Hallo {{contact.first_name|du}},\n\nhier sind unsere Neuigkeiten …', filter: { tags: ['Newsletter'] } });
-    await call('POST', '/api/workflows', { name: 'Willkommens-Strecke (Übung)', trigger: { type: 'contact.tag_added', config: { tag: 'Neukunde' } }, steps: [] });
-    if (david) await call('POST', '/api/messages', { contact_id: david.id, channel: 'email', subject: 'Willkommen!', body: 'Hallo David, schön, dass du da bist. (Übungsnachricht – wird nicht verschickt.)' });
+    await call('POST', '/api/courses', { title: t('Kundenschulung (Übung)') });
+    await call('POST', '/api/community/groups', { name: t('Übungs-Community'), description: t('Zum Ausprobieren – hier schreibt niemand Echtes.') });
+    await call('POST', '/api/contracts', { kind: 'template', title: t('Dienstleistungsvertrag (Übung)'), content: t('# Dienstleistungsvertrag\n\nZwischen {{location.name}} und {{contact.first_name}} {{contact.last_name}}.\n\n## Leistung\nBeratung wie besprochen.\n\nOrt, Datum: ________________') });
+    await call('POST', '/api/campaigns', { name: t('Newsletter Herbst (Übung)'), channel: 'email', subject: t('Neuigkeiten aus der Übungs-Firma'), body: t('Hallo {{contact.first_name|du}},\n\nhier sind unsere Neuigkeiten …'), filter: { tags: [t('Newsletter')] } });
+    await call('POST', '/api/workflows', { name: t('Willkommens-Strecke (Übung)'), trigger: { type: 'contact.tag_added', config: { tag: t('Neukunde') } }, steps: [] });
+    if (david) await call('POST', '/api/messages', { contact_id: david.id, channel: 'email', subject: t('Willkommen!'), body: t('Hallo David, schön, dass du da bist. (Übungsnachricht – wird nicht verschickt.)') });
 
     // Service: two tickets and a help article (the companies come from the contacts' „Firma“ field).
-    if (anna) await call('POST', '/api/tickets', { subject: 'Rechnung nicht angekommen (Übung)', description: 'Hallo, die letzte Rechnung ist bei mir nicht angekommen. Können Sie sie noch einmal schicken?', contact_id: anna.id, priority: 'hoch' });
-    if (clara) await call('POST', '/api/tickets', { subject: 'Frage zu den Logo-Entwürfen (Übung)', description: 'Kann ich die Entwürfe auch als PDF bekommen?', contact_id: clara.id });
-    const kbCat = await call('POST', '/api/kb/categories', { name: 'Erste Schritte (Übung)', description: 'Antworten auf die häufigsten Fragen.' });
+    if (anna) await call('POST', '/api/tickets', { subject: t('Rechnung nicht angekommen (Übung)'), description: t('Hallo, die letzte Rechnung ist bei mir nicht angekommen. Können Sie sie noch einmal schicken?'), contact_id: anna.id, priority: 'hoch' });
+    if (clara) await call('POST', '/api/tickets', { subject: t('Frage zu den Logo-Entwürfen (Übung)'), description: t('Kann ich die Entwürfe auch als PDF bekommen?'), contact_id: clara.id });
+    const kbCat = await call('POST', '/api/kb/categories', { name: t('Erste Schritte (Übung)'), description: t('Antworten auf die häufigsten Fragen.') });
     await call('POST', '/api/kb/articles', {
-      title: 'So buchst du einen Termin (Übung)',
+      title: t('So buchst du einen Termin (Übung)'),
       category_id: kbCat?.id,
       status: 'published',
-      tags: ['Termin', 'Buchung'],
-      body: '## Termin buchen\n\n1. Öffne unsere Buchungsseite.\n2. Wähle einen freien Termin.\n3. Trag Name und E-Mail ein – fertig.\n\n> Du bekommst sofort eine Bestätigung per E-Mail.',
+      tags: [t('Termin'), t('Buchung')],
+      body: t('## Termin buchen\n\n1. Öffne unsere Buchungsseite.\n2. Wähle einen freien Termin.\n3. Trag Name und E-Mail ein – fertig.\n\n> Du bekommst sofort eine Bestätigung per E-Mail.'),
     });
 
     // Companies, custom objects & lead scoring.
-    await call('POST', '/api/association-labels', { a_type: 'contact', b_type: 'company', name: 'Entscheider' });
-    await call('POST', '/api/association-labels', { a_type: 'contact', b_type: 'company', name: 'Rechnungsempfänger' });
+    await call('POST', '/api/association-labels', { a_type: 'contact', b_type: 'company', name: t('Entscheider') });
+    await call('POST', '/api/association-labels', { a_type: 'contact', b_type: 'company', name: t('Rechnungsempfänger') });
+    // Fixed internal names, so the records below find their properties in every language.
+    const [offer, running] = [t('Angebot'), t('Läuft')];
     const projects = await call('POST', '/api/object-types', {
-      singular: 'Projekt',
-      plural: 'Projekte',
-      description: 'Kundenprojekte (Übung)',
+      key: 'p_projekte',
+      singular: t('Projekt'),
+      plural: t('Projekte'),
+      description: t('Kundenprojekte (Übung)'),
       properties: [
-        { label: 'Status', type: 'select', options: ['Angebot', 'Läuft', 'Fertig'] },
-        { label: 'Budget', type: 'number' },
+        { key: 'status', label: t('Status'), type: 'select', options: [offer, running, t('Fertig')] },
+        { key: 'budget', label: t('Budget'), type: 'number' },
       ],
     });
     if (projects?.key) {
-      if (ben) await call('POST', `/api/objects/${projects.key}/records`, { properties: { name: 'Website-Relaunch Muster', status: 'Läuft', budget: 4800 }, associations: [{ type: 'contact', id: ben.id }] });
-      if (eva) await call('POST', `/api/objects/${projects.key}/records`, { properties: { name: 'Social Media Demo Immobilien', status: 'Angebot', budget: 3600 }, associations: [{ type: 'contact', id: eva.id }] });
+      if (ben) await call('POST', `/api/objects/${projects.key}/records`, { properties: { name: t('Website-Relaunch Muster'), status: running, budget: 4800 }, associations: [{ type: 'contact', id: ben.id }] });
+      if (eva) await call('POST', `/api/objects/${projects.key}/records`, { properties: { name: t('Social Media Demo Immobilien'), status: offer, budget: 3600 }, associations: [{ type: 'contact', id: eva.id }] });
     }
     await call('POST', '/api/lead-scoring/models', {
-      name: 'Lead-Score (Übung)',
+      name: t('Lead-Score (Übung)'),
       rules: [
-        { kind: 'property', field: 'tag', op: 'has', value: 'VIP', points: 40 },
-        { kind: 'property', field: 'tag', op: 'has', value: 'Interessent', points: 20 },
-        { kind: 'property', field: 'source', op: 'equals', value: 'Empfehlung', points: 20 },
+        { kind: 'property', field: 'tag', op: 'has', value: t('VIP'), points: 40 },
+        { kind: 'property', field: 'tag', op: 'has', value: t('Interessent'), points: 20 },
+        { kind: 'property', field: 'source', op: 'equals', value: t('Empfehlung'), points: 20 },
         { kind: 'event', event: 'form.submitted', points: 10, max_points: 30 },
         { kind: 'event', event: 'email.clicked', points: 5, max_points: 25 },
         { kind: 'event', event: 'appointment.booked', points: 25 },
@@ -271,8 +298,8 @@ export const academyModule: Module = {
       const u = user(ctx);
       const tid = tourId(ctx.params.id);
       const b = ctx.body ?? {};
-      const total = int(b.total, 'Schrittzahl', 1, 999);
-      const step = int(b.step ?? 0, 'Schritt', 0, total);
+      const total = int(b.total, 'Schrittzahl ungültig', 1, 999);
+      const step = int(b.step ?? 0, 'Schritt ungültig', 0, total);
       const done = b.done === true;
       const cur = db.get('SELECT * FROM academy_progress WHERE user_id = ? AND tour_id = ?', u.id, tid);
       const t = now();
@@ -321,7 +348,7 @@ export const academyModule: Module = {
     router.get('/api/academy/docs/:name', 'user', (ctx) => {
       const name = ctx.params.name;
       if (user(ctx).role !== 'admin' && !MEMBER_DOCS.includes(name)) throw new HttpError(403, 'Diese Anleitung ist nur für die Agentur');
-      const file = docFile(name);
+      const file = docFile(name, tCtx(ctx).locale === 'de');
       if (!file) throw notFound('Anleitung nicht gefunden');
       const markdown = readFileSync(file, 'utf8');
       return { name, title: markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? name, markdown };
@@ -330,7 +357,9 @@ export const academyModule: Module = {
     router.post('/api/academy/sandbox', 'admin', async (ctx) => {
       const have = sandboxOf(app);
       if (have) return { ...have, created: false };
-      const loc = createLocation(db, SANDBOX_NAME, 'Europe/Berlin', { email: 'uebung@example.com', website: '' });
+      // Name, time zone and address in the instance language: English makes it a small business in Kenya.
+      const t = tLoc(app);
+      const loc = createLocation(db, t(SANDBOX_NAME), t.locale === 'de' ? 'Europe/Berlin' : 'Africa/Nairobi', { email: t('uebung@example.com'), website: '' });
       db.run('INSERT INTO academy_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'sandbox', loc.id);
       const seeded = ctx.body?.demo === false ? 0 : await seedSandbox(app, loc.id);
       return { id: loc.id, name: loc.name, created: true, seeded };

@@ -4,6 +4,7 @@ import { id, now } from '../core/util.js';
 import { actorOf, teamUsers, track } from '../services/collab-actor.js';
 import { LIMITS, LOCK_TTL_MS, activeLock, lockMessage, type LockRow } from '../services/office-model.js';
 import { getFile } from '../services/office-store.js';
+import { tCtx, tUser } from '../i18n/index.js';
 
 /**
  * Office collaboration (docs/office.md#collaboration): the edit lock ("ausgecheckt" – one person edits, everybody else opens
@@ -50,7 +51,7 @@ export const officeCollabModule: Module = {
       const cur = activeLock(db.get<LockRow>('SELECT * FROM office_locks WHERE file_id = ?', f.id));
       const takeOver = ctx.body?.take_over === true;
       if (cur && cur.user_id !== u.id) {
-        if (!takeOver) throw new HttpError(423, lockMessage(cur), { locked_by: cur.user_name, locked_until: cur.expires_at });
+        if (!takeOver) throw new HttpError(423, lockMessage(cur, tCtx(ctx)), { locked_by: cur.user_name, locked_until: cur.expires_at });
         if (u.role !== 'admin') throw new HttpError(403, 'Nur Admins können die Sperre eines anderen übernehmen');
       }
       const at = new Date();
@@ -127,7 +128,11 @@ export const officeCollabModule: Module = {
       notify.delete(actor.id ?? '');
       const targets = [...notify].filter((uid) => team.some((u) => u.id === uid));
       if (targets.length && app.services.pushNotify) {
-        track(app, Promise.resolve(app.services.pushNotify({ userIds: targets, kind: 'office', title: `${actor.name} hat „${f.name}“ kommentiert`.slice(0, 120), body: body.slice(0, 200), url: `/app/office/${f.id}?comment=${row.id}`, tag: `office-c:${row.id}` })));
+        // One notice per person, in their own language.
+        for (const uid of targets) {
+          const title = tUser(app as never, uid)('{name} hat „{file}“ kommentiert', { name: actor.name, file: f.name }).slice(0, 120);
+          track(app, Promise.resolve(app.services.pushNotify({ userIds: [uid], kind: 'office', title, body: body.slice(0, 200), url: `/app/office/${f.id}?comment=${row.id}`, tag: `office-c:${row.id}` })));
+        }
       }
       return { ...commentOut(row), name: f.name, notified: targets.length };
     });

@@ -5,6 +5,7 @@ import { getContact } from '../services/contacts.js';
 import { getOrCreateConversation } from '../services/messaging.js';
 import { WINDOW_MS } from '../services/meta.js';
 import type { Tool } from './mcp.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * SMS and WhatsApp reply drafts (docs/team-inbox.md#sms-and-whatsapp-drafts): the in-app agent and MCP store a draft reply in a
@@ -73,7 +74,8 @@ export const msgDraftsModule: Module = {
         conversationId = '';
       }
       const contact = getContact(app, ctx.locationId, contactId)!;
-      if (!String(contact.phone ?? '').trim()) throw bad(`Der Kontakt hat keine Telefonnummer – kein ${channel === 'sms' ? 'SMS' : 'WhatsApp'}-Entwurf möglich`);
+      const t = tCtx(ctx);
+      if (!String(contact.phone ?? '').trim()) throw bad(t('Der Kontakt hat keine Telefonnummer – kein {channel}-Entwurf möglich', { channel: channel === 'sms' ? 'SMS' : 'WhatsApp' }));
       conversationId ||= getOrCreateConversation(app, ctx.locationId, contactId);
       const source = str(ctx.body.source, 'Quelle', { max: 60 }) || DEFAULT_SOURCE;
       // one open draft per channel and author: a new one replaces the previous one instead of piling up
@@ -99,9 +101,9 @@ export const msgDraftsModule: Module = {
       if (channel === 'whatsapp') {
         const at = db.get<{ at: string | null }>(`SELECT MAX(created_at) AS at FROM messages WHERE location_id = ? AND contact_id = ? AND channel = 'whatsapp' AND direction = 'in'`, ctx.locationId, contactId)?.at;
         windowOpen = !!at && new Date(at).getTime() + WINDOW_MS > Date.now();
-        if (!windowOpen) hint = 'Das 24-Stunden-Fenster ist zu: der Text lässt sich erst nach einer neuen Nachricht des Kontakts senden, bis dahin nur eine freigegebene Vorlage.';
+        if (!windowOpen) hint = t('Das 24-Stunden-Fenster ist zu: der Text lässt sich erst nach einer neuen Nachricht des Kontakts senden, bis dahin nur eine freigegebene Vorlage.');
       }
-      app.services.audit?.({ ctx, action: 'message.draft', summary: `${channel === 'sms' ? 'SMS' : 'WhatsApp'}-Entwurf für ${[contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.phone} angelegt`, locationId: ctx.locationId, entityId: row.id });
+      app.services.audit?.({ ctx, action: 'message.draft', summary: tLoc(app, ctx.locationId)('{channel}-Entwurf für {name} angelegt', { channel: channel === 'sms' ? 'SMS' : 'WhatsApp', name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.phone }), locationId: ctx.locationId, entityId: row.id });
       return { id: row.id, conversation_id: conversationId, contact_id: contactId, channel, status: 'draft', replaced, window_open: windowOpen, hint };
     });
   },

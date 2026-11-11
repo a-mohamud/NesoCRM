@@ -9,6 +9,7 @@ import { cleanBlocks } from '../services/site-layout.js';
 import { pageUrl, renderPage, renderBlock } from '../services/site-render.js';
 import { miniMarkdown, type Block } from '../services/site-blocks.js';
 import { cleanPageLayout, cleanSiteSettings } from '../services/site-settings.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Funnels and websites: the sites, their pages, the public pages (/p/<site>/<page>, custom domains), sitemap.xml and robots.txt.
@@ -30,7 +31,7 @@ const TEMPLATES: Record<string, { name: string; slug: string; blocks: Omit<Block
       blocks: [
         { type: 'hero', heading: 'Der kostenlose Leitfaden für dein Ziel', subheading: 'Trag dich ein und erhalte ihn sofort per E-Mail.', button_text: '', button_url: '', align: 'center', bg: '#eff6ff' },
         { type: 'form', form_id: '', heading: 'Jetzt kostenlos sichern' },
-        { type: 'features', heading: 'Das lernst du', items: [{ icon: '🚀', title: 'Schnell starten', text: 'In 10 Minuten zum ersten Ergebnis.' }, { icon: '🎯', title: 'Klarer Plan', text: 'Schritt für Schritt erklärt.' }, { icon: '💡', title: 'Praxis', text: 'Mit Beispielen und Vorlagen.' }] },
+        { type: 'features', heading: 'Das lernst du', items: [{ icon: '🚀', title: 'Schnell starten', text: 'In 10 Minuten zum ersten Ergebnis.' }, { icon: '🎯', title: 'Klarer Plan', text: 'Schritt für Schritt erklärt.' }, { icon: '💡', title: 'Praxisnah', text: 'Mit Beispielen und Vorlagen.' }] },
       ],
     },
     { name: 'Danke', slug: 'danke', blocks: [{ type: 'hero', heading: 'Danke! 🎉', subheading: 'Schau in dein Postfach – der Leitfaden ist unterwegs.', align: 'center' }] },
@@ -62,6 +63,14 @@ const TEMPLATES: Record<string, { name: string; slug: string; blocks: Omit<Block
   ],
   blank: [{ name: 'Seite 1', slug: 'start', blocks: [{ type: 'hero', heading: 'Überschrift', subheading: 'Unterzeile', align: 'center' }] }],
 };
+
+/** The visible texts of a template block in the sub-account's language (the German template texts are the catalog keys). */
+const TEXT_KEYS = new Set(['heading', 'subheading', 'button_text', 'text', 'title', 'quote', 'author', 'q', 'a']);
+function localizeBlock<T>(t: STFn, v: T): T {
+  if (Array.isArray(v)) return v.map((x) => localizeBlock(t, x)) as T;
+  if (!v || typeof v !== 'object') return v;
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, typeof x === 'string' && TEXT_KEYS.has(k) && x ? t(x) : localizeBlock(t, x)])) as T;
+}
 
 export const funnelsModule: Module = {
   name: 'funnels',
@@ -115,8 +124,9 @@ export const funnelsModule: Module = {
       const f = { id: id(), location_id: ctx.locationId, name, slug: uniqueSlug(ctx.body.slug || name), kind, settings: { color: '#2563eb', ...cleanSiteSettings(ctx.body.settings ?? {}) }, created_at: now(), updated_at: now() };
       db.tx(() => {
         db.insert('funnels', f);
+        const t = tLoc(app, ctx.locationId);
         tpl.forEach((p, i) =>
-          db.insert('funnel_pages', { id: id(), location_id: ctx.locationId, funnel_id: f.id, name: p.name, slug: p.slug, position: i, blocks: p.blocks.map((b) => ({ ...b, id: id(8) })), seo: { title: p.name }, created_at: now(), updated_at: now() }),
+          db.insert('funnel_pages', { id: id(), location_id: ctx.locationId, funnel_id: f.id, name: t(p.name), slug: p.slug, position: i, blocks: p.blocks.map((b) => ({ ...localizeBlock(t, b), id: id(8) })), seo: { title: t(p.name) }, created_at: now(), updated_at: now() }),
         );
       });
       // A new website: its Impressum and Datenschutz pages are filled from the company data (modules/legal-pages.ts) instead of "Hier einfügen".
@@ -201,13 +211,14 @@ export const funnelsModule: Module = {
       const nf = f.settings?.not_found ?? {};
       const chosen = (nf.page_id && pages.find((p) => p.id === nf.page_id)) || pages.find((p) => p.slug === '404');
       const home = pageUrl(app, f, pages[0], true);
+      const t = tLoc(app, f.location_id);
       const page = chosen ?? {
         id: '404',
-        name: 'Seite nicht gefunden',
+        name: t('Seite nicht gefunden'),
         slug: '404',
-        seo: { title: 'Seite nicht gefunden' },
+        seo: { title: t('Seite nicht gefunden') },
         layout: {},
-        blocks: [{ id: 'nf1', type: 'hero', heading: nf.heading || 'Seite nicht gefunden', subheading: nf.text || 'Diese Seite gibt es nicht (mehr).', button_text: 'Zur Startseite', button_url: home, align: 'center', padding: 96 }],
+        blocks: [{ id: 'nf1', type: 'hero', heading: nf.heading || t('Seite nicht gefunden'), subheading: nf.text || t('Diese Seite gibt es nicht (mehr).'), button_text: t('Zur Startseite'), button_url: home, align: 'center', padding: 96 }],
       };
       app.services.siteMissed?.(ctx, f);
       const r = html(renderPage(app, f, page, false, { ctx, noindex: true }), 404);
@@ -277,14 +288,14 @@ export const funnelsModule: Module = {
       return r;
     };
     const bySlug = (slug: string) => parseJson(db.get('SELECT * FROM funnels WHERE slug = ?', slug), ['settings']);
-    const gone = () => html(messagePage('Nicht gefunden', 'Diese Seite gibt es nicht.'), 404);
+    const gone = (ctx: Ctx) => html(messagePage(tCtx(ctx)('Nicht gefunden'), tCtx(ctx)('Diese Seite gibt es nicht.')), 404);
     router.get('/p/:funnel', 'public', (ctx) => {
       const f = bySlug(ctx.params.funnel);
-      return f ? servePage(ctx, f) : gone();
+      return f ? servePage(ctx, f) : gone(ctx);
     });
     router.get('/p/:funnel/:page', 'public', (ctx) => {
       const f = bySlug(ctx.params.funnel);
-      return f ? servePage(ctx, f, [ctx.params.page]) : gone();
+      return f ? servePage(ctx, f, [ctx.params.page]) : gone(ctx);
     });
     // Deeper paths (/p/<site>/<a>/<b>…: CMS items, redirects with wildcards, 404) are routed by modules/site-routing.ts, which registers
     // after the blog – its /blog/<post> route has to match first.

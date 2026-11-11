@@ -1,5 +1,6 @@
 import { bad } from '../core/http.js';
 import { calendarDaysBetween, daysOverdue } from './invoice-model.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 export { daysOverdue };
 
@@ -68,7 +69,9 @@ export interface DunningSettings {
   inv: InvSettings;
 }
 
-const SIGN = '\n\nViele Grüße\n{{location.name}}';
+/** A text written line by line: every line is its own catalog key, so the defaults can be translated (see localizeLines). */
+const lines = (...l: string[]) => l.join('\n');
+const SIGN = ['', 'Viele Grüße', '{{location.name}}'];
 
 export const DEFAULT_SUB: SubSettings = {
   enabled: true,
@@ -82,15 +85,48 @@ export const DEFAULT_SUB: SubSettings = {
   billing_method: 'setup',
   link_days: 30,
   email_subject: 'Deine Zahlung für „{{dunning.product}}“ hat nicht geklappt',
-  email_body: `Hallo {{contact.first_name|}},\n\nwir konnten {{dunning.amount}} für „{{dunning.product}}“ leider nicht einziehen. Meist liegt es an einer abgelaufenen oder gesperrten Karte.\n\nDu kannst deine Zahlungsmethode in einer Minute hier aktualisieren:\n{{dunning.url}}\n\nSobald die Zahlung durch ist, läuft alles weiter wie gewohnt.${SIGN}`,
+  email_body: lines(
+    'Hallo {{contact.first_name|}},',
+    '',
+    'wir konnten {{dunning.amount}} für „{{dunning.product}}“ leider nicht einziehen. Meist liegt es an einer abgelaufenen oder gesperrten Karte.',
+    '',
+    'Du kannst deine Zahlungsmethode in einer Minute hier aktualisieren:',
+    '{{dunning.url}}',
+    '',
+    'Sobald die Zahlung durch ist, läuft alles weiter wie gewohnt.',
+    ...SIGN,
+  ),
   reminder_subject: 'Erinnerung: Zahlungsmethode für „{{dunning.product}}“ aktualisieren',
-  reminder_body: `Hallo {{contact.first_name|}},\n\nwir haben {{dunning.amount}} für „{{dunning.product}}“ noch nicht erhalten. Bitte aktualisiere deine Zahlungsmethode, damit dein Zugang nicht unterbrochen wird:\n{{dunning.url}}${SIGN}`,
+  reminder_body: lines(
+    'Hallo {{contact.first_name|}},',
+    '',
+    'wir haben {{dunning.amount}} für „{{dunning.product}}“ noch nicht erhalten. Bitte aktualisiere deine Zahlungsmethode, damit dein Zugang nicht unterbrochen wird:',
+    '{{dunning.url}}',
+    ...SIGN,
+  ),
   final_subject: 'Dein Zugang zu „{{dunning.product}}“ ist pausiert',
-  final_body: `Hallo {{contact.first_name|}},\n\nleider konnten wir die Zahlung für „{{dunning.product}}“ auch nach mehreren Versuchen nicht einziehen. Dein Zugang ist deshalb pausiert.\n\nSobald du deine Zahlungsmethode aktualisiert hast, geht es sofort weiter:\n{{dunning.url}}${SIGN}`,
+  final_body: lines(
+    'Hallo {{contact.first_name|}},',
+    '',
+    'leider konnten wir die Zahlung für „{{dunning.product}}“ auch nach mehreren Versuchen nicht einziehen. Dein Zugang ist deshalb pausiert.',
+    '',
+    'Sobald du deine Zahlungsmethode aktualisiert hast, geht es sofort weiter:',
+    '{{dunning.url}}',
+    ...SIGN,
+  ),
   sms_body: 'Zahlung für {{dunning.product}} fehlgeschlagen. Bitte Zahlungsmethode aktualisieren: {{dunning.url}}',
 };
 
-const INV_TAIL = '\n\nRechnung ansehen und bezahlen: {{invoice.url}}\nSchreiben als PDF: {{notice.pdf_url}}\n\nHat sich Ihre Zahlung mit diesem Schreiben überschnitten, betrachten Sie es bitte als gegenstandslos.\n\nViele Grüße\n{{location.name}}';
+const INV_TAIL = [
+  '',
+  'Rechnung ansehen und bezahlen: {{invoice.url}}',
+  'Schreiben als PDF: {{notice.pdf_url}}',
+  '',
+  'Hat sich Ihre Zahlung mit diesem Schreiben überschnitten, betrachten Sie es bitte als gegenstandslos.',
+  '',
+  'Viele Grüße',
+  '{{location.name}}',
+];
 
 export const DEFAULT_LEVELS: Level[] = [
   {
@@ -100,7 +136,12 @@ export const DEFAULT_LEVELS: Level[] = [
     fee_cents: 0,
     deadline_days: 7,
     subject: 'Zahlungserinnerung zu Rechnung {{invoice.number}}',
-    body: `Hallo {{contact.first_name|}},\n\nzu unserer Rechnung {{invoice.number}} vom {{invoice.date}} über {{invoice.total}} konnten wir noch keinen Zahlungseingang feststellen. Vielleicht ist sie Ihnen entgangen – bitte überweisen Sie den offenen Betrag bis zum {{notice.deadline}}.${INV_TAIL}`,
+    body: lines(
+      'Hallo {{contact.first_name|}},',
+      '',
+      'zu unserer Rechnung {{invoice.number}} vom {{invoice.date}} über {{invoice.total}} konnten wir noch keinen Zahlungseingang feststellen. Vielleicht ist sie Ihnen entgangen – bitte überweisen Sie den offenen Betrag bis zum {{notice.deadline}}.',
+      ...INV_TAIL,
+    ),
   },
   {
     key: 'dunning1',
@@ -109,7 +150,12 @@ export const DEFAULT_LEVELS: Level[] = [
     fee_cents: 500,
     deadline_days: 7,
     subject: '1. Mahnung zu Rechnung {{invoice.number}}',
-    body: `Hallo {{contact.first_name|}},\n\nleider ist unsere Rechnung {{invoice.number}} über {{invoice.total}} (fällig am {{invoice.due}}) trotz Erinnerung noch offen. Wir bitten Sie, den Gesamtbetrag von {{notice.total}} (inkl. Mahngebühr {{notice.fee}}) bis zum {{notice.deadline}} zu überweisen.${INV_TAIL}`,
+    body: lines(
+      'Hallo {{contact.first_name|}},',
+      '',
+      'leider ist unsere Rechnung {{invoice.number}} über {{invoice.total}} (fällig am {{invoice.due}}) trotz Erinnerung noch offen. Wir bitten Sie, den Gesamtbetrag von {{notice.total}} (inkl. Mahngebühr {{notice.fee}}) bis zum {{notice.deadline}} zu überweisen.',
+      ...INV_TAIL,
+    ),
   },
   {
     key: 'dunning2',
@@ -118,9 +164,28 @@ export const DEFAULT_LEVELS: Level[] = [
     fee_cents: 1000,
     deadline_days: 5,
     subject: '2. Mahnung zu Rechnung {{invoice.number}} – letzte Zahlungsaufforderung',
-    body: `Hallo {{contact.first_name|}},\n\nauch nach unserer ersten Mahnung haben wir keinen Zahlungseingang zu Rechnung {{invoice.number}} festgestellt. Wir fordern Sie letztmalig auf, {{notice.total}} (Rechnung, Mahngebühren und Verzugszinsen) bis zum {{notice.deadline}} zu begleichen. Danach behalten wir uns weitere Schritte vor.${INV_TAIL}`,
+    body: lines(
+      'Hallo {{contact.first_name|}},',
+      '',
+      'auch nach unserer ersten Mahnung haben wir keinen Zahlungseingang zu Rechnung {{invoice.number}} festgestellt. Wir fordern Sie letztmalig auf, {{notice.total}} (Rechnung, Mahngebühren und Verzugszinsen) bis zum {{notice.deadline}} zu begleichen. Danach behalten wir uns weitere Schritte vor.',
+      ...INV_TAIL,
+    ),
   },
 ];
+
+/** A default text in a language, line by line (lines that are only merge tags or empty stay as they are). */
+export const localizeLines = (text: string, t: STFn) => text.split('\n').map((l) => (l.trim() ? t(l) : l)).join('\n');
+const localSub = (s: SubSettings, t: STFn): SubSettings => ({
+  ...s,
+  email_subject: t(s.email_subject),
+  email_body: localizeLines(s.email_body, t),
+  reminder_subject: t(s.reminder_subject),
+  reminder_body: localizeLines(s.reminder_body, t),
+  final_subject: t(s.final_subject),
+  final_body: localizeLines(s.final_body, t),
+  sms_body: t(s.sms_body),
+});
+const localLevel = (l: Level, t: STFn): Level => ({ ...l, label: t(l.label), subject: t(l.subject), body: localizeLines(l.body, t) });
 
 export const DEFAULT_INV: InvSettings = {
   mode: 'off',
@@ -146,8 +211,10 @@ const intIn = (v: unknown, lo: number, hi: number, fallback: number) => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
 };
 
-export function cleanSub(v: any, cur: SubSettings = DEFAULT_SUB): SubSettings {
+export function cleanSub(v: any, cur: SubSettings = DEFAULT_SUB, t: STFn = tApp()): SubSettings {
   const b = v && typeof v === 'object' ? v : {};
+  // an emptied text falls back to the default in the sub-account's language
+  const DEFAULT_SUB_T = localSub(DEFAULT_SUB, t);
   const pick = <T extends string>(x: unknown, allowed: T[], fallback: T): T => (allowed.includes(x as T) ? (x as T) : fallback);
   return {
     enabled: b.enabled === undefined ? cur.enabled : !!b.enabled,
@@ -160,23 +227,23 @@ export function cleanSub(v: any, cur: SubSettings = DEFAULT_SUB): SubSettings {
     cancel_on_final: b.cancel_on_final === undefined ? cur.cancel_on_final : !!b.cancel_on_final,
     billing_method: pick(b.billing_method ?? cur.billing_method, ['setup', 'portal'], 'setup'),
     link_days: b.link_days === undefined ? cur.link_days : intIn(b.link_days, 1, 90, cur.link_days),
-    email_subject: text(b.email_subject ?? cur.email_subject, DEFAULT_SUB.email_subject, 300),
-    email_body: text(b.email_body ?? cur.email_body, DEFAULT_SUB.email_body, 10_000),
-    reminder_subject: text(b.reminder_subject ?? cur.reminder_subject, DEFAULT_SUB.reminder_subject, 300),
-    reminder_body: text(b.reminder_body ?? cur.reminder_body, DEFAULT_SUB.reminder_body, 10_000),
-    final_subject: text(b.final_subject ?? cur.final_subject, DEFAULT_SUB.final_subject, 300),
-    final_body: text(b.final_body ?? cur.final_body, DEFAULT_SUB.final_body, 10_000),
-    sms_body: text(b.sms_body ?? cur.sms_body, DEFAULT_SUB.sms_body, 480),
+    email_subject: text(b.email_subject ?? cur.email_subject, DEFAULT_SUB_T.email_subject, 300),
+    email_body: text(b.email_body ?? cur.email_body, DEFAULT_SUB_T.email_body, 10_000),
+    reminder_subject: text(b.reminder_subject ?? cur.reminder_subject, DEFAULT_SUB_T.reminder_subject, 300),
+    reminder_body: text(b.reminder_body ?? cur.reminder_body, DEFAULT_SUB_T.reminder_body, 10_000),
+    final_subject: text(b.final_subject ?? cur.final_subject, DEFAULT_SUB_T.final_subject, 300),
+    final_body: text(b.final_body ?? cur.final_body, DEFAULT_SUB_T.final_body, 10_000),
+    sms_body: text(b.sms_body ?? cur.sms_body, DEFAULT_SUB_T.sms_body, 480),
   };
 }
 
-export function cleanLevels(v: unknown, cur: Level[] = DEFAULT_LEVELS): Level[] {
+export function cleanLevels(v: unknown, cur: Level[] = DEFAULT_LEVELS, t: STFn = tApp()): Level[] {
   if (!Array.isArray(v)) return cur;
   if (v.length < 1 || v.length > 4) throw bad('Mahnstufen: 1 bis 4');
   let last = -1;
   const keys = new Set<string>();
   return v.map((raw: any, i) => {
-    const base = cur[i] ?? DEFAULT_LEVELS[Math.min(i, DEFAULT_LEVELS.length - 1)];
+    const base = cur[i] ?? localLevel(DEFAULT_LEVELS[Math.min(i, DEFAULT_LEVELS.length - 1)], t);
     const d = intIn(raw?.days, 0, 365, base.days);
     if (d <= last) throw bad('Mahnstufen: die Tage nach Fälligkeit müssen von Stufe zu Stufe wachsen');
     last = d;
@@ -195,9 +262,9 @@ export function cleanLevels(v: unknown, cur: Level[] = DEFAULT_LEVELS): Level[] 
   });
 }
 
-export function cleanInv(v: any, cur: InvSettings = DEFAULT_INV): InvSettings {
+export function cleanInv(v: any, cur: InvSettings = DEFAULT_INV, t: STFn = tApp()): InvSettings {
   const b = v && typeof v === 'object' ? v : {};
-  const levels = cleanLevels(b.levels, cur.levels);
+  const levels = cleanLevels(b.levels, cur.levels, t);
   const it = b.interest && typeof b.interest === 'object' ? b.interest : {};
   const rate = it.base_rate === undefined ? cur.interest.base_rate : Number(String(it.base_rate).replace(',', '.'));
   if (!Number.isFinite(rate) || rate < -2 || rate > 20) throw bad('Basiszinssatz: zwischen −2 und 20 Prozent');
@@ -223,11 +290,13 @@ export function cleanInv(v: any, cur: InvSettings = DEFAULT_INV): InvSettings {
   };
 }
 
-export function cleanSettings(v: any, cur: DunningSettings = defaults()): DunningSettings {
-  return { sub: cleanSub(v?.sub, cur.sub), inv: cleanInv(v?.inv, cur.inv) };
+export function cleanSettings(v: any, cur?: DunningSettings, t: STFn = tApp()): DunningSettings {
+  const base = cur ?? defaults(t);
+  return { sub: cleanSub(v?.sub, base.sub, t), inv: cleanInv(v?.inv, base.inv, t) };
 }
 
-export const defaults = (): DunningSettings => ({ sub: { ...DEFAULT_SUB }, inv: { ...DEFAULT_INV, levels: DEFAULT_LEVELS.map((l) => ({ ...l })), interest: { ...DEFAULT_INV.interest } } });
+/** The default settings with their texts (emails, SMS, level names) in the sub-account's language. */
+export const defaults = (t: STFn = tApp()): DunningSettings => ({ sub: localSub(DEFAULT_SUB, t), inv: { ...DEFAULT_INV, levels: DEFAULT_LEVELS.map((l) => localLevel(l, t)), interest: { ...DEFAULT_INV.interest } } });
 
 // --- maths -------------------------------------------------------------------------------------------------
 

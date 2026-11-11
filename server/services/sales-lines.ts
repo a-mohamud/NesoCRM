@@ -1,4 +1,5 @@
 import { calcTotals, lineNet, roundHalfAway, taxOf, unitCode, type LineItem, type TaxMode, type Totals } from './invoice-model.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * The money rules of sales positions (deal line items and quote items) – pure, in cents, no database:
@@ -54,28 +55,28 @@ export interface ProductRef {
 export function cleanLines(input: unknown, o: { defaultTax: number; mint: () => string; product?: (id: string) => ProductRef | undefined; max?: number }): SalesLine[] {
   if (!Array.isArray(input)) throw new LineError('Positionen: Liste erwartet');
   const max = o.max ?? MAX_LINES;
-  if (input.length > max) throw new LineError(`Höchstens ${max} Positionen`);
+  if (input.length > max) throw new LineError(tApp()('Höchstens {max} Positionen', { max }));
   const seen = new Set<string>();
   return input.map((raw: any, i): SalesLine => {
     const pid = typeof raw?.product_id === 'string' && raw.product_id ? raw.product_id : null;
     const product = pid ? o.product?.(pid) : undefined;
-    if (pid && !product) throw new LineError(`Position ${i + 1}: Das Produkt gibt es nicht (mehr)`);
+    if (pid && !product) throw new LineError(tApp()('Position {n}: Das Produkt gibt es nicht (mehr)', { n: i + 1 }));
     const name = text(raw?.name, 300).replace(/\n/g, ' ').trim() || product?.name || '';
-    if (!name) throw new LineError(`Position ${i + 1}: Name fehlt`);
+    if (!name) throw new LineError(tApp()('Position {n}: Name fehlt', { n: i + 1 }));
     const qty = Math.round(toNumber(raw?.qty, 1) * 10000) / 10000;
-    if (!(qty > 0) || qty > 1_000_000) throw new LineError(`Position ${i + 1}: Menge muss größer als 0 sein`);
+    if (!(qty > 0) || qty > 1_000_000) throw new LineError(tApp()('Position {n}: Menge muss größer als 0 sein', { n: i + 1 }));
     const price = raw?.price_cents !== undefined && raw.price_cents !== '' && raw.price_cents !== null ? Math.round(toNumber(raw.price_cents, NaN)) : (product?.price_cents ?? 0);
-    if (!Number.isFinite(price) || Math.abs(price) > 100_000_000_00) throw new LineError(`Position ${i + 1}: Preis ungültig`);
+    if (!Number.isFinite(price) || Math.abs(price) > 100_000_000_00) throw new LineError(tApp()('Position {n}: Preis ungültig', { n: i + 1 }));
     const taxIn = raw?.tax_rate !== undefined && raw.tax_rate !== '' && raw.tax_rate !== null ? toNumber(raw.tax_rate, NaN) : (product?.tax_rate ?? o.defaultTax);
-    if (!Number.isFinite(taxIn) || taxIn < 0 || taxIn > 100) throw new LineError(`Position ${i + 1}: Steuersatz 0 bis 100 %`);
+    if (!Number.isFinite(taxIn) || taxIn < 0 || taxIn > 100) throw new LineError(tApp()('Position {n}: Steuersatz 0 bis 100 %', { n: i + 1 }));
     const dt: DiscountType = raw?.discount_type === 'percent' || raw?.discount_type === 'amount' ? raw.discount_type : 'none';
     let dv = dt === 'none' ? 0 : toNumber(raw?.discount_value, 0);
     if (dt === 'percent') {
-      if (dv < 0 || dv > 100) throw new LineError(`Position ${i + 1}: Rabatt 0 bis 100 %`);
+      if (dv < 0 || dv > 100) throw new LineError(tApp()('Position {n}: Rabatt 0 bis 100 %', { n: i + 1 }));
       dv = Math.round(dv * 100) / 100;
     } else if (dt === 'amount') {
       dv = Math.round(dv);
-      if (dv < 0) throw new LineError(`Position ${i + 1}: Rabatt darf nicht negativ sein`);
+      if (dv < 0) throw new LineError(tApp()('Position {n}: Rabatt darf nicht negativ sein', { n: i + 1 }));
     }
     const line: SalesLine = {
       id: typeof raw?.id === 'string' && ID.test(raw.id) && !seen.has(raw.id) ? raw.id : o.mint(),
@@ -151,8 +152,9 @@ export function docItems(lines: SalesLine[]): LineItem[] {
     out.push(item);
     const a = lineAmounts(l);
     if (a.discount_cents > 0) {
-      const label = l.discount_type === 'percent' ? `${String(l.discount_value).replace('.', ',')} %` : 'Nachlass';
-      out.push({ name: `Rabatt ${label} auf ${l.name}`.slice(0, 300), qty: 1, price_cents: -a.discount_cents, tax_rate: l.tax_rate });
+      const t = tApp();
+      const label = l.discount_type === 'percent' ? (t.locale === 'de' ? `${String(l.discount_value).replace('.', ',')} %` : `${l.discount_value}%`) : t('Nachlass');
+      out.push({ name: t('Rabatt {label} auf {name}', { label, name: l.name }).slice(0, 300), qty: 1, price_cents: -a.discount_cents, tax_rate: l.tax_rate });
     }
   }
   return out;
@@ -160,7 +162,7 @@ export function docItems(lines: SalesLine[]): LineItem[] {
 
 /** The text of a discount for a screen ("10 %" / "50,00 €"). */
 export const discountText = (l: Pick<SalesLine, 'discount_type' | 'discount_value'>, fmt: (cents: number) => string): string =>
-  l.discount_type === 'percent' ? `${String(l.discount_value).replace('.', ',')} %` : l.discount_type === 'amount' ? fmt(l.discount_value) : '';
+  l.discount_type === 'percent' ? (tApp().locale === 'de' ? `${String(l.discount_value).replace('.', ',')} %` : `${l.discount_value}%`) : l.discount_type === 'amount' ? fmt(l.discount_value) : '';
 
 // --- deposit ---------------------------------------------------------------------------------------------------------------------
 

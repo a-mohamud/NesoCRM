@@ -1,4 +1,5 @@
 import { PERMISSIONS } from '../core/permissions.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * The agency's sign-in rules (stored as agency setting "login_policy"): which methods exist, who may
@@ -65,7 +66,7 @@ export function domainList(v: unknown): string[] {
   for (const x of raw) {
     const d = String(x ?? '').trim().toLowerCase().replace(/^@/, '');
     if (!d) continue;
-    if (!DOMAIN.test(d)) throw new PolicyError(`Domain ungültig: ${d.slice(0, 80)}`);
+    if (!DOMAIN.test(d)) throw new PolicyError(tApp()('Domain ungültig: {domain}', { domain: d.slice(0, 80) }));
     out.push(d);
   }
   return [...new Set(out)].slice(0, 100);

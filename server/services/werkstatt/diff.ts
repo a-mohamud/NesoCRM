@@ -1,4 +1,5 @@
 import type { Manifest } from './manifest.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * What a new version changed against the one before it, in words ("Ändern lassen" → v2): permissions, entry
@@ -52,11 +53,11 @@ export function lineDiff(a: string, b: string): { added: number; removed: number
 }
 
 const entryNames = (m: Manifest): string[] => [
-  ...(m.entries.page ? ['Seite'] : []),
-  ...(m.entries.panels ?? []).map((p) => `Panel „${p.title}“`),
-  ...(m.entries.widgets ?? []).map((w) => `Widget „${w.title}“`),
-  ...(m.entries.actions ?? []).map((a) => `Workflow-Aktion „${a.label}“`),
-  ...(m.entries.jobs ?? []).map((j) => `Job „${j.label}“`),
+  ...(m.entries.page ? [tApp()('Seite')] : []),
+  ...(m.entries.panels ?? []).map((p) => tApp()('Panel „{name}“', { name: p.title })),
+  ...(m.entries.widgets ?? []).map((w) => tApp()('Widget „{name}“', { name: w.title })),
+  ...(m.entries.actions ?? []).map((a) => tApp()('Workflow-Aktion „{name}“', { name: a.label })),
+  ...(m.entries.jobs ?? []).map((j) => tApp()('Job „{name}“', { name: j.label })),
 ];
 
 export function diffVersions(prev: VersionLike, next: VersionLike): VersionDiff {
@@ -80,13 +81,13 @@ export function diffVersions(prev: VersionLike, next: VersionLike): VersionDiff 
     summary: [],
   };
   const s = d.summary;
-  if (d.scopes_added.length) s.push(`Neue Berechtigung${d.scopes_added.length === 1 ? '' : 'en'}: ${d.scopes_added.join(', ')} – braucht deine Bestätigung.`);
-  if (d.scopes_removed.length) s.push(`Weniger Berechtigungen: ${d.scopes_removed.join(', ')}.`);
-  if (d.entries_added.length) s.push(`Neu: ${d.entries_added.join(', ')}.`);
-  if (d.entries_removed.length) s.push(`Entfernt: ${d.entries_removed.join(', ')}.`);
-  if (ui.added || ui.removed) s.push(`Oberfläche: ${ui.added} Zeilen neu, ${ui.removed} entfernt.`);
-  if (server.added || server.removed) s.push(`Server-Logik: ${server.added} Zeilen neu, ${server.removed} entfernt.`);
-  if (steps_changed) s.push('Die deklarativen Schritte wurden angepasst.');
-  if (!s.length) s.push('Keine inhaltliche Änderung gegenüber der Vorversion.');
+  if (d.scopes_added.length) s.push(tApp().plural(d.scopes_added.length, { one: 'Neue Berechtigung: {list} – braucht deine Bestätigung.', other: 'Neue Berechtigungen: {list} – braucht deine Bestätigung.' }, { list: d.scopes_added.join(', ') }));
+  if (d.scopes_removed.length) s.push(tApp()('Weniger Berechtigungen: {list}.', { list: d.scopes_removed.join(', ') }));
+  if (d.entries_added.length) s.push(tApp()('Neu: {list}.', { list: d.entries_added.join(', ') }));
+  if (d.entries_removed.length) s.push(tApp()('Entfernt: {list}.', { list: d.entries_removed.join(', ') }));
+  if (ui.added || ui.removed) s.push(tApp()('Oberfläche: {added} Zeilen neu, {removed} entfernt.', { added: ui.added, removed: ui.removed }));
+  if (server.added || server.removed) s.push(tApp()('Server-Logik: {added} Zeilen neu, {removed} entfernt.', { added: server.added, removed: server.removed }));
+  if (steps_changed) s.push(tApp()('Die deklarativen Schritte wurden angepasst.'));
+  if (!s.length) s.push(tApp()('Keine inhaltliche Änderung gegenüber der Vorversion.'));
   return d;
 }

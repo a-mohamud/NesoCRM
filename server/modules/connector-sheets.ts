@@ -1,6 +1,7 @@
 import { SESSION_COOKIE, type Module } from '../core/app.js';
 import { HttpError, bad, html, redirect, str } from '../core/http.js';
 import { messagePage } from '../core/page.js';
+import { tCtx } from '../i18n/index.js';
 import { now, sha256, token } from '../core/util.js';
 import { findContacts, upsertContact } from '../services/contacts.js';
 import { connectorFetch, contactsToRows, readJson, registerConnector, rowsToContacts, spreadsheetId } from '../services/connectors.js';
@@ -58,10 +59,11 @@ export const connectorSheetsModule: Module = {
         'Im Sub-Account Apps → Direkt-Verbindungen → Google Sheets → „Mit Google verbinden“.',
         'Exportieren legt eine neue Tabelle (oder einen neuen Reiter) an; Importieren liest die erste Zeile als Spaltennamen (E-Mail, Vorname, Telefon …).',
       ],
-      probe: (_a, loc) => {
+      probe: (_a, loc, ctx) => {
+        const t = tCtx(ctx);
         const c = conn(loc);
-        if (c) return { status: 'ok', detail: `Verbunden: ${c.account_email || 'Google-Konto'}` };
-        return clientConfig(app, 'google') ? { status: 'info', detail: 'Bereit – mit Google verbinden' } : { status: 'missing', detail: 'Google-OAuth-App fehlt (Agentur)' };
+        if (c) return { status: 'ok', detail: t('Verbunden: {account}', { account: c.account_email || t('Google-Konto') }) };
+        return clientConfig(app, 'google') ? { status: 'info', detail: t('Bereit – mit Google verbinden') } : { status: 'missing', detail: t('Google-OAuth-App fehlt (Agentur)') };
       },
     });
 
@@ -129,27 +131,28 @@ export const connectorSheetsModule: Module = {
     router.get('/oauth/google/sheets/callback', 'public', async (ctx) => {
       const sid = ctx.cookies[SESSION_COOKIE];
       const user = sid ? db.get(`SELECT u.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`, sha256(sid), now()) : undefined;
-      if (!user) return html(messagePage('Nicht angemeldet', 'Bitte zuerst anmelden und dann noch einmal verbinden.'), 401);
+      const tr = tCtx(ctx);
+      if (!user) return html(messagePage(tr('Nicht angemeldet'), tr('Bitte zuerst anmelden und dann noch einmal verbinden.')), 401);
       let st;
       try {
         st = verifyState(app.config.secret, String(ctx.query.get('state') ?? ''), { sessionHash: sha256(sid!) });
         if (st.u !== user.id || st.k !== PURPOSE) throw new Error('Ungültige Anfrage (state passt nicht)');
       } catch (e) {
-        return html(messagePage('Verbinden fehlgeschlagen', (e as Error).message), 400);
+        return html(messagePage(tr('Verbinden fehlgeschlagen'), tr((e as Error).message)), 400);
       }
       const pending = db.get('SELECT * FROM sheets_pending WHERE nonce = ?', st.n);
       db.run('DELETE FROM sheets_pending WHERE nonce = ?', st.n);
-      if (!pending || pending.user_id !== user.id || pending.location_id !== st.l || Date.parse(pending.expires_at) < Date.now()) return back({ sheets: 'error', msg: 'Die Anmeldung ist abgelaufen – bitte noch einmal verbinden.' });
-      if (ctx.query.get('error')) return back({ sheets: 'error', msg: ctx.query.get('error') === 'access_denied' ? 'Zugriff wurde nicht erlaubt.' : String(ctx.query.get('error')).slice(0, 100) });
+      if (!pending || pending.user_id !== user.id || pending.location_id !== st.l || Date.parse(pending.expires_at) < Date.now()) return back({ sheets: 'error', msg: tr('Die Anmeldung ist abgelaufen – bitte noch einmal verbinden.') });
+      if (ctx.query.get('error')) return back({ sheets: 'error', msg: ctx.query.get('error') === 'access_denied' ? tr('Zugriff wurde nicht erlaubt.') : String(ctx.query.get('error')).slice(0, 100) });
       const cfg = clientConfig(app, 'google');
-      if (!cfg) return back({ sheets: 'error', msg: 'Die Google-OAuth-App der Agentur fehlt.' });
+      if (!cfg) return back({ sheets: 'error', msg: tr('Die Google-OAuth-App der Agentur fehlt.') });
       try {
         const t = await exchangeCode(oauthFetch(), 'google', cfg, { code: String(ctx.query.get('code') ?? ''), verifier: pending.verifier, redirectUri: pending.redirect_uri, scopes: SCOPES });
         if (t.scope && !t.scope.split(/\s+/).includes('https://www.googleapis.com/auth/spreadsheets')) {
           await revokeToken(oauthFetch(), 'google', cfg, t.refresh_token ?? t.access_token);
-          return back({ sheets: 'error', msg: 'Bitte beim Verbinden den Zugriff auf Google Tabellen erlauben.' });
+          return back({ sheets: 'error', msg: tr('Bitte beim Verbinden den Zugriff auf Google Tabellen erlauben.') });
         }
-        if (!t.refresh_token) return back({ sheets: 'error', msg: 'Google hat keinen dauerhaften Zugriff erteilt – bitte noch einmal verbinden.' });
+        if (!t.refresh_token) return back({ sheets: 'error', msg: tr('Google hat keinen dauerhaften Zugriff erteilt – bitte noch einmal verbinden.') });
         const claims = idTokenClaims(t.id_token);
         db.run('DELETE FROM sheets_connections WHERE location_id = ?', pending.location_id);
         db.insert('sheets_connections', {

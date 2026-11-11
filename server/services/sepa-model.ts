@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { addDaysYmd } from '../core/time.js';
 import { checkBic, checkIban, normalizeIban } from './invoice-model.js';
 import type { Scheme, SeqType } from './sepa-xml.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * SEPA direct debit without a payment provider – the pure part: creditor identifier and IBAN/BIC checks, mandate
@@ -32,7 +33,7 @@ export const isKind = (v: unknown): v is MandateKind => v === 'RCUR' || v === 'O
 
 const EEA = 'AT BE BG CY CZ DE DK EE ES FI FR GR HR HU IE IS IT LI LT LU LV MT NL NO PL PT RO SE SI SK'.split(' ');
 /** SEPA countries outside the EEA: the BIC (and the debtor's address) is mandatory there. */
-export const NON_EEA = 'AD AL CH GB GG GI IM JE MC MD ME MK SM VA'.split(' ');
+export const NON_EEA = 'AD AL CH GB GG GI IM JE MC MD ME MK SM VA'.split(' '); // i18n-ignore (country codes)
 export const SEPA_COUNTRIES = new Set([...EEA, ...NON_EEA]);
 
 export { checkBic, checkIban, normalizeIban };
@@ -52,7 +53,7 @@ export function ibanInfo(raw: unknown): IbanInfo {
   const country = iban.slice(0, 2);
   if (!iban) return { ok: false, iban, country, bicRequired: false, reason: 'IBAN fehlt' };
   if (!checkIban(iban)) return { ok: false, iban, country, bicRequired: false, reason: 'Die IBAN ist ungültig (Prüfziffer oder Länge stimmt nicht)' };
-  if (!SEPA_COUNTRIES.has(country)) return { ok: false, iban, country, bicRequired: false, reason: `Konten aus ${country} nehmen nicht am SEPA-Lastschriftverfahren teil` };
+  if (!SEPA_COUNTRIES.has(country)) return { ok: false, iban, country, bicRequired: false, reason: tApp()('Konten aus {country} nehmen nicht am SEPA-Lastschriftverfahren teil', { country }) };
   return { ok: true, iban, country, bicRequired: NON_EEA.includes(country) };
 }
 
@@ -83,10 +84,10 @@ export function creditorIdCheck(raw: unknown): { valid: boolean; normalized: str
   if (!n) return { valid: false, normalized: n, reason: 'Die Gläubiger-ID fehlt' };
   if (!/^[A-Z]{2}\d{2}[A-Z0-9]{3}[A-Z0-9]{1,28}$/.test(n)) return { valid: false, normalized: n, reason: 'Format: Länderkennung, 2 Prüfziffern, 3 Zeichen Geschäftsbereich, Kennung (z. B. DE98ZZZ09999999999)' };
   const cc = n.slice(0, 2);
-  if (!SEPA_COUNTRIES.has(cc)) return { valid: false, normalized: n, reason: `${cc} nimmt nicht am SEPA-Verfahren teil` };
+  if (!SEPA_COUNTRIES.has(cc)) return { valid: false, normalized: n, reason: tApp()('{country} nimmt nicht am SEPA-Verfahren teil', { country: cc }) };
   if (cc === 'DE' && !/^DE\d{2}[A-Z0-9]{3}\d{11}$/.test(n)) return { valid: false, normalized: n, reason: 'Deutsche Gläubiger-IDs haben 18 Stellen: DE, 2 Prüfziffern, 3 Zeichen, 11 Ziffern' };
   const expected = 98 - mod97(n.slice(7) + cc + '00');
-  if (expected !== Number(n.slice(2, 4))) return { valid: false, normalized: n, reason: `Die Prüfziffern der Gläubiger-ID stimmen nicht (erwartet ${String(expected).padStart(2, '0')})` };
+  if (expected !== Number(n.slice(2, 4))) return { valid: false, normalized: n, reason: tApp()('Die Prüfziffern der Gläubiger-ID stimmen nicht (erwartet {expected})', { expected: String(expected).padStart(2, '0') }) };
   return { valid: true, normalized: n };
 }
 
@@ -243,26 +244,32 @@ export interface MandateTextInput {
  * The mandate as the debtor agrees to it, in the wording of the German banking industry (Basislastschrift / Firmenlastschrift),
  * with the agreed lead time of the pre-notification – shorter than 14 days only because it says so here.
  */
-export function mandateText(i: MandateTextInput): string {
-  const c = i.creditor_name.trim() || 'der Zahlungsempfänger';
+export function mandateText(i: MandateTextInput, t: STFn = tApp()): string {
+  // In the debtor's language (the sub-account's): the German wording is the message id, the hash covers the text as shown.
+  const c = i.creditor_name.trim() || t('der Zahlungsempfänger');
   const b2b = i.scheme === 'B2B';
-  const pay = i.kind === 'OOFF' ? 'eine Zahlung' : 'Zahlungen';
+  const pay = i.kind === 'OOFF' ? t('eine Zahlung') : t('Zahlungen');
   const out: string[] = [
-    b2b ? 'SEPA-Firmenlastschrift-Mandat' : 'SEPA-Lastschriftmandat',
-    `Zahlungsempfänger: ${c}${i.creditor_address ? `, ${i.creditor_address}` : ''}\nGläubiger-Identifikationsnummer: ${i.creditor_id}\nMandatsreferenz: ${i.reference}\nZahlungsart: ${i.kind === 'OOFF' ? 'Einmalige Zahlung' : 'Wiederkehrende Zahlungen'}`,
+    b2b ? t('SEPA-Firmenlastschrift-Mandat') : t('SEPA-Lastschriftmandat'),
+    [
+      `${t('Zahlungsempfänger:')} ${c}${i.creditor_address ? `, ${i.creditor_address}` : ''}`,
+      `${t('Gläubiger-Identifikationsnummer:')} ${i.creditor_id}`,
+      `${t('Mandatsreferenz:')} ${i.reference}`,
+      `${t('Zahlungsart:')} ${i.kind === 'OOFF' ? t('Einmalige Zahlung') : t('Wiederkehrende Zahlungen')}`,
+    ].join('\n'),
   ];
   if (b2b) {
-    out.push(`Ich ermächtige / Wir ermächtigen ${c}, ${pay} von meinem / unserem Konto mittels Lastschrift einzuziehen. Zugleich weise ich mein / weisen wir unser Kreditinstitut an, die von ${c} auf mein / unser Konto gezogenen Lastschriften einzulösen.`);
-    out.push('Hinweis: Dieses Lastschriftmandat dient nur dem Einzug von Lastschriften, die auf Konten von Unternehmen gezogen sind. Ich bin / Wir sind nicht berechtigt, nach der erfolgten Einlösung eine Erstattung des belasteten Betrages zu verlangen. Ich bin / Wir sind berechtigt, mein / unser Kreditinstitut bis zum Fälligkeitstag anzuweisen, Lastschriften nicht einzulösen.');
+    out.push(t('Ich ermächtige / Wir ermächtigen {creditor}, {payments} von meinem / unserem Konto mittels Lastschrift einzuziehen. Zugleich weise ich mein / weisen wir unser Kreditinstitut an, die von {creditor} auf mein / unser Konto gezogenen Lastschriften einzulösen.', { creditor: c, payments: pay }));
+    out.push(t('Hinweis: Dieses Lastschriftmandat dient nur dem Einzug von Lastschriften, die auf Konten von Unternehmen gezogen sind. Ich bin / Wir sind nicht berechtigt, nach der erfolgten Einlösung eine Erstattung des belasteten Betrages zu verlangen. Ich bin / Wir sind berechtigt, mein / unser Kreditinstitut bis zum Fälligkeitstag anzuweisen, Lastschriften nicht einzulösen.'));
   } else {
-    out.push(`Ich ermächtige ${c}, ${pay} von meinem Konto mittels Lastschrift einzuziehen. Zugleich weise ich mein Kreditinstitut an, die von ${c} auf mein Konto gezogenen Lastschriften einzulösen.`);
-    out.push('Hinweis: Ich kann innerhalb von acht Wochen, beginnend mit dem Belastungsdatum, die Erstattung des belasteten Betrages verlangen. Es gelten dabei die mit meinem Kreditinstitut vereinbarten Bedingungen.');
+    out.push(t('Ich ermächtige {creditor}, {payments} von meinem Konto mittels Lastschrift einzuziehen. Zugleich weise ich mein Kreditinstitut an, die von {creditor} auf mein Konto gezogenen Lastschriften einzulösen.', { creditor: c, payments: pay }));
+    out.push(t('Hinweis: Ich kann innerhalb von acht Wochen, beginnend mit dem Belastungsdatum, die Erstattung des belasteten Betrages verlangen. Es gelten dabei die mit meinem Kreditinstitut vereinbarten Bedingungen.'));
   }
   const d = Math.max(1, Math.round(i.prenotify_days));
   out.push(
     d < 14
-      ? `Vorabankündigung: Betrag und Fälligkeit jeder Lastschrift werden mindestens ${d} ${d === 1 ? 'Tag' : 'Tage'} vor dem Einzug mitgeteilt; die Frist für die Vorabankündigung wird hiermit auf ${d} ${d === 1 ? 'Tag' : 'Tage'} verkürzt.`
-      : `Vorabankündigung: Betrag und Fälligkeit jeder Lastschrift werden mindestens ${d} Tage vor dem Einzug mitgeteilt.`,
+      ? t.plural(d, { one: 'Vorabankündigung: Betrag und Fälligkeit jeder Lastschrift werden mindestens {n} Tag vor dem Einzug mitgeteilt; die Frist für die Vorabankündigung wird hiermit auf {n} Tag verkürzt.', other: 'Vorabankündigung: Betrag und Fälligkeit jeder Lastschrift werden mindestens {n} Tage vor dem Einzug mitgeteilt; die Frist für die Vorabankündigung wird hiermit auf {n} Tage verkürzt.' })
+      : t('Vorabankündigung: Betrag und Fälligkeit jeder Lastschrift werden mindestens {n} Tage vor dem Einzug mitgeteilt.', { n: d }),
   );
   return out.join('\n\n');
 }
@@ -328,13 +335,14 @@ export const DEFAULT_SETTINGS: SepaSettings = {
 
 const int = (v: unknown, min: number, max: number, field: string): number => {
   const n = Number(v);
-  if (!Number.isFinite(n) || Math.round(n) !== n) throw new Error(`${field}: bitte eine ganze Zahl`);
-  if (n < min || n > max) throw new Error(`${field}: zwischen ${min} und ${max}`);
+  const t = tApp();
+  if (!Number.isFinite(n) || Math.round(n) !== n) throw new Error(t('{field}: bitte eine ganze Zahl', { field: t(field) }));
+  if (n < min || n > max) throw new Error(t('{field}: zwischen {min} und {max}', { field: t(field), min, max }));
   return n;
 };
 const text = (v: unknown, max: number, field: string): string => {
   const s = String(v ?? '').trim();
-  if (s.length > max) throw new Error(`${field} ist zu lang (höchstens ${max} Zeichen)`);
+  if (s.length > max) throw new Error(tApp()('{field} ist zu lang (höchstens {max} Zeichen)', { field: tApp()(field), max }));
   return s;
 };
 
@@ -355,7 +363,7 @@ export function cleanSettings(patch: Record<string, any>, base: SepaSettings = D
     const raw = String(p.iban ?? '').trim();
     if (raw) {
       const i = ibanInfo(raw);
-      if (!i.ok) throw new Error(`Empfänger-Konto: ${i.reason}`);
+      if (!i.ok) throw new Error(tApp()('Empfänger-Konto: {reason}', { reason: tApp()(i.reason ?? '') }));
       s.iban = i.iban;
     } else s.iban = '';
   }

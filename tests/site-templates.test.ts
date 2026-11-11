@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startTestApp } from './helpers.js';
 import { FF } from './site-fixtures.js';
 import { CATEGORIES, TEMPLATES, formSpec, settingsOf, wireBlocks, templateMeta } from '../server/services/site-templates.js';
+import { translator } from '../server/i18n/index.js';
 import { cleanBlocks, walkBlocks } from '../server/services/site-layout.js';
 import { blockContrast, checkDocument, checkFragment, tokenContrast } from '../server/services/site-a11y.js';
 import { cleanTokens, tokensOf } from '../server/services/site-style.js';
@@ -82,8 +83,8 @@ describe('template gallery data', () => {
     // funnels have no header
     expect(settingsOf(TEMPLATES.find((v) => v.id === 'leadmagnet')!, { firma: 'X', pages: new Map() }).header.enabled).toBe(false);
     expect(cleanSiteSettings({ header: { enabled: true } }, {}).header.enabled).toBe(true);
-    expect(formSpec('application', 'Site').fields.map((f) => f.name)).toEqual(['first_name', 'last_name', 'email', 'phone', 'message', 'consent']);
-    expect(formSpec('optin', 'Site').fields.some((f) => f.type === 'consent' && f.required)).toBe(true);
+    expect(formSpec('application', 'Site', translator('de')).fields.map((f) => f.name)).toEqual(['first_name', 'last_name', 'email', 'phone', 'message', 'consent']);
+    expect(formSpec('optin', 'Site', translator('de')).fields.some((f) => f.type === 'consent' && f.required)).toBe(true);
   });
 });
 

@@ -10,6 +10,7 @@ import { QUOTE_STATUSES, QUOTE_STATUS_LABEL, resolveSelection, quoteTotals } fro
 import { LineError } from '../services/sales-lines.js';
 import { registerTriggers, type TriggerMeta } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Angebote aus dem Deal (docs/sales.md): Positionen, Varianten zur Auswahl, optionale Positionen, Anzahlung, Gültigkeit – eine
@@ -179,7 +180,8 @@ export const quotesModule: Module = {
     // The fixed path comes before ":id".
     router.get('/api/quotes/stats', 'location', (ctx) => {
       const { scope } = filters(ctx);
-      return { ...quoteStats(app, ctx.locationId, scope), labels: QUOTE_STATUS_LABEL };
+      const t = tCtx(ctx);
+      return { ...quoteStats(app, ctx.locationId, scope), labels: Object.fromEntries(Object.entries(QUOTE_STATUS_LABEL).map(([k, v]) => [k, t(v)])) };
     });
 
     router.get('/api/quotes', 'location', (ctx) => {
@@ -222,7 +224,7 @@ export const quotesModule: Module = {
       const q = must(ctx);
       const sel = asHttp(() => resolveSelection(q.doc, ctx.body ?? {}));
       const t = quoteTotals(q.doc, sel, q.tax_mode);
-      return { selection: sel, totals: { net_cents: t.subtotal_cents, tax_cents: t.tax_cents, total_cents: t.total_cents, discount_cents: t.discount_cents, list_cents: t.list_cents, groups: t.groups }, html: totalsHtml(q, sel) };
+      return { selection: sel, totals: { net_cents: t.subtotal_cents, tax_cents: t.tax_cents, total_cents: t.total_cents, discount_cents: t.discount_cents, list_cents: t.list_cents, groups: t.groups }, html: totalsHtml(q, sel, tLoc(app, q.location_id)) };
     });
 
     router.post('/api/quotes/:id/send', 'location', async (ctx) => {
@@ -271,8 +273,9 @@ export const quotesModule: Module = {
 
     router.get('/q/:token', 'public', (ctx) => {
       const q = quoteByToken(app, ctx.params.token);
-      if (!q || q.status === 'draft') return html(messagePage('Nicht gefunden', 'Dieses Angebot gibt es nicht.'), 404);
-      if (throttled(ctx.ip, 120)) return html(messagePage('Bitte kurz warten', 'Zu viele Aufrufe – bitte in einer Minute noch einmal.'), 429);
+      const t = q ? tLoc(app, q.location_id) : tApp();
+      if (!q || q.status === 'draft') return html(messagePage(t('Nicht gefunden'), t('Dieses Angebot gibt es nicht.')), 404);
+      if (throttled(ctx.ip, 120)) return html(messagePage(t('Bitte kurz warten'), t('Zu viele Aufrufe – bitte in einer Minute noch einmal.')), 429);
       markViewed(app, q);
       return { __raw: true, status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-store', 'x-robots-tag': 'noindex' }, body: quoteHtml(app, getQuote(app, q.location_id, q.id)!) };
     });
@@ -281,7 +284,7 @@ export const quotesModule: Module = {
       const q = open(ctx.params.token);
       if (throttled(ctx.ip, 240)) throw new HttpError(429, 'Zu viele Anfragen');
       const sel = asHttp(() => resolveSelection(q.doc, ctx.body ?? {}));
-      return { html: totalsHtml(q, sel) };
+      return { html: totalsHtml(q, sel, tLoc(app, q.location_id)) };
     });
 
     router.post('/api/public/quotes/:token/accept', 'public', async (ctx) => {

@@ -2,6 +2,7 @@ import type { App, Module } from '../core/app.js';
 import { HttpError, bad, str } from '../core/http.js';
 import { callRoute } from '../services/route-call.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Kurse per KI erstellen – docs/courses.md#create-a-course-with-ai. A topic (and optionally audience, number of modules and lessons)
@@ -78,8 +79,9 @@ export const courseAiModule: Module = {
       const r = await app.services.aiRun({
         locationId: ctx.locationId,
         purpose: 'course_ai',
-        system: [{ text: 'Du bist Kurs-Designer für Online-Kurse kleiner Unternehmen. Erstelle einen praxisnahen Kurs: klare Lernziele, kurze Lektionen mit Übung am Ende, verständliche Sprache. Lektionstexte in Markdown (Überschriften, Listen), 150–400 Wörter. Erfinde keine Fakten über das Unternehmen. Antworte als JSON nach dem Schema.' }],
-        user: `Thema: ${topic}\n${audience ? `Zielgruppe: ${audience}\n` : ''}Module: ${modules}, je ${lessons} Lektionen. Sprache: Deutsch.`,
+        system: [{ text: 'You are a course designer for online courses of small businesses. Create a practical course: clear learning objectives, short lessons with an exercise at the end, plain language. Lesson texts in Markdown (headings, lists), 150–400 words. Do not invent facts about the business. Write all titles and texts in the language named in the request (or the language of the topic if none is named). Answer as JSON following the schema.' }],
+        // The course is content for the sub-account's contacts: written in the sub-account's language. i18n-ignore (language names for the model)
+        user: `Topic: ${topic}\n${audience ? `Audience: ${audience}\n` : ''}Modules: ${modules}, ${lessons} lessons each. Language: ${tLoc(app, ctx.locationId).locale === 'de' ? 'German' : 'English'}.`,
         schema: OUTLINE_SCHEMA,
         maxTokens: 12_000,
         timeoutMs: 180_000,

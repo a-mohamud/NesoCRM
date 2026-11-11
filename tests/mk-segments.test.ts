@@ -38,7 +38,7 @@ describe('segment definitions', () => {
 
   it('reads a definition aloud', () => {
     const def = cleanDefinition(g('and', { type: 'tag', tag: 'lead' }, g('or', { type: 'email', event: 'not_opened', campaign_id: 'c1' }, { type: 'purchase', bought: false, days: 30 })));
-    expect(describeDef(def, { campaign: () => 'Herbst' })).toBe('(hat Tag „lead“ UND (hat Kampagne „Herbst“ nicht geöffnet ODER hat nicht gekauft in den letzten 30 Tagen))');
+    expect(describeDef(def, { campaign: () => 'Herbst' })).toBe('(hat Tag „lead“ UND (hat Kampagne „Herbst“ nicht geöffnet ODER hat in den letzten 30 Tagen nicht gekauft))');
     expect(describeDef({ type: 'group', op: 'and', items: [] })).toBe('alle Kontakte');
   });
 });

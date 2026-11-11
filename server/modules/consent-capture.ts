@@ -4,6 +4,7 @@ import { id as newId, now } from '../core/util.js';
 import { getContact, type Contact } from '../services/contacts.js';
 import { CHANNEL_PURPOSES, DOI_SOURCES, PURPOSE_LABEL, type ConsentChannel, type DoiSource } from '../services/consent-model.js';
 import { cleanProofUrl, dispatchDoi, grantConsent, metaOf, settingsOf, type GrantResult, type SourceInfo } from '../services/consent.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Where consent comes in: the hooks the lead-capturing modules call after they stored a contact (forms and funnels, webinar
@@ -96,7 +97,7 @@ export const consentCaptureModule: Module = {
         const text = String(field.label);
         const page = pageOnly(raw._page);
         const funnel = page ? funnelOf(form.location_id, page) : undefined;
-        const source: SourceInfo = funnel ? { kind: 'funnel', id: funnel.id, label: `${funnel.name} (Formular „${form.name}“)` } : { kind: 'form', id: form.id, label: form.name };
+        const source: SourceInfo = funnel ? { kind: 'funnel', id: funnel.id, label: tLoc(app, form.location_id)('{funnel} (Formular „{form}“)', { funnel: funnel.name, form: form.name }) } : { kind: 'form', id: form.id, label: form.name };
         const proofUrl = cleanProofUrl(page) || `${app.baseUrl()}/f/${form.id}`;
         const contact = getContact(app, form.location_id, res.contactId);
         if (!contact) return;
@@ -139,10 +140,10 @@ export const consentCaptureModule: Module = {
             if (mode === 'legacy') {
               for (const ch of ['email', 'sms'] as const) {
                 if (!(ch === 'email' ? c.email : c.phone)) continue;
-                db.insert('consent_events', { id: newId(), location_id: locationId, contact_id: cid, channel: ch, purpose: '*', action: 'legacy', doi_required: 0, source_kind: 'import', source_id: '', source_label: label.slice(0, 200), text_digest: '', ip_net: '', ua_digest: '', proof_url: '', note: String(o.note || 'Import ohne Einwilligungsnachweis (Altbestand)').slice(0, 1000), actor: o.actor ?? '', created_at: now() });
+                db.insert('consent_events', { id: newId(), location_id: locationId, contact_id: cid, channel: ch, purpose: '*', action: 'legacy', doi_required: 0, source_kind: 'import', source_id: '', source_label: label.slice(0, 200), text_digest: '', ip_net: '', ua_digest: '', proof_url: '', note: String(o.note || tLoc(app, locationId)('Import ohne Einwilligungsnachweis (Altbestand)')).slice(0, 1000), actor: o.actor ?? '', created_at: now() });
               }
             } else if (c.email || mode === 'confirmed') {
-              grantConsent(app, { locationId, contactId: cid, channel: 'email', purposes, source, note: o.note || (mode === 'doi' ? 'Bestätigungsanfrage per Double-Opt-in (Einwilligung steht noch aus)' : ''), actor: o.actor, doi: mode === 'doi' });
+              grantConsent(app, { locationId, contactId: cid, channel: 'email', purposes, source, note: o.note || (mode === 'doi' ? tLoc(app, locationId)('Bestätigungsanfrage per Double-Opt-in (Einwilligung steht noch aus)') : ''), actor: o.actor, doi: mode === 'doi' });
             }
             n++;
           }
@@ -170,7 +171,7 @@ export const consentCaptureModule: Module = {
               source: { kind: 'api', label: 'API' },
               text: o.text ? { key: 'api:default', text: String(o.text).slice(0, 4000) } : undefined,
               proofUrl: cleanProofUrl(o.proof_url),
-              note: String(o.note ?? 'Einwilligung vom Aufrufer der API zugesichert').slice(0, 1000),
+              note: String(o.note ?? tLoc(app, locationId)('Einwilligung vom Aufrufer der API zugesichert')).slice(0, 1000),
               meta: metaOf(ctx),
               actor: ctx.viaApiKey ? 'api' : (ctx.user?.id ?? ''),
               doi: ch === 'email' && (typeof o.doi === 'boolean' ? o.doi : wantsDoi(locationId, 'api')),

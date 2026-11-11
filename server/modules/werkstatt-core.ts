@@ -11,6 +11,7 @@ import { NAMES } from '../services/werkstatt/names.js';
 import { budgetProblem, loadPolicy } from '../services/werkstatt/policy.js';
 import { getPlugin, getVersion, type PluginRow } from '../services/werkstatt/store.js';
 import { APP_VERSION } from '../version.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Stage 3 „Kernfeature“: a popular plugin becomes part of the product. The admin action „Als Kernfeature
@@ -79,10 +80,10 @@ export const werkstattCoreModule: Module = {
       const gh = issues();
       const policy = loadPolicy(app);
       const locId = githubLocation(current);
-      if (!gh) return { ready: false, location: locId, hint: 'GitHub ist in dieser Installation nicht verfügbar.' };
-      if (!gh.hasToken(locId)) return { ready: false, location: locId, hint: `Es ist noch kein GitHub-Token hinterlegt${app.location(locId) ? ` (Sub-Account „${app.location(locId)!.name}“)` : ''}: Einstellungen → KI-Werkzeuge → „GitHub für Codex“ → Token eintragen. Die Spezifikation wird trotzdem erstellt; das Issue legst du danach unter Werkstatt → Kernfeatures an.` };
+      if (!gh) return { ready: false, location: locId, hint: tApp()('GitHub ist in dieser Installation nicht verfügbar.') };
+      if (!gh.hasToken(locId)) return { ready: false, location: locId, hint: app.location(locId) ? tApp()('Es ist noch kein GitHub-Token hinterlegt (Sub-Account „{location}“): Einstellungen → KI-Werkzeuge → „GitHub für Codex“ → Token eintragen. Die Spezifikation wird trotzdem erstellt; das Issue legst du danach unter Werkstatt → Kernfeatures an.', { location: app.location(locId)!.name }) : tApp()('Es ist noch kein GitHub-Token hinterlegt: Einstellungen → KI-Werkzeuge → „GitHub für Codex“ → Token eintragen. Die Spezifikation wird trotzdem erstellt; das Issue legst du danach unter Werkstatt → Kernfeatures an.') };
       const repo = repoWanted || policy.core.repo || gh.defaultRepo?.(locId) || '';
-      if (!repo) return { ready: false, location: locId, hint: 'Es ist noch kein Repository festgelegt: Werkstatt → Richtlinien → Kernfeatures → „GitHub-Repository“ (besitzer/name) eintragen. Die Spezifikation wird trotzdem erstellt.' };
+      if (!repo) return { ready: false, location: locId, hint: tApp()('Es ist noch kein Repository festgelegt: Werkstatt → Richtlinien → Kernfeatures → „GitHub-Repository“ (besitzer/name) eintragen. Die Spezifikation wird trotzdem erstellt.') };
       return { ready: true, location: locId, hint: '' };
     };
 
@@ -93,15 +94,16 @@ export const werkstattCoreModule: Module = {
       const body = [
         spec,
         '---',
-        `**Ausgangspunkt:** Plugin „${p.name}“ (Version ${v?.version ?? '?'}) aus der ${NAMES.werkstatt}${wish ? `, Wunsch „${wish.title}“ (${app.baseUrl()}/app/wishes/${p.wish_id})` : ''}.`,
-        `**Nutzung:** ${h.installs} Installation${h.installs === 1 ? '' : 'en'}, ${h.usage_30d} Nutzungen in 30 Tagen, ${h.errors_7d} Fehler in 7 Tagen, ${h.votes} Stimmen${h.rating !== null ? `, Bewertung ${h.rating}/5` : ''}.`,
-        `**Kein automatisches Ausrollen:** Dieser Vorschlag wird nie von selbst ausgeliefert – der Pull Request braucht grüne CI (Typprüfung, Tests, Build) und ein Review durch einen Menschen, und das Feature startet ausgeschaltet.`,
-        `**Feature-Flag:** Bitte hinter dem Flag \`${flag}\` einführen (\`app.services.flags.enabled('${flag}', { locationId, userId })\`), damit es stufenweise freigegeben werden kann (privat → Sub-Account → Prozent → alle).`,
-        v ? `<details><summary>Manifest des Plugins</summary>\n\n\`\`\`json\n${JSON.stringify(v.manifest, null, 2)}\n\`\`\`\n</details>` : '',
+        // Material for the coding agent and the reviewers on GitHub: English.
+        `**Starting point:** plugin “${p.name}” (version ${v?.version ?? '?'}) from the Workshop${wish ? `, wish “${wish.title}” (${app.baseUrl()}/app/wishes/${p.wish_id})` : ''}.`,
+        `**Usage:** ${h.installs} install${h.installs === 1 ? '' : 's'}, ${h.usage_30d} uses in 30 days, ${h.errors_7d} errors in 7 days, ${h.votes} votes${h.rating !== null ? `, rating ${h.rating}/5` : ''}.`,
+        `**No automatic rollout:** this proposal is never shipped by itself – the pull request needs green CI (type check, tests, build) and a human review, and the feature starts switched off.`,
+        `**Feature flag:** please introduce it behind the flag \`${flag}\` (\`app.services.flags.enabled('${flag}', { locationId, userId })\`) so it can be released step by step (private → sub-account → percentage → everyone).`,
+        v ? `<details><summary>Plugin manifest</summary>\n\n\`\`\`json\n${JSON.stringify(v.manifest, null, 2)}\n\`\`\`\n</details>` : '',
       ]
         .filter(Boolean)
         .join('\n\n');
-      return { body, prompt: `Setze die oben beschriebene Spezifikation als festen Bestandteil des Produkts um – als eigenes Modul (siehe docs/code-layout.md bzw. docs/architecture.md), mit deutscher Oberfläche, Tests, Dokumentation und hinter dem Feature-Flag ${flag}. Öffne dazu einen Pull Request.` };
+      return { body, prompt: `Implement the specification above as a fixed part of the product – as its own module (see docs/code-layout.md and docs/architecture.md), with translated interface texts (German source texts plus the English catalog), tests, documentation and behind the feature flag ${flag}. Open a pull request for it.` };
     };
 
     const createIssue = async (r: Row, current: string): Promise<{ ok: boolean; error?: string }> => {
@@ -110,7 +112,7 @@ export const werkstattCoreModule: Module = {
       const ready = githubStatus(current, r.repo);
       if (!gh || !p || !ready.ready) {
         set(r.id, { error: '' });
-        return { ok: false, error: ready.hint || 'GitHub ist nicht eingerichtet.' };
+        return { ok: false, error: ready.hint || tApp()('GitHub ist nicht eingerichtet.') };
       }
       const locId = r.github_location_id || githubLocation(current);
       const { body, prompt } = issueBody(p, r.spec, r.flag);
@@ -152,20 +154,20 @@ export const werkstattCoreModule: Module = {
       const coreAction = ctx.body?.core_action === 'retire' ? 'retire' : 'migrate';
       const run = app.services.aiRun as ((i: Record<string, unknown>) => Promise<{ text: string; usage?: any; costMicros?: number }>) | undefined;
       const problem = (app.services.aiReady?.(ctx.locationId) as string | null | undefined) ?? (run ? null : 'Die KI ist nicht eingerichtet.');
-      if (problem) throw new HttpError(409, `Die Spezifikation braucht die KI: ${problem}`);
+      if (problem) throw new HttpError(409, tApp()('Die Spezifikation braucht die KI: {problem}', { problem: tApp()(problem) }));
       const over = budgetProblem(app, policy, ctx.locationId, 0);
       if (over) throw new HttpError(409, over);
       const refused = gateProblem(app, ctx.locationId, 'werkstatt_spec', ctx.user ?? undefined);
       if (refused) throw new HttpError(409, refused);
       const wish = p.wish_id ? db.get<{ title: string; body: string }>('SELECT title, body FROM feedback_items WHERE id = ?', p.wish_id) : undefined;
       const h = healthOf(app, p.id);
-      const usage = `${h.installs} Installation(en), ${h.usage_30d} Nutzungen in 30 Tagen, ${h.errors_7d} Fehler in 7 Tagen, ${h.votes} Stimmen, Bewertung ${h.rating ?? 'keine'} (${h.reviews}).`;
-      const r = await run!({ locationId: ctx.locationId, purpose: 'werkstatt_spec', system: [{ text: SPEC_SYSTEM, cache: true }], user: specUser({ wish: wish ? `${wish.title}\n${wish.body}` : `(kein Wunsch verknüpft) ${p.description}`, manifest: v.manifest, ui_html: v.ui_html, server_js: v.server_js, steps: v.steps, usage }), schema: SPEC_SCHEMA, maxTokens: 6000, timeoutMs: 240_000, userId: ctx.user!.id });
+      const usage = `${h.installs} install(s), ${h.usage_30d} uses in 30 days, ${h.errors_7d} errors in 7 days, ${h.votes} votes, rating ${h.rating ?? 'none'} (${h.reviews}).`; // AI prompt input (English)
+      const r = await run!({ locationId: ctx.locationId, purpose: 'werkstatt_spec', system: [{ text: SPEC_SYSTEM, cache: true }], user: specUser({ wish: wish ? `${wish.title}\n${wish.body}` : `(no wish linked) ${p.description}`, manifest: v.manifest, ui_html: v.ui_html, server_js: v.server_js, steps: v.steps, usage }), schema: SPEC_SCHEMA, maxTokens: 6000, timeoutMs: 240_000, userId: ctx.user!.id });
       callCost(app, ctx.locationId, r);
       const parsed = parseSpec(r.text);
-      if (!parsed.ok) throw new HttpError(502, `Die KI hat keine brauchbare Spezifikation geliefert (${parsed.error}).`);
+      if (!parsed.ok) throw new HttpError(502, tApp()('Die KI hat keine brauchbare Spezifikation geliefert ({error}).', { error: parsed.error }));
       const flag = `core.${p.slug}`.slice(0, 59);
-      (app.services.flags as { define?: Function } | undefined)?.define?.(flag, { description: `Kernfeature aus dem Plugin „${p.name}“` });
+      (app.services.flags as { define?: Function } | undefined)?.define?.(flag, { description: tApp()('Kernfeature aus dem Plugin „{name}“', { name: p.name }) });
       const row = { id: newId(), plugin_id: p.id, status: 'spec', repo, agent, github_location_id: '', issue_number: null, issue_url: '', title: parsed.value.title, spec: parsed.value.spec, flag, prs: '[]', target_version: targetVersion, shipped_version: '', core_action: coreAction, error: '', last_checked_at: null, created_by: (ctx.user as User).id, created_at: now(), updated_at: now() };
       db.insert('plugin_core', row);
       const res = ctx.body?.create_issue === false ? { ok: true } : await createIssue(row, ctx.locationId);
@@ -224,7 +226,7 @@ export const werkstattCoreModule: Module = {
       } else db.run('UPDATE plugin_installs SET enabled = 0, updated_at = ? WHERE plugin_id = ?', now(), p.id);
       db.run(`UPDATE plugins SET status = 'in_core', core_status = 'shipped', core_version = ?, updated_at = ? WHERE id = ?`, version, now(), p.id);
       set(r.id, { status: 'shipped', shipped_version: version, core_action: action });
-      if (people.length) void Promise.resolve(app.services.pushNotify?.({ userIds: people, kind: 'plugin', title: `„${p.name}“ ist jetzt ${NAMES.inCore}`, body: `Ab Version ${version} gehört die Funktion fest zu ${app.services.brandName?.() ?? 'Neso CRM'}.${action === 'migrate' ? ' Das Plugin ist abgeschaltet, die Daten bleiben erhalten.' : ''}`, url: '/app/marktplatz', tag: `plugin-core-${p.id}` })).catch(() => {});
+      if (people.length) void Promise.resolve(app.services.pushNotify?.({ userIds: people, kind: 'plugin', title: tApp()('„{name}“ ist jetzt {inCore}', { name: p.name, inCore: tApp()(NAMES.inCore) }), body: `${tApp()('Ab Version {version} gehört die Funktion fest zu {brand}.', { version, brand: app.services.brandName?.() ?? 'Neso CRM' })}${action === 'migrate' ? ` ${tApp()('Das Plugin ist abgeschaltet, die Daten bleiben erhalten.')}` : ''}`, url: '/app/marktplatz', tag: `plugin-core-${p.id}` })).catch(() => {});
     };
     router.post('/api/werkstatt/core/:id/ship', 'admin', (ctx) => {
       const r = get(ctx.params.id);

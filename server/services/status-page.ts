@@ -1,4 +1,5 @@
 import { escapeHtml as h } from '../core/template.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * The public status page (/status, modules/status-page.ts): uptime per component and day from the instance's own health
@@ -88,25 +89,39 @@ export function currentStatus(key: string, source: Source, latest: Sample | unde
   return latest[source] ? 'ok' : 'outage';
 }
 
-const pct = (v: number | null) => (v === null ? '–' : `${(Math.floor(v * 10000) / 100).toFixed(2).replace('.', ',')} %`);
+const pct = (v: number | null) => {
+  if (v === null) return '–';
+  const n = (Math.floor(v * 10000) / 100).toFixed(2);
+  return tApp().locale === 'de' ? `${n.replace('.', ',')} %` : `${n}%`;
+};
 const tone = (v: number | null) => (v === null ? 'none' : v >= 0.999 ? 'ok' : v >= 0.99 ? 'minor' : v >= 0.95 ? 'major' : 'down');
-const de = (iso: string) => new Date(iso).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-const day = (ymd: string) => `${ymd.slice(8, 10)}.${ymd.slice(5, 7)}.${ymd.slice(0, 4)}`;
+const de = (iso: string) => {
+  const g = tApp().locale === 'de';
+  return new Date(iso).toLocaleString(g ? 'de-DE' : 'en-GB', { timeZone: g ? 'Europe/Berlin' : 'UTC', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + (g ? '' : ' UTC');
+};
+const day = (ymd: string) => (tApp().locale === 'de' ? `${ymd.slice(8, 10)}.${ymd.slice(5, 7)}.${ymd.slice(0, 4)}` : `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}/${ymd.slice(0, 4)}`);
 
 export function renderStatusPage(d: { brand: string; now: number; components: { key: string; name: string; current: Current; daily: (number | null)[]; total: number | null }[]; days: string[]; open: Incident[]; past: Incident[]; abuseUrl?: string }): string {
   const worst: Current = d.components.some((c) => c.current === 'outage') ? 'outage' : d.components.some((c) => c.current === 'degraded') ? 'degraded' : d.components.some((c) => c.current === 'maintenance') ? 'maintenance' : d.components.every((c) => c.current === 'unknown') ? 'unknown' : 'ok';
-  const banner: Record<Current, string> = { ok: 'Alle Systeme in Betrieb', degraded: 'Einzelne Dienste eingeschränkt', outage: 'Störung', maintenance: 'Wartungsarbeiten', unknown: 'Noch keine Messwerte' };
-  const incident = (i: Incident) => `<article class="inc ${h(i.impact)}"><h3>${h(i.title)} <span class="tag">${h(IMPACT_LABEL[i.impact] ?? i.impact)}</span></h3>
-<p class="meta">${de(i.started_at)}${i.resolved_at ? ` – ${de(i.resolved_at)}` : ''} · ${h(STATUS_LABEL[i.status] ?? i.status)}${i.components.length ? ` · ${h(i.components.map((k) => COMPONENTS.find((c) => c.key === k)?.name ?? k).join(', '))}` : ''}</p>
-${i.updates.map((u) => `<div class="upd"><strong>${h(STATUS_LABEL[u.status] ?? u.status)}</strong> <span class="meta">${de(u.at)}</span><p>${h(u.body).replace(/\n/g, '<br>')}</p></div>`).join('')}</article>`;
+  const t = tApp();
+  const banner: Record<Current, string> = { ok: t('Alle Systeme in Betrieb'), degraded: t('Einzelne Dienste eingeschränkt'), outage: t('Störung'), maintenance: t('Wartungsarbeiten'), unknown: t('Noch keine Messwerte') };
+  const label = (map: Record<string, string>, k: string) => (map[k] ? t(map[k]) : k);
+  const compName = (k: string) => {
+    const c = COMPONENTS.find((x) => x.key === k);
+    return c ? t(c.name) : k;
+  };
+  const incident = (i: Incident) => `<article class="inc ${h(i.impact)}"><h3>${h(i.title)} <span class="tag">${h(label(IMPACT_LABEL, i.impact))}</span></h3>
+<p class="meta">${de(i.started_at)}${i.resolved_at ? ` – ${de(i.resolved_at)}` : ''} · ${h(label(STATUS_LABEL, i.status))}${i.components.length ? ` · ${h(i.components.map(compName).join(', '))}` : ''}</p>
+${i.updates.map((u) => `<div class="upd"><strong>${h(label(STATUS_LABEL, u.status))}</strong> <span class="meta">${de(u.at)}</span><p>${h(u.body).replace(/\n/g, '<br>')}</p></div>`).join('')}</article>`;
   const rows = d.components
-    .map(
-      (c) => `<section class="comp"><div class="head"><h2>${h(c.name)}</h2><span class="st ${c.current}">${CURRENT_LABEL[c.current]}</span></div>
-<div class="bars" role="img" aria-label="${h(`${c.name}: ${pct(c.total)} Verfügbarkeit in ${d.days.length} Tagen`)}">${c.daily.map((v, i) => `<span class="b ${tone(v)}" title="${day(d.days[i])}: ${pct(v)}"></span>`).join('')}</div>
-<div class="foot"><span>vor ${d.days.length} Tagen</span><span>${pct(c.total)} verfügbar</span><span>heute</span></div></section>`,
-    )
+    .map((c) => {
+      const name = t(c.name);
+      return `<section class="comp"><div class="head"><h2>${h(name)}</h2><span class="st ${c.current}">${h(t(CURRENT_LABEL[c.current]))}</span></div>
+<div class="bars" role="img" aria-label="${h(t('{name}: {pct} Verfügbarkeit in {days} Tagen', { name, pct: pct(c.total), days: d.days.length }))}">${c.daily.map((v, i) => `<span class="b ${tone(v)}" title="${day(d.days[i])}: ${pct(v)}"></span>`).join('')}</div>
+<div class="foot"><span>${h(t('vor {days} Tagen', { days: d.days.length }))}</span><span>${h(t('{pct} verfügbar', { pct: pct(c.total) }))}</span><span>${h(t('heute'))}</span></div></section>`;
+    })
     .join('');
-  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="refresh" content="60"><meta name="robots" content="noindex">
+  return `<!doctype html><html lang="${t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="refresh" content="60"><meta name="robots" content="noindex">
 <title>Status – ${h(d.brand)}</title>
 <style>
 :root{--ok:#16a34a;--minor:#84cc16;--major:#f59e0b;--down:#dc2626;--none:#d1d5db;--maint:#2563eb;--text:#111827;--muted:#6b7280;--line:#e5e7eb;--bg:#f9fafb;--card:#fff}
@@ -125,11 +140,11 @@ ${i.updates.map((u) => `<div class="upd"><strong>${h(STATUS_LABEL[u.status] ?? u
 footer{color:var(--muted);font-size:13px;margin-top:28px}a{color:inherit}
 </style></head><body><main class="wrap">
 <h1>Status – ${h(d.brand)}</h1>
-<div class="banner ${worst}" role="status">${banner[worst]}</div>
-${d.open.length ? `<h2 style="margin:0 0 10px">Aktuelle Vorfälle</h2>${d.open.map(incident).join('')}` : ''}
+<div class="banner ${worst}" role="status">${h(banner[worst])}</div>
+${d.open.length ? `<h2 style="margin:0 0 10px">${h(t('Aktuelle Vorfälle'))}</h2>${d.open.map(incident).join('')}` : ''}
 ${rows}
-<h2 style="margin:26px 0 10px">Vorfälle der letzten ${d.days.length} Tage</h2>
-${d.past.length ? d.past.map(incident).join('') : '<p class="meta">Keine Vorfälle.</p>'}
-<footer>Gemessen von dieser Instanz selbst alle 5 Minuten; fehlt eine Messung, zählt der Zeitraum als Ausfall. Tage in UTC. Stand ${de(new Date(d.now).toISOString())}.${d.abuseUrl ? ` · <a href="${h(d.abuseUrl)}">Missbrauch melden</a>` : ''}</footer>
+<h2 style="margin:26px 0 10px">${h(t('Vorfälle der letzten {days} Tage', { days: d.days.length }))}</h2>
+${d.past.length ? d.past.map(incident).join('') : `<p class="meta">${h(t('Keine Vorfälle.'))}</p>`}
+<footer>${h(t('Gemessen von dieser Instanz selbst alle 5 Minuten; fehlt eine Messung, zählt der Zeitraum als Ausfall. Tage in UTC. Stand {date}.', { date: de(new Date(d.now).toISOString()) }))}${d.abuseUrl ? ` · <a href="${h(d.abuseUrl)}">${h(t('Missbrauch melden'))}</a>` : ''}</footer>
 </main></body></html>`;
 }

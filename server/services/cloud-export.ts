@@ -5,6 +5,7 @@ import { toCsv } from '../core/csv.js';
 import { isSealed } from '../core/secrets.js';
 import { now } from '../core/util.js';
 import { buildZip } from './acc-datev.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * A cloud customer's data, as a whole: the export (ZIP with JSON and CSV per table plus the uploaded files) and the
@@ -204,17 +205,19 @@ export function exportTenant(app: App, t: { id: string; name: string }, location
     seenTop.add(f.top);
     files.push({ name: `dateien/${f.rel}`, data: readFileSync(join(app.config.dataDir, f.rel)) });
   }
+  // The folder names (daten/, csv/, dateien/) are the paths in the ZIP and stay as they are; the explanations are translated.
+  const tr = tApp();
   const readme = [
-    `Datenexport von „${t.name}“`,
-    `Erstellt am ${now()}`,
+    tr('Datenexport von „{name}“', { name: t.name }),
+    tr('Erstellt am {date}', { date: now() }),
     '',
-    'daten/   – eine JSON-Datei je Tabelle (Kontakte, Aufgaben, Nachrichten, Rechnungen …), ohne Passwörter, Tokens und Schlüssel',
-    'csv/     – dieselben Tabellen als CSV (UTF-8, Excel-tauglich)',
-    'dateien/ – hochgeladene Dateien (Bilder, Anhänge, Dokumente)',
-    'daten/team.json – die Nutzer deines Kontos',
-    skipped ? `\nHinweis: ${skipped} Datei(en) fehlen, weil das Größenlimit des Exports erreicht wurde. Melde dich beim Support für einen Export in Teilen.` : '',
+    `daten/   – ${tr('eine JSON-Datei je Tabelle (Kontakte, Aufgaben, Nachrichten, Rechnungen …), ohne Passwörter, Tokens und Schlüssel')}`,
+    `csv/     – ${tr('dieselben Tabellen als CSV (UTF-8, Excel-tauglich)')}`,
+    `dateien/ – ${tr('hochgeladene Dateien (Bilder, Anhänge, Dokumente)')}`,
+    `daten/team.json – ${tr('die Nutzer deines Kontos')}`,
+    skipped ? `\n${tr('Hinweis: {n} Datei(en) fehlen, weil das Größenlimit des Exports erreicht wurde. Melde dich beim Support für einen Export in Teilen.', { n: skipped })}` : '',
   ].join('\n');
-  files.unshift({ name: 'manifest.json', data: Buffer.from(JSON.stringify({ exported_at: now(), tenant: t.name, tables: manifest, files: count, skipped_files: skipped }, null, 2)) }, { name: 'LIESMICH.txt', data: Buffer.from(readme) });
+  files.unshift({ name: 'manifest.json', data: Buffer.from(JSON.stringify({ exported_at: now(), tenant: t.name, tables: manifest, files: count, skipped_files: skipped }, null, 2)) }, { name: tr.locale === 'de' ? 'LIESMICH.txt' : 'README.txt', data: Buffer.from(readme) });
   return { zip: buildZip(files), tables: Object.keys(manifest).length, rows, files: count };
 }
 

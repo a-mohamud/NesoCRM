@@ -4,6 +4,7 @@ import { escapeHtml } from '../core/template.js';
 import { centsToMoney } from '../core/util.js';
 import { cssUrl, embedHtml, excerptOf, renderMarkdown, stripMarkdown, videoEmbed } from './markdown.js';
 import { billingsOf, priceText, type Billing, type PageRow, type Question, type Tier, type TierPrices } from './community-tiers.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Server-rendered public pages of a community: the About page (/c/<slug>), the join form, the answers after joining and the
@@ -111,6 +112,7 @@ export interface LayoutOpts {
 
 /** The common frame: brand header, theme colour, SEO tags, strict CSP. */
 export function layout(app: App, loc: LocationRow, o: LayoutOpts): RawResult {
+  const t = tLoc(app, loc.id);
   const b = publicBrand(loc);
   const mark = b.logo ? `<img src="${escapeHtml(b.logo)}" alt="${escapeHtml(b.name)}">` : `<span class="mark">${escapeHtml(b.name.slice(0, 1).toUpperCase())}</span><span>${escapeHtml(b.name)}</span>`;
   const desc = o.description ? escapeHtml(excerptOf(o.description, 160)) : '';
@@ -124,7 +126,7 @@ export function layout(app: App, loc: LocationRow, o: LayoutOpts): RawResult {
     ...(o.image ? [['og:image', abs(o.image)]] : []),
   ];
   const doc = `<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="${t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(o.title)}</title>
 ${desc ? `<meta name="description" content="${desc}">` : ''}
 <meta name="robots" content="${escapeHtml(o.robots ?? 'index, follow')}"><meta name="theme-color" content="${b.color}"><meta name="referrer" content="strict-origin-when-cross-origin">
@@ -134,7 +136,7 @@ ${og.map(([k, v]) => `<meta property="${k}" content="${escapeHtml(String(v))}">`
 <meta name="twitter:card" content="${o.image ? 'summary_large_image' : 'summary'}">
 ${o.jsonld ? `<script type="application/ld+json">${JSON.stringify(o.jsonld).replace(/</g, '\\u003c')}</script>` : ''}
 <style>:root{--brand:${b.color};--soft:${b.color}1f}@media (prefers-color-scheme:dark){:root{--soft:${b.color}33}}${CSS}</style>${o.head ?? ''}</head>
-<body><header class="top"><div class="in"><a class="brand" href="/">${mark}</a><nav class="nav" aria-label="Hauptmenü">${(o.navLinks ?? []).map(([href, label]) => `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`).join('')}</nav></div></header>
+<body><header class="top"><div class="in"><a class="brand" href="/">${mark}</a><nav class="nav" aria-label="${t('Hauptmenü')}">${(o.navLinks ?? []).map(([href, label]) => `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`).join('')}</nav></div></header>
 <main>${o.body}</main>${o.script ? '<script src="/community-join.js" defer></script>' : ''}</body></html>`;
   const r = html(doc, o.status ?? 200);
   Object.assign(r.headers, {
@@ -168,58 +170,60 @@ export interface AboutData {
 
 const initials = (n: string) => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '?';
 
-export function priceLines(v: TierView): string[] {
+export function priceLines(v: TierView, t: STFn = tApp()): string[] {
   const p = v.prices;
-  if (p.free) return ['Kostenlos'];
-  return (['month', 'year', 'once'] as const).filter((b) => p[b]).map((b) => priceText(p[b]!));
+  if (p.free) return [t('Kostenlos')];
+  return (['month', 'year', 'once'] as const).filter((b) => p[b]).map((b) => priceText(p[b]!, t));
 }
 
-const fromPrice = (views: TierView[]): string => {
-  const all = views.flatMap((v) => (v.prices.free ? [{ cents: 0, text: 'Kostenlos' }] : (['month', 'year', 'once'] as const).filter((b) => v.prices[b]).map((b) => ({ cents: v.prices[b]!.gross_cents / (b === 'year' ? 12 : 1), text: priceText(v.prices[b]!) }))));
-  if (!all.length) return 'Kostenlos';
+const fromPrice = (views: TierView[], t: STFn): string => {
+  const all = views.flatMap((v) => (v.prices.free ? [{ cents: 0, text: t('Kostenlos') }] : (['month', 'year', 'once'] as const).filter((b) => v.prices[b]).map((b) => ({ cents: v.prices[b]!.gross_cents / (b === 'year' ? 12 : 1), text: priceText(v.prices[b]!, t) }))));
+  if (!all.length) return t('Kostenlos');
   const min = all.sort((a, b) => a.cents - b.cents)[0];
-  return views.length > 1 && min.cents > 0 ? `ab ${min.text}` : min.text;
+  return views.length > 1 && min.cents > 0 ? t('ab {price}', { price: min.text }) : min.text;
 };
 
-export const joinLabel = (page: PageRow, views: TierView[]) => (page.approval ? 'Beitritt anfragen' : views.every((v) => v.prices.free) ? 'Kostenlos beitreten' : 'Jetzt beitreten');
+export const joinLabel = (page: PageRow, views: TierView[], t: STFn = tApp()) => (page.approval ? t('Beitritt anfragen') : views.every((v) => v.prices.free) ? t('Kostenlos beitreten') : t('Jetzt beitreten'));
 
 export function aboutHtml(app: App, loc: LocationRow, d: AboutData): RawResult {
   const { g, page, tiers } = d;
+  const t = tLoc(app, loc.id);
   const cover = page.cover_image || g.cover_image;
   const embed = page.video_url ? videoEmbed(page.video_url) : null;
   const media = embed ? `<div class="media">${embedHtml(embed, g.name)}</div>` : `<div class="media"${cover ? ` style="background-image:url('${cssUrl(cover)}')"` : ''}>${cover ? '' : escapeHtml(g.name.slice(0, 1).toUpperCase())}</div>`;
   const desc = page.seo_description || stripMarkdown(page.about) || page.tagline || stripMarkdown(g.description);
   const trial = tiers.map((v) => v.tier.trial_days).filter((n) => n > 0);
   const stats = [
-    page.show_member_count ? `<span><b>${d.members}</b> ${d.members === 1 ? 'Mitglied' : 'Mitglieder'}</span>` : '',
-    `<span>${tiers.every((v) => v.prices.free) ? 'Kostenlos' : escapeHtml(fromPrice(tiers))}</span>`,
-    trial.length ? `<span>${Math.max(...trial)} Tage kostenlos testen</span>` : '',
-    page.approval ? '<span>Beitritt nach Freigabe</span>' : '',
+    page.show_member_count ? `<span>${t.plural(d.members, { one: '<b>{n}</b> Mitglied', other: '<b>{n}</b> Mitglieder' })}</span>` : '',
+    `<span>${tiers.every((v) => v.prices.free) ? t('Kostenlos') : escapeHtml(fromPrice(tiers, t))}</span>`,
+    trial.length ? `<span>${t.plural(Math.max(...trial), { one: '{n} Tag kostenlos testen', other: '{n} Tage kostenlos testen' })}</span>` : '',
+    page.approval ? `<span>${t('Beitritt nach Freigabe')}</span>` : '',
   ].filter(Boolean);
   const tierCards = tiers.length > 1
-    ? `<h2>Mitgliedschaften</h2><div class="tiers">${tiers
-        .map((v) => `<div class="tier${v.tier.highlight ? ' hl' : ''}"><h3>${escapeHtml(v.tier.name)}${v.tier.highlight ? ' <span class="pill">Beliebt</span>' : ''}</h3>${v.tier.description ? `<p class="muted small" style="margin:0">${escapeHtml(v.tier.description)}</p>` : ''}${priceLines(v).map((l, i) => `<div class="${i ? 'muted small' : 'price'}">${escapeHtml(l)}</div>`).join('')}${v.tier.trial_days ? `<div class="small" style="color:var(--ok);font-weight:600">${v.tier.trial_days} Tage kostenlos testen</div>` : ''}${v.tier.features.length ? `<ul>${v.tier.features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>` : ''}<a class="btn ${v.tier.highlight ? '' : 'ghost'} wide" style="margin-top:auto" href="${escapeHtml(d.joinUrl)}${d.joinUrl.includes('?') ? '&' : '?'}tier=${encodeURIComponent(v.tier.id)}">Wählen</a></div>`)
+    ? `<h2>${t('Mitgliedschaften')}</h2><div class="tiers">${tiers
+        .map((v) => `<div class="tier${v.tier.highlight ? ' hl' : ''}"><h3>${escapeHtml(v.tier.name)}${v.tier.highlight ? ` <span class="pill">${t('Beliebt')}</span>` : ''}</h3>${v.tier.description ? `<p class="muted small" style="margin:0">${escapeHtml(v.tier.description)}</p>` : ''}${priceLines(v, t).map((l, i) => `<div class="${i ? 'muted small' : 'price'}">${escapeHtml(l)}</div>`).join('')}${v.tier.trial_days ? `<div class="small" style="color:var(--ok);font-weight:600">${t.plural(v.tier.trial_days, { one: '{n} Tag kostenlos testen', other: '{n} Tage kostenlos testen' })}</div>` : ''}${v.tier.features.length ? `<ul>${v.tier.features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>` : ''}<a class="btn ${v.tier.highlight ? '' : 'ghost'} wide" style="margin-top:auto" href="${escapeHtml(d.joinUrl)}${d.joinUrl.includes('?') ? '&' : '?'}tier=${encodeURIComponent(v.tier.id)}">${t('Wählen')}</a></div>`)
         .join('')}</div>`
     : '';
   const one = tiers[0];
-  const cta = `<aside class="buy"><h3>${escapeHtml(g.name)}</h3>${tiers.length === 1 && one ? `${priceLines(one).map((l, i) => `<div class="${i ? 'muted small' : 'price'}">${escapeHtml(l)}</div>`).join('')}${one.tier.trial_days ? `<p class="small" style="color:var(--ok);font-weight:600;margin:6px 0 0">${one.tier.trial_days} Tage kostenlos testen</p>` : ''}${one.tier.features.length ? `<ul class="small" style="padding-left:18px;margin:12px 0">${one.tier.features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>` : ''}` : `<div class="price"><small>${escapeHtml(fromPrice(tiers))}</small></div><p class="muted small">Wähle unten oder im nächsten Schritt deine Mitgliedschaft.</p>`}
-<p style="margin:16px 0 0"><a class="btn wide" href="${escapeHtml(d.joinUrl)}">${escapeHtml(joinLabel(page, tiers))}</a></p>
-<p class="muted small" style="text-align:center;margin:12px 0 0">Schon dabei? <a href="${escapeHtml(d.loginUrl)}">Anmelden</a></p></aside>`;
-  const admins = page.show_admins && d.admins.length ? `<h2>Das Team</h2><div class="admins">${d.admins.map((a) => `<div class="admin">${a.avatar ? `<img class="av" src="${escapeHtml(a.avatar)}" alt="">` : `<span class="av" aria-hidden="true">${escapeHtml(initials(a.name))}</span>`}<div><strong>${escapeHtml(a.name)}</strong>${a.headline ? `<div class="muted small">${escapeHtml(a.headline)}</div>` : ''}</div></div>`).join('')}</div>` : '';
+  const cta = `<aside class="buy"><h3>${escapeHtml(g.name)}</h3>${tiers.length === 1 && one ? `${priceLines(one, t).map((l, i) => `<div class="${i ? 'muted small' : 'price'}">${escapeHtml(l)}</div>`).join('')}${one.tier.trial_days ? `<p class="small" style="color:var(--ok);font-weight:600;margin:6px 0 0">${t.plural(one.tier.trial_days, { one: '{n} Tag kostenlos testen', other: '{n} Tage kostenlos testen' })}</p>` : ''}${one.tier.features.length ? `<ul class="small" style="padding-left:18px;margin:12px 0">${one.tier.features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>` : ''}` : `<div class="price"><small>${escapeHtml(fromPrice(tiers, t))}</small></div><p class="muted small">${t('Wähle unten oder im nächsten Schritt deine Mitgliedschaft.')}</p>`}
+<p style="margin:16px 0 0"><a class="btn wide" href="${escapeHtml(d.joinUrl)}">${escapeHtml(joinLabel(page, tiers, t))}</a></p>
+<p class="muted small" style="text-align:center;margin:12px 0 0">${t('Schon dabei?')} <a href="${escapeHtml(d.loginUrl)}">${t('Anmelden')}</a></p></aside>`;
+  const admins = page.show_admins && d.admins.length ? `<h2>${t('Das Team')}</h2><div class="admins">${d.admins.map((a) => `<div class="admin">${a.avatar ? `<img class="av" src="${escapeHtml(a.avatar)}" alt="">` : `<span class="av" aria-hidden="true">${escapeHtml(initials(a.name))}</span>`}<div><strong>${escapeHtml(a.name)}</strong>${a.headline ? `<div class="muted small">${escapeHtml(a.headline)}</div>` : ''}</div></div>`).join('')}</div>` : '';
   const body = `<div class="hero"><section><h1>${escapeHtml(g.name)}</h1>${page.tagline ? `<p class="tagline">${escapeHtml(page.tagline)}</p>` : ''}${media}<div class="stats">${stats.join('')}</div>
-${page.about ? `<h2>Worum es geht</h2><div class="prose">${renderMarkdown(page.about, { embeds: true })}</div>` : g.description ? `<h2>Worum es geht</h2><div class="prose">${renderMarkdown(g.description)}</div>` : ''}${tierCards}${admins}</section>${cta}</div>
-<p class="foot"><a href="${escapeHtml(d.discoverUrl)}">Weitere Communities entdecken</a></p>`;
+${page.about ? `<h2>${t('Worum es geht')}</h2><div class="prose">${renderMarkdown(page.about, { embeds: true })}</div>` : g.description ? `<h2>${t('Worum es geht')}</h2><div class="prose">${renderMarkdown(g.description)}</div>` : ''}${tierCards}${admins}</section>${cta}</div>
+<p class="foot"><a href="${escapeHtml(d.discoverUrl)}">${t('Weitere Communities entdecken')}</a></p>`;
   const offers = tiers.flatMap((v) =>
+    // i18n-ignore – schema.org types
     (['month', 'year', 'once'] as const).filter((b) => v.prices[b]).map((b) => ({ '@type': 'Offer', name: v.tier.name, price: (v.prices[b]!.gross_cents / 100).toFixed(2), priceCurrency: v.prices[b]!.currency, url: d.joinUrl })),
   );
   const jsonld = {
     '@context': 'https://schema.org',
-    '@type': 'Product',
+    '@type': 'Product', // i18n-ignore
     name: g.name,
     description: excerptOf(desc, 300),
     ...(cover ? { image: cover.startsWith('/') ? `${app.baseUrl()}${cover}` : cover } : {}),
-    brand: { '@type': 'Brand', name: publicBrand(loc).name },
-    ...(offers.length ? { offers } : { offers: { '@type': 'Offer', price: '0.00', priceCurrency: 'EUR', url: d.joinUrl } }),
+    brand: { '@type': 'Brand', name: publicBrand(loc).name }, // i18n-ignore
+    ...(offers.length ? { offers } : { offers: { '@type': 'Offer', price: '0.00', priceCurrency: 'EUR', url: d.joinUrl } }), // i18n-ignore
   };
   return layout(app, loc, {
     title: page.seo_title || `${g.name} – ${publicBrand(loc).name}`,
@@ -229,7 +233,7 @@ ${page.about ? `<h2>Worum es geht</h2><div class="prose">${renderMarkdown(page.a
     robots: page.indexable ? 'index, follow' : 'noindex, nofollow',
     jsonld,
     body,
-    navLinks: [[d.loginUrl, 'Anmelden'], [d.discoverUrl, 'Alle Communities']],
+    navLinks: [[d.loginUrl, t('Anmelden')], [d.discoverUrl, t('Alle Communities')]],
   });
 }
 
@@ -253,52 +257,53 @@ export interface JoinFormData {
   attr?: string;
 }
 
-const optionLabel = (b: Billing, v: TierView) => {
+const optionLabel = (b: Billing, v: TierView, t: STFn) => {
   const p = v.prices;
-  if (b === 'free') return 'Kostenlos';
-  return p[b] ? priceText(p[b]!) : '';
+  if (b === 'free') return t('Kostenlos');
+  return p[b] ? priceText(p[b]!, t) : '';
 };
 
 export function joinHtml(app: App, loc: LocationRow, d: JoinFormData): RawResult {
   const v = d.values ?? {};
+  const t = tLoc(app, loc.id);
   const sel = d.selectedTier && d.tiers.some((t) => t.tier.id === d.selectedTier) ? d.selectedTier : d.tiers[0]?.tier.id;
   const tierChoice = d.tiers.length > 1
-    ? `<fieldset style="border:0;padding:0;margin:0"><legend class="f" style="padding:0">Deine Mitgliedschaft</legend>${d.tiers
-        .map((t) => {
-          const bills = billingsOf(t.prices);
-          return `<label class="opt"><input type="radio" name="tier" value="${escapeHtml(t.tier.id)}"${t.tier.id === sel ? ' checked' : ''} required data-bills="${bills.join(',')}"><span class="b"><strong>${escapeHtml(t.tier.name)}</strong>${t.tier.description ? `<br><span class="muted small">${escapeHtml(t.tier.description)}</span>` : ''}${t.tier.trial_days ? `<br><span class="small" style="color:var(--ok);font-weight:600">${t.tier.trial_days} Tage kostenlos testen</span>` : ''}</span><span class="p">${escapeHtml(priceLines(t)[0])}</span></label>`;
+    ? `<fieldset style="border:0;padding:0;margin:0"><legend class="f" style="padding:0">${t('Deine Mitgliedschaft')}</legend>${d.tiers
+        .map((x) => {
+          const bills = billingsOf(x.prices);
+          return `<label class="opt"><input type="radio" name="tier" value="${escapeHtml(x.tier.id)}"${x.tier.id === sel ? ' checked' : ''} required data-bills="${bills.join(',')}"><span class="b"><strong>${escapeHtml(x.tier.name)}</strong>${x.tier.description ? `<br><span class="muted small">${escapeHtml(x.tier.description)}</span>` : ''}${x.tier.trial_days ? `<br><span class="small" style="color:var(--ok);font-weight:600">${t.plural(x.tier.trial_days, { one: '{n} Tag kostenlos testen', other: '{n} Tage kostenlos testen' })}</span>` : ''}</span><span class="p">${escapeHtml(priceLines(x, t)[0])}</span></label>`;
         })
         .join('')}</fieldset>`
     : `<input type="hidden" name="tier" value="${escapeHtml(d.tiers[0]?.tier.id ?? '')}">`;
   // Billing choice: only where a tier really has more than one way to pay.
-  const multi = d.tiers.filter((t) => billingsOf(t.prices).length > 1);
+  const multi = d.tiers.filter((x) => billingsOf(x.prices).length > 1);
   const billingChoice = multi.length
-    ? `<fieldset style="border:0;padding:0;margin:0" data-billing><legend class="f" style="padding:0">Zahlungsweise</legend>${d.tiers
-        .filter((t) => billingsOf(t.prices).length > 1)
-        .flatMap((t) =>
-          billingsOf(t.prices).map((b, i) => `<label class="opt" data-tier="${escapeHtml(t.tier.id)}"><input type="radio" name="billing" value="${b}"${(d.billing ? d.billing === b : i === 0) ? ' checked' : ''}><span class="b"><strong>${b === 'month' ? 'Monatlich' : b === 'year' ? 'Jährlich' : 'Einmalig (lebenslang)'}</strong></span><span class="p">${escapeHtml(optionLabel(b, t))}</span></label>`),
+    ? `<fieldset style="border:0;padding:0;margin:0" data-billing><legend class="f" style="padding:0">${t('Zahlungsweise')}</legend>${d.tiers
+        .filter((x) => billingsOf(x.prices).length > 1)
+        .flatMap((x) =>
+          billingsOf(x.prices).map((b, i) => `<label class="opt" data-tier="${escapeHtml(x.tier.id)}"><input type="radio" name="billing" value="${b}"${(d.billing ? d.billing === b : i === 0) ? ' checked' : ''}><span class="b"><strong>${b === 'month' ? t('Monatlich') : b === 'year' ? t('Jährlich') : t('Einmalig (lebenslang)')}</strong></span><span class="p">${escapeHtml(optionLabel(b, x, t))}</span></label>`),
         )
         .join('')}</fieldset>`
     : '';
-  const questions = d.page.questions.map((q: Question) => `<label class="f" for="q-${escapeHtml(q.id)}">${escapeHtml(q.label)}${q.required ? '' : ' <span class="muted" style="font-weight:400">(optional)</span>'}</label><textarea class="t" id="q-${escapeHtml(q.id)}" name="q_${escapeHtml(q.id)}" maxlength="500" rows="2"${q.required ? ' required' : ''}>${escapeHtml(v[`q_${q.id}`] ?? '')}</textarea>`).join('');
-  const paid = d.tiers.some((t) => !t.prices.free);
-  const coupon = paid && d.couponVisible ? `<details style="margin:16px 0 0"${v.coupon ? ' open' : ''}><summary class="muted" style="cursor:pointer;min-height:44px;display:flex;align-items:center">Rabattcode einlösen</summary><input class="t" name="coupon" autocomplete="off" placeholder="Code" value="${escapeHtml(v.coupon ?? '')}" style="text-transform:uppercase" data-coupon-url="${escapeHtml(d.couponUrl)}"><div class="small" data-coupon-msg style="margin-top:6px"></div></details>` : '';
-  const note = d.page.approval && !d.invite?.skip_approval ? '<p class="muted small" style="margin:14px 0 0">Das Team prüft jede Anfrage. Du bekommst eine E-Mail, sobald es weitergeht.</p>' : '';
+  const questions = d.page.questions.map((q: Question) => `<label class="f" for="q-${escapeHtml(q.id)}">${escapeHtml(q.label)}${q.required ? '' : ` <span class="muted" style="font-weight:400">${t('(optional)')}</span>`}</label><textarea class="t" id="q-${escapeHtml(q.id)}" name="q_${escapeHtml(q.id)}" maxlength="500" rows="2"${q.required ? ' required' : ''}>${escapeHtml(v[`q_${q.id}`] ?? '')}</textarea>`).join('');
+  const paid = d.tiers.some((x) => !x.prices.free);
+  const coupon = paid && d.couponVisible ? `<details style="margin:16px 0 0"${v.coupon ? ' open' : ''}><summary class="muted" style="cursor:pointer;min-height:44px;display:flex;align-items:center">${t('Rabattcode einlösen')}</summary><input class="t" name="coupon" autocomplete="off" placeholder="${t('Code')}" value="${escapeHtml(v.coupon ?? '')}" style="text-transform:uppercase" data-coupon-url="${escapeHtml(d.couponUrl)}"><div class="small" data-coupon-msg style="margin-top:6px"></div></details>` : '';
+  const note = d.page.approval && !d.invite?.skip_approval ? `<p class="muted small" style="margin:14px 0 0">${t('Das Team prüft jede Anfrage. Du bekommst eine E-Mail, sobald es weitergeht.')}</p>` : '';
   const body = `<form class="join" method="post" action="${escapeHtml(d.action)}"><div class="panel">
-<h1 style="font-size:28px">${escapeHtml(d.g.name)} beitreten</h1>
-<p class="muted" style="margin:0 0 6px">${d.invite ? 'Du wurdest eingeladen. ' : ''}Ein paar Angaben – dann bist du dabei.</p>
+<h1 style="font-size:28px">${t('{group} beitreten', { group: escapeHtml(d.g.name) })}</h1>
+<p class="muted" style="margin:0 0 6px">${d.invite ? `${t('Du wurdest eingeladen.')} ` : ''}${t('Ein paar Angaben – dann bist du dabei.')}</p>
 ${d.error ? `<div class="err" role="alert">${escapeHtml(d.error)}</div>` : ''}
 <input type="hidden" name="_t" value="${escapeHtml(d.formToken)}"><input type="hidden" name="invite" value="${escapeHtml(d.invite?.code ?? '')}">${d.attr ? `<input type="hidden" name="_a" value="${escapeHtml(d.attr)}">` : ''}
 <div class="hp" aria-hidden="true"><label>Website <input tabindex="-1" autocomplete="off" name="website"></label></div>
-<label class="f" for="jn">Dein Name</label><input class="t" id="jn" name="name" required maxlength="100" autocomplete="name" value="${escapeHtml(v.name ?? '')}" autofocus>
-<label class="f" for="je">E-Mail-Adresse</label><input class="t" id="je" name="email" type="email" required maxlength="200" autocomplete="email" value="${escapeHtml(v.email ?? '')}">
+<label class="f" for="jn">${t('Dein Name')}</label><input class="t" id="jn" name="name" required maxlength="100" autocomplete="name" value="${escapeHtml(v.name ?? '')}" autofocus>
+<label class="f" for="je">${t('E-Mail-Adresse')}</label><input class="t" id="je" name="email" type="email" required maxlength="200" autocomplete="email" value="${escapeHtml(v.email ?? '')}">
 ${questions}${tierChoice ? `<div style="margin-top:18px">${tierChoice}</div>` : ''}${billingChoice ? `<div style="margin-top:12px">${billingChoice}</div>` : ''}${coupon}
-${d.page.terms_url || d.page.privacy_url ? `<label class="check"><input type="checkbox" name="terms" value="1" required><span>Ich habe ${d.page.terms_url ? `die <a href="${escapeHtml(d.page.terms_url)}" target="_blank" rel="noopener">AGB</a>` : ''}${d.page.terms_url && d.page.privacy_url ? ' und ' : ''}${d.page.privacy_url ? `die <a href="${escapeHtml(d.page.privacy_url)}" target="_blank" rel="noopener">Datenschutzhinweise</a>` : ''} gelesen und akzeptiere sie.</span></label>` : ''}
+${d.page.terms_url || d.page.privacy_url ? `<label class="check"><input type="checkbox" name="terms" value="1" required><span>${t('Ich habe {documents} gelesen und akzeptiere sie.', { documents: [d.page.terms_url ? `<a href="${escapeHtml(d.page.terms_url)}" target="_blank" rel="noopener">${t('die AGB')}</a>` : '', d.page.privacy_url ? `<a href="${escapeHtml(d.page.privacy_url)}" target="_blank" rel="noopener">${t('die Datenschutzhinweise')}</a>` : ''].filter(Boolean).join(t(' und ')) })}</span></label>` : ''}
 ${d.page.consent_text ? `<label class="check"><input type="checkbox" name="consent" value="1"><span>${escapeHtml(d.page.consent_text)}</span></label>` : ''}
 ${note}
-<p style="margin:20px 0 0"><button class="btn wide" type="submit">${escapeHtml(joinLabel(d.page, d.tiers))}</button></p>
+<p style="margin:20px 0 0"><button class="btn wide" type="submit">${escapeHtml(joinLabel(d.page, d.tiers, t))}</button></p>
 </div></form>`;
-  return layout(app, loc, { title: `${d.g.name} beitreten`, robots: 'noindex, nofollow', body, script: true, navLinks: [[`/c/${encodeURIComponent(d.g.slug)}`, 'Zurück zur Seite']], status: d.error ? 400 : 200 });
+  return layout(app, loc, { title: t('{group} beitreten', { group: d.g.name }), robots: 'noindex, nofollow', body, script: true, navLinks: [[`/c/${encodeURIComponent(d.g.slug)}`, t('Zurück zur Seite')]], status: d.error ? 400 : 200 });
 }
 
 export function noticeHtml(app: App, loc: LocationRow, o: { title: string; text: string; button?: [string, string]; status?: number; extra?: string }): RawResult {
@@ -325,10 +330,11 @@ export interface DiscoverItem {
 }
 
 export function discoverHtml(app: App, o: { items: DiscoverItem[]; q: string; category: string; categories: string[]; title: string }): RawResult {
-  const body = `<h1>${escapeHtml(o.title)}</h1><p class="muted">Offene Communities auf dieser Plattform – stöbere und tritt bei.</p>
-<form class="filters" method="get" action="/communities"><input class="t" type="search" name="q" value="${escapeHtml(o.q)}" placeholder="Suchen …" aria-label="Suchen">${o.categories.length ? `<select class="t" name="category" aria-label="Kategorie"><option value="">Alle Kategorien</option>${o.categories.map((c) => `<option${c === o.category ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>` : ''}<button class="btn">Suchen</button></form>
-${o.items.length ? `<div class="grid">${o.items.map((i) => `<a class="card" href="/c/${encodeURIComponent(i.slug)}" style="--c:${i.color}"><div class="cv"${i.cover ? ` style="background-image:url('${cssUrl(i.cover)}')"` : ''}>${i.cover ? '' : escapeHtml(i.name.slice(0, 1).toUpperCase())}</div><div class="bd"><h3>${escapeHtml(i.name)}</h3>${i.tagline ? `<p class="muted small" style="margin:0">${escapeHtml(excerptOf(i.tagline, 110))}</p>` : ''}<div class="muted small" style="margin-top:auto">${i.members} ${i.members === 1 ? 'Mitglied' : 'Mitglieder'} · ${escapeHtml(i.from)}${i.category ? ` · ${escapeHtml(i.category)}` : ''}</div><div class="muted small">von ${escapeHtml(i.brand)}</div></div></a>`).join('')}</div>` : '<div class="panel center"><p class="muted">Keine Community gefunden.</p></div>'}`;
-  const r = html(`<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(o.title)}</title><meta name="description" content="Offene Communities – stöbern und beitreten."><meta name="robots" content="index, follow"><meta name="theme-color" content="#2563eb"><style>:root{--brand:#2563eb;--soft:#2563eb1f}@media (prefers-color-scheme:dark){:root{--soft:#2563eb33}}${CSS}</style></head><body><header class="top"><div class="in"><a class="brand" href="/communities"><span class="mark">★</span><span>${escapeHtml(o.title)}</span></a></div></header><main>${body}</main></body></html>`);
+  const t = tApp();
+  const body = `<h1>${escapeHtml(o.title)}</h1><p class="muted">${t('Offene Communities auf dieser Plattform – stöbere und tritt bei.')}</p>
+<form class="filters" method="get" action="/communities"><input class="t" type="search" name="q" value="${escapeHtml(o.q)}" placeholder="${t('Suchen …')}" aria-label="${t('Suchen')}">${o.categories.length ? `<select class="t" name="category" aria-label="${t('Kategorie')}"><option value="">${t('Alle Kategorien')}</option>${o.categories.map((c) => `<option${c === o.category ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>` : ''}<button class="btn">${t('Suchen')}</button></form>
+${o.items.length ? `<div class="grid">${o.items.map((i) => `<a class="card" href="/c/${encodeURIComponent(i.slug)}" style="--c:${i.color}"><div class="cv"${i.cover ? ` style="background-image:url('${cssUrl(i.cover)}')"` : ''}>${i.cover ? '' : escapeHtml(i.name.slice(0, 1).toUpperCase())}</div><div class="bd"><h3>${escapeHtml(i.name)}</h3>${i.tagline ? `<p class="muted small" style="margin:0">${escapeHtml(excerptOf(i.tagline, 110))}</p>` : ''}<div class="muted small" style="margin-top:auto">${t.plural(i.members, { one: '{n} Mitglied', other: '{n} Mitglieder' })} · ${escapeHtml(i.from)}${i.category ? ` · ${escapeHtml(i.category)}` : ''}</div><div class="muted small">${t('von {brand}', { brand: escapeHtml(i.brand) })}</div></div></a>`).join('')}</div>` : `<div class="panel center"><p class="muted">${t('Keine Community gefunden.')}</p></div>`}`;
+  const r = html(`<!doctype html><html lang="${t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(o.title)}</title><meta name="description" content="${t('Offene Communities – stöbern und beitreten.')}"><meta name="robots" content="index, follow"><meta name="theme-color" content="#2563eb"><style>:root{--brand:#2563eb;--soft:#2563eb1f}@media (prefers-color-scheme:dark){:root{--soft:#2563eb33}}${CSS}</style></head><body><header class="top"><div class="in"><a class="brand" href="/communities"><span class="mark">★</span><span>${escapeHtml(o.title)}</span></a></div></header><main>${body}</main></body></html>`);
   Object.assign(r.headers, { 'cache-control': 'public, max-age=60', 'x-frame-options': 'DENY', 'content-security-policy': "default-src 'none'; img-src * data:; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" });
   return r;
 }

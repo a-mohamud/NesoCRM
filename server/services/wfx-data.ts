@@ -6,6 +6,7 @@ import { evaluate, ExprError } from './expr.js';
 import { DATE_OPS, DATE_UNITS, FormatError, NUMBER_OPS, TEXT_OPS, dateOp, numberOp, parseNumber, textOp, tzOrDefault } from './formatters.js';
 import { upsertContact } from './contacts.js';
 import type { ActionOutcome } from './workflow-engine.js';
+import { tApp } from '../i18n/index.js';
 import { assign, describeTarget, preview, readPath, requireText, resolve, rowsOf, text, toText, tzOf, type ActionDef, type FieldDef } from './wfx-kit.js';
 
 /**
@@ -43,6 +44,7 @@ const contactRow = (c: any) => ({ id: c.id, first_name: c.first_name, last_name:
 
 export function dataActions(app: App): ActionDef[] {
   const db = app.db;
+  const t = tApp();
   const defs: ActionDef[] = [];
   const add = (d: ActionDef) => defs.push(d);
 
@@ -74,25 +76,25 @@ export function dataActions(app: App): ActionDef[] {
     },
     run: (_run, step, vars) => {
       const rows = rowsOf<{ name: string; value: string; type?: string }>(step.rows, ['name']);
-      if (!rows.length) throw new Error('Keine Variable angegeben');
+      if (!rows.length) throw new Error(t('Keine Variable angegeben'));
       const out: ActionOutcome = { result: '' };
       for (const r of rows) {
         const name = String(r.name).trim().replace(/^var\./, '');
         let v: unknown = resolve(r.value, vars, { json: r.type === 'json' });
         if (r.type === 'number') {
           v = parseNumber(v);
-          if (Number.isNaN(v as number)) throw new Error(`„${name}“: „${preview(r.value, 30)}“ ist keine Zahl`);
+          if (Number.isNaN(v as number)) throw new Error(t('„{name}“: „{value}“ ist keine Zahl', { name, value: preview(r.value, 30) }));
         } else if (r.type === 'bool') v = typeof v === 'boolean' ? v : /^(1|true|ja|yes|an|on)$/i.test(toText(v).trim());
         else if (r.type === 'json' && typeof v === 'string') {
           try {
             v = JSON.parse(v);
           } catch {
-            throw new Error(`„${name}“: kein gültiges JSON`);
+            throw new Error(t('„{name}“: kein gültiges JSON', { name }));
           }
         } else if (r.type !== 'json' && typeof v !== 'string' && v !== null && typeof v === 'object') v = toText(v);
         assign(out, `var.${name}`, v);
       }
-      out.result = `Variablen gesetzt: ${Object.keys(out.vars ?? {}).join(', ')}`;
+      out.result = t('Variablen gesetzt: {names}', { names: Object.keys(out.vars ?? {}).join(', ') });
       out.output = out.vars;
       return out;
     },
@@ -267,18 +269,18 @@ export function dataActions(app: App): ActionDef[] {
           const n = (v: unknown) => (text(v, vars).trim() === '' ? 0 : parseNumber(text(v, vars)));
           const a = n(step.a);
           const b = n(step.b);
-          if (Number.isNaN(a)) throw new Error(`A („${preview(text(step.a, vars), 30)}“) ist keine Zahl`);
-          if (Number.isNaN(b) && op !== 'average') throw new Error(`B („${preview(text(step.b, vars), 30)}“) ist keine Zahl`);
+          if (Number.isNaN(a)) throw new Error(t('A („{value}“) ist keine Zahl', { value: preview(text(step.a, vars), 30) }));
+          if (Number.isNaN(b) && op !== 'average') throw new Error(t('B („{value}“) ist keine Zahl', { value: preview(text(step.b, vars), 30) }));
           switch (op) {
             case 'add': value = a + b; break;
             case 'subtract': value = a - b; break;
             case 'multiply': value = a * b; break;
             case 'divide':
-              if (b === 0) throw new Error('Division durch 0');
+              if (b === 0) throw new Error(t('Division durch 0'));
               value = a / b;
               break;
             case 'modulo':
-              if (b === 0) throw new Error('Division durch 0');
+              if (b === 0) throw new Error(t('Division durch 0'));
               value = a % b;
               break;
             case 'power': value = a ** b; break;
@@ -287,16 +289,16 @@ export function dataActions(app: App): ActionDef[] {
             case 'average': value = (a + b) / 2; break;
             case 'percent_of': value = (a * b) / 100; break;
             case 'percent_change':
-              if (a === 0) throw new Error('Veränderung gegenüber 0 ist nicht definiert');
+              if (a === 0) throw new Error(t('Veränderung gegenüber 0 ist nicht definiert'));
               value = ((b - a) / Math.abs(a)) * 100;
               break;
-            default: throw new Error(`Unbekannte Rechenart ${op}`);
+            default: throw new Error(t('Unbekannte Rechenart {op}', { op }));
           }
         }
       } catch (e) {
         return fail(e);
       }
-      if (!Number.isFinite(value)) throw new Error('Das Ergebnis ist keine Zahl');
+      if (!Number.isFinite(value)) throw new Error(t('Das Ergebnis ist keine Zahl'));
       const digits = step.digits === '' || step.digits === undefined || step.digits === null ? undefined : Number(step.digits);
       const result = digits === undefined || Number.isNaN(digits) ? value : (numberOp('round', value, { digits }) as number);
       const out = assign({ result: '' }, step.save_to, result);
@@ -328,17 +330,17 @@ export function dataActions(app: App): ActionDef[] {
     run: (_run, step, vars) => {
       const from = requireText(step.from, 'Quelle');
       let v = readPath(vars, from);
-      if (v === undefined || v === null || v === '') return { result: `Quelle ${from} ist leer – nichts kopiert` };
+      if (v === undefined || v === null || v === '') return { result: t('Quelle {from} ist leer – nichts kopiert', { from }) };
       const tr = String(step.transform ?? '');
       if (tr === 'number') {
         const n = parseNumber(v);
-        if (Number.isNaN(n)) throw new Error(`„${preview(toText(v), 30)}“ ist keine Zahl`);
+        if (Number.isNaN(n)) throw new Error(t('„{value}“ ist keine Zahl', { value: preview(toText(v), 30) }));
         v = n;
       } else if (tr) v = textOp(tr === 'lower' ? 'lower' : tr === 'upper' ? 'upper' : tr, toText(v));
       const to = requireText(step.to, 'Ziel');
       if (step.only_if_empty) {
         const cur = readPath(vars, to.startsWith('var.') ? to : to);
-        if (cur !== undefined && cur !== null && cur !== '') return { result: `${to} ist schon gefüllt – nicht überschrieben` };
+        if (cur !== undefined && cur !== null && cur !== '') return { result: t('{to} ist schon gefüllt – nicht überschrieben', { to }) };
       }
       const out = assign({ result: '' }, to, v);
       out.result = `${from} → ${to}: ${preview(v)}`;
@@ -372,11 +374,11 @@ export function dataActions(app: App): ActionDef[] {
     },
     run: (_run, step, vars) => {
       const rows = rowsOf<{ field: string; value: string }>(step.rows, ['field']);
-      if (!rows.length) throw new Error('Keine Felder angegeben');
+      if (!rows.length) throw new Error(t('Keine Felder angegeben'));
       const out: ActionOutcome = { result: '' };
       for (const r of rows) assign(out, String(r.field).trim(), resolve(r.value, vars, { json: false }));
       const names = [...Object.keys(out.fields ?? {}), ...Object.keys(out.vars ?? {}).map((k) => `var.${k}`)];
-      out.result = `${names.length} Feld${names.length === 1 ? '' : 'er'} gesetzt: ${names.join(', ')}`;
+      out.result = t.plural(names.length, { one: '{n} Feld gesetzt: {names}', other: '{n} Felder gesetzt: {names}' }, { names: names.join(', ') });
       return out;
     },
   });
@@ -396,17 +398,17 @@ export function dataActions(app: App): ActionDef[] {
     },
     run: (_run, step, vars) => {
       const rows = rowsOf<{ field: string }>(step.rows, ['field']);
-      if (!rows.length) throw new Error('Keine Felder angegeben');
+      if (!rows.length) throw new Error(t('Keine Felder angegeben'));
       const out: ActionOutcome = { result: '' };
       for (const r of rows) {
         const f = String(r.field).trim();
         if (f.startsWith('var.')) out.vars = { ...(out.vars ?? {}), [f.slice(4)]: null };
         else {
-          if ((f === 'email' || f === 'phone') && !(f === 'email' ? vars.contact?.phone : vars.contact?.email)) throw new Error('E-Mail und Telefon dürfen nicht beide leer werden');
+          if ((f === 'email' || f === 'phone') && !(f === 'email' ? vars.contact?.phone : vars.contact?.email)) throw new Error(t('E-Mail und Telefon dürfen nicht beide leer werden'));
           out.fields = { ...(out.fields ?? {}), [f]: null };
         }
       }
-      out.result = `Geleert: ${rows.map((r) => r.field).join(', ')}`;
+      out.result = t('Geleert: {fields}', { fields: rows.map((r) => r.field).join(', ') });
       return out;
     },
   });
@@ -472,10 +474,10 @@ export function dataActions(app: App): ActionDef[] {
         case 'filter_text': v = list.filter((x) => toText(x).toLowerCase().includes(arg.toLowerCase())); break;
         case 'sum': v = list.map((x) => parseNumber(x)).filter((n) => !Number.isNaN(n)).reduce((a, b) => a + b, 0); break;
         case 'pluck': v = list.map((x) => lookup(x, arg)).filter((x) => x !== undefined && x !== null); break;
-        default: throw new Error(`Unbekannte Aktion ${op}`);
+        default: throw new Error(t('Unbekannte Aktion {op}', { op }));
       }
       const out = assign({ result: '' }, step.save_to, v, 'var.liste');
-      out.result = `${describeTarget(step.save_to, 'var.liste')} = ${Array.isArray(v) ? `Liste mit ${v.length} Einträgen` : preview(v)}`;
+      out.result = `${describeTarget(step.save_to, 'var.liste')} = ${Array.isArray(v) ? t.plural(v.length, { one: 'Liste mit {n} Eintrag', other: 'Liste mit {n} Einträgen' }) : preview(v)}`;
       out.output = v;
       return out;
     },
@@ -503,11 +505,11 @@ export function dataActions(app: App): ActionDef[] {
         try {
           data = JSON.parse(data);
         } catch {
-          throw new Error('Die Quelle ist kein gültiges JSON');
+          throw new Error(t('Die Quelle ist kein gültiges JSON'));
         }
       }
       const rows = rowsOf<{ path: string; to: string }>(step.rows, ['path']);
-      if (!rows.length) throw new Error('Keine Pfade angegeben');
+      if (!rows.length) throw new Error(t('Keine Pfade angegeben'));
       const out: ActionOutcome = { result: '' };
       const missing: string[] = [];
       for (const r of rows) {
@@ -516,7 +518,7 @@ export function dataActions(app: App): ActionDef[] {
         else assign(out, r.to, v);
       }
       const set = [...Object.keys(out.fields ?? {}), ...Object.keys(out.vars ?? {}).map((k) => `var.${k}`)];
-      out.result = `${set.length} Wert${set.length === 1 ? '' : 'e'} übernommen${missing.length ? ` · nicht gefunden: ${missing.join(', ')}` : ''}`;
+      out.result = `${t.plural(set.length, { one: '{n} Wert übernommen', other: '{n} Werte übernommen' })}${missing.length ? ` · ${t('nicht gefunden: {paths}', { paths: missing.join(', ') })}` : ''}`;
       return out;
     },
   });
@@ -545,7 +547,7 @@ export function dataActions(app: App): ActionDef[] {
       const hit = rows.find((r) => text(r.from, vars).trim().toLowerCase() === v.trim().toLowerCase());
       const res = hit ? text(hit.to, vars) : step.default !== undefined && step.default !== '' ? text(step.default, vars) : v;
       const out = assign({ result: '' }, step.save_to, res);
-      out.result = `${preview(v, 30)} → ${preview(res, 30)}${hit ? '' : ' (kein Treffer)'}`;
+      out.result = `${preview(v, 30)} → ${preview(res, 30)}${hit ? '' : ` ${t('(kein Treffer)')}`}`;
       return out;
     },
   });
@@ -585,7 +587,7 @@ export function dataActions(app: App): ActionDef[] {
         v = text(step.prefix, vars) + Array.from({ length: n }, () => chars[Math.floor(rnd() * chars.length)]).join('');
       } else {
         const list = String(step.options ?? '').split(/\r?\n/).map((x) => text(x, vars).trim()).filter(Boolean);
-        if (!list.length) throw new Error('Keine Einträge angegeben');
+        if (!list.length) throw new Error(t('Keine Einträge angegeben'));
         v = list[Math.floor(rnd() * list.length)];
       }
       const out = assign({ result: '' }, step.save_to, v);
@@ -621,7 +623,7 @@ export function dataActions(app: App): ActionDef[] {
       }
       const out: ActionOutcome = { result: '', vars: { ...r.vars } };
       if (r.value !== null || step.save_to) assign(out, step.save_to, r.value);
-      out.result = `${describeTarget(step.save_to)} = ${preview(r.value)} (${r.steps} Schritte)`;
+      out.result = `${describeTarget(step.save_to)} = ${preview(r.value)} (${t.plural(r.steps, { one: '{n} Schritt', other: '{n} Schritte' })})`;
       out.output = { value: r.value, vars: r.vars };
       return out;
     },
@@ -637,10 +639,10 @@ export function dataActions(app: App): ActionDef[] {
     else if (by === 'name') row = db.get(`SELECT * FROM contacts WHERE location_id = ? AND lower(trim(first_name || ' ' || last_name)) = ? ORDER BY created_at LIMIT 1`, loc, v.toLowerCase().replace(/\s+/g, ' '));
     else if (by === 'company') row = db.get('SELECT * FROM contacts WHERE location_id = ? AND lower(company) = ? ORDER BY created_at LIMIT 1', loc, v.toLowerCase());
     else if (by === 'custom') {
-      if (!/^[\w-]{1,60}$/.test(key)) throw new Error('Ungültiger Feldschlüssel');
+      if (!/^[\w-]{1,60}$/.test(key)) throw new Error(t('Ungültiger Feldschlüssel'));
       row = db.get(`SELECT * FROM contacts WHERE location_id = ? AND json_extract(custom, ?) = ? ORDER BY created_at LIMIT 1`, loc, `$.${key}`, v);
     } else if (by === 'id') row = db.get('SELECT * FROM contacts WHERE location_id = ? AND id = ?', loc, v);
-    else throw new Error(`Unbekannte Suche ${by}`);
+    else throw new Error(t('Unbekannte Suche {by}', { by }));
     return row ? parseJson(row, ['tags', 'custom']) : undefined;
   };
   const FIND_BY: [string, string][] = [['email', 'E-Mail'], ['phone', 'Telefon'], ['name', 'Vor- und Nachname'], ['company', 'Firma'], ['custom', 'Eigenes Feld'], ['id', 'Kontakt-ID']];
@@ -671,11 +673,11 @@ export function dataActions(app: App): ActionDef[] {
     run: (run, step, vars) => {
       const c = lookupContact(run.location_id, String(step.by ?? 'email'), text(step.value, vars), text(step.custom_key, vars));
       if (!c) {
-        if (step.on_missing === 'end') return { result: 'Kein Kontakt gefunden – Ablauf beendet', end: true, vars: { contact_found: false, found_contact: null } };
-        return { result: 'Kein Kontakt gefunden', vars: { contact_found: false, found_contact: null } };
+        if (step.on_missing === 'end') return { result: t('Kein Kontakt gefunden – Ablauf beendet'), end: true, vars: { contact_found: false, found_contact: null } };
+        return { result: t('Kein Kontakt gefunden'), vars: { contact_found: false, found_contact: null } };
       }
       const row = contactRow(c);
-      return { result: `Gefunden: ${row.name || row.email || row.id}`, vars: { contact_found: true, found_contact: row }, output: row, ...(step.switch_contact ? { contact_id: c.id } : {}) };
+      return { result: t('Gefunden: {name}', { name: row.name || row.email || row.id }), vars: { contact_found: true, found_contact: row }, output: row, ...(step.switch_contact ? { contact_id: c.id } : {}) };
     },
   });
 
@@ -724,12 +726,12 @@ export function dataActions(app: App): ActionDef[] {
         let c = found;
         if (step.update_existing && Object.keys(input).length) c = upsertContact(app, loc, { ...input, id: found.id }, { source: 'Workflow' }).contact;
         const row = contactRow(c);
-        return { result: `Gefunden: ${row.name || row.email}`, vars: { contact_found: true, contact_created: false, found_contact: row }, output: row, ...(step.switch_contact !== false ? { contact_id: c.id } : {}) };
+        return { result: t('Gefunden: {name}', { name: row.name || row.email }), vars: { contact_found: true, contact_created: false, found_contact: row }, output: row, ...(step.switch_contact !== false ? { contact_id: c.id } : {}) };
       }
-      if (!input.email && !input.phone && !input.first_name && !input.last_name && !input.company) throw new Error('Zum Anlegen fehlen Angaben (E-Mail, Telefon oder Name)');
+      if (!input.email && !input.phone && !input.first_name && !input.last_name && !input.company) throw new Error(t('Zum Anlegen fehlen Angaben (E-Mail, Telefon oder Name)'));
       const { contact } = upsertContact(app, loc, input, { source: 'Workflow', tags });
       const row = contactRow(contact);
-      return { result: `Angelegt: ${row.name || row.email}`, vars: { contact_found: false, contact_created: true, found_contact: row }, output: row, ...(step.switch_contact !== false ? { contact_id: contact.id } : {}) };
+      return { result: t('Angelegt: {name}', { name: row.name || row.email }), vars: { contact_found: false, contact_created: true, found_contact: row }, output: row, ...(step.switch_contact !== false ? { contact_id: contact.id } : {}) };
     },
   });
 
@@ -758,11 +760,11 @@ export function dataActions(app: App): ActionDef[] {
       if (step.status && step.status !== 'any') (where.push('status = ?'), params.push(step.status));
       const order = step.which === 'oldest' ? 'created_at ASC' : step.which === 'highest' ? 'value DESC, created_at DESC' : 'created_at DESC';
       const o = db.get<any>(`SELECT * FROM opportunities WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT 1`, ...params);
-      if (!o) return { result: 'Kein Deal gefunden', vars: { deal_found: false, deal: null } };
+      if (!o) return { result: t('Kein Deal gefunden'), vars: { deal_found: false, deal: null } };
       const pipe = parseJson(db.get<any>('SELECT * FROM pipelines WHERE id = ? AND location_id = ?', o.pipeline_id, run.location_id), ['stages']);
       const stage = pipe?.stages?.find((s: any) => s.id === o.stage_id);
       const deal = { id: o.id, name: o.name, value: o.value, status: o.status, pipeline_id: o.pipeline_id, pipeline_name: pipe?.name ?? '', stage_id: o.stage_id, stage_name: stage?.name ?? '', created_at: o.created_at };
-      return { result: `Deal „${o.name}“ (${o.value} €, ${stage?.name ?? o.status})`, vars: { deal_found: true, deal }, output: deal };
+      return { result: t('Deal „{name}“ ({value} €, {stage})', { name: o.name, value: o.value, stage: stage?.name ?? o.status }), vars: { deal_found: true, deal }, output: deal };
     },
   });
 

@@ -5,7 +5,7 @@
  * The full `RunResult` of a 16 × 12 matrix has thousands of numbers; an agent needs the one it asked for, the
  * focus cell and the assumptions behind them, so it can say what the answer rests on.
  */
-import { DISCLAIMER, METRICS, cellOf, columnsOf, currentColumn, econ, eur, fixedCosts, headline, metricValue, minPrice, rounded, unitEcon, type CalcInput, type Detail, type MetricKey, type RunResult } from './calc-engine.js';
+import { DISCLAIMER, METRICS, cellOf, columnsOf, currentColumn, econ, eurIn, fixedCosts, headline, metricValue, minPrice, plainTr, rounded, unitEcon, type CalcInput, type Detail, type MetricKey, type RunResult, type Tr } from './calc-engine.js';
 
 export type Period = 'month' | 'year';
 export const METRIC_KEYS = METRICS.map((m) => m.key) as MetricKey[];
@@ -121,7 +121,7 @@ export interface Comparison {
 }
 
 /** Side-by-side table: every key figure per scenario, the difference to the first one and the best scenario. */
-export function compare(items: { id: string; name: string; kpis: Kpis }[]): Comparison {
+export function compare(items: { id: string; name: string; kpis: Kpis }[], t: Tr = plainTr): Comparison {
   const rows = KPI_ROWS.map((r) => {
     const values = items.map((i) => (i.kpis[r.key] as number | null) ?? null);
     const first = values[0];
@@ -135,17 +135,17 @@ export function compare(items: { id: string; name: string; kpis: Kpis }[]): Comp
       // all equal: nothing stands out
       if (best !== null && values.every((v) => v === values[best as number])) best = null;
     }
-    return { key: r.key, label: r.label, unit: r.unit, values, deltas, best };
+    return { key: r.key, label: t(r.label), unit: r.unit, values, deltas, best };
   });
-  return { disclaimer: DISCLAIMER, scenarios: items, rows };
+  return { disclaimer: t(DISCLAIMER), scenarios: items, rows };
 }
 
 /** What the numbers rest on – an agent should name these when it quotes a result. */
-export function assumptions(input: CalcInput) {
+export function assumptions(input: CalcInput, t: Tr = plainTr) {
   const total = input.pricing.plans.reduce((s, p) => s + Math.max(0, p.mix), 0) || 1;
   const f = input.costs.fixed;
   return {
-    price_basis: input.pricing.price_basis === 'gross' ? 'Preise brutto (inkl. USt)' : 'Preise netto (ohne USt)',
+    price_basis: input.pricing.price_basis === 'gross' ? t('Preise brutto (inkl. USt)') : t('Preise netto (ohne USt)'),
     plans: input.pricing.plans.map((p) => ({ name: p.name, share_pct: Math.round((Math.max(0, p.mix) / total) * 1000) / 10, base_price: p.base_price, included_units: p.included_units, unit_price: p.unit_price, cap: p.cap, setup_fee: p.setup_fee })),
     annual_share_pct: input.pricing.annual.share,
     annual_discount_pct: input.pricing.annual.discount,
@@ -153,14 +153,14 @@ export function assumptions(input: CalcInput) {
     churn_pct_per_month: input.customers.churn,
     avg_units: input.customers.avg_units,
     unit_mix: input.customers.unit_mix.length ? input.customers.unit_mix : undefined,
-    vat: input.vat.kleinunternehmer ? 'Kleinunternehmer (keine USt)' : `${input.vat.rate} % USt`,
+    vat: input.vat.kleinunternehmer ? t('Kleinunternehmer (keine USt)') : t('{rate} % USt', { rate: input.vat.rate }),
     eu_share_pct: input.customers.eu_share,
     legal_form: input.tax.legal_form,
     tax_year: input.tax.legal_form === 'einzelunternehmen' ? input.tax.est.year : undefined,
     gewerbesteuer_hebesatz: input.tax.gewerbesteuer.enabled ? input.tax.gewerbesteuer.hebesatz : 0,
     fixed_costs_per_month: Math.round((f.servers_tools + f.salaries + f.insurance + f.marketing + f.other) * 100) / 100,
     cac: input.costs.cac,
-    payment_methods: input.costs.variable.payment.methods.map((m) => `${m.label}: ${m.pct} % + ${eur(m.fixed)}`),
+    payment_methods: input.costs.variable.payment.methods.map((m) => `${m.label}: ${m.pct} % + ${eurIn(t, m.fixed)}`),
   };
 }
 
@@ -171,14 +171,15 @@ const pickLines = (l: Record<string, number>) => Object.fromEntries(LINE_KEYS.ma
  * The compact answer: headline, warnings, the focus cell (month and year lines, taxes, waterfall, unit economics,
  * projection horizons, top levers), ONE metric of the matrix and the assumptions. Rounded to cents.
  */
-export function compactRun(input: CalcInput, r: RunResult, opts: { metric?: MetricKey; period?: Period } = {}) {
+export function compactRun(input: CalcInput, r: RunResult, opts: { metric?: MetricKey; period?: Period; t?: Tr } = {}) {
+  const t = opts.t ?? plainTr;
   const metric = opts.metric && METRIC_KEYS.includes(opts.metric) ? opts.metric : 'net_profit';
   const period: Period = opts.period === 'year' ? 'year' : 'month';
   const f = r.focus;
   const meta = METRICS.find((m) => m.key === metric)!;
   return rounded({
     disclaimer: r.disclaimer,
-    headline: headline(input, f),
+    headline: headline(input, f, t),
     warnings: r.warnings,
     focus: {
       customers: f.customers,
@@ -194,7 +195,7 @@ export function compactRun(input: CalcInput, r: RunResult, opts: { metric?: Metr
       top_levers: f.sensitivity ? f.sensitivity.bars.slice(0, 6).map((b) => ({ lever: b.label, net_profit_year_low: b.low, net_profit_year_high: b.high, swing: b.swing })) : undefined,
     },
     matrix: {
-      metric: `${meta.label}${metric === 'margin' ? '' : period === 'year' ? ' pro Jahr' : ' pro Monat'}`,
+      metric: metric === 'margin' ? t(meta.label) : period === 'year' ? t('{metric} pro Jahr', { metric: t(meta.label) }) : t('{metric} pro Monat', { metric: t(meta.label) }),
       metric_key: metric,
       period,
       unit: meta.unit === 'pct' ? '%' : '€',
@@ -203,7 +204,7 @@ export function compactRun(input: CalcInput, r: RunResult, opts: { metric?: Metr
       values: r.matrix.map((row) => row.map((c) => metricValue(c, metric, period))),
     },
     by_column: r.columns.map((c, i) => ({ column: c.label, price: c.price, arpu_net: r.unit[i].arpu_net, contribution_per_customer: r.unit[i].contribution, ltv: r.unit[i].ltv, ltv_cac: r.unit[i].ltv_cac, payback_months: r.unit[i].payback_months, breakeven_customers: r.unit[i].breakeven.customers, breakeven_customers_net: r.unit[i].breakeven.customers_net })),
-    assumptions: assumptions(input),
+    assumptions: assumptions(input, t),
   });
 }
 
@@ -247,9 +248,10 @@ export function priceForNetProfit(input: CalcInput, customers: number, target: n
  * Break-even report: where the business stops losing money – per price variant (matrix column), plus the optional
  * target ("what do I need for 3 000 € net per month?"). Rounded to cents.
  */
-export function breakevenReport(input: CalcInput, customers: number, target?: number) {
-  const { columns, inputs } = columnsOf(input);
-  const cur = currentColumn(input);
+export function breakevenReport(input: CalcInput, customers: number, target?: number, t: Tr = plainTr) {
+  const { columns, inputs } = columnsOf(input, t);
+  const cur = currentColumn(input, t);
+  const eur = (v: number) => eurIn(t, v);
   const econCur = econ(input);
   const unit = unitEcon(input, econCur);
   const fx = fixedCosts(input);
@@ -269,11 +271,16 @@ export function breakevenReport(input: CalcInput, customers: number, target?: nu
   const b = unit.breakeven;
   const text =
     b.customers === null
-      ? 'Bei diesen Preisen deckt kein Kunde seine eigenen Kosten – ein Break-even gibt es nicht. Preis erhöhen oder variable Kosten senken.'
-      : `Break-even vor Steuern ab ${b.customers} ${b.customers === 1 ? 'Kunde' : 'Kunden'}${b.customers_net !== null && b.customers_net !== b.customers ? `, nach Steuern und Vorsorge ab ${b.customers_net}` : ''} (Umsatz netto ${b.revenue_net === null ? '–' : eur(Math.round(b.revenue_net))} pro Monat bei Fixkosten von ${eur(Math.round(fx.total))}).`;
+      ? t('Bei diesen Preisen deckt kein Kunde seine eigenen Kosten – ein Break-even gibt es nicht. Preis erhöhen oder variable Kosten senken.')
+      : t('Break-even vor Steuern ab {who}{net} (Umsatz netto {revenue} pro Monat bei Fixkosten von {fixed}).', {
+          who: b.customers === 1 ? t('{n} Kunde', { n: b.customers }) : t('{n} Kunden', { n: b.customers }),
+          net: b.customers_net !== null && b.customers_net !== b.customers ? t(', nach Steuern und Vorsorge ab {n}', { n: b.customers_net }) : '',
+          revenue: b.revenue_net === null ? '–' : eur(Math.round(b.revenue_net)),
+          fixed: eur(Math.round(fx.total)),
+        });
   return rounded({
-    disclaimer: DISCLAIMER,
-    headline: `${text} ${DISCLAIMER}.`,
+    disclaimer: t(DISCLAIMER),
+    headline: `${text} ${t(DISCLAIMER)}.`,
     fixed_costs_per_month: fx.total,
     current: {
       column: cur.label,
@@ -290,6 +297,6 @@ export function breakevenReport(input: CalcInput, customers: number, target?: nu
       ...(target !== undefined ? { target_net_profit_month: target, customers_for_target: customersForNetProfit(input, target), price_for_target: { customers, price: priceForNetProfit(input, customers, target) } } : {}),
     },
     by_column: columns.map((c, i) => forColumn(c, inputs[i])),
-    assumptions: assumptions(input),
+    assumptions: assumptions(input, t),
   });
 }

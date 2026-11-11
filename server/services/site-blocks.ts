@@ -6,6 +6,7 @@ import { getForm, renderForm } from '../modules/forms.js';
 import { cssUrl, videoEmbed } from './markdown.js';
 import { resolveHref, safeUrl } from './site-url.js';
 import { Rules, cid, colorCss, colorHex, contrast, hideClasses, readableOn, type Tokens } from './site-style.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Site builder: the blocks of a page and how each one is rendered (the registry `siteBlocks(app)`).
@@ -202,7 +203,7 @@ const CORE: BlockDef[] = [
     type: 'image',
     render: (env, b, o) => {
       const img = imgTag(env, { src: b.src, alt: b.alt ?? '', w: num(b.w, 0) || undefined, h: num(b.h, 0) || undefined, srcset: b.srcset, style: `max-width:${clamp(b.width, 1, 100, 100)}%;height:auto;border-radius:var(--r-md)` });
-      return img ? wrap(env, b, o.bare, img) : env.preview ? wrap(env, b, o.bare, '<p class="muted">Bild fehlt</p>') : '';
+      return img ? wrap(env, b, o.bare, img) : env.preview ? wrap(env, b, o.bare, `<p class="muted">${escapeHtml(tLoc(env.app, env.locationId)('Bild fehlt'))}</p>`) : '';
     },
   },
   {
@@ -211,7 +212,8 @@ const CORE: BlockDef[] = [
       // An optional second, quieter button next to the first (text2/url2).
       const second = b.text2 ? btn(env, b.text2, b.url2, 'secondary') : '';
       const just = b.align === 'center' ? 'center' : b.align === 'right' ? 'flex-end' : 'flex-start';
-      return wrap(env, b, o.bare, second ? `<div class="brow" style="justify-content:${just}">${btn(env, b.text || 'Jetzt starten', b.url)}${second}</div>` : btn(env, b.text || 'Jetzt starten', b.url));
+      const label = b.text || tLoc(env.app, env.locationId)('Jetzt starten');
+      return wrap(env, b, o.bare, second ? `<div class="brow" style="justify-content:${just}">${btn(env, label, b.url)}${second}</div>` : btn(env, label, b.url));
     },
   },
   {
@@ -239,15 +241,16 @@ const CORE: BlockDef[] = [
       // In the editor and in template previews a block without a form shows how it will look (a form that does nothing).
       if (!f && env.preview && !b.form_id) {
         const k = cid(b.id);
-        return wrap(env, b, o.bare, `<div class="card form-card">${b.heading ? `<h2>${escapeHtml(b.heading)}</h2>` : ''}<form onsubmit="return false" aria-label="Beispiel-Formular"><label for="${k}n">Vorname</label><input id="${k}n" type="text" autocomplete="given-name"><label for="${k}e">E-Mail</label><input id="${k}e" type="email" autocomplete="email"><p style="margin:16px 0 0"><button type="button">Absenden</button></p></form><p class="muted" style="font-size:.8em;margin:.8em 0 0">Vorschau – hier erscheint dein Formular.</p></div>`);
+        const t = tLoc(env.app, env.locationId);
+        return wrap(env, b, o.bare, `<div class="card form-card">${b.heading ? `<h2>${escapeHtml(b.heading)}</h2>` : ''}<form onsubmit="return false" aria-label="${escapeHtml(t('Beispiel-Formular'))}"><label for="${k}n">${escapeHtml(t('Vorname'))}</label><input id="${k}n" type="text" autocomplete="given-name"><label for="${k}e">${escapeHtml(t('E-Mail'))}</label><input id="${k}e" type="email" autocomplete="email"><p style="margin:16px 0 0"><button type="button">${escapeHtml(t('Absenden'))}</button></p></form><p class="muted" style="font-size:.8em;margin:.8em 0 0">${escapeHtml(t('Vorschau – hier erscheint dein Formular.'))}</p></div>`);
       }
-      return wrap(env, b, o.bare, f ? `<div class="card form-card">${b.heading ? `<h2>${escapeHtml(b.heading)}</h2>` : ''}${renderForm(f)}</div>` : env.preview ? '<p class="muted">Formular wählen</p>' : '');
+      return wrap(env, b, o.bare, f ? `<div class="card form-card">${b.heading ? `<h2>${escapeHtml(b.heading)}</h2>` : ''}${renderForm(f)}</div>` : env.preview ? `<p class="muted">${escapeHtml(tLoc(env.app, env.locationId)('Formular wählen'))}</p>` : '');
     },
   },
   {
     type: 'calendar',
     render: (env, b, o) =>
-      wrap(env, b, o.bare, b.calendar_slug ? `<iframe src="/book/${encodeURIComponent(b.calendar_slug)}?embed=1" title="${escapeHtml(String(b.title || 'Terminbuchung'))}" loading="lazy" style="width:100%;min-height:720px;border:0"></iframe>` : env.preview ? `<div class="card" style="min-height:300px;display:grid;place-items:center;text-align:center"><p class="muted">Vorschau – hier erscheint dein Terminkalender.</p></div>` : '', { wide: true }),
+      wrap(env, b, o.bare, b.calendar_slug ? `<iframe src="/book/${encodeURIComponent(b.calendar_slug)}?embed=1" title="${escapeHtml(String(b.title || tLoc(env.app, env.locationId)('Terminbuchung')))}" loading="lazy" style="width:100%;min-height:720px;border:0"></iframe>` : env.preview ? `<div class="card" style="min-height:300px;display:grid;place-items:center;text-align:center"><p class="muted">${escapeHtml(tLoc(env.app, env.locationId)('Vorschau – hier erscheint dein Terminkalender.'))}</p></div>` : '', { wide: true }),
   },
   {
     type: 'features',
@@ -287,13 +290,15 @@ const CORE: BlockDef[] = [
     css: `.countdown{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}.countdown div{background:var(--c-brand);color:var(--c-on-brand);border-radius:var(--r-md);padding:.6em .8em;min-width:4.4em;text-align:center}.countdown b{display:block;font-size:1.7em}.countdown span{font-size:.75em;opacity:.9}`,
     render: (env, b, o) => {
       const until = new Date(b.until ?? '').getTime();
-      if (!until) return wrap(env, b, o.bare, '<p class="muted">Enddatum fehlt</p>');
+      const t = tLoc(env.app, env.locationId);
+      if (!until) return wrap(env, b, o.bare, `<p class="muted">${escapeHtml(t('Enddatum fehlt'))}</p>`);
+      const units = JSON.stringify([t('Tage'), t('Std'), t('Min'), t('Sek')]).replace(/</g, '\\u003c');
       const c = `cd_${String(b.id).replace(/[^A-Za-z0-9_]/g, '')}`;
       return wrap(
         env,
         b,
         o.bare,
-        `<div class="countdown" id="${c}" role="timer" aria-label="Countdown"></div><script>(function(){const e=document.getElementById('${c}'),u=${until};function t(){let s=Math.max(0,Math.floor((u-Date.now())/1000));const d=Math.floor(s/86400);s%=86400;const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);s%=60;e.innerHTML=[[d,'Tage'],[h,'Std'],[m,'Min'],[s,'Sek']].map(([v,l])=>'<div><b>'+String(v).padStart(2,'0')+'</b><span>'+l+'</span></div>').join('')}t();setInterval(t,1000)})()</script>`,
+        `<div class="countdown" id="${c}" role="timer" aria-label="Countdown"></div><script>(function(){const e=document.getElementById('${c}'),u=${until};function t(){let s=Math.max(0,Math.floor((u-Date.now())/1000));const d=Math.floor(s/86400);s%=86400;const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);s%=60;const L=${units};e.innerHTML=[[d,L[0]],[h,L[1]],[m,L[2]],[s,L[3]]].map(([v,l])=>'<div><b>'+String(v).padStart(2,'0')+'</b><span>'+l+'</span></div>').join('')}t();setInterval(t,1000)})()</script>`,
       );
     },
   },
@@ -323,7 +328,7 @@ const CORE: BlockDef[] = [
         `<div class="logos${b.grayscale ? ' gray' : ''}">${b.heading ? `<p class="t">${escapeHtml(b.heading)}</p>` : ''}${list(b.items, 16)
           .map((it) => {
             const img = imgTag(env, { src: it.src, alt: it.alt ?? '', w: num(it.w, 0) || undefined, h: num(it.h, 0) || undefined, eager: false });
-            return it.url && img ? `<a href="${escapeHtml(resolveHref(env, it.url))}" aria-label="${escapeHtml(it.alt || 'Zur Website')}">${img}</a>` : img;
+            return it.url && img ? `<a href="${escapeHtml(resolveHref(env, it.url))}" aria-label="${escapeHtml(it.alt || tLoc(env.app, env.locationId)('Zur Website'))}">${img}</a>` : img;
           })
           .join('')}</div>`,
         { wide: true },

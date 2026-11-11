@@ -1,4 +1,5 @@
 import type { Module } from '../core/app.js';
+import { tCtx } from '../i18n/index.js';
 import { bad, type Ctx } from '../core/http.js';
 import { now } from '../core/util.js';
 import { getContact } from '../services/contacts.js';
@@ -72,7 +73,8 @@ export const contactBulkOwnerModule: Module = {
         action: () => 'bulk',
         groupLabel: (ctx: Ctx, rows: unknown[]) => {
           const n = rows.length;
-          return `${n} ${n === 1 ? 'Kontakt' : 'Kontakte'}: ${ctx.body?.assigned_to ? 'neu zugewiesen' : 'Zuständigen entfernt'}`;
+          const t = tCtx(ctx);
+          return ctx.body?.assigned_to ? t.plural(n, { one: '{n} Kontakt: neu zugewiesen', other: '{n} Kontakte: neu zugewiesen' }) : t.plural(n, { one: '{n} Kontakt: Zuständigen entfernt', other: '{n} Kontakte: Zuständigen entfernt' });
         },
       });
     }

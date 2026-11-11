@@ -1,5 +1,6 @@
 import type { Module } from '../core/app.js';
 import type { Caller, Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * MCP tools for the Team-Chat: agents post into public channels and read their history. A key or MCP connection of a
@@ -18,7 +19,8 @@ async function channelOf(call: Caller, location: string, wanted: unknown): Promi
   const list: any[] = r.channels ?? [];
   const q = String(wanted ?? '').trim().toLowerCase().replace(/^#/, '');
   const c = list.find((x) => x.id === wanted) ?? list.find((x) => String(x.name).toLowerCase() === q);
-  if (!c) throw new Error(`Kanal „${wanted}“ nicht gefunden${list.length ? ` – verfügbar: ${list.map((x) => `#${x.name}`).join(', ')}` : ' – in diesem Sub-Account gibt es noch keinen öffentlichen Kanal (bitte einmal den Team-Chat öffnen)'}`);
+  const t = tApp();
+  if (!c) throw new Error(`${t('Kanal „{name}“ nicht gefunden', { name: String(wanted ?? '') })}${list.length ? ` – ${t('verfügbar: {list}', { list: list.map((x) => `#${x.name}`).join(', ') })}` : ` – ${t('in diesem Sub-Account gibt es noch keinen öffentlichen Kanal (bitte einmal den Team-Chat öffnen)')}`}`);
   return { id: c.id, name: c.label ?? `#${c.name}` };
 }
 

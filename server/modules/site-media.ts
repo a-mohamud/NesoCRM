@@ -146,7 +146,7 @@ export const siteMediaModule: Module = {
       return {
         __raw: true,
         status: 200,
-        headers: { 'content-type': FORMAT_MIME[fmt], 'cache-control': 'public, max-age=31536000, immutable', vary: 'Accept', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'" },
+        headers: { 'content-type': FORMAT_MIME[fmt], 'cache-control': 'public, max-age=31536000, immutable', vary: 'Accept', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'" }, // i18n-ignore – HTTP header values
         body,
       };
     });

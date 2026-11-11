@@ -76,6 +76,7 @@ import {
 import { MAX_DEPTH } from '../services/pm-tree.js';
 import { autoScheduleProject, clearBaseline, ganttOf, myTasks, setBaseline, workloadOf } from '../services/pm-views.js';
 import { viewerOf } from '../services/pm-time.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Project planning (areas "Kontakte & Aufgaben"): projects per sub-account with custom statuses, sections, custom
@@ -152,10 +153,13 @@ export const pmModule: Module = {
         table: 'tasks',
         get: (loc: string, rid: string) => {
           const t = db.get('SELECT id, title, due_at, done FROM tasks WHERE id = ? AND location_id = ?', rid, loc);
-          return t ? { id: t.id, name: t.title, sub: t.done ? 'erledigt' : t.due_at ? `fällig ${t.due_at.slice(0, 10)}` : 'offen', link: `pm/task/${t.id}` } : undefined;
+          const tl = tLoc(app, loc);
+          return t ? { id: t.id, name: t.title, sub: t.done ? tl('erledigt') : t.due_at ? tl('fällig {date}', { date: t.due_at.slice(0, 10) }) : tl('offen'), link: `pm/task/${t.id}` } : undefined;
         },
-        search: (loc: string, q: string, limit: number) =>
-          db.all('SELECT id, title, done FROM tasks WHERE location_id = ? AND title LIKE ? ORDER BY done, created_at DESC LIMIT ?', loc, `%${q}%`, limit).map((t) => ({ id: t.id, name: t.title, sub: t.done ? 'erledigt' : 'offen' })),
+        search: (loc: string, q: string, limit: number) => {
+          const tl = tLoc(app, loc);
+          return db.all('SELECT id, title, done FROM tasks WHERE location_id = ? AND title LIKE ? ORDER BY done, created_at DESC LIMIT ?', loc, `%${q}%`, limit).map((t) => ({ id: t.id, name: t.title, sub: t.done ? tl('erledigt') : tl('offen') }));
+        },
       });
       assoc.registerType({
         type: 'pm_project',
@@ -215,13 +219,16 @@ export const pmModule: Module = {
     router.post('/api/pm/projects/:id/save-template', 'location', (ctx) => saveProjectTemplate(app, ctx.locationId, ctx.params.id, ctx.body ?? {}, who(ctx)));
 
     // --- templates (built-in + saved) ---------------------------------------------------------------
-    router.get('/api/pm/templates', 'location', (ctx) => ({
+    router.get('/api/pm/templates', 'location', (ctx) => {
+      const tr = tCtx(ctx);
+      return {
       projects: [
-        ...BUILTIN_TEMPLATES.map((t) => ({ id: t.key, name: t.name, description: t.description, builtin: true, tasks: t.data.tasks.length, sections: t.data.sections?.length ?? 0 })),
+        ...BUILTIN_TEMPLATES.map((t) => ({ id: t.key, name: tr(t.name), description: tr(t.description), builtin: true, tasks: t.data.tasks.length, sections: t.data.sections?.length ?? 0 })),
         ...db.all<any>(`SELECT id, name, description, data, created_at FROM pm_templates WHERE location_id = ? AND kind = 'project' ORDER BY name COLLATE NOCASE`, ctx.locationId).map((t) => ({ id: t.id, name: t.name, description: t.description, builtin: false, tasks: json<any>(t.data, {}).tasks?.length ?? 0, sections: json<any>(t.data, {}).sections?.length ?? 0, created_at: t.created_at })),
       ],
       tasks: listTaskTemplates(app, ctx.locationId),
-    }));
+      };
+    });
     router.post('/api/pm/templates', 'location', (ctx) => saveTaskTemplate(app, ctx.locationId, ctx.body ?? {}, who(ctx)));
     router.delete('/api/pm/templates/:id', 'location', (ctx) => deleteTemplate(app, ctx.locationId, ctx.params.id));
 

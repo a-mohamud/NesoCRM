@@ -7,6 +7,16 @@
  * to the right, y up, and the panels hang in front of the viewer at negative z (WebGL / WebXR convention).
  */
 
+/** `key`: the German message id with {placeholders} (the server translates it, server/i18n); `vars`: its values. */
+export class XrError extends Error {
+  constructor(
+    readonly key: string,
+    readonly vars?: Record<string, string | number>,
+  ) {
+    super(vars ? key.replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m)) : key);
+  }
+}
+
 export const XR_LIMITS = {
   /** Panels of one board layout (a board has at most 40 widgets). */
   panels: 60,
@@ -59,7 +69,7 @@ export interface WorkspaceLayout {
 
 const finite = (v: unknown, label: string): number => {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
-  if (!Number.isFinite(n)) throw new Error(`${label} muss eine Zahl sein`);
+  if (!Number.isFinite(n)) throw new XrError('{field} muss eine Zahl sein', { field: label });
   return n;
 };
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -77,7 +87,7 @@ export function wrapAngle(a: number): number {
 
 export function cleanPose(raw: unknown, label = 'Position'): Pose {
   const o = obj(raw);
-  if (!o) throw new Error(`${label}: Objekt mit x, y, z erwartet`);
+  if (!o) throw new XrError('{field}: Objekt mit x, y, z erwartet', { field: label });
   const r = XR_LIMITS.reach;
   return {
     x: round(clamp(finite(o.x, `${label}.x`), -r, r)),
@@ -93,11 +103,11 @@ const ID = /^[A-Za-z0-9_-]{1,64}$/;
 /** A board layout; entries for widgets that are not on the board are dropped (the board may have changed since). */
 export function cleanBoardLayout(raw: unknown, widgetIds: Iterable<string>): BoardXrLayout {
   const o = obj(raw);
-  if (!o) throw new Error('Layout: Objekt erwartet');
+  if (!o) throw new XrError('Layout: Objekt erwartet');
   const known = new Set(widgetIds);
   const src = obj(o.panels) ?? {};
   const keys = Object.keys(src);
-  if (keys.length > XR_LIMITS.panels * 4) throw new Error('Zu viele Panels im Layout');
+  if (keys.length > XR_LIMITS.panels * 4) throw new XrError('Zu viele Panels im Layout');
   const panels: Record<string, Pose> = {};
   for (const id of keys) {
     if (!ID.test(id) || !known.has(id)) continue;
@@ -115,7 +125,7 @@ export function cleanBoardLayout(raw: unknown, widgetIds: Iterable<string>): Boa
 
 export function cleanCanvasLayout(raw: unknown): CanvasXrLayout {
   const o = obj(raw);
-  if (!o) throw new Error('Layout: Objekt erwartet');
+  if (!o) throw new XrError('Layout: Objekt erwartet');
   const plane = cleanPose(o.plane, 'Fläche');
   const p = obj(o.plane)!;
   return { v: 1, plane: { ...plane, curve: round(clamp(p.curve === undefined ? 0 : finite(p.curve, 'Krümmung'), 0, 1), 3) } };
@@ -165,12 +175,12 @@ export function normalizeSizes(sizes: number[], minShare: number = XR_LIMITS.min
 
 export function cleanWorkspace(raw: unknown): WorkspaceLayout {
   const o = obj(raw);
-  if (!o) throw new Error('Layout: Objekt erwartet');
-  if (!Array.isArray(o.panels) || !o.panels.length) throw new Error('Mindestens ein Panel angeben');
-  if (o.panels.length > XR_LIMITS.workspacePanels) throw new Error(`Höchstens ${XR_LIMITS.workspacePanels} Panels nebeneinander`);
+  if (!o) throw new XrError('Layout: Objekt erwartet');
+  if (!Array.isArray(o.panels) || !o.panels.length) throw new XrError('Mindestens ein Panel angeben');
+  if (o.panels.length > XR_LIMITS.workspacePanels) throw new XrError('Höchstens {n} Panels nebeneinander', { n: XR_LIMITS.workspacePanels });
   const panels = o.panels.map((p, i) => {
     const e = obj(p);
-    if (!e || !isWorkspaceRoute(e.route)) throw new Error(`Panel ${i + 1}: ungültige Seite`);
+    if (!e || !isWorkspaceRoute(e.route)) throw new XrError('Panel {n}: ungültige Seite', { n: i + 1 });
     return { route: e.route, size: e.size === undefined ? 1 : finite(e.size, `Panel ${i + 1}.size`) };
   });
   const shares = normalizeSizes(panels.map((p) => p.size));

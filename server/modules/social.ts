@@ -3,6 +3,7 @@ import { HttpError, bad, notFound, str } from '../core/http.js';
 import { render } from '../core/template.js';
 import { id, now } from '../core/util.js';
 import { postiz, postizBase, type PostizConfig } from '../services/postiz.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Social planner: plan and publish posts on the clients' social channels. The posting itself (OAuth
@@ -18,12 +19,12 @@ export const PROVIDERS: Record<string, { label: string; limit: number; settings:
   facebook: { label: 'Facebook', limit: 63206, settings: {} },
   instagram: { label: 'Instagram', limit: 2200, settings: { post_type: 'post', is_trial_reel: false, collaborators: [] }, needsImage: true },
   'instagram-standalone': { label: 'Instagram', limit: 2200, settings: { post_type: 'post', is_trial_reel: false, collaborators: [] }, needsImage: true },
-  threads: { label: 'Threads', limit: 500, settings: {} },
-  bluesky: { label: 'Bluesky', limit: 300, settings: {} },
-  mastodon: { label: 'Mastodon', limit: 500, settings: {} },
+  threads: { label: 'Threads', limit: 500, settings: {} }, // i18n-ignore – brand
+  bluesky: { label: 'Bluesky', limit: 300, settings: {} }, // i18n-ignore – brand
+  mastodon: { label: 'Mastodon', limit: 500, settings: {} }, // i18n-ignore – brand
   telegram: { label: 'Telegram', limit: 4096, settings: {} },
   gmb: { label: 'Google Unternehmensprofil', limit: 1500, settings: {} },
-  nostr: { label: 'Nostr', limit: 10000, settings: {} },
+  nostr: { label: 'Nostr', limit: 10000, settings: {} }, // i18n-ignore – brand
   vk: { label: 'VK', limit: 10000, settings: {} },
 };
 /**
@@ -31,6 +32,7 @@ export const PROVIDERS: Record<string, { label: string; limit: number; settings:
  * `title` in the settings is filled from the post's title.
  */
 export const VIDEO_PROVIDERS: Record<string, { label: string; limit: number; settings: Record<string, any> }> = {
+  // i18n-ignore – brand
   youtube: { label: 'YouTube Shorts', limit: 5000, settings: { type: 'public', selfDeclaredMadeForKids: 'no', tags: [] } },
   tiktok: { label: 'TikTok', limit: 2200, settings: { privacy_level: 'PUBLIC_TO_EVERYONE', duet: false, stitch: false, comment: true, autoAddMusic: 'no', brand_content_toggle: false, brand_organic_toggle: false, content_posting_method: 'DIRECT_POST' } },
 };
@@ -123,7 +125,7 @@ export const socialModule: Module = {
       const mine = new Set(db.all('SELECT integration_id FROM social_channels WHERE location_id = ?', locationId).map((r) => r.integration_id));
       return list
         .filter((i) => mine.has(i.id))
-        .map((i) => ({ id: i.id, name: i.name, identifier: i.identifier, picture: i.picture, profile: i.profile, disabled: !!i.disabled, supported: !!PROVIDERS[i.identifier], video: !!VIDEO_PROVIDERS[i.identifier] || (!!PROVIDERS[i.identifier] && i.identifier !== 'gmb'), limit: PROVIDERS[i.identifier]?.limit ?? VIDEO_PROVIDERS[i.identifier]?.limit ?? null, label: PROVIDERS[i.identifier]?.label ?? VIDEO_PROVIDERS[i.identifier]?.label ?? i.identifier }));
+        .map((i) => ({ id: i.id, name: i.name, identifier: i.identifier, picture: i.picture, profile: i.profile, disabled: !!i.disabled, supported: !!PROVIDERS[i.identifier], video: !!VIDEO_PROVIDERS[i.identifier] || (!!PROVIDERS[i.identifier] && i.identifier !== 'gmb'), limit: PROVIDERS[i.identifier]?.limit ?? VIDEO_PROVIDERS[i.identifier]?.limit ?? null, label: tApp()(PROVIDERS[i.identifier]?.label ?? VIDEO_PROVIDERS[i.identifier]?.label ?? i.identifier) }));
     };
     const postsBetween = async (from: string, to: string, fresh = false): Promise<any[]> => {
       const cfg = cfgOrFail();
@@ -152,11 +154,12 @@ export const socialModule: Module = {
       const chosen = ids.map((cid) => {
         const c = mine.find((m) => m.id === cid);
         if (!c) throw bad('Kanal gehört nicht zu diesem Sub-Account');
-        if (video ? !c.video : !c.supported) throw bad(`${c.label}: bitte direkt in Postiz posten`);
-        if (c.disabled) throw bad(`${c.name} ist in Postiz deaktiviert`);
-        if (c.limit && content.length > c.limit) throw bad(`Zu lang für ${c.label}: ${content.length} von max. ${c.limit} Zeichen`);
-        const long = thread.findIndex((t) => c.limit && t.length > c.limit);
-        if (long >= 0) throw bad(`Teil ${long + 2} ist zu lang für ${c.label} (max. ${c.limit} Zeichen)`);
+        const t = tApp();
+        if (video ? !c.video : !c.supported) throw bad(t('{channel}: bitte direkt in Postiz posten', { channel: c.label }));
+        if (c.disabled) throw bad(t('{name} ist in Postiz deaktiviert', { name: c.name }));
+        if (c.limit && content.length > c.limit) throw bad(t('Zu lang für {channel}: {length} von max. {limit} Zeichen', { channel: c.label, length: content.length, limit: c.limit }));
+        const long = thread.findIndex((x) => c.limit && x.length > c.limit);
+        if (long >= 0) throw bad(t('Teil {n} ist zu lang für {channel} (max. {limit} Zeichen)', { n: long + 2, channel: c.label, limit: c.limit }));
         return c;
       });
       let date = new Date().toISOString();
@@ -176,7 +179,7 @@ export const socialModule: Module = {
         return `${app.baseUrl()}/uploads/${row.file}`;
       });
       if (input.mediaUrls?.length) uploads.push(...input.mediaUrls.slice(0, 4));
-      for (const c of chosen) if (PROVIDERS[c.identifier]?.needsImage && !uploads.length) throw bad(`${c.label} braucht ein Bild`);
+      for (const c of chosen) if (PROVIDERS[c.identifier]?.needsImage && !uploads.length) throw bad(tApp()('{channel} braucht ein Bild', { channel: c.label }));
       const title = String(input.title ?? '').trim().slice(0, 100) || content.slice(0, 100);
       const media: { id: string; path: string }[] = [];
       for (const url of uploads) {
@@ -222,7 +225,7 @@ export const socialModule: Module = {
           type: step.mode === 'now' ? 'now' : 'draft',
           source: 'Workflow',
         });
-        return r.type === 'now' ? 'veröffentlicht' : 'Entwurf in Postiz';
+        return r.type === 'now' ? tLoc(app, run.location_id)('veröffentlicht') : tLoc(app, run.location_id)('Entwurf in Postiz');
       },
     };
 

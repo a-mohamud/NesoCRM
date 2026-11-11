@@ -4,7 +4,8 @@ import { bad, notFound, str } from '../core/http.js';
 import { sealSecret } from '../core/secrets.js';
 import { id, now } from '../core/util.js';
 import { cleanFields, cleanFormSettings } from '../services/form-fields.js';
-import { TEMPLATES, TEMPLATE_CATEGORIES, templateById, templateCard } from '../services/form-templates.js';
+import { TEMPLATES, TEMPLATE_CATEGORIES, localizeTemplate, templateById, templateCard } from '../services/form-templates.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 import { FONTS, PRESETS, cleanTheme } from '../services/form-themes.js';
 import { captchaKeys } from '../services/form-captcha.js';
 
@@ -31,23 +32,29 @@ export const formLibraryModule: Module = {
     const { db, router } = app;
 
     // --- templates -------------------------------------------------------------------------------------------------------------------------
-    router.get('/api/forms/templates', 'location', () => ({ categories: TEMPLATE_CATEGORIES, templates: TEMPLATES.map(templateCard) }));
+    // Templates are content of the sub-account: shown and created in its language (tLoc).
+    router.get('/api/forms/templates', 'location', (ctx) => {
+      const tl = tLoc(app, ctx.locationId);
+      return { categories: TEMPLATE_CATEGORIES.map((c) => tl(c)), templates: TEMPLATES.map((x) => templateCard(x, tl)) };
+    });
     router.get('/api/forms/templates/:tid', 'location', (ctx) => {
       const t = templateById(ctx.params.tid);
       if (!t) throw notFound('Vorlage nicht gefunden');
-      return t;
+      return localizeTemplate(t, tLoc(app, ctx.locationId));
     });
     /** Opens a template as a new form of this sub-account. A payment template needs one of the sub-account's products. */
     router.post('/api/forms/templates/:tid/use', 'location', (ctx) => {
-      const t = templateById(ctx.params.tid);
-      if (!t) throw notFound('Vorlage nicht gefunden');
+      const raw = templateById(ctx.params.tid);
+      if (!raw) throw notFound('Vorlage nicht gefunden');
+      const tl = tLoc(app, ctx.locationId);
+      const t = localizeTemplate(raw, tl);
       const productId = str(ctx.body?.product_id, 'Produkt', { max: 60 });
       if (t.needs_product) {
         if (!productId) throw bad('Bitte ein Produkt wählen, das bezahlt werden soll');
         if (!db.get('SELECT id FROM products WHERE id = ? AND location_id = ?', productId, ctx.locationId)) throw bad('Produkt nicht gefunden');
       }
       const draft = t.fields.map((f) => (f.type === 'payment' ? { ...f, product_id: productId } : { ...f }));
-      const settings = { submit_text: 'Absenden', thank_you: 'Danke! Wir melden uns in Kürze.', tags: [], notify_team: true, ...t.settings, mode: t.mode };
+      const settings = { submit_text: tl('Absenden'), thank_you: tl('Danke! Wir melden uns in Kürze.'), tags: [], notify_team: true, ...t.settings, mode: t.mode };
       const fields = cleanFields(draft, { mode: t.mode, productOk: (pid) => !!db.get('SELECT id FROM products WHERE id = ? AND location_id = ?', pid, ctx.locationId) });
       const cleaned = cleanFormSettings(settings, fields);
       if (cleaned.theme) cleaned.theme = cleanTheme(cleaned.theme);
@@ -57,10 +64,13 @@ export const formLibraryModule: Module = {
     });
 
     // --- themes ----------------------------------------------------------------------------------------------------------------------------
-    router.get('/api/forms/themes', 'location', () => ({
-      presets: Object.entries(PRESETS).map(([key, p]) => ({ key, label: p.label, theme: { preset: key, ...p.theme } })),
-      fonts: Object.entries(FONTS).map(([key, f]) => ({ key, label: f.label })),
-    }));
+    router.get('/api/forms/themes', 'location', (ctx) => {
+      const tc = tCtx(ctx);
+      return {
+      presets: Object.entries(PRESETS).map(([key, p]) => ({ key, label: tc(p.label), theme: { preset: key, ...p.theme } })),
+      fonts: Object.entries(FONTS).map(([key, f]) => ({ key, label: tc(f.label) })),
+      };
+    });
 
     // --- Cloudflare Turnstile ----------------------------------------------------------------------------------------------------------------
     const status = (loc: string) => {

@@ -3,6 +3,7 @@ import type { App, Module } from '../core/app.js';
 import { bad, notFound, num, str } from '../core/http.js';
 import { id, now } from '../core/util.js';
 import { getContact, logActivity } from '../services/contacts.js';
+import { tApp, tLoc } from '../i18n/index.js';
 import { registerActions, text, type ActionDef } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
 
@@ -38,7 +39,7 @@ export function issueCodes(app: App, locationId: string, i: IssueInput): { codes
   if (i.kind === 'percent' && (!(value >= 1) || value > 100)) throw bad('Rabatt: 1 bis 100 %');
   if (i.kind === 'amount' && !(value >= 1)) throw bad('Rabatt: Betrag in Cent fehlt');
   const count = Math.round(i.count ?? 1);
-  if (!(count >= 1) || count > MAX_BULK) throw bad(`Anzahl: 1 bis ${MAX_BULK}`);
+  if (!(count >= 1) || count > MAX_BULK) throw bad(tApp()('Anzahl: 1 bis {max}', { max: MAX_BULK }));
   const days = i.validDays === null || i.validDays === undefined ? 30 : Math.round(i.validDays);
   if (days < 0 || days > 3650) throw bad('Gültigkeit: 0 (unbegrenzt) bis 3650 Tage');
   const expires = days ? new Date(Date.now() + days * 86_400_000).toISOString() : null;
@@ -59,7 +60,7 @@ export function issueCodes(app: App, locationId: string, i: IssueInput): { codes
       codes.push(code);
     }
   });
-  if (i.contactId) logActivity(app, locationId, i.contactId, 'coupon.issued', `Einmal-Rabattcode ${codes[0]} für „${p.name}“ erstellt`);
+  if (i.contactId) logActivity(app, locationId, i.contactId, 'coupon.issued', tLoc(app, locationId)('Einmal-Rabattcode {code} für „{product}“ erstellt', { code: codes[0], product: p.name }));
   return { codes, expires_at: expires, product: { id: p.id, name: p.name } };
 }
 
@@ -70,7 +71,7 @@ export const COUPON_TOOLS: Tool[] = [
   {
     name: 'ghl_coupon_create',
     title: 'Einmal-Rabattcodes erzeugen',
-    description: `Erzeugt Rabattcodes, die je genau einmal auf der Kaufseite eines Einmal-Produkts gelten (Prozent oder Betrag in Cent, Gültigkeit in Tagen, Standard 30). Mit contact_id ein persönlicher Code für diesen Kontakt, mit count bis ${MAX_BULK} Codes auf einmal (z. B. für eine Aktion). Die Codes gibst du dem Nutzer bzw. dem Kontakt weiter – verschickt wird nichts.`,
+    description: 'Erzeugt Rabattcodes, die je genau einmal auf der Kaufseite eines Einmal-Produkts gelten (Prozent oder Betrag in Cent, Gültigkeit in Tagen, Standard 30). Mit contact_id ein persönlicher Code für diesen Kontakt, mit count bis 500 Codes auf einmal (z. B. für eine Aktion). Die Codes gibst du dem Nutzer bzw. dem Kontakt weiter – verschickt wird nichts.',
     inputSchema: obj(
       {
         ...LOC,
@@ -169,8 +170,9 @@ export const couponCodesModule: Module = {
           workflowId: run.workflow_id,
         });
         const loc = app.location(run.location_id);
-        const expires = r.expires_at ? new Date(r.expires_at).toLocaleDateString('de-DE', { timeZone: loc?.timezone || 'Europe/Berlin' }) : '';
-        return { result: `Code ${r.codes[0]} für „${r.product.name}“`, vars: { coupon_code: r.codes[0], coupon_expires: expires } };
+        const t = tLoc(app, run.location_id);
+        const expires = r.expires_at ? new Date(r.expires_at).toLocaleDateString(t.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: loc?.timezone || 'Europe/Berlin' }) : '';
+        return { result: t('Code {code} für „{product}“', { code: r.codes[0], product: r.product.name }), vars: { coupon_code: r.codes[0], coupon_expires: expires } };
       },
     };
     registerActions(app, [step]);

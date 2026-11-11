@@ -1,5 +1,6 @@
 import { escapeHtml } from '../core/template.js';
 import { SPEEDS, formatTimestamp, type Chapter } from './course-media.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * The video player of a hosted lesson video: server-rendered markup, a little CSS and one script file (`/portal-course.js`, served
@@ -27,19 +28,24 @@ export interface PlayerConfig {
   watched: number;
   furthest: number;
   done: boolean;
+  /** The member page's language (the sub-account's); defaults to the instance language. */
+  t?: STFn;
 }
 
 export function playerHtml(c: PlayerConfig): string {
-  const data = escapeHtml(JSON.stringify({ post: c.post, resume: c.resume, speed: c.speed, pct: c.completePercent, duration: c.duration, watched: c.watched, furthest: c.furthest, done: c.done }));
+  const t = c.t ?? tApp();
+  // The script's own words travel in the config (the script file is the same for every language).
+  const words = { resumeAt: t('Weiter bei {time}'), restart: t('Von vorn'), saved: t('✓ Lektion als erledigt gespeichert') };
+  const data = escapeHtml(JSON.stringify({ post: c.post, resume: c.resume, speed: c.speed, pct: c.completePercent, duration: c.duration, watched: c.watched, furthest: c.furthest, done: c.done, words }));
   const tracks = c.captions.map((t, i) => `<track kind="captions" srclang="${escapeHtml(t.lang)}" label="${escapeHtml(t.label)}" src="${escapeHtml(t.src)}"${i === 0 ? ' default' : ''}>`).join('');
   const sources = `${c.hls ? `<source src="${escapeHtml(c.hls)}" type="application/vnd.apple.mpegurl">` : ''}<source src="${escapeHtml(c.video)}" type="video/mp4">`;
   const chapters = c.chapters.length
-    ? `<ol class="cvp-ch" aria-label="Kapitel">${c.chapters.map((ch) => `<li><button type="button" data-t="${ch.t}"><span class="t">${formatTimestamp(ch.t)}</span><span>${escapeHtml(ch.title)}</span></button></li>`).join('')}</ol>`
+    ? `<ol class="cvp-ch" aria-label="${escapeHtml(t('Kapitel'))}">${c.chapters.map((ch) => `<li><button type="button" data-t="${ch.t}"><span class="t">${formatTimestamp(ch.t)}</span><span>${escapeHtml(ch.title)}</span></button></li>`).join('')}</ol>`
     : '';
-  const speeds = SPEEDS.map((s) => `<option value="${s}"${s === c.speed ? ' selected' : ''}>${String(s).replace('.', ',')}×</option>`).join('');
+  const speeds = SPEEDS.map((s) => `<option value="${s}"${s === c.speed ? ' selected' : ''}>${t.locale === 'de' ? String(s).replace('.', ',') : String(s)}×</option>`).join('');
   return `<div class="cvp" data-cvp="${data}">
 <div class="md-video"><video controls preload="metadata" playsinline controlslist="nodownload" disablepictureinpicture${c.poster ? ` poster="${escapeHtml(c.poster)}"` : ''} aria-label="${escapeHtml(c.title)}">${sources}${tracks}</video></div>
-<div class="cvp-bar"><label class="cvp-sp">Geschwindigkeit <select class="cvp-speed" aria-label="Wiedergabegeschwindigkeit">${speeds}</select></label>${c.completePercent ? `<span class="cvp-hint small muted">Die Lektion gilt als erledigt, sobald du ${c.completePercent} % gesehen hast.</span>` : ''}<span class="cvp-note" role="status" aria-live="polite"></span></div>
+<div class="cvp-bar"><label class="cvp-sp">${escapeHtml(t('Geschwindigkeit'))} <select class="cvp-speed" aria-label="${escapeHtml(t('Wiedergabegeschwindigkeit'))}">${speeds}</select></label>${c.completePercent ? `<span class="cvp-hint small muted">${escapeHtml(t('Die Lektion gilt als erledigt, sobald du {pct} % gesehen hast.', { pct: c.completePercent }))}</span>` : ''}<span class="cvp-note" role="status" aria-live="polite"></span></div>
 ${chapters}</div>`;
 }
 
@@ -68,13 +74,13 @@ function init(el){
   function setSpeed(s){speed=s;v.defaultPlaybackRate=s;v.playbackRate=s}
   setSpeed(speed);if(sel){sel.value=String(speed);if(sel.value!==String(speed))sel.value='1';sel.addEventListener('change',function(){var s=parseFloat(sel.value)||1;setSpeed(s);ls('cvp-speed',String(s));send(false)})}
   function say(text,label,fn){if(!note)return;note.textContent='';var t=document.createElement('span');t.textContent=text;note.appendChild(t);if(label){var b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',function(){fn();note.textContent=''});note.appendChild(b)}clearTimeout(timer);timer=setTimeout(function(){note.textContent=''},9000)}
-  var resumed=false;function resume(){if(resumed)return;resumed=true;if(cfg.resume>0){try{v.currentTime=cfg.resume}catch(e){}say('Weiter bei '+fmt(cfg.resume),'Von vorn',function(){v.currentTime=0})}}
+  var resumed=false;function resume(){if(resumed)return;resumed=true;if(cfg.resume>0){try{v.currentTime=cfg.resume}catch(e){}var w=cfg.words||{};say(String(w.resumeAt||'{time}').replace('{time}',fmt(cfg.resume)),w.restart||'↺',function(){v.currentTime=0})}}
   if(v.readyState>=1)resume();else v.addEventListener('loadedmetadata',resume);
   function mark(t){var on=-1;for(var i=0;i<items.length;i++){var b=items[i].querySelector('button');if(b&&parseFloat(b.getAttribute('data-t'))<=t+0.25)on=i}for(var j=0;j<items.length;j++){if(j===on)items[j].className='on';else items[j].className=''}}
   for(var i=0;i<items.length;i++)(function(b){if(!b)return;b.addEventListener('click',function(){var t=parseFloat(b.getAttribute('data-t'))||0;try{v.currentTime=t}catch(e){}var p=v.play();if(p&&p.catch)p.catch(function(){})})})(items[i].querySelector('button'));
   function send(keep){lastSent=Date.now();var dur=v.duration;if(!isFinite(dur)||dur<=0)dur=cfg.duration||0;
     var body=JSON.stringify({position:v.currentTime||0,duration:dur,furthest:furthest,watched:watched,speed:speed});
-    try{fetch(cfg.post,{method:'POST',headers:{'content-type':'application/json','x-course-player':'1'},body:body,keepalive:!!keep,credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.completed&&!done){done=true;say('✓ Lektion als erledigt gespeichert')}}).catch(function(){})}catch(e){}}
+    try{fetch(cfg.post,{method:'POST',headers:{'content-type':'application/json','x-course-player':'1'},body:body,keepalive:!!keep,credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.completed&&!done){done=true;say((cfg.words&&cfg.words.saved)||'✓')}}).catch(function(){})}catch(e){}}
   v.addEventListener('timeupdate',function(){var t=v.currentTime;if(!v.paused&&!v.seeking&&lastT!==null){var d=t-lastT;if(d>0&&d<=3*v.playbackRate+1)watched+=d}lastT=t;if(t>furthest)furthest=t;mark(t);if(!v.paused&&Date.now()-lastSent>10000)send(false)});
   v.addEventListener('seeking',function(){lastT=null});v.addEventListener('seeked',function(){lastT=v.currentTime});v.addEventListener('play',function(){lastT=v.currentTime});
   v.addEventListener('pause',function(){send(false)});v.addEventListener('ended',function(){send(false)});

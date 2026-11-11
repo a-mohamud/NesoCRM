@@ -46,7 +46,7 @@ export function safeKey(key: string): string {
 export function cleanTileOrder(input: unknown): TileOrderPatch {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Kachel-Reihenfolge als Objekt { Raster: [Schlüssel …] }');
   const entries = Object.entries(input as Record<string, unknown>);
-  if (entries.length > MAX_GRIDS) throw new Error(`Höchstens ${MAX_GRIDS} Kachel-Reihenfolgen`);
+  if (entries.length > MAX_GRIDS) throw new Error('Zu viele Kachel-Reihenfolgen (höchstens 200)');
   const out: TileOrderPatch = {};
   for (const [grid, list] of entries) {
     if (!GRID_RE.test(grid)) throw new Error('Ungültige Raster-ID für die Kachel-Reihenfolge');
@@ -55,7 +55,7 @@ export function cleanTileOrder(input: unknown): TileOrderPatch {
       continue;
     }
     if (!Array.isArray(list)) throw new Error('Kachel-Reihenfolge als Liste von Schlüsseln');
-    if (list.length > MAX_KEYS) throw new Error(`Höchstens ${MAX_KEYS} Kacheln je Reihenfolge`);
+    if (list.length > MAX_KEYS) throw new Error('Zu viele Kacheln in einer Reihenfolge (höchstens 200)');
     const seen = new Set<string>();
     for (const k of list) {
       if (typeof k !== 'string' || !KEY_RE.test(k)) throw new Error('Ungültiger Kachel-Schlüssel');

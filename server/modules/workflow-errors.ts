@@ -5,6 +5,7 @@ import { notifyTeam } from '../services/messaging.js';
 import { STEP_FAILED_EVENT, retryRun, type StepFailure } from '../services/workflow-errors.js';
 import { PUSH_KINDS } from './push.js';
 import { processRun, startWorkflow } from '../services/workflow-engine.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Workflow error handling (services/workflow-errors.ts): the listener behind a failed step – bell (push) and e-mail to the team with the
@@ -53,10 +54,16 @@ export const workflowErrorsModule: Module = {
 
       // Bell and e-mail: one notice with everything needed to find the problem.
       if ((s.error_bell || s.error_email) && allowed(wf.id)) {
-        const title = `Workflow-Fehler: „${wf.name}“`;
-        const lines = [`Schritt: ${f.step}`, `Fehler: ${f.message}`, who ? `Kontakt: ${who}${contact?.email && who !== contact.email ? ` (${contact.email})` : ''}` : '', f.stopped ? 'Der Ablauf wurde angehalten – er lässt sich im Verlauf ab diesem Schritt wiederholen.' : 'Der Ablauf läuft mit dem nächsten Schritt weiter.'].filter(Boolean);
+        const t = tLoc(app, e.locationId);
+        const title = t('Workflow-Fehler: „{name}“', { name: wf.name });
+        const lines = [
+          t('Schritt: {step}', { step: f.step }),
+          t('Fehler: {message}', { message: f.message }),
+          who ? t('Kontakt: {who}', { who: `${who}${contact?.email && who !== contact.email ? ` (${contact.email})` : ''}` }) : '',
+          f.stopped ? t('Der Ablauf wurde angehalten – er lässt sich im Verlauf ab diesem Schritt wiederholen.') : t('Der Ablauf läuft mit dem nächsten Schritt weiter.'),
+        ].filter(Boolean);
         if (s.error_bell) await Promise.resolve(app.services.pushNotify?.({ locationId: e.locationId, kind: 'workflows', title, body: `${f.step}: ${f.message}`, url: `/app/workflows/${wf.id}`, tag: `wf-error-${wf.id}` })).catch(() => undefined);
-        if (s.error_email) await notifyTeam(app, e.locationId, title, `${lines.join('\n')}\n\nZum Workflow: ${app.baseUrl()}/app/workflows/${wf.id}`).catch(() => undefined);
+        if (s.error_email) await notifyTeam(app, e.locationId, title, `${lines.join('\n')}\n\n${t('Zum Workflow: {url}', { url: `${app.baseUrl()}/app/workflows/${wf.id}` })}`).catch(() => undefined);
       }
 
       // Another workflow for the same contact. A run that is itself an error handler never starts one (no chains, no loops).

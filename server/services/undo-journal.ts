@@ -4,6 +4,7 @@ import { HttpError, bad, notFound, clampLimit, type Ctx, type Route } from '../c
 import { id as newId, now, sha256 } from '../core/util.js';
 import { TooBig, changedColumns, fingerprint, kidCounts, kidsText, sameValue, type Snapshot } from './undo-core.js';
 import { clip, type Fmt, type UndoEntity } from './undo-table.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * The undo journal. Before a tracked write (a guard) it takes a snapshot of the records the request is
@@ -138,7 +139,8 @@ export function createJournal(app: App) {
   }
   function principalOf(ctx: Ctx): Principal {
     const via = String(ctx.via ?? '');
-    if (via === 'agent') return { kind: 'agent', ref: `u:${ctx.user?.id}`, userId: ctx.user?.id ?? null, name: ctx.user?.name ?? 'KI-Agent' };
+    const t = tLoc(app, ctx.locationId);
+    if (via === 'agent') return { kind: 'agent', ref: `u:${ctx.user?.id}`, userId: ctx.user?.id ?? null, name: ctx.user?.name ?? t('KI-Agent') };
     if (via === 'session' || via === 'app') return { kind: via === 'app' ? 'app' : 'user', ref: `u:${ctx.user?.id}`, userId: ctx.user?.id ?? null, name: ctx.user?.name ?? '' };
     // Keys (and MCP, which relays with a key): the key is the principal, never the person who made it.
     const bearer = bearerOf(ctx);
@@ -148,10 +150,10 @@ export function createJournal(app: App) {
     const key = agency ?? loc;
     const kind = via === 'mcp' ? 'mcp' : agency ? 'agency_key' : via === 'api_key' || loc ? 'api_key' : ctx.user ? 'user' : 'system';
     // A key bound to a team user (an agent's own login) names that user too.
-    const keyName = loc && ctx.user ? `${ctx.user.name} (API-Schlüssel „${key?.name}“)` : `API-Schlüssel „${key?.name}“`;
+    const keyName = loc && ctx.user ? t('{user} (API-Schlüssel „{key}“)', { user: ctx.user.name, key: key?.name ?? '' }) : t('API-Schlüssel „{key}“', { key: key?.name ?? '' });
     if (key) return { kind, ref: `${agency ? 'ak' : 'k'}:${key.id}`, userId: null, name: ctx.user?.name?.startsWith('API:') ? ctx.user.name : keyName };
     if (ctx.user) return { kind: kind === 'system' ? 'user' : kind, ref: `u:${ctx.user.id}`, userId: ctx.user.id, name: ctx.user.name };
-    return { kind: 'system', ref: `x:${via || 'system'}`, userId: null, name: ctx.viaApiKey ? 'API-Schlüssel' : 'System' };
+    return { kind: 'system', ref: `x:${via || 'system'}`, userId: null, name: ctx.viaApiKey ? t('API-Schlüssel') : t('System') };
   }
   const isAdmin = (ctx: Ctx) => ctx.user?.role === 'admin';
 
@@ -217,14 +219,15 @@ export function createJournal(app: App) {
     const tz = tzOf(locationId);
     const skip = [...(entity.volatile ?? []), ...SKIP_COLS];
     const keys = changedColumns(before.row, after.row, entity.fields ? [] : skip).filter((k) => (entity.fields ? k in entity.fields : true));
+    const t = tLoc(app, locationId);
     const out = keys.slice(0, KEEP_CHANGES).map((k) => {
       const f = entity.fields?.[k];
-      return { k, l: f?.label ?? FIELD_LABELS[k] ?? k, from: show(before.row[k], f?.fmt, before.row, tz), to: show(after.row[k], f?.fmt, after.row, tz) };
+      return { k, l: t(f?.label ?? FIELD_LABELS[k] ?? k), from: show(before.row[k], f?.fmt, before.row, tz), to: show(after.row[k], f?.fmt, after.row, tz) };
     });
     // Parts (assignees, links …) changed: say so in one line.
     for (const [name, p] of Object.entries(after.parts ?? {})) {
       const b = before.parts?.[name];
-      if (b && p.fp && !sameValue(b.rows, p.rows) && out.length < KEEP_CHANGES) out.push({ k: `parts.${name}`, l: PART_LABELS[name] ?? name, from: `${b.rows.length}`, to: `${p.rows.length}` });
+      if (b && p.fp && !sameValue(b.rows, p.rows) && out.length < KEEP_CHANGES) out.push({ k: `parts.${name}`, l: t(PART_LABELS[name] ?? name), from: `${b.rows.length}`, to: `${p.rows.length}` });
     }
     return out;
   }
@@ -233,7 +236,7 @@ export function createJournal(app: App) {
   const verbOf = (entity: UndoEntity, action: string, before: Snapshot | null, after: Snapshot | null) => entity.verb?.(before, after) ?? VERBS[action] ?? 'geändert';
   const entityOf = (type: string) => {
     const e = entities.get(type);
-    if (!e) throw new HttpError(500, `Undo: unbekannte Art „${type}“`);
+    if (!e) throw new HttpError(500, tApp()('Undo: unbekannte Art „{type}“', { type }));
     return e;
   };
 
@@ -291,6 +294,7 @@ export function createJournal(app: App) {
     pending.delete(ctx);
     if (p.rule.method !== ctx.method || p.rule.pattern !== route.pattern) return;
     const who = principal(ctx);
+    const t = tLoc(app, ctx.locationId);
     const rows: { entity: string; before: Snapshot | null; after: Snapshot | null; label: string; entry: Omit<EntryRow, 'seq'> }[] = [];
     const at = now();
     for (const item of p.items) {
@@ -315,9 +319,10 @@ export function createJournal(app: App) {
       }
       const action = typeof p.rule.action === 'function' ? p.rule.action(b, a, ctx) : (p.rule.action ?? (a ? 'update' : 'delete'));
       const basis = a ?? b;
-      const noun = basis ? entity.label(basis) : `${entity.noun} ${item.id.slice(0, 6)}`;
-      const notice = typeof p.rule.notice === 'function' ? p.rule.notice(b, a, ctx) : p.rule.notice;
-      const verb = item.tooBig ? 'gelöscht' : verbOf(entity, action, b, a);
+      const noun = basis ? entity.label(basis) : `${t(entity.noun)} ${item.id.slice(0, 6)}`;
+      const rawNotice = typeof p.rule.notice === 'function' ? p.rule.notice(b, a, ctx) : p.rule.notice;
+      const notice = rawNotice ? t(rawNotice) : rawNotice;
+      const verb = t(item.tooBig ? 'gelöscht' : verbOf(entity, action, b, a));
       rows.push({
         entity: item.entity,
         before: b,
@@ -349,7 +354,7 @@ export function createJournal(app: App) {
           deep: b?.kids || b?.nulls ? 1 : 0,
           notice: (notice ?? '').slice(0, 300),
           restorable: item.tooBig ? 0 : 1,
-          reason: item.tooBig ? 'Zu viele verknüpfte Datensätze – nicht im Papierkorb gespeichert' : '',
+          reason: item.tooBig ? t('Zu viele verknüpfte Datensätze – nicht im Papierkorb gespeichert') : '',
           removes: !a && b ? 1 : 0,
           reverts_id: null,
           undone_at: null,
@@ -377,7 +382,7 @@ export function createJournal(app: App) {
     if (rows.length > 1) {
       const entity = entityOf(rows[0].entity);
       const same = rows.every((r) => r.entity === rows[0].entity);
-      const group = p.rule.groupLabel?.(ctx, rows) ?? `${rows.length} ${same ? (entity.plural ?? `${entity.noun}e`) : 'Datensätze'} ${verbOf(entity, rows[0].entry.action, rows[0].before, rows[0].after)}`;
+      const group = p.rule.groupLabel?.(ctx, rows) ?? `${rows.length} ${same ? t(entity.plural ?? entity.noun) : t('Datensätze')} ${t(verbOf(entity, rows[0].entry.action, rows[0].before, rows[0].after))}`;
       for (const r of rows) r.entry.group_label = group;
     }
     db.tx(() => {
@@ -552,19 +557,21 @@ export function createJournal(app: App) {
     const tz = tzOf(e.location_id);
     const after = parse<Snapshot | null>(e.snap_after, null);
     const target = parse<Snapshot | null>(e.snap_before, null);
+    const t = tLoc(app, e.location_id);
     if (!cur || !after) {
-      return [{ field: '_exists', label: 'Datensatz', entry: after ? 'vorhanden' : 'gelöscht', now: cur ? 'vorhanden' : 'gelöscht', restore: target ? 'vorhanden' : 'gelöscht' }];
+      const state = (x: unknown) => (x ? t('vorhanden') : t('gelöscht'));
+      return [{ field: '_exists', label: t('Datensatz'), entry: state(after), now: state(cur), restore: state(target) }];
     }
     const keys = changedColumns(after.row, cur.row, [...(entity.volatile ?? []), ...SKIP_COLS]);
     const out: Diff[] = keys.slice(0, 12).map((k) => {
       const f = entity.fields?.[k];
-      return { field: k, label: f?.label ?? FIELD_LABELS[k] ?? k, entry: show(after.row[k], f?.fmt, after.row, tz), now: show(cur.row[k], f?.fmt, cur.row, tz), restore: show(target?.row[k], f?.fmt, target?.row ?? cur.row, tz) };
+      return { field: k, label: t(f?.label ?? FIELD_LABELS[k] ?? k), entry: show(after.row[k], f?.fmt, after.row, tz), now: show(cur.row[k], f?.fmt, cur.row, tz), restore: show(target?.row[k], f?.fmt, target?.row ?? cur.row, tz) };
     });
     for (const [name, part] of Object.entries(cur.parts ?? {})) {
       const a = after.parts?.[name];
-      if (a && part.fp && !sameValue(a.rows, part.rows)) out.push({ field: `parts.${name}`, label: PART_LABELS[name] ?? name, entry: `${a.rows.length}`, now: `${part.rows.length}`, restore: `${target?.parts?.[name]?.rows.length ?? 0}` });
+      if (a && part.fp && !sameValue(a.rows, part.rows)) out.push({ field: `parts.${name}`, label: t(PART_LABELS[name] ?? name), entry: `${a.rows.length}`, now: `${part.rows.length}`, restore: `${target?.parts?.[name]?.rows.length ?? 0}` });
     }
-    if (!sameValue(after.kids ?? null, cur.kids ?? null)) out.push({ field: '_kids', label: 'Verknüpfte Einträge', entry: kidsText(kidCounts(after.kids)) || '–', now: kidsText(kidCounts(cur.kids)) || '–', restore: kidsText(kidCounts(target?.kids)) || '–' });
+    if (!sameValue(after.kids ?? null, cur.kids ?? null)) out.push({ field: '_kids', label: t('Verknüpfte Einträge'), entry: kidsText(kidCounts(after.kids)) || '–', now: kidsText(kidCounts(cur.kids)) || '–', restore: kidsText(kidCounts(target?.kids)) || '–' });
     return out;
   }
 
@@ -599,7 +606,7 @@ export function createJournal(app: App) {
     if (/FOREIGN KEY/i.test(m)) throw new HttpError(409, 'Ein verknüpfter Datensatz existiert nicht mehr (z. B. der Kontakt wurde gelöscht) – stelle zuerst diesen wieder her');
     if (/UNIQUE|constraint/i.test(m)) throw new HttpError(409, 'Wiederherstellen geht nicht: Es gibt inzwischen einen Datensatz mit denselben Werten');
     if (e instanceof HttpError) throw e;
-    throw new HttpError(500, `Wiederherstellen fehlgeschlagen: ${m}`);
+    throw new HttpError(500, tApp()('Wiederherstellen fehlgeschlagen: {reason}', { reason: m }));
   };
 
   /**
@@ -615,7 +622,7 @@ export function createJournal(app: App) {
       const pv = preview(ctx, entryId, !!opts.single);
       if (pv.conflict) {
         const first = pv.conflicts[0];
-        throw new HttpError(409, `„${clip(first.label, 80)}“ wurde seit dieser Änderung erneut geändert – trotzdem wiederherstellen?`, {
+        throw new HttpError(409, tApp()('„{label}“ wurde seit dieser Änderung erneut geändert – trotzdem wiederherstellen?', { label: clip(first.label, 80) }), {
           conflict: true,
           diff: pv.conflicts.flatMap((c) => c.diff.map((d) => ({ ...d, label: pv.conflicts.length > 1 ? `${clip(c.label, 40)}: ${d.label}` : d.label }))),
           conflicts: pv.conflicts,
@@ -637,7 +644,7 @@ export function createJournal(app: App) {
           const cur = entity.snapshot(m.entity_id, ctx, m.deep ? 'deep' : 'now');
           entity.restore(target, ctx, cur);
           const nowSnap = entity.snapshot(m.entity_id, ctx, m.deep ? 'deep' : 'now');
-          const again = m.kind === 'undo' ? 'Wiederholt' : 'Rückgängig';
+          const again = m.kind === 'undo' ? tLoc(app, m.location_id)('Wiederholt') : tLoc(app, m.location_id)('Rückgängig');
           const entry: Omit<EntryRow, 'seq'> = {
             id: newId(),
             location_id: m.location_id,
@@ -688,7 +695,8 @@ export function createJournal(app: App) {
         console.error('[undo] afterRestore', e);
       }
     }
-    const label = group.length > 1 ? `${group.length} Einträge wiederhergestellt` : created[0].label;
+    const tl = tLoc(app, ctx.locationId);
+    const label = group.length > 1 ? tl.plural(group.length, { one: '{n} Eintrag wiederhergestellt', other: '{n} Einträge wiederhergestellt' }) : created[0].label;
     const redo = created[created.length - 1];
     return {
       ok: true,

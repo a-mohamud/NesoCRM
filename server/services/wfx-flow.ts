@@ -6,6 +6,7 @@ import { FormatError, addToDate, nextInWindow, parseDate, tzOrDefault, wallClock
 import { evalConditions, type ActionOutcome } from './workflow-engine.js';
 import { readPath, requireText, resolve, toText, tzOf, type ActionDef, type FieldDef } from './wfx-kit.js';
 import { toList } from './wfx-data.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Flow steps: Go-to, "Ziel erreicht → springe", split test A/B/n, loop over a list, drip release, and the waits
@@ -59,6 +60,7 @@ export function dripSlot(last: { slot_at: string; used: number } | undefined, ba
 
 export function flowActions(app: App): ActionDef[] {
   const db = app.db;
+  const tr = tApp();
   const defs: ActionDef[] = [];
   const add = (d: ActionDef) => defs.push(d);
   const nowMs = () => (app.services.wfxNow ? Number(app.services.wfxNow()) : Date.now());
@@ -66,7 +68,7 @@ export function flowActions(app: App): ActionDef[] {
   const hasCondition = (step: any) => (Array.isArray(step.conditions) && step.conditions.some((c: any) => c?.field)) || !!String(step.expression ?? '').trim();
   const stepName = (fc: { find: (id: string) => (number | string)[] | null }, target: string) => {
     const c = fc.find(target);
-    return c ? `Schritt ${c.filter((x): x is number => typeof x === 'number').map((x) => x + 1).join('.')}` : target;
+    return c ? tr('Schritt {n}', { n: c.filter((x): x is number => typeof x === 'number').map((x) => x + 1).join('.') }) : target;
   };
 
   /** Counts a jump at this step; null once the limit is used up (the flow then simply goes on). */
@@ -99,11 +101,11 @@ export function flowActions(app: App): ActionDef[] {
     },
     run: (run, step, vars, fc) => {
       const target = requireText(step.target, 'Sprungziel');
-      if (hasCondition(step) && !gate(step, vars)) return { result: 'Bedingung nicht erfüllt – kein Sprung' };
-      if (!fc.find(target)) throw new Error('Sprungziel nicht gefunden – bitte den Schritt neu wählen');
+      if (hasCondition(step) && !gate(step, vars)) return { result: tr('Bedingung nicht erfüllt – kein Sprung') };
+      if (!fc.find(target)) throw new Error(tr('Sprungziel nicht gefunden – bitte den Schritt neu wählen'));
       const j = jumpCount(run, step.id, capJumps(step));
-      if (!j) return { result: `Sprunggrenze erreicht (${capJumps(step)} Sprünge) – kein weiterer Sprung, der Ablauf geht weiter` };
-      return { result: `Sprung zu ${stepName(fc, target)} (${j.n}. Mal)`, goto: target, vars: j.vars };
+      if (!j) return { result: tr('Sprunggrenze erreicht ({n} Sprünge) – kein weiterer Sprung, der Ablauf geht weiter', { n: capJumps(step) }) };
+      return { result: tr('Sprung zu {step} ({n}. Mal)', { step: stepName(fc, target), n: j.n }), goto: target, vars: j.vars };
     },
   });
 
@@ -126,14 +128,14 @@ export function flowActions(app: App): ActionDef[] {
       sample: { conditions: [{ field: 'tag', op: 'has', value: 'termin-gebucht' }], on_reached: 'end' },
     },
     run: (run, step, vars, fc) => {
-      if (!hasCondition(step)) throw new Error('Bitte eine Bedingung für das Ziel angeben');
-      if (!gate(step, vars)) return { result: 'Ziel noch nicht erreicht' };
-      if (step.on_reached === 'end') return { result: 'erreicht → Ende', end: true };
+      if (!hasCondition(step)) throw new Error(tr('Bitte eine Bedingung für das Ziel angeben'));
+      if (!gate(step, vars)) return { result: tr('Ziel noch nicht erreicht') };
+      if (step.on_reached === 'end') return { result: tr('erreicht → Ende'), end: true };
       const target = requireText(step.target, 'Sprungziel');
-      if (!fc.find(target)) throw new Error('Sprungziel nicht gefunden – bitte den Schritt neu wählen');
+      if (!fc.find(target)) throw new Error(tr('Sprungziel nicht gefunden – bitte den Schritt neu wählen'));
       const j = jumpCount(run, step.id, capJumps(step));
-      if (!j) return { result: `erreicht – Sprunggrenze (${capJumps(step)}) aufgebraucht, der Ablauf geht weiter` };
-      return { result: `erreicht → ${stepName(fc, target)}`, goto: target, vars: j.vars };
+      if (!j) return { result: tr('erreicht – Sprunggrenze ({n}) aufgebraucht, der Ablauf geht weiter', { n: capJumps(step) }) };
+      return { result: tr('erreicht → {step}', { step: stepName(fc, target) }), goto: target, vars: j.vars };
     },
   });
 
@@ -165,7 +167,7 @@ export function flowActions(app: App): ActionDef[] {
     },
     run: (run, step, _vars, fc) => {
       const variants: { name: string; weight: number }[] = (Array.isArray(step.variants) ? step.variants : []).slice(0, MAX_VARIANTS).map((v: any, i: number) => ({ name: String(v?.name || String.fromCharCode(65 + i)).slice(0, 40), weight: Math.max(0, Number(v?.weight) || 0) }));
-      if (variants.length < 2) throw new Error('Ein Split-Test braucht mindestens zwei Pfade');
+      if (variants.length < 2) throw new Error(tr('Ein Split-Test braucht mindestens zwei Pfade'));
       const store = { ...(run.vars._split ?? {}) } as Record<string, number>;
       let index = store[step.id];
       if (index === undefined || index >= variants.length) {
@@ -177,7 +179,7 @@ export function flowActions(app: App): ActionDef[] {
       }
       const total = variants.reduce((a, v) => a + v.weight, 0) || 1;
       const varName = /^[A-Za-z_]\w{0,40}$/.test(String(step.var_name ?? '')) ? String(step.var_name) : 'split';
-      return { result: `Pfad ${variants[index].name} (${Math.round((variants[index].weight / total) * 100)} %)`, enter: `b${index}`, vars: { [varName]: variants[index].name, _split: store }, output: { variant: variants[index].name, index } };
+      return { result: tr('Pfad {name} ({pct} %)', { name: variants[index].name, pct: Math.round((variants[index].weight / total) * 100) }), enter: `b${index}`, vars: { [varName]: variants[index].name, _split: store }, output: { variant: variants[index].name, index } };
     },
   });
 
@@ -203,7 +205,7 @@ export function flowActions(app: App): ActionDef[] {
       sample: { items: '{{var.items}}', item_var: 'item', max_items: 50 },
     },
     run: (run, step, vars) => {
-      if (!Array.isArray(step.each) || !step.each.length) return { result: 'Schleife ohne Schritte – übersprungen' };
+      if (!Array.isArray(step.each) || !step.each.length) return { result: tr('Schleife ohne Schritte – übersprungen') };
       const itemVar = /^[A-Za-z_]\w{0,40}$/.test(String(step.item_var ?? '')) ? String(step.item_var) : 'item';
       const indexVar = /^[A-Za-z_]\w{0,40}$/.test(String(step.index_var ?? '')) ? String(step.index_var) : 'index';
       const loops = { ...(run.vars._loops ?? {}) } as Record<string, { i: number; items: unknown[] }>;
@@ -211,20 +213,20 @@ export function flowActions(app: App): ActionDef[] {
       if (!st) {
         const cap = Math.min(HARD_MAX_LOOP_ITEMS, Math.max(1, Math.floor(Number(step.max_items) || 100)));
         const all = toList(resolve(step.items, vars, { json: true }));
-        if (JSON.stringify(all.slice(0, cap)).length > 100_000) throw new Error('Die Liste ist zu groß (über 100 KB)');
+        if (JSON.stringify(all.slice(0, cap)).length > 100_000) throw new Error(tr('Die Liste ist zu groß (über 100 KB)'));
         st = { i: 0, items: all.slice(0, cap) };
-        if (!st.items.length) return { result: 'Liste ist leer – übersprungen' };
+        if (!st.items.length) return { result: tr('Liste ist leer – übersprungen') };
         loops[step.id] = st;
-        const out: ActionOutcome = { result: `Element 1 von ${st.items.length}${all.length > cap ? ` (Liste auf ${cap} gekürzt, ${all.length} vorhanden)` : ''}`, enter: 'each', vars: { [itemVar]: st.items[0], [indexVar]: 0, _loops: loops }, output: st.items[0] };
+        const out: ActionOutcome = { result: `${tr('Element 1 von {total}', { total: st.items.length })}${all.length > cap ? ` ${tr('(Liste auf {cap} gekürzt, {all} vorhanden)', { cap, all: all.length })}` : ''}`, enter: 'each', vars: { [itemVar]: st.items[0], [indexVar]: 0, _loops: loops }, output: st.items[0] };
         return out;
       }
       const next = { ...st, i: st.i + 1 };
       if (next.i >= next.items.length) {
         delete loops[step.id];
-        return { result: `Schleife beendet (${next.items.length} Elemente)`, vars: { _loops: loops } };
+        return { result: tr.plural(next.items.length, { one: 'Schleife beendet ({n} Element)', other: 'Schleife beendet ({n} Elemente)' }), vars: { _loops: loops } };
       }
       loops[step.id] = next;
-      return { result: `Element ${next.i + 1} von ${next.items.length}`, enter: 'each', vars: { [itemVar]: next.items[next.i], [indexVar]: next.i, _loops: loops }, output: next.items[next.i] };
+      return { result: tr('Element {i} von {total}', { i: next.i + 1, total: next.items.length }), enter: 'each', vars: { [itemVar]: next.items[next.i], [indexVar]: next.i, _loops: loops }, output: next.items[next.i] };
     },
   });
 
@@ -261,7 +263,7 @@ export function flowActions(app: App): ActionDef[] {
           db.run('DELETE FROM wfx_drip WHERE workflow_id = ? AND step_id = ? AND slot_at < ?', run.workflow_id, step.id, new Date(t - 7 * 864e5).toISOString());
         });
       }
-      return slot > t ? { result: `Wartet bis ${new Date(slot).toISOString()} (Freigabe in Gruppen zu ${batch})`, wait_until: new Date(slot).toISOString(), output: { slot: new Date(slot).toISOString() } } : { result: 'Sofort freigegeben' };
+      return slot > t ? { result: tr('Wartet bis {at} (Freigabe in Gruppen zu {batch})', { at: new Date(slot).toISOString(), batch }), wait_until: new Date(slot).toISOString(), output: { slot: new Date(slot).toISOString() } } : { result: tr('Sofort freigegeben') };
     },
   });
 
@@ -290,25 +292,25 @@ export function flowActions(app: App): ActionDef[] {
       sample: { conditions: [{ field: 'tag', op: 'has', value: 'bezahlt' }], check_every: 30, timeout_amount: 7, timeout_unit: 'days', on_timeout: 'end' },
     },
     run: (run, step, vars, fc) => {
-      if (!hasCondition(step)) throw new Error('Bitte eine Bedingung angeben');
+      if (!hasCondition(step)) throw new Error(tr('Bitte eine Bedingung angeben'));
       const states = waitState(run, step.id);
       const clear = () => {
         const { [step.id]: _drop, ...rest } = states;
         return { _waits: rest };
       };
-      if (gate(step, vars)) return { result: 'Bedingung erfüllt', vars: clear() };
+      if (gate(step, vars)) return { result: tr('Bedingung erfüllt'), vars: clear() };
       const t = nowMs();
       const since = states[step.id] ? Date.parse(states[step.id]) : t;
       const limit = timeoutMs(step);
       if (limit && t - since >= limit) {
-        if (step.on_timeout === 'end') return { result: 'Zeitlimit erreicht → Ende', end: true, vars: clear() };
-        if (step.on_timeout === 'goto' && step.timeout_target && fc.find(String(step.timeout_target))) return { result: 'Zeitlimit erreicht → Sprung', goto: String(step.timeout_target), vars: clear() };
-        return { result: 'Zeitlimit erreicht – weiter', vars: clear() };
+        if (step.on_timeout === 'end') return { result: tr('Zeitlimit erreicht → Ende'), end: true, vars: clear() };
+        if (step.on_timeout === 'goto' && step.timeout_target && fc.find(String(step.timeout_target))) return { result: tr('Zeitlimit erreicht → Sprung'), goto: String(step.timeout_target), vars: clear() };
+        return { result: tr('Zeitlimit erreicht – weiter'), vars: clear() };
       }
       const every = Math.max(1, Math.floor(Number(step.check_every) || 15)) * 60_000;
       let next = t + every;
       if (limit) next = Math.min(next, since + limit);
-      return { result: `Bedingung noch nicht erfüllt – prüfe wieder um ${new Date(next).toISOString()}`, wait_until: new Date(Math.max(next, t + 1000)).toISOString(), stay: true, vars: { _waits: { ...states, [step.id]: states[step.id] ?? new Date(since).toISOString() } } };
+      return { result: tr('Bedingung noch nicht erfüllt – prüfe wieder um {at}', { at: new Date(next).toISOString() }), wait_until: new Date(Math.max(next, t + 1000)).toISOString(), stay: true, vars: { _waits: { ...states, [step.id]: states[step.id] ?? new Date(since).toISOString() } } };
     },
   });
 
@@ -340,9 +342,9 @@ export function flowActions(app: App): ActionDef[] {
         if (e instanceof FormatError) throw new Error(e.message);
         throw e;
       }
-      if (!at) throw new Error('Im Zeitfenster gibt es in den nächsten 8 Wochen keinen erlaubten Tag');
-      if (at.getTime() <= nowMs()) return { result: 'Innerhalb des Zeitfensters – weiter' };
-      return { result: `Wartet auf das nächste Zeitfenster: ${at.toISOString()}`, wait_until: at.toISOString() };
+      if (!at) throw new Error(tr('Im Zeitfenster gibt es in den nächsten 8 Wochen keinen erlaubten Tag'));
+      if (at.getTime() <= nowMs()) return { result: tr('Innerhalb des Zeitfensters – weiter') };
+      return { result: tr('Wartet auf das nächste Zeitfenster: {at}', { at: at.toISOString() }), wait_until: at.toISOString() };
     },
   });
 
@@ -372,9 +374,9 @@ export function flowActions(app: App): ActionDef[] {
       const raw = readPath(vars, requireText(step.field, 'Datumsfeld'));
       const base = parseDate(raw, tz);
       if (!base) {
-        if (step.if_missing === 'end') return { result: 'Kein Datum – Ablauf beendet', end: true };
-        if (step.if_missing === 'error') throw new Error(`Kein Datum in ${step.field}`);
-        return { result: `Kein Datum in ${step.field} – weiter` };
+        if (step.if_missing === 'end') return { result: tr('Kein Datum – Ablauf beendet'), end: true };
+        if (step.if_missing === 'error') throw new Error(tr('Kein Datum in {field}', { field: step.field }));
+        return { result: tr('Kein Datum in {field} – weiter', { field: step.field }) };
       }
       const dateOnly = /^\d{4}-\d{2}-\d{2}$|^\d{1,2}\.\d{1,2}\.\d{4}$/.test(toText(raw).trim());
       const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(step.time ?? '')) ? String(step.time) : dateOnly ? '09:00' : '';
@@ -406,8 +408,8 @@ export function flowActions(app: App): ActionDef[] {
         }
         target = found ?? at(base);
       } else target = at(base);
-      if (target <= t0) return { result: `${target.toISOString()} liegt schon in der Vergangenheit – weiter` };
-      return { result: `Wartet bis ${target.toISOString()}`, wait_until: target.toISOString(), output: { at: target.toISOString() } };
+      if (target <= t0) return { result: tr('{at} liegt schon in der Vergangenheit – weiter', { at: target.toISOString() }) };
+      return { result: tr('Wartet bis {at}', { at: target.toISOString() }), wait_until: target.toISOString(), output: { at: target.toISOString() } };
     },
   });
 
@@ -439,12 +441,12 @@ export function flowActions(app: App): ActionDef[] {
         return rest;
       };
       const hit = fc.dry ? undefined : db.get('SELECT id FROM messages WHERE contact_id = ? AND location_id = ? AND direction = ? AND created_at > ?' + (step.channel ? ' AND channel = ?' : '') + ' LIMIT 1', run.contact_id, run.location_id, 'in', since, ...(step.channel ? [String(step.channel)] : []));
-      if (hit) return { result: 'Antwort erhalten', vars: { replied: true, _waits: clear() }, ...(step.on_reply === 'end' ? { end: true } : {}) };
+      if (hit) return { result: tr('Antwort erhalten'), vars: { replied: true, _waits: clear() }, ...(step.on_reply === 'end' ? { end: true } : {}) };
       const limit = intervalMs(step.timeout_amount ?? 2, step.timeout_unit ?? 'days');
-      if (limit && t - Date.parse(since) >= limit) return { result: 'Keine Antwort im Zeitlimit', vars: { replied: false, _waits: clear() } };
+      if (limit && t - Date.parse(since) >= limit) return { result: tr('Keine Antwort im Zeitlimit'), vars: { replied: false, _waits: clear() } };
       const every = Math.max(1, Math.floor(Number(step.check_every) || 5)) * 60_000;
       const next = Math.min(t + every, limit ? Date.parse(since) + limit : t + every);
-      return { result: `Wartet auf Antwort (bis ${new Date(Date.parse(since) + limit).toISOString()})`, wait_until: new Date(Math.max(next, t + 1000)).toISOString(), stay: true, vars: { replied: false, _waits: { ...states, [step.id]: since } } };
+      return { result: tr('Wartet auf Antwort (bis {at})', { at: new Date(Date.parse(since) + limit).toISOString() }), wait_until: new Date(Math.max(next, t + 1000)).toISOString(), stay: true, vars: { replied: false, _waits: { ...states, [step.id]: since } } };
     },
   });
 

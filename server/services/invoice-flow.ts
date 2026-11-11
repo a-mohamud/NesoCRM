@@ -6,6 +6,7 @@ import { centsToMoney, id, now, token } from '../core/util.js';
 import { contactName, getContact, logActivity } from './contacts.js';
 import type { BankInfo, BuyerParty, DocSnapshot, SellerParty } from './einvoice-model.js';
 import { composeSnapshot, snapshotHash } from './invoice-doc.js';
+import { tLoc } from '../i18n/index.js';
 import {
   calcTotals,
   checkCompliance,
@@ -148,13 +149,14 @@ function refOf(app: App, loc: string, refId: string | null | undefined) {
 export function loadDeductions(app: App, loc: string, inv: Inv): Deduction[] {
   if (inv.inv_type !== 'final' || !inv.deduct_ids.length) return [];
   const out: Deduction[] = [];
+  const tr = tLoc(app, loc);
   for (const pid of inv.deduct_ids) {
     const p = loadInvoice(app, loc, pid);
-    if (!p || p.kind !== 'invoice' || p.inv_type !== 'partial' || !p.finalised_at || p.status === 'void') throw bad(`Die Abschlagsrechnung${p ? ` ${p.number}` : ''} kann nicht abgezogen werden – sie muss festgeschrieben, nicht storniert und eine Abschlagsrechnung sein`);
-    if (p.currency !== inv.currency) throw bad(`Abschlagsrechnung ${p.number}: andere Währung`);
-    if (inv.contact_id && p.contact_id && p.contact_id !== inv.contact_id) throw bad(`Abschlagsrechnung ${p.number} gehört zu einem anderen Kunden`);
+    if (!p || p.kind !== 'invoice' || p.inv_type !== 'partial' || !p.finalised_at || p.status === 'void') throw bad(tr('Die Abschlagsrechnung{number} kann nicht abgezogen werden – sie muss festgeschrieben, nicht storniert und eine Abschlagsrechnung sein', { number: p ? ` ${p.number}` : '' }));
+    if (p.currency !== inv.currency) throw bad(tr('Abschlagsrechnung {number}: andere Währung', { number: p.number }));
+    if (inv.contact_id && p.contact_id && p.contact_id !== inv.contact_id) throw bad(tr('Abschlagsrechnung {number} gehört zu einem anderen Kunden', { number: p.number }));
     const taken = app.db.get<{ number: string }>(`SELECT f.number FROM invoices f, json_each(f.deduct_ids) j WHERE f.location_id = ? AND f.id != ? AND f.inv_type = 'final' AND f.finalised_at IS NOT NULL AND f.status != 'void' AND j.value = ?`, loc, inv.id, pid);
-    if (taken) throw bad(`Abschlagsrechnung ${p.number} ist schon in der Schlussrechnung ${taken.number} abgezogen`);
+    if (taken) throw bad(tr('Abschlagsrechnung {number} ist schon in der Schlussrechnung {final} abgezogen', { number: p.number, final: taken.number }));
     const t = p.snapshot?.totals ?? calcTotals(p.items, p.tax_mode as TaxMode, p.calc === 'group' ? 'group' : 'line');
     out.push({ id: p.id, number: p.number, issued_at: p.issued_at, issued_ymd: p.snapshot?.issued_ymd || ymd(p.issued_at, tzOf(app, loc)), net_cents: t.subtotal_cents, tax_cents: t.tax_cents, total_cents: t.total_cents, groups: t.groups });
   }
@@ -314,6 +316,7 @@ const partyInfo = (p: { name: string; company?: string; street: string; postal_c
  * draft untouched and no number consumed. Afterwards the database refuses changes to everything but note and due date.
  */
 export function finaliseInvoice(app: App, loc: string, invoiceId: string, o: FinaliseOptions = {}): { invoice: Inv; warnings: string[] } {
+  const tl = tLoc(app, loc);
   const actor = o.actor ?? SYSTEM;
   const warnings: string[] = [...(o.warnings ?? [])];
   const fin = app.db.tx(() => {
@@ -349,7 +352,7 @@ export function finaliseInvoice(app: App, loc: string, invoiceId: string, o: Fin
       if (!orig || !orig.finalised_at) throw new HttpError(409, 'Die Gutschrift gehört zu einer Rechnung, die nicht (mehr) festgeschrieben ist');
       if (inv.credit_type === 'credit') {
         if (orig.status === 'void') throw new HttpError(409, creditClosed(orig) ? 'Die Rechnung ist schon vollständig gutgeschrieben – es ist nichts mehr offen' : 'Die Rechnung ist storniert – eine Gutschrift dazu ist nicht mehr möglich');
-        if ((orig.credited_cents ?? 0) + Math.abs(totals.total_cents) > orig.total_cents) throw new HttpError(409, `Die Gutschriften würden die Rechnung ${orig.number} übersteigen (Rechnung ${centsToMoney(orig.total_cents, orig.currency)}, schon gutgeschrieben ${centsToMoney(orig.credited_cents ?? 0, orig.currency)})`);
+        if ((orig.credited_cents ?? 0) + Math.abs(totals.total_cents) > orig.total_cents) throw new HttpError(409, tl('Die Gutschriften würden die Rechnung {number} übersteigen (Rechnung {total}, schon gutgeschrieben {credited})', { number: orig.number, total: centsToMoney(orig.total_cents, orig.currency), credited: centsToMoney(orig.credited_cents ?? 0, orig.currency) }));
       }
     }
 
@@ -376,7 +379,7 @@ export function finaliseInvoice(app: App, loc: string, invoiceId: string, o: Fin
     if (!o.adopt) {
       const strict = !!cfg.finalise_strict;
       const blocking = strict ? [...check.errors, ...check.warnings] : check.errors;
-      if (blocking.length) throw new HttpError(400, `Die Rechnung kann noch nicht festgeschrieben werden: ${blocking.join(' · ')}`, { errors: blocking, warnings: strict ? [] : check.warnings });
+      if (blocking.length) throw new HttpError(400, tl('Die Rechnung kann noch nicht festgeschrieben werden: {problems}', { problems: blocking.join(' · ') }), { errors: blocking, warnings: strict ? [] : check.warnings });
     }
     warnings.push(...check.warnings);
     const snapshot: DocSnapshot = { ...doc, number, issued_at, issued_ymd: ymdInTz(new Date(issued_at), tz), supply_from, supply_to, vies: o.vies ?? null };
@@ -421,15 +424,17 @@ export function finaliseInvoice(app: App, loc: string, invoiceId: string, o: Fin
       );
       if (shut.changes) {
         closed = mustInvoice(app, loc, inv.ref_id);
-        invAudit(app, loc, inv.ref_id, 'invoice.credited', `Vollständig gutgeschrieben (${number}) – geschlossen`, actor);
+        invAudit(app, loc, inv.ref_id, 'invoice.credited', tl('Vollständig gutgeschrieben ({number}) – geschlossen', { number }), actor);
       }
     }
     invAudit(app, loc, invoiceId, o.adopt ? 'invoice.adopted' : 'invoice.finalised', `${number} · ${centsToMoney(totals.total_cents, inv.currency)} · SHA-256 ${hash.slice(0, 16)}…`, actor);
     return { invoice: mustInvoice(app, loc, invoiceId), warnings, closed };
   });
-  if (fin.closed?.contact_id) logActivity(app, loc, fin.closed.contact_id, 'invoice.credited', `Rechnung ${fin.closed.number} vollständig gutgeschrieben – geschlossen`);
+  const tr = tLoc(app, loc);
+  if (fin.closed?.contact_id) logActivity(app, loc, fin.closed.contact_id, 'invoice.credited', tr('Rechnung {number} vollständig gutgeschrieben – geschlossen', { number: fin.closed.number }));
   const inv = fin.invoice;
-  if (inv.contact_id) logActivity(app, loc, inv.contact_id, 'invoice.finalised', `${inv.kind === 'credit_note' ? (inv.credit_type === 'storno' ? 'Stornorechnung' : 'Gutschrift') : 'Rechnung'} ${inv.number} festgeschrieben (${centsToMoney(inv.total_cents, inv.currency)})`);
+  const doc = inv.kind === 'credit_note' ? (inv.credit_type === 'storno' ? tr('Stornorechnung') : tr('Gutschrift')) : tr('Rechnung');
+  if (inv.contact_id) logActivity(app, loc, inv.contact_id, 'invoice.finalised', tr('{doc} {number} festgeschrieben ({total})', { doc, number: inv.number, total: centsToMoney(inv.total_cents, inv.currency) }));
   app.events.emit(loc, 'invoice.finalised', { contactId: inv.contact_id, invoice: stripSnapshot(inv) });
   return { invoice: fin.invoice, warnings: fin.warnings };
 }
@@ -521,6 +526,7 @@ function insertCreditNote(app: App, loc: string, orig: Inv, o: { type: 'storno' 
  * a credit note instead ("Restbetrag gutschreiben", createCreditNote with `remainder`).
  */
 export function stornoInvoice(app: App, loc: string, invoiceId: string, o: { reason?: string; actor?: Actor } = {}): { storno: Inv; original: Inv; warnings: string[] } {
+  const tl = tLoc(app, loc);
   const actor = o.actor ?? SYSTEM;
   const reason = clip(o.reason, 300);
   const res = app.db.tx(() => {
@@ -533,21 +539,27 @@ export function stornoInvoice(app: App, loc: string, invoiceId: string, o: { rea
     if (credited > 0) {
       const money = (c: number) => centsToMoney(c, orig.currency);
       const left = remainderLeft(orig);
+      const tr = tLoc(app, loc);
       throw new HttpError(
         409,
-        `Zu ${orig.number} gibt es schon Gutschriften über ${money(credited)}. Eine Stornorechnung hebt immer die ganze Rechnung auf und würde zusammen mit ihnen mehr erstatten, als die Rechnung wert ist. ${left > 0 ? `Schreibe stattdessen den Rest per Gutschrift gut: „Restbetrag gutschreiben“ (${money(left)}).` : 'Es ist nichts mehr gutzuschreiben.'}`,
+        tr('Zu {number} gibt es schon Gutschriften über {credited}. Eine Stornorechnung hebt immer die ganze Rechnung auf und würde zusammen mit ihnen mehr erstatten, als die Rechnung wert ist. {next}', {
+          number: orig.number,
+          credited: money(credited),
+          next: left > 0 ? tr('Schreibe stattdessen den Rest per Gutschrift gut: „Restbetrag gutschreiben“ ({left}).', { left: money(left) }) : tr('Es ist nichts mehr gutzuschreiben.'),
+        }),
         { credited_cents: credited, remainder_cents: Math.max(0, left) },
       );
     }
     if (!orig.finalised_at) orig = ensureFinal(app, loc, orig.id, { actor, adopt: true });
-    const cn = insertCreditNote(app, loc, orig, { type: 'storno', items: negateItems(orig.items), title: `Storno zu ${orig.number}${orig.title ? ` – ${orig.title}` : ''}`.slice(0, 300), notes: reason ? `Grund der Stornierung: ${reason}` : '' });
+    const tr = tLoc(app, loc);
+    const cn = insertCreditNote(app, loc, orig, { type: 'storno', items: negateItems(orig.items), title: `${tr('Storno zu {number}', { number: orig.number })}${orig.title ? ` – ${orig.title}` : ''}`.slice(0, 300), notes: reason ? tr('Grund der Stornierung: {reason}', { reason }) : '' });
     const fin = finaliseInvoice(app, loc, cn.id, { actor });
     const t = now();
     app.db.run(`UPDATE invoices SET status = 'void', cancelled_at = ?, storno_id = ?, updated_at = ? WHERE id = ? AND status != 'void'`, t, fin.invoice.id, t, orig.id);
     invAudit(app, loc, orig.id, 'invoice.cancelled', `Stornorechnung ${fin.invoice.number}${reason ? ` · Grund: ${reason}` : ''}`, actor);
     return { storno: fin.invoice, original: mustInvoice(app, loc, orig.id), warnings: fin.warnings };
   });
-  if (res.original.contact_id) logActivity(app, loc, res.original.contact_id, 'invoice.cancelled', `Rechnung ${res.original.number} storniert (Stornorechnung ${res.storno.number})`);
+  if (res.original.contact_id) logActivity(app, loc, res.original.contact_id, 'invoice.cancelled', tl('Rechnung {number} storniert (Stornorechnung {storno})', { number: res.original.number, storno: res.storno.number }));
   app.events.emit(loc, 'invoice.cancelled', { contactId: res.original.contact_id, invoice: stripSnapshot(res.original), storno: stripSnapshot(res.storno) });
   return res;
 }
@@ -579,9 +591,10 @@ function remainderCredit(app: App, loc: string, orig: Inv, mode: TaxMode): { ite
     for (const g of calcTotals(JSON.parse(row.items || '[]'), mode, row.calc === 'line' ? 'line' : 'group').groups) add(g.rate, g.net_cents);
   const rates = [...net.entries()].filter(([, n]) => n !== 0).sort((a, b) => b[0] - a[0]);
   if (!rates.length || rates.some(([, n]) => n < 0)) throw new HttpError(409, 'Die bisherigen Gutschriften verteilen sich anders auf die Steuersätze als die Rechnung – bitte den Rest von Hand gutschreiben');
+  const tr = tLoc(app, loc);
   const items: LineItem[] = rates.map(([rate, n]) => ({
-    name: `Restbetrag zu ${orig.number}`,
-    description: rates.length > 1 ? `Anteil mit ${String(rate).replace('.', ',')} % USt.` : '',
+    name: tr('Restbetrag zu {number}', { number: orig.number }),
+    description: rates.length > 1 ? tr('Anteil mit {rate} % USt.', { rate: tr.locale === 'de' ? String(rate).replace('.', ',') : String(rate) }) : '',
     qty: 1,
     price_cents: n,
     tax_rate: rate,
@@ -623,26 +636,27 @@ export function createCreditNote(app: App, loc: string, invoiceId: string, input
   const mode: TaxMode = isTaxMode(orig.tax_mode) ? orig.tax_mode : 'standard';
   const warnings: string[] = [];
   const rest = input.remainder === true || input.remainder === 'true' || input.remainder === 1;
+  const tr = tLoc(app, loc);
   let items: LineItem[];
   if (rest) {
     const r = remainderCredit(app, loc, orig, mode);
     items = r.items;
-    if (r.total < r.left) warnings.push(`Wegen der Rundung der Umsatzsteuer schreibt die Gutschrift ${centsToMoney(r.total, orig.currency)} gut – ${centsToMoney(r.left - r.total, orig.currency)} bleiben offen (bitte von Hand ausgleichen)`);
+    if (r.total < r.left) warnings.push(tr('Wegen der Rundung der Umsatzsteuer schreibt die Gutschrift {total} gut – {rest} bleiben offen (bitte von Hand ausgleichen)', { total: centsToMoney(r.total, orig.currency), rest: centsToMoney(r.left - r.total, orig.currency) }));
   } else {
     const source = input.items !== undefined ? input.items : input.copy ? orig.items : undefined;
     if (!Array.isArray(source) || !source.length) throw bad('Bitte die gutzuschreibenden Positionen angeben');
     items = cleanItems(source, orig.items[0]?.tax_rate ?? 19, mode).map((it, i) => {
-      if (it.qty <= 0) throw bad(`Position ${i + 1}: die Menge muss größer als 0 sein`);
-      if (it.price_cents < 0) throw bad(`Position ${i + 1}: der Preis darf nicht negativ sein (die Gutschrift macht daraus den Abzug)`);
+      if (it.qty <= 0) throw bad(tr('Position {n}: die Menge muss größer als 0 sein', { n: i + 1 }));
+      if (it.price_cents < 0) throw bad(tr('Position {n}: der Preis darf nicht negativ sein (die Gutschrift macht daraus den Abzug)', { n: i + 1 }));
       return it;
     });
   }
   const total = calcTotals(items, mode).total_cents;
-  if ((orig.credited_cents ?? 0) + total > orig.total_cents) throw new HttpError(409, `Die Gutschriften würden die Rechnung übersteigen (Rechnung ${centsToMoney(orig.total_cents, orig.currency)}, schon gutgeschrieben ${centsToMoney(orig.credited_cents ?? 0, orig.currency)})`);
+  if ((orig.credited_cents ?? 0) + total > orig.total_cents) throw new HttpError(409, tr('Die Gutschriften würden die Rechnung übersteigen (Rechnung {total}, schon gutgeschrieben {credited})', { total: centsToMoney(orig.total_cents, orig.currency), credited: centsToMoney(orig.credited_cents ?? 0, orig.currency) }));
   const reason = clip(input.reason, 300);
   const cn = app.db.tx(() => {
-    const row = insertCreditNote(app, loc, orig, { type: 'credit', items: negateItems(items), title: `Gutschrift zu ${orig.number}${orig.title ? ` – ${orig.title}` : ''}`.slice(0, 300), notes: reason ? `Grund: ${reason}` : '' });
-    invAudit(app, loc, orig.id, 'credit_note.created', `Entwurf einer Gutschrift über ${centsToMoney(Math.abs(row.total_cents), orig.currency)}${rest ? ' (Restbetrag)' : ''}`, actor);
+    const row = insertCreditNote(app, loc, orig, { type: 'credit', items: negateItems(items), title: `${tr('Gutschrift zu {number}', { number: orig.number })}${orig.title ? ` – ${orig.title}` : ''}`.slice(0, 300), notes: reason ? tr('Grund: {reason}', { reason }) : '' });
+    invAudit(app, loc, orig.id, 'credit_note.created', tr('Entwurf einer Gutschrift über {amount}{rest}', { amount: centsToMoney(Math.abs(row.total_cents), orig.currency), rest: rest ? tr(' (Restbetrag)') : '' }), actor);
     return row;
   });
   return warnings.length ? Object.assign(cn, { warnings }) : cn;
@@ -695,8 +709,9 @@ export function convertEstimate(app: App, loc: string, estimateId: string, actor
   };
   app.db.tx(() => {
     app.db.insert('invoices', row);
-    invAudit(app, loc, row.id, 'invoice.created_from_quote', `aus Angebot ${est.number}`, actor);
-    invAudit(app, loc, est.id, 'quote.converted', `Rechnungsentwurf erzeugt`, actor);
+    const tr = tLoc(app, loc);
+    invAudit(app, loc, row.id, 'invoice.created_from_quote', tr('aus Angebot {number}', { number: est.number }), actor);
+    invAudit(app, loc, est.id, 'quote.converted', tr('Rechnungsentwurf erzeugt'), actor);
   });
   return mustInvoice(app, loc, row.id);
 }
@@ -714,6 +729,7 @@ export interface PaymentInput {
 
 /** Records a (partial) payment on a finalised invoice; the invoice becomes paid when nothing is open any more. */
 export function recordPayment(app: App, loc: string, invoiceId: string, input: PaymentInput, actor: Actor = SYSTEM, opts: { source?: string; via?: string } = {}): { invoice: Inv; payment_id: string; paid: boolean } {
+  const tl = tLoc(app, loc);
   const source = opts.source ?? 'manual';
   const res = app.db.tx(() => {
     const inv0 = mustInvoice(app, loc, invoiceId);
@@ -734,11 +750,11 @@ export function recordPayment(app: App, loc: string, invoiceId: string, input: P
       const base = inv.total_cents - (inv.deducted_cents ?? 0);
       const allowed = skontoCents(base, Number(inv.skonto_percent));
       const until = skontoDeadline(ymd(inv.issued_at, tzOf(app, loc)), Number(inv.skonto_days));
-      if (ymd(paid_at, tzOf(app, loc)) > until) throw bad(`Die Skonto-Frist ist am ${until.split('-').reverse().join('.')} abgelaufen`);
+      if (ymd(paid_at, tzOf(app, loc)) > until) throw bad(tl('Die Skonto-Frist ist am {date} abgelaufen', { date: until.split('-').reverse().join('.') }));
       skonto = Math.max(0, open - amount);
       if (skonto > allowed) throw bad('Der Abzug ist höher als das vereinbarte Skonto');
       if (skonto === 0) throw bad('Es wurde nichts abgezogen – ohne Skonto einfach den vollen Betrag erfassen');
-    } else if (amount > open) throw bad(`Der Betrag übersteigt den offenen Betrag (${centsToMoney(open, inv.currency)})`);
+    } else if (amount > open) throw bad(tl('Der Betrag übersteigt den offenen Betrag ({open})', { open: centsToMoney(open, inv.currency) }));
     const method = clip(input.method, 60);
     const note = clip(input.note, 300);
     const pid = id();
@@ -748,15 +764,17 @@ export function recordPayment(app: App, loc: string, invoiceId: string, input: P
     const left = open - settled;
     const t = now();
     app.db.run(`UPDATE invoices SET paid_cents = paid_cents + ?, updated_at = ?${left <= 0 ? `, status = 'paid', paid_at = COALESCE(paid_at, ?)` : ''} WHERE id = ?`, ...(left <= 0 ? [settled, t, paid_at, inv.id] : [settled, t, inv.id]));
-    invAudit(app, loc, inv.id, left <= 0 ? 'payment.completed' : 'payment.recorded', `${centsToMoney(amount, inv.currency)}${skonto ? ` + Skonto ${centsToMoney(skonto, inv.currency)}` : ''}${method ? ` · ${method}` : ''}${left > 0 ? ` · noch offen ${centsToMoney(left, inv.currency)}` : ''}`, actor);
+    const tr = tLoc(app, loc);
+    invAudit(app, loc, inv.id, left <= 0 ? 'payment.completed' : 'payment.recorded', `${centsToMoney(amount, inv.currency)}${skonto ? tr(' + Skonto {amount}', { amount: centsToMoney(skonto, inv.currency) }) : ''}${method ? ` · ${method}` : ''}${left > 0 ? tr(' · noch offen {amount}', { amount: centsToMoney(left, inv.currency) }) : ''}`, actor);
     return { invoice: mustInvoice(app, loc, inv.id), payment_id: pid, paid: left <= 0 };
   });
   const inv = res.invoice;
+  const tr = tLoc(app, loc);
   if (res.paid) {
-    if (inv.contact_id) logActivity(app, loc, inv.contact_id, 'invoice.paid', `Rechnung ${inv.number} bezahlt (${centsToMoney(inv.total_cents, inv.currency)})${opts.via ? ` – ${opts.via}` : ''}`);
+    if (inv.contact_id) logActivity(app, loc, inv.contact_id, 'invoice.paid', `${tr('Rechnung {number} bezahlt ({total})', { number: inv.number, total: centsToMoney(inv.total_cents, inv.currency) })}${opts.via ? ` – ${opts.via}` : ''}`);
     app.events.emit(loc, 'invoice.paid', { contactId: inv.contact_id, invoice: stripSnapshot(inv), ...(opts.via ? { via: opts.via } : {}) });
   } else {
-    if (inv.contact_id) logActivity(app, loc, inv.contact_id, 'invoice.partially_paid', `Teilzahlung auf Rechnung ${inv.number}`);
+    if (inv.contact_id) logActivity(app, loc, inv.contact_id, 'invoice.partially_paid', tr('Teilzahlung auf Rechnung {number}', { number: inv.number }));
     app.events.emit(loc, 'invoice.partially_paid', { contactId: inv.contact_id, invoice: stripSnapshot(inv), open_cents: openCents(inv) });
   }
   return res;
@@ -764,6 +782,7 @@ export function recordPayment(app: App, loc: string, invoiceId: string, input: P
 
 /** Takes a payment back (wrong amount, chargeback): a reversal row, the invoice is open again. The original row stays. */
 export function revertPayment(app: App, loc: string, invoiceId: string, paymentId: string, actor: Actor = SYSTEM, reason = ''): Inv {
+  const tl = tLoc(app, loc);
   return app.db.tx(() => {
     const inv = mustInvoice(app, loc, invoiceId);
     const p = app.db.get<any>(`SELECT * FROM invoice_payments WHERE id = ? AND invoice_id = ? AND location_id = ?`, paymentId, invoiceId, loc);
@@ -775,7 +794,7 @@ export function revertPayment(app: App, loc: string, invoiceId: string, paymentI
     const rows = p.kind === 'payment' ? app.db.all<any>(`SELECT * FROM invoice_payments WHERE invoice_id = ? AND kind = 'skonto' AND paid_at = ? AND reverses_id IS NULL AND NOT EXISTS (SELECT 1 FROM invoice_payments r WHERE r.reverses_id = invoice_payments.id)`, invoiceId, p.paid_at) : [];
     let back = 0;
     for (const x of [p, ...rows]) {
-      app.db.insert('invoice_payments', { id: id(), location_id: loc, invoice_id: invoiceId, amount_cents: -x.amount_cents, paid_at: t, method: x.method, note: clip(reason, 300) || 'Zahlung zurückgenommen', kind: 'reversal', reverses_id: x.id, source: 'manual', created_by: actor.id ?? null, created_at: t });
+      app.db.insert('invoice_payments', { id: id(), location_id: loc, invoice_id: invoiceId, amount_cents: -x.amount_cents, paid_at: t, method: x.method, note: clip(reason, 300) || tl('Zahlung zurückgenommen'), kind: 'reversal', reverses_id: x.id, source: 'manual', created_by: actor.id ?? null, created_at: t });
       back += x.amount_cents;
     }
     app.db.run(`UPDATE invoices SET paid_cents = MAX(0, paid_cents - ?), status = CASE WHEN status = 'paid' THEN 'sent' ELSE status END, paid_at = NULL, updated_at = ? WHERE id = ?`, back, t, invoiceId);
@@ -830,7 +849,8 @@ export function backfillSnapshots(app: App, limit = 2000): number {
         const snapshot: DocSnapshot = { ...doc, tax_mode: mode, vies: null };
         const hash = snapshotHash(snapshot);
         app.db.run('UPDATE invoices SET snapshot = ?, doc_hash = ? WHERE id = ? AND doc_hash IS NULL', JSON.stringify(snapshot), hash, r.id);
-        invAudit(app, r.location_id, r.id, 'invoice.migrated', `Festgeschrieben beim Update auf die neue Rechnungsstellung · SHA-256 ${hash.slice(0, 16)}…`);
+        const tr = tLoc(app, r.location_id);
+        invAudit(app, r.location_id, r.id, 'invoice.migrated', tr('Festgeschrieben beim Update auf die neue Rechnungsstellung · SHA-256 {hash}…', { hash: hash.slice(0, 16) }));
         n++;
       });
     } catch (e) {

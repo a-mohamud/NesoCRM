@@ -3,6 +3,7 @@ import type { Json } from './umzug-flow.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { counter, priorityWord, stubCtx } from './umzug-lib.js';
 import { clip, fieldKey, toIso } from './umzug-text.js';
+import { translator, tApp } from '../i18n/index.js';
 
 /**
  * monday.com (GraphQL API, https://api.monday.com/v2, personal API token): boards → projects (groups → sections, the board's status
@@ -39,6 +40,7 @@ const http = (creds: Record<string, string>, _meta: Record<string, string>, deps
 
 /** One GraphQL call; GraphQL errors come back with HTTP 200 and are turned into the usual errors here. */
 async function gql(h: VendorHttp, query: string, variables: Record<string, unknown> = {}): Promise<any> {
+  const t = tApp();
   const j = await h.req('POST', '', { body: { query, variables } });
   const errs: Json[] = Array.isArray(j?.errors) ? j.errors : [];
   if (errs.length && !j?.data) {
@@ -47,7 +49,7 @@ async function gql(h: VendorHttp, query: string, variables: Record<string, unkno
     const msg = String(e?.message ?? 'Fehler');
     if (/DAILY_LIMIT/i.test(code) || /daily/i.test(msg)) throw new UmzugError(429, 'monday.com: Das Tageslimit für API-Aufrufe ist erreicht – morgen fortsetzen (der Umzug macht dort weiter, wo er stehen geblieben ist)');
     if (/unauthori[sz]ed|not authenticated|invalid token/i.test(`${code} ${msg}`) && !/user_unauthorized/i.test(code)) throw new UmzugError(401, 'monday.com: Zugangsdaten ungültig oder abgelaufen');
-    if (/permission|not allowed|unauthori[sz]ed|forbidden|access/i.test(`${code} ${msg}`)) throw new UmzugError(403, `monday.com: fehlende Berechtigung (${msg.slice(0, 120)})`);
+    if (/permission|not allowed|unauthori[sz]ed|forbidden|access/i.test(`${code} ${msg}`)) throw new UmzugError(403, t('monday.com: fehlende Berechtigung ({msg})', { msg: msg.slice(0, 120) }));
     throw new UmzugError(400, `monday.com: ${msg.slice(0, 200)}`);
   }
   return j.data ?? {};
@@ -110,6 +112,7 @@ const TEXTISH = new Set(['text', 'long_text', 'email', 'phone', 'dropdown', 'tag
 
 /** What a board's columns become: the status/priority/date columns the planner has a place for, the rest custom fields. */
 export function mondayLayout(board: Json): Layout {
+  const t = tApp();
   const cols: Json[] = Array.isArray(board.columns) ? board.columns : [];
   const L: Layout = { labels: [], people: [], fields: new Map(), skipped: [] };
   const used = new Set<string>();
@@ -153,7 +156,7 @@ export function mondayLayout(board: Json): Layout {
       continue;
     }
     if (L.fields.size >= 30) {
-      L.skipped.push(`${title} (mehr als 30 Spalten)`);
+      L.skipped.push(t('{title} (mehr als 30 Spalten)', { title }));
       continue;
     }
     let key = fieldKey(title).slice(0, 36) || 'feld';
@@ -165,10 +168,11 @@ export function mondayLayout(board: Json): Layout {
 }
 
 export function mondayProject(board: Json, L: Layout): RProject {
+  const t = tApp();
   return {
     kind: 'project',
     ext: `b:${board.id}`,
-    name: String(board.name ?? `Board ${board.id}`),
+    name: String(board.name ?? t('Board {id}', { id: board.id })),
     description: board.description ? String(board.description) : undefined,
     statuses: L.labels,
     sections: (Array.isArray(board.groups) ? board.groups : []).map((g: Json) => ({ ext: `g:${g.id}`, name: String(g.title ?? g.id) })),
@@ -203,6 +207,7 @@ function fieldValue(c: Json, f: { type: RProjectField['type']; ctype: string }):
 }
 
 export function mondayTask(item: Json, board: Json, L: Layout, people: Map<string, { name?: string; email?: string }>, accountSlug: string | undefined, comments: boolean): RPmTask[] {
+  const t = tApp();
   const out: RPmTask[] = [];
   const names = (c?: Json): { name?: string; email?: string }[] => {
     if (!c) return [];
@@ -244,7 +249,7 @@ export function mondayTask(item: Json, board: Json, L: Layout, people: Map<strin
     ext: `i:${item.id}`,
     project: `b:${board.id}`,
     section: item.group?.id ? `g:${item.group.id}` : undefined,
-    title: String(item.name ?? `Item ${item.id}`),
+    title: String(item.name ?? t('Item {id}', { id: item.id })),
     description: cv(item, L.descCol)?.text || undefined,
     status: known?.name,
     done: known?.category === 'done' || (!!label && DONE.test(label)),
@@ -271,7 +276,7 @@ export function mondayTask(item: Json, board: Json, L: Layout, people: Map<strin
       project: top.project,
       section: top.section,
       parent: top.ext,
-      title: String(s.name ?? `Subitem ${s.id}`),
+      title: String(s.name ?? t('Subitem {id}', { id: s.id })),
       done: typeof st === 'string' && DONE.test(st),
       due_at: day(date) ?? day(tl.to),
       start_at: day(tl.from),
@@ -330,6 +335,7 @@ export function deltaMd(delta: unknown): string {
 
 /** The blocks of a monday doc as Markdown (tables and layouts are flattened; images link to the picture at monday). */
 export function blocksMd(blocks: Json[]): string {
+  const t = tApp();
   const byId = new Map<string, Json>(blocks.map((b) => [String(b.id), b]));
   const content = (b: Json): Json => parse(b.content);
   const cellIds = new Set<string>();
@@ -381,10 +387,10 @@ export function blocksMd(blocks: Json[]): string {
         break;
       case 'image':
       case 'gif':
-        if (c.url || c.publicUrl) lines.push(`![Bild bei monday.com](${c.publicUrl ?? c.url})`);
+        if (c.url || c.publicUrl) lines.push(t('![Bild bei monday.com]({publicUrl})', { publicUrl: c.publicUrl ?? c.url }));
         break;
       case 'video':
-        if (c.url) lines.push(`Video: ${c.url}`);
+        if (c.url) lines.push(`Video: ${c.url}`); // i18n-ignore (same word in English)
         break;
       case 'notice box':
         break;
@@ -438,12 +444,13 @@ const steps = (): StepDef[] => [
     label: 'Boards → Projekte',
     part: 'projects',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of boards(ctx.http, ctx, Number(ctx.cursor) || 1)) {
         const records: RProject[] = [];
         for (const b of pg.items) {
           const L = mondayLayout(b);
           records.push(mondayProject(b, L));
-          if (L.skipped.length) ctx.warn(`Board „${clip(b.name, 40)}“: Spalten ohne Gegenstück (nicht übernommen): ${L.skipped.slice(0, 6).join(', ')}${L.skipped.length > 6 ? ' …' : ''}`);
+          if (L.skipped.length) ctx.warn(t('Board „{name}“: Spalten ohne Gegenstück (nicht übernommen): {skipped}{more}', { name: clip(b.name, 40), skipped: L.skipped.slice(0, 6).join(', '), more: L.skipped.length > 6 ? ' …' : '' }));
         }
         yield { records, cursor: pg.next };
       }
@@ -493,15 +500,16 @@ const steps = (): StepDef[] => [
     label: 'Docs → Wiki-Seiten',
     part: 'docs',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of docs(ctx.http, ctx, Number(ctx.cursor) || 1)) {
         const records: RDoc[] = [];
         for (const d of pg.items) {
           try {
             const blocks = await docBlocks(ctx.http, String(d.id), ctx);
-            if (blocks.some((b) => b.type === 'image' || b.type === 'gif')) ctx.warn(`Doc „${clip(d.name, 50)}“: Bilder bleiben bei monday.com (der Verweis steht im Text) – vor dem Kündigen herunterladen`);
-            records.push({ kind: 'doc', ext: `d:${d.id}`, title: String(d.name ?? `Doc ${d.id}`), body: blocksMd(blocks) });
+            if (blocks.some((b) => b.type === 'image' || b.type === 'gif')) ctx.warn(t('Doc „{name}“: Bilder bleiben bei monday.com (der Verweis steht im Text) – vor dem Kündigen herunterladen', { name: clip(d.name, 50) }));
+            records.push({ kind: 'doc', ext: `d:${d.id}`, title: String(d.name ?? t('Doc {id}', { id: d.id })), body: blocksMd(blocks) });
           } catch (e) {
-            if (e instanceof UmzugError && e.skippable) ctx.warn(`Doc „${clip(d.name, 50)}“ nicht lesbar: ${e.message}`);
+            if (e instanceof UmzugError && e.skippable) ctx.warn(t('Doc „{name}“ nicht lesbar: {reason}', { name: clip(d.name, 50), reason: e.message }));
             else throw e;
           }
         }

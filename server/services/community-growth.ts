@@ -8,6 +8,7 @@ import { createPost, notify, type Author } from './community-actions.js';
 import { extOf, type ChecklistItem } from './community-ext.js';
 import { TEAM, sendDm } from './community-dm.js';
 import { monthlyValue, tierPrices, tiersOf, type Tier } from './community-tiers.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Growth tools: the numbers (members over time, MRR, churn, trial conversion, DAU, posts, top contributors, engagement), the
@@ -39,7 +40,7 @@ export function cleanSegment(app: App, g: { id: string; location_id: string }, i
   const n = (v: unknown, what: string, max: number) => {
     if (v === undefined || v === null || v === '') return undefined;
     const x = Math.round(Number(v));
-    if (!Number.isFinite(x) || x < 1 || x > max) throw bad(`${what}: 1 bis ${max}`);
+    if (!Number.isFinite(x) || x < 1 || x > max) throw bad(tApp()('{field}: 1 bis {max}', { field: tApp()(what), max }));
     return x;
   };
   out.min_level = n(s.min_level, 'Mindest-Level', 50);
@@ -234,8 +235,9 @@ export function welcomeMember(app: App, g: any, contactId: string): { dm: boolea
   const c = getContact(app, g.location_id, contactId);
   if (!c) return out;
   const pr = app.db.get<{ display_name: string; handle: string }>('SELECT display_name, handle FROM community_profiles WHERE location_id = ? AND contact_id = ?', g.location_id, contactId);
-  const vars = { name: pr?.display_name || c.first_name || 'neues Mitglied', first_name: c.first_name || pr?.display_name || '', group: g.name, mention: pr?.handle ? `@${pr.handle}` : '' };
-  const sender = ext.dm.sender.trim() || 'Team';
+  const t = tLoc(app, g.location_id);
+  const vars = { name: pr?.display_name || c.first_name || t('neues Mitglied'), first_name: c.first_name || pr?.display_name || '', group: g.name, mention: pr?.handle ? `@${pr.handle}` : '' };
+  const sender = ext.dm.sender.trim() || t('Team');
   if (ext.dm.enabled && ext.dm.text.trim()) {
     try {
       sendDm(app, g.location_id, TEAM, contactId, fill(ext.dm.text, vars), { fromName: sender, skipLimits: true });
@@ -256,7 +258,7 @@ export function welcomeMember(app: App, g: any, contactId: string): { dm: boolea
       }
     }
   }
-  if (out.dm || out.post) logActivity(app, g.location_id, contactId, 'community.welcomed', `Willkommen in „${g.name}“ (${[out.dm && 'Nachricht', out.post && 'Beitrag'].filter(Boolean).join(' und ')})`);
+  if (out.dm || out.post) logActivity(app, g.location_id, contactId, 'community.welcomed', t('Willkommen in „{group}“ ({what})', { group: g.name, what: [out.dm && t('Nachricht'), out.post && t('Beitrag')].filter(Boolean).join(t(' und ')) }));
   return out;
 }
 
@@ -306,7 +308,7 @@ export type BroadcastChannel = keyof typeof BROADCAST_CHANNELS;
 export function cleanBroadcast(app: App, g: { id: string; location_id: string }, input: any) {
   const b = input ?? {};
   const channels = [...new Set<string>(Array.isArray(b.channels) && b.channels.length ? b.channels.map(String) : ['email', 'bell'])] as BroadcastChannel[];
-  if (channels.some((c) => !(c in BROADCAST_CHANNELS))) throw bad(`Kanäle: ${Object.keys(BROADCAST_CHANNELS).join(', ')}`);
+  if (channels.some((c) => !(c in BROADCAST_CHANNELS))) throw bad(tApp()('Kanäle: {channels}', { channels: Object.keys(BROADCAST_CHANNELS).join(', ') }));
   const subject = str(b.subject, 'Betreff', { required: true, max: 140 });
   const body = str(b.body, 'Text', { required: true, max: 20_000 });
   let scheduled_at: string | null = null;
@@ -348,13 +350,14 @@ export async function sendBroadcast(app: App, g: any, input: ReturnType<typeof c
   let campaignId = '';
   if (input.channels.includes('email')) {
     campaignId = id();
-    const html = `${renderMarkdown(input.body)}<hr><p style="color:#6b7280;font-size:13px">Du bekommst diese Nachricht, weil du Mitglied von „${g.name.replace(/[<>&"]/g, '')}“ bist. <a href="${url}">Zur Community</a></p>`;
+    const t = tLoc(app, g.location_id);
+    const html = `${renderMarkdown(input.body)}<hr><p style="color:#6b7280;font-size:13px">${t('Du bekommst diese Nachricht, weil du Mitglied von „{group}“ bist.', { group: g.name.replace(/[<>&"]/g, '') })} <a href="${url}">${t('Zur Community')}</a></p>`;
     db.insert('campaigns', { id: campaignId, location_id: g.location_id, name: `Community: ${input.subject}`.slice(0, 200), channel: 'email', subject: input.subject, body: html, is_html: 1, filter: { community_group: g.id, community_segment: input.segment }, status: 'scheduled', scheduled_at: input.scheduled_at ?? now(), created_at: now(), updated_at: now() });
     res.email = { campaign_id: campaignId, reachable: people.filter((p) => p.email && !p.dnd).length };
   }
   const deliver = async () => {
     if (input.channels.includes('bell')) {
-      notify(app, g, ids, { kind: 'announcement', text: input.subject, actor: by || 'Team', quiet: input.channels.includes('push') });
+      notify(app, g, ids, { kind: 'announcement', text: input.subject, actor: by || tLoc(app, g.location_id)('Team'), quiet: input.channels.includes('push') });
       res.bell = ids.length;
     }
     if (input.channels.includes('push')) res.push = await pushOut(app, g, ids, input.subject, input.body.replace(/[#*_`>\[\]()]/g, '').replace(/\s+/g, ' ').trim().slice(0, 160), url);

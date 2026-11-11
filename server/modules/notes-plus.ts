@@ -4,6 +4,7 @@ import { id, now } from '../core/util.js';
 import { getContact, logActivity } from '../services/contacts.js';
 import { contactScopeClause, resolve } from '../services/record-access.js';
 import { renderMarkdown } from '../services/wiki-markdown.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Better notes (docs/api.md, Notizen): a title, a colour, pinning and Markdown on the contact notes, plus search across all
@@ -38,7 +39,7 @@ export const notesPlusModule: Module = {
       if (b.title !== undefined) f.title = str(b.title, 'Titel', { max: 200 });
       if (b.color !== undefined) {
         const c = cleanColor(b.color);
-        if (c === null) throw bad(`Farbe: ${NOTE_COLORS.filter(Boolean).join(', ')} oder leer`);
+        if (c === null) throw bad(tApp()('Farbe: {colors} oder leer', { colors: NOTE_COLORS.filter(Boolean).join(', ') }));
         f.color = c;
       }
       if (b.pinned !== undefined) f.pinned = b.pinned ? 1 : 0;

@@ -7,6 +7,7 @@ import { METRICS, METRIC_LABEL, PERIODS, currentPeriod, pct, periodRange, period
 import { canConfigure, limits, mustConfigure, resolve } from '../services/record-access.js';
 import { peopleOf } from '../services/team-people.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Quoten und Rangliste (docs/sales.md): Ziele je Person und Team für Monat oder Quartal (gewonnener Umsatz oder gewonnene Deals),
@@ -108,7 +109,8 @@ export const quotasModule: Module = {
       return { kind, metric, start };
     };
 
-    const build = (loc: string, when: { kind: PeriodKind; start: string; metric: Metric }) => standings(app, loc, { ...when, currency: settingsOf(loc).currency, tz: tzOf(loc), people: people(loc), teams: teamsOf(loc) });
+    const build = (loc: string, when: { kind: PeriodKind; start: string; metric: Metric }, t?: STFn) => standings(app, loc, { ...when, currency: settingsOf(loc).currency, tz: tzOf(loc), people: people(loc), teams: teamsOf(loc), t });
+    const metricLabels = (t: STFn) => Object.fromEntries(Object.entries(METRIC_LABEL).map(([k, v]) => [k, t(v)]));
 
     /** The rows this person may see (their own and their teams' when numbers are private). */
     const visible = (ctx: Ctx | WidgetCtx['ctx'], rows: Standing[]): Standing[] => {
@@ -124,12 +126,13 @@ export const quotasModule: Module = {
     router.get('/api/quotas', 'location', (ctx) => {
       const when = parseWhen(ctx.locationId, ctx.query);
       const mode = visibility(ctx);
-      const b = build(ctx.locationId, when);
+      const t = tCtx(ctx);
+      const b = build(ctx.locationId, when, t);
       const s = settingsOf(ctx.locationId);
       return {
         period: { kind: when.kind, start: b.range.start, end: b.range.end, label: b.range.label, prev: shiftPeriod(when.kind, when.start, -1), next: shiftPeriod(when.kind, when.start, 1), elapsed_pct: b.elapsed_pct, days_left: b.days_left },
         metric: when.metric,
-        metric_labels: METRIC_LABEL,
+        metric_labels: metricLabels(t),
         currency: s.currency,
         rows: visible(ctx, b.rows),
         can_edit: canConfigure(app, ctx),
@@ -181,7 +184,8 @@ export const quotasModule: Module = {
           );
         }
       });
-      app.services.audit?.({ action: 'quota.set', summary: `Quoten ${periodRange(when.kind, when.start, tzOf(loc)).label}: ${list.length} Eintrag/Einträge`, locationId: loc, userId: ctx.user?.id });
+      const tl = tLoc(app, loc);
+      app.services.audit?.({ action: 'quota.set', summary: tl.plural(list.length, { one: 'Quoten {period}: {n} Eintrag', other: 'Quoten {period}: {n} Einträge' }, { period: periodRange(when.kind, when.start, tzOf(loc), tl).label }), locationId: loc, userId: ctx.user?.id });
       const b = build(loc, when);
       return { ok: true, rows: b.rows };
     });
@@ -219,8 +223,9 @@ export const quotasModule: Module = {
     const board = (ctx: Ctx | WidgetCtx['ctx'], when: { kind: PeriodKind; start: string; metric: Metric }, scope: 'user' | 'team') => {
       const mode = visibility(ctx);
       if (mode === 'off') throw new HttpError(403, 'Die Rangliste ist in diesem Sub-Account ausgeschaltet');
-      const b = build(ctx.locationId, when);
-      const prev = standings(app, ctx.locationId, { ...when, start: shiftPeriod(when.kind, when.start, -1), currency: settingsOf(ctx.locationId).currency, tz: tzOf(ctx.locationId), people: people(ctx.locationId), teams: teamsOf(ctx.locationId) });
+      const t = tCtx(ctx);
+      const b = build(ctx.locationId, when, t);
+      const prev = standings(app, ctx.locationId, { ...when, start: shiftPeriod(when.kind, when.start, -1), currency: settingsOf(ctx.locationId).currency, tz: tzOf(ctx.locationId), people: people(ctx.locationId), teams: teamsOf(ctx.locationId), t });
       const before = new Map(prev.rows.filter((r) => r.scope === scope).map((r) => [r.subject_id, r.achieved]));
       const ranked = rank(b.rows.filter((r) => r.scope === scope && (r.achieved > 0 || r.target !== null)));
       const all = ranked.map((r) => ({ ...r, previous: before.get(r.subject_id) ?? 0 }));
@@ -234,7 +239,7 @@ export const quotasModule: Module = {
       const when = parseWhen(ctx.locationId, ctx.query);
       const scope = ctx.query.get('scope') === 'team' ? 'team' : 'user';
       const r = board(ctx, when, scope);
-      return { period: { kind: when.kind, start: r.range.start, end: r.range.end, label: r.range.label, prev: shiftPeriod(when.kind, when.start, -1), next: shiftPeriod(when.kind, when.start, 1), elapsed_pct: r.elapsed_pct, days_left: r.days_left }, metric: when.metric, metric_labels: METRIC_LABEL, currency: settingsOf(ctx.locationId).currency, scope, visibility: r.mode, total: r.total, rows: r.rows };
+      return { period: { kind: when.kind, start: r.range.start, end: r.range.end, label: r.range.label, prev: shiftPeriod(when.kind, when.start, -1), next: shiftPeriod(when.kind, when.start, 1), elapsed_pct: r.elapsed_pct, days_left: r.days_left }, metric: when.metric, metric_labels: metricLabels(tCtx(ctx)), currency: settingsOf(ctx.locationId).currency, scope, visibility: r.mode, total: r.total, rows: r.rows };
     });
 
     // --- settings ------------------------------------------------------------------------------------------------------------------------------
@@ -270,12 +275,12 @@ export const quotasModule: Module = {
 
     // --- widgets for the living boards ---------------------------------------------------------------------------------------------------------
     const reg = boardWidgets(app);
-    const money = (n: number, cur: string) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(n);
+    const money = (n: number, cur: string, t: STFn = tApp()) => new Intl.NumberFormat(t.locale === 'de' ? 'de-DE' : 'en-GB', { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(n);
     const periodField = { key: 'period', label: 'Zeitraum', type: 'select' as const, options: [['month', 'Monat'], ['quarter', 'Quartal']] as [string, string][], default: 'month' };
     const metricField = { key: 'metric', label: 'Kennzahl', type: 'select' as const, options: METRICS.map((m) => [m, METRIC_LABEL[m]] as [string, string]), default: 'won_value' };
     const whenOf = (w: WidgetCtx, c: Record<string, unknown>) => {
       const kind = c.period === 'quarter' ? 'quarter' : 'month';
-      return { kind: kind as PeriodKind, metric: (c.metric === 'won_count' ? 'won_count' : 'won_value') as Metric, start: currentPeriod(kind, w.now, w.tz).start };
+      return { kind: kind as PeriodKind, metric: (c.metric === 'won_count' ? 'won_count' : 'won_value') as Metric, start: currentPeriod(kind, w.now, w.tz, tCtx(w.ctx)).start };
     };
     const tone = (p: Standing['pace']) => (p === 'reached' || p === 'ahead' ? 'green' : p === 'behind' || p === 'closed' ? 'red' : 'blue');
 
@@ -292,27 +297,29 @@ export const quotasModule: Module = {
       source: 'sales',
       fields: [{ key: 'who', label: 'Für', type: 'select', options: [['me', 'Mich'], ['all', 'Alle zusammen']], default: 'me' }, periodField, metricField],
       data: (w, c): View => {
+        const t = tCtx(w.ctx);
         const when = whenOf(w, c);
         const cur = settingsOf(w.locationId).currency;
-        const fmt = (n: number) => (when.metric === 'won_value' ? money(n, cur) : String(n));
-        const b = build(w.locationId, when);
+        const fmt = (n: number) => (when.metric === 'won_value' ? money(n, cur, t) : String(n));
+        const b = build(w.locationId, when, t);
         const mode = visibility(w.ctx);
-        if (mode === 'off') return { kind: 'locked', reason: 'Die Quoten sind in diesem Sub-Account ausgeschaltet.' };
+        if (mode === 'off') return { kind: 'locked', reason: t('Die Quoten sind in diesem Sub-Account ausgeschaltet.') };
         const user = b.rows.filter((r) => r.scope === 'user');
+        const timeLeft = t('noch {days} Tage, {pct} % der Zeit sind um', { days: b.days_left, pct: Math.round(b.elapsed_pct) });
         if (c.who === 'all' && mode === 'all') {
           const target = user.reduce((n, r) => n + (r.target ?? 0), 0);
           const achieved = user.reduce((n, r) => n + r.achieved, 0);
-          if (!target) return { kind: 'message', text: 'Für diese Periode ist noch keine Quote hinterlegt.', tone: 'yellow', action: { label: 'Quoten festlegen', url: 'sales' } };
+          if (!target) return { kind: 'message', text: t('Für diese Periode ist noch keine Quote hinterlegt.'), tone: 'yellow', action: { label: t('Quoten festlegen'), url: 'sales' } };
           const att = pct(achieved, target);
-          return { kind: 'numbers', title: `Quote ${b.range.label}`, items: [{ label: 'Erreicht', value: fmt(achieved) }, { label: 'Ziel', value: fmt(target) }, { label: 'Erreichung', value: att, format: 'percent', tone: att >= 100 ? 'green' : 'blue' }, { label: 'Gewichtete Pipeline', value: money(user.reduce((n, r) => n + r.weighted_pipeline, 0), cur) }], hint: `Noch ${b.days_left} Tage – ${Math.round(b.elapsed_pct)} % der Zeit sind um`, url: 'sales' };
+          return { kind: 'numbers', title: t('Quote {period}', { period: b.range.label }), items: [{ label: t('Erreicht'), value: fmt(achieved) }, { label: t('Ziel'), value: fmt(target) }, { label: t('Erreichung'), value: att, format: 'percent', tone: att >= 100 ? 'green' : 'blue' }, { label: t('Gewichtete Pipeline'), value: money(user.reduce((n, r) => n + r.weighted_pipeline, 0), cur, t) }], hint: timeLeft, url: 'sales' };
         }
         const mine = user.find((r) => r.subject_id === w.user?.id);
-        if (!mine || mine.target === null) return { kind: 'message', text: mine && mine.achieved ? `Du hast ${fmt(mine.achieved)} gewonnen – eine Quote für dich fehlt noch.` : 'Für dich ist in dieser Periode noch keine Quote hinterlegt.', tone: 'yellow', action: { label: 'Zu den Quoten', url: 'sales' } };
+        if (!mine || mine.target === null) return { kind: 'message', text: mine && mine.achieved ? t('Du hast {amount} gewonnen – eine Quote für dich fehlt noch.', { amount: fmt(mine.achieved) }) : t('Für dich ist in dieser Periode noch keine Quote hinterlegt.'), tone: 'yellow', action: { label: t('Zu den Quoten'), url: 'sales' } };
         return {
           kind: 'numbers',
-          title: `Meine Quote ${b.range.label}`,
-          items: [{ label: 'Erreicht', value: fmt(mine.achieved) }, { label: 'Ziel', value: fmt(mine.target) }, { label: 'Erreichung', value: mine.attainment_pct, format: 'percent', tone: tone(mine.pace) }, { label: 'Gewichtete Pipeline', value: money(mine.weighted_pipeline, cur) }],
-          hint: `${mine.pace_label} – noch ${b.days_left} Tage, ${Math.round(b.elapsed_pct)} % der Zeit sind um`,
+          title: t('Meine Quote {period}', { period: b.range.label }),
+          items: [{ label: t('Erreicht'), value: fmt(mine.achieved) }, { label: t('Ziel'), value: fmt(mine.target) }, { label: t('Erreichung'), value: mine.attainment_pct, format: 'percent', tone: tone(mine.pace) }, { label: t('Gewichtete Pipeline'), value: money(mine.weighted_pipeline, cur, t) }],
+          hint: `${mine.pace_label} – ${timeLeft}`,
           url: 'sales',
         };
       },
@@ -331,24 +338,25 @@ export const quotasModule: Module = {
       source: 'sales',
       fields: [{ key: 'scope', label: 'Wer', type: 'select', options: [['user', 'Personen'], ['team', 'Teams']], default: 'user' }, periodField, metricField, { key: 'limit', label: 'Anzahl', type: 'number', default: 5, min: 1, max: 20 }],
       data: (w, c): View => {
+        const t = tCtx(w.ctx);
         const when = whenOf(w, c);
         const scope = c.scope === 'team' ? 'team' : 'user';
         let r: ReturnType<typeof board>;
         try {
           r = board(w.ctx, when, scope);
         } catch {
-          return { kind: 'locked', reason: 'Die Rangliste ist in diesem Sub-Account ausgeschaltet.' };
+          return { kind: 'locked', reason: t('Die Rangliste ist in diesem Sub-Account ausgeschaltet.') };
         }
         const cur = settingsOf(w.locationId).currency;
-        const fmt = (n: number) => (when.metric === 'won_value' ? money(n, cur) : String(n));
+        const fmt = (n: number) => (when.metric === 'won_value' ? money(n, cur, t) : String(n));
         const limit = Math.min(20, Math.max(1, Math.round(Number(c.limit) || 5)));
         return {
           kind: 'table',
-          title: `Rangliste ${r.range.label}`,
-          columns: [{ key: 'rank', label: '#' }, { key: 'name', label: scope === 'team' ? 'Team' : 'Name' }, { key: 'achieved', label: METRIC_LABEL[when.metric], align: 'right' }, { key: 'attainment', label: 'Quote', align: 'right' }],
-          rows: r.rows.slice(0, limit).map((x) => ({ rank: x.rank, name: x.me ? `${x.name} (du)` : x.name, achieved: fmt(x.achieved), attainment: x.attainment_pct === null ? '–' : `${x.attainment_pct} %` })),
+          title: t('Rangliste {period}', { period: r.range.label }),
+          columns: [{ key: 'rank', label: '#' }, { key: 'name', label: scope === 'team' ? t('Team') : t('Name') }, { key: 'achieved', label: t(METRIC_LABEL[when.metric]), align: 'right' }, { key: 'attainment', label: t('Quote'), align: 'right' }],
+          rows: r.rows.slice(0, limit).map((x) => ({ rank: x.rank, name: x.me ? `${x.name} (${t('du')})` : x.name, achieved: fmt(x.achieved), attainment: x.attainment_pct === null ? '–' : `${x.attainment_pct} %` })),
           total: r.total,
-          empty: 'In dieser Periode wurde noch nichts gewonnen.',
+          empty: t('In dieser Periode wurde noch nichts gewonnen.'),
           url: 'sales',
         };
       },

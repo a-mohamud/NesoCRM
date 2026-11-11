@@ -10,7 +10,8 @@ import { ublXml } from './einvoice-ubl.js';
 import { validateEInvoice, type ValidationResult } from './einvoice-validate.js';
 import { docOf, type Actor, type Inv } from './invoice-flow.js';
 import { invoicePdf } from './invoice-pdf.js';
-import { creditClosed, deYmd, docTitle, isDraftNumber, openCents } from './invoice-model.js';
+import { creditClosed, docTitle, isDraftNumber, openCents, ymdText } from './invoice-model.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Turns an invoice into files: the PDF, the XRechnung (CII or UBL) and their archive copies. The content always comes from
@@ -34,18 +35,18 @@ export function logoOf(app: App, loc: string): Buffer | null {
 
 const safe = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 
-export function pdfFilename(doc: Pick<DocSnapshot, 'kind' | 'inv_type' | 'credit_type' | 'number'>): string {
-  return `${safe(docTitle(doc).replace('/', ''))}-${safe(doc.number || 'Entwurf')}.pdf`;
+export function pdfFilename(doc: Pick<DocSnapshot, 'kind' | 'inv_type' | 'credit_type' | 'number'>, t: STFn = tApp()): string {
+  return `${safe(t(docTitle(doc)).replace('/', ''))}-${safe(doc.number || t('Entwurf'))}.pdf`;
 }
 
-export const einvoiceFilename = (doc: Pick<DocSnapshot, 'number' | 'kind'>, syntax: 'cii' | 'ubl') => `${doc.kind === 'credit_note' ? 'Gutschrift' : 'Rechnung'}-${safe(doc.number)}-xrechnung-${syntax}.xml`;
+export const einvoiceFilename = (doc: Pick<DocSnapshot, 'number' | 'kind'>, syntax: 'cii' | 'ubl', t: STFn = tApp()) => `${safe(doc.kind === 'credit_note' ? t('Gutschrift') : t('Rechnung'))}-${safe(doc.number)}-xrechnung-${syntax}.xml`;
 
 /** What the live status adds to the printed page (not part of the frozen document). */
 export function statusStamp(app: App, inv: Inv): { text: string; color: string } | null {
-  if (inv.status === 'paid' && inv.kind === 'invoice') return { text: `Bezahlt${inv.paid_at ? ` am ${deYmd(String(inv.paid_at).slice(0, 10))}` : ''}`, color: '#15803d' };
-  if (creditClosed(inv)) return { text: 'Gutgeschrieben', color: '#475569' };
-  if (inv.status === 'void' && inv.finalised_at) return { text: 'Storniert', color: '#b91c1c' };
-  void app;
+  const t = tLoc(app, inv.location_id);
+  if (inv.status === 'paid' && inv.kind === 'invoice') return { text: inv.paid_at ? t('Bezahlt am {date}', { date: ymdText(String(inv.paid_at).slice(0, 10), t.locale) }) : t('Bezahlt'), color: '#15803d' };
+  if (creditClosed(inv)) return { text: t('Gutgeschrieben'), color: '#475569' };
+  if (inv.status === 'void' && inv.finalised_at) return { text: t('Storniert'), color: '#b91c1c' };
   return null;
 }
 
@@ -58,14 +59,16 @@ export interface PdfOut {
 export function invoicePdfOf(app: App, inv: Inv): PdfOut {
   const doc = docOf(app, inv);
   const draft = !inv.finalised_at && inv.kind !== 'estimate' && isDraftNumber(inv.number);
+  const t = tLoc(app, inv.location_id);
   const pdf = invoicePdf(doc, {
+    tr: t,
     logo: logoOf(app, inv.location_id),
     draft,
     status: statusStamp(app, inv),
     url: inv.kind === 'estimate' || inv.status === 'draft' ? undefined : `${app.baseUrl()}/i/${inv.public_token}`,
     open_cents: inv.kind === 'invoice' ? openCents(inv) : undefined,
   });
-  return { pdf, filename: pdfFilename(doc), doc };
+  return { pdf, filename: pdfFilename(doc, t), doc };
 }
 
 export interface EInvoiceOut {
@@ -82,11 +85,12 @@ export function einvoiceOf(app: App, inv: Inv, syntax: 'cii' | 'ubl' = 'cii'): E
   if (!inv.finalised_at) throw new HttpError(409, 'Die E-Rechnung gibt es erst, wenn die Rechnung festgeschrieben ist – vorher kann sich noch etwas ändern');
   const doc = docOf(app, inv);
   const { einvoice, problems } = buildEInvoice(doc);
-  if (problems.length) throw new HttpError(422, `Für die XRechnung fehlt noch etwas: ${problems.map((p) => p.message).join(' · ')}`, { problems: problems.map((p) => p.message) });
+  const t = tLoc(app, inv.location_id);
+  if (problems.length) throw new HttpError(422, t('Für die XRechnung fehlt noch etwas: {problems}', { problems: problems.map((p) => t(p.message)).join(' · ') }), { problems: problems.map((p) => t(p.message)) });
   const xml = syntax === 'ubl' ? ublXml(einvoice) : ciiXml(einvoice);
   const validation = validateEInvoice(xml);
-  if (!validation.valid) throw new HttpError(422, `Die XRechnung besteht die Prüfung nicht: ${validation.errors.map((e) => `${e.rule}: ${e.message}`).join(' · ')}`, { errors: validation.errors });
-  return { xml, syntax, filename: einvoiceFilename(doc, syntax), validation, doc };
+  if (!validation.valid) throw new HttpError(422, t('Die XRechnung besteht die Prüfung nicht: {errors}', { errors: validation.errors.map((e) => `${e.rule}: ${t(e.message)}`).join(' · ') }), { errors: validation.errors });
+  return { xml, syntax, filename: einvoiceFilename(doc, syntax, t), validation, doc };
 }
 
 export interface EInvoiceReport {

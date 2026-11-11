@@ -13,6 +13,7 @@ import { openIfSealed, sealSecret, sealSettings } from '../core/secrets.js';
 import { snapshotInto } from './backups.js';
 import { eraseLocations } from '../services/cloud-export.js';
 import { forgetUser } from '../services/user-erase.js';
+import { tLoc } from '../i18n/index.js';
 
 const SESSION_DAYS = 30;
 const loginAttempts = new Map<string, { n: number; until: number }>();
@@ -114,11 +115,12 @@ export function createLocation(db: any, name: string, timezone = 'Europe/Berlin'
   };
   db.insert('locations', loc);
   // Every sub-account starts with the pipeline GHL gives new accounts.
+  const t = tLoc(null, loc.id);
   db.insert('pipelines', {
     id: id(),
     location_id: loc.id,
-    name: 'Vertrieb',
-    stages: ['Neuer Lead', 'Kontaktiert', 'Termin gebucht', 'Angebot', 'Gewonnen'].map((n) => ({ id: id(8), name: n })),
+    name: t('Vertrieb'),
+    stages: ['Neuer Lead', 'Kontaktiert', 'Termin gebucht', 'Angebot', 'Gewonnen'].map((n) => ({ id: id(8), name: t(n) })),
     created_at: now(),
   });
   return loc;

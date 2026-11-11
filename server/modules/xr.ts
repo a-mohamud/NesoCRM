@@ -4,7 +4,8 @@ import { now } from '../core/util.js';
 import { loadBoard as loadLivingBoard } from '../services/boards-store.js';
 import { parseSpec } from '../services/boards-model.js';
 import { loadBoard as loadCanvasBoard } from '../services/canvas-store.js';
-import { XR_LIMITS, cleanBoardLayout, cleanCanvasLayout, cleanWorkspace, defaultWorkspace } from '../services/xr-model.js';
+import { XR_LIMITS, XrError, cleanBoardLayout, cleanCanvasLayout, cleanWorkspace, defaultWorkspace } from '../services/xr-model.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * XR: the per-person layouts behind the Raum-Modus extras (docs/xr.md).
@@ -93,7 +94,7 @@ export const xrModule: Module = {
       try {
         return fn();
       } catch (e) {
-        throw bad((e as Error).message);
+        throw bad(e instanceof XrError ? tApp()(e.key, e.vars?.field ? { ...e.vars, field: tApp()(String(e.vars.field)) } : e.vars) : (e as Error).message);
       }
     };
 

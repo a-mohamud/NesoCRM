@@ -1,4 +1,5 @@
 import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify as cryptoVerify } from 'node:crypto';
+import { tApp } from '../i18n/index.js';
 
 /**
  * "Mit ChatGPT anmelden": OpenAI's official "Sign in with ChatGPT" flow for open-source and locally hosted apps
@@ -170,7 +171,7 @@ export function parseCallback(input: string, expectedState: string, savedClientI
   if (states.length !== 1 || !same(states[0], expectedState)) throw new OAuthError('Diese Adresse gehört nicht zu der gestarteten Anmeldung (Code „state“ passt nicht). Bitte die Anmeldung neu starten und die Adresse aus dem neuen Browser-Tab einfügen.', 'state_mismatch', 400);
   const err = p.get('error');
   if (err) {
-    throw err === 'access_denied' ? new OAuthError('Du hast die Freigabe in ChatGPT abgelehnt. Ohne Freigabe kann HyperLevel dein Abo nicht nutzen – du kannst die Anmeldung jederzeit neu starten.', 'access_denied', 400) : new OAuthError(`ChatGPT hat die Anmeldung abgebrochen (${err.slice(0, 80)}).`, 'oauth_error', 400);
+    throw err === 'access_denied' ? new OAuthError('Du hast die Freigabe in ChatGPT abgelehnt. Ohne Freigabe kann HyperLevel dein Abo nicht nutzen – du kannst die Anmeldung jederzeit neu starten.', 'access_denied', 400) : new OAuthError(tApp()('ChatGPT hat die Anmeldung abgebrochen ({reason}).', { reason: err.slice(0, 80) }), 'oauth_error', 400);
   }
   const codes = p.getAll('code');
   if (codes.length !== 1 || !codes[0]) throw new OAuthError('In der Adresse fehlt der Code („code=…“). Bitte die komplette Adresse aus der Adresszeile kopieren.', 'no_code', 400);
@@ -217,7 +218,7 @@ async function tokenRequest(f: Fetch, body: Record<string, string>): Promise<any
     const { code, message } = errorOf(data);
     if (REAUTH_CODES.has(code)) throw new OAuthError('Deine ChatGPT-Anmeldung ist abgelaufen oder wurde widerrufen. Bitte melde dich neu an.', code, 401, true);
     if (code === 'invalid_client') throw new OAuthError('OpenAI kennt diese Registrierung nicht mehr. Bitte trenne die Verbindung und melde dich neu an.', code, 401, true);
-    throw new OAuthError(`OpenAI hat die Anmeldung abgelehnt${message ? `: ${message.slice(0, 200)}` : ` (${res.status})`}`, code || 'token_error', res.status >= 500 ? 503 : 400);
+    throw new OAuthError(tApp()('OpenAI hat die Anmeldung abgelehnt') + (message ? `: ${message.slice(0, 200)}` : ` (${res.status})`), code || 'token_error', res.status >= 500 ? 503 : 400);
   }
   if (!data || typeof data !== 'object') throw new OAuthError('OpenAI hat eine ungültige Antwort geschickt. Bitte erneut anmelden.', 'invalid_token_response', 502);
   return data;
@@ -362,7 +363,7 @@ export async function listPlanModels(f: Fetch, accessToken: string): Promise<Pla
   const body: any = await res.json().catch(() => null);
   if (!res.ok) {
     const { message } = errorOf(body);
-    throw new OAuthError(res.status === 401 ? 'Die ChatGPT-Anmeldung wurde nicht akzeptiert – bitte neu anmelden.' : `ChatGPT hat die Modell-Liste abgelehnt (${res.status})${message ? `: ${message.slice(0, 160)}` : ''}`, 'models_failed', res.status === 401 ? 401 : 502, res.status === 401);
+    throw new OAuthError(res.status === 401 ? 'Die ChatGPT-Anmeldung wurde nicht akzeptiert – bitte neu anmelden.' : tApp()('ChatGPT hat die Modell-Liste abgelehnt ({status})', { status: res.status }) + (message ? `: ${message.slice(0, 160)}` : ''), 'models_failed', res.status === 401 ? 401 : 502, res.status === 401);
   }
   if (!body || !Array.isArray(body.models)) throw new OAuthError('ChatGPT hat eine unerwartete Modell-Liste geschickt.', 'invalid_model_catalog', 502);
   const out: PlanModel[] = [];

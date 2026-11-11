@@ -3,6 +3,7 @@ import { parseRows } from '../core/db.js';
 import { bad, notFound, str, type Ctx } from '../core/http.js';
 import { id, now } from '../core/util.js';
 import type { Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Agentur-Ankündigungen – docs/saas.md#announcements. The agency writes a short notice (maintenance tonight, new feature, webinar
@@ -18,7 +19,7 @@ const safeLink = (v: unknown) => {
 const isoOrNull = (v: unknown, field: string) => {
   if (v === undefined || v === null || v === '') return null;
   const d = new Date(String(v));
-  if (Number.isNaN(d.getTime())) throw bad(`${field} ungültig`);
+  if (Number.isNaN(d.getTime())) throw bad(tApp()('{field} ungültig', { field: tApp()(field) }));
   return d.toISOString();
 };
 

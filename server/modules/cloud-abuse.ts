@@ -7,6 +7,7 @@ import { messagePage } from '../services/cloud-pages.js';
 import { sitesDomain, slugOfSitesHost } from '../services/cloud-sites.js';
 import { formToken, formTokenOk, pageCtx, servePage } from './cloud-pages.js';
 import { cloudEnabled, cloudSettings, cloudSupport, logCloudEvent, sendCloudMail, tenantById, tenantLocationIds, tenantOfLocation, tenantOfUser, type Tenant } from './cloud.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * Abuse handling in cloud mode (docs/cloud.md#abuse-handling):
@@ -56,13 +57,14 @@ interface Settings {
   auto_pause: boolean;
 }
 
-const ACTIONS: Record<string, { label: string; event: string; mail?: (reason: string) => string[] }> = {
-  pause_sending: { label: 'Versand pausiert', event: 'abuse_sending_paused', mail: (r) => ['wir haben den E-Mail- und SMS-Versand deines Kontos vorübergehend pausiert.', `Grund: ${r}`, 'Alles andere funktioniert weiter. Antworte auf diese Nachricht, wenn du die Gründe klären möchtest – wir prüfen das umgehend.'] },
-  resume_sending: { label: 'Versand wieder frei', event: 'abuse_sending_resumed', mail: () => ['der E-Mail- und SMS-Versand deines Kontos ist wieder freigegeben.'] },
-  unpublish_sites: { label: 'Websites offline', event: 'abuse_sites_offline', mail: (r) => ['wir haben die Websites und Formulare deines Kontos vorübergehend offline genommen.', `Grund: ${r}`, 'Du kannst weiter arbeiten und die Inhalte bearbeiten. Antworte auf diese Nachricht, um die Entscheidung prüfen zu lassen.'] },
-  publish_sites: { label: 'Websites wieder online', event: 'abuse_sites_online', mail: () => ['deine Websites und Formulare sind wieder online.'] },
-  suspend: { label: 'Konto gesperrt', event: 'abuse_suspended', mail: (r) => ['wir haben dein Konto gesperrt. Websites, Formulare und der Versand sind offline, die Anmeldung ist bis auf den Datenexport gesperrt.', `Grund: ${r}`, 'Du kannst gegen diese Entscheidung Widerspruch einlegen – antworte einfach auf diese Nachricht.'] },
-  unsuspend: { label: 'Sperre aufgehoben', event: 'abuse_unsuspended', mail: () => ['die Sperre deines Kontos ist aufgehoben.'] },
+/** Labels and mail lines are message ids: translated (t) where they are sent or logged. */
+const ACTIONS: Record<string, { label: string; event: string; mail?: (reason: string, t: STFn) => string[] }> = {
+  pause_sending: { label: 'Versand pausiert', event: 'abuse_sending_paused', mail: (r, t) => [t('wir haben den E-Mail- und SMS-Versand deines Kontos vorübergehend pausiert.'), t('Grund: {reason}', { reason: r }), t('Alles andere funktioniert weiter. Antworte auf diese Nachricht, wenn du die Gründe klären möchtest – wir prüfen das umgehend.')] },
+  resume_sending: { label: 'Versand wieder frei', event: 'abuse_sending_resumed', mail: (_r, t) => [t('der E-Mail- und SMS-Versand deines Kontos ist wieder freigegeben.')] },
+  unpublish_sites: { label: 'Websites offline', event: 'abuse_sites_offline', mail: (r, t) => [t('wir haben die Websites und Formulare deines Kontos vorübergehend offline genommen.'), t('Grund: {reason}', { reason: r }), t('Du kannst weiter arbeiten und die Inhalte bearbeiten. Antworte auf diese Nachricht, um die Entscheidung prüfen zu lassen.')] },
+  publish_sites: { label: 'Websites wieder online', event: 'abuse_sites_online', mail: (_r, t) => [t('deine Websites und Formulare sind wieder online.')] },
+  suspend: { label: 'Konto gesperrt', event: 'abuse_suspended', mail: (r, t) => [t('wir haben dein Konto gesperrt. Websites, Formulare und der Versand sind offline, die Anmeldung ist bis auf den Datenexport gesperrt.'), t('Grund: {reason}', { reason: r }), t('Du kannst gegen diese Entscheidung Widerspruch einlegen – antworte einfach auf diese Nachricht.')] },
+  unsuspend: { label: 'Sperre aufgehoben', event: 'abuse_unsuspended', mail: (_r, t) => [t('die Sperre deines Kontos ist aufgehoben.')] },
 };
 
 /** What a suspended customer may still reach: their own login (profile, sessions, 2FA), branding, the cloud account summary, the data export, signing out. */
@@ -133,12 +135,14 @@ export const cloudAbuseModule: Module = {
       if (!t) return;
       const f = flagsOf(t.id);
       if (!f?.suspended_at || SUSPENDED_OPEN.test(ctx.path)) return;
-      throw new HttpError(403, `Dieses Konto ist gesperrt: ${f.suspend_reason}.${support() ? ` Fragen und Widerspruch: ${support()}.` : ''} Deine Daten kannst du weiter exportieren.`);
+      const tr = tCtx(ctx);
+      throw new HttpError(403, `${tr('Dieses Konto ist gesperrt: {reason}.', { reason: f.suspend_reason })}${support() ? ` ${tr('Fragen und Widerspruch: {support}.', { support: support() })}` : ''} ${tr('Deine Daten kannst du weiter exportieren.')}`);
     });
 
     // --- sites and forms offline: the public routes of a blocked customer answer 410 --------------------------------
     const offlinePage = () => {
-      const r = servePage(messagePage(pageCtx(app), { title: 'Nicht verfügbar', text: 'Diese Seite ist derzeit nicht verfügbar.' }), 410);
+      const t = tApp();
+      const r = servePage(messagePage(pageCtx(app), { title: t('Nicht verfügbar'), text: t('Diese Seite ist derzeit nicht verfügbar.') }), 410);
       r.headers['x-robots-tag'] = 'noindex';
       return r;
     };
@@ -158,9 +162,10 @@ export const cloudAbuseModule: Module = {
 
     // --- actions ------------------------------------------------------------------------------------------------------
     /** Applies one action; returns the flags. `auto` marks the automatic pause. */
-    async function act(t: Tenant, action: string, reason: string, o: { by: string; notify?: boolean; auto?: boolean } = { by: 'Betreiber' }) {
+    async function act(t: Tenant, action: string, reason: string, o: { by: string; notify?: boolean; auto?: boolean } = { by: tApp()('Betreiber') }) {
       const a = ACTIONS[action];
-      if (!a) throw bad(`Unbekannte Maßnahme (${Object.keys(ACTIONS).join(', ')})`);
+      const tr = tApp();
+      if (!a) throw bad(tr('Unbekannte Maßnahme ({actions})', { actions: Object.keys(ACTIONS).join(', ') }));
       const needsReason = ['pause_sending', 'unpublish_sites', 'suspend'].includes(action);
       if (needsReason && reason.length < 5) throw bad('Bitte den Grund angeben – der Kunde bekommt ihn mitgeteilt (DSA Art. 17).');
       const at = now();
@@ -170,10 +175,10 @@ export const cloudAbuseModule: Module = {
       else if (action === 'publish_sites') setFlags(t.id, { sites_offline_at: null, sites_reason: '' });
       else if (action === 'suspend') setFlags(t.id, { suspended_at: at, suspend_reason: reason });
       else if (action === 'unsuspend') setFlags(t.id, { suspended_at: null, suspend_reason: '', window_from: at });
-      logCloudEvent(app, t.id, a.event, `${o.auto ? 'Automatisch: ' : ''}${reason || a.label}`);
-      app.services.audit?.({ action: `cloud.${a.event}`, summary: `${t.name}: ${a.label}${reason ? ` – ${reason}` : ''}`, actor: o.by, entityId: t.id });
+      logCloudEvent(app, t.id, a.event, o.auto ? tr('Automatisch: {reason}', { reason: reason || tr(a.label) }) : reason || tr(a.label));
+      app.services.audit?.({ action: `cloud.${a.event}`, summary: `${t.name}: ${tr(a.label)}${reason ? ` – ${reason}` : ''}`, actor: o.by, entityId: t.id });
       if (o.notify !== false && a.mail && t.email) {
-        await sendCloudMail(app, 'notice', t.email, { subject: `${a.label} – ${t.name}`, name: t.name, lines: ['Hallo,', ...a.mail(reason)], company: t.name }, { tenantId: t.id });
+        await sendCloudMail(app, 'notice', t.email, { subject: `${tr(a.label)} – ${t.name}`, name: t.name, lines: [tr('Hallo,'), ...a.mail(reason, tr)], company: t.name }, { tenantId: t.id });
       }
       return flagsOf(t.id);
     }
@@ -196,9 +201,10 @@ export const cloudAbuseModule: Module = {
         );
         const reason = pauseReason(rows.map((r) => r.status));
         if (!reason) continue;
-        await act(t, 'pause_sending', reason, { by: 'Automatisch', auto: true });
+        await act(t, 'pause_sending', reason, { by: tApp()('Automatisch'), auto: true });
         paused.push({ tenant: t.id, reason });
-        app.services.opsAlert?.event({ key: `abuse_autopause:${t.id}`, severity: 'warning', title: `Versand von „${t.name}“ automatisch pausiert`, body: `${reason}. Prüfen unter Agentur → Cloud → Missbrauch.` });
+        const tr = tApp();
+        app.services.opsAlert?.event({ key: `abuse_autopause:${t.id}`, severity: 'warning', title: tr('Versand von „{name}“ automatisch pausiert', { name: t.name }), body: `${reason}. ${tr('Prüfen unter Agentur → Cloud → Missbrauch.')}` });
       }
       return paused;
     }
@@ -246,17 +252,18 @@ export const cloudAbuseModule: Module = {
       return list.length > max;
     };
     const intro = 'Melde Inhalte auf Websites, Formularen oder E-Mails unserer Kunden, die du für rechtswidrig hältst oder die gegen unsere Regeln verstoßen (z. B. Phishing, Spam, Betrug). Wir prüfen jede Meldung und teilen dir unsere Entscheidung mit.';
-    const formPage = (o: { values?: ReturnType<typeof cleanReport>['values']; error?: string } = {}, status = 200) =>
-      servePage(messagePage(pageCtx(app), { title: 'Missbrauch melden', text: intro, extra: reportForm({ ...o, token: formToken(app), abuseEmail: settings().abuse_email }) }), status);
+    const formPage = (t: STFn, o: { values?: ReturnType<typeof cleanReport>['values']; error?: string } = {}, status = 200) =>
+      servePage(messagePage(pageCtx(app), { title: t('Missbrauch melden'), text: t(intro), extra: reportForm({ ...o, token: formToken(app), abuseEmail: settings().abuse_email }, t) }), status);
 
-    router.get('/abuse', 'public', () => formPage());
+    router.get('/abuse', 'public', (ctx) => formPage(tCtx(ctx)));
     router.post('/abuse', 'public', async (ctx) => {
       const b = ctx.body ?? {};
-      if (String(b.website ?? '').trim()) return servePage(messagePage(pageCtx(app), { title: 'Danke', text: 'Deine Meldung ist eingegangen.' }));
-      const { values, error } = cleanReport(b);
-      if (error) return formPage({ values, error }, 400);
-      if (!formTokenOk(app, String(b.t ?? ''))) return formPage({ values, error: 'Das ging zu schnell oder die Seite ist veraltet – bitte noch einmal absenden.' }, 400);
-      if (throttled(`abuse:${ctx.ip}`, 10)) return formPage({ values, error: 'Zu viele Meldungen von dieser Adresse – bitte in einer Stunde noch einmal oder per E-Mail.' }, 429);
+      const tr = tCtx(ctx);
+      if (String(b.website ?? '').trim()) return servePage(messagePage(pageCtx(app), { title: tr('Danke'), text: tr('Deine Meldung ist eingegangen.') }));
+      const { values, error } = cleanReport(b, tr);
+      if (error) return formPage(tr, { values, error }, 400);
+      if (!formTokenOk(app, String(b.t ?? ''))) return formPage(tr, { values, error: tr('Das ging zu schnell oder die Seite ist veraltet – bitte noch einmal absenden.') }, 400);
+      if (throttled(`abuse:${ctx.ip}`, 10)) return formPage(tr, { values, error: tr('Zu viele Meldungen von dieser Adresse – bitte in einer Stunde noch einmal oder per E-Mail.') }, 429);
       const tenant = values.urls.map(tenantForUrl).find(Boolean) ?? null;
       const rid = id(10);
       db.insert('abuse_reports', {
@@ -272,35 +279,37 @@ export const cloudAbuseModule: Module = {
         ip_hash: sha256(`${app.config.secret}:${ctx.ip}`).slice(0, 16),
         created_at: now(),
       });
-      if (tenant) logCloudEvent(app, tenant, 'abuse_reported', `${CATEGORIES[values.category]} (Meldung ${rid})`);
+      const op = tApp();
+      if (tenant) logCloudEvent(app, tenant, 'abuse_reported', op('{category} (Meldung {id})', { category: op(CATEGORIES[values.category]), id: rid }));
       const t = tenant ? tenantById(app, tenant) : undefined;
       app.services.opsAlert?.event({
         key: `abuse_report:${rid}`,
         severity: values.category === 'phishing' || values.category === 'csam' || values.category === 'malware' ? 'critical' : 'warning',
-        title: `Missbrauchsmeldung: ${CATEGORIES[values.category]}`,
-        body: `${values.urls.slice(0, 3).join(' ')}${t ? ` – Kunde „${t.name}“` : ' – kein Kunde zugeordnet'}. Prüfen unter Agentur → Cloud → Missbrauch (Meldung ${rid}).`,
+        title: op('Missbrauchsmeldung: {category}', { category: op(CATEGORIES[values.category]) }),
+        body: `${values.urls.slice(0, 3).join(' ')}${t ? op(' – Kunde „{name}“', { name: t.name }) : op(' – kein Kunde zugeordnet')}. ${op('Prüfen unter Agentur → Cloud → Missbrauch (Meldung {id}).', { id: rid })}`,
       });
       if (values.email)
         void sendCloudMail(app, 'notice', values.email, {
-          subject: `Eingang deiner Meldung ${rid}`,
-          lines: [`Hallo ${values.name || ''}`.trim() + ',', `wir haben deine Meldung (${CATEGORIES[values.category]}) am ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} erhalten und prüfen sie. Aktenzeichen: ${rid}.`, 'Über unsere Entscheidung informieren wir dich per E-Mail.'],
+          subject: tr('Eingang deiner Meldung {id}', { id: rid }),
+          lines: [values.name ? tr('Hallo {name},', { name: values.name }) : tr('Hallo,'), tr('wir haben deine Meldung ({category}) am {date} erhalten und prüfen sie. Aktenzeichen: {id}.', { category: tr(CATEGORIES[values.category]), date: new Date().toLocaleString(tr.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: 'Europe/Berlin' }), id: rid }), tr('Über unsere Entscheidung informieren wir dich per E-Mail.')],
         });
-      return servePage(messagePage(pageCtx(app), { title: 'Danke für deine Meldung', text: `Deine Meldung ist eingegangen (Aktenzeichen ${rid}). ${values.email ? 'Du bekommst eine Eingangsbestätigung per E-Mail; ' : ''}wir prüfen sie und handeln, wenn der Inhalt gegen Recht oder unsere Regeln verstößt.` }));
+      return servePage(messagePage(pageCtx(app), { title: tr('Danke für deine Meldung'), text: values.email ? tr('Deine Meldung ist eingegangen (Aktenzeichen {id}). Du bekommst eine Eingangsbestätigung per E-Mail; wir prüfen sie und handeln, wenn der Inhalt gegen Recht oder unsere Regeln verstößt.', { id: rid }) : tr('Deine Meldung ist eingegangen (Aktenzeichen {id}). Wir prüfen sie und handeln, wenn der Inhalt gegen Recht oder unsere Regeln verstößt.', { id: rid }) }));
     });
 
     // --- operator console ---------------------------------------------------------------------------------------------
-    const reportOut = (r: Report) => ({ ...r, urls: r.urls.split('\n'), category_label: CATEGORIES[r.category] ?? r.category, status_label: REPORT_STATUS[r.status] ?? r.status, tenant_name: r.tenant_id ? tenantById(app, r.tenant_id)?.name ?? null : null });
-    router.get('/api/cloud/console/abuse', 'admin', () => ({
-      reports: db.all<Report>('SELECT * FROM abuse_reports ORDER BY created_at DESC LIMIT 300').map(reportOut),
+    const reportOut = (r: Report, t: STFn = tApp()) => ({ ...r, urls: r.urls.split('\n'), category_label: CATEGORIES[r.category] ? t(CATEGORIES[r.category]) : r.category, status_label: REPORT_STATUS[r.status] ? t(REPORT_STATUS[r.status]) : r.status, tenant_name: r.tenant_id ? tenantById(app, r.tenant_id)?.name ?? null : null });
+    const tMap = (m: Record<string, string>, t: STFn) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, t(v)]));
+    router.get('/api/cloud/console/abuse', 'admin', (ctx) => ({
+      reports: db.all<Report>('SELECT * FROM abuse_reports ORDER BY created_at DESC LIMIT 300').map((r) => reportOut(r, tCtx(ctx))),
       flagged: db
         .all<Flags & { name: string; email: string }>(
           `SELECT f.*, t.name, t.email FROM cloud_abuse_flags f JOIN cloud_tenants t ON t.id = f.tenant_id
            WHERE t.deleted_at IS NULL AND (f.sending_paused_at IS NOT NULL OR f.sites_offline_at IS NOT NULL OR f.suspended_at IS NOT NULL) ORDER BY f.updated_at DESC`,
         ),
       settings: settings(),
-      categories: CATEGORIES,
-      statuses: REPORT_STATUS,
-      actions: Object.fromEntries(Object.entries(ACTIONS).map(([k, v]) => [k, v.label])),
+      categories: tMap(CATEGORIES, tCtx(ctx)),
+      statuses: tMap(REPORT_STATUS, tCtx(ctx)),
+      actions: Object.fromEntries(Object.entries(ACTIONS).map(([k, v]) => [k, tCtx(ctx)(v.label)])),
       public_url: `${app.config.baseUrl}/abuse`,
     }));
     router.patch('/api/cloud/console/abuse/:id', 'admin', async (ctx) => {
@@ -316,9 +325,10 @@ export const cloudAbuseModule: Module = {
       if (closing && decision.length < 5) throw bad('Bitte die Entscheidung kurz begründen – der Meldende bekommt sie mitgeteilt (DSA Art. 16 Abs. 5).');
       db.run('UPDATE abuse_reports SET status = ?, decision = ?, tenant_id = ?, decided_at = ?, decided_by = ? WHERE id = ?', status, decision, tenant, closing ? now() : r.decided_at, closing ? ctx.user?.name ?? '' : r.decided_by, r.id);
       if (closing && r.reporter_email && b.notify !== false) {
+        const tr = tApp();
         await sendCloudMail(app, 'notice', r.reporter_email, {
-          subject: `Entscheidung zu deiner Meldung ${r.id}`,
-          lines: [`Hallo ${r.reporter_name || ''}`.trim() + ',', status === 'actioned' ? 'wir haben deine Meldung geprüft und Maßnahmen ergriffen.' : 'wir haben deine Meldung geprüft und keinen Verstoß festgestellt, der eine Maßnahme rechtfertigt.', `Begründung: ${decision}`, 'Gegen diese Entscheidung kannst du dich an uns wenden (Antwort auf diese E-Mail) oder den Rechtsweg beschreiten.'],
+          subject: tr('Entscheidung zu deiner Meldung {id}', { id: r.id }),
+          lines: [r.reporter_name ? tr('Hallo {name},', { name: r.reporter_name }) : tr('Hallo,'), status === 'actioned' ? tr('wir haben deine Meldung geprüft und Maßnahmen ergriffen.') : tr('wir haben deine Meldung geprüft und keinen Verstoß festgestellt, der eine Maßnahme rechtfertigt.'), tr('Begründung: {decision}', { decision }), tr('Gegen diese Entscheidung kannst du dich an uns wenden (Antwort auf diese E-Mail) oder den Rechtsweg beschreiten.')],
         });
       }
       return reportOut(db.get<Report>('SELECT * FROM abuse_reports WHERE id = ?', r.id)!);
@@ -336,12 +346,12 @@ export const cloudAbuseModule: Module = {
       const t = tenantById(app, ctx.params.id);
       if (!t) throw notFound('Kunde nicht gefunden');
       const reason = str(ctx.body?.reason, 'Grund', { max: 1000 });
-      return { flags: await act(t, String(ctx.body?.action ?? ''), reason, { by: ctx.user?.name || 'Betreiber', notify: ctx.body?.notify !== false }) };
+      return { flags: await act(t, String(ctx.body?.action ?? ''), reason, { by: ctx.user?.name || tApp()('Betreiber'), notify: ctx.body?.notify !== false }) };
     });
     router.get('/api/cloud/console/tenants/:id/abuse', 'admin', (ctx) => {
       const t = tenantById(app, ctx.params.id);
       if (!t) throw notFound('Kunde nicht gefunden');
-      return { flags: flagsOf(t.id) ?? null, reports: db.all<Report>('SELECT * FROM abuse_reports WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 50', t.id).map(reportOut) };
+      return { flags: flagsOf(t.id) ?? null, reports: db.all<Report>('SELECT * FROM abuse_reports WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 50', t.id).map((r) => reportOut(r)) };
     });
   },
 };

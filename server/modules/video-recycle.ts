@@ -16,6 +16,10 @@ import * as os from '../services/openshorts.js';
 import * as rc from '../services/video-recycle.js';
 import type { Tool } from './mcp.js';
 import { parseRange } from './video-studio.js';
+import { tApp, tLoc } from '../i18n/index.js';
+
+/** Messages, stored labels and autopilot logs in the instance language (static ids for the catalog). */
+const tm = tApp();
 
 /**
  * Content-Recycling and Autopilot for the Video-Studio. Recycling: from a finished shorts job the AI
@@ -126,7 +130,7 @@ export const videoRecycleModule: Module = {
         const r = await os.osFetch(vs().fetch(), cfgOrFail(), 'GET', path.split('/').map(encodeURIComponent).join('/'), { stream: true, timeoutMs: 30_000 });
         if (!r.ok || !r.body) {
           await r.body?.cancel().catch(() => {});
-          throw new HttpError(r.status === 404 ? 404 : 502, r.status === 404 ? 'Der Clip ist in OpenShorts nicht mehr vorhanden' : `OpenShorts liefert den Clip nicht (${r.status})`);
+          throw new HttpError(r.status === 404 ? 404 : 502, r.status === 404 ? 'Der Clip ist in OpenShorts nicht mehr vorhanden' : tm('OpenShorts liefert den Clip nicht ({status})', { status: r.status }));
         }
         let size = 0;
         const limit = new Transform({
@@ -141,7 +145,7 @@ export const videoRecycleModule: Module = {
           renameSync(tmp, file);
         } catch (e) {
           rmSync(tmp, { force: true });
-          throw new HttpError(502, `Clip konnte nicht gesichert werden: ${(e as Error).message}`);
+          throw new HttpError(502, tm('Clip konnte nicht gesichert werden: {error}', { error: (e as Error).message }));
         }
       }
       return `${app.baseUrl()}/hooks/openshorts/clip/${clip.id}.${sig('clip', clip.id)}${ext}`;
@@ -181,7 +185,7 @@ export const videoRecycleModule: Module = {
     const itemOut = (r: any) => {
       const row = parseJson({ ...r }, ['content']);
       const k = row.kind as rc.RecycleKind;
-      return { ...row, label: rc.RECYCLE_KINDS[k]?.label ?? k, text: row.status === 'ready' || row.status === 'applied' ? rc.asText(k, row.content ?? {}) : '' };
+      return { ...row, label: tm(rc.RECYCLE_KINDS[k]?.label ?? k), ...(row.applied_label ? { applied_label: tm(String(row.applied_label)) } : {}), ...(row.error ? { error: tm(String(row.error)) } : {}), text: row.status === 'ready' || row.status === 'applied' ? rc.asText(k, row.content ?? {}, tm) : '' };
     };
     const itemsOf = (jobId: string) =>
       db
@@ -200,7 +204,7 @@ export const videoRecycleModule: Module = {
         if (need === 'social' && !app.services.socialPost) reason = 'Social Planner fehlt';
         if (need === 'community' && (!tableExists('community_groups') || !db.get(`SELECT id FROM community_groups WHERE location_id = ? AND status = 'active'`, loc))) reason = 'Keine Community-Gruppe';
         if (need === 'courses' && (!tableExists('course_lessons') || !db.get('SELECT id FROM course_lessons WHERE location_id = ?', loc))) reason = 'Keine Kurs-Lektionen';
-        return { key: k, label: rc.RECYCLE_KINDS[k].label, icon: rc.RECYCLE_KINDS[k].icon, draft: rc.RECYCLE_KINDS[k].draft, available: !reason, reason };
+        return { key: k, label: tm(rc.RECYCLE_KINDS[k].label), icon: rc.RECYCLE_KINDS[k].icon, draft: rc.RECYCLE_KINDS[k].draft, available: !reason, reason: reason ? tm(reason) : reason };
       });
 
     const aiProblem = (loc: string): string | null => {
@@ -271,7 +275,7 @@ export const videoRecycleModule: Module = {
       if (!job) throw notFound('Job nicht gefunden');
       if (job.status !== 'completed') throw bad('Recycling geht, sobald der Job fertig ist');
       const problem = aiProblem(job.location_id);
-      if (problem) throw new HttpError(409, `${problem} Recycling braucht den KI-Assistenten (Einstellungen → KI-Assistent).`);
+      if (problem) throw new HttpError(409, tm('{problem} Recycling braucht den KI-Assistenten (Einstellungen → KI-Assistent).', { problem }));
       const avail = new Set(availableKinds(job.location_id).filter((k) => k.available).map((k) => k.key));
       const list = [...new Set(kinds)].filter((k) => avail.has(k));
       if (!list.length) throw bad('Keine passenden Inhalte gewählt');
@@ -384,7 +388,8 @@ export const videoRecycleModule: Module = {
             if (url) linked.push({ title: x.title, url, thumb: thumbUrl(x.id) });
           }
           const yt = rc.youtubeId(ytUrl);
-          const design = rc.newsletterDesign(c, { videoUrl: ytUrl ?? linked[0]?.url ?? null, videoThumb: yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : (linked[0]?.thumb ?? null), clips: ytUrl ? linked : linked.slice(1), ctaUrl: ytUrl ?? linked[0]?.url ?? null });
+          // the newsletter goes to the sub-account's contacts: its own language
+          const design = rc.newsletterDesign(c, { videoUrl: ytUrl ?? linked[0]?.url ?? null, videoThumb: yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : (linked[0]?.thumb ?? null), clips: ytUrl ? linked : linked.slice(1), ctaUrl: ytUrl ?? linked[0]?.url ?? null }, tLoc(app, loc));
           const camp = await callRoute(app, ctx, 'POST', '/api/campaigns', { name: `Newsletter: ${job.title}`.slice(0, 200), subject: c.subject, channel: 'email', design }, { locationId: loc });
           return { ref: camp.id, url: `campaigns/${camp.id}`, label: 'Kampagnen-Entwurf' };
         }
@@ -396,7 +401,7 @@ export const videoRecycleModule: Module = {
           const platforms = rc.RECYCLE_KINDS[kind].platforms ?? [];
           const all = await socialChannels(ctx);
           const ids = (target.integration_ids ?? []).map(String).filter((x) => all.some((ch) => ch.id === x && platforms.includes(ch.identifier)));
-          if (!ids.length) throw bad(`Einen passenden Kanal wählen (${platforms.join(', ')})`);
+          if (!ids.length) throw bad(tm('Einen passenden Kanal wählen ({platforms})', { platforms: platforms.join(', ') }));
           const type = target.type === 'schedule' ? 'schedule' : 'draft';
           const input: Record<string, any> = { integrationIds: ids, type, date: target.date, userId: ctx.user?.id, source: 'Video-Recycling' };
           if (kind === 'x_thread') Object.assign(input, { content: c.tweets[0], thread: c.tweets.slice(1) });
@@ -517,7 +522,7 @@ export const videoRecycleModule: Module = {
         st.last_checked = now();
         try {
           const r = await feedFetch(feed.url);
-          if (!r.ok) throw new Error(`Feed antwortet mit ${r.status}`);
+          if (!r.ok) throw new Error(tm('Feed antwortet mit {status}', { status: r.status }));
           const xml = await r.text();
           const entries = feed.type === 'youtube' ? rc.parseYouTubeFeed(xml) : rc.parsePodcastFeed(xml);
           if (!entries.length && !/<(feed|rss)\b/i.test(xml)) throw new Error('Kein RSS/Atom-Feed');
@@ -525,18 +530,18 @@ export const videoRecycleModule: Module = {
           if (!st.initialized) {
             st.seen = entries.map((e) => e.id).slice(0, 200);
             st.initialized = true;
-            log(state, `${feed.label}: verbunden – ${entries.length === 1 ? '1 vorhandenes Video' : `${entries.length} vorhandene Videos`} gemerkt, ab jetzt kommt jedes neue dazu`);
+            log(state, tm('{feed}: verbunden – {videos} gemerkt, ab jetzt kommt jedes neue dazu', { feed: feed.label, videos: tm.plural(entries.length, { one: '{n} vorhandenes Video', other: '{n} vorhandene Videos' }) }));
             continue;
           }
           const fresh = entries.filter((e) => !st.seen.includes(e.id)).reverse();
           for (const e of fresh) {
             if (e.media !== 'video' || !e.url) {
               st.seen = [e.id, ...st.seen].slice(0, 200);
-              log(state, `${feed.label}: „${e.title}“ übersprungen – ${e.media === 'audio' ? 'nur Audio, OpenShorts braucht ein Video' : 'kein Video-Link'}`);
+              log(state, tm('{feed}: „{title}“ übersprungen – {reason}', { feed: feed.label, title: e.title, reason: e.media === 'audio' ? tm('nur Audio, OpenShorts braucht ein Video') : tm('kein Video-Link') }));
               continue;
             }
             if (budget <= 0) {
-              log(state, `${feed.label}: Tageslimit erreicht – „${e.title}“ folgt beim nächsten Durchlauf`);
+              log(state, tm('{feed}: Tageslimit erreicht – „{title}“ folgt beim nächsten Durchlauf', { feed: feed.label, title: e.title }));
               break;
             }
             try {
@@ -545,7 +550,7 @@ export const videoRecycleModule: Module = {
               st.seen = [e.id, ...st.seen].slice(0, 200);
               st.last_item = e.title;
               budget--;
-              log(state, `${feed.label}: neues Video „${e.title}“ – Shorts-Job gestartet`);
+              log(state, tm('{feed}: neues Video „{title}“ – Shorts-Job gestartet', { feed: feed.label, title: e.title }));
             } catch (err) {
               const status = (err as HttpError).status;
               log(state, `${feed.label}: „${e.title}“ – ${(err as Error).message}`);
@@ -586,7 +591,7 @@ export const videoRecycleModule: Module = {
           // Channels whose limit the clip's caption exceeds (X: 280) are left out for this clip.
           const caption = String(vs().captionOf(c) ?? '');
           const fits = videoChannels.filter((ch) => !ch.limit || caption.length <= ch.limit);
-          if (fits.length < videoChannels.length) notes.push(`Clip „${c.title}“: Text zu lang für ${videoChannels.filter((ch) => !fits.includes(ch)).map((ch) => ch.label).join(', ')}`);
+          if (fits.length < videoChannels.length) notes.push(tm('Clip „{title}“: Text zu lang für {channels}', { title: c.title, channels: videoChannels.filter((ch) => !fits.includes(ch)).map((ch) => ch.label).join(', ') }));
           if (!fits.length) continue;
           try {
             await vs().scheduleClip(loc, c.id, { integration_ids: fits.map((ch) => ch.id), type, date: at?.toISOString(), userId: ap.user_id, source: 'Autopilot' });
@@ -597,13 +602,13 @@ export const videoRecycleModule: Module = {
             notes.push(`Clip „${c.title}“: ${(e as Error).message}`);
           }
         }
-      } else if (clips.length) notes.push('Keine Kanäle mit Video gewählt – Clips liegen im Video-Studio');
+      } else if (clips.length) notes.push(tm('Keine Kanäle mit Video gewählt – Clips liegen im Video-Studio'));
       let recycled = 0;
       let drafts = 0;
       const kinds = s.recycle;
       if (kinds.length) {
         const problem = aiProblem(loc);
-        if (problem) notes.push(`Recycling übersprungen: ${problem}`);
+        if (problem) notes.push(tm('Recycling übersprungen: {problem}', { problem }));
         else {
           try {
             startRecycle(job.id, kinds, { userId: ap.user_id, origin: 'Autopilot' });
@@ -630,17 +635,18 @@ export const videoRecycleModule: Module = {
               markApplied(item, await apply(ctx, item, target));
               drafts++;
             } catch (e) {
-              notes.push(`${rc.RECYCLE_KINDS[kind].label}: ${(e as Error).message}`);
+              notes.push(`${tm(rc.RECYCLE_KINDS[kind].label)}: ${(e as Error).message}`);
             }
           }
         }
       }
-      const summary = `${planned} ${planned === 1 ? 'Clip' : 'Clips'} ${type === 'schedule' ? 'eingeplant' : 'als Entwurf im Social Planner'}, ${recycled} Recycling-Inhalte (${drafts} als Entwurf übernommen)`;
-      log(state, `„${job.title}“: ${summary}${notes.length ? ` – ${notes.length} Hinweise` : ''}`);
+      const clipsText = type === 'schedule' ? tm.plural(planned, { one: '{n} Clip eingeplant', other: '{n} Clips eingeplant' }) : tm.plural(planned, { one: '{n} Clip als Entwurf im Social Planner', other: '{n} Clips als Entwurf im Social Planner' });
+      const summary = tm('{clips}, {recycled} Recycling-Inhalte ({drafts} als Entwurf übernommen)', { clips: clipsText, recycled, drafts });
+      log(state, `„${job.title}“: ${summary}${notes.length ? tm(' – {n} Hinweise', { n: notes.length }) : ''}`);
       saveState(loc, state);
       db.run('UPDATE video_job_plans SET note = ? WHERE job_id = ?', [summary, ...notes].join('\n').slice(0, 2000), job.id);
-      const title = type === 'schedule' ? 'Autopilot: neue Shorts eingeplant' : 'Autopilot: neue Shorts zur Freigabe';
-      const body = `${job.title}: ${summary}.${notes.length ? `\n\nHinweise:\n- ${notes.join('\n- ')}` : ''}`;
+      const title = type === 'schedule' ? tm('Autopilot: neue Shorts eingeplant') : tm('Autopilot: neue Shorts zur Freigabe');
+      const body = `${job.title}: ${summary}.${notes.length ? `\n\n${tm('Hinweise:')}\n- ${notes.join('\n- ')}` : ''}`;
       if (s.notify_push) await Promise.resolve(app.services.pushNotify?.({ locationId: loc, kind: 'shorts', title, body: `${job.title}: ${summary}`, url: `/app/video-studio/${job.id}`, tag: `autopilot-${job.id}` })).catch(() => {});
       if (s.notify_email) await notifyTeam(app, loc, title, `${body}\n\n${app.baseUrl()}/app/video-studio/${job.id}`).catch(() => {});
     };
@@ -670,7 +676,7 @@ export const videoRecycleModule: Module = {
       }
       // Generation cut off by a restart (no loop running for the job): mark as failed so it can be started again.
       const stale = db.all(`SELECT id, job_id FROM video_recycle WHERE status = 'generating' AND updated_at < ?`, new Date(Date.now() - 15 * 60_000).toISOString());
-      for (const r of stale.filter((x) => !loops.has(x.job_id))) db.run(`UPDATE video_recycle SET status = 'failed', error = 'Abgebrochen – bitte neu erzeugen' WHERE id = ?`, r.id);
+      for (const r of stale.filter((x) => !loops.has(x.job_id))) db.run(`UPDATE video_recycle SET status = 'failed', error = ? WHERE id = ?`, tm('Abgebrochen – bitte neu erzeugen'), r.id);
     });
 
     app.services.videoRecycle = { startRecycle, generate: runGenerate, apply, checkFeeds, autopilotAfter, transcriptOf, publicClip, systemCtx };
@@ -706,7 +712,7 @@ export const videoRecycleModule: Module = {
 
     router.get('/api/video-studio/jobs/:id/recycle', 'location', async (ctx) => {
       const j = jobOf(ctx);
-      return { kinds: availableKinds(ctx.locationId), ai: aiProblem(ctx.locationId), languages: rc.LANGUAGES, items: itemsOf(j.id), targets: ctx.query.get('targets') === '0' ? undefined : await targets(ctx), public_base: vs().isPublicBase(), youtube: !!(j.source_type === 'url' && rc.youtubeId(j.source_url)) };
+      return { kinds: availableKinds(ctx.locationId), ai: aiProblem(ctx.locationId), languages: Object.fromEntries(Object.entries(rc.LANGUAGES).map(([k, v]) => [k, tm(v)])), items: itemsOf(j.id), targets: ctx.query.get('targets') === '0' ? undefined : await targets(ctx), public_base: vs().isPublicBase(), youtube: !!(j.source_type === 'url' && rc.youtubeId(j.source_url)) };
     });
     router.post('/api/video-studio/jobs/:id/recycle', 'location', (ctx) => {
       const j = jobOf(ctx);
@@ -831,13 +837,13 @@ export const videoRecycleModule: Module = {
         const jobId = render(String(step.job_id || '{{event.jobId}}'), vars).trim();
         if (jobId && vs().getJob(jobId, run.location_id)) {
           const items = startRecycle(jobId, kinds, { origin: 'Workflow' });
-          return `Recycling gestartet (${items.filter((i: any) => i.status === 'generating').length} Inhalte, Freigabe im Video-Studio)`;
+          return tm('Recycling gestartet ({n} Inhalte, Freigabe im Video-Studio)', { n: items.filter((i: any) => i.status === 'generating').length });
         }
         const url = render(String(step.url ?? ''), vars).trim();
-        if (!url) throw new Error('Kein fertiger Job (z. B. {{event.jobId}} aus „Shorts fertig“) und kein Video-Link');
+        if (!url) throw new Error(tm('Kein fertiger Job (z. B. {{event.jobId}} aus „Shorts fertig“) und kein Video-Link'));
         const job = await vs().createJob(run.location_id, { url, title: render(String(step.title ?? ''), vars).trim(), contact_id: run.contact_id, origin: 'Workflow' });
         db.insert('video_job_plans', { job_id: job.id, location_id: run.location_id, kinds, autopilot: 0, created_at: now() });
-        return `Shorts-Job gestartet – Recycling folgt, sobald er fertig ist`;
+        return tm('Shorts-Job gestartet – Recycling folgt, sobald er fertig ist');
       },
     };
     app.services.mcpTools = [...(app.services.mcpTools ?? []), ...TOOLS];
@@ -871,11 +877,11 @@ const TOOLS: Tool[] = [
       if (a.job_id) {
         if (a.list) return ((await call.api('GET', `/api/video-studio/jobs/${encodeURIComponent(a.job_id)}/recycle?targets=0`, { location: a.location_id })).items ?? []).map(slim);
         const r = await call.api('POST', `/api/video-studio/jobs/${encodeURIComponent(a.job_id)}/recycle`, { location: a.location_id, body: { kinds: a.kinds, language: a.language } });
-        return { started: (r.items ?? []).map(slim), hint: 'Läuft im Hintergrund – Stand mit list=true abfragen.' };
+        return { started: (r.items ?? []).map(slim), hint: tm('Läuft im Hintergrund – Stand mit list=true abfragen.') };
       }
       if (!a.url) throw new HttpError(400, 'job_id oder url angeben');
       const r = await call.api('POST', '/api/video-studio/recycle', { location: a.location_id, body: { url: a.url, kinds: a.kinds } });
-      return { job_id: r.job.id, status: r.job.status, kinds: r.kinds, hint: 'Erst entstehen die Shorts, danach startet das Recycling von selbst.' };
+      return { job_id: r.job.id, status: r.job.status, kinds: r.kinds, hint: tm('Erst entstehen die Shorts, danach startet das Recycling von selbst.') };
     },
   },
 ];

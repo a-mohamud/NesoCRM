@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Meta messaging (WhatsApp Cloud API, Messenger, Instagram Direct): the pure parts – webhook
@@ -102,30 +103,31 @@ const withCaption = (label: string, caption: unknown) => (caption ? `${label}\n$
 
 /** WhatsApp message → readable text (+ attachment) for the inbox. */
 export function whatsappBody(m: any): { body: string; attachment?: Attachment } {
+  const t = tApp();
   const media = (kind: string, o: any = {}): Attachment => ({ kind, media_id: o.id ? String(o.id) : undefined, mime: o.mime_type ? String(o.mime_type) : undefined, filename: o.filename ? clip(o.filename, 200) : undefined, voice: o.voice ? true : undefined });
   switch (m?.type) {
     case 'text':
       return { body: clip(m.text?.body) };
     case 'image':
-      return { body: withCaption('📷 Bild', m.image?.caption), attachment: media('image', m.image) };
+      return { body: withCaption(t('📷 Bild'), m.image?.caption), attachment: media('image', m.image) };
     case 'video':
-      return { body: withCaption('🎬 Video', m.video?.caption), attachment: media('video', m.video) };
+      return { body: withCaption(t('🎬 Video'), m.video?.caption), attachment: media('video', m.video) };
     case 'audio':
-      return { body: m.audio?.voice ? '🎤 Sprachnachricht' : '🎵 Audio', attachment: media('audio', m.audio) };
+      return { body: m.audio?.voice ? t('🎤 Sprachnachricht') : t('🎵 Audio'), attachment: media('audio', m.audio) };
     case 'document':
-      return { body: withCaption(`📄 ${clip(m.document?.filename || 'Dokument', 200)}`, m.document?.caption), attachment: media('document', m.document) };
+      return { body: withCaption(`📄 ${clip(m.document?.filename || t('Dokument'), 200)}`, m.document?.caption), attachment: media('document', m.document) };
     case 'sticker':
-      return { body: 'Sticker', attachment: media('sticker', m.sticker) };
+      return { body: t('Sticker'), attachment: media('sticker', m.sticker) };
     case 'location': {
       const l = m.location ?? {};
       const lat = Number(l.latitude);
       const lng = Number(l.longitude);
       const place = [l.name, l.address].filter(Boolean).map((x) => clip(x, 300)).join(', ');
-      return { body: `📍 Standort${place ? `: ${place}` : ''}`, attachment: Number.isFinite(lat) && Number.isFinite(lng) ? { kind: 'location', lat, lng } : undefined };
+      return { body: place ? t('📍 Standort: {place}', { place }) : t('📍 Standort'), attachment: Number.isFinite(lat) && Number.isFinite(lng) ? { kind: 'location', lat, lng } : undefined };
     }
     case 'contacts': {
       const list = (Array.isArray(m.contacts) ? m.contacts : []).map((c: any) => [c.name?.formatted_name, c.phones?.[0]?.phone].filter(Boolean).join(' '));
-      return { body: `👤 Kontakt geteilt: ${clip(list.join('; '), 1000) || '–'}` };
+      return { body: t('👤 Kontakt geteilt: {contacts}', { contacts: clip(list.join('; '), 1000) || '–' }) };
     }
     case 'button':
       return { body: clip(m.button?.text || m.button?.payload) };
@@ -133,14 +135,14 @@ export function whatsappBody(m: any): { body: string; attachment?: Attachment } 
       const i = m.interactive ?? {};
       const r = i.button_reply ?? i.list_reply;
       if (r) return { body: clip(r.title || r.id) + (r.description ? `\n${clip(r.description, 300)}` : '') };
-      return { body: 'Antwort auf ein Formular' };
+      return { body: t('Antwort auf ein Formular') };
     }
     case 'reaction':
-      return { body: m.reaction?.emoji ? `Reagiert mit ${clip(m.reaction.emoji, 20)}` : '' };
+      return { body: m.reaction?.emoji ? t('Reagiert mit {emoji}', { emoji: clip(m.reaction.emoji, 20) }) : '' };
     case 'order':
-      return { body: `🛒 Bestellung (${(m.order?.product_items ?? []).length} Artikel)` };
+      return { body: t('🛒 Bestellung ({n} Artikel)', { n: (m.order?.product_items ?? []).length }) };
     default:
-      return { body: '(Nachrichtentyp wird hier nicht angezeigt – bitte in WhatsApp ansehen)' };
+      return { body: t('(Nachrichtentyp wird hier nicht angezeigt – bitte in WhatsApp ansehen)') };
   }
 }
 
@@ -150,14 +152,15 @@ function messengerBody(msg: any): { body: string; attachment?: Attachment } {
   const a = Array.isArray(msg?.attachments) ? msg.attachments[0] : undefined;
   if (!a) return { body: text };
   const url = typeof a.payload?.url === 'string' && /^https:\/\//.test(a.payload.url) ? a.payload.url : undefined;
-  const LABEL: Record<string, string> = { image: '📷 Bild', video: '🎬 Video', audio: '🎤 Audio', file: '📄 Datei', share: '🔗 Geteilter Beitrag', story_mention: '📣 Hat dich in einer Story erwähnt', reel: '🎬 Reel', ig_reel: '🎬 Reel', sticker: 'Sticker', location: '📍 Standort' };
+  const t = tApp();
+  const LABEL: Record<string, string> = { image: t('📷 Bild'), video: t('🎬 Video'), audio: t('🎤 Audio'), file: t('📄 Datei'), share: t('🔗 Geteilter Beitrag'), story_mention: t('📣 Hat dich in einer Story erwähnt'), reel: t('🎬 Reel'), ig_reel: t('🎬 Reel'), sticker: t('Sticker'), location: t('📍 Standort') };
   if (a.type === 'location' && a.payload?.coordinates) {
     const lat = Number(a.payload.coordinates.lat);
     const lng = Number(a.payload.coordinates.long);
     return { body: text || LABEL.location, attachment: Number.isFinite(lat) && Number.isFinite(lng) ? { kind: 'location', lat, lng } : undefined };
   }
   const kind = a.type === 'file' ? 'document' : a.type === 'ig_reel' || a.type === 'reel' ? 'video' : String(a.type || 'file');
-  const label = LABEL[a.type] ?? '📎 Anhang';
+  const label = LABEL[a.type] ?? t('📎 Anhang');
   return { body: text ? `${text}` : label, attachment: url ? { kind, url } : undefined };
 }
 
@@ -166,6 +169,7 @@ const WA_STATUS = ['sent', 'delivered', 'read', 'failed'];
 /** Flattens a webhook body (any of the three objects) into messages and status updates. */
 export function parseWebhook(payload: any): MetaEvent[] {
   const out: MetaEvent[] = [];
+  const tr = tApp();
   const entries = Array.isArray(payload?.entry) ? payload.entry : [];
   if (payload?.object === 'whatsapp_business_account') {
     for (const entry of entries) {
@@ -210,7 +214,7 @@ export function parseWebhook(payload: any): MetaEvent[] {
           out.push({ kind: 'message', channel, account, from, externalId: externalId(channel, id), at, body: clip(ev.postback.title || ev.postback.payload || 'Button') });
         } else if (ev.reaction && ev.reaction.action !== 'unreact' && ev.reaction.mid) {
           const emoji = clip(ev.reaction.emoji || ev.reaction.reaction, 20);
-          out.push({ kind: 'message', channel, account, from, externalId: externalId(channel, `r:${ev.reaction.mid}:${from}:${ev.timestamp}`), at, body: `Reagiert mit ${emoji || '❤️'}` });
+          out.push({ kind: 'message', channel, account, from, externalId: externalId(channel, `r:${ev.reaction.mid}:${from}:${ev.timestamp}`), at, body: tr('Reagiert mit {emoji}', { emoji: emoji || '❤️' }) });
         } else if (ev.delivery) {
           for (const mid of Array.isArray(ev.delivery.mids) ? ev.delivery.mids : []) out.push({ kind: 'status', channel, account, status: 'delivered', externalId: externalId(channel, String(mid)), at });
           if (ev.delivery.watermark) out.push({ kind: 'status', channel, account, status: 'delivered', party: from, watermark: isoFrom(ev.delivery.watermark, 'ms'), at });
@@ -273,21 +277,22 @@ export function templateInfo(t: any): TemplateInfo {
   const footer = comps.find((c) => String(c.type).toUpperCase() === 'FOOTER');
   const buttons: any[] = comps.find((c) => String(c.type).toUpperCase() === 'BUTTONS')?.buttons ?? [];
   const slots: TemplateSlot[] = [];
+  const tr = tApp();
   let reason = '';
   const format = String(header?.format ?? (header ? 'TEXT' : '')).toUpperCase();
   if (format === 'TEXT') {
     const ex = header?.example?.header_text ?? [];
-    placeholders(header.text).forEach((p, i) => slots.push({ key: `header.${p}`, label: `Kopfzeile {{${p}}}`, kind: 'text', example: ex[i] }));
+    placeholders(header.text).forEach((p, i) => slots.push({ key: `header.${p}`, label: tr('Kopfzeile {slot}', { slot: `{{${p}}}` }), kind: 'text', example: ex[i] }));
   } else if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(format)) {
     const kind = format.toLowerCase() as 'image' | 'video' | 'document';
-    slots.push({ key: 'header.media', label: `${kind === 'image' ? 'Bild' : kind === 'video' ? 'Video' : 'Dokument'} für die Kopfzeile (https-Link)`, kind });
-  } else if (format) reason = `Kopfzeile vom Typ ${format} wird hier nicht unterstützt`;
+    slots.push({ key: 'header.media', label: tr('{media} für die Kopfzeile (https-Link)', { media: kind === 'image' ? tr('Bild') : kind === 'video' ? tr('Video') : tr('Dokument') }), kind });
+  } else if (format) reason = tr('Kopfzeile vom Typ {format} wird hier nicht unterstützt', { format });
   const bodyEx = body?.example?.body_text?.[0] ?? (body?.example?.body_text_named_params ?? []).map((x: any) => x.example);
-  placeholders(body?.text).forEach((p, i) => slots.push({ key: `body.${p}`, label: `Text {{${p}}}`, kind: 'text', example: bodyEx?.[i] }));
+  placeholders(body?.text).forEach((p, i) => slots.push({ key: `body.${p}`, label: tr('Text {slot}', { slot: `{{${p}}}` }), kind: 'text', example: bodyEx?.[i] }));
   buttons.forEach((b, i) => {
     const type = String(b.type).toUpperCase();
-    if (type === 'URL') placeholders(b.url).forEach((p) => slots.push({ key: `button.${i}.${p}`, label: `Button „${clip(b.text, 40)}“ (Link-Ende)`, kind: 'text', example: b.example?.[0] }));
-    else if (!['QUICK_REPLY', 'PHONE_NUMBER'].includes(type)) reason ||= `Button vom Typ ${type} wird hier nicht unterstützt`;
+    if (type === 'URL') placeholders(b.url).forEach((p) => slots.push({ key: `button.${i}.${p}`, label: tr('Button „{text}“ (Link-Ende)', { text: clip(b.text, 40) }), kind: 'text', example: b.example?.[0] }));
+    else if (!['QUICK_REPLY', 'PHONE_NUMBER'].includes(type)) reason ||= tr('Button vom Typ {type} wird hier nicht unterstützt', { type });
   });
   return {
     name: String(t?.name ?? ''),
@@ -308,10 +313,11 @@ export function templateInfo(t: any): TemplateInfo {
 /** Graph "components" for a template send, plus the text to keep in the conversation. */
 export function buildTemplate(t: TemplateInfo, values: Record<string, string>): { components: any[]; text: string } {
   const v: Record<string, string> = {};
+  const tr = tApp();
   for (const s of t.slots) {
     const val = String(values?.[s.key] ?? '').trim();
-    if (!val) throw new Error(`Bitte „${s.label}“ ausfüllen`);
-    if (s.kind !== 'text' && !/^https:\/\/\S+$/.test(val)) throw new Error(`„${s.label}“ muss ein https-Link sein`);
+    if (!val) throw new Error(tr('Bitte „{field}“ ausfüllen', { field: s.label }));
+    if (s.kind !== 'text' && !/^https:\/\/\S+$/.test(val)) throw new Error(tr('„{field}“ muss ein https-Link sein', { field: s.label }));
     v[s.key] = val.slice(0, s.kind === 'text' ? 1024 : 2000);
   }
   const param = (key: string, p: string) => (/^\d+$/.test(p) ? { type: 'text', text: v[key] } : { type: 'text', parameter_name: p, text: v[key] });
@@ -352,18 +358,19 @@ export class MetaApiError extends Error {
 
 /** The Meta error codes people actually run into, in plain German. */
 export function knownError(code: number, sub?: number): string | undefined {
-  if (code === 190) return 'Zugriffstoken ungültig oder abgelaufen – bitte einen neuen (dauerhaften) Token eintragen';
-  if (code === 131047 || sub === 2018278) return 'Außerhalb des 24-Stunden-Fensters – bitte eine Vorlage senden';
-  if (code === 131026) return 'Nachricht nicht zustellbar (hat die Nummer WhatsApp?)';
-  if (code === 131030) return 'Empfänger ist nicht als Testnummer freigegeben (Meta-App im Testmodus)';
-  if (code === 131049) return 'Meta hat die Marketing-Nachricht nicht zugestellt (Limit pro Person)';
-  if (code === 131050) return 'Kontakt hat Marketing-Nachrichten abbestellt';
-  if ([131056, 130429, 4, 80007, 613].includes(code)) return 'Meta drosselt gerade – bitte kurz warten';
-  if (code === 132000) return 'Anzahl der Vorlagen-Variablen passt nicht';
-  if (code === 132001) return 'Vorlage nicht gefunden (Name oder Sprache prüfen)';
-  if (code === 132015 || code === 132016) return 'Vorlage ist pausiert oder deaktiviert';
-  if (code === 133010) return 'Telefonnummer ist noch nicht bei WhatsApp registriert';
-  if (code === 551) return 'Person ist gerade nicht erreichbar';
+  const t = tApp();
+  if (code === 190) return t('Zugriffstoken ungültig oder abgelaufen – bitte einen neuen (dauerhaften) Token eintragen');
+  if (code === 131047 || sub === 2018278) return t('Außerhalb des 24-Stunden-Fensters – bitte eine Vorlage senden');
+  if (code === 131026) return t('Nachricht nicht zustellbar (hat die Nummer WhatsApp?)');
+  if (code === 131030) return t('Empfänger ist nicht als Testnummer freigegeben (Meta-App im Testmodus)');
+  if (code === 131049) return t('Meta hat die Marketing-Nachricht nicht zugestellt (Limit pro Person)');
+  if (code === 131050) return t('Kontakt hat Marketing-Nachrichten abbestellt');
+  if ([131056, 130429, 4, 80007, 613].includes(code)) return t('Meta drosselt gerade – bitte kurz warten');
+  if (code === 132000) return t('Anzahl der Vorlagen-Variablen passt nicht');
+  if (code === 132001) return t('Vorlage nicht gefunden (Name oder Sprache prüfen)');
+  if (code === 132015 || code === 132016) return t('Vorlage ist pausiert oder deaktiviert');
+  if (code === 133010) return t('Telefonnummer ist noch nicht bei WhatsApp registriert');
+  if (code === 551) return t('Person ist gerade nicht erreichbar');
   return undefined;
 }
 
@@ -373,9 +380,10 @@ export function metaErrorText(status: number, e: any): string {
   const detail = String(e?.error_data?.details || e?.error_user_msg || e?.message || '').slice(0, 300);
   const known = knownError(code, Number(e?.error_subcode));
   if (known) return known;
-  if (code === 200 || code === 10 || code === 3) return `Fehlende Berechtigung bei Meta${detail ? `: ${detail}` : ''}`;
-  if (code === 100) return `Ungültige Angabe: ${detail || 'bitte IDs prüfen'}`;
-  return `Meta (${status}${code ? `/${code}` : ''}): ${detail || 'Fehler'}`;
+  const t = tApp();
+  if (code === 200 || code === 10 || code === 3) return detail ? t('Fehlende Berechtigung bei Meta: {detail}', { detail }) : t('Fehlende Berechtigung bei Meta');
+  if (code === 100) return t('Ungültige Angabe: {detail}', { detail: detail || t('bitte IDs prüfen') });
+  return `Meta (${status}${code ? `/${code}` : ''}): ${detail || t('Fehler')}`;
 }
 
 export async function graphCall<T = any>(f: FetchLike, version: string, token: string, method: string, path: string, body?: unknown, timeoutMs = 15_000): Promise<T> {
@@ -388,7 +396,8 @@ export async function graphCall<T = any>(f: FetchLike, version: string, token: s
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
-    throw new MetaApiError(`Meta nicht erreichbar: ${(e as Error).message}`, 502);
+    const t = tApp();
+    throw new MetaApiError(t('Meta nicht erreichbar: {error}', { error: (e as Error).message }), 502);
   }
   const raw = await r.text();
   let data: any = null;

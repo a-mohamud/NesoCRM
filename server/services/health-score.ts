@@ -1,4 +1,5 @@
 import { bad, num } from '../core/http.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Customer health score: weighted signals (tickets, satisfaction, activity, invoices, deals,
@@ -58,7 +59,7 @@ export function cleanHealthConfig(b: any, cur: HealthConfig): HealthConfig {
   const range = (k: 'green' | 'yellow' | 'drop_points' | 'activity_days', min: number, max: number, label: string) => {
     if (b[k] === undefined) return;
     const v = Math.round(num(b[k], NaN));
-    if (!Number.isFinite(v) || v < min || v > max) throw bad(`${label}: ${min} bis ${max}`);
+    if (!Number.isFinite(v) || v < min || v > max) throw bad(tApp()('{label}: {min} bis {max}', { label: tApp()(label), min, max }));
     out[k] = v;
   };
   range('green', 1, 100, 'Grün ab');

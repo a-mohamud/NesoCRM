@@ -52,19 +52,19 @@ export async function captureScreenshot(url: string, o: { width?: number; height
   try {
     const endpoint = await new Promise<string>((resolve, reject) => {
       let log = '';
-      const t = setTimeout(() => reject(new Error('Chromium started no DevTools endpoint')), 15_000);
+      const t = setTimeout(() => reject(new Error('Chromium started no DevTools endpoint')), 15_000); // i18n-ignore (internal)
       child.stderr!.on('data', (d) => {
         log += String(d);
         const m = /DevTools listening on (ws:\/\/\S+)/.exec(log);
         if (m) (clearTimeout(t), resolve(m[1]));
       });
-      child.on('exit', () => reject(new Error('Chromium exited')));
+      child.on('exit', () => reject(new Error('Chromium exited'))); // i18n-ignore (internal)
       child.on('error', reject);
     });
     const ws = new WS(endpoint);
     await new Promise<void>((resolve, reject) => {
       ws.onopen = () => resolve();
-      ws.onerror = () => reject(new Error('DevTools connection failed'));
+      ws.onerror = () => reject(new Error('DevTools connection failed')); // i18n-ignore (internal)
     });
     let seq = 0;
     const waiting = new Map<number, (m: { result?: any; error?: { message: string } }) => void>();
@@ -75,7 +75,7 @@ export async function captureScreenshot(url: string, o: { width?: number; height
     const send = (method: string, params: Record<string, unknown> = {}, sessionId?: string) =>
       new Promise<any>((resolve, reject) => {
         const id = ++seq;
-        const t = setTimeout(() => (waiting.delete(id), reject(new Error(`${method}: timeout`))), 30_000);
+        const t = setTimeout(() => (waiting.delete(id), reject(new Error(`${method}: timeout`)) /* i18n-ignore – CDP protocol error */), 30_000);
         waiting.set(id, (m) => (clearTimeout(t), m.error ? reject(new Error(m.error.message)) : resolve(m.result)));
         ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
       });

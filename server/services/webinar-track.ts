@@ -7,6 +7,7 @@ import { getOrCreateConversation } from './messaging.js';
 import { eventData, nowOf } from './webinar-register.js';
 import { percentOf, roomClock, sessionEnd, type RoomClock } from './webinar-schedule.js';
 import { clock, getRegistration, getWebinar, type Registration, type Webinar } from './webinar-store.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * What happens while people watch: the room's clock, heartbeats (attendance, watch time), the offer button, questions,
@@ -75,7 +76,7 @@ export function ping(app: App, w: Webinar, reg: Registration, p: Ping, at = nowO
     app.db.run('UPDATE webinar_registrations SET replay_pos_s = ?, replay_watched_s = MIN(replay_watched_s + ?, ?), replay_at = COALESCE(replay_at, ?), last_seen_at = ? WHERE id = ?', pos, add, w.duration_s * 4, first ? nowIso : null, nowIso, reg.id);
     if (first) {
       const percent = percentOf(pos, w.duration_s);
-      note(app, w, reg, 'webinar.replay', `Aufzeichnung von „${w.title}“ angesehen`, w.settings.tags.replay);
+      note(app, w, reg, 'webinar.replay', tLoc(app, w.location_id)('Aufzeichnung von „{title}“ angesehen', { title: w.title }), w.settings.tags.replay);
       emit(app, w, reg, 'webinar.replay_watched', { percent });
     }
     return { clock: clockFor(w, reg, at) };
@@ -99,7 +100,7 @@ export function ping(app: App, w: Webinar, reg: Registration, p: Ping, at = nowO
       reg.id,
     );
     if (firstTime) {
-      note(app, w, reg, 'webinar.attended', `Im Webinar „${w.title}“ (ab ${clock(c.offset_s)} Min.)`, w.settings.tags.attended);
+      note(app, w, reg, 'webinar.attended', tLoc(app, w.location_id)('Im Webinar „{title}“ (ab {time} Min.)', { title: w.title, time: clock(c.offset_s) }), w.settings.tags.attended);
       emit(app, w, reg, 'webinar.attended', { offset_s: Math.round(c.offset_s) });
     }
   }
@@ -143,7 +144,8 @@ export function ctaClick(app: App, w: Webinar, reg: Registration, at = nowOf(app
   const first = !reg.cta_clicked_at;
   app.db.run('UPDATE webinar_registrations SET cta_clicked_at = COALESCE(cta_clicked_at, ?), cta_clicks = cta_clicks + 1 WHERE id = ?', at.toISOString(), reg.id);
   if (first) {
-    note(app, w, reg, 'webinar.cta_clicked', `Angebot im Webinar „${w.title}“ angeklickt${o.title ? `: ${o.title}` : ''}`, w.settings.tags.cta);
+    const t = tLoc(app, w.location_id);
+    note(app, w, reg, 'webinar.cta_clicked', o.title ? t('Angebot im Webinar „{title}“ angeklickt: {offer}', { title: w.title, offer: o.title }) : t('Angebot im Webinar „{title}“ angeklickt', { title: w.title }), w.settings.tags.cta);
     emit(app, w, reg, 'webinar.cta_clicked', { offer: { title: o.title, url } });
   }
   return { url };
@@ -164,7 +166,9 @@ export function attributePurchase(app: App, locationId: string, d: { contactId?:
     if (!w || t?.type !== 'product' || t.product_id !== d.productId) continue;
     const cents = Math.max(0, Math.round(Number(d.amount_cents) || 0));
     app.db.run('UPDATE webinar_registrations SET purchased_at = COALESCE(purchased_at, ?), purchase_cents = purchase_cents + ?, purchase_count = purchase_count + 1 WHERE id = ?', nowOf(app).toISOString(), cents, reg.id);
-    note(app, w, reg, 'webinar.purchased', `Nach dem Webinar „${w.title}“ gekauft (${(cents / 100).toFixed(2).replace('.', ',')} €)`, w.settings.tags.purchased, { amount_cents: cents });
+    const tr = tLoc(app, w.location_id);
+    const amount = tr.locale === 'de' ? `${(cents / 100).toFixed(2).replace('.', ',')} €` : `€${(cents / 100).toFixed(2)}`;
+    note(app, w, reg, 'webinar.purchased', tr('Nach dem Webinar „{title}“ gekauft ({amount})', { title: w.title, amount }), w.settings.tags.purchased, { amount_cents: cents });
     return true;
   }
   return false;
@@ -184,13 +188,13 @@ export function askQuestion(app: App, w: Webinar, reg: Registration, body: strin
   const contact = getContact(app, w.location_id, reg.contact_id);
   if (!contact) throw new HttpError(404, 'Kontakt nicht gefunden');
   const conversationId = getOrCreateConversation(app, w.location_id, contact.id);
-  const msg = { id: newId(), location_id: w.location_id, conversation_id: conversationId, contact_id: contact.id, channel: 'chat', direction: 'in', subject: `Webinar-Frage: ${w.title}`.slice(0, 200), body: text, status: 'received', error: '', source: 'Webinar', created_at: new Date().toISOString() };
+  const msg = { id: newId(), location_id: w.location_id, conversation_id: conversationId, contact_id: contact.id, channel: 'chat', direction: 'in', subject: tLoc(app, w.location_id)('Webinar-Frage: {title}', { title: w.title }).slice(0, 200), body: text, status: 'received', error: '', source: 'Webinar', created_at: new Date().toISOString() };
   app.db.insert('messages', msg);
   app.db.run('UPDATE conversations SET last_message_at = ?, last_message = ?, unread = unread + 1 WHERE id = ?', msg.created_at, text.slice(0, 140), conversationId);
   const c = clockFor(w, reg, at);
   const q = { id: newId(), location_id: w.location_id, webinar_id: w.id, registration_id: reg.id, contact_id: contact.id, session_start: reg.session_start, offset_s: c.state === 'running' ? c.offset_s : null, body: text, message_id: msg.id, created_at: at.toISOString() };
   app.db.insert('webinar_questions', q);
-  logActivity(app, w.location_id, contact.id, 'webinar.question', `Frage im Webinar „${w.title}“: ${text.slice(0, 120)}`, { webinar_id: w.id });
+  logActivity(app, w.location_id, contact.id, 'webinar.question', tLoc(app, w.location_id)('Frage im Webinar „{title}“: {text}', { title: w.title, text: text.slice(0, 120) }), { webinar_id: w.id });
   app.events.emit(w.location_id, 'message.inbound', { contactId: contact.id, contact, message: msg });
   return { id: q.id };
 }
@@ -213,7 +217,7 @@ export function vote(app: App, w: Webinar, reg: Registration, pollId: string, ch
   if (!picked.length) throw bad('Bitte eine Antwort wählen');
   if (!poll.multiple && picked.length > 1) throw bad('Bei dieser Umfrage ist nur eine Antwort möglich');
   const first = app.db.run('INSERT OR IGNORE INTO webinar_votes (registration_id, poll_id, webinar_id, location_id, choice, created_at) VALUES (?, ?, ?, ?, ?, ?)', reg.id, poll.id, w.id, w.location_id, JSON.stringify(picked), nowOf(app).toISOString()).changes > 0;
-  if (first) logActivity(app, w.location_id, reg.contact_id, 'webinar.poll', `Umfrage im Webinar „${w.title}“: ${poll.question.slice(0, 80)} → ${picked.map((i) => poll.options[i]).join(', ')}`, { webinar_id: w.id, poll_id: poll.id });
+  if (first) logActivity(app, w.location_id, reg.contact_id, 'webinar.poll', tLoc(app, w.location_id)('Umfrage im Webinar „{title}“: {question} → {answer}', { title: w.title, question: poll.question.slice(0, 80), answer: picked.map((i) => poll.options[i]).join(', ') }), { webinar_id: w.id, poll_id: poll.id });
   return pollCounts(app, w, poll.id, reg.id);
 }
 
@@ -261,10 +265,10 @@ export async function finalizeDue(app: App, at = nowOf(app)): Promise<number> {
     const fresh = getRegistration(app, reg.id)!;
     if (fresh.attended_at) {
       const reached = clock(fresh.last_off ?? 0);
-      note(app, w, fresh, 'webinar.watched', `Webinar „${w.title}“: ${fresh.watch_pct} % gesehen (bis ${reached} Min.)`, [], { percent: fresh.watch_pct, watched_s: Math.round(fresh.watched_s), left_at: fresh.left_at });
+      note(app, w, fresh, 'webinar.watched', tLoc(app, w.location_id)('Webinar „{title}“: {pct} % gesehen (bis {time} Min.)', { title: w.title, pct: fresh.watch_pct, time: reached }), [], { percent: fresh.watch_pct, watched_s: Math.round(fresh.watched_s), left_at: fresh.left_at });
       emit(app, w, fresh, 'webinar.watched_percent', { percent: fresh.watch_pct, watched_s: Math.round(fresh.watched_s), left_at: fresh.left_at });
     } else {
-      note(app, w, fresh, 'webinar.missed', `Webinar „${w.title}“ verpasst`, w.settings.tags.missed);
+      note(app, w, fresh, 'webinar.missed', tLoc(app, w.location_id)('Webinar „{title}“ verpasst', { title: w.title }), w.settings.tags.missed);
       emit(app, w, fresh, 'webinar.missed');
     }
   }

@@ -7,6 +7,7 @@ import { getContact, logActivity } from '../services/contacts.js';
 import { auditLog, clip, limiter, money, openToken, purchaseTag, setPurchaseAccess, signToken, stripeCall, stripeKeyOf } from '../services/creator-kit.js';
 import { planLabel } from '../services/creator-plans.js';
 import { creditClosed, openCents } from '../services/invoice-model.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * The hosted billing page for subscribers (/abo/<signed link>): see the subscriptions and instalment plans, update the card
@@ -88,19 +89,21 @@ export const dunningBillingModule: Module = {
       }
     };
 
-    const frame = (location: any, body: string, status = 200): RawResult => {
+    const frame = (location: any, body: string, tl: STFn, status = 200): RawResult => {
       const brand = location.settings?.branding ?? {};
       const color = /^#[0-9a-f]{6}$/i.test(brand.color ?? '') ? brand.color : '#2563eb';
       const name = brand.name || location.name;
       const logo = brand.logo_url || location.logo_url || '';
-      const r = html(`<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Abo &amp; Rechnungen · ${escapeHtml(name)}</title>
+      const r = html(`<!doctype html><html lang="${tl.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(tl('Abo & Rechnungen'))} · ${escapeHtml(name)}</title>
 <meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer"><style>${CSS}:root{--brand:${color}}</style></head><body><div class="wrap">
 <div class="brand">${logo ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(name)}">` : `<span>${escapeHtml(name)}</span>`}</div>${body}</div></body></html>`, status);
       Object.assign(r.headers, { 'cache-control': 'no-store', 'x-frame-options': 'DENY', 'referrer-policy': 'no-referrer', 'content-security-policy': "default-src 'none'; img-src * data:; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" });
       return r;
     };
-    const gone = () =>
-      html('<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Link abgelaufen</title><body style="font-family:system-ui;padding:40px 16px;max-width:520px;margin:0 auto;text-align:center"><h1>Dieser Link ist abgelaufen</h1><p style="color:#64748b">Bitte fordere bei uns einen neuen Link zur Abo-Verwaltung an.</p></body></html>', 410);
+    const gone = () => {
+      const t = tApp();
+      return html(`<!doctype html><html lang="${t.locale}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(t('Link abgelaufen'))}</title><body style="font-family:system-ui;padding:40px 16px;max-width:520px;margin:0 auto;text-align:center"><h1>${escapeHtml(t('Dieser Link ist abgelaufen'))}</h1><p style="color:#64748b">${escapeHtml(t('Bitte fordere bei uns einen neuen Link zur Abo-Verwaltung an.'))}</p></body></html>`, 410);
+    };
 
     // --- what the person has ----------------------------------------------------------------------------------------
     const subscriptionIds = (l: string, contactId: string) => {
@@ -112,7 +115,7 @@ export const dunningBillingModule: Module = {
       return { plans, subs };
     };
 
-    async function views(l: string, contactId: string): Promise<View[]> {
+    async function views(l: string, contactId: string, tl: STFn): Promise<View[]> {
       const { plans, subs } = subscriptionIds(l, contactId);
       const connected = !!stripeKeyOf(app, l);
       const live = async (id: string): Promise<any | null> => {
@@ -133,20 +136,20 @@ export const dunningBillingModule: Module = {
         const paused = !!s?.pause_collection;
         const status = String(s?.status ?? '');
         const open = !!caseOf(base.id) || status === 'past_due' || status === 'unpaid';
-        let label = 'Aktiv';
+        let label = tl('Aktiv');
         let tone: View['tone'] = 'ok';
-        if (!s) (label = 'Status nicht abrufbar'), (tone = '');
-        else if (status === 'canceled') (label = 'Beendet'), (tone = '');
-        else if (open) (label = 'Zahlung offen'), (tone = 'err');
-        else if (paused) (label = 'Pausiert'), (tone = 'warn');
-        else if (cancelAt) (label = 'Gekündigt'), (tone = 'warn');
+        if (!s) (label = tl('Status nicht abrufbar')), (tone = '');
+        else if (status === 'canceled') (label = tl('Beendet')), (tone = '');
+        else if (open) (label = tl('Zahlung offen')), (tone = 'err');
+        else if (paused) (label = tl('Pausiert')), (tone = 'warn');
+        else if (cancelAt) (label = tl('Gekündigt')), (tone = 'warn');
         return { status, label, tone, next: end && !cancelAt && !paused && status !== 'canceled' ? new Date(end * 1000).toISOString() : '', amount: unit ? money(unit, String(item?.price?.currency ?? 'EUR')) : '', paused, cancelling: cancelAt, open, allow: { pause: false, cancel: false, cancelNow: false, switch: [] }, ...base } as View;
       };
       for (const p of plans) {
         const s = await live(p.stripe_subscription);
         const name = db.get<any>('SELECT name FROM products WHERE id = ?', p.product_id)?.name ?? p.plan_name;
         const v = info(s, { id: p.stripe_subscription, name, plan: { label: p.plan_name || planLabel(p, p.currency), paid: p.paid_count, of: p.installments, access: p.access, status: p.status } });
-        if (p.status === 'completed') Object.assign(v, { label: 'Abbezahlt', tone: 'ok', next: '', open: false, cancelling: '' });
+        if (p.status === 'completed') Object.assign(v, { label: tl('Abbezahlt'), tone: 'ok', next: '', open: false, cancelling: '' });
         out.push(v);
       }
       const seen = new Set<string>();
@@ -155,13 +158,13 @@ export const dunningBillingModule: Module = {
         seen.add(sub.subscription);
         const p = db.get<any>('SELECT * FROM products WHERE id = ? AND location_id = ?', sub.product_id, l);
         const s = await live(sub.subscription);
-        const v = info(s, { id: sub.subscription, name: p?.name ?? 'Abo' });
+        const v = info(s, { id: sub.subscription, name: p?.name ?? tl('Abonnement') });
         const ps = app.services.dunning.productSettings(l, sub.product_id);
         v.allow = {
           pause: ps.allow_pause && !!s && v.status !== 'canceled',
           cancel: ps.allow_cancel && !!s && v.status !== 'canceled',
           cancelNow: ps.cancel_mode === 'now',
-          switch: s && v.status !== 'canceled' ? ps.switch_to.map((id: string) => db.get<any>('SELECT * FROM products WHERE id = ? AND location_id = ? AND active = 1 AND recurring IS NOT NULL', id, l)).filter(Boolean).map((t: any) => ({ id: t.id, name: t.name, price: `${money(app.services.stripeBuy?.grossOf(t).gross ?? t.price_cents, t.currency)} / ${t.recurring === 'year' ? 'Jahr' : 'Monat'}` })) : [],
+          switch: s && v.status !== 'canceled' ? ps.switch_to.map((id: string) => db.get<any>('SELECT * FROM products WHERE id = ? AND location_id = ? AND active = 1 AND recurring IS NOT NULL', id, l)).filter(Boolean).map((t: any) => ({ id: t.id, name: t.name, price: tl(t.recurring === 'year' ? '{price} / Jahr' : '{price} / Monat', { price: money(app.services.stripeBuy?.grossOf(t).gross ?? t.price_cents, t.currency) }) })) : [],
         };
         out.push(v);
       }
@@ -176,43 +179,44 @@ export const dunningBillingModule: Module = {
         contactId,
       );
     /** The amount column: the total, and what is still open when a payment, a credit note or a deducted partial invoice took part of it. */
-    const invoiceState = (i: any) => {
+    const invoiceState = (i: any, tl: STFn) => {
       const open = i.status === 'sent' ? openCents(i) : 0;
       const pill =
-        i.status === 'paid' ? '<span class="pill ok">bezahlt</span>'
-        : i.status === 'void' ? `<span class="pill">${creditClosed(i) ? 'gutgeschrieben' : 'storniert'}</span>`
-        : open > 0 ? '<span class="pill warn">offen</span>'
-        : '<span class="pill ok">ausgeglichen</span>';
-      const amount = `${escapeHtml(money(i.total_cents, i.currency))}${open > 0 && open < i.total_cents ? `<div class="muted small">offen ${escapeHtml(money(open, i.currency))}</div>` : ''}`;
+        i.status === 'paid' ? `<span class="pill ok">${escapeHtml(tl('bezahlt'))}</span>`
+        : i.status === 'void' ? `<span class="pill">${escapeHtml(tl(creditClosed(i) ? 'gutgeschrieben' : 'storniert'))}</span>`
+        : open > 0 ? `<span class="pill warn">${escapeHtml(tl('offen'))}</span>`
+        : `<span class="pill ok">${escapeHtml(tl('ausgeglichen'))}</span>`;
+      const amount = `${escapeHtml(money(i.total_cents, i.currency))}${open > 0 && open < i.total_cents ? `<div class="muted small">${escapeHtml(tl('offen {amount}', { amount: money(open, i.currency) }))}</div>` : ''}`;
       return { pill, amount };
     };
 
-    const dateDe = (iso: string, tz: string) => (iso ? new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: tz }).format(new Date(iso)) : '');
+    const dateDe = (iso: string, tz: string, tl: STFn = tApp()) => (iso ? new Intl.DateTimeFormat(tl.locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: tz }).format(new Date(iso)) : '');
 
     async function page(token: string, msg = ''): Promise<RawResult> {
       const f = loc(token);
       if (!f) return gone();
       const { contact, location, p } = f;
       const tz = location.timezone || 'Europe/Berlin';
-      const list = await views(p.l, contact.id);
+      const tl = tLoc(app, p.l);
+      const list = await views(p.l, contact.id, tl);
       const m = MESSAGES[msg];
       const hasOpen = list.some((v) => v.open);
       const base = `/abo/${encodeURIComponent(token)}`;
-      const form = (action: string, sub: string, label: string, cls = '', extra = '') => `<form method="post" action="${base}/${action}"><input type="hidden" name="sub" value="${escapeHtml(sub)}">${extra}<button class="${cls}">${escapeHtml(label)}</button></form>`;
+      const form = (action: string, sub: string, label: string, cls = '', extra = '') => `<form method="post" action="${base}/${action}"><input type="hidden" name="sub" value="${escapeHtml(sub)}">${extra}<button class="${cls}">${escapeHtml(tl(label))}</button></form>`;
       const cards = list
         .map((v) => {
           const acts = [form('card', v.id, v.open ? 'Zahlungsmethode jetzt aktualisieren' : 'Zahlungsmethode ändern', v.open ? 'primary' : '')];
           if (v.status !== 'canceled' && !v.plan) {
             if (v.allow.pause) acts.push(v.paused ? form('resume', v.id, 'Abo fortsetzen') : form('pause', v.id, 'Abo pausieren'));
-            if (v.allow.switch.length) acts.push(`<form method="post" action="${base}/switch"><input type="hidden" name="sub" value="${escapeHtml(v.id)}"><select name="product" aria-label="Neuer Tarif">${v.allow.switch.map((o) => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)} – ${escapeHtml(o.price)}</option>`).join('')}</select> <button>Tarif wechseln</button></form>`);
+            if (v.allow.switch.length) acts.push(`<form method="post" action="${base}/switch"><input type="hidden" name="sub" value="${escapeHtml(v.id)}"><select name="product" aria-label="${escapeHtml(tl('Neuer Tarif'))}">${v.allow.switch.map((o) => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)} – ${escapeHtml(o.price)}</option>`).join('')}</select> <button>${escapeHtml(tl('Tarif wechseln'))}</button></form>`);
             if (v.cancelling && v.allow.cancel) acts.push(form('uncancel', v.id, 'Kündigung zurücknehmen'));
             else if (v.allow.cancel) acts.push(form('cancel', v.id, v.allow.cancelNow ? 'Sofort kündigen' : 'Zum Laufzeitende kündigen', 'danger'));
           }
           const meta = [
-            v.plan ? `Ratenzahlung: ${v.plan.label} – ${v.plan.paid} von ${v.plan.of} Raten bezahlt` : '',
-            v.amount ? `${v.amount} je Abrechnung` : '',
-            v.next ? `Nächste Zahlung am ${dateDe(v.next, tz)}` : '',
-            v.cancelling ? `Endet am ${dateDe(v.cancelling, tz)}` : '',
+            v.plan ? tl('Ratenzahlung: {plan} – {paid} von {of} Raten bezahlt', { plan: v.plan.label, paid: v.plan.paid, of: v.plan.of }) : '',
+            v.amount ? tl('{amount} je Abrechnung', { amount: v.amount }) : '',
+            v.next ? tl('Nächste Zahlung am {date}', { date: dateDe(v.next, tz, tl) }) : '',
+            v.cancelling ? tl('Endet am {date}', { date: dateDe(v.cancelling, tz, tl) }) : '',
           ].filter(Boolean);
           return `<section class="card"><div class="top"><div><h2 style="margin:0">${escapeHtml(v.name)}</h2>${meta.map((x) => `<div class="muted small">${escapeHtml(x)}</div>`).join('')}</div><span class="pill ${v.tone}">${escapeHtml(v.label)}</span></div>${v.status === 'canceled' && !v.plan ? '' : `<div class="acts">${acts.join('')}</div>`}</section>`;
         })
@@ -220,20 +224,20 @@ export const dunningBillingModule: Module = {
       const inv = invoicesOf(p.l, contact.id);
       const invRows = inv
         .map((i) => {
-          const s = invoiceState(i);
-          return `<tr><td><a href="${app.baseUrl()}/i/${encodeURIComponent(i.public_token)}" target="_blank" rel="noopener">${escapeHtml(i.number)}</a><div class="muted small">${escapeHtml(i.title ?? '')}</div></td><td>${escapeHtml(dateDe(i.issued_at, tz))}</td><td class="num">${s.amount}</td><td>${s.pill}</td></tr>`;
+          const s = invoiceState(i, tl);
+          return `<tr><td><a href="${app.baseUrl()}/i/${encodeURIComponent(i.public_token)}" target="_blank" rel="noopener">${escapeHtml(i.number)}</a><div class="muted small">${escapeHtml(i.title ?? '')}</div></td><td>${escapeHtml(dateDe(i.issued_at, tz, tl))}</td><td class="num">${s.amount}</td><td>${s.pill}</td></tr>`;
         })
         .join('');
-      const body = `<h1>Abo &amp; Rechnungen</h1><p class="muted">Hallo ${escapeHtml(contact.first_name || contact.email || '')}, hier verwaltest du deine Zahlungen bei ${escapeHtml(location.settings?.branding?.name || location.name)}.</p>
-${m ? `<div class="alert ${m[1]}" role="status">${escapeHtml(m[0])}</div>` : ''}${hasOpen && !m ? '<div class="alert err" role="alert">Eine Zahlung ist fehlgeschlagen. Bitte aktualisiere deine Zahlungsmethode – meist ist es eine abgelaufene Karte.</div>' : ''}
-${cards || '<div class="card"><p class="muted" style="margin:0">Es gibt kein Abo und keine Ratenzahlung für diese E-Mail-Adresse.</p></div>'}
-<h2>Rechnungen</h2>${invRows ? `<div class="card" style="padding:6px 16px"><table><thead><tr><th>Rechnung</th><th>Datum</th><th class="num">Betrag</th><th>Status</th></tr></thead><tbody>${invRows}</tbody></table></div>` : '<p class="muted">Noch keine Rechnungen.</p>'}
-${location.email ? `<p class="muted small">Fragen? <a href="mailto:${escapeHtml(location.email)}">${escapeHtml(location.email)}</a></p>` : ''}`;
-      return frame(location, body);
+      const body = `<h1>${escapeHtml(tl('Abo & Rechnungen'))}</h1><p class="muted">${escapeHtml(tl('Hallo {name}, hier verwaltest du deine Zahlungen bei {business}.', { name: contact.first_name || contact.email || '', business: location.settings?.branding?.name || location.name }))}</p>
+${m ? `<div class="alert ${m[1]}" role="status">${escapeHtml(tl(m[0]))}</div>` : ''}${hasOpen && !m ? `<div class="alert err" role="alert">${escapeHtml(tl('Eine Zahlung ist fehlgeschlagen. Bitte aktualisiere deine Zahlungsmethode – meist ist es eine abgelaufene Karte.'))}</div>` : ''}
+${cards || `<div class="card"><p class="muted" style="margin:0">${escapeHtml(tl('Es gibt kein Abo und keine Ratenzahlung für diese E-Mail-Adresse.'))}</p></div>`}
+<h2>${escapeHtml(tl('Rechnungen'))}</h2>${invRows ? `<div class="card" style="padding:6px 16px"><table><thead><tr><th>${escapeHtml(tl('Rechnung'))}</th><th>${escapeHtml(tl('Datum'))}</th><th class="num">${escapeHtml(tl('Betrag'))}</th><th>${escapeHtml(tl('Status'))}</th></tr></thead><tbody>${invRows}</tbody></table></div>` : `<p class="muted">${escapeHtml(tl('Noch keine Rechnungen.'))}</p>`}
+${location.email ? `<p class="muted small">${escapeHtml(tl('Fragen?'))} <a href="mailto:${escapeHtml(location.email)}">${escapeHtml(location.email)}</a></p>` : ''}`;
+      return frame(location, body, tl);
     }
 
     router.get('/abo/:token', 'public', async (ctx) => {
-      if (GET_LIMIT(ctx.ip)) return html('Zu viele Anfragen', 429);
+      if (GET_LIMIT(ctx.ip)) return html(escapeHtml(tApp()('Zu viele Anfragen')), 429);
       const m = String(ctx.query.get('m') ?? '');
       return page(ctx.params.token, MESSAGES[m] ? m : '');
     });
@@ -263,10 +267,11 @@ ${location.email ? `<p class="muted small">Fragen? <a href="mailto:${escapeHtml(
       const open = await stripeCall<any>(app, l, 'GET', '/v1/invoices', { subscription: subId, status: 'open', limit: 5 }).catch(() => ({ data: [] }));
       for (const inv of open.data ?? []) await stripeCall(app, l, 'POST', `/v1/invoices/${encodeURIComponent(inv.id)}/pay`, {}, { idempotencyKey: `card-update-pay-${sessionId}-${inv.id}` }).catch(() => undefined);
       const contactId = String(s.metadata.contact_id ?? '');
-      if (contactId) logActivity(app, l, contactId, 'billing.card_updated', 'Zahlungsmethode über die Abo-Verwaltung aktualisiert');
+      const tl = tLoc(app, l);
+      if (contactId) logActivity(app, l, contactId, 'billing.card_updated', tl('Zahlungsmethode über die Abo-Verwaltung aktualisiert'));
       const c = db.get<any>(`SELECT id FROM dunning_cases WHERE location_id = ? AND stripe_subscription = ? AND status IN ('open','failed') ORDER BY created_at DESC LIMIT 1`, l, subId);
-      if (c) app.services.dunning.caseEvent({ id: c.id, location_id: l }, 'card_updated', 'Neue Zahlungsmethode gespeichert');
-      auditLog(app, undefined, l, 'billing.card_updated', 'Zahlungsmethode aktualisiert (Abo-Verwaltung)', subId, 'Kunde');
+      if (c) app.services.dunning.caseEvent({ id: c.id, location_id: l }, 'card_updated', tl('Neue Zahlungsmethode gespeichert'));
+      auditLog(app, undefined, l, 'billing.card_updated', tl('Zahlungsmethode aktualisiert (Abo-Verwaltung)'), subId, tl('Kunde'));
       return true;
     }
     app.services.billingPage = { applyNewCard };
@@ -342,9 +347,12 @@ ${location.email ? `<p class="muted small">Fragen? <a href="mailto:${escapeHtml(
       if (!pr) return undefined;
       return (what === 'pause' ? pr.settings.allow_pause : pr.settings.allow_cancel) ? pr : undefined;
     };
-    const note = (f: { p: { l: string }; contact: { id: string } }, action: string, summary: string, subId: string) => {
-      logActivity(app, f.p.l, f.contact.id, `billing.${action}`, summary);
-      auditLog(app, undefined, f.p.l, `billing.${action}`, summary, subId, 'Kunde');
+    /** `summary` is a message id with `vars`; it is stored in the sub-account's language. */
+    const note = (f: { p: { l: string }; contact: { id: string } }, action: string, summary: string, subId: string, vars?: Record<string, string>) => {
+      const tl = tLoc(app, f.p.l);
+      const text = tl(summary, vars);
+      logActivity(app, f.p.l, f.contact.id, `billing.${action}`, text);
+      auditLog(app, undefined, f.p.l, `billing.${action}`, text, subId, tl('Kunde'));
     };
 
     post('pause', async (f, _ctx, subId) => {
@@ -364,7 +372,7 @@ ${location.email ? `<p class="muted small">Fragen? <a href="mailto:${escapeHtml(
       if (!pr) return 'denied';
       if (pr.settings.cancel_mode === 'now') await stripeCall(app, f.p.l, 'DELETE', `/v1/subscriptions/${encodeURIComponent(subId)}`);
       else await stripeCall(app, f.p.l, 'POST', `/v1/subscriptions/${encodeURIComponent(subId)}`, { cancel_at_period_end: true });
-      note(f, 'canceled', `Abo über die Abo-Verwaltung gekündigt (${pr.settings.cancel_mode === 'now' ? 'sofort' : 'zum Laufzeitende'})`, subId);
+      note(f, 'canceled', pr.settings.cancel_mode === 'now' ? 'Abo über die Abo-Verwaltung gekündigt (sofort)' : 'Abo über die Abo-Verwaltung gekündigt (zum Laufzeitende)', subId);
       app.events.emit(f.p.l, 'billing.cancel_requested', { contactId: f.contact.id, subscription: subId, productId: pr.id, immediate: pr.settings.cancel_mode === 'now' });
       return 'canceled';
     });
@@ -400,10 +408,11 @@ ${location.email ? `<p class="muted small">Fragen? <a href="mailto:${escapeHtml(
       );
       // The access follows the product: the old purchase tag goes, the new one comes.
       const oldTag = purchaseTag(app, f.p.l, pr.id);
-      if (oldTag && oldTag !== tag) setPurchaseAccess(app, f.p.l, f.contact.id, pr.id, oldTag, false, 'Tarif gewechselt');
-      setPurchaseAccess(app, f.p.l, f.contact.id, target.id, tag, true, 'Tarif gewechselt');
+      const switched = tLoc(app, f.p.l)('Tarif gewechselt');
+      if (oldTag && oldTag !== tag) setPurchaseAccess(app, f.p.l, f.contact.id, pr.id, oldTag, false, switched);
+      setPurchaseAccess(app, f.p.l, f.contact.id, target.id, tag, true, switched);
       db.run(`UPDATE stripe_checkouts SET product_id = ? WHERE location_id = ? AND subscription = ? AND kind = 'product'`, target.id, f.p.l, subId);
-      note(f, 'switched', `Tarif über die Abo-Verwaltung gewechselt zu „${target.name}“`, subId);
+      note(f, 'switched', 'Tarif über die Abo-Verwaltung gewechselt zu „{name}“', subId, { name: String(target.name) });
       app.events.emit(f.p.l, 'billing.plan_switched', { contactId: f.contact.id, subscription: subId, fromProductId: pr.id, productId: target.id, product: { id: target.id, name: target.name } });
       return 'switched';
     });
@@ -412,7 +421,7 @@ ${location.email ? `<p class="muted small">Fragen? <a href="mailto:${escapeHtml(
     const hasBilling = (l: string, contactId: string) => !!db.get('SELECT 1 FROM plan_subscriptions WHERE location_id = ? AND contact_id = ? UNION SELECT 1 FROM stripe_checkouts WHERE location_id = ? AND contact_id = ? AND kind = \'product\' AND subscription IS NOT NULL AND subscription != \'\' LIMIT 1', l, contactId, l, contactId);
     app.services.portalHeader = [
       ...(app.services.portalHeader ?? []),
-      (p: any, m: any) => (hasBilling(p.locationId, m.contact.id) ? `<a href="${p.base}/abo" style="font-size:14px">Abo &amp; Rechnungen</a>` : ''),
+      (p: any, m: any) => (hasBilling(p.locationId, m.contact.id) ? `<a href="${p.base}/abo" style="font-size:14px">${escapeHtml(tLoc(app, p.locationId)('Abo & Rechnungen'))}</a>` : ''),
     ];
     router.get('/portal/:p/abo', 'public', (ctx) => {
       const kit = app.services.portalKit;

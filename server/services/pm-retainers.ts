@@ -8,6 +8,10 @@ import type { RetainerFacts } from './pm-costing.js';
 import { dayOf, getProject, getSettings, projectContact, todayIn, tzOf, type Actor, type ProjectRow } from './pm-core.js';
 import { addDays } from './pm-schedule.js';
 import { billedSeconds, type TimeRow } from './pm-time.js';
+import { tApp, tLoc } from '../i18n/index.js';
+
+/** Messages in the instance language (static ids for the catalog). */
+const tm = tApp();
 
 /**
  * Retainers (docs/projects.md#retainers): a monthly hour contingent for a client or one project at a fixed price, with a carry-over
@@ -60,7 +64,7 @@ const retainerRow = (app: App, loc: string, rid: string): RetainerRow => {
 
 const num = (v: unknown, label: string, min: number, max: number): number => {
   const n = Number(v);
-  if (v === '' || v === null || v === undefined || !Number.isFinite(n) || n < min || n > max) throw bad(`${label}: Zahl zwischen ${min} und ${max}`);
+  if (v === '' || v === null || v === undefined || !Number.isFinite(n) || n < min || n > max) throw bad(tm('{label}: Zahl zwischen {min} und {max}', { label: tm(label), min, max }));
   return n;
 };
 const centsOf = (v: unknown, label: string) => Math.round(num(v, label, 0, 100_000_000_00));
@@ -234,11 +238,12 @@ export function previewMonth(app: App, loc: string, r: RetainerRow, month: strin
   const unapproved = settings.approval_required ? entries.filter((e) => e.approval !== 'approved') : [];
   const used = counted.reduce((s, e) => s + billedSeconds(e.seconds, settings.round_up_minutes), 0) / 3600;
   const p = retainerPeriod({ included_hours: r.hours_per_month, carry_in_hours: carryIn, used_hours: used, rollover: r.rollover, rollover_max_hours: r.rollover_max_hours });
-  const lines = retainerLines(r, p, month);
+  const tl = tLoc(app, loc);
+  const lines = retainerLines(r, p, month, tl);
   return {
     ...p,
     month,
-    label: monthLabel(month),
+    label: monthLabel(month, tl.locale),
     due: month < thisMonth(app, loc),
     entries: counted.length,
     unapproved_hours: round2(unapproved.reduce((s, e) => s + e.seconds, 0) / 3600),
@@ -262,13 +267,13 @@ export function closeMonth(app: App, loc: string, rid: string, b: { month?: stri
   if (!next.month) throw new HttpError(409, 'Für diesen Retainer ist kein Monat mehr offen');
   const month = b.month ? String(b.month) : next.month;
   if (!isMonth(month)) throw bad('Monat als JJJJ-MM');
-  if (month !== next.month) throw new HttpError(409, `Monate werden der Reihe nach abgeschlossen – zuerst ${monthLabel(next.month)}`);
-  if (!next.due) throw new HttpError(409, `${monthLabel(month)} ist noch nicht vorbei`);
+  if (month !== next.month) throw new HttpError(409, tm('Monate werden der Reihe nach abgeschlossen – zuerst {month}', { month: monthLabel(next.month, tm.locale) }));
+  if (!next.due) throw new HttpError(409, tm('{month} ist noch nicht vorbei', { month: monthLabel(month, tm.locale) }));
   const contactId = r.contact_id ?? (r.project_id ? projectContact(app, loc, getProject(app, loc, r.project_id)) : null);
   if (!contactId) throw bad('Der Retainer hat keinen Kunden – bitte einen Kontakt hinterlegen');
   const settings = getSettings(app, loc);
   const preview = previewMonth(app, loc, r, month);
-  if (preview.unapproved_hours > 0 && !b.include_unapproved) throw new HttpError(409, `In ${preview.label} sind noch ${String(preview.unapproved_hours).replace('.', ',')} Std. nicht freigegeben – erst freigeben oder ausdrücklich mitnehmen`);
+  if (preview.unapproved_hours > 0 && !b.include_unapproved) throw new HttpError(409, tm('In {month} sind noch {hours} Std. nicht freigegeben – erst freigeben oder ausdrücklich mitnehmen', { month: preview.label, hours: tm.locale === 'de' ? String(preview.unapproved_hours).replace('.', ',') : String(preview.unapproved_hours) }));
   const all = periodsOf(app, loc, r.id);
   const valid = validPeriods(app, loc, r.id);
   const freed = all.filter((p) => p.month === month && p.invoice_id && !valid.includes(p)).map((p) => p.invoice_id!);
@@ -317,7 +322,7 @@ export function closeMonth(app: App, loc: string, rid: string, b: { month?: stri
     app.db.run('DELETE FROM invoices WHERE id = ? AND location_id = ?', invoice.id, loc);
     throw e;
   }
-  app.services.audit?.({ action: 'pm.retainer.close', actor: actor.name, userId: actor.id, locationId: loc, entityId: r.id, summary: `Retainer „${r.name}“ ${preview.label}: ${preview.used_hours} Std. genutzt, ${preview.overage_hours} Std. Mehrstunden, Übertrag ${preview.carry_out_hours} Std.` });
+  app.services.audit?.({ action: 'pm.retainer.close', actor: actor.name, userId: actor.id, locationId: loc, entityId: r.id, summary: tm('Retainer „{name}“ {month}: {used} Std. genutzt, {overage} Std. Mehrstunden, Übertrag {carry} Std.', { name: r.name, month: preview.label, used: preview.used_hours, overage: preview.overage_hours, carry: preview.carry_out_hours }) });
   app.events.emit(loc, 'retainer.closed', { contactId, retainerId: r.id, month, invoiceId: invoice.id, used_hours: preview.used_hours, overage_hours: preview.overage_hours, carry_out_hours: preview.carry_out_hours });
   return { period: row, invoice: { id: invoice.id, total_cents: invoice.total_cents, subtotal_cents: invoice.subtotal_cents, status: invoice.status, contact_id: invoice.contact_id } };
 }
@@ -331,7 +336,7 @@ export function autoCloseRetainers(app: App, max = 20, only?: Set<string>): numb
     try {
       const next = nextMonth(app, r.location_id, r);
       if (!next.month || !next.due) continue;
-      closeMonth(app, r.location_id, r.id, {}, { id: null, name: 'Automatischer Monatsabschluss', via: 'automation' });
+      closeMonth(app, r.location_id, r.id, {}, { id: null, name: tm('Automatischer Monatsabschluss'), via: 'automation' });
       n++;
     } catch (e) {
       // Unapproved time, a missing customer …: left for a person; the reason is in the audit log once a day at most.
@@ -375,7 +380,7 @@ export function retainerOut(app: App, loc: string, r: RetainerRow, withPeriods =
     out.periods = periods
       .map((p) => {
         const inv = p.invoice_id ? invoices.get(p.invoice_id) : undefined;
-        return { ...p, label: monthLabel(p.month), void: !inv || inv.status === 'void', invoice: inv ? { id: inv.id, number: isDraftNumber(inv.number) ? '' : inv.number, status: inv.status, subtotal_cents: inv.subtotal_cents } : null };
+        return { ...p, label: monthLabel(p.month, tm.locale), void: !inv || inv.status === 'void', invoice: inv ? { id: inv.id, number: isDraftNumber(inv.number) ? '' : inv.number, status: inv.status, subtotal_cents: inv.subtotal_cents } : null };
       })
       .reverse();
   }

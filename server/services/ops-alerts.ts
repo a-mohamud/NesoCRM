@@ -1,4 +1,5 @@
 import { statfsSync } from 'node:fs';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Health checks and alert formatting for operations (modules/ops-alerts.ts, docs/backups.md#uptime-and-alerts). Pure apart
@@ -35,38 +36,39 @@ export function diskFree(dir: string): { percent: number; free: number; total: n
 export const DISK_FAIL_PERCENT = 10;
 export const DISK_WARN_PERCENT = 20;
 
-export function diskCheck(free: { percent: number; free: number } | undefined): Check {
-  if (!free) return { status: 'off', detail: 'Freier Speicher nicht messbar' };
-  const gb = (free.free / 1024 ** 3).toFixed(1).replace('.', ',');
-  const pct = String(free.percent).replace('.', ',');
-  if (free.percent < DISK_FAIL_PERCENT) return { status: 'fail', detail: `Nur noch ${pct} % frei (${gb} GB)`, value: free.percent };
-  if (free.percent < DISK_WARN_PERCENT) return { status: 'warn', detail: `${pct} % frei (${gb} GB)`, value: free.percent };
-  return { status: 'ok', detail: `${pct} % frei (${gb} GB)`, value: free.percent };
+export function diskCheck(free: { percent: number; free: number } | undefined, t: STFn = tApp()): Check {
+  if (!free) return { status: 'off', detail: t('Freier Speicher nicht messbar') };
+  const dec = (s: string) => (t.locale === 'de' ? s.replace('.', ',') : s);
+  const gb = dec((free.free / 1024 ** 3).toFixed(1));
+  const pct = dec(String(free.percent));
+  if (free.percent < DISK_FAIL_PERCENT) return { status: 'fail', detail: t('Nur noch {pct} % frei ({gb} GB)', { pct, gb }), value: free.percent };
+  if (free.percent < DISK_WARN_PERCENT) return { status: 'warn', detail: t('{pct} % frei ({gb} GB)', { pct, gb }), value: free.percent };
+  return { status: 'ok', detail: t('{pct} % frei ({gb} GB)', { pct, gb }), value: free.percent };
 }
 
 /** The scheduler counts as stalled when its last round is longer ago than ten ticks and at least five minutes. */
-export function tickCheck(lastTickAt: number | undefined, startedAt: number, tickMs: number, at: number): Check {
-  if (tickMs <= 0) return { status: 'off', detail: 'Hintergrund-Aufgaben abgeschaltet (PGHL_TICK_MS=0)' };
+export function tickCheck(lastTickAt: number | undefined, startedAt: number, tickMs: number, at: number, t: STFn = tApp()): Check {
+  if (tickMs <= 0) return { status: 'off', detail: t('Hintergrund-Aufgaben abgeschaltet (PGHL_TICK_MS=0)') };
   const limit = Math.max(5 * 60_000, tickMs * 10);
   const since = lastTickAt ?? startedAt;
   const lag = Math.max(0, at - since);
   const secs = Math.round(lag / 1000);
-  if (lag > limit) return { status: 'fail', detail: lastTickAt ? `Letzte Runde vor ${Math.round(secs / 60)} min – die Hintergrund-Aufgaben hängen` : 'Noch keine Runde der Hintergrund-Aufgaben seit dem Start', value: secs };
-  return { status: 'ok', detail: lastTickAt ? `Letzte Runde vor ${secs} s` : 'Startet gerade', value: secs };
+  if (lag > limit) return { status: 'fail', detail: lastTickAt ? t('Letzte Runde vor {min} min – die Hintergrund-Aufgaben hängen', { min: Math.round(secs / 60) }) : t('Noch keine Runde der Hintergrund-Aufgaben seit dem Start'), value: secs };
+  return { status: 'ok', detail: lastTickAt ? t('Letzte Runde vor {secs} s', { secs }) : t('Startet gerade'), value: secs };
 }
 
 /** Backup age: off-site (if set up) may be 2 h old, the local daily snapshot 26 h; a fresh process gets that much grace. */
-export function backupCheck(b: { source: 'offsite' | 'local' | 'none'; at?: string; maxMinutes: number }, startedAt: number, at: number): Check {
-  if (b.source === 'none') return { status: 'off', detail: 'Keine Backups eingerichtet' };
-  const label = b.source === 'offsite' ? 'Off-site-Backup' : 'Lokales Backup';
+export function backupCheck(b: { source: 'offsite' | 'local' | 'none'; at?: string; maxMinutes: number }, startedAt: number, at: number, t: STFn = tApp()): Check {
+  if (b.source === 'none') return { status: 'off', detail: t('Keine Backups eingerichtet') };
+  const label = b.source === 'offsite' ? t('Off-site-Backup') : t('Lokales Backup');
   if (!b.at) {
-    if (at - startedAt < b.maxMinutes * 60_000) return { status: 'ok', detail: `${label}: das erste läuft bald` };
-    return { status: 'fail', detail: `${label}: noch keins erfolgreich` };
+    if (at - startedAt < b.maxMinutes * 60_000) return { status: 'ok', detail: t('{label}: das erste läuft bald', { label }) };
+    return { status: 'fail', detail: t('{label}: noch keins erfolgreich', { label }) };
   }
   const min = Math.round((at - Date.parse(b.at)) / 60_000);
   const age = min >= 120 ? `${Math.round(min / 60)} h` : `${min} min`;
-  if (min > b.maxMinutes) return { status: 'fail', detail: `${label} ist ${age} alt (erlaubt ${Math.round(b.maxMinutes / 60)} h)`, value: min };
-  return { status: 'ok', detail: `${label} vor ${age}`, value: min };
+  if (min > b.maxMinutes) return { status: 'fail', detail: t('{label} ist {age} alt (erlaubt {max} h)', { label, age, max: Math.round(b.maxMinutes / 60) }), value: min };
+  return { status: 'ok', detail: t('{label} vor {age}', { label, age }), value: min };
 }
 
 /** Overall: any failing check → fail when it is the database, else degraded. */

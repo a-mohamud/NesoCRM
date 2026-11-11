@@ -1,4 +1,5 @@
 import { bad } from '../core/http.js';
+import { tApp, type STFn } from '../i18n/index.js';
 import { hmInTz, weekdayKey, ymdInTz, addDaysYmd, zonedToUtc, type DayKey } from '../core/time.js';
 import { germanHolidays, DAY_KEYS, STATES } from './ivr.js';
 
@@ -68,10 +69,14 @@ export const DEFAULT_DIALER: DialerSettings = {
 const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const KEY = /^[a-z][a-z0-9_]{1,29}$/;
 
-export const withDialerDefaults = (stored: Partial<DialerSettings> | null | undefined): DialerSettings => ({
+/** The default outcomes in a language (labels and tags; the keys stay). */
+export const defaultDispositions = (t: STFn = tApp()): Disposition[] => DEFAULT_DISPOSITIONS.map((d) => ({ ...d, label: t(d.label), tag: d.tag ? t(d.tag) : '' }));
+
+/** `t`: the sub-account's language for the default outcomes (stored ones stay as they were saved). */
+export const withDialerDefaults = (stored: Partial<DialerSettings> | null | undefined, t: STFn = tApp()): DialerSettings => ({
   ...DEFAULT_DIALER,
   ...(stored ?? {}),
-  dispositions: Array.isArray(stored?.dispositions) && stored!.dispositions.length ? stored!.dispositions : DEFAULT_DISPOSITIONS,
+  dispositions: Array.isArray(stored?.dispositions) && stored!.dispositions.length ? stored!.dispositions : defaultDispositions(t),
 });
 
 /** Validates the settings from the browser onto the current ones. */
@@ -113,13 +118,14 @@ export function cleanDialerSettings(b: any, cur: DialerSettings): DialerSettings
     const seen = new Set<string>();
     s.dispositions = b.dispositions.map((d: any) => {
       const key = String(d?.key ?? '').trim();
-      if (!KEY.test(key)) throw bad(`Ergebnis-Schlüssel „${key}“ ungültig (Kleinbuchstaben, Ziffern und _, ab 2 Zeichen)`);
-      if (seen.has(key)) throw bad(`Ergebnis „${key}“ kommt doppelt vor`);
+      const t = tApp();
+      if (!KEY.test(key)) throw bad(t('Ergebnis-Schlüssel „{key}“ ungültig (Kleinbuchstaben, Ziffern und _, ab 2 Zeichen)', { key }));
+      if (seen.has(key)) throw bad(t('Ergebnis „{key}“ kommt doppelt vor', { key }));
       seen.add(key);
       const kind = d?.kind;
-      if (!['retry', 'callback', 'final'].includes(kind)) throw bad(`Ergebnis „${key}“: Art unbekannt`);
+      if (!['retry', 'callback', 'final'].includes(kind)) throw bad(t('Ergebnis „{key}“: Art unbekannt', { key }));
       const label = String(d?.label ?? '').trim().slice(0, 60);
-      if (!label) throw bad(`Ergebnis „${key}“: Bezeichnung fehlt`);
+      if (!label) throw bad(t('Ergebnis „{key}“: Bezeichnung fehlt', { key }));
       return { key, label, kind, positive: !!d?.positive, dnd: !!d?.dnd, tag: String(d?.tag ?? '').trim().slice(0, 40) } as Disposition;
     });
     // A person who says "nicht mehr anrufen" must always have a way to be recorded.
@@ -132,28 +138,28 @@ export function cleanDialerSettings(b: any, cur: DialerSettings): DialerSettings
 
 export interface Window {
   open: boolean;
-  /** German reason when closed. */
+  /** The reason when closed (in the language of the translator passed in). */
   reason: string;
   /** The start of the next window (ISO), when closed. */
   next: string | null;
 }
 
-const dayWindow = (s: Pick<DialerSettings, 'days' | 'skip_holidays' | 'holiday_state'>, ymd: string): { ok: boolean; reason: string } => {
-  if (!s.days.includes(weekdayKey(ymd))) return { ok: false, reason: 'an diesem Wochentag wird nicht angerufen' };
+const dayWindow = (s: Pick<DialerSettings, 'days' | 'skip_holidays' | 'holiday_state'>, ymd: string, t: STFn = tApp()): { ok: boolean; reason: string } => {
+  if (!s.days.includes(weekdayKey(ymd))) return { ok: false, reason: t('an diesem Wochentag wird nicht angerufen') };
   if (s.skip_holidays) {
     const h = germanHolidays(Number(ymd.slice(0, 4)), s.holiday_state).get(ymd);
-    if (h) return { ok: false, reason: `Feiertag (${h})` };
+    if (h) return { ok: false, reason: t('Feiertag ({name})', { name: h }) };
   }
   return { ok: true, reason: '' };
 };
 
 /** Whether calls may be placed at `at` (days, hours, holidays) – and when the next window opens. */
-export function callingWindow(s: Pick<DialerSettings, 'days' | 'from' | 'to' | 'skip_holidays' | 'holiday_state'>, tz: string, at = new Date()): Window {
+export function callingWindow(s: Pick<DialerSettings, 'days' | 'from' | 'to' | 'skip_holidays' | 'holiday_state'>, tz: string, at = new Date(), t: STFn = tApp()): Window {
   const day = ymdInTz(at, tz);
   const hm = hmInTz(at, tz);
-  const today = dayWindow(s, day);
+  const today = dayWindow(s, day, t);
   if (today.ok && hm >= s.from && hm < s.to) return { open: true, reason: '', next: null };
-  const reason = !today.ok ? `Heute ist nicht angerufen: ${today.reason}` : hm < s.from ? `Anrufzeit beginnt um ${s.from} Uhr` : `Anrufzeit endete um ${s.to} Uhr`;
+  const reason = !today.ok ? t('Heute ist nicht angerufen: {reason}', { reason: today.reason }) : hm < s.from ? t('Anrufzeit beginnt um {time} Uhr', { time: s.from }) : t('Anrufzeit endete um {time} Uhr', { time: s.to });
   // Next opening: later today, or the next allowed day.
   if (today.ok && hm < s.from) return { open: false, reason, next: zonedToUtc(day, s.from, tz).toISOString() };
   for (let i = 1; i <= 14; i++) {
@@ -191,18 +197,18 @@ export interface VerdictInput {
  * The compliance gate, in the order a person would check it: a phone number, "Nicht stören", the consent, the calling
  * window, the number of attempts and the pause between attempts. The first reason that applies is returned in German.
  */
-export function dialVerdict(i: VerdictInput): Verdict {
+export function dialVerdict(i: VerdictInput, t: STFn = tApp()): Verdict {
   const no = (code: Verdict['code'], reason: string): Verdict => ({ ok: false, code, reason });
-  if (!/^\+[1-9]\d{6,14}$/.test(i.phone)) return no('no_phone', 'Der Kontakt hat keine gültige Telefonnummer');
-  if (i.dnd) return no('dnd', 'Der Kontakt hat „Nicht stören“ – es wird nicht angerufen');
+  if (!/^\+[1-9]\d{6,14}$/.test(i.phone)) return no('no_phone', t('Der Kontakt hat keine gültige Telefonnummer'));
+  if (i.dnd) return no('dnd', t('Der Kontakt hat „Nicht stören“ – es wird nicht angerufen'));
   if (i.channelDnd) return no('dnd', i.channelDnd);
   if (i.consent) {
-    if (!i.consent.allow) return no('consent', i.consent.reason || 'Keine gültige Einwilligung für Anrufe');
-    if (i.consentPolicy === 'strict' && !i.consent.confirmed) return no('consent', 'Keine bestätigte Einwilligung für Anrufe (Regel „streng“)');
-  } else if (i.consentPolicy === 'strict') return no('consent', 'Das Einwilligungs-Modul fehlt – die strenge Regel erlaubt keine Anrufe');
-  if (!i.window.open) return no('hours', `Außerhalb der Anrufzeiten: ${i.window.reason}`);
-  if (i.attempts >= i.maxAttempts) return no('attempts', `Schon ${i.attempts} Versuche – mehr gibt es in dieser Liste nicht`);
-  if (i.notBefore && Date.parse(i.notBefore) > (i.at ?? new Date()).getTime()) return no('recent', 'Der nächste Versuch ist erst später fällig');
+    if (!i.consent.allow) return no('consent', i.consent.reason || t('Keine gültige Einwilligung für Anrufe'));
+    if (i.consentPolicy === 'strict' && !i.consent.confirmed) return no('consent', t('Keine bestätigte Einwilligung für Anrufe (Regel „streng“)'));
+  } else if (i.consentPolicy === 'strict') return no('consent', t('Das Einwilligungs-Modul fehlt – die strenge Regel erlaubt keine Anrufe'));
+  if (!i.window.open) return no('hours', t('Außerhalb der Anrufzeiten: {reason}', { reason: i.window.reason }));
+  if (i.attempts >= i.maxAttempts) return no('attempts', t('Schon {n} Versuche – mehr gibt es in dieser Liste nicht', { n: i.attempts }));
+  if (i.notBefore && Date.parse(i.notBefore) > (i.at ?? new Date()).getTime()) return no('recent', t('Der nächste Versuch ist erst später fällig'));
   return { ok: true, code: '', reason: '' };
 }
 

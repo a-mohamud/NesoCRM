@@ -6,6 +6,7 @@ import type { Tool } from './mcp.js';
 import { checkTime, type Issue } from '../services/calview.js';
 import { getConfig, membersOf, slotsOfDay } from '../services/teamcal-engine.js';
 import { calendarById } from '../services/teamcal-book.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Kalender-KI (HighLevel "Calendar AI", docs/booking.md#calendar-ai): the agent sets up a calendar from a sentence and explains why a
@@ -45,17 +46,17 @@ export function explainSlot(app: App, cal: CalendarRow, startIso: string, at = n
   const bookable = !!cal.active && free.includes(iso);
   const reasons: { kind: string; text: string; detail?: string; start_at?: string; end_at?: string }[] = [];
   const add = (kind: keyof typeof REASON, extra: { detail?: string; start_at?: string; end_at?: string } = {}) => {
-    if (!reasons.some((r) => r.kind === kind && r.detail === extra.detail && r.start_at === extra.start_at)) reasons.push({ kind, text: REASON[kind], ...extra });
+    if (!reasons.some((r) => r.kind === kind && r.detail === extra.detail && r.start_at === extra.start_at)) reasons.push({ kind, text: tApp()(REASON[kind]), ...extra });
   };
   if (!cal.active) add('inactive');
   if (!bookable) {
     if (start.getTime() < at.getTime()) add('past');
-    else if (start.getTime() < at.getTime() + cal.min_notice * 3600_000) add('notice', { detail: `${cal.min_notice} Std. Vorlauf` });
-    if (ymd > addDaysYmd(ymdInTz(at, cal.timezone), cal.max_days)) add('horizon', { detail: `${cal.max_days} Tage` });
+    else if (start.getTime() < at.getTime() + cal.min_notice * 3600_000) add('notice', { detail: tApp()('{hours} Std. Vorlauf', { hours: cal.min_notice }) });
+    if (ymd > addDaysYmd(ymdInTz(at, cal.timezone), cal.max_days)) add('horizon', { detail: tApp()('{n} Tage', { n: cal.max_days }) });
     const people = cfg.kind === 'single' ? [] : membersOf(app, cal.id).map((m) => m.user_id);
     for (const i of checkTime(app, cal, iso, end.toISOString(), { people })) add(i.kind, { detail: i.label || undefined, start_at: i.start_at, end_at: i.end_at });
     if (!reasons.length) {
-      if (!computeSlots(cal, ymd, [], at).includes(iso)) add('grid', { detail: `alle ${cal.interval} Min.` });
+      if (!computeSlots(cal, ymd, [], at).includes(iso)) add('grid', { detail: tApp()('alle {minutes} Min.', { minutes: cal.interval }) });
       else if (team) add('team');
     }
   }

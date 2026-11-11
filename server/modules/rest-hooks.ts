@@ -27,6 +27,7 @@ import {
 } from '../services/rest-hooks.js';
 import { APP_VERSION } from '../version.js';
 import { openIfSealed, sealSecret } from '../core/secrets.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * REST hooks for Zapier, Make and n8n: subscribe/unsubscribe a target URL to a trigger, signed
@@ -129,7 +130,7 @@ export const restHooksModule: Module = {
       if (!d) return undefined;
       const hook = db.get('SELECT * FROM rest_hooks WHERE id = ?', d.hook_id);
       if (!hook) {
-        db.run(`UPDATE rest_hook_deliveries SET status = 'cancelled', error = ?, next_attempt_at = NULL, updated_at = ? WHERE id = ?`, 'Abo gelöscht', now(), d.id);
+        db.run(`UPDATE rest_hook_deliveries SET status = 'cancelled', error = ?, next_attempt_at = NULL, updated_at = ? WHERE id = ?`, tApp()('Abo gelöscht'), now(), d.id);
         return db.get('SELECT * FROM rest_hook_deliveries WHERE id = ?', d.id);
       }
       db.run(`UPDATE rest_hook_deliveries SET status = 'pending', updated_at = ? WHERE id = ?`, now(), d.id);
@@ -172,7 +173,7 @@ export const restHooksModule: Module = {
           at,
           `410 ${d.event}`,
           off ? 'disabled' : hook.status,
-          off ? `Ziel antwortet ${GONE_LIMIT}× mit 410 Gone – automatisch deaktiviert` : hook.disabled_reason,
+          off ? tApp()('Ziel antwortet {n}× mit 410 Gone – automatisch deaktiviert', { n: GONE_LIMIT }) : hook.disabled_reason,
           at,
           hook.id,
         );
@@ -251,7 +252,7 @@ export const restHooksModule: Module = {
       for (const d of due) {
         const hook = db.get('SELECT h.status FROM rest_hooks h JOIN rest_hook_deliveries d ON d.hook_id = h.id WHERE d.id = ?', d.id);
         if (hook && hook.status !== 'active') {
-          db.run(`UPDATE rest_hook_deliveries SET status = 'cancelled', next_attempt_at = NULL, error = 'Abo pausiert oder deaktiviert', updated_at = ? WHERE id = ?`, now(), d.id);
+          db.run(`UPDATE rest_hook_deliveries SET status = 'cancelled', next_attempt_at = NULL, error = ?, updated_at = ? WHERE id = ?`, tApp()('Abo pausiert oder deaktiviert'), now(), d.id);
           continue;
         }
         await attempt(d.id);
@@ -272,15 +273,20 @@ export const restHooksModule: Module = {
       const loc = app.location(ctx.locationId)!;
       return { ok: true, location: { id: loc.id, name: loc.name, timezone: loc.timezone }, via: ctx.via, label: `${loc.name}` };
     });
-    router.get('/api/hooks/triggers', 'location', () =>
-      HOOK_TRIGGERS.map((t) => ({ key: t.key, label: t.label, description: t.description, events: t.events, filters: t.filters.map((f) => ({ key: f, label: FILTER_LABELS[f] })) })),
-    );
-    router.get('/api/hooks/actions', 'location', () => HOOK_ACTIONS);
+    // Labels and help texts in the caller's language (Zapier/Make show them in their setup screens).
+    router.get('/api/hooks/triggers', 'location', (ctx) => {
+      const tr = tCtx(ctx);
+      return HOOK_TRIGGERS.map((t) => ({ key: t.key, label: tr(t.label), description: tr(t.description), events: t.events, filters: t.filters.map((f) => ({ key: f, label: tr(FILTER_LABELS[f]) })) }));
+    });
+    router.get('/api/hooks/actions', 'location', (ctx) => {
+      const tr = tCtx(ctx);
+      return HOOK_ACTIONS.map((a) => ({ ...a, label: tr(a.label), description: tr(a.description), fields: a.fields.map((f) => ({ ...f, label: tr(f.label), ...(f.help ? { help: tr(f.help) } : {}) })) }));
+    });
     router.get('/api/hooks/triggers/:key/sample', 'location', (ctx) => {
       const t = triggerByKey(ctx.params.key);
       if (!t) throw notFound('Unbekannter Auslöser');
       const rows = db.all('SELECT payload FROM rest_hook_samples WHERE location_id = ? AND event = ? ORDER BY created_at DESC, rowid DESC LIMIT ?', ctx.locationId, t.key, KEEP_SAMPLES);
-      return rows.length ? rows.map((r) => JSON.parse(r.payload)) : [staticSample(t, ctx.locationId)];
+      return rows.length ? rows.map((r) => JSON.parse(r.payload)) : [staticSample(t, ctx.locationId, tLoc(app, ctx.locationId))];
     });
 
     // --- delivery log ----------------------------------------------------------------------
@@ -368,7 +374,7 @@ export const restHooksModule: Module = {
       if (!stage) return undefined;
       const s = String(stage).trim().toLowerCase();
       const hit = p.stages.find((x: any) => x.id === stage || String(x.name).toLowerCase() === s);
-      if (!hit) throw bad(`Stufe „${stage}“ nicht gefunden – verfügbar: ${p.stages.map((x: any) => x.name).join(', ')}`);
+      if (!hit) throw bad(tApp()('Stufe „{stage}“ nicht gefunden – verfügbar: {stages}', { stage: String(stage), stages: p.stages.map((x: any) => x.name).join(', ') }));
       return hit.id;
     };
 
@@ -402,7 +408,7 @@ export const restHooksModule: Module = {
         const list = pipelines(ctx.locationId);
         const want = b.pipeline ?? b.pipeline_id;
         const p = want ? list.find((x) => x.id === want || String(x.name).toLowerCase() === String(want).trim().toLowerCase()) : list[0];
-        if (!p) throw bad(want ? `Pipeline „${want}“ nicht gefunden` : 'Keine Pipeline vorhanden');
+        if (!p) throw bad(want ? tApp()('Pipeline „{name}“ nicht gefunden', { name: want }) : 'Keine Pipeline vorhanden');
         const c = await resolveContact(ctx, b, true);
         return callRoute(app, ctx, 'POST', '/api/opportunities', {
           pipeline_id: p.id,
@@ -477,9 +483,9 @@ export const restHooksModule: Module = {
       if (u.protocol !== 'https:' && u.protocol !== 'http:') throw bad('target_url muss mit http(s):// beginnen');
       const key = str(b.event ?? b.trigger, 'event', { required: true });
       const t = triggerByKey(key);
-      if (!t) throw bad(`Unbekannter Auslöser „${key}“ – siehe GET /api/hooks/triggers`);
+      if (!t) throw bad(tCtx(ctx)('Unbekannter Auslöser „{key}“ – siehe GET /api/hooks/triggers', { key }));
       const n = db.get<{ n: number }>(`SELECT COUNT(*) n FROM rest_hooks WHERE location_id = ? AND status != 'disabled'`, ctx.locationId)!.n;
-      if (n >= MAX_HOOKS) throw bad(`Höchstens ${MAX_HOOKS} Abos je Sub-Account`);
+      if (n >= MAX_HOOKS) throw bad(tCtx(ctx)('Höchstens {n} Abos je Sub-Account', { n: MAX_HOOKS }));
       const row = {
         id: `hook_${id(18)}`,
         location_id: ctx.locationId,
@@ -518,7 +524,7 @@ export const restHooksModule: Module = {
     });
     router.delete('/api/hooks/:id', 'location', (ctx) => {
       if (!db.run('DELETE FROM rest_hooks WHERE id = ? AND location_id = ?', ctx.params.id, ctx.locationId).changes) throw notFound('Abo nicht gefunden');
-      db.run(`UPDATE rest_hook_deliveries SET status = 'cancelled', next_attempt_at = NULL, error = 'Abo gelöscht', updated_at = ? WHERE hook_id = ? AND status = 'retrying'`, now(), ctx.params.id);
+      db.run(`UPDATE rest_hook_deliveries SET status = 'cancelled', next_attempt_at = NULL, error = ?, updated_at = ? WHERE hook_id = ? AND status = 'retrying'`, tApp()('Abo gelöscht'), now(), ctx.params.id);
       return { ok: true };
     });
     router.post('/api/hooks/:id/test', 'location', async (ctx) => {
@@ -527,7 +533,7 @@ export const restHooksModule: Module = {
       const t = triggerByKey(h.event);
       if (!t) throw new HttpError(500, 'Auslöser fehlt');
       const real = db.get('SELECT payload FROM rest_hook_samples WHERE location_id = ? AND event = ? ORDER BY created_at DESC, rowid DESC LIMIT 1', ctx.locationId, t.key);
-      const payload = { ...(real ? JSON.parse(real.payload) : staticSample(t, ctx.locationId)), test: true };
+      const payload = { ...(real ? JSON.parse(real.payload) : staticSample(t, ctx.locationId, tLoc(app, ctx.locationId))), test: true };
       const dId = queue(h, t.key, payload.type, String(payload.id), payload);
       return parseJson(await attempt(dId), ['payload']);
     });

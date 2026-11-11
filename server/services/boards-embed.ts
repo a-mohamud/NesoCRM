@@ -5,6 +5,8 @@
  * removing a host takes effect at once. Pure – the module reads the list from agency_settings.
  */
 
+import { tApp } from '../i18n/index.js';
+
 export const DEFAULT_EMBED_HOSTS = [
   'youtube.com',
   'youtube-nocookie.com',
@@ -82,7 +84,7 @@ export function checkEmbedUrl(input: unknown, allowed: string[]): EmbedCheck {
   // What is shown is the rewritten address (a share link becomes the service's embed address), so that host must be allowed.
   const out = embeddable(u);
   const shown = new URL(out).hostname.toLowerCase();
-  if (!hostAllowed(shown, allowed)) return { ok: false, host: shown, problem: `${shown} ist nicht freigegeben – ein Admin kann die Adresse unter Boards → Einbettungen erlauben` };
+  if (!hostAllowed(shown, allowed)) return { ok: false, host: shown, problem: tApp()('{host} ist nicht freigegeben – ein Admin kann die Adresse unter Boards → Einbettungen erlauben', { host: shown }) };
   if (out.length > 600) return { ok: false, problem: 'Die Adresse ist zu lang' };
   return { ok: true, url: out, host: shown };
 }

@@ -1,5 +1,6 @@
 import type { BuyerParty, DocSnapshot } from './einvoice-model.js';
 import type { TaxGroup, TaxMode } from './invoice-model.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Live sync of finalised invoices to Lexware Office (formerly lexoffice) and sevDesk – the pure part: providers and their mapping
@@ -180,7 +181,7 @@ export function lexContact(c: ContactInput, buyer: BuyerParty): Record<string, a
 /** sevDesk contact (category 3 = Kunde): an organisation or a person; e-mail goes in afterwards as a communication way. */
 export function sevContact(c: ContactInput, buyer: BuyerParty): Record<string, any> {
   const company = clip(c.company || buyer.company, 150);
-  const base: Record<string, any> = { category: { id: 3, objectName: 'Category' }, ...(c.customer_number ? { customerNumber: clip(c.customer_number, 60) } : {}) };
+  const base: Record<string, any> = { category: { id: 3, objectName: 'Category' }, ...(c.customer_number ? { customerNumber: clip(c.customer_number, 60) } : {}) }; // i18n-ignore
   if (company) return { ...base, name: company, ...(buyer.vat_id ? { vatNumber: buyer.vat_id } : {}) };
   return { ...base, surename: clip(c.first_name, 80), familyname: clip(c.last_name, 80) || clip(buyer.name, 80) || 'Unbekannt' };
 }
@@ -207,7 +208,7 @@ export function lexVoucher(doc: DocSnapshot, o: LexVoucherInput): Record<string,
     totalTaxAmount: amount(groups.reduce((n, g) => n + g.tax_cents, 0)),
     taxType: 'net',
     ...(o.contactId ? { contactId: o.contactId, useCollectiveContact: false } : { useCollectiveContact: true }),
-    remark: clip(o.remark ?? `Aus HyperLevel übertragen: ${doc.title || doc.number}`, 250),
+    remark: clip(o.remark ?? tApp()('Aus HyperLevel übertragen: {title}', { title: doc.title || doc.number }), 250),
     voucherItems: groups.map((g) => ({ amount: amount(g.net_cents), taxAmount: amount(g.tax_cents), taxRatePercent: g.rate, categoryId: o.categoryId })),
   };
 }
@@ -243,11 +244,11 @@ function sevPositions(doc: DocSnapshot, unityId: string, kind: 'InvoicePos' | 'C
   const pos: Record<string, any>[] = doc.items.map((it, i) => {
     const qty = credit ? Math.abs(Number(it.qty)) : Number(it.qty);
     const rate = doc.tax_mode === 'standard' ? Number(it.tax_rate) || 0 : 0;
-    return { objectName: kind, mapAll: true, quantity: qty, price: amount(it.price_cents), priceNet: amount(it.price_cents), name: clip(it.name, 250) || `Position ${i + 1}`, ...(it.description ? { text: String(it.description).slice(0, 1000) } : {}), unity: { id: Number(unityId) || 1, objectName: 'Unity' }, taxRate: rate, positionNumber: i };
+    return { objectName: kind, mapAll: true, quantity: qty, price: amount(it.price_cents), priceNet: amount(it.price_cents), name: clip(it.name, 250) || tApp()('Position {n}', { n: i + 1 }), ...(it.description ? { text: String(it.description).slice(0, 1000) } : {}), unity: { id: Number(unityId) || 1, objectName: 'Unity' }, taxRate: rate, positionNumber: i }; // i18n-ignore
   });
   for (const d of doc.deductions ?? [])
     for (const g of d.groups ?? [])
-      pos.push({ objectName: kind, mapAll: true, quantity: 1, price: -amount(g.net_cents), priceNet: -amount(g.net_cents), name: clip(`Abzüglich Abschlagsrechnung ${d.number}`, 250), unity: { id: Number(unityId) || 1, objectName: 'Unity' }, taxRate: g.rate, positionNumber: pos.length });
+      pos.push({ objectName: kind, mapAll: true, quantity: 1, price: -amount(g.net_cents), priceNet: -amount(g.net_cents), name: clip(tApp()('Abzüglich Abschlagsrechnung {number}', { number: d.number }), 250), unity: { id: Number(unityId) || 1, objectName: 'Unity' }, taxRate: g.rate, positionNumber: pos.length }); // i18n-ignore
   return pos;
 }
 
@@ -257,11 +258,11 @@ export function sevInvoice(doc: DocSnapshot, o: SevDocInput): Record<string, any
   const country = isoCountry(doc.buyer.country);
   return {
     invoice: {
-      objectName: 'Invoice',
+      objectName: 'Invoice', // i18n-ignore
       mapAll: true,
       invoiceNumber: doc.number,
-      contact: { id: Number(o.contactId) || o.contactId, objectName: 'Contact' },
-      contactPerson: { id: Number(o.sevUserId) || o.sevUserId, objectName: 'SevUser' },
+      contact: { id: Number(o.contactId) || o.contactId, objectName: 'Contact' }, // i18n-ignore
+      contactPerson: { id: Number(o.sevUserId) || o.sevUserId, objectName: 'SevUser' }, // i18n-ignore
       invoiceDate: deDate(doc.issued_ymd),
       deliveryDate: deDate(doc.supply_from || doc.issued_ymd),
       ...(doc.supply_to ? { deliveryDateUntil: deDate(doc.supply_to) } : {}),
@@ -271,14 +272,14 @@ export function sevInvoice(doc: DocSnapshot, o: SevDocInput): Record<string, any
       timeToPay: days,
       discount: 0,
       address: sevAddress(doc.buyer),
-      ...(country === 'DE' ? { addressCountry: { id: 1, objectName: 'StaticCountry' } } : {}),
+      ...(country === 'DE' ? { addressCountry: { id: 1, objectName: 'StaticCountry' } } : {}), // i18n-ignore
       status: 100,
       invoiceType: doc.inv_type === 'partial' ? 'TR' : doc.inv_type === 'final' ? 'ER' : 'RE',
       currency: doc.currency || 'EUR',
       showNet: true,
-      taxRule: { id: String(SEV_TAX_RULE[doc.tax_mode] ?? 1), objectName: 'TaxRule' },
+      taxRule: { id: String(SEV_TAX_RULE[doc.tax_mode] ?? 1), objectName: 'TaxRule' }, // i18n-ignore
       taxType: SEV_TAX_TYPE[doc.tax_mode] ?? 'default',
-      taxText: doc.tax_mode === 'standard' ? 'Umsatzsteuer' : clip(doc.tax_note || 'Ohne Umsatzsteuer', 200),
+      taxText: doc.tax_mode === 'standard' ? tApp()('Umsatzsteuer') : clip(doc.tax_note || tApp()('Ohne Umsatzsteuer'), 200),
       taxRate: 0,
     },
     invoicePosSave: sevPositions(doc, o.unityId, 'InvoicePos'),
@@ -291,11 +292,11 @@ export function sevInvoice(doc: DocSnapshot, o: SevDocInput): Record<string, any
 export function sevCreditNote(doc: DocSnapshot, o: SevDocInput): Record<string, any> {
   return {
     creditNote: {
-      objectName: 'CreditNote',
+      objectName: 'CreditNote', // i18n-ignore
       mapAll: true,
       creditNoteNumber: doc.number,
-      contact: { id: Number(o.contactId) || o.contactId, objectName: 'Contact' },
-      contactPerson: { id: Number(o.sevUserId) || o.sevUserId, objectName: 'SevUser' },
+      contact: { id: Number(o.contactId) || o.contactId, objectName: 'Contact' }, // i18n-ignore
+      contactPerson: { id: Number(o.sevUserId) || o.sevUserId, objectName: 'SevUser' }, // i18n-ignore
       creditNoteDate: deDate(doc.issued_ymd),
       deliveryDate: deDate(doc.supply_from || doc.issued_ymd),
       header: clip(`Gutschrift ${doc.number}${doc.ref?.number ? ` zu ${doc.ref.number}` : ''}`, 250),
@@ -305,9 +306,9 @@ export function sevCreditNote(doc: DocSnapshot, o: SevDocInput): Record<string, 
       bookingCategory: 'UNDERACHIEVEMENT',
       currency: doc.currency || 'EUR',
       showNet: true,
-      taxRule: { id: String(SEV_TAX_RULE[doc.tax_mode] ?? 1), objectName: 'TaxRule' },
+      taxRule: { id: String(SEV_TAX_RULE[doc.tax_mode] ?? 1), objectName: 'TaxRule' }, // i18n-ignore
       taxType: SEV_TAX_TYPE[doc.tax_mode] ?? 'default',
-      taxText: doc.tax_mode === 'standard' ? 'Umsatzsteuer' : clip(doc.tax_note || 'Ohne Umsatzsteuer', 200),
+      taxText: doc.tax_mode === 'standard' ? tApp()('Umsatzsteuer') : clip(doc.tax_note || tApp()('Ohne Umsatzsteuer'), 200),
       taxRate: 0,
     },
     creditNotePosSave: sevPositions(doc, o.unityId, 'CreditNotePos'),

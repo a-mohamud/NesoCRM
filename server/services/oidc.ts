@@ -1,3 +1,4 @@
+import { tApp } from '../i18n/index.js';
 /**
  * Generic OpenID Connect (Keycloak, Authentik, Authelia, Zitadel, Okta, Entra ID, Google Workspace …):
  * discovery, authorization URL, code exchange, userinfo, claim mapping and group → role / sub-account
@@ -52,10 +53,10 @@ export function parseDiscovery(doc: any, expectIssuer: string, opts: { allowHttp
   if (!doc || typeof doc !== 'object') throw new OidcError('Discovery-Dokument unlesbar');
   const allowHttp = !!opts.allowHttp;
   for (const k of ['issuer', 'authorization_endpoint', 'token_endpoint', 'jwks_uri'] as const) {
-    if (!endpointOk(doc[k], allowHttp)) throw new OidcError(`Discovery-Dokument: „${k}“ fehlt oder ist keine https-Adresse`);
+    if (!endpointOk(doc[k], allowHttp)) throw new OidcError(tApp()('Discovery-Dokument: „{field}“ fehlt oder ist keine https-Adresse', { field: k }));
   }
   const norm = (s: string) => s.replace(/\/$/, '');
-  if (norm(doc.issuer) !== norm(expectIssuer)) throw new OidcError(`Issuer stimmt nicht: Dokument nennt ${String(doc.issuer).slice(0, 200)}`);
+  if (norm(doc.issuer) !== norm(expectIssuer)) throw new OidcError(tApp()('Issuer stimmt nicht: Dokument nennt {issuer}', { issuer: String(doc.issuer).slice(0, 200) }));
   if (doc.userinfo_endpoint !== undefined && !endpointOk(doc.userinfo_endpoint, allowHttp)) throw new OidcError('Discovery-Dokument: userinfo_endpoint ungültig');
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 50) : undefined);
   return {
@@ -75,14 +76,14 @@ export async function fetchJson(fetcher: Fetcher, url: string, init?: Parameters
   try {
     r = await fetcher(url, { ...init, headers: { accept: 'application/json', ...(init?.headers ?? {}) } });
   } catch (e) {
-    throw new OidcError(`Anbieter nicht erreichbar: ${(e as Error).message}`.slice(0, 300));
+    throw new OidcError(tApp()('Anbieter nicht erreichbar: {error}', { error: (e as Error).message }).slice(0, 300));
   }
   const body = await r.text();
   let j: any;
   try {
     j = body ? JSON.parse(body) : {};
   } catch {
-    throw new OidcError(`Anbieter antwortet nicht mit JSON (HTTP ${r.status})`);
+    throw new OidcError(tApp()('Anbieter antwortet nicht mit JSON (HTTP {status})', { status: r.status }));
   }
   if (!r.ok) throw new OidcError(`Anbieter: ${String(j?.error_description || j?.error || `HTTP ${r.status}`).slice(0, 300)}`);
   return j;
@@ -152,7 +153,7 @@ export async function exchangeCode(fetcher: Fetcher, endpoint: string, p: { code
     if (p.auth === 'post') form.client_secret = p.clientSecret ?? '';
   }
   const j = await fetchJson(fetcher, endpoint, { method: 'POST', headers, body: new URLSearchParams(form).toString() });
-  if (!j.access_token && !j.id_token) throw new OidcError(`Anbieter: ${String(j.error_description || j.error || 'keine Tokens erhalten').slice(0, 300)}`);
+  if (!j.access_token && !j.id_token) throw new OidcError(tApp()('Anbieter: {error}', { error: String(j.error_description || j.error || tApp()('keine Tokens erhalten')).slice(0, 300) }));
   return { access_token: String(j.access_token ?? ''), id_token: j.id_token ? String(j.id_token) : undefined, token_type: j.token_type, scope: j.scope };
 }
 

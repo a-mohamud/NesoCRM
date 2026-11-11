@@ -1,6 +1,7 @@
 import type { App } from '../core/app.js';
 import { id } from '../core/util.js';
 import { logActivity } from './contacts.js';
+import { tApp, type STFn } from '../i18n/index.js';
 import { BURST_WINDOW_MS, REASON_LABEL, classifyHit, ipPrefix, uaClass, uaHash, type EventKind, type Reason, type Verdict } from './email-classify.js';
 
 /**
@@ -172,9 +173,10 @@ export function pruneEvents(app: App): number {
 
 /** Machine hits of some mails by reason, for "+N maschinell" and its tooltip. */
 export function machineBreakdown(app: App, where: string, ...args: (string | number | null)[]): { reason: string; label: string; verdict: Verdict; count: number }[] {
+  const t: STFn = tApp();
   const rows = app.db.all<{ reason: Reason; classification: Verdict; n: number }>(
     `SELECT e.reason, e.classification, COUNT(*) AS n FROM email_events e WHERE e.classification != 'human' AND ${where} GROUP BY e.reason, e.classification ORDER BY n DESC`,
     ...args,
   );
-  return rows.map((r) => ({ reason: r.reason, label: REASON_LABEL[r.reason] ?? r.reason, verdict: r.classification, count: Number(r.n) }));
+  return rows.map((r) => ({ reason: r.reason, label: REASON_LABEL[r.reason] ? t(REASON_LABEL[r.reason]) : r.reason, verdict: r.classification, count: Number(r.n) }));
 }

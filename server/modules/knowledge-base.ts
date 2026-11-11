@@ -9,6 +9,7 @@ import { excerptOf, renderMarkdown, safeUrl, stripMarkdown } from '../services/m
 import { articleScore, searchTerms, sign, verifySig } from '../services/helpdesk.js';
 import { loadHelpdeskSettings } from '../services/tickets.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Knowledge base & public help center: categories and Markdown articles (draft/published), a help
@@ -146,14 +147,15 @@ export const knowledgeBaseModule: Module = {
       const hc = s.help_center;
       const brand = l.settings?.branding ?? {};
       const name = brand.name || l.name;
+      const t = tLoc(app, loc);
       return {
         locationId: loc,
         slug: hc.slug || loc,
         base,
         origin: base.startsWith('http') ? '' : origin,
-        title: hc.title || `${name} Hilfe-Center`,
+        title: hc.title || t('{name} Hilfe-Center', { name }),
         name,
-        intro: hc.intro || 'Wie können wir helfen?',
+        intro: hc.intro || t('Wie können wir helfen?'),
         color: [hc.color, brand.color].find((c) => /^#[0-9a-f]{6}$/i.test(c ?? '')) ?? '#2563eb',
         logo: brand.logo_url || l.logo_url || '',
         seoTitle: hc.seo_title,
@@ -170,14 +172,15 @@ export const knowledgeBaseModule: Module = {
 
     // --- rendering ----------------------------------------------------------------------------------
     const page = (c: Center, o: { title: string; body: string; description?: string; canonical?: string; status?: number; noindex?: boolean; head?: string; flag?: string; hero?: string }): RawResult => {
+      const t = tLoc(app, c.locationId);
       const robots = o.noindex || !c.indexable ? '<meta name="robots" content="noindex">' : '';
       const brand = c.logo ? `<img src="${escapeHtml(safeUrl(c.logo))}" alt="${escapeHtml(c.name)}">` : `<span class="mark">${escapeHtml(c.name.slice(0, 1).toUpperCase())}</span><span>${escapeHtml(c.title)}</span>`;
-      const doc = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+      const doc = `<!doctype html><html lang="${t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(o.title)}</title>${o.description ? `<meta name="description" content="${escapeHtml(o.description)}">` : ''}${robots}
 ${o.canonical ? `<link rel="canonical" href="${escapeHtml(o.canonical)}"><meta property="og:url" content="${escapeHtml(o.canonical)}">` : ''}
 <meta property="og:title" content="${escapeHtml(o.title)}">${o.description ? `<meta property="og:description" content="${escapeHtml(o.description)}">` : ''}<meta property="og:type" content="website"><meta name="theme-color" content="${c.color}">
 <style>:root{--brand:${c.color}}${CSS}</style>${o.head ?? ''}</head><body>${o.flag ? `<div class="flag">${escapeHtml(o.flag)}</div>` : ''}
-<header class="top"><div class="in"><a class="brand" href="${escapeHtml(c.base || '/')}">${brand}</a>${c.ask ? `<a class="ask" href="${escapeHtml(c.ask)}">Anfrage stellen</a>` : ''}</div></header>
+<header class="top"><div class="in"><a class="brand" href="${escapeHtml(c.base || '/')}">${brand}</a>${c.ask ? `<a class="ask" href="${escapeHtml(c.ask)}">${escapeHtml(t('Anfrage stellen'))}</a>` : ''}</div></header>
 ${o.hero ?? ''}<main>${o.body}</main><footer>${escapeHtml(c.name)}</footer></body></html>`;
       const r = html(doc, o.status ?? 200);
       Object.assign(r.headers, {
@@ -186,7 +189,10 @@ ${o.hero ?? ''}<main>${o.body}</main><footer>${escapeHtml(c.name)}</footer></bod
       });
       return r;
     };
-    const searchBox = (c: Center, q = '') => `<form class="search" method="get" action="${escapeHtml(c.base || '/')}" role="search"><input name="q" type="search" value="${escapeHtml(q)}" placeholder="Suchen, z. B. „Passwort ändern“" aria-label="Hilfe durchsuchen"><button>Suchen</button></form>`;
+    const searchBox = (c: Center, q = '') => {
+      const t = tLoc(app, c.locationId);
+      return `<form class="search" method="get" action="${escapeHtml(c.base || '/')}" role="search"><input name="q" type="search" value="${escapeHtml(q)}" placeholder="${escapeHtml(t('Suchen, z. B. „Passwort ändern“'))}" aria-label="${escapeHtml(t('Hilfe durchsuchen'))}"><button>${escapeHtml(t('Suchen'))}</button></form>`;
+    };
     const hero = (c: Center, q = '') => `<section class="hero"><h1>${escapeHtml(c.intro)}</h1><p>${escapeHtml(c.title)}</p>${searchBox(c, q)}</section>`;
     const artHref = (c: Center, a: any) => `${c.base}/${encodeURIComponent(a.slug)}`;
     const catHref = (c: Center, cat: any) => `${c.base}/k/${encodeURIComponent(cat.slug)}`;
@@ -196,11 +202,13 @@ ${o.hero ?? ''}<main>${o.body}</main><footer>${escapeHtml(c.name)}</footer></bod
       const para = String(a.body ?? '').split(/\n\s*\n/).map((p) => p.trim()).find((p) => p && !/^(#|>|[-*] |\d+\. |```|!\[)/.test(p));
       return excerptOf(stripMarkdown(para ?? a.body ?? ''), 160);
     };
-    const listOf = (c: Center, arts: any[]) => (arts.length ? `<div class="list">${arts.map((a) => `<a href="${escapeHtml(artHref(c, a))}"><strong>${escapeHtml(a.title)}</strong><span>${escapeHtml(summary(a))}</span></a>`).join('')}</div>` : '<div class="list"><div class="empty">Noch keine Artikel.</div></div>');
-    const contactBox = (c: Center) =>
-      c.ask || c.contactText
-        ? `<div class="contact"><div><strong>Nichts gefunden?</strong><div style="color:var(--muted)">${escapeHtml(c.contactText || 'Schreib uns – wir helfen gern weiter.')}</div></div>${c.ask ? `<a class="btn" href="${escapeHtml(c.ask)}">Anfrage stellen</a>` : ''}</div>`
+    const listOf = (c: Center, arts: any[]) => (arts.length ? `<div class="list">${arts.map((a) => `<a href="${escapeHtml(artHref(c, a))}"><strong>${escapeHtml(a.title)}</strong><span>${escapeHtml(summary(a))}</span></a>`).join('')}</div>` : `<div class="list"><div class="empty">${escapeHtml(tLoc(app, c.locationId)('Noch keine Artikel.'))}</div></div>`);
+    const contactBox = (c: Center) => {
+      const t = tLoc(app, c.locationId);
+      return c.ask || c.contactText
+        ? `<div class="contact"><div><strong>${escapeHtml(t('Nichts gefunden?'))}</strong><div style="color:var(--muted)">${escapeHtml(c.contactText || t('Schreib uns – wir helfen gern weiter.'))}</div></div>${c.ask ? `<a class="btn" href="${escapeHtml(c.ask)}">${escapeHtml(t('Anfrage stellen'))}</a>` : ''}</div>`
         : '';
+    };
 
     const search = (loc: string, q: string, opts: { all?: boolean; limit?: number } = {}) => {
       const terms = searchTerms(q);
@@ -214,28 +222,29 @@ ${o.hero ?? ''}<main>${o.body}</main><footer>${escapeHtml(c.name)}</footer></bod
 
     const indexPage = (c: Center, q: string): RawResult => {
       const loc = c.locationId;
+      const t = tLoc(app, loc);
       if (q.trim()) {
         const hits = search(loc, q, { limit: 30 });
         return page(c, {
-          title: `Suche: ${q} – ${c.title}`,
+          title: t('Suche: {q} – {title}', { q, title: c.title }),
           noindex: true,
           hero: hero(c, q),
-          body: `<h2 class="sec" style="margin-top:0">${hits.length ? `${hits.length} ${hits.length === 1 ? 'Ergebnis' : 'Ergebnisse'} für „${escapeHtml(q)}“` : `Keine Treffer für „${escapeHtml(q)}“`}</h2>${hits.length ? listOf(c, hits.map((h) => h.a)) : '<p style="color:var(--muted)">Versuch es mit anderen Wörtern oder schau in die Kategorien.</p>'}${contactBox(c)}`,
+          body: `<h2 class="sec" style="margin-top:0">${escapeHtml(hits.length ? t.plural(hits.length, { one: '{n} Ergebnis für „{q}“', other: '{n} Ergebnisse für „{q}“' }, { q }) : t('Keine Treffer für „{q}“', { q }))}</h2>${hits.length ? listOf(c, hits.map((h) => h.a)) : `<p style="color:var(--muted)">${escapeHtml(t('Versuch es mit anderen Wörtern oder schau in die Kategorien.'))}</p>`}${contactBox(c)}`,
         });
       }
       const arts = published(loc);
       const cats = categories(loc).filter((cat) => arts.some((a) => a.category_id === cat.id));
       const popular = [...arts].sort((a, b) => b.views - a.views).slice(0, 8);
       const uncategorized = arts.filter((a) => !a.category_id || !cats.some((cat) => cat.id === a.category_id));
-      const desc = c.seoDescription || `${c.intro} Antworten und Anleitungen von ${c.name}.`;
+      const desc = c.seoDescription || t('{intro} Antworten und Anleitungen von {name}.', { intro: c.intro, name: c.name });
       return page(c, {
         title: c.seoTitle || c.title,
         description: desc,
         canonical: absolute(c),
         hero: hero(c),
-        body: `${cats.length ? `<div class="grid">${cats.map((cat) => `<a class="cat" href="${escapeHtml(catHref(c, cat))}"><h2>${escapeHtml(cat.name)}</h2>${cat.description ? `<p>${escapeHtml(cat.description)}</p>` : ''}<small>${arts.filter((a) => a.category_id === cat.id).length} Artikel</small></a>`).join('')}</div>` : ''}
-${popular.length ? `<h2 class="sec">Beliebte Artikel</h2>${listOf(c, popular)}` : '<div class="empty">Hier entstehen bald Hilfe-Artikel.</div>'}
-${cats.length && uncategorized.length ? `<h2 class="sec">Weitere Artikel</h2>${listOf(c, uncategorized)}` : ''}${contactBox(c)}`,
+        body: `${cats.length ? `<div class="grid">${cats.map((cat) => `<a class="cat" href="${escapeHtml(catHref(c, cat))}"><h2>${escapeHtml(cat.name)}</h2>${cat.description ? `<p>${escapeHtml(cat.description)}</p>` : ''}<small>${escapeHtml(t.plural(arts.filter((a) => a.category_id === cat.id).length, { one: '{n} Artikel', other: '{n} Artikel' }))}</small></a>`).join('')}</div>` : ''}
+${popular.length ? `<h2 class="sec">${escapeHtml(t('Beliebte Artikel'))}</h2>${listOf(c, popular)}` : `<div class="empty">${escapeHtml(t('Hier entstehen bald Hilfe-Artikel.'))}</div>`}
+${cats.length && uncategorized.length ? `<h2 class="sec">${escapeHtml(t('Weitere Artikel'))}</h2>${listOf(c, uncategorized)}` : ''}${contactBox(c)}`,
       });
     };
 
@@ -245,13 +254,16 @@ ${cats.length && uncategorized.length ? `<h2 class="sec">Weitere Artikel</h2>${l
       const arts = published(c.locationId).filter((a) => a.category_id === cat.id);
       return page(c, {
         title: `${cat.name} – ${c.title}`,
-        description: cat.description || `${cat.name}: Hilfe-Artikel von ${c.name}.`,
+        description: cat.description || tLoc(app, c.locationId)('{category}: Hilfe-Artikel von {name}.', { category: cat.name, name: c.name }),
         canonical: absolute(c, `/k/${encodeURIComponent(cat.slug)}`),
         body: `<div class="crumb"><a href="${escapeHtml(c.base || '/')}">${escapeHtml(c.title)}</a></div><h1 style="margin:0 0 6px">${escapeHtml(cat.name)}</h1>${cat.description ? `<p style="color:var(--muted);margin:0 0 18px">${escapeHtml(cat.description)}</p>` : ''}<div style="margin:0 0 20px">${searchBox(c)}</div>${listOf(c, arts)}${contactBox(c)}`,
       });
     };
 
-    const missing = (c: Center) => page(c, { title: `Nicht gefunden – ${c.title}`, status: 404, noindex: true, body: `<div class="empty"><h1 style="color:var(--text)">Nicht gefunden</h1><p>Diesen Artikel gibt es nicht (mehr).</p><a class="btn" href="${escapeHtml(c.base || '/')}">Zum Hilfe-Center</a></div>` });
+    const missing = (c: Center) => {
+      const t = tLoc(app, c.locationId);
+      return page(c, { title: t('Nicht gefunden – {title}', { title: c.title }), status: 404, noindex: true, body: `<div class="empty"><h1 style="color:var(--text)">${escapeHtml(t('Nicht gefunden'))}</h1><p>${escapeHtml(t('Diesen Artikel gibt es nicht (mehr).'))}</p><a class="btn" href="${escapeHtml(c.base || '/')}">${escapeHtml(t('Zum Hilfe-Center'))}</a></div>` });
+    };
 
     const articlePage = (c: Center, slug: string, query: URLSearchParams): RawResult => {
       const a = parseJson(db.get('SELECT * FROM kb_articles WHERE location_id = ? AND slug = ?', c.locationId, slug), ['tags', 'seo']);
@@ -262,23 +274,24 @@ ${cats.length && uncategorized.length ? `<h2 class="sec">Weitere Artikel</h2>${l
       const siblings = published(c.locationId).filter((x) => x.id !== a.id && (a.category_id ? x.category_id === a.category_id : true)).slice(0, 8);
       const desc = a.seo?.description || summary(a);
       const canonical = absolute(c, `/${encodeURIComponent(a.slug)}`);
-      const updated = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: app.location(c.locationId)?.timezone || 'Europe/Berlin' }).format(new Date(a.updated_at));
-      const ld = JSON.stringify({ '@context': 'https://schema.org', '@type': 'Article', headline: a.title, description: desc, dateModified: a.updated_at, datePublished: a.published_at ?? a.created_at, url: canonical, publisher: { '@type': 'Organization', name: c.name } }).replace(/</g, '\\u003c');
+      const t = tLoc(app, c.locationId);
+      const updated = new Intl.DateTimeFormat(t.locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: app.location(c.locationId)?.timezone || 'Europe/Berlin' }).format(new Date(a.updated_at));
+      const ld = JSON.stringify({ '@context': 'https://schema.org', '@type': 'Article', headline: a.title, description: desc, dateModified: a.updated_at, datePublished: a.published_at ?? a.created_at, url: canonical, publisher: { '@type': 'Organization', name: c.name } }).replace(/</g, '\\u003c'); // i18n-ignore – schema.org types
       const thanks = query.get('danke');
       const vote = thanks
-        ? `<span class="thanks">Danke für dein Feedback!</span>`
-        : `<span>War das hilfreich?</span><form method="post" action="${escapeHtml(artHref(c, a))}/feedback"><input type="hidden" name="helpful" value="1"><button>👍 Ja</button></form><form method="post" action="${escapeHtml(artHref(c, a))}/feedback"><input type="hidden" name="helpful" value="0"><button>👎 Nein</button></form>`;
+        ? `<span class="thanks">${escapeHtml(t('Danke für dein Feedback!'))}</span>`
+        : `<span>${escapeHtml(t('War das hilfreich?'))}</span><form method="post" action="${escapeHtml(artHref(c, a))}/feedback"><input type="hidden" name="helpful" value="1"><button>👍 ${escapeHtml(t('Ja'))}</button></form><form method="post" action="${escapeHtml(artHref(c, a))}/feedback"><input type="hidden" name="helpful" value="0"><button>👎 ${escapeHtml(t('Nein'))}</button></form>`;
       return page(c, {
         title: `${a.seo?.title || a.title} – ${c.title}`,
         description: desc,
         canonical,
         noindex: !!a.seo?.noindex || preview,
-        flag: preview ? 'Vorschau – dieser Artikel ist noch nicht veröffentlicht' : undefined,
+        flag: preview ? t('Vorschau – dieser Artikel ist noch nicht veröffentlicht') : undefined,
         head: preview ? '' : `<script type="application/ld+json">${ld}</script>`,
         body: `<div class="crumb"><a href="${escapeHtml(c.base || '/')}">${escapeHtml(c.title)}</a>${cat ? ` / <a href="${escapeHtml(catHref(c, cat))}">${escapeHtml(cat.name)}</a>` : ''}</div>
-<div class="art"><article class="panel"><h1>${escapeHtml(a.title)}</h1><div class="meta">Aktualisiert am ${updated}</div><div class="prose">${renderMarkdown(a.body, { embeds: true })}</div>
-<div class="helpful">${preview ? '<span style="color:var(--muted)">Feedback ist in der Vorschau aus.</span>' : vote}</div></article>
-${siblings.length ? `<aside class="side"><h3>${cat ? escapeHtml(cat.name) : 'Weitere Artikel'}</h3>${siblings.map((x) => `<a href="${escapeHtml(artHref(c, x))}">${escapeHtml(x.title)}</a>`).join('')}</aside>` : '<span></span>'}</div>${contactBox(c)}`,
+<div class="art"><article class="panel"><h1>${escapeHtml(a.title)}</h1><div class="meta">${escapeHtml(t('Aktualisiert am {date}', { date: updated }))}</div><div class="prose">${renderMarkdown(a.body, { embeds: true })}</div>
+<div class="helpful">${preview ? `<span style="color:var(--muted)">${escapeHtml(t('Feedback ist in der Vorschau aus.'))}</span>` : vote}</div></article>
+${siblings.length ? `<aside class="side"><h3>${escapeHtml(cat ? cat.name : t('Weitere Artikel'))}</h3>${siblings.map((x) => `<a href="${escapeHtml(artHref(c, x))}">${escapeHtml(x.title)}</a>`).join('')}</aside>` : '<span></span>'}</div>${contactBox(c)}`,
       });
     };
 
@@ -305,10 +318,17 @@ ${siblings.length ? `<aside class="side"><h3>${cat ? escapeHtml(cat.name) : 'Wei
 
     /** Routes one help-center path ("" = start page, "k/<cat>", "<article>", "<article>/feedback"). */
     const serve = (c: Center | undefined, parts: string[], ctx: Ctx): RawResult => {
-      if (!c) return html('<!doctype html><meta charset="utf-8"><title>Nicht gefunden</title><p style="font-family:system-ui;padding:40px;text-align:center">Dieses Hilfe-Center gibt es nicht.</p>', 404);
+      const bare = (t: ReturnType<typeof tLoc>, msg: string) => html(`<!doctype html><meta charset="utf-8"><title>${escapeHtml(t('Nicht gefunden'))}</title><p style="font-family:system-ui;padding:40px;text-align:center">${escapeHtml(msg)}</p>`, 404);
+      if (!c) {
+        const t = tLoc(app, null);
+        return bare(t, t('Dieses Hilfe-Center gibt es nicht.'));
+      }
       const [a, b, x] = parts;
       // Draft previews work before the help center is switched on; everything else needs it on.
-      if (!c.enabled && !(a && ctx.query.get('preview'))) return html('<!doctype html><meta charset="utf-8"><title>Nicht gefunden</title><p style="font-family:system-ui;padding:40px;text-align:center">Dieses Hilfe-Center ist nicht öffentlich.</p>', 404);
+      if (!c.enabled && !(a && ctx.query.get('preview'))) {
+        const t = tLoc(app, c.locationId);
+        return bare(t, t('Dieses Hilfe-Center ist nicht öffentlich.'));
+      }
       if (!a) return indexPage(c, String(ctx.query.get('q') ?? '').slice(0, 200));
       if (a === 'sitemap.xml' && !b) return sitemap(c);
       if (a === 'k' && b && !x) return categoryPage(c, b);

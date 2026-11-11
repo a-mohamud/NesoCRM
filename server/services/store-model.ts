@@ -1,4 +1,5 @@
 import { calcTotals, type LineItem, type TaxMode } from './invoice-model.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * The online store's arithmetic, without I/O (docs/store.md): settings with their defaults, shipping rates (flat or by weight, per
@@ -7,6 +8,7 @@ import { calcTotals, type LineItem, type TaxMode } from './invoice-model.js';
  */
 
 export const EU = ['AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK'];
+/** German names (the message ids); translate where shown: t(COUNTRY_NAMES[code]). */
 export const COUNTRY_NAMES: Record<string, string> = {
   DE: 'Deutschland', AT: 'Österreich', CH: 'Schweiz', NL: 'Niederlande', BE: 'Belgien', LU: 'Luxemburg', FR: 'Frankreich', IT: 'Italien', ES: 'Spanien', PL: 'Polen',
   CZ: 'Tschechien', DK: 'Dänemark', SE: 'Schweden', FI: 'Finnland', IE: 'Irland', PT: 'Portugal', GR: 'Griechenland', HU: 'Ungarn', SK: 'Slowakei', SI: 'Slowenien',
@@ -198,6 +200,8 @@ export interface QuoteInput {
   mode: TaxMode;
   country: string;
   shipping_id?: string;
+  /** The sub-account's language for invoice lines, shipping names and problems (tLoc). */
+  t?: STFn;
 }
 
 export interface Quote {
@@ -218,6 +222,7 @@ export interface Quote {
 
 /** A cart → invoice lines, shipping and totals (what the order's invoice will say, cent for cent). */
 export function buildQuote(q: QuoteInput): Quote {
+  const tr = q.t ?? tApp();
   const problems: string[] = [];
   const items: LineItem[] = [];
   const lines: Quote['lines'] = [];
@@ -226,10 +231,11 @@ export function buildQuote(q: QuoteInput): Quote {
   const goods: { rate: number; net: number }[] = [];
   for (const { p, qty } of q.items) {
     const n = Math.max(1, Math.min(999, Math.round(qty)));
-    if (p.stock !== null && p.stock < n) problems.push(p.stock <= 0 ? `„${p.name}${p.variant ? ` (${p.variant})` : ''}“ ist ausverkauft` : `Von „${p.name}${p.variant ? ` (${p.variant})` : ''}“ sind nur noch ${p.stock} da`);
+    const label = `${p.name}${p.variant ? ` (${p.variant})` : ''}`;
+    if (p.stock !== null && p.stock < n) problems.push(p.stock <= 0 ? tr('„{name}“ ist ausverkauft', { name: label }) : tr('Von „{name}“ sind nur noch {n} da', { name: label, n: p.stock }));
     const gift = p.kind === 'gift_card';
     const rate = gift || q.mode !== 'standard' ? 0 : p.tax_rate;
-    const description = [p.variant ? `Variante: ${p.variant}` : '', p.sku ? `[${p.sku}]` : '', gift ? GIFT_NOTE : ''].filter(Boolean).join(' · ');
+    const description = [p.variant ? tr('Variante: {variant}', { variant: p.variant }) : '', p.sku ? `[${p.sku}]` : '', gift ? tr(GIFT_NOTE) : ''].filter(Boolean).join(' · ');
     items.push({ name: p.name, description, qty: n, price_cents: p.net_cents, tax_rate: rate } as LineItem);
     const unit = grossUnit(p, q.mode);
     lines.push({ product_id: p.product_id, article_id: p.article_id, name: p.name, variant: p.variant, sku: p.sku, qty: n, unit_cents: unit, total_cents: unit * n, kind: p.kind, image: p.image, stock: p.stock });
@@ -240,11 +246,12 @@ export function buildQuote(q: QuoteInput): Quote {
     }
   }
   const goodsCents = lines.reduce((n, l) => n + l.total_cents, 0);
-  const options = physical ? shippingOptions(q.settings.shipping, { country: q.country, weight_g: weight, goods_gross_cents: goodsCents }) : [];
+  // Rate names and delivery times are the store's own; the default ones read in the sub-account's language.
+  const options = (physical ? shippingOptions(q.settings.shipping, { country: q.country, weight_g: weight, goods_gross_cents: goodsCents }) : []).map((o) => ({ ...o, name: tr(o.name), delivery: o.delivery ? tr(o.delivery) : o.delivery }));
   const shipping = physical ? (options.find((o) => o.id === q.shipping_id) ?? options[0] ?? null) : null;
-  if (physical && !shipping) problems.push(q.country ? 'In dieses Land liefern wir leider nicht (keine passende Versandart)' : 'Bitte ein Lieferland wählen');
+  if (physical && !shipping) problems.push(tr(q.country ? 'In dieses Land liefern wir leider nicht (keine passende Versandart)' : 'Bitte ein Lieferland wählen'));
   if (shipping) {
-    const ship = shippingLines(`Versand: ${shipping.name}`, shipping.price_cents, goods, q.mode);
+    const ship = shippingLines(tr('Versand: {name}', { name: shipping.name }), shipping.price_cents, goods, q.mode);
     items.push(...ship);
     // VAT is rounded once per rate over all lines: nudge a shipping line's net by a cent or two so the invoice total is exactly
     // the goods plus the shipping price the buyer was shown (when no nudge fits, the cent stays – the invoice is still right).
@@ -303,4 +310,5 @@ export function trackingUrl(carrier: string, number: string): string {
       return '';
   }
 }
+// i18n: the labels are German message ids – translate where shown.
 export const CARRIERS: [string, string][] = [['dhl', 'DHL'], ['dpd', 'DPD'], ['hermes', 'Hermes'], ['gls', 'GLS'], ['ups', 'UPS'], ['post_at', 'Österreichische Post'], ['other', 'Andere']];

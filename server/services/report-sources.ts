@@ -17,11 +17,13 @@ const chunks = <T>(xs: T[], n = 400): T[][] => Array.from({ length: Math.ceil(xs
 
 /** id → label from a table (table and column names are constants in code). */
 export function lookupTable(table: string, labelSql = 'name', idCol = 'id'): Lookup {
-  return (db: Db, keys: string[]) => {
+  return (db: Db, keys: string[], t) => {
     const out = new Map<string, { label: string }>();
     for (const part of chunks(keys)) {
       for (const r of db.all(`SELECT ${idCol} AS id, ${labelSql} AS label FROM ${table} WHERE ${idCol} IN (${part.map(() => '?').join(', ')})`, ...part)) {
-        out.set(String(r.id), { label: String(r.label ?? '') || String(r.id) });
+        const label = String(r.label ?? '') || String(r.id);
+        // 'Unbekannt' is the SQL fallback of contactLookup – the only fixed text here.
+        out.set(String(r.id), { label: label === 'Unbekannt' && t ? t(label) : label });
       }
     }
     return out;

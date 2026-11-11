@@ -3,6 +3,7 @@ import { bad, clampLimit, type Ctx } from '../core/http.js';
 import { callRoute, ownLocation, visibleLocations } from '../services/mobile.js';
 import type { Journal } from '../services/undo-journal.js';
 import type { Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Rückgängig for agents and phones (docs/undo.md):
@@ -76,7 +77,7 @@ const TOOLS: Tool[] = [
       const id = encodeURIComponent(a.entry_id);
       if (!a.force) {
         const p = await call.api('GET', `/api/undo/${id}/preview${q({ single: a.single ? '1' : '' })}`, { location: a.location_id });
-        if (p.conflict) return { restored: false, conflict: true, message: `„${p.label}“ wurde seit dieser Änderung erneut geändert – mit force:true trotzdem wiederherstellen.`, diff: p.conflicts.flatMap((c: any) => c.diff), notice: p.notice || undefined };
+        if (p.conflict) return { restored: false, conflict: true, message: tApp()('„{label}“ wurde seit dieser Änderung erneut geändert – mit force:true trotzdem wiederherstellen.', { label: p.label }), diff: p.conflicts.flatMap((c: any) => c.diff), notice: p.notice || undefined };
       }
       const r = await call.api('POST', `/api/undo/${id}`, { location: a.location_id, body: { force: a.force === true, single: a.single === true } });
       return { restored: true, label: r.label, notices: r.notices, redo_id: r.redo_id };

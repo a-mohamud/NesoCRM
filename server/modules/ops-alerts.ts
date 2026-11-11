@@ -5,6 +5,7 @@ import { deliverEmail } from '../services/messaging.js';
 import { backupCheck, diskCheck, diskFree, ErrorWindow, isSpike, overall, tickCheck, webhookRequest, type Alert, type HealthReport } from '../services/ops-alerts.js';
 import { getBranding } from './agency.js';
 import { PUSH_KINDS } from './push.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Uptime and alerting (docs/backups.md#uptime-and-alerts).
@@ -91,8 +92,9 @@ export const opsAlertsModule: Module = {
     /** Sends one alert on every configured channel; never throws. Returns what each channel did. */
     async function send(a: Alert): Promise<Record<string, string>> {
       const result: Record<string, string> = {};
-      const subject = `${a.resolved ? '[Behoben]' : a.severity === 'critical' ? '[Alarm]' : '[Hinweis]'} ${brand()}: ${a.title}`;
-      const text = `${a.body}\n\nInstanz: ${app.config.baseUrl}\nZeit: ${new Date().toISOString()}\nStatus: ${app.config.baseUrl}/app/agency/system`;
+      const t = tApp();
+      const subject = `${a.resolved ? t('[Behoben]') : a.severity === 'critical' ? t('[Alarm]') : t('[Hinweis]')} ${brand()}: ${a.title}`;
+      const text = `${a.body}\n\n${t('Instanz: {url}\nZeit: {time}\nStatus: {status}', { url: app.config.baseUrl, time: new Date().toISOString(), status: `${app.config.baseUrl}/app/agency/system` })}`;
       const to = recipients();
       const loc = sender();
       if (to.length && loc) {
@@ -104,17 +106,17 @@ export const opsAlertsModule: Module = {
             // A sub-account without a mail provider only writes the mail to the log.
             if (res?.status === 'logged' && !app.services.alertMailer) logged = true;
           }
-          result.email = logged ? `${to.length} (nur protokolliert – im Absender-Sub-Account ist kein E-Mail-Versand eingerichtet)` : `${to.length}`;
+          result.email = logged ? t('{n} (nur protokolliert – im Absender-Sub-Account ist kein E-Mail-Versand eingerichtet)', { n: to.length }) : `${to.length}`;
         } catch (e) {
-          result.email = `Fehler: ${(e as Error).message.slice(0, 120)}`;
+          result.email = t('Fehler: {error}', { error: (e as Error).message.slice(0, 120) });
         }
-      } else result.email = to.length ? 'kein Absender' : 'keine Empfänger';
+      } else result.email = to.length ? t('kein Absender') : t('keine Empfänger');
       if (process.env.PGHL_ALERT_PUSH !== '0' && app.services.pushNotify) {
         try {
           const r = await app.services.pushNotify({ userIds: admins().map((u) => u.id), kind: 'ops', title: subject.slice(0, 120), body: a.body, url: '/app/agency/system', tag: `ops-${a.key}`, urgency: a.severity === 'critical' && !a.resolved ? 'high' : 'normal' });
           result.push = `${r?.sent ?? 0}`;
         } catch (e) {
-          result.push = `Fehler: ${(e as Error).message.slice(0, 120)}`;
+          result.push = t('Fehler: {error}', { error: (e as Error).message.slice(0, 120) });
         }
       }
       const hook = String(process.env.PGHL_ALERT_WEBHOOK ?? '').trim();
@@ -124,7 +126,7 @@ export const opsAlertsModule: Module = {
           const res = await (app.services.alertFetch ?? fetch)(req.url, { ...req.init, signal: AbortSignal.timeout(10_000) });
           result.webhook = res.ok ? 'ok' : `HTTP ${res.status}`;
         } catch (e) {
-          result.webhook = `Fehler: ${(e as Error).message.slice(0, 120)}`;
+          result.webhook = t('Fehler: {error}', { error: (e as Error).message.slice(0, 120) });
         }
       }
       return result;
@@ -135,9 +137,9 @@ export const opsAlertsModule: Module = {
       let dbCheck: HealthReport['checks']['db'];
       try {
         db.get('SELECT 1 AS x');
-        dbCheck = { status: 'ok', detail: 'Antwortet' };
+        dbCheck = { status: 'ok', detail: tApp()('Antwortet') };
       } catch (e) {
-        dbCheck = { status: 'fail', detail: `Datenbank antwortet nicht: ${(e as Error).message.slice(0, 120)}` };
+        dbCheck = { status: 'fail', detail: tApp()('Datenbank antwortet nicht: {error}', { error: (e as Error).message.slice(0, 120) }) };
       }
       const free = (app.services.opsDiskFree as ((dir: string) => ReturnType<typeof diskFree>) | undefined)?.(app.config.dataDir) ?? diskFree(app.config.dataDir);
       const backupAge = app.services.offsiteBackup?.age?.() ?? { source: process.env.PGHL_BACKUPS === '0' ? 'none' : 'local', maxMinutes: 26 * 60 };
@@ -152,6 +154,7 @@ export const opsAlertsModule: Module = {
 
     /** Opens, reminds or resolves the alert of one condition. */
     async function condition(key: string, failing: boolean, a: Omit<Alert, 'key'>) {
+      const t = tApp();
       const open = db.get<AlertRow>(`SELECT * FROM ops_alerts WHERE key = ? AND status = 'firing' ORDER BY first_at DESC LIMIT 1`, key);
       if (failing && !open) {
         const row = { id: id(), key, severity: a.severity, title: a.title, body: a.body, status: 'firing', first_at: now(), last_sent_at: now(), resolved_at: null, sent: '' };
@@ -159,10 +162,10 @@ export const opsAlertsModule: Module = {
         db.run('UPDATE ops_alerts SET sent = ? WHERE id = ?', sentText(await send({ key, ...a })), row.id);
       } else if (failing && open && Date.now() - Date.parse(open.last_sent_at ?? open.first_at) > REMIND_MS) {
         db.run('UPDATE ops_alerts SET last_sent_at = ?, body = ? WHERE id = ?', now(), a.body, open.id);
-        db.run('UPDATE ops_alerts SET sent = ? WHERE id = ?', sentText(await send({ key, ...a, title: `${a.title} (weiterhin)` })), open.id);
+        db.run('UPDATE ops_alerts SET sent = ? WHERE id = ?', sentText(await send({ key, ...a, title: t('{title} (weiterhin)', { title: a.title }) })), open.id);
       } else if (!failing && open) {
         db.run(`UPDATE ops_alerts SET status = 'resolved', resolved_at = ? WHERE id = ?`, now(), open.id);
-        await send({ key, severity: 'info', title: `${open.title} – behoben`, body: `Seit ${open.first_at.slice(0, 16).replace('T', ' ')} UTC, jetzt wieder in Ordnung.`, resolved: true });
+        await send({ key, severity: 'info', title: t('{title} – behoben', { title: open.title }), body: t('Seit {since} UTC, jetzt wieder in Ordnung.', { since: open.first_at.slice(0, 16).replace('T', ' ') }), resolved: true });
       }
     }
 
@@ -175,11 +178,12 @@ export const opsAlertsModule: Module = {
       const reqs = Math.max(0, total - before.total);
       const errs = errors.count(at);
       const c = r.checks;
-      await condition('db_down', c.db.status === 'fail', { severity: 'critical', title: 'Datenbank antwortet nicht', body: c.db.detail });
-      await condition('disk_low', c.disk.status === 'fail', { severity: 'critical', title: 'Speicherplatz fast voll', body: c.disk.detail });
-      await condition('backup_stale', c.backup.status === 'fail', { severity: 'critical', title: 'Backup zu alt', body: c.backup.detail });
-      await condition('tick_stalled', c.tick.status === 'fail', { severity: 'critical', title: 'Hintergrund-Aufgaben hängen', body: c.tick.detail });
-      await condition('error_spike', isSpike(errs, reqs), { severity: 'warning', title: 'Viele Serverfehler', body: `${errs} unerwartete Fehler in den letzten 5 Minuten (${reqs} Anfragen). Details: Agentur → Fehler & Wünsche und das Server-Log.` });
+      const t = tApp();
+      await condition('db_down', c.db.status === 'fail', { severity: 'critical', title: t('Datenbank antwortet nicht'), body: c.db.detail });
+      await condition('disk_low', c.disk.status === 'fail', { severity: 'critical', title: t('Speicherplatz fast voll'), body: c.disk.detail });
+      await condition('backup_stale', c.backup.status === 'fail', { severity: 'critical', title: t('Backup zu alt'), body: c.backup.detail });
+      await condition('tick_stalled', c.tick.status === 'fail', { severity: 'critical', title: t('Hintergrund-Aufgaben hängen'), body: c.tick.detail });
+      await condition('error_spike', isSpike(errs, reqs), { severity: 'warning', title: t('Viele Serverfehler'), body: t('{errors} unerwartete Fehler in den letzten 5 Minuten ({requests} Anfragen). Details: Agentur → Fehler & Wünsche und das Server-Log.', { errors: errs, requests: reqs }) });
       for (const fn of (app.services.opsEveryMinute ?? []) as ((r: HealthReport) => void | Promise<void>)[]) {
         try {
           await fn(r);
@@ -235,13 +239,13 @@ export const opsAlertsModule: Module = {
         : next,
     );
 
-    router.get('/api/admin/ops', 'admin', () => {
+    router.get('/api/admin/ops', 'admin', (ctx) => {
       const hook = String(process.env.PGHL_ALERT_WEBHOOK ?? '').trim();
       let hookHost = '';
       try {
         hookHost = hook ? new URL(hook).host : '';
       } catch {
-        hookHost = 'ungültige Adresse';
+        hookHost = tCtx(ctx)('ungültige Adresse');
       }
       const adminIds = admins().map((a) => a.id);
       const pushDevices = adminIds.length ? Number(db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id IN (${adminIds.map(() => '?').join(',')})`, ...adminIds)?.n ?? 0) : 0;
@@ -253,6 +257,6 @@ export const opsAlertsModule: Module = {
         recent: db.all<AlertRow>(`SELECT * FROM ops_alerts ORDER BY first_at DESC LIMIT 30`),
       };
     });
-    router.post('/api/admin/ops/test-alert', 'admin', async () => ({ sent: await send({ key: 'test', severity: 'info', title: 'Test-Alarm', body: 'So sehen Alarme dieser Instanz aus. Alles in Ordnung.' }) }));
+    router.post('/api/admin/ops/test-alert', 'admin', async () => ({ sent: await send({ key: 'test', severity: 'info', title: tApp()('Test-Alarm'), body: tApp()('So sehen Alarme dieser Instanz aus. Alles in Ordnung.') }) }));
   },
 };

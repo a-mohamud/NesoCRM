@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { HttpError, bad } from '../core/http.js';
 import { APP_VERSION } from '../version.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Client for an OpenShorts instance (https://github.com/mutonby/openshorts, MIT) – self-hosted
@@ -90,7 +91,7 @@ export async function osFetch(f: FetchLike, cfg: OsConfig, method: string, path:
     clearTimeout(timer);
     const err = e as Error;
     if (err.name === 'TimeoutError' || err.name === 'AbortError') throw new HttpError(504, 'OpenShorts antwortet nicht (Zeitüberschreitung)');
-    throw new HttpError(502, `OpenShorts nicht erreichbar: ${err.message}`);
+    throw new HttpError(502, tApp()('OpenShorts nicht erreichbar: {reason}', { reason: err.message }));
   }
 }
 
@@ -117,7 +118,7 @@ export function osErrorMessage(status: number, data: any): string {
   const detail = data && typeof data === 'object' ? (data.detail ?? data.error ?? data.message) : data;
   if (status === 401 || status === 403) return 'OpenShorts: API-Schlüssel fehlt oder ist ungültig';
   if (detail && typeof detail === 'object') {
-    if (detail.error === 'quota_exceeded') return `OpenShorts: Minuten-Kontingent erschöpft (nötig ${detail.minutes_required ?? '?'}, übrig ${detail.minutes_remaining ?? 0})`;
+    if (detail.error === 'quota_exceeded') return tApp()('OpenShorts: Minuten-Kontingent erschöpft (nötig {required}, übrig {remaining})', { required: detail.minutes_required ?? '?', remaining: detail.minutes_remaining ?? 0 });
     if (detail.error === 'no_plan') return 'OpenShorts: Das Konto braucht einen aktiven Tarif (oder eigene Schlüssel)';
     if (detail.error === 'plan_required') return 'OpenShorts: Diese Funktion gibt es nur in bezahlten Tarifen';
     const msg = detail.message ?? detail.error;
@@ -129,14 +130,14 @@ export function osErrorMessage(status: number, data: any): string {
   if (/ElevenLabs/i.test(s) && /missing/i.test(s)) return 'ElevenLabs-Schlüssel fehlt (Agentur → Integrationen → OpenShorts)';
   if (/fal\.ai/i.test(s) && /missing/i.test(s)) return 'fal.ai-Schlüssel fehlt (Agentur → Integrationen → OpenShorts)';
   const short = s.match(/only (\d+)s long/);
-  if (short) return `Das Video ist nur ${short[1]} s lang – zu kurz, um daraus Clips zu schneiden`;
+  if (short) return tApp()('Das Video ist nur {seconds} s lang – zu kurz, um daraus Clips zu schneiden', { seconds: short[1] });
   if (/YouTube URL ingest is disabled/i.test(s)) return 'Diese OpenShorts-Instanz nimmt keine YouTube-Links an – bitte die Datei hochladen';
   if (/^This link is /i.test(s)) return 'Bitte den Link eines einzelnen Videos angeben (youtube.com/watch?v=… oder youtu.be/…), keine Playlist oder Kanalseite';
-  if (/can't be processed|Invalid webhook_url/i.test(s)) return `OpenShorts kann diese Adresse nicht verarbeiten: ${s.replace(/^.*?:\s*/, '').slice(0, 200)}`;
+  if (/can't be processed|Invalid webhook_url/i.test(s)) return tApp()('OpenShorts kann diese Adresse nicht verarbeiten: {reason}', { reason: s.replace(/^.*?:\s*/, '').slice(0, 200) });
   if (/File too large/i.test(s) || status === 413) return 'Die Datei ist zu groß für OpenShorts (max. 2 GB)';
   if (/Job not found|Session not found|not found/i.test(s) || status === 404) return 'In OpenShorts nicht (mehr) vorhanden – evtl. abgelaufen oder nach einem Neustart verloren';
   if (status === 429) return 'OpenShorts: zu viele Anfragen – bitte kurz warten';
-  return `OpenShorts (${status}): ${s.slice(0, 300) || 'Fehler'}`;
+  return `OpenShorts (${status}): ${s.slice(0, 300) || tApp()('Fehler')}`;
 }
 
 // --- webhook signature --------------------------------------------------------------------
@@ -354,11 +355,13 @@ export function parseUgcResult(result: any): ParsedClip | null {
 
 /** Rough progress (0–100) and a German stage from OpenShorts' status, log lines and ready clips. */
 export function progressOf(status: string, logs: unknown, ready: number, queue?: { position?: number; eta_seconds?: number } | null): { progress: number; stage: string } {
-  if (status === 'completed') return { progress: 100, stage: 'Fertig' };
-  if (status === 'failed') return { progress: 0, stage: 'Fehlgeschlagen' };
+  const t = tApp();
+  if (status === 'completed') return { progress: 100, stage: t('Fertig') };
+  if (status === 'failed') return { progress: 0, stage: t('Fehlgeschlagen') };
   if (status === 'queued') {
-    const eta = queue?.eta_seconds ? `, ca. ${Math.max(1, Math.round(queue.eta_seconds / 60))} Min.` : '';
-    return { progress: 2, stage: queue?.position ? `In der Warteschlange (Platz ${queue.position}${eta})` : 'In der Warteschlange' };
+    const pos = queue?.position;
+    if (!pos) return { progress: 2, stage: t('In der Warteschlange') };
+    return { progress: 2, stage: queue?.eta_seconds ? t('In der Warteschlange (Platz {position}, ca. {minutes} Min.)', { position: pos, minutes: Math.max(1, Math.round(queue.eta_seconds / 60)) }) : t('In der Warteschlange (Platz {position})', { position: pos }) };
   }
   const lines = (Array.isArray(logs) ? logs : []).map(String);
   const text = lines.join('\n');
@@ -366,16 +369,16 @@ export function progressOf(status: string, logs: unknown, ready: number, queue?:
   if (found) {
     const total = Number(found[1]) || 1;
     const done = Math.min(total, Math.max(ready, new Set([...text.matchAll(/Clip (\d+) ready/g)].map((m) => m[1])).size));
-    return { progress: Math.min(97, 45 + Math.round((50 * done) / total)), stage: `Clips werden geschnitten (${done}/${total})` };
+    return { progress: Math.min(97, 45 + Math.round((50 * done) / total)), stage: t('Clips werden geschnitten ({done}/{total})', { done, total }) };
   }
-  if (/Analyzing with|silent video|Analysing/i.test(text)) return { progress: 35, stage: 'KI sucht die besten Momente' };
-  if (/Transcrib/i.test(text)) return { progress: 20, stage: 'Transkription' };
-  if (/Download/i.test(text)) return { progress: 8, stage: 'Video wird geladen' };
-  return { progress: 5, stage: 'Wird gestartet' };
+  if (/Analyzing with|silent video|Analysing/i.test(text)) return { progress: 35, stage: t('KI sucht die besten Momente') };
+  if (/Transcrib/i.test(text)) return { progress: 20, stage: t('Transkription') };
+  if (/Download/i.test(text)) return { progress: 8, stage: t('Video wird geladen') };
+  return { progress: 5, stage: t('Wird gestartet') };
 }
 
 /** Last meaningful error line of a failed job. */
-export function errorFromLogs(logs: unknown, fallback = 'OpenShorts meldet einen Fehler'): string {
+export function errorFromLogs(logs: unknown, fallback = tApp()('OpenShorts meldet einen Fehler')): string {
   const lines = (Array.isArray(logs) ? logs : []).map((l) => String(l).replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').trim()).filter(Boolean);
   const hit = [...lines].reverse().find((l) => /error|failed|fehler|❌|could not|no clips|not /i.test(l) && !/^Process failed with exit code/i.test(l)) ?? lines[lines.length - 1];
   return (hit || fallback).slice(0, 300);

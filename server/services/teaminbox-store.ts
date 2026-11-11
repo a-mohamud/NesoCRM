@@ -5,6 +5,7 @@ import { track } from './collab-actor.js';
 import { contactName, getContact } from './contacts.js';
 import { notifyTeam } from './messaging.js';
 import { peopleOf } from './team-people.js';
+import { tLoc, tUser } from '../i18n/index.js';
 import {
   PRIORITY_LABEL,
   STATUS_LABEL,
@@ -69,7 +70,7 @@ export interface Who {
 export const whoOf = (ctx: Ctx): Who => {
   const u = ctx.user;
   const via = ctx.via === 'mcp' ? 'mcp' : ctx.viaApiKey ? 'api' : 'user';
-  return { userId: u?.id ?? null, name: ctx.viaApiKey ? 'API-Schlüssel' : (u?.name ?? 'System'), via, ctx };
+  return { userId: u?.id ?? null, name: ctx.viaApiKey ? tLoc(null, ctx.locationId)('API-Schlüssel') : (u?.name ?? 'System'), via, ctx };
 };
 export const SYSTEM: Who = { userId: null, name: 'System', via: 'system' };
 
@@ -229,7 +230,9 @@ export function setAssignee(app: App, who: Who, conv: ConvRow, input: AssignInpu
   app.db.run('UPDATE conversations SET assignee_id = ?, team_id = ?, assigned_at = ? WHERE id = ?', userId, teamId, userId ? at : null, conv.id);
   const next = getConv(app, loc, conv.id);
   const teamName = teamId ? (app.db.get<{ name: string }>('SELECT name FROM helpdesk_teams WHERE id = ?', teamId)?.name ?? '') : '';
-  const what = userId ? `${userName(app, userId)}${teamName ? ` (${teamName})` : ''}` : teamName ? `Team ${teamName}` : 'niemand';
+  // Timeline and audit entries belong to the sub-account: its language.
+  const tl = tLoc(app, loc);
+  const what = userId ? `${userName(app, userId)}${teamName ? ` (${teamName})` : ''}` : teamName ? tl('Team {name}', { name: teamName }) : tl('niemand');
   addTimeline(app, next, 'assigned', {
     userId: who.userId,
     name: who.name,
@@ -242,10 +245,11 @@ export function setAssignee(app: App, who: Who, conv: ConvRow, input: AssignInpu
   const s = settingsOf(app, loc);
   if (userId && userId !== who.userId && userId !== conv.assignee_id && !input.quiet) {
     const label = contactLabel(app, next);
-    if (s.notifications.assign_push) pushToUsers(app, [userId], `${who.name} hat dir eine Konversation zugewiesen`, `${label}${next.last_message ? ` – ${next.last_message}` : ''}`, next, `inbox-assign-${next.id}`);
+    const tu = tUser(app as never, userId);
+    if (s.notifications.assign_push) pushToUsers(app, [userId], tu('{name} hat dir eine Konversation zugewiesen', { name: who.name }), `${label}${next.last_message ? ` – ${next.last_message}` : ''}`, next, `inbox-assign-${next.id}`);
     if (s.notifications.assign_email) {
       const u = agents.find((a) => a.id === userId);
-      if (u?.email) track(app, notifyTeam(app, loc, `Konversation zugewiesen: ${label}`, `${who.name} hat dir die Konversation mit ${label} zugewiesen.\n\n${app.baseUrl()}${url(next)}`, u.email).catch(() => undefined));
+      if (u?.email) track(app, notifyTeam(app, loc, tu('Konversation zugewiesen: {label}', { label }), `${tu('{name} hat dir die Konversation mit {label} zugewiesen.', { name: who.name, label })}\n\n${app.baseUrl()}${url(next)}`, u.email).catch(() => undefined));
     }
   }
   return next;
@@ -294,14 +298,15 @@ export function setStatus(app: App, who: Who, conv: ConvRow, input: StatusInput)
   } else if (conv.inbox_status === 'closed') patch.closed_at = null;
   app.db.update('conversations', conv.id, patch);
   const next = getConv(app, loc, conv.id);
+  const tl = tLoc(app, loc);
   if (statusChanged) {
-    addTimeline(app, next, 'status', { userId: who.userId, name: who.name, body: `Status: ${STATUS_LABEL[conv.inbox_status]} → ${STATUS_LABEL[status]}${input.reason ? ` · ${input.reason}` : ''}`, data: { from: conv.inbox_status, to: status, via: who.via, reason: input.reason ?? '' } });
-    audit(app, who, next, 'inbox.status', `${contactLabel(app, next)}: ${STATUS_LABEL[status]}`);
+    addTimeline(app, next, 'status', { userId: who.userId, name: who.name, body: `${tl('Status: {status}', { status: `${tl(STATUS_LABEL[conv.inbox_status])} → ${tl(STATUS_LABEL[status])}` })}${input.reason ? ` · ${input.reason}` : ''}`, data: { from: conv.inbox_status, to: status, via: who.via, reason: input.reason ?? '' } });
+    audit(app, who, next, 'inbox.status', `${contactLabel(app, next)}: ${tl(STATUS_LABEL[status])}`);
   }
   if (snoozeChanged) {
-    const until = snooze ? new Date(snooze).toLocaleString('de-DE', { timeZone: app.location(loc)?.timezone || 'Europe/Berlin', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-    addTimeline(app, next, 'snooze', { userId: who.userId, name: who.name, body: snooze ? `Zurückgestellt bis ${until}` : 'Zurückstellen aufgehoben', data: { until: snooze, via: who.via } });
-    audit(app, who, next, 'inbox.snooze', `${contactLabel(app, next)}: ${snooze ? `bis ${until}` : 'aufgehoben'}`);
+    const until = snooze ? new Date(snooze).toLocaleString(tl.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: app.location(loc)?.timezone || 'Europe/Berlin', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    addTimeline(app, next, 'snooze', { userId: who.userId, name: who.name, body: snooze ? tl('Zurückgestellt bis {date}', { date: until }) : tl('Zurückstellen aufgehoben'), data: { until: snooze, via: who.via } });
+    audit(app, who, next, 'inbox.snooze', `${contactLabel(app, next)}: ${snooze ? tl('bis {date}', { date: until }) : tl('aufgehoben')}`);
   }
   app.events.emit(loc, 'conversation.status_changed', { contactId: next.contact_id, conversationId: next.id, status, previous: conv.inbox_status, snoozedUntil: snooze ?? null, by: who.name, via: who.via, reason: input.reason ?? '', conversation: brief(app, next) });
   announce(app, next, 'status');
@@ -313,8 +318,9 @@ export function setPriority(app: App, who: Who, conv: ConvRow, priority: unknown
   if (priority === conv.priority) return conv;
   app.db.run('UPDATE conversations SET priority = ? WHERE id = ?', priority, conv.id);
   const next = getConv(app, conv.location_id, conv.id);
-  addTimeline(app, next, 'priority', { userId: who.userId, name: who.name, body: `Priorität: ${PRIORITY_LABEL[conv.priority]} → ${PRIORITY_LABEL[priority]}`, data: { from: conv.priority, to: priority, via: who.via } });
-  audit(app, who, next, 'inbox.priority', `${contactLabel(app, next)}: ${PRIORITY_LABEL[priority]}`);
+  const tl = tLoc(app, conv.location_id);
+  addTimeline(app, next, 'priority', { userId: who.userId, name: who.name, body: tl('Priorität: {change}', { change: `${tl(PRIORITY_LABEL[conv.priority])} → ${tl(PRIORITY_LABEL[priority])}` }), data: { from: conv.priority, to: priority, via: who.via } });
+  audit(app, who, next, 'inbox.priority', `${contactLabel(app, next)}: ${tl(PRIORITY_LABEL[priority])}`);
   announce(app, next, 'priority');
   return next;
 }
@@ -332,17 +338,19 @@ export function addNote(app: App, who: Who, conv: ConvRow, raw: unknown): { note
   const people = agentsOf(app, conv.location_id);
   const m = resolveMentions(text, people, who.userId);
   const note = addTimeline(app, conv, 'note', { userId: who.userId, name: who.name, body: m.body, mentions: m.ids });
-  audit(app, who, conv, 'inbox.note', `${contactLabel(app, conv)}: Interne Notiz`);
+  audit(app, who, conv, 'inbox.note', `${contactLabel(app, conv)}: ${tLoc(app, conv.location_id)('Interne Notiz')}`);
   announce(app, conv, 'note');
   if (m.ids.length) {
     const s = settingsOf(app, conv.location_id);
     const label = contactLabel(app, conv);
     const plain = plainNote(m.body).replace(/\s+/g, ' ');
-    pushToUsers(app, m.ids, `${who.name} hat dich in einer Notiz erwähnt`, `${label}: ${plain}`, conv, `inbox-mention-${note.id}`, 'high');
+    // Each person in their own language.
+    for (const uid of m.ids) pushToUsers(app, [uid], tUser(app as never, uid)('{name} hat dich in einer Notiz erwähnt', { name: who.name }), `${label}: ${plain}`, conv, `inbox-mention-${note.id}`, 'high');
     if (s.notifications.mention_email) {
       for (const uid of m.ids) {
         const u = people.find((p) => p.id === uid);
-        if (u?.email) track(app, notifyTeam(app, conv.location_id, `Erwähnung in einer internen Notiz: ${label}`, `${who.name} hat dich in einer internen Notiz zur Konversation mit ${label} erwähnt:\n\n${plainNote(m.body)}\n\n${app.baseUrl()}${url(conv)}`, u.email).catch(() => undefined));
+        const tu = tUser(app as never, uid);
+        if (u?.email) track(app, notifyTeam(app, conv.location_id, tu('Erwähnung in einer internen Notiz: {label}', { label }), `${tu('{name} hat dich in einer internen Notiz zur Konversation mit {label} erwähnt:', { name: who.name, label })}\n\n${plainNote(m.body)}\n\n${app.baseUrl()}${url(conv)}`, u.email).catch(() => undefined));
       }
     }
   }

@@ -7,6 +7,7 @@ import { applyWordFilter, groupSettings } from './community.js';
 import { notify } from './community-actions.js';
 import { extOf } from './community-ext.js';
 import { notifyStaff } from './community-tiers.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Direct messages between members (and from the team). Rules live here: who may write to whom (they must share a group in which
@@ -104,7 +105,7 @@ const previewOf = (s: string) => s.replace(/\s+/g, ' ').trim().slice(0, 140);
 function cleanBody(body: unknown): string {
   const s = String(body ?? '').replace(/\r\n?/g, '\n').trim();
   if (!s) throw bad('Bitte eine Nachricht schreiben.');
-  if (s.length > TEXT_MAX) throw bad(`Die Nachricht ist zu lang (höchstens ${TEXT_MAX} Zeichen).`);
+  if (s.length > TEXT_MAX) throw bad(tApp()('Die Nachricht ist zu lang (höchstens {max} Zeichen).', { max: TEXT_MAX }));
   return s;
 }
 
@@ -113,10 +114,10 @@ function checkLimits(app: App, locationId: string, from: string, to: string, gro
   const perHour = Math.min(...groups.map((g) => extOf(app, g.id).dms.per_hour));
   const newPerDay = Math.min(...groups.map((g) => extOf(app, g.id).dms.new_per_day));
   const hour = app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM community_dm_messages WHERE location_id = ? AND sender_id = ? AND created_at > ?', locationId, from, new Date(Date.now() - 36e5).toISOString())!.n;
-  if (hour >= perHour) throw new HttpError(429, `Du kannst höchstens ${perHour} Nachrichten pro Stunde schreiben – bitte später noch einmal.`);
+  if (hour >= perHour) throw new HttpError(429, tApp()('Du kannst höchstens {max} Nachrichten pro Stunde schreiben – bitte später noch einmal.', { max: perHour }));
   if (!threadOf(app, locationId, from, to)) {
     const day = app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM community_dm_threads t WHERE t.location_id = ? AND t.created_at > ? AND EXISTS (SELECT 1 FROM community_dm_messages m WHERE m.thread_id = t.id AND m.sender_id = ?)', locationId, new Date(Date.now() - 864e5).toISOString(), from)!.n;
-    if (day >= newPerDay) throw new HttpError(429, `Du kannst höchstens ${newPerDay} neue Gespräche pro Tag beginnen.`);
+    if (day >= newPerDay) throw new HttpError(429, tApp()('Du kannst höchstens {max} neue Gespräche pro Tag beginnen.', { max: newPerDay }));
   }
 }
 
@@ -141,7 +142,7 @@ export function sendDm(app: App, locationId: string, from: string, to: string, b
       text = r.text;
     }
   }
-  const fromName = opts.fromName ?? (from === TEAM ? 'Team' : nameOf(app, locationId, from));
+  const fromName = opts.fromName ?? (from === TEAM ? tLoc(app, locationId)('Team') : nameOf(app, locationId, from));
   const thread = ensureThread(app, locationId, from, to);
   const lastOwn = from !== TEAM && to === TEAM ? app.db.get<{ created_at: string }>('SELECT created_at FROM community_dm_messages WHERE thread_id = ? AND sender_id = ? ORDER BY created_at DESC LIMIT 1', thread.id, from)?.created_at : undefined;
   const msg: Message = { id: id(), thread_id: thread.id, location_id: locationId, sender_id: from, sender_name: fromName, body: text, status: 'visible', created_at: now() };
@@ -159,13 +160,14 @@ export function sendDm(app: App, locationId: string, from: string, to: string, b
       notify(app, g, [to], { kind: 'dm', postId: thread.id, actor: fromName, text: `${fromName}: ${previewOf(text).slice(0, 80)}` });
     }
     app.events.emit(locationId, 'community.dm_received', { contactId: to, from: { id: from === TEAM ? '' : from, name: fromName, team: from === TEAM }, message: { id: msg.id, text: previewOf(text) }, threadId: thread.id, ...(opts.via ? { viaWorkflow: opts.via } : {}) });
-    if (from !== TEAM) logActivity(app, locationId, from, 'community.dm_sent', `Nachricht an ${nameOf(app, locationId, to)} geschrieben`);
+    if (from !== TEAM) logActivity(app, locationId, from, 'community.dm_sent', tLoc(app, locationId)('Nachricht an {name} geschrieben', { name: nameOf(app, locationId, to) }));
   } else {
     // A member writes to the team: a workflow trigger and a line in the member's timeline; the team answers in the CRM.
     app.events.emit(locationId, 'community.dm_received', { contactId: from, from: { id: from, name: fromName, team: false }, toTeam: true, message: { id: msg.id, text: previewOf(text) }, threadId: thread.id });
-    logActivity(app, locationId, from, 'community.dm_to_team', `Nachricht an das Community-Team: ${previewOf(text).slice(0, 80)}`);
+    const t = tLoc(app, locationId);
+    logActivity(app, locationId, from, 'community.dm_to_team', t('Nachricht an das Community-Team: {text}', { text: previewOf(text).slice(0, 80) }));
     // The team gets one mail per member and hour, not one per line.
-    if (!lastOwn || Date.parse(lastOwn) < Date.now() - 36e5) void notifyStaff(app, locationId, `Community: Nachricht von ${fromName}`, `${fromName} hat dem Team geschrieben:\n\n${text}\n\nAntworten kannst du im CRM am Kontakt (Community → Nachrichten).`);
+    if (!lastOwn || Date.parse(lastOwn) < Date.now() - 36e5) void notifyStaff(app, locationId, t('Community: Nachricht von {name}', { name: fromName }), `${t('{name} hat dem Team geschrieben:', { name: fromName })}\n\n${text}\n\n${t('Antworten kannst du im CRM am Kontakt (Community → Nachrichten).')}`);
   }
   return { message: msg, thread: next };
 }
@@ -235,6 +237,6 @@ export function reportMessage(app: App, locationId: string, reporter: string, me
     String(reason ?? '').trim().slice(0, 500),
     now(),
   );
-  if (r.changes) logActivity(app, locationId, reporter, 'community.dm_reported', 'Eine Nachricht an das Team gemeldet');
+  if (r.changes) logActivity(app, locationId, reporter, 'community.dm_reported', tLoc(app, locationId)('Eine Nachricht an das Team gemeldet'));
   return { created: r.changes > 0 };
 }

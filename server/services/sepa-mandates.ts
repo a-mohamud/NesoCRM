@@ -4,6 +4,7 @@ import { ymdInTz } from '../core/time.js';
 import { id, now, token } from '../core/util.js';
 import { getContact, logActivity } from './contacts.js';
 import { sellerOf } from './invoice-flow.js';
+import { tApp, tLoc } from '../i18n/index.js';
 import {
   DEFAULT_SETTINGS,
   KIND_LABELS,
@@ -86,11 +87,12 @@ export function creditorOf(app: App, loc: string, s: SepaSettings = settingsOf(a
     bic: s.iban ? s.bic : s.bic || bank.bic,
     problems: [],
   };
-  if (!out.creditor_id) out.problems.push('Gläubiger-ID fehlt (SEPA → Einstellungen)');
-  else if (!creditorIdCheck(out.creditor_id).valid) out.problems.push('Die Gläubiger-ID ist ungültig');
+  const t = tLoc(app, loc);
+  if (!out.creditor_id) out.problems.push(t('Gläubiger-ID fehlt (SEPA → Einstellungen)'));
+  else if (!creditorIdCheck(out.creditor_id).valid) out.problems.push(t('Die Gläubiger-ID ist ungültig'));
   const i = ibanInfo(iban);
-  if (!i.ok) out.problems.push(iban ? `Empfänger-Konto: ${i.reason}` : 'Empfänger-IBAN fehlt (SEPA → Einstellungen oder Rechnungs-Einstellungen)');
-  if (!out.name) out.problems.push('Name des Zahlungsempfängers fehlt');
+  if (!i.ok) out.problems.push(iban ? t('Empfänger-Konto: {reason}', { reason: t(i.reason ?? '') }) : t('Empfänger-IBAN fehlt (SEPA → Einstellungen oder Rechnungs-Einstellungen)'));
+  if (!out.name) out.problems.push(t('Name des Zahlungsempfängers fehlt'));
   return out;
 }
 
@@ -146,6 +148,7 @@ export const captureUrl = (app: App, t: string) => `${app.baseUrl()}/sepa/m/${en
 
 export function mandateOut(app: App, m: MandateRow, opts: { today?: string; full?: boolean; used?: boolean; contact?: { first_name?: string; last_name?: string; company?: string; email?: string } | null } = {}) {
   const today = opts.today ?? todayOf(app, m.location_id);
+  const tl = tLoc(app, m.location_id);
   const status = effectiveStatus(m, today);
   const seq = nextSeq(m, opts.used ?? mandateUsed(app, m.id));
   const c = opts.contact !== undefined ? opts.contact : m.contact_id ? getContact(app, m.location_id, m.contact_id) : null;
@@ -159,14 +162,14 @@ export function mandateOut(app: App, m: MandateRow, opts: { today?: string; full
   return {
     id: m.id,
     contact_id: m.contact_id,
-    contact: c ? { id: m.contact_id, name: [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company || c.email || 'Kontakt', company: c.company ?? '', email: c.email ?? '' } : null,
+    contact: c ? { id: m.contact_id, name: [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company || c.email || tl('Kontakt'), company: c.company ?? '', email: c.email ?? '' } : null,
     reference: m.reference,
     scheme: m.scheme,
-    scheme_label: SCHEME_LABELS[m.scheme] ?? m.scheme,
+    scheme_label: SCHEME_LABELS[m.scheme] ? tl(SCHEME_LABELS[m.scheme]) : m.scheme,
     kind: m.kind,
-    kind_label: KIND_LABELS[m.kind] ?? m.kind,
+    kind_label: KIND_LABELS[m.kind] ? tl(KIND_LABELS[m.kind]) : m.kind,
     status,
-    status_label: STATUS_LABELS[status] ?? status,
+    status_label: STATUS_LABELS[status] ? tl(STATUS_LABELS[status]) : status,
     holder: m.holder,
     iban: opts.full ? m.iban : maskIban(m.iban),
     iban_masked: maskIban(m.iban),
@@ -176,7 +179,7 @@ export function mandateOut(app: App, m: MandateRow, opts: { today?: string; full
     signed_place: m.signed_place,
     source: m.source,
     next_seq: status === 'active' ? seq : null,
-    next_seq_label: status === 'active' ? SEQ_LABELS[seq] : '',
+    next_seq_label: status === 'active' && SEQ_LABELS[seq] ? tl(SEQ_LABELS[seq]) : '',
     final_next: !!m.final_next,
     first_used_at: m.first_used_at,
     last_used_at: m.last_used_at,
@@ -211,7 +214,7 @@ function takeReference(app: App, loc: string, raw: unknown, s: SepaSettings): st
   if (raw === undefined || raw === null || String(raw).trim() === '') return nextReference(app, loc, s);
   const r = refCheck(raw);
   if (!r.valid) throw bad(r.reason!);
-  if (app.db.get('SELECT 1 AS x FROM sepa_mandates WHERE location_id = ? AND reference = ?', loc, r.ref)) throw new HttpError(409, `Die Mandatsreferenz ${r.ref} ist schon vergeben`);
+  if (app.db.get('SELECT 1 AS x FROM sepa_mandates WHERE location_id = ? AND reference = ?', loc, r.ref)) throw new HttpError(409, tApp()('Die Mandatsreferenz {reference} ist schon vergeben', { reference: r.ref }));
   return r.ref;
 }
 
@@ -233,10 +236,10 @@ export function cleanAccount(i: AccountInput): { holder: string; iban: string; b
   if (!info.ok) throw bad(info.reason!);
   const bic = normalizeBic(i.bic);
   if (bic && !checkBic(bic)) throw bad('Die BIC ist ungültig (8 oder 11 Zeichen)');
-  if (info.bicRequired && !bic) throw bad(`Für Konten aus ${info.country} ist die BIC Pflicht`);
+  if (info.bicRequired && !bic) throw bad(tApp()('Für Konten aus {country} ist die BIC Pflicht', { country: info.country }));
   const country = String(i.country ?? '').trim().toUpperCase().slice(0, 2) || (NON_EEA.includes(info.country) ? info.country : '');
   const city = clip(i.city, 35);
-  if (info.bicRequired && (!city || !country)) throw bad(`Für Konten aus ${info.country} sind Ort und Land des Kontoinhabers Pflicht`);
+  if (info.bicRequired && (!city || !country)) throw bad(tApp()('Für Konten aus {country} sind Ort und Land des Kontoinhabers Pflicht', { country: info.country }));
   if (country && !/^[A-Z]{2}$/.test(country)) throw bad('Land: zweistelliger Ländercode (z. B. DE)');
   return { holder, iban: info.iban, bic, street: clip(i.street, 70), postal_code: clip(i.postal_code, 16), city, country };
 }
@@ -249,7 +252,8 @@ function contactOrFail(app: App, loc: string, contactId: unknown) {
 
 const textFor = (app: App, loc: string, s: SepaSettings, ref: string, scheme: Scheme, kind: MandateKind) => {
   const cr = creditorOf(app, loc, s);
-  return mandateText({ creditor_name: cr.name, creditor_address: cr.address, creditor_id: cr.creditor_id || '(Gläubiger-ID folgt)', reference: ref, scheme, kind, prenotify_days: s.prenotify_days });
+  const t = tLoc(app, loc);
+  return mandateText({ creditor_name: cr.name, creditor_address: cr.address, creditor_id: cr.creditor_id || t('(Gläubiger-ID folgt)'), reference: ref, scheme, kind, prenotify_days: s.prenotify_days }, t);
 };
 
 /** A mandate signed on paper (or imported): active at once. */
@@ -285,7 +289,7 @@ export function createMandate(app: App, loc: string, body: Record<string, any>, 
     updated_at: t,
   };
   app.db.insert('sepa_mandates', row);
-  logActivity(app, loc, c.id, 'sepa.mandate', `SEPA-Mandat ${ref} erfasst (${SCHEME_LABELS[scheme]}, ${KIND_LABELS[kind].toLowerCase()})`);
+  logActivity(app, loc, c.id, 'sepa.mandate', tLoc(app, loc)('SEPA-Mandat {reference} erfasst ({scheme}, {kind})', { reference: ref, scheme: tLoc(app, loc)(SCHEME_LABELS[scheme]), kind: tLoc(app, loc)(KIND_LABELS[kind]).toLowerCase() }));
   app.events.emit(loc, 'sepa.mandate_signed', { contactId: c.id, mandate: { id: row.id, reference: ref, scheme, kind, source: row.source } });
   return mustMandate(app, loc, row.id);
 }
@@ -318,7 +322,7 @@ export function requestMandate(app: App, loc: string, body: Record<string, any>,
     updated_at: t,
   };
   app.db.insert('sepa_mandates', row);
-  logActivity(app, loc, c.id, 'sepa.mandate', `Online-SEPA-Mandat ${ref} angefordert`);
+  logActivity(app, loc, c.id, 'sepa.mandate', tLoc(app, loc)('Online-SEPA-Mandat {reference} angefordert', { reference: ref }));
   return mustMandate(app, loc, row.id);
 }
 
@@ -352,7 +356,7 @@ export function signOnline(app: App, m: MandateRow, input: SignInput, proof: { i
   ).changes;
   if (!changed) throw new HttpError(409, 'Dieses Mandat wurde schon erteilt');
   const out = mustMandate(app, loc, m.id);
-  if (out.contact_id) logActivity(app, loc, out.contact_id, 'sepa.mandate', `SEPA-Mandat ${out.reference} online erteilt (${maskIban(out.iban)})`);
+  if (out.contact_id) logActivity(app, loc, out.contact_id, 'sepa.mandate', tLoc(app, loc)('SEPA-Mandat {reference} online erteilt ({iban})', { reference: out.reference, iban: maskIban(out.iban) }));
   app.events.emit(loc, 'sepa.mandate_signed', { contactId: out.contact_id, mandate: { id: out.id, reference: out.reference, scheme: out.scheme, kind: out.kind, source: 'online' } });
   return out;
 }
@@ -383,7 +387,7 @@ export function endMandate(app: App, loc: string, mandateId: string, status: 're
   if (['revoked', 'used', 'final'].includes(m.status) && status === 'revoked') throw new HttpError(409, 'Dieses Mandat ist schon beendet');
   const t = now();
   app.db.run(`UPDATE sepa_mandates SET status = ?, ended_at = ?, end_reason = ?, capture_token = CASE WHEN ? = 'revoked' THEN NULL ELSE capture_token END, updated_at = ? WHERE id = ?`, status, t, clip(reason, 300), status, t, m.id);
-  if (m.contact_id) logActivity(app, loc, m.contact_id, 'sepa.mandate', `SEPA-Mandat ${m.reference} ${status === 'revoked' ? 'widerrufen' : 'gesperrt'}${reason ? `: ${clip(reason, 120)}` : ''}`);
+  if (m.contact_id) logActivity(app, loc, m.contact_id, 'sepa.mandate', (status === 'revoked' ? tLoc(app, loc)('SEPA-Mandat {reference} widerrufen', { reference: m.reference }) : tLoc(app, loc)('SEPA-Mandat {reference} gesperrt', { reference: m.reference })) + (reason ? `: ${clip(reason, 120)}` : ''));
   return mustMandate(app, loc, m.id);
 }
 
@@ -402,7 +406,7 @@ export function expireSweep(app: App, todayUtc: string): number {
     return new Date(Date.UTC(y - 3, mo - 1, d)).toISOString().slice(0, 10);
   })();
   return app.db.run(
-    `UPDATE sepa_mandates SET status = 'expired', ended_at = ?, end_reason = '36 Monate ohne Einzug', updated_at = ? WHERE status = 'active' AND substr(COALESCE(last_used_at, signed_at), 1, 10) <= ?`,
-    now(), now(), cutoff,
+    `UPDATE sepa_mandates SET status = 'expired', ended_at = ?, end_reason = ?, updated_at = ? WHERE status = 'active' AND substr(COALESCE(last_used_at, signed_at), 1, 10) <= ?`,
+    now(), tApp()('36 Monate ohne Einzug'), now(), cutoff,
   ).changes;
 }

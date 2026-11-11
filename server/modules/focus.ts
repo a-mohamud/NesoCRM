@@ -10,6 +10,7 @@ import { planRules, type Lang } from '../services/focus-rules.js';
 import { callRoute } from '../services/route-call.js';
 import { PURPOSES } from './ai-assistant.js';
 import type { Tool } from './mcp.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Fokus-Modus: HyperLevel as a source of truth you simply ask. A question – typed, spoken, or from another agent over MCP – becomes an
@@ -119,7 +120,8 @@ export const focusModule: Module = {
         .map((h: string) => cleanLine(h, 200))
         .filter(Boolean)
         .slice(-4);
-      const lang: Lang = src.lang === 'en' ? 'en' : 'de';
+      // without an explicit lang the answer follows the person's language
+      const lang: Lang = src.lang === 'en' || src.lang === 'de' ? src.lang : tCtx(ctx).locale === 'de' ? 'de' : 'en';
       const rulesOnly = query ? src.rules === '1' || src.rules === 'true' : src.rules_only === true;
       return { text, history, lang, rulesOnly };
     };
@@ -139,7 +141,7 @@ export const focusModule: Module = {
           const tz = app.location(ctx.locationId)?.timezone || 'Europe/Berlin';
           const types = focusTypes(reg);
           const prompt = focusPrompt({ today: ymdInTz(new Date(), tz), tz, person: ctx.user?.name ?? 'Unbekannt', lang: input.lang, catalogue: types.map((d) => reg.describe(d)), context: await viewerContext(ctx), history: input.history, request: input.text });
-          const system = FOCUS_SYSTEM.replace('{brand}', String(app.services.brandName?.() ?? 'Neso CRM')).replace('{lang}', input.lang === 'en' ? 'Englisch' : 'Deutsch');
+          const system = FOCUS_SYSTEM.replace('{brand}', String(app.services.brandName?.() ?? 'Neso CRM')).replace('{lang}', input.lang === 'en' ? 'English' : 'German');
           const r = await app.services.aiRun({ locationId: ctx.locationId, purpose: 'focus', user: prompt, system: [{ text: system }], schema: focusSchema(types.map((d) => d.type)), maxTokens: 1500, timeoutMs: 45_000, userId: ctx.user?.id ?? null });
           const a = parseFocusAnswer(String(r?.text ?? ''));
           const checked = a ? validateTiles(a.tiles, reg, env, input.text, { fromModel: true }).tiles : [];
@@ -184,7 +186,8 @@ export const focusModule: Module = {
 
     router.get('/api/focus/status', 'location', (ctx) => {
       const block = aiBlock(ctx);
-      const why = block === 'off' ? ((app.services.aiReady?.(ctx.locationId) as string | null) ?? 'Der KI-Assistent ist nicht verfügbar.') : block === 'limit' ? `Du hast in der letzten Stunde schon ${HOURLY} Fragen an die KI gestellt – bis dahin antworten feste Regeln.` : null;
+      const t = tCtx(ctx);
+      const why = block === 'off' ? t((app.services.aiReady?.(ctx.locationId) as string | null) ?? 'Der KI-Assistent ist nicht verfügbar.') : block === 'limit' ? t('Du hast in der letzten Stunde schon {n} Fragen an die KI gestellt – bis dahin antworten feste Regeln.', { n: HOURLY }) : null;
       return { ai: !block, reason: why, hourly: HOURLY, used: aiUsed(ctx), can_save: !denial(app, ctx, '/api/boards') };
     });
 

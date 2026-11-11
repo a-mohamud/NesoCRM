@@ -20,6 +20,7 @@ import {
 } from '../services/twilio-numbers.js';
 import { E164, NUMBER_SID, dialTwiml } from '../services/twilio.js';
 import { recordNotice, telephonyConfig, twilioRequest, updateConfiguredNumbers, type CallRouteInput } from './telephony.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Phone numbers of a sub-account: the registry (every number with its label, kind and where its calls go), buying and
@@ -157,7 +158,7 @@ export const telephonyNumbersModule: Module = {
       return {
         numbers: rows.map((r) => out(ctx.locationId, r, calls)),
         released: released.map((r) => out(ctx.locationId, r, calls)),
-        route_kinds: ROUTE_KINDS.map((k) => ({ key: k, label: ROUTE_LABEL[k] })),
+        route_kinds: ROUTE_KINDS.map((k) => ({ key: k, label: tCtx(ctx)(ROUTE_LABEL[k]) })),
         flows: db.all('SELECT id, name FROM ivr_flows WHERE location_id = ? ORDER BY name', ctx.locationId),
         groups: db.all('SELECT id, name, kind FROM call_groups WHERE location_id = ? ORDER BY name', ctx.locationId),
         pools: db.all('SELECT id, name FROM dni_pools WHERE location_id = ? ORDER BY name', ctx.locationId),
@@ -239,9 +240,9 @@ export const telephonyNumbersModule: Module = {
         numbers = mapAvailable(j, type);
       } catch (e) {
         if (!twilioNotFound(e)) throw e;
-        throw bad(`Twilio hat in ${country} keine ${NUMBER_TYPE_LABEL[type]}n zum Kauf.`);
+        throw bad(tCtx(ctx)('Twilio hat in {country} keine {type}n zum Kauf.', { country, type: tCtx(ctx)(NUMBER_TYPE_LABEL[type]) }));
       }
-      return { country, type, numbers, rule: regulatoryRule(country), types: Object.entries(NUMBER_TYPE_LABEL).map(([key, label]) => ({ key, label })) };
+      return { country, type, numbers, rule: regulatoryRule(country), types: Object.entries(NUMBER_TYPE_LABEL).map(([key, label]) => ({ key, label: tCtx(ctx)(label) })) };
     });
 
     /** Monthly prices of a country (best effort: the pricing API may be closed to the account). */
@@ -267,13 +268,14 @@ export const telephonyNumbersModule: Module = {
       try {
         addresses = mapAddresses(await twilioRequest(app, cfg, 'GET', `/Addresses.json?${new URLSearchParams({ IsoCountry: country, PageSize: '50' })}`));
       } catch (e) {
-        problems.push(`Adressen ließen sich nicht laden: ${(e as Error).message}`);
+        problems.push(tCtx(ctx)('Adressen ließen sich nicht laden: {error}', { error: (e as Error).message }));
       }
       try {
         const nt = type === 'toll_free' ? 'toll-free' : type;
+        // i18n-ignore (Twilio API field names)
         bundles = mapBundles(await twilioHostRequest(app, cfg, 'numbers', 'GET', '/v2/RegulatoryCompliance/Bundles', [['IsoCountry', country], ['NumberType', nt], ['PageSize', '50']]));
       } catch (e) {
-        problems.push(`Regulatory Bundles ließen sich nicht laden: ${(e as Error).message}`);
+        problems.push(tCtx(ctx)('Regulatory Bundles ließen sich nicht laden: {error}', { error: (e as Error).message }));
       }
       const ready = (!rule?.address || addresses.length > 0) && (!rule?.bundle || bundles.some((b) => b.approved));
       return { country, type, rule, addresses, bundles, console: CONSOLE, ready, problems };
@@ -301,15 +303,16 @@ export const telephonyNumbersModule: Module = {
       if (existing?.status === 'active') throw new HttpError(409, 'Diese Nummer gehört schon zu diesem Sub-Account');
       const loc = app.location(ctx.locationId)!;
       const label = str(b.label, 'Bezeichnung', { max: 80 }) || `${loc.name} ${number}`.slice(0, 80);
+      // Twilio API field names (not translated).
       const params: [string, string][] = [
-        ['PhoneNumber', number],
-        ['FriendlyName', label.slice(0, 64)],
-        ['VoiceUrl', hook('voice', ctx.locationId)],
-        ['VoiceMethod', 'POST'],
-        ['StatusCallback', hook('voice-status', ctx.locationId)],
-        ['StatusCallbackMethod', 'POST'],
-        ...(addressSid ? [['AddressSid', addressSid] as [string, string]] : []),
-        ...(bundleSid ? [['BundleSid', bundleSid] as [string, string]] : []),
+        ['PhoneNumber', number], // i18n-ignore
+        ['FriendlyName', label.slice(0, 64)], // i18n-ignore
+        ['VoiceUrl', hook('voice', ctx.locationId)], // i18n-ignore
+        ['VoiceMethod', 'POST'], // i18n-ignore
+        ['StatusCallback', hook('voice-status', ctx.locationId)], // i18n-ignore
+        ['StatusCallbackMethod', 'POST'], // i18n-ignore
+        ...(addressSid ? [['AddressSid', addressSid] as [string, string]] : []), // i18n-ignore
+        ...(bundleSid ? [['BundleSid', bundleSid] as [string, string]] : []), // i18n-ignore
       ];
       const country = COUNTRY.test(String(b.country ?? '').toUpperCase()) ? String(b.country).toUpperCase() : countryOf(number);
       let j: any;

@@ -42,6 +42,13 @@ export interface CardData {
 
 export const cardKey = (kind: string, cardId: string) => `${kind}:${cardId}`;
 
+/**
+ * Translates the renderer's own labels (card kinds, "Live", frame names …). The server passes a translator from
+ * server/i18n (tLoc/tCtx), the browser may pass its own; without one the German message ids are shown.
+ */
+export type RenderTr = (text: string, vars?: Record<string, string | number>) => string;
+const plainTr: RenderTr = (s, v) => (v ? s.replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(v, k) ? String(v[k]) : m)) : s);
+
 export interface RenderCtx {
   byId: Map<string, CanvasElement>;
   cards?: Record<string, CardData>;
@@ -53,6 +60,8 @@ export interface RenderCtx {
   editing?: string;
   /** Background behind arrow labels. */
   labelBg?: string;
+  /** Translator for the renderer's own labels. */
+  tr?: RenderTr;
 }
 
 const PALETTE = ['#4263eb', '#f76707', '#37b24d', '#ae3ec9', '#1098ad', '#f59f00', '#e64980', '#868e96'];
@@ -711,6 +720,7 @@ function cardPrims(el: CanvasElement, ctx: RenderCtx): Prim[] {
   const kind = el.card!.kind;
   const accent = CARD_COLORS[kind];
   const data = ctx.publicView ? undefined : ctx.cards?.[cardKey(kind, el.card!.id)];
+  const tr = ctx.tr ?? plainTr;
   const { x, y, w, h } = el;
   const ink = '#212529';
   const muted = '#868e96';
@@ -719,12 +729,12 @@ function cardPrims(el: CanvasElement, ctx: RenderCtx): Prim[] {
     { t: 'path', d: rectCmds(x, y, w, h, 12), fill: '#ffffff', stroke: '#dee2e6', sw: 1 },
     { t: 'group', clip: rectCmds(x, y, w, h, 12), children: [{ t: 'path', d: rectCmds(x, y, w, 4, 0), fill: accent }] },
     iconPrim(CARD_ICONS[kind], x + 14, y + 16, 16, accent, 2.2),
-    text(x + 36, y + 17, [CARD_LABELS[kind].toUpperCase()], 11, accent, { bold: true }),
+    text(x + 36, y + 17, [tr(CARD_LABELS[kind]).toUpperCase()], 11, accent, { bold: true }),
   ];
   const pad = 14;
   if (!data || !data.ok) {
-    const msg = ctx.publicView ? 'Live-Daten nur im CRM sichtbar' : data?.error ?? 'Lädt Live-Daten …';
-    out.push(text(x + pad, y + 46, [ellipsize(el.name || CARD_LABELS[kind], w - pad * 2, 16, true)], 16, ink, { bold: true }));
+    const msg = ctx.publicView ? tr('Live-Daten nur im CRM sichtbar') : data?.error ?? tr('Lädt Live-Daten …');
+    out.push(text(x + pad, y + 46, [ellipsize(el.name || tr(CARD_LABELS[kind]), w - pad * 2, 16, true)], 16, ink, { bold: true }));
     out.push(text(x + pad, y + 70, layoutText(msg, 13, { maxWidth: w - pad * 2, maxLines: 3 }).lines, 13, muted));
     return out;
   }
@@ -757,7 +767,7 @@ function cardPrims(el: CanvasElement, ctx: RenderCtx): Prim[] {
         out.push(text(cx + 12, dy + 5, [ellipsize(d.name, cw - 24, 12, true)], 12, ink, { bold: true }));
         out.push(text(cx + 12, dy + 22, [ellipsize(d.value, cw - 24, 11)], 11, muted));
       });
-      if (s.deals.length > maxDeals && maxDeals >= 0) out.push(text(cx + 8, cy + colH - 18, [`+ ${s.deals.length - maxDeals} weitere`], 11, muted));
+      if (s.deals.length > maxDeals && maxDeals >= 0) out.push(text(cx + 8, cy + colH - 18, [tr('+ {n} weitere', { n: s.deals.length - maxDeals })], 11, muted));
     });
     return out;
   }
@@ -778,16 +788,16 @@ function cardPrims(el: CanvasElement, ctx: RenderCtx): Prim[] {
     }
   }
   out.push({ t: 'path', d: ellipseCmds(x + pad + 3, y + h - 15, 3, 3), fill: '#2f9e44' });
-  out.push(text(x + pad + 11, y + h - 22, ['Live'], 11, muted));
-  if (data.url) out.push(text(x + w - pad, y + h - 22, ['Öffnen ›'], 11, accent, { anchor: 'end', bold: true }));
+  out.push(text(x + pad + 11, y + h - 22, [tr('Live')], 11, muted));
+  if (data.url) out.push(text(x + w - pad, y + h - 22, [tr('Öffnen ›')], 11, accent, { anchor: 'end', bold: true }));
   return out;
 }
 
 // --- per element -----------------------------------------------------------------------------------------
 
-function framePrims(el: CanvasElement, withLabel: boolean): Prim[] {
+function framePrims(el: CanvasElement, withLabel: boolean, tr: RenderTr = plainTr): Prim[] {
   const out: Prim[] = [{ t: 'path', d: rectCmds(el.x, el.y, el.w, el.h, el.radius ?? 0), fill: visible(el.fill) ? el.fill : undefined, stroke: '#ced4da', sw: 1 }];
-  if (withLabel) out.push(text(el.x, el.y - 20, [ellipsize(el.name ?? 'Rahmen', Math.max(60, el.w), 14)], 14, '#868e96'));
+  if (withLabel) out.push(text(el.x, el.y - 20, [ellipsize(el.name ?? tr('Rahmen'), Math.max(60, el.w), 14)], 14, '#868e96'));
   return out;
 }
 
@@ -837,7 +847,7 @@ export function elementPrims(el: CanvasElement, ctx: RenderCtx, o: { frameLabel?
       body = stickyPrims(el, ctx);
       break;
     case 'frame':
-      body = framePrims(el, o.frameLabel !== false);
+      body = framePrims(el, o.frameLabel !== false, ctx.tr);
       break;
     case 'image':
       body = imagePrims(el, ctx);
@@ -898,12 +908,14 @@ export interface SceneRenderOptions {
   maxSize?: number;
   /** Prefix of clip-path ids (several SVGs inline on one page need different ones). */
   idPrefix?: string;
+  /** Translator for the renderer's own labels (see RenderTr). */
+  tr?: RenderTr;
 }
 
 /** The scene (or a part of it) as a display list in output coordinates, plus its size. */
 export function sceneDisplayList(elements: CanvasElement[], o: SceneRenderOptions = {}): { prims: Prim[]; width: number; height: number; box: Box } {
   const byId = new Map(elements.map((e) => [e.id, e]));
-  const ctx: RenderCtx = { byId, cards: o.cards, publicView: o.publicView, imageHref: o.imageHref, labelBg: o.background ?? '#ffffff' };
+  const ctx: RenderCtx = { byId, cards: o.cards, publicView: o.publicView, imageHref: o.imageHref, labelBg: o.background ?? '#ffffff', tr: o.tr };
   let tree = renderTree(elements);
   let box: Box | null;
   let frameClip = false;

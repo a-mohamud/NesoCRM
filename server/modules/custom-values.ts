@@ -6,6 +6,7 @@ import { LIMITS, NAMESPACE, cleanKey, fillHtml, keyFromName, locationOfData, pla
 import type { SnapshotPart } from '../services/snapshots.js';
 import { tableEntity } from '../services/undo-table.js';
 import type { Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Custom Values: global placeholders per sub-account (HighLevel's staple) – „Telefon Hotline“ = „0800 123 456“, used as
@@ -130,9 +131,9 @@ export const customValuesModule: Module = {
     };
     const text = (v: unknown, field: string, max: number) => {
       if (v === undefined || v === null) return '';
-      if (typeof v === 'object') throw bad(`${field}: bitte Text angeben`);
+      if (typeof v === 'object') throw bad(tApp()('{field}: bitte Text angeben', { field: tApp()(field) }));
       const s = String(v);
-      if (s.length > max) throw bad(`${field} ist zu lang (höchstens ${max} Zeichen)`);
+      if (s.length > max) throw bad(tApp()('{field} ist zu lang (höchstens {max} Zeichen)', { field: tApp()(field), max }));
       return s;
     };
     const folderOf = (v: unknown) => text(v, 'Ordner', LIMITS.folder).trim().replace(/\s+/g, ' ');
@@ -143,9 +144,9 @@ export const customValuesModule: Module = {
       if (!name) throw bad('Name fehlt');
       const key = b.key !== undefined && b.key !== '' ? cleanKey(b.key) : keyFromName(name);
       if (!key) throw bad('Schlüssel: nur Kleinbuchstaben, Ziffern und Unterstrich, beginnend mit einem Buchstaben (z. B. telefon_hotline)');
-      if (db.get('SELECT 1 FROM custom_values WHERE location_id = ? AND key = ?', ctx.locationId, key)) throw new HttpError(409, `Den Schlüssel „${key}“ gibt es schon`);
+      if (db.get('SELECT 1 FROM custom_values WHERE location_id = ? AND key = ?', ctx.locationId, key)) throw new HttpError(409, tApp()('Den Schlüssel „{key}“ gibt es schon', { key }));
       const n = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM custom_values WHERE location_id = ?', ctx.locationId)!.n;
-      if (n >= LIMITS.perLocation) throw bad(`Höchstens ${LIMITS.perLocation} Custom Values je Sub-Account`);
+      if (n >= LIMITS.perLocation) throw bad(tApp()('Höchstens {max} Custom Values je Sub-Account', { max: LIMITS.perLocation }));
       const row: ValueRow = { id: id(), location_id: ctx.locationId, key, name, value: text(b.value, 'Wert', LIMITS.value), folder: folderOf(b.folder), description: text(b.description, 'Hinweis', LIMITS.description).trim(), in_snapshot: b.in_snapshot ? 1 : 0, needs_value: 0, created_at: now(), updated_at: now() };
       db.insert('custom_values', row);
       return row;
@@ -159,7 +160,7 @@ export const customValuesModule: Module = {
       if (b.key !== undefined && b.key !== r.key) {
         const key = cleanKey(b.key);
         if (!key) throw bad('Schlüssel: nur Kleinbuchstaben, Ziffern und Unterstrich, beginnend mit einem Buchstaben');
-        if (db.get('SELECT 1 FROM custom_values WHERE location_id = ? AND key = ? AND id != ?', ctx.locationId, key, r.id)) throw new HttpError(409, `Den Schlüssel „${key}“ gibt es schon`);
+        if (db.get('SELECT 1 FROM custom_values WHERE location_id = ? AND key = ? AND id != ?', ctx.locationId, key, r.id)) throw new HttpError(409, tApp()('Den Schlüssel „{key}“ gibt es schon', { key }));
         p.key = key;
       }
       if (b.value !== undefined) {

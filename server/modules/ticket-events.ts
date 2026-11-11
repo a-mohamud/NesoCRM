@@ -6,6 +6,7 @@ import { MIN_CENTS, registerPayPurpose } from '../services/pay-registry.js';
 import { registerTriggers, type TriggerMeta } from '../services/wfx-kit.js';
 import { PURPOSE, cancelOrder, checkIn, eventOf, expireOrders, report, settleOrder, typesOf, typesWithState } from '../services/ticket-events-core.js';
 import { cleanEvent, cleanTypes, type TicketEventRow } from '../services/ticket-events-model.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Event tickets with ticket types (HighLevel "Events/Tickets" parity, docs/booking.md#ticket-types): an event (name, time, place)
@@ -159,7 +160,7 @@ export const ticketEventsModule: Module = {
       const keep = new Set(types.map((t) => t.id).filter(Boolean));
       for (const old of existing.values()) {
         if (keep.has(old.id)) continue;
-        if (db.get('SELECT 1 FROM tix_tickets WHERE type_id = ? LIMIT 1', old.id)) throw new HttpError(409, `„${old.name}“ hat schon Tickets – statt löschen bitte deaktivieren`);
+        if (db.get('SELECT 1 FROM tix_tickets WHERE type_id = ? LIMIT 1', old.id)) throw new HttpError(409, tApp()('„{name}“ hat schon Tickets – statt löschen bitte deaktivieren', { name: old.name }));
         db.run('DELETE FROM tix_types WHERE id = ?', old.id);
       }
       const t0 = now();
@@ -250,7 +251,7 @@ export const ticketEventsModule: Module = {
     ];
     app.services.privacyErase = [
       ...(app.services.privacyErase ?? []),
-      (_a: App, loc: string, c: { id: string }) => void db.run(`UPDATE tix_orders SET name = 'Gelöscht', email = '', contact_id = NULL WHERE location_id = ? AND contact_id = ?`, loc, c.id),
+      (_a: App, loc: string, c: { id: string }) => void db.run(`UPDATE tix_orders SET name = ?, email = '', contact_id = NULL WHERE location_id = ? AND contact_id = ?`, tLoc(app, loc)('Gelöscht'), loc, c.id),
     ];
   },
 };

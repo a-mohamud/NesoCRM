@@ -8,6 +8,7 @@
 import type { CanvasElement } from './canvas-model.js';
 import type { GraphSpec, NodeShape } from './canvas-layout.js';
 import { FRAME_PRESETS } from './canvas-model.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 export const DRAW_KINDS = ['auto', 'flowchart', 'mindmap', 'orgchart', 'diagram', 'wireframe'] as const;
 export type DrawKind = (typeof DRAW_KINDS)[number];
@@ -25,7 +26,7 @@ const COLORS: Record<string, [string, string]> = {
 export const DRAW_SCHEMA = {
   type: 'object',
   properties: {
-    title: { type: 'string', description: 'Kurzer Titel des Diagramms' },
+    title: { type: 'string', description: 'Short title of the diagram' },
     kind: { type: 'string', enum: ['flowchart', 'mindmap', 'orgchart', 'diagram', 'wireframe'] },
     direction: { type: 'string', enum: ['right', 'down'] },
     nodes: {
@@ -34,10 +35,10 @@ export const DRAW_SCHEMA = {
         type: 'object',
         properties: {
           id: { type: 'string' },
-          label: { type: 'string', description: 'Kurz, höchstens ~8 Wörter' },
+          label: { type: 'string', description: 'Short, at most ~8 words' },
           shape: { type: 'string', enum: ['rect', 'round', 'ellipse', 'diamond', 'sticky', 'pill'] },
           color: { type: 'string', enum: ['blue', 'green', 'yellow', 'red', 'purple', 'gray', 'orange'] },
-          group: { type: 'string', description: 'id einer Gruppe oder leer' },
+          group: { type: 'string', description: 'id of a group, or empty' },
         },
         required: ['id', 'label', 'shape', 'color', 'group'],
         additionalProperties: false,
@@ -47,7 +48,7 @@ export const DRAW_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { from: { type: 'string' }, to: { type: 'string' }, label: { type: 'string', description: 'leer oder sehr kurz (z. B. Ja/Nein)' } },
+        properties: { from: { type: 'string' }, to: { type: 'string' }, label: { type: 'string', description: 'empty or very short (e.g. Yes/No)' } },
         required: ['from', 'to', 'label'],
         additionalProperties: false,
       },
@@ -58,7 +59,7 @@ export const DRAW_SCHEMA = {
     },
     screens: {
       type: 'array',
-      description: 'Nur für wireframe: Bildschirme von oben nach unten',
+      description: 'Only for wireframe: screens from top to bottom',
       items: {
         type: 'object',
         properties: {
@@ -82,7 +83,7 @@ export const DRAW_SCHEMA = {
         additionalProperties: false,
       },
     },
-    summary: { type: 'string', description: 'Ein Satz, was gezeichnet wurde' },
+    summary: { type: 'string', description: 'One sentence on what was drawn' },
   },
   required: ['title', 'kind', 'direction', 'nodes', 'edges', 'groups', 'screens', 'summary'],
   additionalProperties: false,
@@ -102,7 +103,7 @@ export const TASKS_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { title: { type: 'string' }, description: { type: 'string' }, due_in_days: { type: 'integer', description: '0 = heute, -1 = ohne Fälligkeit' } },
+        properties: { title: { type: 'string' }, description: { type: 'string' }, due_in_days: { type: 'integer', description: '0 = today, -1 = no due date' } },
         required: ['title', 'description', 'due_in_days'],
         additionalProperties: false,
       },
@@ -112,15 +113,15 @@ export const TASKS_SCHEMA = {
   additionalProperties: false,
 };
 
-export const SYSTEM = `Du bist der Zeichen-Assistent im Canvas (Whiteboard) eines CRM. Du antwortest ausschließlich im vorgegebenen JSON-Schema, auf Deutsch, knapp und konkret.
-Regeln:
-- Knoten-Beschriftungen kurz (2–8 Wörter), keine Nummerierung, keine Emojis außer sie helfen wirklich.
-- flowchart: Start/Ende als ellipse, Entscheidungen als diamond mit ausgehenden Kanten "Ja"/"Nein", Schritte als rect; direction "right" bei bis zu 8 Schritten, sonst "down".
-- mindmap: der erste Knoten ist das zentrale Thema, Kanten vom Thema zu Ästen und von Ästen zu Unterpunkten; 4–7 Äste, je 2–4 Unterpunkte; shape egal.
-- orgchart: Baum von oben nach unten (direction "down"), Kanten von oben nach unten.
-- diagram: Systeme/Beziehungen; nutze groups für Bereiche.
-- wireframe: fülle screens (1–3 Bildschirme) mit sinnvollen Blöcken in Lesereihenfolge; nodes/edges dann leer.
-- Höchstens 40 Knoten. Kanten nur zwischen existierenden Knoten-ids. Leere Strings statt null.`;
+export const SYSTEM = `You are the drawing assistant in the canvas (whiteboard) of a CRM. You answer only in the given JSON schema, concisely and concretely. Write all labels and texts in the language of the user's request (if unclear, in the language named in the request).
+Rules:
+- Node labels short (2–8 words), no numbering, no emojis unless they really help.
+- flowchart: start/end as ellipse, decisions as diamond with outgoing edges "Yes"/"No" (in the language of the request), steps as rect; direction "right" for up to 8 steps, otherwise "down".
+- mindmap: the first node is the central topic, edges from the topic to branches and from branches to sub-points; 4–7 branches, 2–4 sub-points each; shape does not matter.
+- orgchart: tree from top to bottom (direction "down"), edges from top to bottom.
+- diagram: systems/relationships; use groups for areas.
+- wireframe: fill screens (1–3 screens) with sensible blocks in reading order; nodes/edges then empty.
+- At most 40 nodes. Edges only between existing node ids. Empty strings instead of null.`;
 
 /** The model's diagram → a graph for the layout engine. */
 export function drawToGraph(d: any): GraphSpec {
@@ -143,7 +144,7 @@ export function drawToGraph(d: any): GraphSpec {
 }
 
 /** Wireframe screens → frames with grey blocks (design mode). */
-export function wireframeElements(screens: any[], newId: () => string, origin: { x: number; y: number }): CanvasElement[] {
+export function wireframeElements(screens: any[], newId: () => string, origin: { x: number; y: number }, tr: STFn = tApp()): CanvasElement[] {
   const out: CanvasElement[] = [];
   const gray = '#e9ecef';
   const ink = '#495057';
@@ -172,9 +173,9 @@ export function wireframeElements(screens: any[], newId: () => string, origin: {
           break;
         case 'hero': {
           const h = mobile ? 300 : 380;
-          el({ type: 'text', x: x + pad, y, w: mobile ? inner : inner * 0.5, h: 120, text: t || 'Überschrift', fontSize: mobile ? 30 : 44, bold: true, color: '#212529' });
+          el({ type: 'text', x: x + pad, y, w: mobile ? inner : inner * 0.5, h: 120, text: t || tr('Überschrift'), fontSize: mobile ? 30 : 44, bold: true, color: '#212529' });
           if (items[0]) el({ type: 'text', x: x + pad, y: y + (mobile ? 130 : 150), w: mobile ? inner : inner * 0.48, h: 60, text: items[0], fontSize: 18, color: ink });
-          el({ type: 'rect', x: x + pad, y: y + (mobile ? 210 : 240), w: 220, h: 54, radius: 27, fill: '#1971c2', stroke: 'transparent', strokeWidth: 0, text: items[1] || 'Jetzt starten', color: '#ffffff', bold: true, fontSize: 17 });
+          el({ type: 'rect', x: x + pad, y: y + (mobile ? 210 : 240), w: 220, h: 54, radius: 27, fill: '#1971c2', stroke: 'transparent', strokeWidth: 0, text: items[1] || tr('Jetzt starten'), color: '#ffffff', bold: true, fontSize: 17 });
           if (!mobile) {
             el({ type: 'rect', x: x + pad + inner * 0.56, y, w: inner * 0.44, h: h - 40, radius: 12, fill: gray, stroke: '#ced4da', strokeWidth: 1 });
             el({ type: 'icon', x: x + pad + inner * 0.78 - 28, y: y + (h - 40) / 2 - 28, w: 56, h: 56, icon: 'image', stroke: '#adb5bd' });
@@ -191,7 +192,7 @@ export function wireframeElements(screens: any[], newId: () => string, origin: {
           y += 80;
           break;
         case 'button':
-          el({ type: 'rect', x: x + pad, y, w: mobile ? inner : 240, h: 54, radius: 10, fill: '#2f9e44', stroke: 'transparent', strokeWidth: 0, text: t || 'Button', color: '#ffffff', bold: true, fontSize: 17 });
+          el({ type: 'rect', x: x + pad, y, w: mobile ? inner : 240, h: 54, radius: 10, fill: '#2f9e44', stroke: 'transparent', strokeWidth: 0, text: t || tr('Button'), color: '#ffffff', bold: true, fontSize: 17 });
           y += 84;
           break;
         case 'image':
@@ -199,7 +200,7 @@ export function wireframeElements(screens: any[], newId: () => string, origin: {
           y += (mobile ? 200 : 320) + 30;
           break;
         case 'cards': {
-          const list = items.length ? items : [t || 'Karte', 'Karte', 'Karte'];
+          const list = items.length ? items : [t || tr('Kachel'), tr('Kachel'), tr('Kachel')];
           const cols = mobile ? 1 : Math.min(3, list.length);
           const cw = (inner - (cols - 1) * 24) / cols;
           list.forEach((it, i) => {
@@ -208,13 +209,13 @@ export function wireframeElements(screens: any[], newId: () => string, origin: {
             el({ type: 'rect', x: cx, y: cy, w: cw, h: 176, radius: 12, fill: '#ffffff', stroke: '#dee2e6', strokeWidth: 1 });
             el({ type: 'icon', x: cx + 20, y: cy + 20, w: 36, h: 36, icon: ['zap', 'shield-check', 'heart', 'star', 'rocket', 'target'][i % 6], stroke: '#1971c2' });
             el({ type: 'text', x: cx + 20, y: cy + 70, w: cw - 40, h: 28, text: it, fontSize: 19, bold: true, color: '#212529' });
-            el({ type: 'text', x: cx + 20, y: cy + 104, w: cw - 40, h: 44, text: 'Kurzer Nutzen in einem Satz.', fontSize: 14, color: ink });
+            el({ type: 'text', x: cx + 20, y: cy + 104, w: cw - 40, h: 44, text: tr('Kurzer Nutzen in einem Satz.'), fontSize: 14, color: ink });
           });
           y += Math.ceil(list.length / cols) * 200 + 20;
           break;
         }
         case 'form': {
-          const fields = items.length ? items : ['Name', 'E-Mail'];
+          const fields = items.length ? items : [tr('Name'), tr('E-Mail')];
           if (t) {
             el({ type: 'text', x: x + pad, y, w: inner, h: 36, text: t, fontSize: 22, bold: true, color: '#212529' });
             y += 48;
@@ -223,18 +224,18 @@ export function wireframeElements(screens: any[], newId: () => string, origin: {
             el({ type: 'rect', x: x + pad, y, w: mobile ? inner : Math.min(inner, 460), h: 50, radius: 8, fill: '#ffffff', stroke: '#ced4da', strokeWidth: 1, text: f, align: 'left', color: '#868e96', fontSize: 15 });
             y += 64;
           }
-          el({ type: 'rect', x: x + pad, y, w: mobile ? inner : 220, h: 52, radius: 8, fill: '#1971c2', stroke: 'transparent', strokeWidth: 0, text: 'Absenden', color: '#ffffff', bold: true, fontSize: 16 });
+          el({ type: 'rect', x: x + pad, y, w: mobile ? inner : 220, h: 52, radius: 8, fill: '#1971c2', stroke: 'transparent', strokeWidth: 0, text: tr('Absenden'), color: '#ffffff', bold: true, fontSize: 16 });
           y += 84;
           break;
         }
         case 'footer':
-          el({ type: 'rect', x, y, w: W, h: 90, fill: '#212529', stroke: 'transparent', strokeWidth: 0, text: t || '© Firma · Impressum · Datenschutz', color: '#adb5bd', fontSize: 14 });
+          el({ type: 'rect', x, y, w: W, h: 90, fill: '#212529', stroke: 'transparent', strokeWidth: 0, text: t || tr('© Firma · Impressum · Datenschutz'), color: '#adb5bd', fontSize: 14 });
           y += 90;
           break;
       }
     }
     const H = Math.max(preset.h, y - origin.y + 40);
-    out.push({ id: fid, type: 'frame', x, y: origin.y, w: W, h: mobile ? Math.max(H, preset.h) : H, name: String(s?.name ?? preset.label).slice(0, 120), preset: preset.key, fill: '#ffffff', z: 0 });
+    out.push({ id: fid, type: 'frame', x, y: origin.y, w: W, h: mobile ? Math.max(H, preset.h) : H, name: String(s?.name ?? tr(preset.label)).slice(0, 120), preset: preset.key, fill: '#ffffff', z: 0 });
     out.push(...kids);
     x += W + 120;
   }

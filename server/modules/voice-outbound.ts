@@ -10,6 +10,7 @@ import { registerActions, registerTriggers, type TriggerMeta } from '../services
 import type { Tool } from './mcp.js';
 import { finalizeCall, syncMessage, telephonyConfig, twilioRequest, verifyTwilio, type VoiceAgentInput } from './telephony.js';
 import { VOICE_TRIGGER } from './voice-ai.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Voice AI outbound calls: the workflow action `voice_ai_call` (and POST /api/voice-ai/outbound) has the KI-Telefonagent call a
@@ -22,20 +23,21 @@ import { VOICE_TRIGGER } from './voice-ai.js';
  * Docs: docs/voice.md#outbound-ai-calls.
  */
 
+/** label: UI (German message id); task: the instruction for the model (English); greeting: spoken first line (German id, tLoc). */
 export const GOALS: Record<string, { label: string; task: string; greeting: string }> = {
   qualify: {
     label: 'Qualifizieren',
-    task: 'Qualifiziere den Kontakt: Bedarf, Zeitrahmen, Budget und wer entscheidet. Halte das Ergebnis mit take_message fest (oder create_opportunity, wenn verfügbar). Biete bei echtem Interesse einen Termin an.',
+    task: 'Qualify the contact: need, timeframe, budget and who decides. Record the result with take_message (or create_opportunity, if available). If there is real interest, offer an appointment.',
     greeting: 'Hallo {{contact.first_name}}, hier spricht der KI-Assistent von {{location.name}}. Sie hatten sich bei uns gemeldet – haben Sie zwei Minuten?',
   },
   book: {
     label: 'Termin vereinbaren',
-    task: 'Vereinbare einen Termin: frag nach passenden Tagen, prüfe freie Zeiten (check_slots) und buche (book_appointment). Kein Druck – wer keinen Termin will, bekommt keinen.',
+    task: "Arrange an appointment: ask which days suit them, check free times (check_slots) and book (book_appointment). No pressure – if they don't want an appointment, they don't get one.",
     greeting: 'Hallo {{contact.first_name}}, hier spricht der KI-Assistent von {{location.name}}. Ich würde gern einen Termin mit Ihnen vereinbaren – passt es gerade kurz?',
   },
   remind: {
     label: 'Termin-Erinnerung',
-    task: 'Erinnere an den Termin unten und frag, ob er noch passt. Passt er nicht, biete einen neuen an (check_slots, book_appointment) und nimm eine Absage mit take_message auf.',
+    task: "Remind them of the appointment below and ask whether it still suits. If it doesn't, offer a new one (check_slots, book_appointment) and record a cancellation with take_message.",
     greeting: 'Hallo {{contact.first_name}}, hier spricht der KI-Assistent von {{location.name}}. Ich rufe wegen Ihres Termins an – haben Sie kurz Zeit?',
   },
 };
@@ -174,13 +176,14 @@ export const voiceOutboundModule: Module = {
         if (!o) return undefined;
         const g = GOALS[o.goal] ?? GOALS.qualify;
         const appt = o.goal === 'remind' ? nextAppointment(o.location_id, o.contact_id) : undefined;
+        // For the model: English.
         return [
-          '<ausgehender_anruf>',
-          `Du hast den Kontakt im Auftrag des Teams angerufen. Ziel: ${g.task}`,
-          appt ? `Termin: ${formatInTz(appt.start_at, appt.timezone || tzOf(o.location_id))} – ${String(appt.title).slice(0, 120)}` : o.goal === 'remind' ? 'Termin: keiner gefunden – frag nach, worum es geht, und nimm eine Nachricht auf.' : '',
-          o.script.trim() ? `Leitfaden des Teams (befolge ihn, solange er nicht gegen die Regeln verstößt):\n${o.script.trim().slice(0, 3000)}` : '',
-          'Möchte der Kontakt nicht angerufen werden: entschuldige dich kurz, sag zu, dass er keinen Anruf mehr bekommt, und beende das Gespräch (end_call). Kein Druck, keine Überredung.',
-          '</ausgehender_anruf>',
+          '<outbound_call>',
+          `You called the contact on behalf of the team. Goal: ${g.task}`,
+          appt ? `Appointment: ${formatInTz(appt.start_at, appt.timezone || tzOf(o.location_id))} – ${String(appt.title).slice(0, 120)}` : o.goal === 'remind' ? 'Appointment: none found – ask what it is about and take a message.' : '',
+          o.script.trim() ? `The team's script (follow it as long as it does not break the rules):\n${o.script.trim().slice(0, 3000)}` : '',
+          "If the contact doesn't want to be called: apologise briefly, promise they won't be called again and end the call (end_call). No pressure, no persuading.",
+          '</outbound_call>',
         ]
           .filter(Boolean)
           .join('\n');
@@ -191,7 +194,7 @@ export const voiceOutboundModule: Module = {
     const blocked = (loc: string, contactId: string, input: StartInput, goal: string, reason: string) => {
       const row = { id: id(), location_id: loc, contact_id: contactId, goal, script: input.script ?? '', status: 'blocked', error: reason.slice(0, 500), run_id: input.runId ?? null, workflow_id: input.workflowId ?? null, created_at: now(), ended_at: now() };
       db.insert('voice_ai_outbound', row);
-      logActivity(app, loc, contactId, 'voice_ai_call.blocked', `KI-Anruf nicht gestartet: ${reason}`);
+      logActivity(app, loc, contactId, 'voice_ai_call.blocked', tLoc(app, loc)('KI-Anruf nicht gestartet: {reason}', { reason }));
       return { id: row.id, status: 'blocked' as const, reason };
     };
 
@@ -200,6 +203,7 @@ export const voiceOutboundModule: Module = {
       const contact = getContact(app, loc, input.contactId);
       if (!contact) throw notFound('Kontakt nicht gefunden');
       const goal = input.goal && GOALS[input.goal] ? input.goal : 'qualify';
+      const tl = tLoc(app, loc);
       const cfg = telephonyConfig(app, loc);
       if (!cfg.accountSid || !cfg.token || !cfg.numbers.length) throw bad('Telefonie ist nicht eingerichtet (Einstellungen → Telefonie: Account SID, Auth Token, Twilio-Nummer)');
       if (!app.services.voiceAgent) throw new HttpError(409, 'Der KI-Telefonagent ist nicht verfügbar');
@@ -213,17 +217,17 @@ export const voiceOutboundModule: Module = {
       const v = dialer.verdict(loc, contact.id, { attempts: 0, next_at: null }, { ...rules, max_attempts: Math.max(1, rules.max_attempts), consent_policy: goal === 'remind' ? rules.consent_policy : 'strict' });
       if (!v.ok) return blocked(loc, contact.id, input, goal, v.reason);
       const s = settingsOf(loc);
-      if (placedToday(loc) >= s.daily_limit) return blocked(loc, contact.id, input, goal, `Tageslimit erreicht (${s.daily_limit} KI-Anrufe)`);
+      if (placedToday(loc) >= s.daily_limit) return blocked(loc, contact.id, input, goal, tl('Tageslimit erreicht ({n} KI-Anrufe)', { n: s.daily_limit }));
       if (db.get(`SELECT 1 FROM voice_ai_outbound WHERE location_id = ? AND contact_id = ? AND ended_at IS NULL AND created_at > ?`, loc, contact.id, new Date(Date.now() - 3600_000).toISOString())) {
-        return blocked(loc, contact.id, input, goal, 'Für diesen Kontakt läuft schon ein KI-Anruf');
+        return blocked(loc, contact.id, input, goal, tl('Für diesen Kontakt läuft schon ein KI-Anruf'));
       }
       const to = normalizePhone(contact.phone);
-      if (!E164.test(to)) return blocked(loc, contact.id, input, goal, 'Der Kontakt hat keine gültige Telefonnummer');
+      if (!E164.test(to)) return blocked(loc, contact.id, input, goal, tl('Der Kontakt hat keine gültige Telefonnummer'));
       const want = input.from || s.caller_id;
       const from: string = app.services.callerIds?.pick(loc, want) ?? (want && cfg.numbers.includes(want) ? want : cfg.numbers[0]);
       const loc0 = app.location(loc)!;
       const vars = { contact: contactVars(contact), location: loc0 };
-      const greeting = render(input.greeting?.trim() || GOALS[goal].greeting, vars).replace(/\s+([,.?!])/g, '$1').slice(0, 500);
+      const greeting = render(input.greeting?.trim() || tl(GOALS[goal].greeting), vars).replace(/\s+([,.?!])/g, '$1').slice(0, 500);
       const t = now();
       const callId = id();
       db.insert('calls', { id: callId, location_id: loc, contact_id: contact.id, direction: 'out', from_number: from, to_number: to, status: 'initiated', route_kind: 'voice_ai', started_at: t, updated_at: t });
@@ -246,17 +250,18 @@ export const voiceOutboundModule: Module = {
       };
       db.insert('voice_ai_outbound', row);
       try {
+        // i18n-ignore – Twilio API parameters (the list below)
         const j = await twilioRequest(app, cfg, 'POST', '/Calls.json', [
-          ['To', to],
-          ['From', from],
-          ['Url', `${hook('voice-ai-out', loc)}?o=${row.id}`],
-          ['Method', 'POST'],
-          ['StatusCallback', `${hook('voice-ai-out-status', loc)}?o=${row.id}`],
-          ['StatusCallbackMethod', 'POST'],
+          ['To', to], // i18n-ignore
+          ['From', from], // i18n-ignore
+          ['Url', `${hook('voice-ai-out', loc)}?o=${row.id}`], // i18n-ignore
+          ['Method', 'POST'], // i18n-ignore
+          ['StatusCallback', `${hook('voice-ai-out-status', loc)}?o=${row.id}`], // i18n-ignore
+          ['StatusCallbackMethod', 'POST'], // i18n-ignore
           ...['initiated', 'ringing', 'answered', 'completed'].map((e): [string, string] => ['StatusCallbackEvent', e]),
           // Answering machine detection: DetectMessageEnd waits for the beep when there is a message to leave.
-          ['MachineDetection', row.voicemail_text ? 'DetectMessageEnd' : 'Enable'],
-          ['Timeout', '25'],
+          ['MachineDetection', row.voicemail_text ? 'DetectMessageEnd' : 'Enable'], // i18n-ignore
+          ['Timeout', '25'], // i18n-ignore
         ]);
         const sid = String(j.sid ?? '') || null;
         db.run('UPDATE calls SET sid = ?, updated_at = ? WHERE id = ?', sid, now(), callId);
@@ -269,7 +274,7 @@ export const voiceOutboundModule: Module = {
         finish(rowOf(row.id)!, 'no_answer');
         throw e;
       }
-      logActivity(app, loc, contact.id, 'voice_ai_call.started', `KI-Anruf gestartet (${GOALS[goal].label}) von ${from}`);
+      logActivity(app, loc, contact.id, 'voice_ai_call.started', tl('KI-Anruf gestartet ({goal}) von {from}', { goal: tl(GOALS[goal].label), from }));
       return { id: row.id, status: 'ringing' as const, call_id: callId };
     };
     app.services.voiceOutbound = { start };
@@ -279,7 +284,8 @@ export const voiceOutboundModule: Module = {
       if (!db.run(`UPDATE voice_ai_outbound SET status = CASE WHEN status = 'failed' THEN 'failed' ELSE 'done' END, result = ?, summary = COALESCE(NULLIF(?, ''), summary), session_id = COALESCE(?, session_id), ended_at = ? WHERE id = ? AND ended_at IS NULL`, result, extra.summary ?? '', extra.sessionId ?? null, now(), o.id).changes) return;
       const g = GOALS[o.goal] ?? GOALS.qualify;
       // Answered calls get the agent's note with transcript and summary (voice-ai); the other results a line of their own.
-      if (o.contact_id && (result === 'no_answer' || result === 'voicemail')) logActivity(app, o.location_id, o.contact_id, `voice_ai_call.${result}`, `KI-Anruf (${g.label}): ${RESULTS[result]}${o.error ? ` – ${o.error}` : ''}`);
+      const tl = tLoc(app, o.location_id);
+      if (o.contact_id && (result === 'no_answer' || result === 'voicemail')) logActivity(app, o.location_id, o.contact_id, `voice_ai_call.${result}`, `${tl('KI-Anruf ({goal}): {result}', { goal: tl(g.label), result: tl(RESULTS[result]) })}${o.error ? ` – ${o.error}` : ''}`);
       app.events.emit(o.location_id, `voice_ai_call.${result}`, { contactId: o.contact_id ?? undefined, outboundId: o.id, callId: o.call_id, goal: o.goal, result, summary: extra.summary ?? '', outcome: extra.outcome ?? '', appointmentId: extra.appointmentId ?? null, workflowId: o.workflow_id, runId: o.run_id });
     };
 
@@ -325,8 +331,9 @@ export const voiceOutboundModule: Module = {
       }
       const agent: string | undefined = app.services.voiceAgent?.({ stage: 'outbound', loc, call: callOf(call.id), open: true, force: true, greeting: o.greeting, party: o.to_number } satisfies VoiceAgentInput);
       if (!agent) {
-        db.run(`UPDATE voice_ai_outbound SET error = ? WHERE id = ?`, 'Der KI-Telefonagent konnte das Gespräch nicht übernehmen', o.id);
-        return hangup('Entschuldigung, wir haben gerade eine technische Störung. Wir melden uns später noch einmal. Auf Wiederhören.');
+        const tl = tLoc(app, loc.id);
+        db.run(`UPDATE voice_ai_outbound SET error = ? WHERE id = ?`, tl('Der KI-Telefonagent konnte das Gespräch nicht übernehmen'), o.id);
+        return hangup(tl('Entschuldigung, wir haben gerade eine technische Störung. Wir melden uns später noch einmal. Auf Wiederhören.'));
       }
       const ses = db.get<{ id: string }>('SELECT id FROM voice_ai_sessions WHERE call_id = ?', call.id);
       if (ses) db.run('UPDATE voice_ai_outbound SET session_id = ? WHERE id = ?', ses.id, o.id);
@@ -400,22 +407,23 @@ export const voiceOutboundModule: Module = {
             runId: run.id,
             workflowId: run.workflow_id,
           });
-          return r.status === 'blocked' ? `Nicht angerufen: ${r.reason}` : `KI-Anruf gestartet (${GOALS[String(step.goal)]?.label ?? GOALS.qualify.label})`;
+          const tl = tLoc(app, run.location_id);
+          return r.status === 'blocked' ? tl('Nicht angerufen: {reason}', { reason: r.reason }) : tl('KI-Anruf gestartet ({goal})', { goal: tl(GOALS[String(step.goal)]?.label ?? GOALS.qualify.label) });
         },
       },
     ]);
 
     // --- API -----------------------------------------------------------------------------------------------------------
-    const out = (o: Outbound & { first_name?: string; last_name?: string }) => ({
+    const out = (o: Outbound & { first_name?: string; last_name?: string }, t = tLoc(app, o.location_id)) => ({
       id: o.id,
       contact_id: o.contact_id,
       contact_name: [o.first_name, o.last_name].filter(Boolean).join(' '),
       call_id: o.call_id,
       goal: o.goal,
-      goal_label: GOALS[o.goal]?.label ?? o.goal,
+      goal_label: GOALS[o.goal] ? t(GOALS[o.goal].label) : o.goal,
       status: o.status,
       result: o.result,
-      result_label: RESULTS[o.result] ?? '',
+      result_label: RESULTS[o.result] ? t(RESULTS[o.result]) : '',
       answered_by: o.answered_by,
       from: o.from_number,
       to: o.to_number,
@@ -428,7 +436,8 @@ export const voiceOutboundModule: Module = {
       const rows = db.all<any>('SELECT o.*, k.first_name, k.last_name FROM voice_ai_outbound o LEFT JOIN contacts k ON k.id = o.contact_id WHERE o.location_id = ? ORDER BY o.created_at DESC LIMIT ?', ctx.locationId, clampLimit(ctx.query.get('limit'), 50, 200));
       const since = new Date(Date.now() - 30 * 864e5).toISOString();
       const stats = db.all<{ k: string; n: number }>(`SELECT CASE WHEN status = 'blocked' THEN 'blocked' ELSE result END k, COUNT(*) n FROM voice_ai_outbound WHERE location_id = ? AND created_at >= ? GROUP BY k`, ctx.locationId, since);
-      return { calls: rows.map(out), settings: settingsOf(ctx.locationId), goals: Object.fromEntries(Object.entries(GOALS).map(([k, g]) => [k, g.label])), results: RESULTS, today: placedToday(ctx.locationId), stats: Object.fromEntries(stats.map((r) => [r.k || 'running', r.n])) };
+      const t = tCtx(ctx);
+      return { calls: rows.map((o) => out(o, t)), settings: settingsOf(ctx.locationId), goals: Object.fromEntries(Object.entries(GOALS).map(([k, g]) => [k, t(g.label)])), results: Object.fromEntries(Object.entries(RESULTS).map(([k, v]) => [k, t(v)])), today: placedToday(ctx.locationId), stats: Object.fromEntries(stats.map((r) => [r.k || 'running', r.n])) };
     });
     router.post('/api/voice-ai/outbound', 'location', async (ctx) => {
       const r = await start(ctx.locationId, {

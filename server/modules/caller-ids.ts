@@ -116,10 +116,11 @@ export const callerIdsModule: Module = {
       }
       try {
         const j = await twilioRequest(app, cfg, 'POST', '/OutgoingCallerIds.json', [
+          // i18n-ignore (Twilio API field names)
           ['PhoneNumber', number],
-          ['FriendlyName', name],
-          ['StatusCallback', hook(ctx.locationId, r.id)],
-          ['StatusCallbackMethod', 'POST'],
+          ['FriendlyName', name], // i18n-ignore
+          ['StatusCallback', hook(ctx.locationId, r.id)], // i18n-ignore
+          ['StatusCallbackMethod', 'POST'], // i18n-ignore
         ]);
         const code = String(j.validation_code ?? '').replace(/\D/g, '').slice(0, 10);
         db.run(`UPDATE caller_ids SET status = 'pending', friendly_name = ?, validation_code = ?, call_sid = ?, error = '', updated_at = ? WHERE id = ?`, name, code, String(j.call_sid ?? '') || null, now(), r.id);

@@ -2,7 +2,7 @@ import type { App } from '../core/app.js';
 import { bad, notFound, str } from '../core/http.js';
 import { id as newId, now } from '../core/util.js';
 import {
-  DEFAULT_STATUSES,
+  localStatuses,
   FIELD_TYPES,
   PROJECT_STATES,
   STATUS_CATEGORIES,
@@ -28,8 +28,12 @@ import {
   type StatusRow,
 } from './pm-core.js';
 import { overdue } from './mobile.js';
-import { applyTemplate, builtinTemplate, cleanTemplateData, extractTemplate, type TemplateData } from './pm-templates.js';
+import { applyTemplate, builtinTemplate, cleanTemplateData, extractTemplate, localizeTemplate, type TemplateData } from './pm-templates.js';
 import { updateTask } from './pm-tasks.js';
+import { tApp, tLoc } from '../i18n/index.js';
+
+/** Messages in the instance language (static ids for the catalog). */
+const tm = tApp();
 
 /** Projects (workspaces) of a sub-account, their statuses, sections and custom fields. */
 
@@ -167,7 +171,8 @@ export interface CreateProjectInput {
 /** The template named in a request: a built-in key or the id of a saved one. */
 export function templateOf(app: App, locationId: string, key: string): { data: TemplateData; key: string } {
   const built = builtinTemplate(key);
-  if (built) return { data: built.data, key: built.key };
+  // a built-in recipe is instantiated in the sub-account's language
+  if (built) return { data: localizeTemplate(built.data, tLoc(app, locationId)), key: built.key };
   const row = app.db.get<any>(`SELECT * FROM pm_templates WHERE id = ? AND location_id = ? AND kind = 'project'`, key, locationId);
   if (!row) throw notFound('Vorlage nicht gefunden');
   return { data: cleanTemplateData(json(row.data, {})), key: row.id };
@@ -199,7 +204,7 @@ export function createProject(app: App, locationId: string, b: any, actor: Actor
   };
   db.tx(() => {
     db.insert('pm_projects', row);
-    insertStatuses(app, locationId, row.id, DEFAULT_STATUSES);
+    insertStatuses(app, locationId, row.id, localStatuses(tLoc(app, locationId)));
     if (tpl) applyTemplate(app, row as ProjectRow, tpl.data, actor, { start: String(b.start ?? '') || undefined, creator: actor.id, inTx: true });
   });
   return getProjectOut(app, locationId, row.id);
@@ -272,7 +277,7 @@ const cleanCategory = (v: unknown): StatusCategory => {
 export function addStatus(app: App, locationId: string, projectId: string, b: any): StatusRow {
   const p = getProject(app, locationId, projectId);
   const list = statusesOf(app, p.id);
-  if (list.length >= MAX_STATUSES) throw bad(`Höchstens ${MAX_STATUSES} Status je Projekt`);
+  if (list.length >= MAX_STATUSES) throw bad(tm('Höchstens {n} Status je Projekt', { n: MAX_STATUSES }));
   const name = str(b.name, 'Name', { required: true, max: 60 });
   if (list.some((s) => s.name.toLowerCase() === name.toLowerCase())) throw bad('Diesen Status gibt es schon');
   const category = cleanCategory(b.category ?? 'active');
@@ -320,7 +325,7 @@ export function deleteStatus(app: App, locationId: string, statusId: string, mov
   let target: StatusRow | undefined;
   if (used) {
     target = list.find((x) => x.id === moveTo && x.id !== s.id);
-    if (!target) throw bad(`In diesem Status liegen ${used} Aufgaben – bitte einen anderen Status zum Verschieben wählen`);
+    if (!target) throw bad(tm('In diesem Status liegen {n} Aufgaben – bitte einen anderen Status zum Verschieben wählen', { n: used }));
   }
   app.db.tx(() => {
     if (target) {

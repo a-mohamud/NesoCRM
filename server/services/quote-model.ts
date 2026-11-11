@@ -2,6 +2,26 @@ import { addDaysYmd, ymdInTz } from '../core/time.js';
 import { centsToMoney } from '../core/util.js';
 import { deYmd, type LineItem, type TaxMode } from './invoice-model.js';
 import { LineError, cleanLines, docItems, lineAmounts, salesTotals, type SalesLine, type SalesTotals } from './sales-lines.js';
+import { tApp, translator, type STFn } from '../i18n/index.js';
+
+/**
+ * Neso fork: amounts, dates and numbers in the language of a translator – German keeps 1.234,50 € and 31.12.2026, other languages
+ * show €1,234.50 and 31 Dec 2026 (used by the quote page, the signed text and the quote e-mails).
+ */
+const intlOf = (t: STFn) => (t.locale === 'de' ? 'de-DE' : 'en-GB');
+export const moneyIn = (t: STFn, currency: string) => (c: number): string =>
+  t.locale === 'de' ? centsToMoney(c, currency) : new Intl.NumberFormat(intlOf(t), { style: 'currency', currency: currency || 'EUR' }).format((c || 0) / 100);
+export const dateIn = (t: STFn, s: string | null | undefined): string => {
+  if (t.locale === 'de') return deYmd(s);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s ?? ''));
+  return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12)).toLocaleDateString(intlOf(t), { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
+};
+export const numIn = (t: STFn, n: number): string => (t.locale === 'de' ? String(n).replace('.', ',') : String(n));
+/** A quote text whose short German word means something else elsewhere ("Angebot", "Position"): the quote's own entry first. */
+export const tq = (t: STFn, s: string): string => {
+  const own = t(`quote|${s}`);
+  return own !== `quote|${s}` ? own : t(s);
+};
 
 /**
  * What a quote is (no database, no HTTP): common positions, alternative options ("Basis / Plus / Premium"), optional positions the
@@ -68,12 +88,12 @@ export function cleanQuoteDoc(input: { items?: unknown; options?: unknown }, o: 
   const items = flagged(rawItems, cleanLines(rawItems, lineOpts));
   const rawOptions = input.options === undefined ? [] : input.options;
   if (!Array.isArray(rawOptions)) throw new LineError('Varianten: Liste erwartet');
-  if (rawOptions.length > MAX_OPTIONS) throw new LineError(`Höchstens ${MAX_OPTIONS} Varianten`);
+  if (rawOptions.length > MAX_OPTIONS) throw new LineError(tApp()('Höchstens {n} Varianten', { n: MAX_OPTIONS }));
   const options = rawOptions.map((r: any, i): QuoteOption => {
     const list = Array.isArray(r?.items) ? r.items : [];
-    if (!list.length) throw new LineError(`Variante ${i + 1}: mindestens eine Position`);
+    if (!list.length) throw new LineError(tApp()('Variante {n}: mindestens eine Position', { n: i + 1 }));
     const name = text(r?.name, 120).replace(/\n/g, ' ').trim();
-    if (!name) throw new LineError(`Variante ${i + 1}: Name fehlt`);
+    if (!name) throw new LineError(tApp()('Variante {n}: Name fehlt', { n: i + 1 }));
     return { id: uniq(r?.id), name, description: text(r?.description, 1000).trim(), recommended: !!r?.recommended, items: flagged(list, cleanLines(list, lineOpts)) };
   });
   // The ids of positions must be unique across the whole quote: the customer's choice names them.
@@ -167,24 +187,24 @@ export function quoteContractText(q: {
   selection: Selection;
   totals: SalesTotals;
   deposit?: { label: string; total_cents: number } | null;
-}): string {
-  const money = (c: number) => centsToMoney(c, q.currency);
+}, t: STFn = translator()): string {
+  const money = moneyIn(t, q.currency);
   const option = q.doc.options.find((o) => o.id === q.selection.option_id);
   const lines = selectedItems(q.doc, q.selection).map((l) => {
     const a = lineAmounts(l);
-    const qty = String(l.qty).replace('.', ',');
-    const off = a.discount_cents ? `, Rabatt ${money(a.discount_cents)}` : '';
+    const qty = numIn(t, l.qty);
+    const off = a.discount_cents ? t(', Rabatt {amount}', { amount: money(a.discount_cents) }) : '';
     return `- ${l.name}: ${qty} × ${money(l.price_cents)}${off} = ${money(a.net_cents)}`;
   });
-  const out = [`# Angebot ${q.number}`, '', `**${q.title || 'Angebot'}**`, `Für: ${q.customer}`, `Von: ${q.seller}`];
-  if (q.valid_until) out.push(`Gültig bis: ${deYmd(q.valid_until)}`);
+  const out = [`# ${t('Angebot {number}', { number: q.number })}`, '', `**${q.title || tq(t, 'Angebot')}**`, t('Für: {name}', { name: q.customer }), t('Von: {name}', { name: q.seller })];
+  if (q.valid_until) out.push(t('Gültig bis: {date}', { date: dateIn(t, q.valid_until) }));
   if (q.intro.trim()) out.push('', q.intro.trim());
-  if (option) out.push('', `## Gewählte Variante: ${option.name}`, ...(option.description ? [option.description] : []));
-  out.push('', '## Positionen', ...lines, '', `Summe netto: ${money(q.totals.subtotal_cents)}`);
-  for (const g of q.totals.groups) if (g.rate > 0) out.push(`Umsatzsteuer ${String(g.rate).replace('.', ',')} %: ${money(g.tax_cents)}`);
-  out.push(`**Gesamtbetrag: ${money(q.totals.total_cents)}**`);
-  if (q.deposit) out.push('', `Bei Annahme fällig: ${q.deposit.label} – ${money(q.deposit.total_cents)}`);
-  if (q.terms.trim()) out.push('', '## Bedingungen', q.terms.trim());
-  out.push('', 'Mit meiner elektronischen Unterschrift nehme ich dieses Angebot verbindlich an.');
+  if (option) out.push('', `## ${t('Gewählte Variante: {name}', { name: option.name })}`, ...(option.description ? [option.description] : []));
+  out.push('', `## ${t('Positionen')}`, ...lines, '', `${t('Summe netto')}: ${money(q.totals.subtotal_cents)}`);
+  for (const g of q.totals.groups) if (g.rate > 0) out.push(`${t('Umsatzsteuer {rate} %', { rate: numIn(t, g.rate) })}: ${money(g.tax_cents)}`);
+  out.push(`**${t('Gesamtbetrag')}: ${money(q.totals.total_cents)}**`);
+  if (q.deposit) out.push('', t('Bei Annahme fällig: {label} – {amount}', { label: q.deposit.label, amount: money(q.deposit.total_cents) }));
+  if (q.terms.trim()) out.push('', `## ${tq(t, 'Bedingungen')}`, q.terms.trim());
+  out.push('', t('Mit meiner elektronischen Unterschrift nehme ich dieses Angebot verbindlich an.'));
   return out.join('\n');
 }

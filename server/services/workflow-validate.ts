@@ -72,7 +72,11 @@ export const ISSUE_TEXT: Record<IssueCode, string> = {
   target_missing: 'Sprungziel gibt es nicht (mehr) – Schritt neu wählen',
 };
 
-export const issueText = (i: Issue): string => ISSUE_TEXT[i.code].replace(/\{(\w+)\}/g, (_, k) => i.params?.[k] ?? '');
+/**
+ * The issue as a sentence. `tr`: a translator (the server passes one from server/i18n, the texts above are its message ids; this file
+ * stays import-free for the web editor) – without one the German source text.
+ */
+export const issueText = (i: Issue, tr: (s: string) => string = (s) => s): string => tr(ISSUE_TEXT[i.code]).replace(/\{(\w+)\}/g, (_, k) => (i.params?.[k] !== undefined ? tr(i.params[k]) : ''));
 
 const BRANCH = /^(then|else|each|b\d)$/;
 const lanesOf = (s: StepLike): StepLike[][] => Object.keys(s).filter((k) => BRANCH.test(k) && Array.isArray(s[k])).map((k) => s[k] as StepLike[]);

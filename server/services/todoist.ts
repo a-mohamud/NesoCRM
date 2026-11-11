@@ -1,6 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { App } from '../core/app.js';
 import { zonedToUtc } from '../core/time.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Every HTTP call to Todoist lives here (API v1, https://developer.todoist.com/api/v1/).
@@ -129,7 +130,7 @@ export function todoistClient(app: App, token: string) {
       try {
         res = await transport(`${TODOIST_API}${path}`, init);
       } catch (e) {
-        throw new TodoistError(`Todoist nicht erreichbar: ${(e as Error).message}`, 0);
+        throw new TodoistError(tApp()('Todoist nicht erreichbar: {message}', { message: (e as Error).message }), 0);
       }
       if ((res.status === 429 || res.status === 503) && attempt < 4) {
         await sleep(retryDelayMs(res, attempt));
@@ -141,7 +142,7 @@ export function todoistClient(app: App, token: string) {
       try {
         return res.text ? JSON.parse(res.text) : {};
       } catch {
-        throw new TodoistError(`Todoist ${path}: ungültige Antwort`, res.status);
+        throw new TodoistError(tApp()('Todoist {path}: ungültige Antwort', { path }), res.status);
       }
     }
   }
@@ -213,7 +214,7 @@ export function isLimit(s: CommandStatus | undefined): boolean {
   if (!s || s === 'ok') return false;
   return /LIMIT|MAX_|QUOTA|EXCEED/i.test(String(s.error_tag ?? '')) || /limit|maximum|quota|exceeded|upgrade/i.test(String(s.error ?? ''));
 }
-export const commandError = (s: CommandStatus | undefined) => (!s ? 'keine Antwort' : s === 'ok' ? '' : `${s.error_tag ?? s.error_code ?? ''} ${s.error ?? ''}`.trim());
+export const commandError = (s: CommandStatus | undefined) => (!s ? tApp()('keine Antwort') : s === 'ok' ? '' : `${s.error_tag ?? s.error_code ?? ''} ${s.error ?? ''}`.trim());
 
 // --- due dates ---------------------------------------------------------------------------------
 

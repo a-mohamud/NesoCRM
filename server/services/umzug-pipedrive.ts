@@ -1,6 +1,7 @@
 import type { Account, Batch, Consent, CountRow, FieldType, PartKey, RCompany, RContact, RDeal, RNote, RPipeline, RTask, SourceDef, SourceField, StepCtx, StepDef } from './umzug-core.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { first, stripHtml, toIso } from './umzug-text.js';
+import { translator, type ServerLocale } from '../i18n/index.js';
 
 /**
  * Pipedrive (API v1): persons with custom fields → contacts, organizations → companies, pipelines and stages,
@@ -48,7 +49,8 @@ const countOf = async (h: VendorHttp, ctx: StepCtx, path: string, query: Record<
   return n;
 };
 
-async function describe(h: VendorHttp, parts: PartKey[]) {
+async function describe(h: VendorHttp, parts: PartKey[], lang?: ServerLocale) {
+  const t = translator(lang);
   const counts: CountRow[] = [];
   const fields: SourceField[] = [];
   const warnings: string[] = [];
@@ -72,7 +74,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
       }
     } catch (e) {
       if (!(e instanceof UmzugError && e.skippable)) throw e;
-      warnings.push(`Eigene Felder nicht lesbar: ${e.message}`);
+      warnings.push(t('Eigene Felder nicht lesbar: {reason}', { reason: e.message }));
     }
   }
   if (parts.includes('companies')) await add('companies', 'organizations', 'Organisationen', '/organizations');
@@ -94,8 +96,9 @@ const steps = (): StepDef[] => [
     label: 'Organisationen',
     part: 'companies',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of pages(ctx.http, '/organizations', {}, ctx, Number(ctx.cursor ?? 0))) {
-        const records: RCompany[] = pg.items.map((o) => ({ kind: 'company', ext: `o:${o.id}`, name: String(o.name ?? `Organisation ${o.id}`), address: o.address_route ?? o.address, city: o.address_locality, postal_code: o.address_postal_code, country: o.address_country }));
+        const records: RCompany[] = pg.items.map((o) => ({ kind: 'company', ext: `o:${o.id}`, name: String(o.name ?? t('Organisation {id}', { id: o.id })), address: o.address_route ?? o.address, city: o.address_locality, postal_code: o.address_postal_code, country: o.address_country }));
         yield { records, cursor: pg.next };
       }
     },
@@ -138,11 +141,12 @@ const steps = (): StepDef[] => [
     label: 'Pipelines und Deals',
     part: 'deals',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const cur = (ctx.cursor ?? { phase: 'pipes' }) as { phase: 'pipes' | 'deals'; at?: number };
       if (cur.phase === 'pipes') {
         const pipes = await everything(ctx.http, '/pipelines', ctx);
         const stages = await everything(ctx.http, '/stages', ctx);
-        const records: RPipeline[] = pipes.map((p) => ({ kind: 'pipeline', ext: `pl:${p.id}`, name: String(p.name ?? `Pipeline ${p.id}`), stages: stages.filter((s) => String(s.pipeline_id) === String(p.id)).sort((a, b) => Number(a.order_nr) - Number(b.order_nr)).map((s) => ({ ext: `st:${s.id}`, name: String(s.name ?? s.id), probability: s.deal_probability !== undefined ? Number(s.deal_probability) : undefined })) }));
+        const records: RPipeline[] = pipes.map((p) => ({ kind: 'pipeline', ext: `pl:${p.id}`, name: String(p.name ?? t('Pipeline {id}', { id: p.id })), stages: stages.filter((s) => String(s.pipeline_id) === String(p.id)).sort((a, b) => Number(a.order_nr) - Number(b.order_nr)).map((s) => ({ ext: `st:${s.id}`, name: String(s.name ?? s.id), probability: s.deal_probability !== undefined ? Number(s.deal_probability) : undefined })) }));
         yield { records, cursor: { phase: 'deals', at: 0 } };
       }
       for await (const pg of pages(ctx.http, '/deals', { status: 'all_not_deleted' }, ctx, cur.phase === 'deals' ? Number(cur.at ?? 0) : 0)) {
@@ -227,6 +231,6 @@ export const PIPEDRIVE: SourceDef = {
     const d = j.data ?? {};
     return { account: String(d.company_domain ?? d.company_id ?? 'pipedrive').toLowerCase(), label: String(d.company_name ?? d.name ?? 'Pipedrive'), meta: {} };
   },
-  describe: (h, parts) => describe(h, parts),
+  describe: (h, parts, c) => describe(h, parts, c.lang),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),
 };

@@ -4,6 +4,7 @@ import { formatInTz } from '../core/time.js';
 import { A4, Page, latin, pdfOf } from '../services/creator-pdf.js';
 import type { Tool } from './mcp.js';
 import { mappingSummary } from './form-mapping.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * PDF of a form submission (HighLevel parity, docs/forms.md#pdf-of-a-submission): the answers as an A4 document – form name, date,
@@ -30,6 +31,8 @@ export function submissionPdf(app: App, sub: Row): Buffer {
   const contact = sub.contact_id ? app.db.get<any>('SELECT first_name, last_name, email, phone FROM contacts WHERE id = ?', sub.contact_id) : undefined;
   const data = parse(sub.data) as Record<string, unknown>;
   const meta = parse(sub.meta) as Record<string, unknown>;
+  const t = tLoc(app, sub.location_id);
+  const formName = form?.name ?? t('Formular');
   const L = 60;
   const W = A4.w - 120;
   const pages: Page[] = [];
@@ -39,7 +42,7 @@ export function submissionPdf(app: App, sub: Row): Buffer {
     page = new Page();
     pages.push(page);
     page.rect(0, 0, A4.w, 8, { fill: '#1e3a8a' });
-    page.text(A4.w - 60, A4.h - 40, latin(`${loc.name} · ${form?.name ?? 'Formular'} · Seite ${pages.length}`), 8.5, { color: '#94a3b8', anchor: 'end' });
+    page.text(A4.w - 60, A4.h - 40, latin(`${loc.name} · ${formName} · ${t('Seite {n}', { n: pages.length })}`), 8.5, { color: '#94a3b8', anchor: 'end' });
     y = 52;
   };
   const lines = (s: string, size: number) => Math.max(1, s.split('\n').reduce((n, part) => n + Math.ceil(Math.max(1, part.length) / Math.max(12, Math.floor(W / (size * 0.52)))), 0));
@@ -52,20 +55,20 @@ export function submissionPdf(app: App, sub: Row): Buffer {
     page.line(L, y - 5, L + W, y - 5, { stroke: '#e2e8f0' });
   };
   fresh();
-  page.text(L, y, latin(form?.name ?? 'Formular'), 19, { bold: true, color: '#1e3a8a' });
+  page.text(L, y, latin(formName), 19, { bold: true, color: '#1e3a8a' });
   y += 30;
   const who = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email : '';
-  const head = [`Eingegangen am ${formatInTz(sub.created_at, loc.timezone, { weekday: undefined })} Uhr`, who ? `Kontakt: ${who}${contact?.email && who !== contact.email ? ` (${contact.email})` : ''}` : '', `Einsendung ${sub.id}`].filter(Boolean).join('\n');
+  const head = [t('Eingegangen am {date} Uhr', { date: formatInTz(sub.created_at, loc.timezone, { weekday: undefined }) }), who ? t('Kontakt: {name}', { name: `${who}${contact?.email && who !== contact.email ? ` (${contact.email})` : ''}` }) : '', t('Einsendung {id}', { id: sub.id })].filter(Boolean).join('\n');
   y += page.para(L, y, latin(head), W, 10, { color: '#64748b' }) + 14;
   for (const [k, v] of Object.entries(data)) block(k, answerText(v));
   const extra: [string, unknown][] = [
-    ['Punkte', meta.score],
-    ['Ergebnis', meta.result],
-    ['Seite', meta.page],
-    ['Quelle', [meta.utm_source, meta.utm_campaign].filter(Boolean).join(' / ')],
+    [t('Punkte'), meta.score],
+    [t('Ergebnis'), meta.result],
+    [t('Seite'), meta.page],
+    [t('Quelle'), [meta.utm_source, meta.utm_campaign].filter(Boolean).join(' / ')],
   ];
   for (const [k, v] of extra) if (v !== undefined && v !== null && v !== '') block(k, answerText(v));
-  return pdfOf(pages, { title: `${form?.name ?? 'Formular'} – Einsendung` });
+  return pdfOf(pages, { title: t('{form} – Einsendung', { form: formName }) });
 }
 
 

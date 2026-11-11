@@ -8,6 +8,7 @@ import { publicPage } from '../core/page.js';
 import { escapeHtml } from '../core/template.js';
 import { id, now, sha256 } from '../core/util.js';
 import { getBranding } from './agency.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Distribution of the native Android app (outside the Play Store):
@@ -145,7 +146,7 @@ export const mobileAppModule: Module = {
         throw bad('x-changelog bitte URL-kodiert senden');
       }
       const cur = latest();
-      if (cur && code < Number(cur.version_code)) throw bad(`Versionscode ${code} ist älter als die aktuelle Version (${cur.version_code})`);
+      if (cur && code < Number(cur.version_code)) throw bad(tCtx(ctx)('Versionscode {code} ist älter als die aktuelle Version ({current})', { code, current: cur.version_code }));
       const minCode = Math.max(0, Math.round(num(ctx.req.headers['x-min-supported-code'], 0)));
       mkdirSync(dir, { recursive: true });
       const file = `gohigh-${code}-${id(8)}.apk`;
@@ -217,43 +218,45 @@ export const mobileAppModule: Module = {
       body: JSON.stringify(assetLinks(app)),
     }));
 
-    router.get('/android', 'public', async () => {
+    router.get('/android', 'public', async (ctx) => {
+      const t = tCtx(ctx);
+      const dateLocale = t.locale === 'de' ? 'de-DE' : 'en-GB';
       const b = getBranding(app);
       const r = info();
       const page = `${app.baseUrl()}/android`;
       const qr = await QRCode.toString(page, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#111827', light: '#ffffff' } });
-      const mb = r ? (r.size / 1024 / 1024).toFixed(1).replace('.', ',') : '';
+      const mb = r ? (r.size / 1024 / 1024).toFixed(1).replace('.', t.locale === 'de' ? ',' : '.') : '';
       // the agency's own logo, else the app icon – the page never shows a bare letter
       const logo = /^(https?:\/\/|\/)/.test(b.logo_url) ? `<img src="${escapeHtml(b.logo_url)}" alt="" style="max-height:44px;max-width:160px;border-radius:8px">` : `<img src="/icon.svg" alt="" width="44" height="44" style="border-radius:10px">`;
       const body = `<div class="wrap">
   <div class="card">
-    <div class="head">${logo}<div><h1>${escapeHtml(b.name)} fürs Handy</h1><p class="muted" style="margin:0">Die App für Android – Posteingang, Aufgaben, Termine, Deals und Zahlen aller Projekte.</p></div></div>
+    <div class="head">${logo}<div><h1>${escapeHtml(t('{name} fürs Handy', { name: b.name }))}</h1><p class="muted" style="margin:0">${escapeHtml(t('Die App für Android – Posteingang, Aufgaben, Termine, Deals und Zahlen aller Projekte.'))}</p></div></div>
     ${
       r
         ? `<div class="grid">
       <div>
-        <p><a class="btn big" href="/downloads/hyperlevel.apk" download>App herunterladen</a></p>
-        <p class="muted small">Version ${escapeHtml(r.version_name)} (${r.version_code}) · ${mb} MB · ${escapeHtml(new Date(r.uploaded_at).toLocaleDateString('de-DE'))}</p>
-        ${r.changelog ? `<h2>Neu in dieser Version</h2><p class="pre">${escapeHtml(r.changelog)}</p>` : ''}
+        <p><a class="btn big" href="/downloads/hyperlevel.apk" download>${escapeHtml(t('App herunterladen'))}</a></p>
+        <p class="muted small">${escapeHtml(t('Version {name} ({code})', { name: r.version_name, code: r.version_code }))} · ${mb} MB · ${escapeHtml(new Date(r.uploaded_at).toLocaleDateString(dateLocale))}</p>
+        ${r.changelog ? `<h2>${escapeHtml(t('Neu in dieser Version'))}</h2><p class="pre">${escapeHtml(r.changelog)}</p>` : ''}
       </div>
-      <div class="qr" aria-label="QR-Code zu dieser Seite">${qr}<p class="muted small">Mit der Handy-Kamera scannen</p></div>
+      <div class="qr" aria-label="${escapeHtml(t('QR-Code zu dieser Seite'))}">${qr}<p class="muted small">${escapeHtml(t('Mit der Handy-Kamera scannen'))}</p></div>
     </div>`
-        : `<p class="ok">Die App ist noch nicht verfügbar – schau bald wieder vorbei.</p>`
+        : `<p class="ok">${escapeHtml(t('Die App ist noch nicht verfügbar – schau bald wieder vorbei.'))}</p>`
     }
-    <h2>So installierst du die App</h2>
+    <h2>${escapeHtml(t('So installierst du die App'))}</h2>
     <ol>
-      <li>Diese Seite auf dem Android-Handy öffnen (QR-Code scannen) und <b>App herunterladen</b> tippen.</li>
-      <li>Die geladene Datei <code>hyperlevel.apk</code> öffnen. Fragt Android nach, für den Browser <b>„Apps aus dieser Quelle zulassen“</b> einschalten und zurück.</li>
-      <li><b>Installieren</b> tippen. Warnt Google Play Protect, über „Weitere Details“ → „Trotzdem installieren“ bestätigen – die App kommt direkt von uns, nicht aus dem Play Store.</li>
-      <li>App öffnen und mit deinen gewohnten Zugangsdaten anmelden. Abmelden oder ein verlorenes Handy sperren: im Browser unter <b>Einstellungen → Mein Konto → Geräte (App)</b>.</li>
+      <li>${t('Diese Seite auf dem Android-Handy öffnen (QR-Code scannen) und <b>App herunterladen</b> tippen.')}</li>
+      <li>${t('Die geladene Datei <code>hyperlevel.apk</code> öffnen. Fragt Android nach, für den Browser <b>„Apps aus dieser Quelle zulassen“</b> einschalten und zurück.')}</li>
+      <li>${t('<b>Installieren</b> tippen. Warnt Google Play Protect, über „Weitere Details“ → „Trotzdem installieren“ bestätigen – die App kommt direkt von uns, nicht aus dem Play Store.')}</li>
+      <li>${t('App öffnen und mit deinen gewohnten Zugangsdaten anmelden. Abmelden oder ein verlorenes Handy sperren: im Browser unter <b>Einstellungen → Mein Konto → Geräte (App)</b>.')}</li>
     </ol>
-    <p class="muted small">Updates meldet die App selbst. ${r ? `Prüfsumme (SHA-256): <code class="sum">${escapeHtml(r.sha256)}</code>` : ''}</p>
+    <p class="muted small">${escapeHtml(t('Updates meldet die App selbst.'))} ${r ? `${escapeHtml(t('Prüfsumme (SHA-256):'))} <code class="sum">${escapeHtml(r.sha256)}</code>` : ''}</p>
   </div>
 </div>`;
       const res = html(
         publicPage({
-          title: `${b.name} – App für Android`,
-          description: `${b.name} als App für Android herunterladen`,
+          title: t('{name} – App für Android', { name: b.name }),
+          description: t('{name} als App für Android herunterladen', { name: b.name }),
           color: b.color,
           body,
           head: `<style>

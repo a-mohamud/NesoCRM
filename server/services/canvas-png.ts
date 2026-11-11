@@ -733,7 +733,7 @@ function decodeScan(b: Uint8Array, start: number, frame: NonNullable<any>, qt: I
       const v = t.maps[l].get(code);
       if (v !== undefined) return v;
     }
-    throw new Error('bad huffman');
+    throw new Error('bad huffman'); // i18n-ignore
   };
   const blk = new Float32Array(64);
   const tmp = new Float32Array(64);

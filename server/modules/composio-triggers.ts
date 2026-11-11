@@ -6,6 +6,7 @@ import { ComposioError, guessContact, normalizeEvent, userIdFor, verifyWebhook, 
 import { coerceArgs, schemaPaths } from '../services/composio-schema.js';
 import { applyMapping, cleanMapping, flattenPaths } from '../services/inbound-webhooks.js';
 import { mapStatus, type ComposioApi } from './composio.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Workflow trigger "App-Ereignis (Composio)": a sub-account subscribes to a Composio trigger of a
@@ -64,7 +65,7 @@ export const composioTriggersModule: Module = {
     };
     app.services.composioTriggers = {
       onDisconnect: (loc: string, ca: string) =>
-        db.run(`UPDATE composio_triggers SET status = 'error', last_error = 'App wurde getrennt', updated_at = ? WHERE location_id = ? AND connected_account_id = ?`, now(), loc, ca),
+        db.run(`UPDATE composio_triggers SET status = 'error', last_error = ?, updated_at = ? WHERE location_id = ? AND connected_account_id = ?`, tLoc(app, loc)('App wurde getrennt'), now(), loc, ca),
     };
 
     const composio = (): ComposioApi => {
@@ -134,7 +135,7 @@ export const composioTriggersModule: Module = {
       const type = await c.call(() => c.client(info).getTriggerType(slug));
       if (type.toolkit && type.toolkit.toLowerCase() !== toolkit) throw bad('Das Ereignis gehört zu einer anderen App.');
       const { args: config, errors } = coerceArgs(type.config, ctx.body.config ?? {});
-      if (errors.length) throw bad(`Einstellungen passen nicht: ${errors.slice(0, 6).join('; ')}`);
+      if (errors.length) throw bad(tCtx(ctx)('Einstellungen passen nicht: {errors}', { errors: errors.slice(0, 6).join('; ') }));
       const mapping = mappingOf(loc, ctx.body.mapping);
       const hook = await c.ensureWebhook(loc);
       const composioId = await c.client(info).upsertTrigger(slug, { userId: userIdFor(loc), connectedAccountId: conn.connected_account_id, config, egressUrl: hook.egress }).catch(fail);
@@ -239,7 +240,7 @@ export const composioTriggersModule: Module = {
       const { input, tags } = contactFrom(data, JSON.parse(row.mapping || '[]'), JSON.parse(row.tags || '[]'));
       db.run('UPDATE composio_triggers SET events = events + 1, last_event_at = ?, last_error = ? WHERE id = ?', now(), '', row.id);
       if (!input.email && !input.phone) {
-        record(msgId, { location_id: row.location_id, trigger_id: row.id, type: ev.triggerSlug || ev.type, status: 'no_contact', detail: 'Keine E-Mail oder Telefonnummer im Ereignis – Feldzuordnung prüfen', payload: data });
+        record(msgId, { location_id: row.location_id, trigger_id: row.id, type: ev.triggerSlug || ev.type, status: 'no_contact', detail: tLoc(app, row.location_id)('Keine E-Mail oder Telefonnummer im Ereignis – Feldzuordnung prüfen'), payload: data });
         return null;
       }
       const { contact } = upsertContact(app, row.location_id, input, { source: `App: ${row.toolkit_name || row.toolkit}`, tags });
@@ -276,7 +277,7 @@ export const composioTriggersModule: Module = {
         }
         const ev = normalizeEvent(payload);
         if (!ev) {
-          record(msgId, { type: 'unknown', status: 'ignored', detail: 'Unbekanntes Format' });
+          record(msgId, { type: 'unknown', status: 'ignored', detail: tApp()('Unbekanntes Format') });
           return { ok: true, ignored: true };
         }
         const inScope = (scope: string, loc: string) => (sk === 'agency' ? scope === 'agency' : scope === 'location' && loc === sk);
@@ -288,15 +289,15 @@ export const composioTriggersModule: Module = {
         }
         const row = ev.triggerId ? db.get('SELECT * FROM composio_triggers WHERE composio_id = ?', ev.triggerId) : undefined;
         if (!row || !inScope(row.scope, row.location_id)) {
-          record(msgId, { type: ev.triggerSlug || ev.type, status: 'ignored', detail: 'Unbekannter Auslöser' });
+          record(msgId, { type: ev.triggerSlug || ev.type, status: 'ignored', detail: tApp()('Unbekannter Auslöser') });
           return { ok: true, ignored: true };
         }
         if (ev.userId && ev.userId !== userIdFor(row.location_id)) {
-          record(msgId, { location_id: row.location_id, trigger_id: row.id, type: ev.triggerSlug, status: 'ignored', detail: 'Ereignis gehört zu einem anderen Sub-Account' });
+          record(msgId, { location_id: row.location_id, trigger_id: row.id, type: ev.triggerSlug, status: 'ignored', detail: tLoc(app, row.location_id)('Ereignis gehört zu einem anderen Sub-Account') });
           return { ok: true, ignored: true };
         }
         if (row.status !== 'active') {
-          record(msgId, { location_id: row.location_id, trigger_id: row.id, type: ev.triggerSlug, status: 'ignored', detail: 'Auslöser pausiert', payload: ev.data });
+          record(msgId, { location_id: row.location_id, trigger_id: row.id, type: ev.triggerSlug, status: 'ignored', detail: tLoc(app, row.location_id)('Auslöser pausiert'), payload: ev.data });
           return { ok: true, ignored: true };
         }
         const contactId = handle(row, ev, msgId);

@@ -1,3 +1,4 @@
+import { tApp } from '../i18n/index.js';
 /**
  * SEO-Check and schema markup for site pages (pure, no imports from the app).
  *
@@ -93,23 +94,24 @@ export function seoFacts(html: string, host = ''): SeoFacts {
 export function checkSeo(html: string, o: { host?: string; slug?: string } = {}): { facts: SeoFacts; issues: SeoIssue[] } {
   const f = seoFacts(html, o.host);
   const out: SeoIssue[] = [];
-  const add = (rule: string, level: SeoLevel, message: string, hint: string) => out.push({ rule, level, message, hint });
-  if (f.noindex) add('noindex', 'warning', 'Die Seite ist auf „noindex“ gestellt.', 'Google zeigt sie nicht an. Gewollt? Sonst unter SEO den Haken „Nicht in Google anzeigen“ entfernen.');
-  if (!f.title) add('title_missing', 'error', 'Kein Seitentitel.', 'Unter SEO einen Titel mit dem wichtigsten Suchbegriff eintragen (30–60 Zeichen).');
-  else if (f.title.length < 15) add('title_short', 'warning', `Seitentitel sehr kurz (${f.title.length} Zeichen).`, 'Ein Titel mit 30–60 Zeichen beschreibt die Seite besser und wird häufiger angeklickt.');
-  else if (f.title.length > 65) add('title_long', 'warning', `Seitentitel zu lang (${f.title.length} Zeichen).`, 'Google kürzt nach etwa 60 Zeichen – das Wichtigste nach vorne.');
-  if (!f.description) add('description_missing', 'error', 'Keine Meta-Beschreibung.', 'Unter SEO 1–2 Sätze (50–160 Zeichen) eintragen – sie erscheinen in den Suchergebnissen.');
-  else if (f.description.length < 50) add('description_short', 'warning', `Meta-Beschreibung kurz (${f.description.length} Zeichen).`, '50–160 Zeichen nutzen: Nutzen, Angebot, Handlungsaufforderung.');
-  else if (f.description.length > 165) add('description_long', 'info', `Meta-Beschreibung lang (${f.description.length} Zeichen).`, 'Google kürzt nach etwa 160 Zeichen.');
-  if (f.h1 === 0) add('h1_missing', 'error', 'Keine Hauptüberschrift (H1).', 'Eine Überschrift der Ebene 1 (z. B. im Hero-Block) mit dem Thema der Seite setzen.');
-  else if (f.h1 > 1) add('h1_many', 'warning', `${f.h1} Hauptüberschriften (H1).`, 'Genau eine H1 je Seite; weitere Überschriften als H2/H3.');
-  if (f.images_without_alt > 0) add('img_alt', 'warning', `${f.images_without_alt} von ${f.images} Bildern ohne Alternativtext.`, 'Im Bild-Block einen kurzen beschreibenden Alternativtext eintragen – gut für Google-Bildersuche und Barrierefreiheit.');
-  if (f.words < 120) add('thin', 'warning', `Wenig Text (${f.words} Wörter).`, 'Seiten mit mindestens 300 Wörtern ranken meist besser. Leistungen, Fragen und Antworten ergänzen.');
-  else if (f.words < 300) add('thin', 'info', `Eher wenig Text (${f.words} Wörter).`, 'Mehr Inhalt (300+ Wörter) hilft bei Suchbegriffen mit Wettbewerb.');
-  if (f.links_internal === 0) add('links_internal', 'info', 'Keine internen Links.', 'Auf andere eigene Seiten verlinken (Leistungen, Kontakt) – so findet Google sie leichter.');
-  if (!f.og_image) add('og_image', 'info', 'Kein Vorschaubild für soziale Netzwerke.', 'Unter SEO ein Vorschaubild setzen oder ein Bild auf der Seite einbauen.');
-  if (!f.schema) add('schema', 'info', 'Keine strukturierten Daten (Schema.org).', 'Unten unter „Strukturierte Daten“ einen Typ wählen (z. B. Lokales Unternehmen, FAQ) – Google kann dann Rich Results zeigen.');
-  if (o.slug && (o.slug.length > 60 || /[^a-z0-9-]/.test(o.slug))) add('slug', 'info', 'Der Pfad der Seite ist lang oder enthält Sonderzeichen.', 'Kurze Pfade aus Kleinbuchstaben und Bindestrichen (z. B. /leistungen).');
+  const tx = tApp();
+  const addIssue = (rule: string, level: SeoLevel, message: string, hint: string) => out.push({ rule, level, message: tx(message), hint: tx(hint) });
+  if (f.noindex) addIssue('noindex', 'warning', 'Die Seite ist auf „noindex“ gestellt.', 'Google zeigt sie nicht an. Gewollt? Sonst unter SEO den Haken „Nicht in Google anzeigen“ entfernen.');
+  if (!f.title) addIssue('title_missing', 'error', 'Kein Seitentitel.', 'Unter SEO einen Titel mit dem wichtigsten Suchbegriff eintragen (30–60 Zeichen).');
+  else if (f.title.length < 15) addIssue('title_short', 'warning', tx('Seitentitel sehr kurz ({n} Zeichen).', { n: f.title.length }), 'Ein Titel mit 30–60 Zeichen beschreibt die Seite besser und wird häufiger angeklickt.');
+  else if (f.title.length > 65) addIssue('title_long', 'warning', tx('Seitentitel zu lang ({n} Zeichen).', { n: f.title.length }), 'Google kürzt nach etwa 60 Zeichen – das Wichtigste nach vorne.');
+  if (!f.description) addIssue('description_missing', 'error', 'Keine Meta-Beschreibung.', 'Unter SEO 1–2 Sätze (50–160 Zeichen) eintragen – sie erscheinen in den Suchergebnissen.');
+  else if (f.description.length < 50) addIssue('description_short', 'warning', tx('Meta-Beschreibung kurz ({n} Zeichen).', { n: f.description.length }), '50–160 Zeichen nutzen: Nutzen, Angebot, Handlungsaufforderung.');
+  else if (f.description.length > 165) addIssue('description_long', 'info', tx('Meta-Beschreibung lang ({n} Zeichen).', { n: f.description.length }), 'Google kürzt nach etwa 160 Zeichen.');
+  if (f.h1 === 0) addIssue('h1_missing', 'error', 'Keine Hauptüberschrift (H1).', 'Eine Überschrift der Ebene 1 (z. B. im Hero-Block) mit dem Thema der Seite setzen.');
+  else if (f.h1 > 1) addIssue('h1_many', 'warning', tx('{n} Hauptüberschriften (H1).', { n: f.h1 }), 'Genau eine H1 je Seite; weitere Überschriften als H2/H3.');
+  if (f.images_without_alt > 0) addIssue('img_alt', 'warning', tx('{n} von {total} Bildern ohne Alternativtext.', { n: f.images_without_alt, total: f.images }), 'Im Bild-Block einen kurzen beschreibenden Alternativtext eintragen – gut für Google-Bildersuche und Barrierefreiheit.');
+  if (f.words < 120) addIssue('thin', 'warning', tx('Wenig Text ({n} Wörter).', { n: f.words }), 'Seiten mit mindestens 300 Wörtern ranken meist besser. Leistungen, Fragen und Antworten ergänzen.');
+  else if (f.words < 300) addIssue('thin', 'info', tx('Eher wenig Text ({n} Wörter).', { n: f.words }), 'Mehr Inhalt (300+ Wörter) hilft bei Suchbegriffen mit Wettbewerb.');
+  if (f.links_internal === 0) addIssue('links_internal', 'info', 'Keine internen Links.', 'Auf andere eigene Seiten verlinken (Leistungen, Kontakt) – so findet Google sie leichter.');
+  if (!f.og_image) addIssue('og_image', 'info', 'Kein Vorschaubild für soziale Netzwerke.', 'Unter SEO ein Vorschaubild setzen oder ein Bild auf der Seite einbauen.');
+  if (!f.schema) addIssue('schema', 'info', 'Keine strukturierten Daten (Schema.org).', 'Unten unter „Strukturierte Daten“ einen Typ wählen (z. B. Lokales Unternehmen, FAQ) – Google kann dann Rich Results zeigen.');
+  if (o.slug && (o.slug.length > 60 || /[^a-z0-9-]/.test(o.slug))) addIssue('slug', 'info', 'Der Pfad der Seite ist lang oder enthält Sonderzeichen.', 'Kurze Pfade aus Kleinbuchstaben und Bindestrichen (z. B. /leistungen).');
   const order: Record<SeoLevel, number> = { error: 0, warning: 1, info: 2 };
   out.sort((a, b) => order[a.level] - order[b.level]);
   return { facts: f, issues: out };
@@ -118,13 +120,14 @@ export function checkSeo(html: string, o: { host?: string; slug?: string } = {})
 /** Extra findings for a page of any website (the SEO audit of external sites): transport, mobile viewport, language. */
 export function externalSeoIssues(html: string, o: { url: string; status: number; ms: number; bytes: number }): SeoIssue[] {
   const out: SeoIssue[] = [];
-  const add = (rule: string, level: SeoLevel, message: string, hint: string) => out.push({ rule, level, message, hint });
-  if (o.status >= 400) add('status', 'error', `Die Seite antwortet mit Status ${o.status}.`, 'Google nimmt nur erreichbare Seiten auf – Adresse und Server prüfen.');
-  if (!o.url.startsWith('https://')) add('https', 'error', 'Die Seite läuft ohne HTTPS.', 'Ein SSL-Zertifikat einrichten (meist kostenlos über den Hoster) – Browser warnen sonst vor der Seite.');
-  if (!/<meta[^>]+name\s*=\s*["']?viewport/i.test(html)) add('viewport', 'error', 'Keine Einstellung für Handys (viewport).', 'Ohne `<meta name="viewport">` ist die Seite auf dem Handy winzig – Google bewertet mobil zuerst.');
-  if (!/<html[^>]*\slang\s*=/i.test(html)) add('lang', 'info', 'Die Sprache der Seite ist nicht angegeben.', '`<html lang="de">` hilft Suchmaschinen und Screenreadern.');
-  if (o.ms > 3000) add('slow', 'warning', `Die Seite lädt langsam (${(o.ms / 1000).toFixed(1)} s bis zur Antwort).`, 'Hosting, Bildgrößen und Plugins prüfen – unter 1 s ist gut.');
-  if (o.bytes > 1_500_000) add('heavy', 'warning', `Das HTML ist sehr groß (${Math.round(o.bytes / 1024)} KB).`, 'Eingebettete Bilder/Skripte auslagern.');
+  const tx = tApp();
+  const addIssue = (rule: string, level: SeoLevel, message: string, hint: string) => out.push({ rule, level, message: tx(message), hint: tx(hint) });
+  if (o.status >= 400) addIssue('status', 'error', tx('Die Seite antwortet mit Status {status}.', { status: o.status }), 'Google nimmt nur erreichbare Seiten auf – Adresse und Server prüfen.');
+  if (!o.url.startsWith('https://')) addIssue('https', 'error', 'Die Seite läuft ohne HTTPS.', 'Ein SSL-Zertifikat einrichten (meist kostenlos über den Hoster) – Browser warnen sonst vor der Seite.');
+  if (!/<meta[^>]+name\s*=\s*["']?viewport/i.test(html)) addIssue('viewport', 'error', 'Keine Einstellung für Handys (viewport).', 'Ohne `<meta name="viewport">` ist die Seite auf dem Handy winzig – Google bewertet mobil zuerst.');
+  if (!/<html[^>]*\slang\s*=/i.test(html)) addIssue('lang', 'info', 'Die Sprache der Seite ist nicht angegeben.', '`<html lang="de">` hilft Suchmaschinen und Screenreadern.');
+  if (o.ms > 3000) addIssue('slow', 'warning', tx('Die Seite lädt langsam ({s} s bis zur Antwort).', { s: (o.ms / 1000).toFixed(1) }), 'Hosting, Bildgrößen und Plugins prüfen – unter 1 s ist gut.');
+  if (o.bytes > 1_500_000) addIssue('heavy', 'warning', tx('Das HTML ist sehr groß ({kb} KB).', { kb: Math.round(o.bytes / 1024) }), 'Eingebettete Bilder/Skripte auslagern.');
   return out;
 }
 
@@ -134,16 +137,17 @@ export const seoScore = (issues: SeoIssue[]) => Math.max(0, 100 - issues.reduce(
 /** Findings across pages: the same title or description on several pages. */
 export function siteSeoIssues(pages: { name: string; facts: SeoFacts }[]): SeoIssue[] {
   const out: SeoIssue[] = [];
-  const dupes = (key: 'title' | 'description', label: string) => {
+  const tx = tApp();
+  const dupes = (key: 'title' | 'description') => {
     const by = new Map<string, string[]>();
     for (const p of pages) {
       const v = p.facts[key].trim().toLowerCase();
       if (v) by.set(v, [...(by.get(v) ?? []), p.name]);
     }
-    for (const [, names] of by) if (names.length > 1) out.push({ rule: `${key}_duplicate`, level: 'warning', message: `Gleicher ${label} auf ${names.length} Seiten: ${names.join(', ')}.`, hint: `Jede Seite braucht einen eigenen ${label}, sonst konkurrieren die Seiten miteinander.` });
+    for (const [, names] of by) if (names.length > 1) out.push({ rule: `${key}_duplicate`, level: 'warning', message: key === 'title' ? tx('Gleicher Seitentitel auf {n} Seiten: {pages}.', { n: names.length, pages: names.join(', ') }) : tx('Gleiche Beschreibung auf {n} Seiten: {pages}.', { n: names.length, pages: names.join(', ') }), hint: tx(key === 'title' ? 'Jede Seite braucht einen eigenen Seitentitel, sonst konkurrieren die Seiten miteinander.' : 'Jede Seite braucht eine eigene Beschreibung, sonst konkurrieren die Seiten miteinander.') });
   };
-  dupes('title', 'Seitentitel');
-  dupes('description', 'Beschreibung');
+  dupes('title');
+  dupes('description');
   return out;
 }
 
@@ -258,25 +262,25 @@ export function buildSchema(type: string, data: Record<string, unknown>, page: {
         image: img('image'),
         priceRange: d.price_range,
         openingHours: d.opening_hours ? d.opening_hours.split(/[;,]\s*/).filter(Boolean) : undefined,
-        address: d.street || d.city ? { '@type': 'PostalAddress', streetAddress: d.street || undefined, postalCode: d.zip || undefined, addressLocality: d.city || undefined, addressCountry: d.country || 'DE' } : undefined,
+        address: d.street || d.city ? { '@type': 'PostalAddress', streetAddress: d.street || undefined, postalCode: d.zip || undefined, addressLocality: d.city || undefined, addressCountry: d.country || 'DE' } : undefined, // i18n-ignore – schema.org types
       });
     case 'Organization':
       return put({ name: d.name, logo: img('logo'), telephone: d.telephone, email: d.email, sameAs: d.same_as ? d.same_as.split(/[,\s]+/).filter(isUrl) : undefined });
     case 'FAQPage': {
       const qa = faqOf(page.blocks);
       if (!qa.length) return null;
-      return put({ mainEntity: qa.map((x) => ({ '@type': 'Question', name: x.q, acceptedAnswer: { '@type': 'Answer', text: x.a } })) });
+      return put({ mainEntity: qa.map((x) => ({ '@type': 'Question', name: x.q, acceptedAnswer: { '@type': 'Answer', text: x.a } })) }); // i18n-ignore – schema.org types
     }
     case 'Service':
-      return put({ name: d.name, description: d.description, serviceType: d.name, provider: d.provider ? { '@type': 'Organization', name: d.provider } : undefined, areaServed: d.area_served });
+      return put({ name: d.name, description: d.description, serviceType: d.name, provider: d.provider ? { '@type': 'Organization', name: d.provider } : undefined, areaServed: d.area_served }); // i18n-ignore – schema.org types
     case 'Product': {
       const price = d.price && /^\d+([.,]\d{1,2})?$/.test(d.price) ? d.price.replace(',', '.') : '';
       return put({
         name: d.name,
         description: d.description,
         image: img('image'),
-        brand: d.brand ? { '@type': 'Brand', name: d.brand } : undefined,
-        offers: price ? { '@type': 'Offer', price, priceCurrency: /^[A-Z]{3}$/.test(d.currency) ? d.currency : 'EUR', availability: 'https://schema.org/InStock', url: page.url } : undefined,
+        brand: d.brand ? { '@type': 'Brand', name: d.brand } : undefined, // i18n-ignore – schema.org types
+        offers: price ? { '@type': 'Offer', price, priceCurrency: /^[A-Z]{3}$/.test(d.currency) ? d.currency : 'EUR', availability: 'https://schema.org/InStock', url: page.url } : undefined, // i18n-ignore – schema.org types
       });
     }
     case 'Event': {
@@ -289,11 +293,11 @@ export function buildSchema(type: string, data: Record<string, unknown>, page: {
         endDate: when(d.end),
         description: d.description,
         eventAttendanceMode: online ? 'https://schema.org/OnlineEventAttendanceMode' : 'https://schema.org/OfflineEventAttendanceMode',
-        location: online ? { '@type': 'VirtualLocation', url: page.url } : d.location ? { '@type': 'Place', name: d.location, address: d.location } : undefined,
+        location: online ? { '@type': 'VirtualLocation', url: page.url } : d.location ? { '@type': 'Place', name: d.location, address: d.location } : undefined, // i18n-ignore – schema.org types
       });
     }
     case 'Article':
-      return put({ headline: d.headline.slice(0, 110), author: d.author ? { '@type': 'Person', name: d.author } : undefined, datePublished: /^\d{4}-\d{2}-\d{2}$/.test(d.published) ? d.published : undefined, image: img('image') });
+      return put({ headline: d.headline.slice(0, 110), author: d.author ? { '@type': 'Person', name: d.author } : undefined, datePublished: /^\d{4}-\d{2}-\d{2}$/.test(d.published) ? d.published : undefined, image: img('image') }); // i18n-ignore – schema.org types
   }
   return null;
 }

@@ -3,6 +3,7 @@ import { HttpError } from '../core/http.js';
 import { DOC_KINDS } from './docs.js';
 import type { Caller, Tool } from './mcp.js';
 import { BATCH_MAX_FILES } from './project-files.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Moving Claude projects over (docs/ai-tools.md#claude-projekte-umziehen): one MCP tool that turns a claude.ai project – its
@@ -37,7 +38,7 @@ async function findOrCreate(call: Caller, name: string, locationId?: string): Pr
   const list: { id: string; name: string }[] = await call.api('GET', '/api/agency/projects');
   if (locationId) {
     const hit = list.find((l) => l.id === locationId);
-    if (!hit) throw new HttpError(404, `Sub-Account ${String(locationId).slice(0, 60)} gibt es nicht`);
+    if (!hit) throw new HttpError(404, tApp()('Sub-Account {id} gibt es nicht', { id: String(locationId).slice(0, 60) }));
     return { id: hit.id, name: hit.name, created: false };
   }
   const hit = list.find((l) => l.name === name);

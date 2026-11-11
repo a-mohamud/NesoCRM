@@ -4,6 +4,7 @@
  * `YYYY-MM-DD` in the series' time zone; the caller keeps the time of day, so 10:00 stays 10:00 across a DST change.
  */
 import { RecurrenceError, cleanRecurrence, describeRecurrence, nextOccurrence, type Recurrence } from './pm-recur.js';
+import { tApp } from '../i18n/index.js';
 
 export { RecurrenceError, describeRecurrence };
 export type ApptRule = Recurrence;
@@ -33,7 +34,7 @@ export function parseRrule(text: string): Record<string, unknown> {
   }
   for (const k of Object.keys(parts))
     if (!['FREQ', 'INTERVAL', 'BYDAY', 'BYMONTHDAY', 'COUNT', 'UNTIL', 'WKST'].includes(k))
-      throw new RecurrenceError(`Wiederholung: ${k} wird nicht unterstützt (nur täglich, wöchentlich an Tagen, alle N Wochen, monatlich)`);
+      throw new RecurrenceError(tApp()('Wiederholung: {part} wird nicht unterstützt (nur täglich, wöchentlich an Tagen, alle N Wochen, monatlich)', { part: k }));
   const freq = Object.entries(FREQ_TEXT).find(([, v]) => v === parts.FREQ)?.[0];
   if (!freq) throw new RecurrenceError('Wiederholung: FREQ=DAILY, WEEKLY oder MONTHLY');
   const out: Record<string, unknown> = { freq, interval: parts.INTERVAL ? Number(parts.INTERVAL) : 1 };
@@ -71,7 +72,7 @@ export function cleanApptRecurrence(input: unknown): ApptRule | null {
   if (!['daily', 'weekly', 'monthly'].includes(b.freq)) throw new RecurrenceError('Wiederholung: täglich, wöchentlich oder monatlich wählen');
   const interval = Math.round(Number(b.interval ?? 1));
   if (!Number.isFinite(interval) || interval < 1 || interval > MAX_INTERVAL[b.freq as keyof typeof MAX_INTERVAL])
-    throw new RecurrenceError(`Wiederholung: Abstand zwischen 1 und ${MAX_INTERVAL[b.freq as keyof typeof MAX_INTERVAL]}`);
+    throw new RecurrenceError(tApp()('Wiederholung: Abstand zwischen 1 und {max}', { max: MAX_INTERVAL[b.freq as keyof typeof MAX_INTERVAL] }));
   const r = cleanRecurrence({ freq: b.freq, interval, weekdays: b.weekdays, day_of_month: b.day_of_month, end: b.end, mode: 'due' })!;
   delete r.done;
   if (r.end.type === 'count' && r.end.count > 500) throw new RecurrenceError('Wiederholung: höchstens 500 Termine');

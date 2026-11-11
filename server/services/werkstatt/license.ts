@@ -1,5 +1,6 @@
 import type { App } from '../../core/app.js';
 import { HttpError } from '../../core/http.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * Licensing split. The plugin runtime and local builds with your own AI key are part of the AGPL core and never
@@ -34,9 +35,9 @@ export function hasPro(app: App): boolean {
   return l?.has ? !!l.has('pro') : true;
 }
 
-/** A German message when the feature needs Pro and there is no license, else null. */
+/** A message (instance language) when the feature needs Pro and there is no license, else null. */
 export function proProblem(app: App, feature: ProFeature): string | null {
-  return hasPro(app) ? null : `${PRO_FEATURES[feature]} ist eine Pro-Funktion – dafür ist eine HyperLevel-Pro-Lizenz nötig (docs/werkstatt.md → Lizenz). Plugins bauen und nutzen funktioniert weiterhin ohne Lizenz.`;
+  return hasPro(app) ? null : tApp()('{x} ist eine Pro-Funktion – dafür ist eine HyperLevel-Pro-Lizenz nötig (docs/werkstatt.md → Lizenz). Plugins bauen und nutzen funktioniert weiterhin ohne Lizenz.', { x: tApp()(PRO_FEATURES[feature]) });
 }
 
 export function requirePro(app: App, feature: ProFeature): void {

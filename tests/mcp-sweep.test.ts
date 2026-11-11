@@ -234,7 +234,7 @@ describe('MCP regressions (second bug sweep)', () => {
   it('a canvas element the scene cannot use is a 400 (it was a 500), and no half-made board is left', async () => {
     const board = rowOf('board_id', A);
     const r = await call('ghl_canvas_add_elements', { location_id: A, board_id: board.id, elements: [{}] });
-    expect(r.text).toBe('Fehler (400): Unbekannter Elementtyp: (leer)');
+    expect(r.text).toBe('Fehler (400): Unbekannter Elementtyp: (–)');
     t.api.setLocation(A);
     const before = Number(t.app.db.get('SELECT COUNT(*) n FROM canvas_boards WHERE location_id = ?', A)!.n);
     const created = await t.api.post('/api/canvas', { name: 'Kaputt', elements: [{ type: 'gibtsnicht' }] });

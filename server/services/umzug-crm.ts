@@ -1,4 +1,5 @@
 import type { Consent, ConsentProof, RActivity, RPipeline, RStage } from './umzug-core.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * What the CRM importers (Salesforce, Zoho CRM, and the later ones) have in common: how a CRM treats consent, and how a deal's stage
@@ -6,10 +7,10 @@ import type { Consent, ConsentProof, RActivity, RPipeline, RStage } from './umzu
  * the ledger says "no advertising consent carried over" (service mails work, newsletters wait for a new opt-in).
  */
 
-export function crmConsent(label: string, optOut: unknown, extra: { channel?: 'email' } = {}): { consent: Consent; native?: string; proof: ConsentProof[] } {
+export function crmConsent(label: string, optOut: unknown, extra: { channel?: 'email' } = {}, t: STFn = tApp()): { consent: Consent; native?: string; proof: ConsentProof[] } {
   const out = optOut === true || /^(true|1|yes|ja)$/i.test(String(optOut ?? ''));
-  if (out) return { consent: 'unsubscribed', native: 'Opt-out', proof: [{ basis: 'revoked', reason: `${label}: Opt-out für E-Mails gesetzt`, ...extra }] };
-  return { consent: 'unknown', proof: [{ basis: 'none', method: `${label}-Kontakt (das CRM kennt nur ein Opt-out, keine Werbeeinwilligung)`, ...extra }] };
+  if (out) return { consent: 'unsubscribed', native: 'Opt-out', proof: [{ basis: 'revoked', reason: t('{source}: Opt-out für E-Mails gesetzt', { source: label }), ...extra }] };
+  return { consent: 'unknown', proof: [{ basis: 'none', method: t('{source}-Kontakt (das CRM kennt nur ein Opt-out, keine Werbeeinwilligung)', { source: label }), ...extra }] };
 }
 
 /** Won / lost / open from the CRM's flags, else from the stage's name ("Closed Won", "Gewonnen" …). */
@@ -35,16 +36,19 @@ export function pipelineOf(ext: string, name: string, stages: RStage[], seen: It
  * status as the old tool had them. It is read-only history – NOT an invoice of HyperLevel: it takes no number of the invoice ranges, is not
  * frozen, archived or sent, and changes nothing in the bookkeeping. The original (with its PDF) stays in the old tool.
  */
-export function documentActivity(o: { vendor: string; ext: string; contact: string; label: string; number?: string; date?: string; due?: string; status?: string; total?: number; open?: number; currency?: string; link?: string; contactName?: string }): RActivity {
-  const money = (n: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: /^[A-Z]{3}$/.test(o.currency ?? '') ? o.currency! : 'EUR' }).format(n);
-  const parts = [`${o.label}${o.number ? ` ${o.number}` : ''}`, o.total !== undefined && Number.isFinite(o.total) ? money(o.total) : '', o.status ?? '', `aus ${o.vendor}`].filter(Boolean);
+export function documentActivity(o: { vendor: string; ext: string; contact: string; label: string; number?: string; date?: string; due?: string; status?: string; total?: number; open?: number; currency?: string; link?: string; contactName?: string }, t: STFn = tApp()): RActivity {
+  const money = (n: number) => new Intl.NumberFormat(t.locale === 'de' ? 'de-DE' : 'en-GB', { style: 'currency', currency: /^[A-Z]{3}$/.test(o.currency ?? '') ? o.currency! : 'EUR' }).format(n);
+  // Document kinds and states of the sources are German catalog keys.
+  const label = t(o.label);
+  const status = o.status ? t(o.status) : '';
+  const parts = [`${label}${o.number ? ` ${o.number}` : ''}`, o.total !== undefined && Number.isFinite(o.total) ? money(o.total) : '', status, t('aus {source}', { source: o.vendor })].filter(Boolean);
   return {
     kind: 'activity',
     ext: o.ext,
     contact: o.contact,
     type: 'document.imported',
     summary: parts.join(' · ').slice(0, 300),
-    data: { source: o.vendor, document: o.label, number: o.number ?? '', date: o.date ?? '', due: o.due ?? '', status: o.status ?? '', total: o.total ?? null, open: o.open ?? null, currency: o.currency ?? 'EUR', link: o.link ?? '', note: 'Nur zur Ansicht übernommen – das Original liegt beim alten Anbieter; keine Rechnung dieses Systems' },
+    data: { source: o.vendor, document: label, number: o.number ?? '', date: o.date ?? '', due: o.due ?? '', status, total: o.total ?? null, open: o.open ?? null, currency: o.currency ?? 'EUR', link: o.link ?? '', note: t('Nur zur Ansicht übernommen – das Original liegt beim alten Anbieter; keine Rechnung dieses Systems') },
     at: o.date,
   };
 }

@@ -25,6 +25,7 @@ import { summary, cleanRange } from '../services/acc-reports.js';
 import { TAX_CODE_LIST } from '../services/acc-vat.js';
 import { sealSecret } from '../core/secrets.js';
 import type { Tool } from './mcp.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Buchhaltung light – "Vorbereitung für Steuerberater". Chart of accounts (SKR03/SKR04), double-entry journal with
@@ -35,6 +36,7 @@ import type { Tool } from './mcp.js';
 export const DISCLAIMER =
   'Buchhaltung light zur Vorbereitung für den Steuerberater – keine zertifizierte Buchhaltungssoftware, keine GoBD-Zertifizierung, keine Steuerberatung und keine Übermittlung an das Finanzamt (ELSTER). Bitte alle Auswertungen und Exporte mit dem Steuerberater abstimmen.';
 
+// i18n-ignore (SQL)
 const MIGRATION = `
 CREATE TABLE acc_settings (
   location_id TEXT PRIMARY KEY REFERENCES locations(id) ON DELETE CASCADE, data TEXT NOT NULL DEFAULT '{}', receipt_key TEXT, updated_at TEXT NOT NULL
@@ -132,8 +134,9 @@ BEGIN SELECT RAISE(ABORT, 'Archivierte Belege lassen sich nicht löschen (GoBD)'
 /** Who acts, for the accounting trail and the entries' created_by. */
 export function actor(ctx: Ctx): { id: string | null; name: string } {
   if (ctx.user && ctx.via !== 'agency_key' && ctx.via !== 'mcp') return { id: ctx.user.id, name: ctx.user.name || ctx.user.email };
-  if (ctx.via === 'mcp' || ctx.via === 'agency_key') return { id: null, name: 'MCP/Agentur-Schlüssel' };
-  return { id: null, name: ctx.viaApiKey ? 'API-Schlüssel' : 'System' };
+  const t = tLoc(null, ctx.locationId);
+  if (ctx.via === 'mcp' || ctx.via === 'agency_key') return { id: null, name: t('MCP/Agentur-Schlüssel') };
+  return { id: null, name: ctx.viaApiKey ? t('API-Schlüssel') : t('System') };
 }
 
 const TOOLS: Tool[] = [
@@ -238,7 +241,7 @@ export const accountingModule: Module = {
         standard: s.standard,
         vat_mode: s.vat_mode,
         vat_method: s.vat_method,
-        disclaimer: DISCLAIMER,
+        disclaimer: tCtx(ctx)(DISCLAIMER),
         locked_through: lastLocked,
         today: todayYmd(app, ctx.locationId),
         counts: counts(ctx.locationId),
@@ -260,23 +263,23 @@ export const accountingModule: Module = {
         seedChart(app, ctx.locationId, standard);
         const next = { ...cur, enabled: true, standard, vat_mode: small ? ('small' as const) : ('regular' as const), mapping: cur.enabled && cur.standard === standard ? cur.mapping : { ...DEFAULT_MAPPING[standard] } };
         saveSettings(app, ctx.locationId, next);
-        trail(app, ctx.locationId, actor(ctx), 'setup', null, `${standard}${small ? ', Kleinunternehmer' : ''}`);
+        trail(app, ctx.locationId, actor(ctx), 'setup', null, `${standard}${small ? tLoc(app, ctx.locationId)(', Kleinunternehmer') : ''}`);
       });
       return { ok: true, standard, accounts: db.get<{ n: number }>('SELECT COUNT(*) AS n FROM acc_accounts WHERE location_id = ?', ctx.locationId)?.n };
     });
 
-    const settingsOut = (loc: string) => {
+    const settingsOut = (loc: string, t: STFn) => {
       const s = getSettings(app, loc);
       const key = db.get<{ receipt_key: string | null }>('SELECT receipt_key FROM acc_settings WHERE location_id = ?', loc)?.receipt_key;
       return {
         ...s,
         tax_codes: TAX_CODE_LIST,
-        mapping_labels: MAPPING_LABELS,
+        mapping_labels: Object.fromEntries(Object.entries(MAPPING_LABELS).map(([k, v]) => [k, t(v)])),
         receipt_inbound_set: !!key,
-        disclaimer: DISCLAIMER,
+        disclaimer: t(DISCLAIMER),
       };
     };
-    router.get('/api/accounting/settings', 'location', (ctx) => settingsOut(ctx.locationId));
+    router.get('/api/accounting/settings', 'location', (ctx) => settingsOut(ctx.locationId, tCtx(ctx)));
     router.put('/api/accounting/settings', 'location', (ctx) => {
       const cur = requireEnabled(app, ctx.locationId);
       const b = ctx.body ?? {};
@@ -321,13 +324,13 @@ export const accountingModule: Module = {
         for (const k of MAPPING_KEYS) {
           if (b.mapping[k] === undefined) continue;
           const n = String(b.mapping[k]).trim();
-          if (!chart.get(n)?.active) throw bad(`${MAPPING_LABELS[k]}: Konto ${n || '(leer)'} gibt es nicht oder es ist deaktiviert`);
+          if (!chart.get(n)?.active) { const t = tCtx(ctx); throw bad(t('{label}: Konto {account} gibt es nicht oder es ist deaktiviert', { label: t(MAPPING_LABELS[k]), account: n || t('(leer)') })); }
           next.mapping[k] = n;
         }
       }
       saveSettings(app, ctx.locationId, next);
       trail(app, ctx.locationId, actor(ctx), 'settings', null, Object.keys(b).join(', ').slice(0, 200));
-      return settingsOut(ctx.locationId);
+      return settingsOut(ctx.locationId, tCtx(ctx));
     });
 
     // --- chart of accounts --------------------------------------------------------------------------------------

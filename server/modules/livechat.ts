@@ -5,6 +5,7 @@ import { escapeHtml } from '../core/template.js';
 import { id, now, token } from '../core/util.js';
 import { logActivity, upsertContact } from '../services/contacts.js';
 import { getOrCreateConversation, notifyTeam } from '../services/messaging.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Live chat for any website: a bubble (widget.js) opens a small chat window (an iframe from this
@@ -38,21 +39,24 @@ export const livechatModule: Module = {
     const settingsOf = (locId: string) => {
       const loc = app.location(locId);
       if (!loc) return undefined;
-      return { loc, chat: { enabled: false, title: 'Fragen? Schreib uns!', greeting: 'Hallo 👋 Wie können wir helfen?', color: '#2563eb', ask_email: true, ...(loc.settings.chat ?? {}) } };
+      const t = tLoc(app, locId);
+      return { loc, t, chat: { enabled: false, title: t('Fragen? Schreib uns!'), greeting: t('Hallo 👋 Wie können wir helfen?'), color: '#2563eb', ask_email: true, ...(loc.settings.chat ?? {}) } };
     };
 
     router.get('/chat/:loc/widget.js', 'public', (ctx) => {
       const s = settingsOf(ctx.params.loc);
       if (!s || !s.chat.enabled) return text('/* chat off */', 'text/javascript; charset=utf-8');
       const color = /^#[0-9a-f]{6}$/i.test(s.chat.color) ? s.chat.color : '#2563eb';
+      const openL = jsonForScript(s.t('Chat öffnen'));
+      const closeL = jsonForScript(s.t('Chat schließen'));
       const js = `(function(){if(window.__pghlChat)return;window.__pghlChat=1;
 var cur=document.currentScript,base=cur?new URL(cur.src).origin:location.origin,loc=${jsonForScript(ctx.params.loc)};
-var b=document.createElement('button');b.type='button';b.setAttribute('aria-label','Chat öffnen');b.setAttribute('aria-expanded','false');b.innerHTML='💬';
+var b=document.createElement('button');b.type='button';b.setAttribute('aria-label',${openL});b.setAttribute('aria-expanded','false');b.innerHTML='💬';
 b.style.cssText='position:fixed;right:20px;bottom:20px;width:58px;height:58px;border-radius:50%;border:0;background:${color};color:#fff;font-size:26px;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:2147483646';
 var f=document.createElement('iframe');f.title='Chat';
 var src=function(){return base+'/chat/'+encodeURIComponent(loc)+'/frame?page='+encodeURIComponent(location.href)+'&a='+encodeURIComponent(window.pghlAttr||'')+'&r='+encodeURIComponent(document.referrer||'')};
 f.style.cssText='position:fixed;right:20px;bottom:90px;width:360px;max-width:calc(100vw - 40px);height:520px;max-height:calc(100vh - 120px);border:0;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);z-index:2147483647;display:none;background:#fff';
-b.onclick=function(){if(!f.src)f.src=src();var open=f.style.display==='none';f.style.display=open?'block':'none';b.innerHTML=open?'✕':'💬';b.setAttribute('aria-label',open?'Chat schließen':'Chat öffnen');b.setAttribute('aria-expanded',String(open))};
+b.onclick=function(){if(!f.src)f.src=src();var open=f.style.display==='none';f.style.display=open?'block':'none';b.innerHTML=open?'✕':'💬';b.setAttribute('aria-label',open?${closeL}:${openL});b.setAttribute('aria-expanded',String(open))};
 document.body.appendChild(f);document.body.appendChild(b);})();`;
       const r = text(js, 'text/javascript; charset=utf-8');
       r.headers['cache-control'] = 'public, max-age=300';
@@ -61,16 +65,17 @@ document.body.appendChild(f);document.body.appendChild(b);})();`;
 
     router.get('/chat/:loc/frame', 'public', (ctx) => {
       const s = settingsOf(ctx.params.loc);
-      if (!s || !s.chat.enabled) return html('<p>Chat ist aus.</p>', 404);
-      const cfg = { loc: ctx.params.loc, greeting: s.chat.greeting, askEmail: !!s.chat.ask_email, page: ctx.query.get('page') ?? '', attr: ctx.query.get('a') ?? '', ref: ctx.query.get('r') ?? '' };
+      if (!s || !s.chat.enabled) return html(`<p>${escapeHtml(tLoc(app, ctx.params.loc)('Chat ist aus.'))}</p>`, 404);
+      const t = s.t;
+      const cfg = { loc: ctx.params.loc, sendFailed: t('Senden ging nicht.'), greeting: s.chat.greeting, askEmail: !!s.chat.ask_email, page: ctx.query.get('page') ?? '', attr: ctx.query.get('a') ?? '', ref: ctx.query.get('r') ?? '' };
       const body = `
 <div id="app" style="display:flex;flex-direction:column;height:100vh">
   <div style="background:var(--brand);color:#fff;padding:14px 16px"><strong>${escapeHtml(s.chat.title)}</strong><div style="font-size:12px;opacity:.85">${escapeHtml(s.loc.name)}</div></div>
   <div id="msgs" role="log" aria-live="polite" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;background:#f9fafb"></div>
   <form id="who" style="padding:10px;border-top:1px solid var(--line)" hidden>
-    <input name="name" placeholder="Dein Name" aria-label="Dein Name" autocomplete="name" style="margin-bottom:6px"><input name="email" type="email" placeholder="E-Mail (für die Antwort)" aria-label="E-Mail (für die Antwort)" autocomplete="email" style="margin-bottom:6px">
+    <input name="name" placeholder="${escapeHtml(t('Dein Name'))}" aria-label="${escapeHtml(t('Dein Name'))}" autocomplete="name" style="margin-bottom:6px"><input name="email" type="email" placeholder="${escapeHtml(t('E-Mail (für die Antwort)'))}" aria-label="${escapeHtml(t('E-Mail (für die Antwort)'))}" autocomplete="email" style="margin-bottom:6px">
   </form>
-  <form id="f" style="display:flex;gap:6px;padding:10px;border-top:1px solid var(--line)"><input id="t" placeholder="Nachricht…" aria-label="Nachricht" autocomplete="off" required><button aria-label="Senden">➤</button></form>
+  <form id="f" style="display:flex;gap:6px;padding:10px;border-top:1px solid var(--line)"><input id="t" placeholder="${escapeHtml(t('Nachricht…'))}" aria-label="${escapeHtml(t('Nachricht'))}" autocomplete="off" required><button aria-label="${escapeHtml(t('Senden'))}">➤</button></form>
 </div>
 <style>.m{max-width:80%;padding:8px 11px;border-radius:12px;white-space:pre-wrap;word-break:break-word;font-size:14px}.in{align-self:flex-end;background:var(--brand);color:#fff}.out{align-self:flex-start;background:#fff;border:1px solid var(--line)}</style>
 <script>
@@ -84,7 +89,7 @@ async function poll(){if(!vis)return;try{var r=await fetch('/api/public/chat/'+C
 document.getElementById('f').onsubmit=async function(e){e.preventDefault();var t=document.getElementById('t'),txt=t.value.trim();if(!txt)return;t.value='';
 var data={body:txt,visitor:vis,page:C.page,attr:C.attr,ref:C.ref};if(!who.hidden){var fd=new FormData(who);data.name=fd.get('name');data.email=fd.get('email')}
 var r=await fetch('/api/public/chat/'+C.loc+'/messages',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});var j=await r.json();
-if(!r.ok){add('out',j.error||'Senden ging nicht.');return}
+if(!r.ok){add('out',j.error||C.sendFailed);return}
 if(j.visitor&&!vis){vis=j.visitor;try{localStorage.setItem(key,vis)}catch(e){}}who.hidden=true;await poll()};
 poll();setInterval(poll,4000);
 </script>`;
@@ -100,7 +105,7 @@ poll();setInterval(poll,4000);
       if (!visitor) {
         const email = str(ctx.body.email, 'E-Mail', { max: 200 });
         if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Bitte eine gültige E-Mail angeben');
-        const { contact } = upsertContact(app, s.loc.id, { name: str(ctx.body.name, 'Name', { max: 120 }) || (email ? '' : 'Website-Besucher'), email }, { source: 'Live-Chat', tags: ['live-chat'], publicInput: true });
+        const { contact } = upsertContact(app, s.loc.id, { name: str(ctx.body.name, 'Name', { max: 120 }) || (email ? '' : s.t('Website-Besucher')), email }, { source: 'Live-Chat', tags: ['live-chat'], publicInput: true });
         visitor = { token: token(18), location_id: s.loc.id, contact_id: contact.id, page: str(ctx.body.page, 'Seite', { max: 500 }), created_at: now() };
         db.insert('chat_visitors', visitor);
         app.services.attribution?.capture(ctx, s.loc.id, contact.id, 'chat', { attr: ctx.body.attr, page: ctx.body.page, referrer: ctx.body.ref });
@@ -110,8 +115,8 @@ poll();setInterval(poll,4000);
       const msg = { id: id(), location_id: s.loc.id, conversation_id: conversationId, contact_id: visitor.contact_id, channel: 'chat', direction: 'in', subject: '', body, status: 'received', error: '', source: 'Live-Chat', created_at: now() };
       db.insert('messages', msg);
       db.run('UPDATE conversations SET last_message_at = ?, last_message = ?, unread = unread + 1 WHERE id = ?', msg.created_at, body.slice(0, 140), conversationId);
-      logActivity(app, s.loc.id, visitor.contact_id, 'chat.received', 'Chat-Nachricht');
-      if (wasQuiet) void notifyTeam(app, s.loc.id, 'Neue Chat-Nachricht', `${body}\n\nAntworten: ${app.baseUrl()}/app/conversations`);
+      logActivity(app, s.loc.id, visitor.contact_id, 'chat.received', s.t('Chat-Nachricht'));
+      if (wasQuiet) void notifyTeam(app, s.loc.id, s.t('Neue Chat-Nachricht'), `${body}\n\n${s.t('Antworten: {url}', { url: `${app.baseUrl()}/app/conversations` })}`);
       app.events.emit(s.loc.id, 'message.inbound', { contactId: visitor.contact_id, contact: db.get('SELECT * FROM contacts WHERE id = ?', visitor.contact_id), message: msg });
       return { ok: true, visitor: visitor.token };
     });

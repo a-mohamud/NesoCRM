@@ -3,7 +3,8 @@ import { HttpError, bad, html, notFound, str, type Ctx } from '../core/http.js';
 import { id, now, slugify } from '../core/util.js';
 import { cleanBlocks } from '../services/site-layout.js';
 import { pageUrl, renderPage } from '../services/site-render.js';
-import { CATEGORIES, TEMPLATES, formSpec, settingsOf, templateMeta, templateOf, wireBlocks, type Wiring } from '../services/site-templates.js';
+import { CATEGORIES, TEMPLATES, formSpec, localizeTemplate, settingsOf, templateMeta, templateOf, wireBlocks, type Wiring } from '../services/site-templates.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 import { callRoute } from '../services/route-call.js';
 import type { Tool } from './mcp.js';
 
@@ -23,24 +24,26 @@ export const siteTemplatesModule: Module = {
     const writable = (ctx: Ctx) => {
       if (ctx.scope === 'read') throw new HttpError(403, 'Dieser Schlüssel darf nur lesen');
     };
-    const tplOr404 = (idv: string) => {
+    /** The template in the language of the sub-account it is shown in / applied to. */
+    const tplOr404 = (idv: string, ctx: Ctx) => {
       const t = templateOf(idv);
       if (!t) throw notFound('Vorlage nicht gefunden');
-      return t;
+      return localizeTemplate(t, tLoc(app, ctx.locationId));
     };
 
     router.get('/api/site-templates', 'location', (ctx) => {
       const kind = ctx.query.get('kind');
-      return { categories: CATEGORIES, templates: TEMPLATES.filter((t) => !kind || t.kind === kind).map(templateMeta) };
+      const tr = tLoc(app, ctx.locationId);
+      return { categories: CATEGORIES.map((c) => tr(c)), templates: TEMPLATES.filter((t) => !kind || t.kind === kind).map((t) => templateMeta(localizeTemplate(t, tr))) };
     });
-    router.get('/api/site-templates/:id', 'location', (ctx) => templateMeta(tplOr404(ctx.params.id)));
+    router.get('/api/site-templates/:id', 'location', (ctx) => templateMeta(tplOr404(ctx.params.id, ctx)));
 
     /** The template as a visitor would see it (no site is created): with example content, mock form and calendar. */
     router.get('/api/site-templates/:id/preview', 'location', (ctx) => {
-      const t = tplOr404(ctx.params.id);
+      const t = tplOr404(ctx.params.id, ctx);
       const slug = String(ctx.query.get('page') || t.pages[0].slug);
       const page = t.pages.find((p) => p.slug === slug) ?? t.pages[0];
-      const w: Wiring = { firma: 'Ihr Unternehmen', form_id: '', calendar_slug: '', product_id: '', collections: new Map((t.collections ?? []).map((c) => [c.preset, `preset:${c.preset}`])), pages: new Map(t.pages.map((p) => [p.slug, p.slug])), now: new Date() };
+      const w: Wiring = { firma: tLoc(app, ctx.locationId)('Ihr Unternehmen'), form_id: '', calendar_slug: '', product_id: '', collections: new Map((t.collections ?? []).map((c) => [c.preset, `preset:${c.preset}`])), pages: new Map(t.pages.map((p) => [p.slug, p.slug])), now: new Date() };
       const funnel = { id: '', location_id: ctx.locationId, slug: 'vorschau', domain: null, kind: t.kind, name: t.name, settings: settingsOf(t, w) };
       const pages = t.pages.map((p, i) => ({ id: p.slug, name: p.name, slug: p.slug, position: i, seo: p.seo ?? {}, layout: p.layout ?? {} }));
       const full = renderPage(app, funnel, { id: page.slug, name: page.name, slug: page.slug, seo: page.seo ? wireSeo(page.seo, w.firma) : {}, layout: page.layout ?? {}, blocks: cleanBlocks(wireBlocks(page.blocks as any, w)) }, page.slug === t.pages[0].slug, { preview: true, pages });
@@ -62,7 +65,8 @@ export const siteTemplatesModule: Module = {
     /** Creates a site from a template. Everything the template needs from the account is created or taken from the request. */
     router.post('/api/site-templates/:id/apply', 'location', async (ctx) => {
       writable(ctx);
-      const t = tplOr404(ctx.params.id);
+      const t = tplOr404(ctx.params.id, ctx);
+      const tu = tCtx(ctx);
       const b = ctx.body ?? {};
       const firma = str(b.name, 'Name', { max: 120 }) || (app.location(ctx.locationId)?.name ?? t.name);
       const fid = id();
@@ -83,25 +87,25 @@ export const siteTemplatesModule: Module = {
         const chosen = own('calendars', 'slug', b.calendar_slug) ?? (b.calendar_slug ? undefined : db.get('SELECT * FROM calendars WHERE location_id = ? ORDER BY created_at LIMIT 1', loc));
         if (b.calendar_slug && !chosen) throw bad('Kalender nicht gefunden');
         wiring.calendar_slug = chosen?.slug ?? '';
-        if (!chosen) notes.push('Du hast noch keinen Kalender: lege unter „Kalender“ einen an und wähle ihn im Block „Kalender“.');
+        if (!chosen) notes.push(tu('Du hast noch keinen Kalender: lege unter „Kalender“ einen an und wähle ihn im Block „Kalender“.'));
       }
       if (t.needs.includes('product')) {
         const chosen = own('products', 'id', b.product_id);
         if (b.product_id && !chosen) throw bad('Produkt nicht gefunden');
         wiring.product_id = chosen?.id ?? '';
-        if (!chosen) notes.push('Wähle im Block „Produkt“ das Produkt, das hier verkauft wird (Rechnungen → Produkte; Stripe verbinden, damit der Kauf-Button erscheint).');
+        if (!chosen) notes.push(tu('Wähle im Block „Produkt“ das Produkt, das hier verkauft wird (Rechnungen → Produkte; Stripe verbinden, damit der Kauf-Button erscheint).'));
       }
 
       db.insert('funnels', { id: fid, location_id: loc, name: firma, slug: uniqueSlug(slug), kind: t.kind, settings: {}, created_at: now(), updated_at: now() });
       try {
         if (t.needs.includes('form') && !wiring.form_id) {
           try {
-            const spec = formSpec(t.form, firma);
+            const spec = formSpec(t.form, firma, tLoc(app, loc));
             const form = await callRoute(app, ctx, 'POST', '/api/forms', { name: spec.name, fields: spec.fields, settings: { ...spec.settings, tags: [`vorlage:${t.id}`] } });
             wiring.form_id = form.id;
             createdForm = true;
           } catch (e) {
-            notes.push(`Das Formular konnte nicht angelegt werden (${(e as Error).message}): wähle in den Formular-Blöcken ein Formular aus.`);
+            notes.push(tu('Das Formular konnte nicht angelegt werden ({error}): wähle in den Formular-Blöcken ein Formular aus.', { error: tu((e as Error).message) }));
           }
         }
         // pages first (ids), then collections (they hold block references), then the pages' blocks
@@ -133,7 +137,7 @@ export const siteTemplatesModule: Module = {
           } catch (e) {
             legal.message = (e as Error).message;
           }
-          if (!legal.applied) notes.push(legal.message || 'Impressum und Datenschutz enthalten noch Platzhalter: trage unter „Einwilligung & Recht“ die Firmendaten ein und erzeuge die Texte dort mit einem Klick.');
+          if (!legal.applied) notes.push(legal.message ? tu(legal.message) : tu('Impressum und Datenschutz enthalten noch Platzhalter: trage unter „Einwilligung & Recht“ die Firmendaten ein und erzeuge die Texte dort mit einem Klick.'));
         }
         const out = db.get('SELECT * FROM funnels WHERE id = ?', fid)!;
         const f = JSON.parse(JSON.stringify({ ...out, settings: JSON.parse(out.settings || '{}') }));

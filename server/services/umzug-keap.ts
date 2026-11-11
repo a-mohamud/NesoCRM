@@ -1,6 +1,7 @@
 import type { Account, Batch, Consent, CountRow, FieldType, PartKey, RCompany, RContact, RDeal, RMembership, RNote, RPipeline, RProduct, RTagRec, RTask, SourceDef, SourceField, StepCtx, StepDef } from './umzug-core.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { first, stripHtml, toCents, toDay, toIso } from './umzug-text.js';
+import { translator, type ServerLocale } from '../i18n/index.js';
 
 /**
  * Keap (REST v1, https://api.infusionsoft.com/crm/rest/v1, Service Account Key or OAuth access token):
@@ -45,7 +46,8 @@ const keapType = (t: string): FieldType => (/^(date|datetime|year)/i.test(t) ? '
 
 const CONSENT: Record<string, Consent> = { unengagedmarketable: 'ok', marketable: 'ok', nonmarketable: 'unsubscribed', unsubscribed: 'unsubscribed', bounced: 'bounced', lockedout: 'blocked', soft_bounce: 'ok', hardbounce: 'bounced', pending: 'pending', unconfirmed: 'pending', spam: 'complained', complained: 'complained' };
 
-async function describe(h: VendorHttp, parts: PartKey[]) {
+async function describe(h: VendorHttp, parts: PartKey[], lang?: ServerLocale) {
+  const t = translator(lang);
   const counts: CountRow[] = [];
   const fields: SourceField[] = [];
   const warnings: string[] = [];
@@ -81,7 +83,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
       for (const f of m.custom_fields ?? []) fields.push({ ref: `cf:${f.id}`, label: String(f.label ?? f.field_name ?? f.id), type: keapType(String(f.field_type)), group: 'custom', options: (f.options ?? []).map((o: any) => String(o.label)) });
     } catch (e) {
       if (!(e instanceof UmzugError && e.skippable)) throw e;
-      warnings.push(`Eigene Felder nicht lesbar: ${e.message}`);
+      warnings.push(t('Eigene Felder nicht lesbar: {reason}', { reason: e.message }));
     }
   }
   if (parts.includes('companies')) await total('companies', 'companies', 'Firmen', '/companies', 'companies');
@@ -110,8 +112,9 @@ const steps = (): StepDef[] => [
     label: 'Firmen',
     part: 'companies',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of pages(ctx.http, '/companies', 'companies', {}, ctx, Number(ctx.cursor ?? 0))) {
-        const records: RCompany[] = pg.items.map((c) => ({ kind: 'company', ext: `co:${c.id}`, name: String(c.company_name ?? `Firma ${c.id}`), phone: c.phone_number?.number, website: c.website, address: c.address?.line1, city: c.address?.locality, postal_code: c.address?.postal_code, country: c.address?.country_code }));
+        const records: RCompany[] = pg.items.map((c) => ({ kind: 'company', ext: `co:${c.id}`, name: String(c.company_name ?? t('Firma {id}', { id: c.id })), phone: c.phone_number?.number, website: c.website, address: c.address?.line1, city: c.address?.locality, postal_code: c.address?.postal_code, country: c.address?.country_code }));
         yield { records, cursor: pg.next, total: pg.total };
       }
     },
@@ -221,8 +224,9 @@ const steps = (): StepDef[] => [
     label: 'Produkte',
     part: 'products',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of pages(ctx.http, '/products', 'products', {}, ctx, Number(ctx.cursor ?? 0))) {
-        const records: RProduct[] = pg.items.map((p) => ({ kind: 'product', ext: `p:${p.id}`, name: String(p.product_name ?? `Produkt ${p.id}`), description: stripHtml([p.product_short_desc, p.product_desc].filter(Boolean).join('\n\n')), price_cents: toCents(p.product_price), active: p.active !== false, recurring: p.subscription_only ? { interval: 'month' } : undefined }));
+        const records: RProduct[] = pg.items.map((p) => ({ kind: 'product', ext: `p:${p.id}`, name: String(p.product_name ?? t('Produkt {id}', { id: p.id })), description: stripHtml([p.product_short_desc, p.product_desc].filter(Boolean).join('\n\n')), price_cents: toCents(p.product_price), active: p.active !== false, recurring: p.subscription_only ? { interval: 'month' } : undefined }));
         yield { records, cursor: pg.next, total: pg.total };
       }
     },
@@ -254,7 +258,7 @@ export const KEAP: SourceDef = {
     const j = await h.get('/account/profile');
     return { account: String(j.email ?? j.name ?? j.business_name ?? 'keap').toLowerCase(), label: String(j.name ?? j.business_name ?? j.email ?? 'Keap'), meta: {} };
   },
-  describe: (h, parts) => describe(h, parts),
+  describe: (h, parts, c) => describe(h, parts, c.lang),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),
 };
 

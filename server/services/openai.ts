@@ -13,6 +13,7 @@ import { AiError, ZERO_USAGE, type SystemBlock, type Usage } from './anthropic.j
  */
 
 import { DEFAULT_EFFORT, effortFields, isEffortRejection, planEffort, type Effort, type EffortPlan } from './ai-effort.js';
+import { tApp } from '../i18n/index.js';
 
 export const API_URL = 'https://api.openai.com/v1/responses';
 export const MODELS_URL = 'https://api.openai.com/v1/models';
@@ -133,7 +134,7 @@ export function apiError(status: number, message: string, code = ''): AiError {
   if (code === 'insufficient_quota') return new AiError('OpenAI-Konto hat kein Guthaben mehr (insufficient_quota). Bitte unter platform.openai.com → Billing prüfen.', 502, 'billing');
   switch (status) {
     case 400:
-      return new AiError(`OpenAI hat die Anfrage abgelehnt${detail}`, 502, 'invalid_request');
+      return new AiError(tApp()('OpenAI hat die Anfrage abgelehnt{detail}', { detail }), 502, 'invalid_request');
     case 401:
       return new AiError('OpenAI-API-Schlüssel ist ungültig. Bitte unter Einstellungen → KI-Assistent prüfen.', 502, 'auth');
     case 403:
@@ -145,7 +146,7 @@ export function apiError(status: number, message: string, code = ''): AiError {
     case 429:
       return new AiError('Zu viele Anfragen bei OpenAI – bitte kurz warten und erneut versuchen.', 429, 'rate_limit');
     default:
-      return status >= 500 ? new AiError('OpenAI hat gerade ein Problem – bitte später erneut versuchen.', 503, 'server') : new AiError(`Fehler von OpenAI (${status})${detail}`, 502, 'api_error');
+      return status >= 500 ? new AiError('OpenAI hat gerade ein Problem – bitte später erneut versuchen.', 503, 'server') : new AiError(tApp()('Fehler von OpenAI ({status}){detail}', { status, detail }), 502, 'api_error');
   }
 }
 
@@ -202,7 +203,7 @@ export async function callOpenAi(req: OpenAiRequest, fetchImpl: FetchLike = (u, 
           skipEffort = true;
           continue;
         }
-        throw new AiError(`OpenAI: Das Modell „${req.model}“ nimmt die Denkstufe „${plan.applied}“ nicht an (${msg.slice(0, 160)}). Bitte ein anderes Modell wählen oder die Denkstufe unter Einstellungen → KI-Anbieter → Denkstufe ändern.`, 400, 'effort_rejected', ZERO_USAGE, req.model);
+        throw new AiError(tApp()('OpenAI: Das Modell „{model}“ nimmt die Denkstufe „{effort}“ nicht an ({error}). Bitte ein anderes Modell wählen oder die Denkstufe unter Einstellungen → KI-Anbieter → Denkstufe ändern.', { model: req.model, effort: String(plan.applied), error: msg.slice(0, 160) }), 400, 'effort_rejected', ZERO_USAGE, req.model);
       }
       const e = apiError(r.status, msg, String(data?.error?.code ?? ''));
       e.model = req.model;

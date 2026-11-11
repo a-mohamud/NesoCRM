@@ -15,6 +15,7 @@ import { getSettings } from '../services/mk-settings.js';
 import { loadBuckets, planHours } from '../services/mk-sto.js';
 import { cleanWaTemplate, resolveWaTemplate } from '../services/mk-whatsapp.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 const CHANNELS = ['email', 'sms', 'whatsapp'];
 const channelOf = (v: unknown) => (CHANNELS.includes(String(v)) ? String(v) : 'email');
@@ -139,8 +140,8 @@ export const campaignsModule: Module = {
       return { throttle, warmup: warmupAdvice({ channel: c.channel, sentTotal, remaining, perHour: throttle.per_hour }) };
     };
     /** What the page needs besides the row: results of an A/B test, the follow-up, the warm-up plan and the reputation verdict. */
-    const extrasOf = (c: any) => ({
-      ab_results: c.ab?.enabled ? abResults(app, c) : null,
+    const extrasOf = (c: any, t: STFn = tApp()) => ({
+      ab_results: c.ab?.enabled ? abResults(app, c, t) : null,
       resend_info: c.resend?.enabled
         ? { ...c.resend, due_at: c.sent_at ? dueAt(c.resend, c.sent_at) : null, preview: c.status === 'sent' && c.resend.status === 'waiting' ? nonOpenerIds(app, c.id, c.location_id).length : null }
         : null,
@@ -150,7 +151,7 @@ export const campaignsModule: Module = {
     router.get('/api/campaigns/:id', 'location', (ctx) => {
       const c = get(ctx.locationId, ctx.params.id);
       if (!c) throw notFound();
-      return { ...c, stats: stats(c.id), audience: c.status === 'draft' ? audience(app, ctx.locationId, c.filter, ctx).length : undefined, ...throttleOf(c, ctx), ...extrasOf(c) };
+      return { ...c, stats: stats(c.id), audience: c.status === 'draft' ? audience(app, ctx.locationId, c.filter, ctx).length : undefined, ...throttleOf(c, ctx), ...extrasOf(c, tCtx(ctx)) };
     });
     /** Changes the speed of a campaign – also while it is sending (the new speed counts from now on). */
     router.put('/api/campaigns/:id/speed', 'location', (ctx) => {
@@ -294,7 +295,7 @@ export const campaignsModule: Module = {
       if (c.channel === 'whatsapp') {
         const wa = await resolveWaTemplate(app, ctx.locationId, c.wa_template);
         const values = Object.fromEntries(Object.entries(wa.values).map(([k, v]) => [k, render(String(v), vars)]));
-        return app.services.metaSend(ctx.locationId, { contactId: contact.id, channel: 'whatsapp', template: { name: wa.name, language: wa.language, values }, source: 'Kampagnen-Test', ignoreDnd: true });
+        return app.services.metaSend(ctx.locationId, { contactId: contact.id, channel: 'whatsapp', template: { name: wa.name, language: wa.language, values }, source: tLoc(app, ctx.locationId)('Kampagnen-Test'), ignoreDnd: true });
       }
       // A variant of an A/B test can be tried out on its own.
       const v = variantContent(c, String(ctx.body.variant ?? ''));
@@ -323,7 +324,7 @@ export const campaignsModule: Module = {
     router.get('/api/campaigns/:id/ab', 'location', (ctx) => {
       const c = get(ctx.locationId, ctx.params.id);
       if (!c) throw notFound();
-      return abResults(app, c) ?? { enabled: false };
+      return abResults(app, c, tCtx(ctx)) ?? { enabled: false };
     });
     /** While the test waits, the winner can be chosen at once (key) or the automatic decision can be taken now (no key). */
     router.post('/api/campaigns/:id/ab/winner', 'location', (ctx) => {
@@ -333,7 +334,7 @@ export const campaignsModule: Module = {
       const key = ctx.body?.key === undefined || ctx.body?.key === '' ? undefined : String(ctx.body.key);
       if (key && !c.ab.variants.some((v: { key: string }) => v.key === key)) throw bad('Unbekannte Variante');
       const r = releaseWinner(app, c, key ? 'manual' : 'auto', key);
-      return { ...r, ...abResults(app, get(ctx.locationId, c.id)) };
+      return { ...r, ...abResults(app, get(ctx.locationId, c.id), tCtx(ctx)) };
     });
 
     // --- follow-up to non-openers ---------------------------------------------------------------------------------------
@@ -352,9 +353,9 @@ export const campaignsModule: Module = {
       if (ctx.body?.now === true) {
         if (c.status !== 'sent') throw bad('Die Erinnerung geht erst, wenn die Kampagne fertig versendet ist');
         const child = createResend(app, { ...c, resend: cfg });
-        return { ...extrasOf(get(ctx.locationId, c.id)), child_id: child };
+        return { ...extrasOf(get(ctx.locationId, c.id), tCtx(ctx)), child_id: child };
       }
-      return extrasOf(get(ctx.locationId, c.id));
+      return extrasOf(get(ctx.locationId, c.id), tCtx(ctx));
     });
     router.delete('/api/campaigns/:id/resend', 'location', (ctx) => {
       const c = get(ctx.locationId, ctx.params.id);

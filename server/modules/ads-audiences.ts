@@ -8,6 +8,7 @@ import { googleIdentifiers, metaRow, type ListContact } from '../services/ads-ha
 import { addUsers, createCustomAudience, createLookalike, deleteAudience, metaApi, searchInterests, searchLocations } from '../services/ads-meta.js';
 import { PLATFORM_LABEL, activity, audit, canManage, connected, fetcherOf, googleAuth, isHuman, loadConnection, metaCreds, relay, type Platform } from '../services/ads-store.js';
 import { findContacts } from '../services/contacts.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Audiences from HyperLevel smart lists: customer lists for Meta (Custom Audience) and Google (Customer Match), uploaded
@@ -94,7 +95,7 @@ export const adsAudiencesModule: Module = {
     };
     const usable = (locationId: string, platform: Platform) => {
       const conn = loadConnection(app, locationId, platform);
-      if (!connected(app, platform, conn)) throw bad(`${PLATFORM_LABEL[platform]} ist nicht verbunden (Anzeigen → Verbindungen)`);
+      if (!connected(app, platform, conn)) throw bad(tApp()('{platform} ist nicht verbunden (Anzeigen → Verbindungen)', { platform: PLATFORM_LABEL[platform] }));
       if (!canManage(platform, conn)) throw bad('Der Zugang darf nur lesen – bitte neu verbinden und „Anzeigen verwalten“ erlauben');
       return conn!;
     };
@@ -135,16 +136,16 @@ export const adsAudiencesModule: Module = {
         if (platform === 'meta') {
           const c = metaCreds(conn);
           const api = metaApi(fetcherOf(app), c.version, c.token);
-          platformId = await relay(() => createCustomAudience(api, c.adAccountId, name, `HyperLevel Smart List „${name}“`));
+          platformId = await relay(() => createCustomAudience(api, c.adAccountId, name, tLoc(app, ctx.locationId)('HyperLevel Smart List „{name}“', { name })));
           sent = (await relay(() => addUsers(api, platformId, rows.meta))).received;
         } else {
           const api = googleApi(fetcherOf(app), await googleAuth(app, conn));
-          const r = await relay(() => uploadCustomerMatch(api, { name, description: `HyperLevel Smart List „${name}“`, members: rows.google }));
+          const r = await relay(() => uploadCustomerMatch(api, { name, description: tLoc(app, ctx.locationId)('HyperLevel Smart List „{name}“', { name }), members: rows.google }));
           platformId = r.userList;
           sent = r.sent;
         }
         db.run(`UPDATE ads_audiences SET platform_id = ?, status = 'ready', sent = ?, last_sync_at = ?, updated_at = ?, last_error = NULL WHERE id = ?`, platformId, sent, now(), now(), aid);
-        const summary = `Zielgruppe „${name}“: ${sent} Kontakte (nur als SHA-256-Hash, ${rows.skipped.opted_out} abgemeldete und ${rows.skipped.no_identifier} ohne E-Mail/Telefon ausgelassen) an ${PLATFORM_LABEL[platform]} übertragen`;
+        const summary = tApp()('Zielgruppe „{name}“: {sent} Kontakte (nur als SHA-256-Hash, {optedOut} abgemeldete und {noId} ohne E-Mail/Telefon ausgelassen) an {platform} übertragen', { name, sent, optedOut: rows.skipped.opted_out, noId: rows.skipped.no_identifier, platform: PLATFORM_LABEL[platform] });
         audit(app, ctx, 'ads.audience.upload', summary, { locationId: ctx.locationId, entityId: aid });
         activity(app, ctx.locationId, { platform, kind: 'audience', summary, actor: ctx.user?.name, via: ctx.via });
         return out(db.get('SELECT * FROM ads_audiences WHERE id = ?', aid));
@@ -172,7 +173,7 @@ export const adsAudiencesModule: Module = {
         sent = (await relay(() => appendCustomerMatch(api, a.platform_id, rows.google))).sent;
       }
       db.run(`UPDATE ads_audiences SET sent = ?, skipped = ?, last_sync_at = ?, updated_at = ?, status = 'ready', last_error = NULL WHERE id = ?`, sent, rows.skipped.no_identifier + rows.skipped.opted_out, now(), now(), a.id);
-      audit(app, ctx, 'ads.audience.upload', `Zielgruppe „${a.name}“ aktualisiert: ${sent} Kontakte (Hash) an ${PLATFORM_LABEL[platform]} übertragen`, { locationId: ctx.locationId, entityId: a.id });
+      audit(app, ctx, 'ads.audience.upload', tApp()('Zielgruppe „{name}“ aktualisiert: {sent} Kontakte (Hash) an {platform} übertragen', { name: a.name, sent, platform: PLATFORM_LABEL[platform] }), { locationId: ctx.locationId, entityId: a.id });
       return out(db.get('SELECT * FROM ads_audiences WHERE id = ?', a.id));
     });
 
@@ -190,7 +191,7 @@ export const adsAudiencesModule: Module = {
       const lid = id();
       const platformId = await relay(() => createLookalike(metaApi(fetcherOf(app), c.version, c.token), c.adAccountId, { name, originId: src.platform_id, country, ratio }));
       db.insert('ads_audiences', { id: lid, location_id: ctx.locationId, platform: 'meta', kind: 'lookalike', name, source_id: src.id, platform_id: platformId, status: 'ready', spec: JSON.stringify({ country, ratio }), created_by: ctx.user?.id ?? null, created_at: now(), updated_at: now(), last_sync_at: now() });
-      audit(app, ctx, 'ads.audience.lookalike', `Lookalike „${name}“ (${country}, ${Math.round(ratio * 100)} %) aus „${src.name}“ bei Meta angelegt`, { locationId: ctx.locationId, entityId: lid });
+      audit(app, ctx, 'ads.audience.lookalike', tApp()('Lookalike „{name}“ ({country}, {percent} %) aus „{source}“ bei Meta angelegt', { name, country, percent: Math.round(ratio * 100), source: src.name }), { locationId: ctx.locationId, entityId: lid });
       return out(db.get('SELECT * FROM ads_audiences WHERE id = ?', lid));
     });
 
@@ -198,7 +199,7 @@ export const adsAudiencesModule: Module = {
       const a = mine(ctx.locationId, ctx.params.id);
       for (const c of db.all<{ name: string; spec: string; status: string }>(`SELECT name, spec, status FROM ads_campaigns WHERE location_id = ? AND status != 'error'`, ctx.locationId)) {
         const s = JSON.parse(c.spec || '{}');
-        if ([...(s.audience?.audience_ids ?? []), ...(s.audience?.exclude_audience_ids ?? [])].includes(a.id)) throw new HttpError(409, `Die Zielgruppe wird von der Kampagne „${c.name}“ verwendet`);
+        if ([...(s.audience?.audience_ids ?? []), ...(s.audience?.exclude_audience_ids ?? [])].includes(a.id)) throw new HttpError(409, tApp()('Die Zielgruppe wird von der Kampagne „{name}“ verwendet', { name: c.name }));
       }
       if (a.kind === 'lookalike' ? false : db.get('SELECT 1 FROM ads_audiences WHERE location_id = ? AND source_id = ?', ctx.locationId, a.id)) throw new HttpError(409, 'Von dieser Zielgruppe gibt es noch Lookalikes – zuerst diese löschen');
       let removed = false;
@@ -217,7 +218,7 @@ export const adsAudiencesModule: Module = {
         }
       }
       db.run('DELETE FROM ads_audiences WHERE id = ? AND location_id = ?', a.id, ctx.locationId);
-      audit(app, ctx, 'ads.audience.delete', `Zielgruppe „${a.name}“ gelöscht${removed ? ` (auch bei ${PLATFORM_LABEL[a.platform as Platform]})` : ''}`, { locationId: ctx.locationId, entityId: a.id });
+      audit(app, ctx, 'ads.audience.delete', removed ? tApp()('Zielgruppe „{name}“ gelöscht (auch bei {platform})', { name: a.name, platform: PLATFORM_LABEL[a.platform as Platform] }) : tApp()('Zielgruppe „{name}“ gelöscht', { name: a.name }), { locationId: ctx.locationId, entityId: a.id });
       return { ok: true, removed_at_platform: removed };
     });
 

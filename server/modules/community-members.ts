@@ -12,6 +12,7 @@ import { approveMembership, communityMail, membershipById, pageOf, rejectMembers
 import { communityUi, kitOf, type PortalMember } from '../services/community-ui.js';
 import { parseJson } from '../core/db.js';
 import { relTime } from '../services/community.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Members: profile extras (headline, city, links, what others may see, push choices), the activity heatmap, "online now", and the
@@ -58,13 +59,14 @@ export const communityMembersModule: Module = {
       const e = profileExt(app, p.locationId, m.contact.id);
       const pp = pushPrefs(app, p.locationId, m.contact.id);
       const links = [...e.links, ...Array.from({ length: 5 }, () => ({ label: '', url: '' }))].slice(0, 5);
-      const box = (name: string, on: boolean, label: string) => `<label class="cm-check"><input type="hidden" name="${name}" value="0"><input type="checkbox" name="${name}" value="1"${on ? ' checked' : ''}> ${label}</label>`;
-      return `<label for="hl">Kurzbeschreibung</label><input id="hl" type="text" name="headline" maxlength="80" placeholder="z. B. Coach für Selbstständige" value="${escapeHtml(e.headline)}">
-<div class="cm-row"><div class="grow"><label for="ci">Stadt</label><input id="ci" type="text" name="city" maxlength="80" value="${escapeHtml(e.city)}" autocomplete="address-level2"></div><div class="grow"><label for="co">Land</label><input id="co" type="text" name="country" maxlength="60" value="${escapeHtml(e.country)}" autocomplete="country-name"></div></div>
+      const t = tLoc(app, p.locationId);
+      const box = (name: string, on: boolean, label: string) => `<label class="cm-check"><input type="hidden" name="${name}" value="0"><input type="checkbox" name="${name}" value="1"${on ? ' checked' : ''}> ${t(label)}</label>`;
+      return `<label for="hl">${t('Kurzbeschreibung')}</label><input id="hl" type="text" name="headline" maxlength="80" placeholder="${t('z. B. Coach für Selbstständige')}" value="${escapeHtml(e.headline)}">
+<div class="cm-row"><div class="grow"><label for="ci">${t('Stadt')}</label><input id="ci" type="text" name="city" maxlength="80" value="${escapeHtml(e.city)}" autocomplete="address-level2"></div><div class="grow"><label for="co">${t('Land')}</label><input id="co" type="text" name="country" maxlength="60" value="${escapeHtml(e.country)}" autocomplete="country-name"></div></div>
 ${anyMap(m, p.locationId) ? box('show_on_map', e.show_on_map, 'Mich auf der Mitglieder-Karte zeigen (nur die Stadt, nie die genaue Adresse)') : ''}
-<fieldset class="cm-fieldset"><legend>Links auf deinem Profil</legend>${links.map((l, i) => `<div class="cm-row" style="margin-bottom:6px"><input type="text" name="link_label" maxlength="40" placeholder="Name (z. B. Website)" value="${escapeHtml(l.label)}" style="max-width:200px" aria-label="Link ${i + 1}: Name"><input type="text" name="link_url" maxlength="300" placeholder="https://…" value="${escapeHtml(l.url)}" class="grow" aria-label="Link ${i + 1}: Adresse"></div>`).join('')}</fieldset>
-<fieldset class="cm-fieldset"><legend>Was andere sehen</legend>${box('show_online', e.show_online, 'Zeigen, wenn ich gerade online bin')}${box('show_activity', e.show_activity, 'Meine Aktivität (Kalender) auf dem Profil zeigen')}</fieldset>
-<fieldset class="cm-fieldset"><legend>Benachrichtigungen aufs Gerät</legend><p class="cm-hint" style="margin:0 0 6px">Pushmitteilungen kommen nur auf Geräten an, auf denen du sie erlaubt hast.</p><div data-push-box></div>${box('push_dms', pp.dms, 'Neue Nachrichten')}${box('push_mentions', pp.mentions, 'Wenn mich jemand erwähnt')}${box('push_replies', pp.replies, 'Antworten auf meine Kommentare')}${box('push_announcements', pp.announcements, 'Ankündigungen des Teams')}${box('push_posts', pp.posts, 'Alle neuen Beiträge')}</fieldset>`;
+<fieldset class="cm-fieldset"><legend>${t('Links auf deinem Profil')}</legend>${links.map((l, i) => `<div class="cm-row" style="margin-bottom:6px"><input type="text" name="link_label" maxlength="40" placeholder="${t('Name (z. B. Website)')}" value="${escapeHtml(l.label)}" style="max-width:200px" aria-label="${t('Link {n}: Name', { n: i + 1 })}"><input type="text" name="link_url" maxlength="300" placeholder="https://…" value="${escapeHtml(l.url)}" class="grow" aria-label="${t('Link {n}: Adresse', { n: i + 1 })}"></div>`).join('')}</fieldset>
+<fieldset class="cm-fieldset"><legend>${t('Was andere sehen')}</legend>${box('show_online', e.show_online, 'Zeigen, wenn ich gerade online bin')}${box('show_activity', e.show_activity, 'Meine Aktivität (Kalender) auf dem Profil zeigen')}</fieldset>
+<fieldset class="cm-fieldset"><legend>${t('Benachrichtigungen aufs Gerät')}</legend><p class="cm-hint" style="margin:0 0 6px">${t('Pushmitteilungen kommen nur auf Geräten an, auf denen du sie erlaubt hast.')}</p><div data-push-box></div>${box('push_dms', pp.dms, 'Neue Nachrichten')}${box('push_mentions', pp.mentions, 'Wenn mich jemand erwähnt')}${box('push_replies', pp.replies, 'Antworten auf meine Kommentare')}${box('push_announcements', pp.announcements, 'Ankündigungen des Teams')}${box('push_posts', pp.posts, 'Alle neuen Beiträge')}</fieldset>`;
     });
     ui.profileSave.push((p, m, b, forms) => {
       const flag = (name: string) => forms(name).includes('1');
@@ -93,7 +95,8 @@ ${anyMap(m, p.locationId) ? box('show_on_map', e.show_on_map, 'Mich auf der Mitg
       const total = [...map.values()].reduce((a, b) => a + b, 0);
       const today = ymdInTz(new Date(), tz);
       const streak = currentStreak(map, today);
-      return `<div class="cm-box" style="margin:0 0 18px"><div class="cm-row" style="margin-bottom:6px"><strong class="grow">Aktivität</strong><span class="muted small">${total} ${total === 1 ? 'Beitrag' : 'Beiträge'} in den letzten 12 Monaten${streak > 1 ? ` · ${streak} Tage am Stück` : ''}</span></div>${heatmapSvg(map, today)}${self && !e.show_activity ? '<p class="cm-hint" style="margin:6px 0 0">Nur du siehst das, du hast es im Profil ausgeblendet.</p>' : ''}</div>`;
+      const t = tLoc(app, p.locationId);
+      return `<div class="cm-box" style="margin:0 0 18px"><div class="cm-row" style="margin-bottom:6px"><strong class="grow">${t('Aktivität')}</strong><span class="muted small">${t.plural(total, { one: '{n} Beitrag in den letzten 12 Monaten', other: '{n} Beiträge in den letzten 12 Monaten' })}${streak > 1 ? ` · ${t('{n} Tage am Stück', { n: streak })}` : ''}</span></div>${heatmapSvg(map, today, t)}${self && !e.show_activity ? `<p class="cm-hint" style="margin:6px 0 0">${t('Nur du siehst das, du hast es im Profil ausgeblendet.')}</p>` : ''}</div>`;
     });
 
     // --- "online now" in the side column ----------------------------------------------------------------------------------------------------
@@ -105,7 +108,8 @@ ${anyMap(m, p.locationId) ? box('show_on_map', e.show_on_map, 'Mich auf der Mitg
       const on = [...onlineIds(app, p.locationId, ids)];
       const shown = on.filter((c) => c !== m.contact.id).slice(0, 8);
       const others = on.length - (on.includes(m.contact.id) ? 1 : 0);
-      return `<div class="cm-box"><h3><span class="dot on"></span> Online jetzt (${on.length})</h3>${shown.length ? `<div class="cm-online">${shown.map((cid) => { const pr = kit.profile(p, cid); return pr ? `<a href="${kit.cbase(p)}/u/${encodeURIComponent(pr.handle)}" title="${escapeHtml(pr.display_name)}">${kit.avatar(p, pr.display_name, pr, 's')}</a>` : ''; }).join('')}</div>${others > shown.length ? `<p class="muted small" style="margin:8px 0 0">und ${others - shown.length} weitere</p>` : ''}` : '<p class="muted small" style="margin:0">Gerade bist nur du hier.</p>'}</div>`;
+      const t = tLoc(app, p.locationId);
+      return `<div class="cm-box"><h3><span class="dot on"></span> ${t('Online jetzt ({n})', { n: on.length })}</h3>${shown.length ? `<div class="cm-online">${shown.map((cid) => { const pr = kit.profile(p, cid); return pr ? `<a href="${kit.cbase(p)}/u/${encodeURIComponent(pr.handle)}" title="${escapeHtml(pr.display_name)}">${kit.avatar(p, pr.display_name, pr, 's')}</a>` : ''; }).join('')}</div>${others > shown.length ? `<p class="muted small" style="margin:8px 0 0">${t('und {n} weitere', { n: others - shown.length })}</p>` : ''}` : `<p class="muted small" style="margin:0">${t('Gerade bist nur du hier.')}</p>`}</div>`;
     });
 
     // --- moderation by members with a role -----------------------------------------------------------------------------------------------------
@@ -117,7 +121,7 @@ ${anyMap(m, p.locationId) ? box('show_on_map', e.show_on_map, 'Mich auf der Mitg
       const role = roleOfM(g, m);
       if (!CAN.moderate(role)) return [];
       const n = openReports(g) + (CAN.admin(role) ? pendingJoins(g) : 0);
-      return [{ key: 'mod', href: `${kitOf(app).gHref(p, g)}/mod`, label: `Moderation${n ? ` <span class="cm-n">${n}</span>` : ''}` }];
+      return [{ key: 'mod', href: `${kitOf(app).gHref(p, g)}/mod`, label: `${tLoc(app, p.locationId)('Moderation')}${n ? ` <span class="cm-n">${n}</span>` : ''}` }];
     });
 
     const modBtn = (href: string, csrf: string, action: string, text: string, confirm = '') => `<form method="post" action="${href}"${confirm ? ` data-confirm="${escapeHtml(confirm)}"` : ''}><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="action" value="${action}"><button class="cm-link">${text}</button></form>`;
@@ -127,14 +131,16 @@ ${anyMap(m, p.locationId) ? box('show_on_map', e.show_on_map, 'Mich auf der Mitg
       if (!CAN.moderate(role)) return '';
       const href = `${kitOf(app).postHref(p, g, post.id)}/mod`;
       const own = post.contact_id === m.contact.id;
-      return `<span class="cm-modbar" aria-label="Moderation">${modBtn(href, csrf, post.pinned ? 'unpin' : 'pin', post.pinned ? 'Lösen' : 'Anheften')}${own ? '' : `${modBtn(href, csrf, 'hide', 'Ausblenden', 'Beitrag für alle ausblenden?')}${modBtn(href, csrf, 'delete', 'Löschen', 'Beitrag mit allen Kommentaren endgültig löschen?')}`}</span>`;
+      const t = tLoc(app, p.locationId);
+      return `<span class="cm-modbar" aria-label="${t('Moderation')}">${modBtn(href, csrf, post.pinned ? 'unpin' : 'pin', post.pinned ? t('Lösen') : t('Anheften'))}${own ? '' : `${modBtn(href, csrf, 'hide', t('Ausblenden'), t('Beitrag für alle ausblenden?'))}${modBtn(href, csrf, 'delete', t('Beitrag löschen'), t('Beitrag mit allen Kommentaren endgültig löschen?'))}`}</span>`;
     });
     ui.commentActions.push((p, m, g, post, c, csrf) => {
       const role = roleOfM(g, m);
       if (!CAN.moderate(role) || c.contact_id === m.contact.id || !c.contact_id) return '';
       const href = `${kitOf(app).gHref(p, g)}/c/${encodeURIComponent(c.id)}/mod`;
       void post;
-      return `<span class="cm-modbar">${modBtn(href, csrf, 'hide', 'Ausblenden')}${modBtn(href, csrf, 'delete', 'Löschen', 'Kommentar löschen?')}</span>`;
+      const t = tLoc(app, p.locationId);
+      return `<span class="cm-modbar">${modBtn(href, csrf, 'hide', t('Ausblenden'))}${modBtn(href, csrf, 'delete', t('Kommentar löschen'), t('Kommentar löschen?'))}</span>`;
     });
 
     router.post('/portal/:p/community/g/:group/p/:post/mod', 'public', (ctx) =>
@@ -148,7 +154,7 @@ ${anyMap(m, p.locationId) ? box('show_on_map', e.show_on_map, 'Mich auf der Mitg
           return redirect(kit.postHref(p, g, post.id), 303);
         }
         if (action === 'hide') {
-          setHidden(app, 'post', post, true, `von ${m.contact.first_name || 'Moderation'}`);
+          setHidden(app, 'post', post, true, tLoc(app, p.locationId)('von {name}', { name: m.contact.first_name || tLoc(app, p.locationId)('Moderation') }));
           return redirect(href, 303);
         }
         if (action === 'delete') {
@@ -176,13 +182,14 @@ ${anyMap(m, p.locationId) ? box('show_on_map', e.show_on_map, 'Mich auf der Mitg
         const role = roleOfM(g, m);
         if (!CAN.moderate(role)) return kit.errorPage(p, m, 'Dieser Bereich ist für Moderatorinnen, Moderatoren und Admins.', 403);
         const csrf = kit.csrf(m);
+        const tr = tLoc(app, p.locationId);
         const reports = db.all<any>(`SELECT * FROM community_reports WHERE group_id = ? AND status = 'open' ORDER BY created_at DESC LIMIT 50`, g.id);
         const repHtml = reports
           .map((r) => {
             const t = r.kind === 'post' ? db.get<any>('SELECT id, title, body, author_name FROM community_posts WHERE id = ?', r.target_id) : db.get<any>('SELECT id, body, author_name, post_id FROM community_comments WHERE id = ?', r.target_id);
             if (!t) return '';
             const link = r.kind === 'post' ? kit.postHref(p, g, t.id) : `${kit.postHref(p, g, t.post_id)}#c-${t.id}`;
-            return `<div class="cm-box" style="margin-bottom:10px"><div class="muted small">${r.kind === 'post' ? 'Beitrag' : 'Kommentar'} von ${escapeHtml(t.author_name)} · gemeldet ${relTime(r.created_at)}${r.reason ? ` · „${escapeHtml(r.reason)}“` : ''}</div><p style="margin:6px 0"><a href="${link}"><strong>${escapeHtml(t.title ?? excerptOf(stripMarkdown(t.body), 60))}</strong></a></p><p class="cm-excerpt">${escapeHtml(excerptOf(stripMarkdown(t.body), 220))}</p><div class="cm-modbar" style="gap:12px">${modBtn(`${kit.gHref(p, g)}/mod/report/${encodeURIComponent(r.id)}`, csrf, 'dismiss', 'In Ordnung')}${modBtn(`${kit.gHref(p, g)}/mod/report/${encodeURIComponent(r.id)}`, csrf, 'hide', 'Ausblenden')}${modBtn(`${kit.gHref(p, g)}/mod/report/${encodeURIComponent(r.id)}`, csrf, 'delete', 'Löschen', 'Endgültig löschen?')}</div></div>`;
+            return `<div class="cm-box" style="margin-bottom:10px"><div class="muted small">${r.kind === 'post' ? tr('Beitrag von {name}', { name: escapeHtml(t.author_name) }) : tr('Kommentar von {name}', { name: escapeHtml(t.author_name) })} · ${tr('gemeldet {time}', { time: relTime(r.created_at, Date.now(), tr) })}${r.reason ? ` · „${escapeHtml(r.reason)}“` : ''}</div><p style="margin:6px 0"><a href="${link}"><strong>${escapeHtml(t.title ?? excerptOf(stripMarkdown(t.body), 60))}</strong></a></p><p class="cm-excerpt">${escapeHtml(excerptOf(stripMarkdown(t.body), 220))}</p><div class="cm-modbar" style="gap:12px">${modBtn(`${kit.gHref(p, g)}/mod/report/${encodeURIComponent(r.id)}`, csrf, 'dismiss', tr('In Ordnung'))}${modBtn(`${kit.gHref(p, g)}/mod/report/${encodeURIComponent(r.id)}`, csrf, 'hide', tr('Ausblenden'))}${modBtn(`${kit.gHref(p, g)}/mod/report/${encodeURIComponent(r.id)}`, csrf, 'delete', tr('Endgültig löschen'), tr('Endgültig löschen?'))}</div></div>`;
           })
           .join('');
         const joins = CAN.admin(role) ? db.all<any>(`SELECT m.*, k.first_name, k.last_name, k.email FROM community_memberships m JOIN contacts k ON k.id = m.contact_id WHERE m.group_id = ? AND m.status = 'pending' ORDER BY m.requested_at LIMIT 50`, g.id) : [];
@@ -192,16 +199,16 @@ ${anyMap(m, p.locationId) ? box('show_on_map', e.show_on_map, 'Mich auf der Mitg
           .map((j) => {
             const answers = parseJson(j, ['answers']).answers as Record<string, string>;
             const qa = (page?.questions ?? []).filter((q) => answers[q.id]).map((q) => `<div class="small"><span class="muted">${escapeHtml(q.label)}</span><br>${escapeHtml(answers[q.id])}</div>`).join('');
-            return `<div class="cm-box" style="margin-bottom:10px"><strong>${escapeHtml([j.first_name, j.last_name].filter(Boolean).join(' ') || j.email)}</strong> <span class="muted small">· ${escapeHtml(tiers.get(j.tier_id) ?? '')} · ${relTime(j.requested_at)}</span>${qa}<div class="cm-modbar" style="gap:12px;margin-top:8px">${modBtn(`${kit.gHref(p, g)}/mod/join/${encodeURIComponent(j.id)}`, csrf, 'approve', 'Aufnehmen')}${modBtn(`${kit.gHref(p, g)}/mod/join/${encodeURIComponent(j.id)}`, csrf, 'reject', 'Ablehnen', 'Anfrage ablehnen?')}</div></div>`;
+            return `<div class="cm-box" style="margin-bottom:10px"><strong>${escapeHtml([j.first_name, j.last_name].filter(Boolean).join(' ') || j.email)}</strong> <span class="muted small">· ${escapeHtml(tiers.get(j.tier_id) ?? '')} · ${relTime(j.requested_at, Date.now(), tr)}</span>${qa}<div class="cm-modbar" style="gap:12px;margin-top:8px">${modBtn(`${kit.gHref(p, g)}/mod/join/${encodeURIComponent(j.id)}`, csrf, 'approve', tr('Aufnehmen'))}${modBtn(`${kit.gHref(p, g)}/mod/join/${encodeURIComponent(j.id)}`, csrf, 'reject', tr('Ablehnen'), tr('Anfrage ablehnen?'))}</div></div>`;
           })
           .join('');
         return kit.frame(
           p,
           m,
-          `Moderation · ${g.name}`,
-          `<div class="crumb"><a href="${kit.gHref(p, g)}">${escapeHtml(g.name)}</a></div><h1>Moderation</h1><p class="muted">Du bist ${role === 'admin' ? 'Admin' : 'Moderator'} in dieser Gruppe.</p>
-<h2>Meldungen (${reports.length})</h2>${repHtml || '<div class="cm-box cm-empty">Keine offenen Meldungen. 🎉</div>'}
-${CAN.admin(role) ? `<h2>Beitrittsanfragen (${joins.length})</h2>${joinHtml || '<div class="cm-box cm-empty">Keine offenen Anfragen.</div>'}` : ''}`,
+          `${tr('Moderation')} · ${g.name}`,
+          `<div class="crumb"><a href="${kit.gHref(p, g)}">${escapeHtml(g.name)}</a></div><h1>${tr('Moderation')}</h1><p class="muted">${role === 'admin' ? tr('Du bist Admin in dieser Gruppe.') : tr('Du bist Moderator in dieser Gruppe.')}</p>
+<h2>${tr('Meldungen ({n})', { n: reports.length })}</h2>${repHtml || `<div class="cm-box cm-empty">${tr('Keine offenen Meldungen. 🎉')}</div>`}
+${CAN.admin(role) ? `<h2>${tr('Beitrittsanfragen ({n})', { n: joins.length })}</h2>${joinHtml || `<div class="cm-box cm-empty">${tr('Keine offenen Anfragen.')}</div>`}` : ''}`,
         );
       });
     router.get('/portal/:p/community/g/:group/mod', 'public', modPage);
@@ -216,13 +223,13 @@ ${CAN.admin(role) ? `<h2>Beitrittsanfragen (${joins.length})</h2>${joinHtml || '
         if (!['dismiss', 'hide', 'delete'].includes(action)) return kit.errorPage(p, m, 'Unbekannte Aktion.', 400);
         const table = r.kind === 'post' ? 'community_posts' : 'community_comments';
         const target = db.get<any>(`SELECT * FROM ${table} WHERE id = ?`, r.target_id);
-        const settle = (status: string) => db.run(`UPDATE community_reports SET status = ?, action = ?, resolved_at = ?, resolved_by = ? WHERE target_id = ? AND status = 'open'`, status, action, now(), m.contact.first_name || 'Moderation', r.target_id);
+        const settle = (status: string) => db.run(`UPDATE community_reports SET status = ?, action = ?, resolved_at = ?, resolved_by = ? WHERE target_id = ? AND status = 'open'`, status, action, now(), m.contact.first_name || tLoc(app, p.locationId)('Moderation'), r.target_id);
         if (action === 'dismiss') {
           settle('dismissed');
           if (target?.status === 'hidden') setHidden(app, r.kind, target, false);
         } else if (action === 'hide') {
           settle('resolved');
-          if (target) setHidden(app, r.kind, target, true, 'nach Meldung');
+          if (target) setHidden(app, r.kind, target, true, tLoc(app, p.locationId)('nach Meldung'));
         } else {
           settle('resolved');
           if (target) r.kind === 'post' ? deletePost(app, parseJson(target, ['images'])) : deleteComment(app, target);
@@ -244,7 +251,8 @@ ${CAN.admin(role) ? `<h2>Beitrittsanfragen (${joins.length})</h2>${joinHtml || '
             if (row.status !== 'pending') throw bad('Diese Anfrage ist nicht mehr offen');
             rejectMembership(app, g as any, row, by);
             const c = getContact(app, p.locationId, row.contact_id);
-            if (c?.email) await communityMail(app, p.locationId, c.email, `Dein Beitritt zu „${g.name}“`, [`Leider können wir deine Anfrage für „${g.name}“ im Moment nicht annehmen.`]);
+            const t = tLoc(app, p.locationId);
+            if (c?.email) await communityMail(app, p.locationId, c.email, t('Dein Beitritt zu „{group}“', { group: g.name }), [t('Leider können wir deine Anfrage für „{group}“ im Moment nicht annehmen.', { group: g.name })]);
           } else throw bad('Unbekannte Aktion');
         } catch (e) {
           if (e instanceof HttpError) return kit.errorPage(p, m, e.message, e.status);

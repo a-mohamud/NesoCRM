@@ -1,4 +1,5 @@
 import { render } from '../core/template.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Arguments for app actions (Composio tools): the action's JSON schema drives the form in the
@@ -53,11 +54,11 @@ function coerce(v: unknown, s: JsonSchema, path: string, errors: string[], depth
     case 'number': {
       const n = typeof v === 'number' ? v : Number(String(v).trim().replace(',', '.'));
       if (!Number.isFinite(n)) {
-        errors.push(`${path}: Zahl erwartet`);
+        errors.push(`${path}: ${tApp()('Zahl erwartet')}`);
         return undefined;
       }
       if (t === 'integer' && !Number.isInteger(n)) {
-        errors.push(`${path}: ganze Zahl erwartet`);
+        errors.push(`${path}: ${tApp()('ganze Zahl erwartet')}`);
         return undefined;
       }
       out = n;
@@ -70,7 +71,7 @@ function coerce(v: unknown, s: JsonSchema, path: string, errors: string[], depth
         if (['true', '1', 'ja', 'yes', 'on'].includes(s2)) out = true;
         else if (['false', '0', 'nein', 'no', 'off'].includes(s2)) out = false;
         else {
-          errors.push(`${path}: ja/nein erwartet`);
+          errors.push(`${path}: ${tApp()('ja/nein erwartet')}`);
           return undefined;
         }
       }
@@ -86,7 +87,7 @@ function coerce(v: unknown, s: JsonSchema, path: string, errors: string[], depth
             const parsed = JSON.parse(str);
             list = Array.isArray(parsed) ? parsed : [parsed];
           } catch {
-            errors.push(`${path}: Liste als JSON ungültig`);
+            errors.push(`${path}: ${tApp()('Liste als JSON ungültig')}`);
             return undefined;
           }
         } else list = str.split(/\n|,/).map((x) => x.trim()).filter(Boolean);
@@ -100,12 +101,12 @@ function coerce(v: unknown, s: JsonSchema, path: string, errors: string[], depth
         try {
           o = JSON.parse(v);
         } catch {
-          errors.push(`${path}: Objekt als JSON erwartet`);
+          errors.push(`${path}: ${tApp()('Objekt als JSON erwartet')}`);
           return undefined;
         }
       }
       if (!o || typeof o !== 'object' || Array.isArray(o)) {
-        errors.push(`${path}: Objekt erwartet`);
+        errors.push(`${path}: ${tApp()('Objekt erwartet')}`);
         return undefined;
       }
       out = s.properties && depth < 6 ? coerceObject(s, o as Record<string, unknown>, errors, `${path}.`, depth + 1) : o;
@@ -115,7 +116,7 @@ function coerce(v: unknown, s: JsonSchema, path: string, errors: string[], depth
       out = typeof v === 'object' ? JSON.stringify(v) : String(v);
   }
   if (Array.isArray(s.enum) && s.enum.length && !s.enum.some((e) => e === out || String(e) === String(out))) {
-    errors.push(`${path}: erlaubt sind ${s.enum.slice(0, 12).map(String).join(', ')}`);
+    errors.push(`${path}: ${tApp()('erlaubt sind {list}', { list: s.enum.slice(0, 12).map(String).join(', ') })}`);
     return undefined;
   }
   return out;
@@ -128,7 +129,7 @@ function coerceObject(schema: JsonSchema, input: Record<string, unknown>, errors
   for (const [k, s] of Object.entries(props)) {
     const v = input[k];
     if (empty(v)) {
-      if (required.has(k)) errors.push(`${prefix}${k}: Pflichtfeld fehlt`);
+      if (required.has(k)) errors.push(`${prefix}${k}: ${tApp()('Pflichtfeld fehlt')}`);
       continue;
     }
     const c = coerce(v, s, `${prefix}${k}`, errors, depth);
@@ -150,13 +151,13 @@ export function coerceArgs(schema: JsonSchema | undefined, input: unknown): { ar
 /** A compact description of an action's inputs for the AI (name, type, required, short text). */
 export function schemaSummary(schema: JsonSchema | undefined, max = 25): string {
   const props = Object.entries(schema?.properties ?? {}).slice(0, max);
-  if (!props.length) return '(keine Eingaben)';
+  if (!props.length) return '(no inputs)'; // i18n-ignore (for the model)
   const req = new Set(schema?.required ?? []);
   return props
     .map(([k, s]) => {
       const en = Array.isArray(s.enum) && s.enum.length ? ` [${s.enum.slice(0, 8).map(String).join('|')}]` : '';
       const d = String(s.description ?? s.title ?? '').replace(/\s+/g, ' ').slice(0, 140);
-      return `- ${k} (${typeOf(s)}${req.has(k) ? ', Pflicht' : ''})${en}${d ? `: ${d}` : ''}`;
+      return `- ${k} (${typeOf(s)}${req.has(k) ? ', required' : ''})${en}${d ? `: ${d}` : ''}`;
     })
     .join('\n');
 }

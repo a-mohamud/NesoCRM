@@ -4,6 +4,7 @@ import { HttpError, bad, notFound, str, type Ctx } from '../core/http.js';
 import { id, now } from '../core/util.js';
 import { callRoute } from '../services/route-call.js';
 import type { Tool } from './mcp.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Prompt-Optimierer – docs/ai-assistant.md#prompt-optimizer. Test cases for an AI agent's instructions (a KI-Agent, the
@@ -105,7 +106,7 @@ export const promptLabModule: Module = {
       if (kind === 'agent') {
         const a = agentOf(ctx, targetId);
         if (!a) throw notFound('KI-Agent nicht gefunden');
-        return `Du bist der KI-Agent „${a.name}“.\n${a.instructions}`;
+        return `You are the AI agent "${a.name}".\n${a.instructions}`;
       }
       if (kind === 'voice') {
         const s = await callRoute(app, ctx, 'GET', '/api/voice-ai/settings', {}, { quiet: true });
@@ -118,15 +119,16 @@ export const promptLabModule: Module = {
       if (!prompt.trim()) throw bad('Die Anweisungen sind leer');
       if (!cases.length) throw bad('Mindestens einen Testfall mit Nachricht und Erwartung anlegen');
       const run = ai();
+      const userLanguage = tCtx(ctx).locale === 'de' ? 'German' : 'English'; // i18n-ignore – language name for the model
       const out: CaseResult[] = [];
       for (const c of cases) {
-        const r = await run({ locationId: ctx.locationId, purpose: PURPOSE, system: [{ text: `${prompt}\n\nAntworte so, wie du dem Kunden antworten würdest (nur die Antwort).` }], user: c.input, maxTokens: 800, timeoutMs: 60_000, userId: ctx.user?.id ?? null });
+        const r = await run({ locationId: ctx.locationId, purpose: PURPOSE, system: [{ text: `${prompt}\n\nReply exactly as you would reply to the customer (only the reply), in the language the customer writes in.` }], user: c.input, maxTokens: 800, timeoutMs: 60_000, userId: ctx.user?.id ?? null });
         const answer = String(r.text ?? '').trim().slice(0, 4000);
         const g = await run({
           locationId: ctx.locationId,
           purpose: PURPOSE,
-          system: [{ text: 'Du prüfst streng die Antwort eines KI-Agenten. Bewerte nur, ob die Antwort die Erwartung erfüllt (Inhalt, Ton, keine erfundenen Fakten). Antworte als JSON nach dem Schema.' }],
-          user: `Kundennachricht:\n${c.input}\n\nErwartung:\n${c.expect}\n\nAntwort des Agenten:\n${answer}`,
+          system: [{ text: `You strictly assess an AI agent's reply. Judge only whether the reply meets the expectation (content, tone, no invented facts). Write the reason in ${userLanguage}. Answer as JSON following the schema.` }],
+          user: `Customer message:\n${c.input}\n\nExpectation:\n${c.expect}\n\nAgent's reply:\n${answer}`,
           schema: GRADE_SCHEMA,
           maxTokens: 400,
           timeoutMs: 60_000,
@@ -185,11 +187,12 @@ export const promptLabModule: Module = {
       if (!results.length) throw bad('Erst testen, dann verbessern');
       const failed = results.filter((r) => !r.pass || r.score < 8);
       if (!failed.length) return { instructions: prompt, changes: [], unchanged: true };
+      const userLanguage = tCtx(ctx).locale === 'de' ? 'German' : 'English'; // i18n-ignore – language name for the model
       const r = await ai()({
         locationId: ctx.locationId,
         purpose: PURPOSE,
-        system: [{ text: 'Du verbesserst die Anweisungen (System-Prompt) eines KI-Agenten für ein kleines Unternehmen. Behalte alles bei, was funktioniert, ergänze klare Regeln für die fehlgeschlagenen Fälle, erfinde keine Fakten (Preise, Zeiten) – nutze stattdessen Platzhalter wie [PREIS]. Gleiche Sprache wie das Original. Antworte als JSON.' }],
-        user: `Aktuelle Anweisungen:\n"""${prompt}"""\n\nFehlgeschlagene Tests:\n${failed.map((f, i) => `${i + 1}. Nachricht: ${f.input}\n   Erwartung: ${f.expect}\n   Antwort: ${f.answer}\n   Grund: ${f.reason}`).join('\n')}`,
+        system: [{ text: `You improve the instructions (system prompt) of an AI agent for a small business. Keep everything that works, add clear rules for the failed cases, do not invent facts (prices, times) – use placeholders such as [PRICE] instead. Write the instructions in the same language as the original; write the list of changes in ${userLanguage}. Answer as JSON.` }],
+        user: `Current instructions:\n"""${prompt}"""\n\nFailed tests:\n${failed.map((f, i) => `${i + 1}. Message: ${f.input}\n   Expectation: ${f.expect}\n   Reply: ${f.answer}\n   Reason: ${f.reason}`).join('\n')}`,
         schema: IMPROVE_SCHEMA,
         maxTokens: 3000,
         timeoutMs: 90_000,

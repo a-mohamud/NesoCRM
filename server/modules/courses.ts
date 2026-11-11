@@ -21,6 +21,7 @@ import {
 import { cleanChapters, cleanCompletePercent } from '../services/course-media.js';
 import { readyVideo } from '../services/course-video.js';
 import type { Tool } from './mcp.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Kurse & Mitgliederbereich (admin side): courses → modules → lessons, access per contact
@@ -83,7 +84,7 @@ function cleanVideoId(app: App, locationId: string, v: unknown): string | null {
 
 function cleanImage(v: unknown, field = 'Bild'): string {
   const s = str(v, field, { max: 1000 });
-  if (s && !/^(https?:\/\/|\/)[^\s]*$/i.test(s)) throw bad(`${field}: bitte eine https://-Adresse`);
+  if (s && !/^(https?:\/\/|\/)[^\s]*$/i.test(s)) throw bad(tApp()('{field}: bitte eine https://-Adresse', { field: tApp()(field) }));
   return s;
 }
 
@@ -246,16 +247,17 @@ export const coursesModule: Module = {
         db.insert('courses', c);
         // A starting point instead of an empty page.
         if (ctx.body.empty !== true) {
-          const m = { id: id(), location_id: ctx.locationId, course_id: c.id, title: 'Modul 1', position: 0, created_at: now(), updated_at: now() };
+          const t = tLoc(app, ctx.locationId);
+          const m = { id: id(), location_id: ctx.locationId, course_id: c.id, title: t('Modul 1'), position: 0, created_at: now(), updated_at: now() };
           db.insert('course_modules', m);
-          db.insert('course_lessons', { id: id(), location_id: ctx.locationId, course_id: c.id, module_id: m.id, title: 'Willkommen', position: 0, body: 'Schön, dass du dabei bist! In diesem Kurs lernst du …', created_at: now(), updated_at: now() });
+          db.insert('course_lessons', { id: id(), location_id: ctx.locationId, course_id: c.id, module_id: m.id, title: t('Willkommen'), position: 0, body: t('Schön, dass du dabei bist! In diesem Kurs lernst du …'), created_at: now(), updated_at: now() });
         }
       });
       return courseOut(getCourse(app, ctx.locationId, c.id));
     });
     router.get('/api/courses/:id', 'location', (ctx) => {
       const c = mustCourse(ctx.locationId, ctx.params.id);
-      return { ...courseOut(c), modules: courseOutline(app, c.id), defaults: { welcome_subject: DEFAULT_WELCOME_SUBJECT, welcome_body: DEFAULT_WELCOME_BODY } };
+      return { ...courseOut(c), modules: courseOutline(app, c.id), defaults: { welcome_subject: tLoc(app, ctx.locationId)(DEFAULT_WELCOME_SUBJECT), welcome_body: tLoc(app, ctx.locationId)(DEFAULT_WELCOME_BODY) } };
     });
     router.patch('/api/courses/:id', 'location', (ctx) => {
       const c = mustCourse(ctx.locationId, ctx.params.id);
@@ -449,7 +451,7 @@ export const coursesModule: Module = {
     });
     router.delete('/api/courses/:id/enrollments/:contactId', 'location', (ctx) => {
       const c = mustCourse(ctx.locationId, ctx.params.id);
-      if (!revokeAccess(app, ctx.locationId, c.id, ctx.params.contactId, ctx.user?.name ? `von ${ctx.user.name}` : '')) throw notFound('Kein aktiver Zugang');
+      if (!revokeAccess(app, ctx.locationId, c.id, ctx.params.contactId, ctx.user?.name ? tLoc(app, ctx.locationId)('von {name}', { name: ctx.user.name }) : '')) throw notFound('Kein aktiver Zugang');
       return { ok: true };
     });
     router.post('/api/courses/:id/enrollments/:contactId/login-link', 'location', async (ctx) => {
@@ -502,15 +504,17 @@ export const coursesModule: Module = {
     app.services.workflowActions = {
       ...(app.services.workflowActions ?? {}),
       course_grant: async (run: any, step: any) => {
+        const t = tLoc(app, run.location_id);
         const c = getCourse(app, run.location_id, String(step.course_id ?? ''));
-        if (!c) throw new Error('Kurs nicht gefunden');
+        if (!c) throw new Error(t('Kurs nicht gefunden'));
         const r = grantAccess(app, run.location_id, c.id, run.contact_id, 'workflow', run.workflow_id);
-        return r.changed ? `Zugang zu „${c.title}“ gegeben` : 'hatte schon Zugang';
+        return r.changed ? t('Zugang zu „{title}“ gegeben', { title: c.title }) : t('hatte schon Zugang');
       },
       course_revoke: async (run: any, step: any) => {
+        const t = tLoc(app, run.location_id);
         const c = getCourse(app, run.location_id, String(step.course_id ?? ''));
-        if (!c) throw new Error('Kurs nicht gefunden');
-        return revokeAccess(app, run.location_id, c.id, run.contact_id, 'Workflow') ? `Zugang zu „${c.title}“ entzogen` : 'hatte keinen Zugang';
+        if (!c) throw new Error(t('Kurs nicht gefunden'));
+        return revokeAccess(app, run.location_id, c.id, run.contact_id, t('Workflow')) ? t('Zugang zu „{title}“ entzogen', { title: c.title }) : t('hatte keinen Zugang');
       },
     };
   },

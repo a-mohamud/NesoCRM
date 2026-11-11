@@ -9,6 +9,7 @@
 
 import { createHash } from 'node:crypto';
 import { daysBetweenYmd, localDayStart, ymdInTz } from '../core/time.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 // --- lines and totals ---------------------------------------------------------------------------------------------------
 
@@ -380,7 +381,10 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export function cleanYmd(v: unknown, label: string): string {
   const s = String(v ?? '').trim().slice(0, 10);
   if (!s) return '';
-  if (!DATE_RE.test(s) || new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) !== s) throw new Error(`${label}: bitte als Datum (JJJJ-MM-TT) angeben`);
+  if (!DATE_RE.test(s) || new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) !== s) {
+    const t = tApp();
+    throw new Error(t('{label}: bitte als Datum (JJJJ-MM-TT) angeben', { label: t(label) }));
+  }
   return s;
 }
 
@@ -444,12 +448,13 @@ export interface VatIdCheck {
 /** Format check of an EU VAT ID (country prefix, length, characters; the German checksum too). No lookup – see VIES in the module. */
 export function checkVatId(raw: unknown): VatIdCheck {
   const n = normalizeVatId(raw);
-  if (!n) return { valid: false, normalized: '', country: '', reason: 'Keine USt-IdNr. angegeben' };
+  const t = tApp();
+  if (!n) return { valid: false, normalized: '', country: '', reason: t('Keine USt-IdNr. angegeben') };
   const cc = n.slice(0, 2);
   const re = VAT_PATTERNS[cc];
-  if (!re) return { valid: false, normalized: n, country: cc, reason: `Länderkennung „${cc}“ ist keine EU-USt-IdNr. (z. B. DE, AT, FR, NL)` };
-  if (!re.test(n)) return { valid: false, normalized: n, country: cc, reason: `Das Format passt nicht zu einer USt-IdNr. aus ${cc}` };
-  if (cc === 'DE' && !germanVatChecksumOk(n.slice(2))) return { valid: false, normalized: n, country: cc, reason: 'Die Prüfziffer der deutschen USt-IdNr. stimmt nicht' };
+  if (!re) return { valid: false, normalized: n, country: cc, reason: t('Länderkennung „{cc}“ ist keine EU-USt-IdNr. (z. B. DE, AT, FR, NL)', { cc }) };
+  if (!re.test(n)) return { valid: false, normalized: n, country: cc, reason: t('Das Format passt nicht zu einer USt-IdNr. aus {cc}', { cc }) };
+  if (cc === 'DE' && !germanVatChecksumOk(n.slice(2))) return { valid: false, normalized: n, country: cc, reason: t('Die Prüfziffer der deutschen USt-IdNr. stimmt nicht') };
   return { valid: true, normalized: n, country: cc === 'EL' ? 'GR' : cc };
 }
 
@@ -479,10 +484,11 @@ export const checkBic = (raw: unknown): boolean => /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}
  */
 export function checkLeitwegId(raw: unknown): { valid: boolean; checksum: boolean; reason?: string } {
   const s = String(raw ?? '').trim();
+  const t = tApp();
   const m = /^(\d{2,12})(?:-([A-Za-z0-9]{1,30}))?-(\d{2})$/.exec(s);
-  if (!m) return { valid: false, checksum: false, reason: 'Format: Grobadressierung (2–12 Ziffern), optional -Feinadressierung, -Prüfziffer (z. B. 04011000-1234512345-35)' };
+  if (!m) return { valid: false, checksum: false, reason: t('Format: Grobadressierung (2–12 Ziffern), optional -Feinadressierung, -Prüfziffer (z. B. 04011000-1234512345-35)') };
   const expected = 98 - mod97((m[1] + (m[2] ?? '')).toUpperCase());
-  if (expected !== Number(m[3])) return { valid: true, checksum: false, reason: `Die Prüfziffer passt nicht (erwartet ${String(expected).padStart(2, '0')})` };
+  if (expected !== Number(m[3])) return { valid: true, checksum: false, reason: t('Die Prüfziffer passt nicht (erwartet {digits})', { digits: String(expected).padStart(2, '0') }) };
   return { valid: true, checksum: true };
 }
 
@@ -553,38 +559,40 @@ export function checkCompliance(i: ComplianceInput): Compliance {
   const errors: string[] = [];
   const warnings: string[] = [];
   const mode = TAX_MODES[i.tax_mode];
-  if (!i.items.length) errors.push('Mindestens eine Position');
-  if (i.items.some((it) => !String(it.name ?? '').trim())) errors.push('Jede Position braucht eine Bezeichnung');
-  if (i.tax_mode !== 'standard' && i.items.some((it) => Number(it.tax_rate) !== 0)) errors.push(`Bei „${mode.label}“ dürfen die Positionen keine Umsatzsteuer enthalten (0 %)`);
+  const t = tApp();
+  const modeLabel = t(mode.label);
+  if (!i.items.length) errors.push(t('Mindestens eine Position'));
+  if (i.items.some((it) => !String(it.name ?? '').trim())) errors.push(t('Jede Position braucht eine Bezeichnung'));
+  if (i.tax_mode !== 'standard' && i.items.some((it) => Number(it.tax_rate) !== 0)) errors.push(t('Bei „{mode}“ dürfen die Positionen keine Umsatzsteuer enthalten (0 %)', { mode: modeLabel }));
   if (i.tax_mode !== 'standard') {
     const note = String(i.tax_note ?? '').trim();
-    if (note.length < 10) errors.push(`Bei „${mode.label}“ ist der Hinweistext Pflicht (z. B. „${mode.note}“)`);
-    else if (note.includes('…')) errors.push('Der Hinweistext enthält noch den Platzhalter „…“ – bitte die Vorschrift (z. B. Nr. 21b) eintragen');
+    if (note.length < 10) errors.push(t('Bei „{mode}“ ist der Hinweistext Pflicht (z. B. „{note}“)', { mode: modeLabel, note: t(mode.note) }));
+    else if (note.includes('…')) errors.push(t('Der Hinweistext enthält noch den Platzhalter „…“ – bitte die Vorschrift (z. B. Nr. 21b) eintragen'));
   }
-  if (mode.needsSellerVat && !checkVatId(i.seller.vat_id).valid) errors.push(`Bei „${mode.label}“ muss deine USt-IdNr. in den Rechnungs-Einstellungen stehen`);
+  if (mode.needsSellerVat && !checkVatId(i.seller.vat_id).valid) errors.push(t('Bei „{mode}“ muss deine USt-IdNr. in den Rechnungs-Einstellungen stehen', { mode: modeLabel }));
   if (mode.needsBuyerVat) {
-    if (!String(i.buyer.vat_id ?? '').trim()) errors.push(`Bei „${mode.label}“ ist die USt-IdNr. des Kunden Pflicht`);
+    if (!String(i.buyer.vat_id ?? '').trim()) errors.push(t('Bei „{mode}“ ist die USt-IdNr. des Kunden Pflicht', { mode: modeLabel }));
   }
   if (String(i.buyer.vat_id ?? '').trim()) {
     const c = checkVatId(i.buyer.vat_id);
-    if (!c.valid) errors.push(`USt-IdNr. des Kunden: ${c.reason}`);
-    else if ((i.tax_mode === 'reverse_charge' || i.tax_mode === 'ig_supply') && c.country === 'DE' && i.seller.vat_id && checkVatId(i.seller.vat_id).country === 'DE') warnings.push('Beide USt-IdNr. sind deutsch – Reverse Charge / innergemeinschaftliche Lieferung passt nur bei Kunden in einem anderen Land');
+    if (!c.valid) errors.push(t('USt-IdNr. des Kunden: {reason}', { reason: c.reason ?? '' }));
+    else if ((i.tax_mode === 'reverse_charge' || i.tax_mode === 'ig_supply') && c.country === 'DE' && i.seller.vat_id && checkVatId(i.seller.vat_id).country === 'DE') warnings.push(t('Beide USt-IdNr. sind deutsch – Reverse Charge / innergemeinschaftliche Lieferung passt nur bei Kunden in einem anderen Land'));
   }
   if (String(i.buyer.leitweg_id ?? '').trim()) {
     const l = checkLeitwegId(i.buyer.leitweg_id);
-    if (!l.valid) errors.push(`Leitweg-ID: ${l.reason}`);
-    else if (!l.checksum) warnings.push(`Leitweg-ID: ${l.reason} – bitte beim Auftraggeber nachfragen`);
+    if (!l.valid) errors.push(t('Leitweg-ID: {reason}', { reason: l.reason ?? '' }));
+    else if (!l.checksum) warnings.push(t('Leitweg-ID: {reason} – bitte beim Auftraggeber nachfragen', { reason: l.reason ?? '' }));
   }
-  if (i.supply_from && i.supply_to && i.supply_to < i.supply_from) errors.push('Leistungszeitraum: das Ende liegt vor dem Beginn');
-  if (i.inv_type === 'final' && !(i.deductions ?? []).length) warnings.push('Schlussrechnung ohne abgezogene Abschlagsrechnungen');
+  if (i.supply_from && i.supply_to && i.supply_to < i.supply_from) errors.push(t('Leistungszeitraum: das Ende liegt vor dem Beginn'));
+  if (i.inv_type === 'final' && !(i.deductions ?? []).length) warnings.push(t('Schlussrechnung ohne abgezogene Abschlagsrechnungen'));
   // Mandatory content of § 14 (4) UStG – name and address of both sides, tax number or USt-IdNr. of the seller.
-  if (!String(i.seller.name ?? '').trim()) warnings.push('Absender: Name fehlt (Einstellungen → Sub-Account)');
-  if (!String(i.seller.address ?? '').trim() || !String(i.seller.city ?? '').trim() || !String(i.seller.postal_code ?? '').trim()) warnings.push('Absender: vollständige Anschrift (Straße, PLZ, Ort) fehlt');
-  if (!String(i.seller.vat_id ?? '').trim() && !String(i.seller.tax_number ?? '').trim()) warnings.push('Absender: Steuernummer oder USt-IdNr. fehlt (Pflichtangabe nach § 14 UStG)');
+  if (!String(i.seller.name ?? '').trim()) warnings.push(t('Absender: Name fehlt (Einstellungen → Sub-Account)'));
+  if (!String(i.seller.address ?? '').trim() || !String(i.seller.city ?? '').trim() || !String(i.seller.postal_code ?? '').trim()) warnings.push(t('Absender: vollständige Anschrift (Straße, PLZ, Ort) fehlt'));
+  if (!String(i.seller.vat_id ?? '').trim() && !String(i.seller.tax_number ?? '').trim()) warnings.push(t('Absender: Steuernummer oder USt-IdNr. fehlt (Pflichtangabe nach § 14 UStG)'));
   const smallAmount = Math.abs(i.total_cents) <= SMALL_AMOUNT_CENTS;
   if (!smallAmount || i.kind === 'credit_note') {
-    if (!String(i.buyer.name ?? '').trim()) warnings.push('Empfänger: Name fehlt');
-    else if (!String(i.buyer.address ?? '').trim() || !String(i.buyer.city ?? '').trim()) warnings.push('Empfänger: Anschrift (Straße, PLZ, Ort) fehlt – ab 250 € Pflicht');
+    if (!String(i.buyer.name ?? '').trim()) warnings.push(t('Empfänger: Name fehlt'));
+    else if (!String(i.buyer.address ?? '').trim() || !String(i.buyer.city ?? '').trim()) warnings.push(t('Empfänger: Anschrift (Straße, PLZ, Ort) fehlt – ab 250 € Pflicht'));
   }
   return { errors, warnings };
 }
@@ -690,13 +698,31 @@ export const deYmd = (s: string | null | undefined): string => {
 /** 1234.5 → "1.234,50" (no currency sign). */
 export const deAmount = (cents: number): string => new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((cents || 0) / 100);
 
+/** A date as printed in a language: 2026-10-05 → "05.10.2026" (de) or "05/10/2026" (en). */
+export const ymdText = (s: string | null | undefined, locale: string = tApp().locale): string => (locale === 'de' ? deYmd(s) : deYmd(s).replace(/\./g, '/'));
+
+/** An amount as printed in a language: "1.234,50" (de) or "1,234.50" (en), no currency sign. */
+export const amountText = (cents: number, locale: string = tApp().locale): string =>
+  locale === 'de' ? deAmount(cents) : new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((cents || 0) / 100);
+
+/** A plain number (quantity, percentage) with the decimal separator of a language. */
+export const decimalText = (n: number, locale: string = tApp().locale): string => (locale === 'de' ? String(n).replace('.', ',') : String(n));
+
 /** The line the customer reads about payment: due date, Skonto. */
-export function paymentTermsText(i: { due_ymd?: string; skonto?: Skonto | null; issued_ymd: string; total_cents: number; currency?: string }): string {
+export function paymentTermsText(i: { due_ymd?: string; skonto?: Skonto | null; issued_ymd: string; total_cents: number; currency?: string }, t: STFn = tApp()): string {
   const parts: string[] = [];
-  if (i.due_ymd) parts.push(`Zahlbar ohne Abzug bis ${deYmd(i.due_ymd)}.`);
+  if (i.due_ymd) parts.push(t('Zahlbar ohne Abzug bis {date}.', { date: ymdText(i.due_ymd, t.locale) }));
   if (i.skonto) {
     const s = skontoCents(i.total_cents, i.skonto.percent);
-    parts.push(`Bei Zahlung bis ${deYmd(skontoDeadline(i.issued_ymd, i.skonto.days))} (${i.skonto.days} Tage) ${String(i.skonto.percent).replace('.', ',')} % Skonto (${deAmount(s)} ${i.currency ?? 'EUR'}).`);
+    parts.push(
+      t('Bei Zahlung bis {date} ({days} Tage) {percent} % Skonto ({amount} {currency}).', {
+        date: ymdText(skontoDeadline(i.issued_ymd, i.skonto.days), t.locale),
+        days: i.skonto.days,
+        percent: decimalText(i.skonto.percent, t.locale),
+        amount: amountText(s, t.locale),
+        currency: i.currency ?? 'EUR',
+      }),
+    );
   }
   return parts.join(' ');
 }

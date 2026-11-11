@@ -6,6 +6,7 @@ import { BusinessError, CTA_LABEL, CTA_TYPES, businessApi, isAccountName, isLoca
 import { syncGoogleReviews, type ReviewInput, type ReviewMeta } from './google-reviews.js';
 import type { Tool } from './mcp.js';
 import { connectionOut, type OAuthConnection } from './oauth-connect.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Google Business Profile for a sub-account (OAuth connection per location, see oauth-connect):
@@ -267,7 +268,7 @@ export const googleBusinessModule: Module = {
       const cta_type = str(b.cta_type, 'Button') as CtaType | '';
       if (cta_type && !CTA_TYPES.includes(cta_type as CtaType)) throw bad('Unbekannter Button-Typ');
       const cta_url = str(b.cta_url, 'Button-Link', { max: 1000 });
-      if (cta_type && cta_type !== 'CALL' && !/^https?:\/\/[^\s]+$/.test(cta_url)) throw bad(`Für „${CTA_LABEL[cta_type as CtaType]}“ fehlt der Link (https://…)`);
+      if (cta_type && cta_type !== 'CALL' && !/^https?:\/\/[^\s]+$/.test(cta_url)) throw bad(tApp()('Für „{button}“ fehlt der Link (https://…)', { button: tApp()(CTA_LABEL[cta_type as CtaType]) }));
       return { summary, image_url, cta_type, cta_url: cta_type && cta_type !== 'CALL' ? cta_url : '' };
     };
     async function createPost(loc: string, input: LocalPostInput, source: string, userId?: string) {
@@ -307,7 +308,7 @@ export const googleBusinessModule: Module = {
       [GOOGLE_POST_ACTION]: async (run: any, step: any, vars: Record<string, any>) => {
         const input = cleanPost({ summary: render(String(step.body ?? ''), vars).slice(0, 1500), image_url: step.image_url, cta_type: step.cta_type, cta_url: render(String(step.cta_url ?? ''), vars) });
         const row = await createPost(run.location_id, input, 'Workflow');
-        return `Google-Beitrag veröffentlicht${row.state ? ` (${row.state})` : ''}`;
+        return tApp()('Google-Beitrag veröffentlicht') + (row.state ? ` (${row.state})` : '');
       },
     };
   },

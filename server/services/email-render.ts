@@ -315,7 +315,7 @@ export function normalizeDesign(input: unknown): EmailDesign {
     const columns: Column[] = cols.map((col: any) => ({
       id: cleanId(col?.id),
       blocks: (Array.isArray(col?.blocks) ? col.blocks : []).map((b: any) => {
-        if (!BLOCK_TYPES.includes(b?.type)) throw new Error(`Unbekannter Block: ${String(b?.type).slice(0, 40)}`);
+        if (!BLOCK_TYPES.includes(b?.type)) throw new Error(`Unbekannter Block: ${String(b?.type).slice(0, 40)}`); // i18n-ignore (shared with the web, no server translator here)
         if (++blockCount > 400) throw new Error('Höchstens 400 Blöcke');
         const type = b.type as BlockType;
         return { id: cleanId(b.id), type, props: cleanProps(type, b.props), style: cleanStyle(b.style, blockDefaults(type).style) };
@@ -352,6 +352,7 @@ export function designIssues(d: EmailDesign, opts: { campaign?: boolean } = {}):
     else if (!String(footer.props.address ?? '').trim()) err('Im Footer fehlt die Firmenadresse');
   } else if (!footer && blocks.length) warn('Ohne Footer-Block hängen wir automatisch Firmenname, Adresse und Abmeldelink an');
   for (const b of blocks) {
+    // i18n-ignore – the web (and modules/email-builder.ts) translate this finding by its shape
     if (b.type === 'button' && !safeUrl(b.props.href)) err(`Button „${b.props.label}“: Link fehlt oder ist ungültig (https://, mailto: oder tel:)`);
     if (b.type === 'image' && b.props.src && !safeUrl(b.props.src, 'image')) err('Bild: Adresse muss mit https:// beginnen');
     if (b.type === 'image' && b.props.href && !safeUrl(b.props.href)) err('Bild-Link muss mit https://, mailto: oder tel: beginnen');

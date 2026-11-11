@@ -10,6 +10,7 @@ import { activateMembership, endMembership, grants, membershipOf, openMembership
 import { communityUi } from '../services/community-ui.js';
 import { registerActions, registerTriggers, text, type ActionDef, type FieldDef, type TriggerMeta } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Community in the automations and for AI agents: nine triggers (left, trial started/converted, join requested, challenge joined
@@ -89,23 +90,25 @@ export const communityAutomationModule: Module = {
     const addTo = (g: ReturnType<typeof groupOf> & object, contact: { id: string; email: string }, tierName: string, by: string) => {
       if (cleanGroupAccess(g.access).mode !== 'join') throw new Error('Diese Gruppe lässt Mitglieder nicht über die Community-Seite herein');
       const tier = tierName ? tierByName(g, tierName) : (tiersOf(app, g.id, true)[0] ?? undefined);
-      if (tierName && !tier) throw new Error(`Stufe „${tierName}“ gibt es nicht`);
+      const t = tLoc(app, g.location_id);
+      if (tierName && !tier) throw new Error(t('Stufe „{tier}“ gibt es nicht', { tier: tierName }));
       const cur = membershipOf(app, g.id, contact.id);
-      if (cur && grants(app, cur)) return 'War schon Mitglied';
+      if (cur && grants(app, cur)) return t('War schon Mitglied');
       const full = getContact(app, g.location_id, contact.id)!;
       const m = openMembership(app, g, full, { tier_id: tier?.id ?? null, billing: 'free', source: 'workflow', status: 'pending', consent: 0 });
       activateMembership(app, g, m, { by });
       void sendWelcome(app, g, full);
-      return `Mitglied geworden${tier ? ` (Stufe ${tier.name})` : ''}`;
+      return tier ? t('Mitglied geworden (Stufe {tier})', { tier: tier.name }) : t('Mitglied geworden');
     };
 
     // The existing steps "In Community aufnehmen" / "Aus Community entfernen" (modules/wfx-crm.ts) hand groups that let people in
     // by joining (memberships with tiers) over to these two functions.
     const removeFrom = (g: NonNullable<ReturnType<typeof groupOf>>, contact: { id: string }) => {
       const m = membershipOf(app, g.id, contact.id);
-      if (!m || !grants(app, m)) return `War nicht Mitglied in „${g.name}“`;
+      const t = tLoc(app, g.location_id);
+      if (!m || !grants(app, m)) return t('War nicht Mitglied in „{group}“', { group: g.name });
       endMembership(app, g, m, 'workflow');
-      return `Mitgliedschaft in „${g.name}“ beendet`;
+      return t('Mitgliedschaft in „{group}“ beendet', { group: g.name });
     };
     // The step hands over the raw row of the group; the functions read it again with its settings parsed.
     const parsed = (g: { id: string; location_id: string }) => groupOf(g.location_id, g.id)!;
@@ -133,9 +136,10 @@ export const communityAutomationModule: Module = {
         const g = groupOf(run.location_id, step.group_id)!;
         const c = contactOf(run);
         const b = badgeBy(g, one(step.badge));
-        if (!b) throw new Error(`Das Abzeichen „${one(step.badge)}“ gibt es in „${g.name}“ nicht`);
+        const t = tLoc(app, run.location_id);
+        if (!b) throw new Error(t('Das Abzeichen „{badge}“ gibt es in „{group}“ nicht', { badge: one(step.badge), group: g.name }));
         const done = fail(() => awardBadge(app, g, c.id, b, 'Workflow', one(step.reason)));
-        return { result: done ? `Abzeichen „${b.name}“ vergeben` : `Hatte „${b.name}“ schon` };
+        return { result: done ? t('Abzeichen „{badge}“ vergeben', { badge: b.name }) : t('Hatte „{badge}“ schon', { badge: b.name }) };
       },
     };
     const sendMessage: ActionDef = {
@@ -157,8 +161,9 @@ export const communityAutomationModule: Module = {
         if (!inAny) throw new Error('Der Kontakt ist in keiner Community – die Nachricht würde ihn nicht erreichen');
         const body = text(step.text, vars);
         if (!body.trim()) throw new Error('Nachricht fehlt');
-        fail(() => sendDm(app, run.location_id, TEAM, c.id, body, { fromName: text(step.from_name, vars).trim() || 'Team', skipLimits: true, via: run.workflow_id }));
-        return { result: 'Nachricht gesendet' };
+        const t = tLoc(app, run.location_id);
+        fail(() => sendDm(app, run.location_id, TEAM, c.id, body, { fromName: text(step.from_name, vars).trim() || t('Team'), skipLimits: true, via: run.workflow_id }));
+        return { result: t('Nachricht gesendet') };
       },
     };
     const givePoints: ActionDef = {
@@ -178,9 +183,10 @@ export const communityAutomationModule: Module = {
         const c = contactOf(run);
         const pts = Math.round(Number(step.points));
         if (!Number.isFinite(pts) || pts === 0 || Math.abs(pts) > 10_000) throw new Error('Punkte: eine Zahl zwischen -10000 und 10000 (nicht 0)');
-        if (!db.get('SELECT 1 FROM community_members WHERE group_id = ? AND contact_id = ?', g.id, c.id)) throw new Error(`${c.email || 'Der Kontakt'} ist kein Mitglied von „${g.name}“`);
+        const t = tLoc(app, run.location_id);
+        if (!db.get('SELECT 1 FROM community_members WHERE group_id = ? AND contact_id = ?', g.id, c.id)) throw new Error(t('{who} ist kein Mitglied von „{group}“', { who: c.email || t('Der Kontakt'), group: g.name }));
         award(app, g, c.id, pts, 'manual', one(step.reason).slice(0, 120), 'workflow');
-        return { result: `${pts > 0 ? '+' : ''}${pts} Punkte in „${g.name}“` };
+        return { result: t('{points} Punkte in „{group}“', { points: `${pts > 0 ? '+' : ''}${pts}`, group: g.name }) };
       },
     };
     const postAsTeam: ActionDef = {
@@ -200,12 +206,13 @@ export const communityAutomationModule: Module = {
         const wanted = one(step.channel).toLowerCase();
         const channels = db.all<any>('SELECT * FROM community_channels WHERE group_id = ? ORDER BY position, created_at', g.id);
         const ch = wanted ? channels.find((c) => c.id === one(step.channel) || c.name.toLowerCase() === wanted || c.slug === wanted) : channels.find((c) => !c.admin_only) ?? channels[0];
-        if (!ch) throw new Error(wanted ? `Kanal „${one(step.channel)}“ gibt es nicht` : 'Die Gruppe hat keinen Kanal');
-        const author: Author = { kind: 'team', userId: 'workflow', name: 'Team' };
+        const t = tLoc(app, run.location_id);
+        if (!ch) throw new Error(wanted ? t('Kanal „{channel}“ gibt es nicht', { channel: one(step.channel) }) : t('Die Gruppe hat keinen Kanal'));
+        const author: Author = { kind: 'team', userId: 'workflow', name: t('Team') };
         const ui = communityUi(app);
         const post = fail(() => createPost(app, g, ch, author, { title: text(step.title, vars), body: text(step.body, vars) }, { pinned: step.pinned === true || step.pinned === 'true', notifyAll: step.notify === true || step.notify === 'true' }));
         ui.postExtras.forEach((h) => h.attach?.(post, g, undefined, 'team'));
-        return { result: `Beitrag „${post.title}“ in ${ch.name}`, vars: { community_post_id: post.id } };
+        return { result: t('Beitrag „{title}“ in {channel}', { title: post.title, channel: ch.name }), vars: { community_post_id: post.id } };
       },
     };
     registerActions(app, [grantBadge, sendMessage, givePoints, postAsTeam]);
@@ -288,7 +295,7 @@ export const COMMUNITY_TOOLS: Tool[] = [
         if (!a.email) throw new Error('contact_id oder email angeben');
         const found = await call.api('GET', `/api/contacts?q=${encodeURIComponent(String(a.email))}`, { location: loc });
         const c = (found.contacts ?? []).find((x: any) => String(x.email).toLowerCase() === String(a.email).trim().toLowerCase());
-        if (!c) throw new Error(`Kein Kontakt mit der E-Mail ${a.email}`);
+        if (!c) throw new Error(tApp()('Kein Kontakt mit der E-Mail {email}', { email: String(a.email) }));
         return c.id as string;
       };
       const membership = async (cid: string) => {
@@ -321,7 +328,7 @@ export const COMMUNITY_TOOLS: Tool[] = [
           if (!a.badge) throw new Error('badge angeben (Name oder ID)');
           const list = await call.api('GET', `/api/community/groups/${gid}/badges`, { location: loc });
           const b = (list.badges as any[]).find((x) => x.id === a.badge || String(x.name).toLowerCase() === String(a.badge).toLowerCase());
-          if (!b) throw new Error(`Abzeichen „${a.badge}“ nicht gefunden`);
+          if (!b) throw new Error(tApp()('Abzeichen „{badge}“ nicht gefunden', { badge: String(a.badge) }));
           return call.api('POST', `/api/community/badges/${encodeURIComponent(b.id)}/award`, { location: loc, body: { contact_id: await contactId(), reason: a.reason } });
         }
         case 'points':

@@ -1,4 +1,5 @@
 import { bad } from '../core/http.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Sending speed of campaigns. Until now every campaign sent 30 messages per background tick (15 s) – the location default
@@ -24,7 +25,7 @@ export function cleanSpeed(v: unknown): number | null {
   if (v === null || v === undefined || v === '' || v === 0 || v === '0') return null;
   const n = Number(v);
   if (!Number.isFinite(n) || !Number.isInteger(n)) throw bad('Versandgeschwindigkeit: ganze Zahl (Nachrichten pro Stunde)');
-  if (n < MIN_SPEED || n > MAX_SPEED) throw bad(`Versandgeschwindigkeit: zwischen ${MIN_SPEED} und ${MAX_SPEED.toLocaleString('de-DE')} pro Stunde (leer = Standard)`);
+  if (n < MIN_SPEED || n > MAX_SPEED) throw bad(tApp()('Versandgeschwindigkeit: zwischen {min} und {max} pro Stunde (leer = Standard)', { min: MIN_SPEED, max: MAX_SPEED.toLocaleString(tApp().locale === 'de' ? 'de-DE' : 'en-GB') }));
   return n;
 }
 
@@ -94,13 +95,13 @@ export interface Warmup {
 }
 
 /** A hint for new senders: many e-mails at a high speed from an address that has sent little so far end up in spam. */
-export function warmupAdvice(o: { channel: string; sentTotal: number; remaining: number; perHour: number }): Warmup {
+export function warmupAdvice(o: { channel: string; sentTotal: number; remaining: number; perHour: number }, t: STFn = tApp()): Warmup {
   const base = { sent_total: o.sentTotal, recommended_per_hour: WARMUP_PER_HOUR };
   if (o.channel !== 'email' || o.sentTotal >= WARMUP_BELOW || o.remaining < 200) return { ...base, advice: null, level: null };
   const fast = o.perHour > WARMUP_PER_HOUR;
   return {
     ...base,
     level: fast ? 'warn' : 'info',
-    advice: `Über diesen Absender sind bisher erst ${o.sentTotal.toLocaleString('de-DE')} E-Mails verschickt worden. Neue Absender und Domains müssen „aufwärmen“: in den ersten 2–4 Wochen mit wenigen Mails pro Tag beginnen und täglich steigern, sonst landen sie schneller im Spam. ${fast ? `Empfehlung für diese Kampagne: höchstens ${WARMUP_PER_HOUR} pro Stunde – oder erst an einen Teil der Liste (z. B. die zuletzt aktiven Kontakte) senden.` : 'Mit dieser Geschwindigkeit geht es behutsam los.'}`,
+    advice: `${t('Über diesen Absender sind bisher erst {n} E-Mails verschickt worden. Neue Absender und Domains müssen „aufwärmen“: in den ersten 2–4 Wochen mit wenigen Mails pro Tag beginnen und täglich steigern, sonst landen sie schneller im Spam.', { n: o.sentTotal.toLocaleString(t.locale === 'de' ? 'de-DE' : 'en-GB') })} ${fast ? t('Empfehlung für diese Kampagne: höchstens {n} pro Stunde – oder erst an einen Teil der Liste (z. B. die zuletzt aktiven Kontakte) senden.', { n: WARMUP_PER_HOUR }) : t('Mit dieser Geschwindigkeit geht es behutsam los.')}`,
   };
 }

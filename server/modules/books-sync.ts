@@ -28,6 +28,7 @@ import { docOf, loadInvoice, recordPayment, type Inv } from '../services/invoice
 import { openCents } from '../services/invoice-model.js';
 import { invoicePdfOf } from '../services/invoice-render.js';
 import { safeFetch } from '../services/net.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Lexware Office / sevDesk live sync (Apps → Buchhaltung): one connection per sub-account (API key sealed), mapping options,
@@ -129,7 +130,7 @@ export const booksSyncModule: Module = {
       const s = settings(loc);
       const counts = Object.fromEntries(db.all<{ status: string; n: number }>('SELECT status, COUNT(*) AS n FROM books_sync_jobs WHERE location_id = ? GROUP BY status', loc).map((r) => [r.status, r.n]));
       return {
-        providers: PROVIDERS.map((p) => ({ key: p, name: PROVIDER_LABEL[p], key_label: KEY_HELP[p].label, key_help: KEY_HELP[p].help, docs: KEY_HELP[p].docs })),
+        providers: PROVIDERS.map((p) => ({ key: p, name: PROVIDER_LABEL[p], key_label: tApp()(KEY_HELP[p].label), key_help: tApp()(KEY_HELP[p].help), docs: KEY_HELP[p].docs })),
         provider: s?.provider ?? '',
         enabled: s ? s.enabled : false,
         connected: !!s?.apiKey,
@@ -173,7 +174,10 @@ export const booksSyncModule: Module = {
         `UPDATE books_sync_jobs SET status = ?, attempts = ?, next_at = ?, locked_until = NULL, last_error = ?, updated_at = ? WHERE id = ?`,
         wait === null ? 'failed' : 'retry', attempts, wait === null ? t : new Date(Date.now() + wait).toISOString(), msg.slice(0, 500), t, job.id,
       );
-      log(job.location_id, job.provider, 'error', 'push', `${inv ? `${inv.kind === 'credit_note' ? 'Gutschrift' : 'Rechnung'} ${inv.number}: ` : ''}${msg}${wait === null ? ' – angehalten, bitte prüfen und „Erneut versuchen“' : ` – neuer Versuch in ${Math.round(wait / 60_000)} Min.`}`, job.invoice_id);
+      const tl = tLoc(app, job.location_id);
+      const head = inv ? tl(inv.kind === 'credit_note' ? 'Gutschrift {number}' : 'Rechnung {number}', { number: inv.number }) + ': ' : '';
+      const tail = wait === null ? tl(' – angehalten, bitte prüfen und „Erneut versuchen“') : tl(' – neuer Versuch in {minutes} Min.', { minutes: Math.round(wait / 60_000) });
+      log(job.location_id, job.provider, 'error', 'push', `${head}${msg}${tail}`, job.invoice_id);
     };
 
     /** Remote id stored the moment it exists – in the job (stage) and in invoice_links, so a retry continues instead of creating again. */
@@ -212,7 +216,7 @@ export const booksSyncModule: Module = {
         rid = (number ? await api.contactByNumber(number) : undefined) ?? (email ? await api.contactByEmail(email) : undefined);
         if (!rid) rid = await api.createContact(sevContact(input, doc.buyer), email || undefined);
       }
-      if (!rid) throw new Error(`${PROVIDER_LABEL[s.provider]} hat keine Kontakt-ID zurückgegeben`);
+      if (!rid) throw new Error(tApp()('{provider} hat keine Kontakt-ID zurückgegeben', { provider: PROVIDER_LABEL[s.provider] }));
       db.run(
         `INSERT INTO books_sync_contacts (location_id, provider, contact_id, remote_id, updated_at) VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(location_id, provider, contact_id) DO UPDATE SET remote_id = excluded.remote_id, updated_at = excluded.updated_at`,
@@ -231,7 +235,7 @@ export const booksSyncModule: Module = {
         if (found) {
           adopted = true;
           saveRemote(job, inv, found, 'adopted', bookedTotalCents(doc));
-          log(inv.location_id, s.provider, 'info', 'adopt', `${inv.number}: Beleg gibt es in Lexware Office schon – verknüpft statt doppelt angelegt`, inv.id);
+          log(inv.location_id, s.provider, 'info', 'adopt', tLoc(app, inv.location_id)('{number}: Beleg gibt es in Lexware Office schon – verknüpft statt doppelt angelegt', { number: inv.number }), inv.id);
         }
       }
       if (!job.remote_id) {
@@ -259,7 +263,7 @@ export const booksSyncModule: Module = {
         if (found) {
           adopted = true;
           saveRemote(job, inv, found, 'adopted', bookedTotalCents(doc));
-          log(inv.location_id, s.provider, 'info', 'adopt', `${inv.number}: gibt es in sevDesk schon – verknüpft statt doppelt angelegt`, inv.id);
+          log(inv.location_id, s.provider, 'info', 'adopt', tLoc(app, inv.location_id)('{number}: gibt es in sevDesk schon – verknüpft statt doppelt angelegt', { number: inv.number }), inv.id);
         }
       }
       if (!job.remote_id) {
@@ -285,16 +289,16 @@ export const booksSyncModule: Module = {
 
     async function runJob(job: Job) {
       const s = settings(job.location_id);
-      if (!active(s) || s.provider !== job.provider) return finish(job, 'skipped', `${PROVIDER_LABEL[job.provider] ?? job.provider} ist nicht (mehr) verbunden`);
+      if (!active(s) || s.provider !== job.provider) return finish(job, 'skipped', tLoc(app, job.location_id)('{provider} ist nicht (mehr) verbunden', { provider: PROVIDER_LABEL[job.provider] ?? job.provider }));
       const inv = loadInvoice(app, job.location_id, job.invoice_id);
-      if (!inv || !inv.finalised_at || inv.kind === 'estimate') return finish(job, 'skipped', 'Kein festgeschriebener Beleg');
-      if (inv.kind === 'credit_note' && !s.options.push_credit_notes) return finish(job, 'skipped', `Gutschrift ${inv.number}: Gutschriften werden laut Einstellung nicht übertragen`);
+      if (!inv || !inv.finalised_at || inv.kind === 'estimate') return finish(job, 'skipped', tLoc(app, job.location_id)('Kein festgeschriebener Beleg'));
+      if (inv.kind === 'credit_note' && !s.options.push_credit_notes) return finish(job, 'skipped', tLoc(app, job.location_id)('Gutschrift {number}: Gutschriften werden laut Einstellung nicht übertragen', { number: inv.number }));
       const link = db.get<{ provider: string; external_id: string }>('SELECT provider, external_id FROM invoice_links WHERE invoice_id = ?', inv.id);
-      if (link && link.provider !== job.provider) return finish(job, 'skipped', `${inv.number}: schon mit „${link.provider}“ verknüpft – nichts übertragen`);
+      if (link && link.provider !== job.provider) return finish(job, 'skipped', tLoc(app, job.location_id)('{number}: schon mit „{provider}“ verknüpft – nichts übertragen', { number: inv.number, provider: link.provider }));
       if (link?.external_id && !job.remote_id) Object.assign(job, { remote_id: link.external_id, stage: 'linked' });
       try {
         const rid = job.provider === 'lexware' ? await pushLexware(s, job, inv) : await pushSevdesk(s, job, inv);
-        finish(job, 'done', `${inv.kind === 'credit_note' ? 'Gutschrift' : 'Rechnung'} ${inv.number} übertragen (ID ${rid})`);
+        finish(job, 'done', tLoc(app, job.location_id)(inv.kind === 'credit_note' ? 'Gutschrift {number} übertragen (ID {id})' : 'Rechnung {number} übertragen (ID {id})', { number: inv.number, id: rid }));
       } catch (e) {
         fail(job, e, inv);
       }
@@ -345,13 +349,13 @@ export const booksSyncModule: Module = {
           const delta = Math.min(st.paidCents - (inv.paid_cents ?? 0), openCents(inv));
           if (delta > 0) {
             const paidAt = st.paidAt && !Number.isNaN(Date.parse(st.paidAt)) && Date.parse(st.paidAt) <= Date.now() ? new Date(st.paidAt).toISOString() : undefined;
-            const r = recordPayment(app, loc, inv.id, { amount_cents: delta, paid_at: paidAt, method: label, note: `Zahlungseingang aus ${label} übernommen` }, { id: null, name: label }, { source: s.provider, via: label });
+            const r = recordPayment(app, loc, inv.id, { amount_cents: delta, paid_at: paidAt, method: label, note: tLoc(app, loc)('Zahlungseingang aus {source} übernommen', { source: label }) }, { id: null, name: label }, { source: s.provider, via: label });
             updated++;
-            log(loc, s.provider, 'info', 'payment', `Rechnung ${inv.number}: ${r.paid ? 'bezahlt' : 'Teilzahlung'} laut ${label} (${(delta / 100).toFixed(2).replace('.', ',')} ${inv.currency})`, inv.id);
+            log(loc, s.provider, 'info', 'payment', tLoc(app, loc)(r.paid ? 'Rechnung {number}: bezahlt laut {source} ({amount} {currency})' : 'Rechnung {number}: Teilzahlung laut {source} ({amount} {currency})', { number: inv.number, source: label, amount: (delta / 100).toFixed(2), currency: inv.currency }), inv.id);
           }
           if (st.settled || delta > 0) db.run(`UPDATE invoice_links SET status = ?, synced_at = ? WHERE invoice_id = ? AND provider = ?`, st.settled ? 'paid' : 'sent', now(), inv.id, s.provider);
         } catch (e) {
-          log(loc, s.provider, 'error', 'payment', `Rechnung ${inv.number}: Zahlungsstatus nicht abrufbar – ${(e as Error).message}`, inv.id);
+          log(loc, s.provider, 'error', 'payment', tLoc(app, loc)('Rechnung {number}: Zahlungsstatus nicht abrufbar – {error}', { number: inv.number, error: (e as Error).message }), inv.id);
         }
         db.run('UPDATE books_sync_jobs SET checked_at = ? WHERE id = ?', now(), j.id);
       }
@@ -410,7 +414,7 @@ export const booksSyncModule: Module = {
       const key = str(b.api_key, 'API-Schlüssel', { max: 300 });
       if (key && !/^[A-Za-z0-9._~+/=-]{16,300}$/.test(key)) throw bad('Der API-Schlüssel sieht nicht richtig aus (ohne Leerzeichen einfügen)');
       const changedProvider = !!cur?.provider && cur.provider !== provider;
-      if (changedProvider && !key) throw bad(`Für ${PROVIDER_LABEL[provider as Provider]} bitte den API-Schlüssel eingeben`);
+      if (changedProvider && !key) throw bad(tApp()('Für {provider} bitte den API-Schlüssel eingeben', { provider: PROVIDER_LABEL[provider as Provider] }));
       const sealed = key ? sealSecret(app, key) : (cur?.row.secret_sealed ?? '');
       if (!sealed) throw bad('API-Schlüssel fehlt');
       const hint = key ? `…${key.slice(-4)}` : (cur?.hint ?? '');
@@ -444,13 +448,13 @@ export const booksSyncModule: Module = {
       try {
         if (s.provider === 'lexware') {
           const p = await lexApi(client).profile();
-          detail = `Verbunden mit ${String(p?.companyName ?? p?.organizationName ?? 'Lexware Office').slice(0, 100)}`;
+          detail = tCtx(ctx)('Verbunden mit {name}', { name: String(p?.companyName ?? p?.organizationName ?? 'Lexware Office').slice(0, 100) });
         } else {
           const users = await sevApi(client).users();
-          if (!users.length) throw new Error('sevDesk: kein Benutzer gefunden');
+          if (!users.length) throw new Error(tCtx(ctx)('sevDesk: kein Benutzer gefunden'));
           const u = users.find((x) => String(x.id) === s.options.sev_user_id) ?? users[0];
           if (!s.options.sev_user_id) saveOptions(ctx.locationId, { ...s.options, sev_user_id: String(u.id) });
-          detail = `Verbunden – Ansprechpartner auf Rechnungen: ${String([u.firstName ?? u.fullname ?? '', u.lastName ?? ''].join(' ').trim() || u.username || u.id).slice(0, 80)}`;
+          detail = tCtx(ctx)('Verbunden – Ansprechpartner auf Rechnungen: {name}', { name: String([u.firstName ?? u.fullname ?? '', u.lastName ?? ''].join(' ').trim() || u.username || u.id).slice(0, 80) });
         }
       } catch (e) {
         ok = false;
@@ -513,7 +517,8 @@ export const booksSyncModule: Module = {
       );
       for (const r of rows) enqueue(ctx.locationId, r.id, s.provider);
       if (rows.length) {
-        log(ctx.locationId, s.provider, 'info', 'backfill', `${rows.length} ältere Belege ab ${since.split('-').reverse().join('.')} in die Warteschlange gestellt`);
+        const tl = tLoc(app, ctx.locationId);
+        log(ctx.locationId, s.provider, 'info', 'backfill', tl.plural(rows.length, { one: '{n} älterer Beleg ab {date} in die Warteschlange gestellt', other: '{n} ältere Belege ab {date} in die Warteschlange gestellt' }, { date: since }));
         kick(ctx.locationId);
       }
       return { queued: rows.length };
@@ -529,12 +534,13 @@ export const booksSyncModule: Module = {
     // --- catalogue ------------------------------------------------------------------------------------------------------------
     const probe = (provider: Provider) => (_ctx: Ctx, loc: string) => {
       const s = settings(loc);
-      if (!s?.apiKey || s.provider !== provider) return { status: 'missing', detail: 'Nicht verbunden' };
-      if (!s.enabled) return { status: 'info', detail: 'Pausiert' };
+      if (!s?.apiKey || s.provider !== provider) return { status: 'missing', detail: tApp()('Nicht verbunden') };
+      if (!s.enabled) return { status: 'info', detail: tApp()('Pausiert') };
       const failed = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM books_sync_jobs WHERE location_id = ? AND status = 'failed'`, loc)!.n;
-      if (failed) return { status: 'partial', detail: `${failed} Beleg(e) mit Fehler` };
-      if (s.row.last_test_ok === 0) return { status: 'partial', detail: `Test fehlgeschlagen: ${String(s.row.last_test_result).slice(0, 80)}` };
-      return { status: 'ok', detail: 'Verbunden – Rechnungen werden übertragen' };
+      const ta = tApp();
+      if (failed) return { status: 'partial', detail: ta.plural(failed, { one: '{n} Beleg mit Fehler', other: '{n} Belege mit Fehler' }) };
+      if (s.row.last_test_ok === 0) return { status: 'partial', detail: tApp()('Test fehlgeschlagen: {error}', { error: String(s.row.last_test_result).slice(0, 80) }) };
+      return { status: 'ok', detail: tApp()('Verbunden – Rechnungen werden übertragen') };
     };
     app.services.catalogExtra = [
       ...(app.services.catalogExtra ?? []),
@@ -546,8 +552,8 @@ export const booksSyncModule: Module = {
           icon: 'invoices',
           scope: 'location' as const,
           setup: { location: 'apps/books' },
-          description: 'Festgeschriebene Rechnungen und Gutschriften automatisch übertragen (Kontakt, Positionen, Steuersätze' + (p === 'lexware' ? ', PDF' : '') + '), Zahlungseingänge zurückholen.',
-          credentials: `${KEY_HELP[p].label} unter Apps → Buchhaltung.`,
+          description: p === 'lexware' ? 'Festgeschriebene Rechnungen und Gutschriften automatisch übertragen (Kontakt, Positionen, Steuersätze, PDF), Zahlungseingänge zurückholen.' : 'Festgeschriebene Rechnungen und Gutschriften automatisch übertragen (Kontakt, Positionen, Steuersätze), Zahlungseingänge zurückholen.',
+          credentials: tApp()('{label} unter Apps → Buchhaltung.', { label: tApp()(KEY_HELP[p].label) }),
           docs: 'docs/integrations.md#lexware-office-and-sevdesk-live-sync',
         },
         location: probe(p),

@@ -2,6 +2,7 @@ import type { App, Module } from '../core/app.js';
 import type { ReportField, ReportSource } from '../services/report-engine.js';
 import { contactJoin, lookupTable, userLookup } from '../services/report-sources.js';
 import { COMPANY_SIZES, CUSTOM_OBJECT_RE, KEY_RE, LIFECYCLE_STAGES } from '../services/objects.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Companies, custom object records and lead scores as sources for Berichte (app.services.reportSources).
@@ -122,14 +123,15 @@ export function recordSources(app: App): ReportSource[] {
       // Object types are per sub-account: the source (and its name) is only visible there.
       locations: [...new Set(types.filter((x) => x.key === t.key).map((x) => String(x.location_id)))],
       key: `records_${t.key}`,
-      label: `${t.plural} (Objekt)`,
-      description: `Datensätze des eigenen Objekts „${t.plural}“`,
+      // Built once for all languages: the names of custom objects are the owner's own words, the frame is the instance language.
+      label: tApp()('{name} (Objekt)', { name: t.plural }),
+      description: tApp()('Datensätze des eigenen Objekts „{name}“', { name: t.plural }),
       area: 'contacts',
       from: 'object_records r JOIN object_types ot ON ot.id = r.type_id',
       location: 'r.location_id',
       where: `ot.key = '${t.key}'`,
       dateField: 'created_at',
-      countLabel: `Anzahl ${t.plural}`,
+      countLabel: tApp()('Anzahl der {name}', { name: t.plural }),
       requires: ['object_records'],
       fields: [
         { key: 'created_at', label: 'Angelegt am', type: 'date', sql: 'r.created_at' },

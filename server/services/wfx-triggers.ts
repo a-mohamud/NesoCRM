@@ -1,5 +1,6 @@
 import { addDaysYmd, hmInTz, ymdInTz, zonedToUtc } from '../core/time.js';
 import { CONTACT_FIELDS } from './contacts.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Pure helpers of the additional workflow triggers: a cron expression reader that works on the wall clock of a time zone,
@@ -24,17 +25,19 @@ const MACROS: Record<string, string> = { '@yearly': '0 0 1 1 *', '@annually': '0
 
 function field(src: string, lo: number, hi: number, label: string, names = false): { set: Set<number>; any: boolean } {
   const out = new Set<number>();
+  const t = tApp();
+  const L = t(label);
   const val = (s: string): number => {
     const k = s.toLowerCase();
     const n = names && k in NAMES ? NAMES[k] : /^\d+$/.test(s) ? Number(s) : NaN;
-    if (Number.isNaN(n) || n < lo || n > hi + (label === 'Wochentag' ? 1 : 0)) throw new Error(`${label}: „${s}“ ist ungültig (${lo}–${hi})`);
+    if (Number.isNaN(n) || n < lo || n > hi + (label === 'Wochentag' ? 1 : 0)) throw new Error(t('{label}: „{value}“ ist ungültig ({lo}–{hi})', { label: L, value: s, lo, hi }));
     return label === 'Wochentag' && n === 7 ? 0 : n;
   };
   for (const part of src.split(',')) {
-    if (!part) throw new Error(`${label}: leerer Eintrag`);
+    if (!part) throw new Error(t('{label}: leerer Eintrag', { label: L }));
     const [range, stepS] = part.split('/');
     const step = stepS === undefined ? 1 : Number(stepS);
-    if (!Number.isInteger(step) || step < 1) throw new Error(`${label}: Schrittweite „${stepS}“ ist ungültig`);
+    if (!Number.isInteger(step) || step < 1) throw new Error(t('{label}: Schrittweite „{step}“ ist ungültig', { label: L, step: stepS }));
     let a: number;
     let b: number;
     if (range === '*' || range === '?') [a, b] = [lo, hi];
@@ -46,7 +49,7 @@ function field(src: string, lo: number, hi: number, label: string, names = false
       a = val(range);
       b = stepS === undefined ? a : hi;
     }
-    if (a > b && !(label === 'Wochentag' && b === 0)) throw new Error(`${label}: Bereich „${range}“ ist rückwärts`);
+    if (a > b && !(label === 'Wochentag' && b === 0)) throw new Error(t('{label}: Bereich „{range}“ ist rückwärts', { label: L, range }));
     for (let n = a; n <= b; n += step) out.add(label === 'Wochentag' && n === 7 ? 0 : n);
   }
   return { set: out, any: src === '*' || src === '?' };
@@ -57,8 +60,8 @@ export function parseCron(expr: string): Cron {
   const src = String(expr ?? '').trim().replace(/\s+/g, ' ');
   const full = MACROS[src.toLowerCase()] ?? src;
   const p = full.split(' ');
-  if (p.length !== 5) throw new Error('Zeitplan: fünf Felder erwartet – Minute Stunde Tag Monat Wochentag (z. B. 0 9 * * 1-5)');
-  const [mi, h, d, mo, w] = [field(p[0], 0, 59, 'Minute'), field(p[1], 0, 23, 'Stunde'), field(p[2], 1, 31, 'Tag'), field(p[3], 1, 12, 'Monat', true), field(p[4], 0, 6, 'Wochentag', true)];
+  if (p.length !== 5) throw new Error(tApp()('Zeitplan: fünf Felder erwartet – Minute Stunde Tag Monat Wochentag (z. B. 0 9 * * 1-5)'));
+  const [mi, h, d, mo, w] = [field(p[0], 0, 59, 'Minute'), field(p[1], 0, 23, 'Stunde'), field(p[2], 1, 31, 'Tag im Monat'), field(p[3], 1, 12, 'Monat', true), field(p[4], 0, 6, 'Wochentag', true)];
   return { minute: mi.set, hour: h.set, dom: d.set, month: mo.set, dow: w.set, domAny: d.any, dowAny: w.any, source: full };
 }
 

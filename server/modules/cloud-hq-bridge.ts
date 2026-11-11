@@ -7,6 +7,7 @@ import { LIFECYCLE_PIPELINE, STAGE, TAG } from '../services/hq-template.js';
 import { createOpportunity, updateOpportunity } from '../services/opportunities.js';
 import { cloudEnabled, tenantPlanKey, tenantSub, type Tenant } from './cloud.js';
 import { planById } from './saas.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Cloud → HQ CRM bridge (dogfooding): the operator runs the cloud business in its own sub-account, set up with the
@@ -64,11 +65,13 @@ export function hqLocation(app: App): string | null {
 }
 
 function lifecycle(app: App, loc: string) {
-  const p = parseJson(app.db.get('SELECT * FROM pipelines WHERE location_id = ? AND name = ? ORDER BY created_at LIMIT 1', loc, LIFECYCLE_PIPELINE), ['stages']);
+  // The HQ template names its pipeline and stages in the sub-account's language (modules/hq-template.ts); older ones are German.
+  const t = tLoc(app, loc);
+  const p = parseJson(app.db.get('SELECT * FROM pipelines WHERE location_id = ? AND name IN (?, ?) ORDER BY created_at LIMIT 1', loc, LIFECYCLE_PIPELINE, t(LIFECYCLE_PIPELINE)), ['stages']);
   if (!p) return null;
   const stages = p.stages as { id: string; name: string }[];
-  const find = (sid: string, name: string) => stages.find((s) => s.id === sid)?.id ?? stages.find((s) => s.name.startsWith(name))?.id ?? stages[0]?.id;
-  return { id: p.id as string, trial: find(STAGE.trial, 'Testphase'), customer: find(STAGE.customer, 'Kunde'), churn: find(STAGE.churn, 'Gekündigt') };
+  const find = (sid: string, name: string) => stages.find((s) => s.id === sid)?.id ?? stages.find((s) => s.name.startsWith(name) || s.name.startsWith(t(name)))?.id ?? stages[0]?.id;
+  return { id: p.id as string, trial: find(STAGE.trial, 'Testphase'), customer: find(STAGE.customer, 'Kunde'), churn: find(STAGE.churn, 'Gekündigt / Rückgewinnung') };
 }
 
 function link(app: App, tid: string) {
@@ -100,14 +103,17 @@ export function syncTenant(app: App, tid: string, type: string, detail = '') {
   const s = stateOf(app, t);
   const owner = t.owner_user_id ? app.db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', t.owner_user_id) : undefined;
   const [first = '', ...rest] = String(owner?.name ?? '').trim().split(/\s+/);
-  const custom: Record<string, any> = { plan: PLAN_FIELD[s.key] ?? s.planName, mrr: s.paying ? s.monthly : 0, intervall: s.interval === 'year' ? 'Jährlich' : 'Monatlich', cloud_konto: t.id };
+  // Option values of the HQ template's fields, in the language the template was set up in.
+  const tr = tLoc(app, loc);
+  const custom: Record<string, any> = { plan: PLAN_FIELD[s.key] ? tr(PLAN_FIELD[s.key]) : s.planName, mrr: s.paying ? s.monthly : 0, intervall: s.interval === 'year' ? tr('Jährlich') : tr('Monatlich'), cloud_konto: t.id };
   if (s.trialEnd) custom.testphase_ende = s.trialEnd.slice(0, 10);
   if (type === 'canceled' && t.cancel_reason) custom.kuendigungsgrund = t.cancel_reason;
   const known = link(app, tid);
   const existing = known ? getContact(app, loc, known.contact_id) : undefined;
   // Only fields the HQ needs; the e-mail matches a waitlist contact from the landing page (its source stays).
-  const { contact, created } = upsertContact(app, loc, { ...(existing ? { id: existing.id } : {}), email: t.email, company: t.name, ...(first && !existing?.first_name ? { first_name: first, last_name: rest.join(' ') } : {}), custom }, { source: 'Cloud-Anmeldung', quiet: true });
-  if (created || !contact.custom?.quelle) app.db.update('contacts', contact.id, { custom: { ...contact.custom, quelle: contact.source === 'Landingpage' ? 'Landingpage' : 'Cloud-Anmeldung' } });
+  const { contact, created } = upsertContact(app, loc, { ...(existing ? { id: existing.id } : {}), email: t.email, company: t.name, ...(first && !existing?.first_name ? { first_name: first, last_name: rest.join(' ') } : {}), custom }, { source: tr('Cloud-Anmeldung'), quiet: true });
+  const fromLanding = contact.source === 'Landingpage' || contact.source === tr('Landingpage');
+  if (created || !contact.custom?.quelle) app.db.update('contacts', contact.id, { custom: { ...contact.custom, quelle: fromLanding ? tr('Landingpage') : tr('Cloud-Anmeldung') } });
   const statusTag = STATUS_TAG[s.phase];
   removeTags(app, loc, contact.id, [...Object.values(STATUS_TAG).filter((x) => x !== statusTag), TAG.wait, ...(rule.remove ?? [])]);
   addTags(app, loc, contact.id, [statusTag, ...(rule.add ?? [])]);
@@ -117,9 +123,9 @@ export function syncTenant(app: App, tid: string, type: string, detail = '') {
     const stage = p[s.phase];
     const cur = oppId ? app.db.get<{ id: string }>('SELECT id FROM opportunities WHERE id = ? AND location_id = ?', oppId, loc) : undefined;
     if (cur) updateOpportunity(app, loc, cur.id, { pipeline_id: p.id, stage_id: stage, value: s.monthly, name: `${t.name} · ${s.planName}` });
-    else oppId = createOpportunity(app, loc, { pipeline_id: p.id, stage_id: stage, contact_id: contact.id, name: `${t.name} · ${s.planName}`, value: s.monthly, source: 'Cloud' }).id;
+    else oppId = createOpportunity(app, loc, { pipeline_id: p.id, stage_id: stage, contact_id: contact.id, name: `${t.name} · ${s.planName}`, value: s.monthly, source: tr('Cloud') }).id;
   }
-  logActivity(app, loc, contact.id, 'cloud.lifecycle', `Cloud: ${rule.label} – ${s.planName}, ${s.interval === 'year' ? 'jährlich' : 'monatlich'}${detail && type === 'plan_changed' ? ` (${detail})` : ''}`, { tenant: t.id, event: type });
+  logActivity(app, loc, contact.id, 'cloud.lifecycle', `${tr('Cloud: {event} – {plan}, {interval}', { event: tr(rule.label), plan: s.planName, interval: s.interval === 'year' ? tr('jährlich') : tr('monatlich') })}${detail && type === 'plan_changed' ? ` (${detail})` : ''}`, { tenant: t.id, event: type });
   app.db.run(
     `INSERT INTO cloud_hq_links (tenant_id, location_id, contact_id, opportunity_id, updated_at) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(tenant_id) DO UPDATE SET location_id = excluded.location_id, contact_id = excluded.contact_id, opportunity_id = excluded.opportunity_id, updated_at = excluded.updated_at`,
@@ -139,7 +145,7 @@ function anonymise(app: App, loc: string, tid: string) {
   if (!l) return;
   const c = getContact(app, loc, l.contact_id);
   if (c) {
-    const label = `Gelöschtes Cloud-Konto ${tid.slice(0, 8)}`;
+    const label = tLoc(app, loc)('Gelöschtes Cloud-Konto {id}', { id: tid.slice(0, 8) });
     const keep = ['plan', 'mrr', 'intervall', 'quelle', 'testphase_ende', 'cloud_konto', 'kuendigungsgrund'];
     const custom = Object.fromEntries(Object.entries(c.custom ?? {}).filter(([k]) => keep.includes(k)));
     app.db.update('contacts', c.id, { first_name: label, last_name: '', email: '', phone: '', company: '', address: '', city: '', postal_code: '', country: '', website: '', date_of_birth: null, custom, dnd: 1, updated_at: now() });

@@ -26,6 +26,7 @@ import {
 import { parseRange } from '../services/webinar-video.js';
 import { clientJs } from '../services/community-client.js';
 import { parseJson } from '../core/db.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Richer posts: polls, videos (a link, or a file uploaded in parts) and GIFs by link; filter chips above the feed (polls, videos,
@@ -57,12 +58,12 @@ const CSS = `<style>
 </style>`;
 
 /** "3 Std." / "2 Tagen" until a future time. */
-function untilText(iso: string, at = Date.now()): string {
+function untilText(iso: string, t: STFn, at = Date.now()): string {
   const min = Math.max(1, Math.round((Date.parse(iso) - at) / 60_000));
-  if (min < 60) return `${min} Min.`;
+  if (min < 60) return t('endet in {n} Min.', { n: min });
   const h = Math.round(min / 60);
-  if (h < 48) return `${h} Std.`;
-  return `${Math.round(h / 24)} Tagen`;
+  if (h < 48) return t('endet in {n} Std.', { n: h });
+  return t.plural(Math.round(h / 24), { one: 'endet in {n} Tag', other: 'endet in {n} Tagen' });
 }
 
 export const communityFeedModule: Module = {
@@ -163,20 +164,22 @@ export const communityFeedModule: Module = {
       const showResults = poll.voted || poll.closed || staff;
       const base = Math.max(poll.voters, 1);
       const action = `${kit.postHref(p, g, post.id)}/vote`;
+      const t = tLoc(app, g.location_id);
       const results = poll.options.map((o) => `<div class="o${o.mine ? ' mine' : ''}"><i style="width:${Math.round((o.votes / base) * 100)}%"></i><span>${escapeHtml(o.text)}${o.mine ? ' ✓' : ''}</span><span class="n">${o.votes} · ${Math.round((o.votes / base) * 100)} %</span></div>`).join('');
-      const form = `<form method="post" action="${action}">${kit.tokenInput(m)}${poll.options.map((o) => `<label class="o"><span><input type="${poll.multi ? 'checkbox' : 'radio'}" name="option" value="${escapeHtml(o.id)}"${o.mine ? ' checked' : ''}${poll.multi ? '' : ' required'}>${escapeHtml(o.text)}</span></label>`).join('')}<button class="btn" style="margin-top:6px">${poll.voted ? 'Antwort ändern' : 'Abstimmen'}</button></form>`;
-      const foot = `${poll.voters} ${poll.voters === 1 ? 'Stimme' : 'Stimmen'}${poll.multi ? ' · Mehrfachauswahl' : ''}${poll.closes_at ? ` · ${poll.closed ? 'beendet' : `endet in ${untilText(poll.closes_at)}`}` : ''}`;
-      return `<div class="cm-poll"><h3>📊 ${escapeHtml(poll.question)}</h3>${showResults ? results : ''}${showResults && !poll.closed ? `<details style="margin-top:8px"><summary class="cm-link" style="min-height:40px;display:flex;align-items:center">${poll.voted ? 'Antwort ändern' : 'Abstimmen'}</summary>${form}</details>` : showResults ? '' : form}<div class="ft">${escapeHtml(foot)}</div></div>`;
+      const form = `<form method="post" action="${action}">${kit.tokenInput(m)}${poll.options.map((o) => `<label class="o"><span><input type="${poll.multi ? 'checkbox' : 'radio'}" name="option" value="${escapeHtml(o.id)}"${o.mine ? ' checked' : ''}${poll.multi ? '' : ' required'}>${escapeHtml(o.text)}</span></label>`).join('')}<button class="btn" style="margin-top:6px">${poll.voted ? t('Antwort ändern') : t('Abstimmen')}</button></form>`;
+      const foot = `${t.plural(poll.voters, { one: '{n} Stimme', other: '{n} Stimmen' })}${poll.multi ? ` · ${t('Mehrfachauswahl')}` : ''}${poll.closes_at ? ` · ${poll.closed ? t('beendet') : untilText(poll.closes_at, t)}` : ''}`;
+      return `<div class="cm-poll"><h3>📊 ${escapeHtml(poll.question)}</h3>${showResults ? results : ''}${showResults && !poll.closed ? `<details style="margin-top:8px"><summary class="cm-link" style="min-height:40px;display:flex;align-items:center">${poll.voted ? t('Antwort ändern') : t('Abstimmen')}</summary>${form}</details>` : showResults ? '' : form}<div class="ft">${escapeHtml(foot)}</div></div>`;
     };
 
     const hook: PostExtrasHook = {
       fields(_p, _m, g, d) {
-        const opts = [0, 1, 2, 3, 4, 5].map((i) => `<input type="text" name="poll_option" maxlength="80" placeholder="Antwort ${i + 1}${i < 2 ? '' : ' (optional)'}" value="${escapeHtml(String(Array.isArray(d.poll_option) ? (d.poll_option[i] ?? '') : i === 0 ? (d.poll_option ?? '') : ''))}" aria-label="Antwort ${i + 1}">`).join('');
+        const t = tLoc(app, g.location_id);
+        const opts = [0, 1, 2, 3, 4, 5].map((i) => `<input type="text" name="poll_option" maxlength="80" placeholder="${i < 2 ? t('Antwort {n}', { n: i + 1 }) : t('Antwort {n} (optional)', { n: i + 1 })}" value="${escapeHtml(String(Array.isArray(d.poll_option) ? (d.poll_option[i] ?? '') : i === 0 ? (d.poll_option ?? '') : ''))}" aria-label="${t('Antwort {n}', { n: i + 1 })}">`).join('');
         const ext = extSettings(app, g.id);
         return `<div class="cm-extras">
-<details class="cm-extra"${d.poll_question ? ' open' : ''}><summary>📊 Umfrage hinzufügen</summary><div class="in"><input type="text" name="poll_question" maxlength="200" placeholder="Deine Frage" value="${escapeHtml(String(d.poll_question ?? ''))}" aria-label="Frage der Umfrage">${opts}<label class="cm-pick"><input type="checkbox" name="poll_multi" value="1"${d.poll_multi ? ' checked' : ''}> Mehrere Antworten erlauben</label><label class="cm-hint" for="pd">Endet nach</label><select id="pd" name="poll_days" aria-label="Dauer der Umfrage"><option value="0">offen, ohne Ende</option><option value="1">1 Tag</option><option value="3">3 Tagen</option><option value="7">7 Tagen</option></select></div></details>
-<details class="cm-extra"${d.video_url ? ' open' : ''}><summary>▶ Video hinzufügen</summary><div class="in"><input type="text" name="video_url" maxlength="500" placeholder="YouTube-, Vimeo-, Loom- oder MP4-Link" value="${escapeHtml(String(d.video_url ?? ''))}" aria-label="Video-Link">${ext.video.upload ? '<label class="cm-pick cm-btn" data-video-pick hidden>Datei hochladen<input type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/ogg" hidden></label><input type="hidden" name="video_upload" value=""><div class="cm-hint" data-video-state></div>' : ''}</div></details>
-<details class="cm-extra"${d.gif_url ? ' open' : ''}><summary>GIF hinzufügen</summary><div class="in"><input type="text" name="gif_url" maxlength="500" placeholder="Link zu einem GIF (Giphy, Tenor, Imgur)" value="${escapeHtml(String(d.gif_url ?? ''))}" aria-label="GIF-Link"><span class="cm-hint">Am einfachsten: auf giphy.com das GIF öffnen und den Link der Seite einfügen.</span></div></details></div>`;
+<details class="cm-extra"${d.poll_question ? ' open' : ''}><summary>📊 ${t('Umfrage hinzufügen')}</summary><div class="in"><input type="text" name="poll_question" maxlength="200" placeholder="${t('Deine Frage')}" value="${escapeHtml(String(d.poll_question ?? ''))}" aria-label="${t('Frage der Umfrage')}">${opts}<label class="cm-pick"><input type="checkbox" name="poll_multi" value="1"${d.poll_multi ? ' checked' : ''}> ${t('Mehrere Antworten erlauben')}</label><label class="cm-hint" for="pd">${t('Endet nach')}</label><select id="pd" name="poll_days" aria-label="${t('Dauer der Umfrage')}"><option value="0">${t('offen, ohne Ende')}</option><option value="1">${t('1 Tag')}</option><option value="3">${t('3 Tagen')}</option><option value="7">${t('7 Tagen')}</option></select></div></details>
+<details class="cm-extra"${d.video_url ? ' open' : ''}><summary>▶ ${t('Video hinzufügen')}</summary><div class="in"><input type="text" name="video_url" maxlength="500" placeholder="${t('YouTube-, Vimeo-, Loom- oder MP4-Link')}" value="${escapeHtml(String(d.video_url ?? ''))}" aria-label="${t('Video-Link')}">${ext.video.upload ? `<label class="cm-pick cm-btn" data-video-pick hidden>${t('Datei hochladen')}<input type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/ogg" hidden></label><input type="hidden" name="video_upload" value=""><div class="cm-hint" data-video-state></div>` : ''}</div></details>
+<details class="cm-extra"${d.gif_url ? ' open' : ''}><summary>${t('GIF hinzufügen')}</summary><div class="in"><input type="text" name="gif_url" maxlength="500" placeholder="${t('Link zu einem GIF (Giphy, Tenor, Imgur)')}" value="${escapeHtml(String(d.gif_url ?? ''))}" aria-label="${t('GIF-Link')}"><span class="cm-hint">${t('Am einfachsten: auf giphy.com das GIF öffnen und den Link der Seite einfügen.')}</span></div></details></div>`;
       },
       fromForm(ctx, g, m) {
         const b = ctx.body ?? {};
@@ -200,9 +203,10 @@ export const communityFeedModule: Module = {
         const tags: string[] = [];
         if (poll) {
           const v = pollOf(app, post.id, m.contact.id)!;
-          tags.push(`<span class="cm-tag">📊 Umfrage · ${v.voters} ${v.voters === 1 ? 'Stimme' : 'Stimmen'}${v.closed ? ' · beendet' : ''}</span>`);
+          const t = tLoc(app, g.location_id);
+          tags.push(`<span class="cm-tag">📊 ${t('Umfrage')} · ${t.plural(v.voters, { one: '{n} Stimme', other: '{n} Stimmen' })}${v.closed ? ` · ${t('beendet')}` : ''}</span>`);
         }
-        if (ext?.video) tags.push('<span class="cm-tag">▶ Video</span>');
+        if (ext?.video) tags.push(`<span class="cm-tag">▶ ${tLoc(app, g.location_id)('Video')}</span>`);
         void p;
         void kit;
         return `${tags.length ? `<div class="cm-card-tags">${tags.join('')}</div>` : ''}${ext?.gif_url ? `<a href="${kitOf(app).postHref(p, g, post.id)}"><img class="cm-gif" src="${escapeHtml(ext.gif_url)}" alt="GIF" loading="lazy" referrerpolicy="no-referrer"></a>` : ''}`;
@@ -211,7 +215,7 @@ export const communityFeedModule: Module = {
         const kit = kitOf(app);
         const v = videoOf(post.id);
         const ext = extOfPost(post.id);
-        const video = v ? `<div style="margin:14px 0">${videoHtml(v, (uid) => `${kit.cbase(p)}/video/${encodeURIComponent(uid)}`, post.title)}</div>` : '';
+        const video = v ? `<div style="margin:14px 0">${videoHtml(v, (uid) => `${kit.cbase(p)}/video/${encodeURIComponent(uid)}`, post.title, tLoc(app, g.location_id))}</div>` : '';
         const gif = ext?.gif_url ? `<img class="cm-gif" src="${escapeHtml(ext.gif_url)}" alt="GIF" loading="lazy" referrerpolicy="no-referrer">` : '';
         return `${video}${gif}${pollView(p, m, g, post)}`;
       },
@@ -227,11 +231,14 @@ export const communityFeedModule: Module = {
     };
     ui.postExtras.push(hook);
 
-    ui.feedFilters.push(() => [
-      { key: 'polls', label: '📊 Umfragen', where: 'id IN (SELECT post_id FROM community_polls)' },
-      { key: 'videos', label: '▶ Videos', where: "id IN (SELECT post_id FROM community_post_ext WHERE video != '')" },
-      { key: 'pinned', label: 'Angeheftet', where: 'pinned = 1' },
-    ]);
+    ui.feedFilters.push((p) => {
+      const t = tLoc(app, p.locationId);
+      return [
+        { key: 'polls', label: `📊 ${t('Abstimmungen')}`, where: 'id IN (SELECT post_id FROM community_polls)' },
+        { key: 'videos', label: `▶ ${t('Videos')}`, where: "id IN (SELECT post_id FROM community_post_ext WHERE video != '')" },
+        { key: 'pinned', label: t('Angeheftet'), where: 'pinned = 1' },
+      ];
+    });
 
     // --- voting --------------------------------------------------------------------------------------------------------------
     router.post('/portal/:p/community/g/:group/p/:post/vote', 'public', (ctx) =>
@@ -306,7 +313,11 @@ export const communityFeedModule: Module = {
     });
 
     const MIME: Record<string, string> = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/mp4', '.webm': 'video/webm', '.ogv': 'video/ogg', '.mkv': 'video/x-matroska' };
-    const json = (body: unknown, status = 200): RawResult => ({ __raw: true, status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }, body: JSON.stringify(body) });
+    // raw answers skip the central translation of { error } (core/app.ts): translated here
+    const json = (body: unknown, status = 200): RawResult => {
+      const b = body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string' ? { ...(body as object), error: tApp()((body as { error: string }).error) } : body;
+      return { __raw: true, status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }, body: JSON.stringify(b) };
+    };
     const stream = (path: string, ctx: Ctx, mime: string): RawResult => {
       const size = statSync(path).size;
       const head: Record<string, string> = { 'content-type': mime, 'accept-ranges': 'bytes', 'cache-control': 'private, no-cache', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'content-security-policy': "default-src 'none'" };

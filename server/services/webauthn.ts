@@ -1,4 +1,5 @@
 import { createHash, createPublicKey, timingSafeEqual, verify as cryptoVerify, type JsonWebKey } from 'node:crypto';
+import { tApp } from '../i18n/index.js';
 
 /**
  * WebAuthn (passkeys) relying-party checks with node:crypto: a small CBOR decoder, authenticator
@@ -191,7 +192,10 @@ function checkClientData(raw: Buffer, type: string, challenge: string, origins: 
   if (c?.type !== type) throw new WebAuthnError('Falscher Vorgang (clientData.type)');
   const got = Buffer.from(String(c.challenge ?? ''));
   if (!bufEq(got, Buffer.from(challenge))) throw new WebAuthnError('Challenge passt nicht – bitte noch einmal versuchen');
-  if (!origins.includes(String(c.origin))) throw new WebAuthnError(`Passkey von falscher Adresse (${String(c.origin).slice(0, 100)})`);
+  if (!origins.includes(String(c.origin))) {
+    const t = tApp();
+    throw new WebAuthnError(t('Passkey von falscher Adresse ({origin})', { origin: String(c.origin).slice(0, 100) }));
+  }
   if (c.crossOrigin === true) throw new WebAuthnError('Passkey aus eingebettetem Fenster wird nicht angenommen');
   return c;
 }

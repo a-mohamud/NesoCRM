@@ -4,6 +4,7 @@ import { HttpError, type Ctx, type RawResult } from '../core/http.js';
 import { now, safeEqual, sha256, token } from '../core/util.js';
 import { logActivity, upsertContact } from '../services/contacts.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Google-Lead-Formulare als Lead-Quelle – docs/ads-manager.md#google-lead-forms. Google Ads lead form assets deliver each lead to a
@@ -110,13 +111,13 @@ export const adsGoogleLeadsModule: Module = {
       const { input, custom } = mapGoogleLead(ctx.body);
       if (!input.email && !input.phone && !input.name && !input.first_name) return reply({ error: 'no contact data' }, 400);
       const tags = [...(h.tags?.length ? h.tags : DEFAULT_TAGS), ...(test ? ['test-lead'] : [])];
-      const { contact, created } = upsertContact(app, loc, { ...input, custom }, { source: 'Google Lead-Formular', tags, publicInput: true });
+      const { contact, created } = upsertContact(app, loc, { ...input, custom }, { source: tLoc(app, loc)('Google Lead-Formular'), tags, publicInput: true });
       db.run(
         'INSERT INTO google_leads (lead_id, location_id, contact_id, form_id, campaign_id, gclid, is_test, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         leadId, loc, contact.id, String(ctx.body?.form_id ?? '').slice(0, 60), String(ctx.body?.campaign_id ?? '').slice(0, 60), String(ctx.body?.gcl_id ?? '').slice(0, 200), test ? 1 : 0, now(),
       );
       db.run('UPDATE google_lead_hooks SET last_lead_at = ? WHERE location_id = ?', now(), loc);
-      logActivity(app, loc, contact.id, 'ads.lead', `Lead aus Google-Lead-Formular${test ? ' (Test)' : ''}`, { lead_id: leadId, form_id: ctx.body?.form_id, campaign_id: ctx.body?.campaign_id });
+      logActivity(app, loc, contact.id, 'ads.lead', tLoc(app, loc)(test ? 'Lead aus Google-Lead-Formular (Test)' : 'Lead aus Google-Lead-Formular'), { lead_id: leadId, form_id: ctx.body?.form_id, campaign_id: ctx.body?.campaign_id });
       try {
         app.services.attribution?.capture(undefined, loc, contact.id, 'lead_ad', { params: { utm_source: 'google', utm_medium: 'cpc', utm_campaign: String(ctx.body?.campaign_id ?? ''), gclid: String(ctx.body?.gcl_id ?? '') } });
       } catch {

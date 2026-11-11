@@ -7,6 +7,7 @@ import type { CalendarRow } from '../modules/calendars.js';
 import type { Picked } from './teamcal-engine.js';
 import { dueNow, type Answer, type TeamCalConfig } from './teamcal-model.js';
 import { MIN_AMOUNT_CENTS, StripeError, lineItemParams, stripeRequest } from './stripe.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Pay when booking (Stripe Checkout with the sub-account's own key). A booking that has to be paid first is a *hold*: the slot
@@ -91,8 +92,9 @@ export async function startHold(
   const base = app.baseUrl();
   const title = cfg.payment.title || cal.name;
   const when = `${formatInTz(hold.start_at, cal.timezone)} (${cal.timezone})`;
-  const label = hold.mode === 'deposit' ? `Anzahlung: ${title}` : title;
-  const description = [when, hold.mode === 'deposit' ? `Restbetrag ${centsToMoney(hold.amount_cents - hold.due_cents, hold.currency)} wird vor Ort bezahlt.` : ''].filter(Boolean).join(' · ');
+  const t = tLoc(app, cal.location_id);
+  const label = hold.mode === 'deposit' ? t('Anzahlung: {title}', { title }) : title;
+  const description = [when, hold.mode === 'deposit' ? t('Restbetrag {amount} wird vor Ort bezahlt.', { amount: centsToMoney(hold.amount_cents - hold.due_cents, hold.currency) }) : ''].filter(Boolean).join(' · ');
   if (viaRegistry) {
     try {
       const s = registry.start({

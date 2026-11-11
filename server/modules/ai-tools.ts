@@ -2,6 +2,7 @@ import type { App, Module } from '../core/app.js';
 import { HttpError, notFound, str, type Ctx } from '../core/http.js';
 import { id, now, sha256, token } from '../core/util.js';
 import { keyUserFor } from './core.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * "KI-Werkzeuge verbinden": one click creates a scoped key for Codex, Claude Code, Cursor & Co. – a
@@ -78,7 +79,7 @@ export const aiToolsModule: Module = {
     const toolOf = (v: unknown) => (typeof v === 'string' && v in AI_TOOLS ? v : 'other');
     const nameOf = (tool: string, label: unknown) => {
       const l = str(label, 'Name', { max: 60 }).replace(/[\u0000-\u001f]/g, '');
-      return `${AI_TOOLS[tool]} – ${l || 'Gerät'}`;
+      return `${tApp()(AI_TOOLS[tool])} – ${l || tApp()('Gerät')}`;
     };
     const apps = (f: Filter) => (app.services.mcpOAuth?.list(f) ?? []) as unknown[];
     const revokeApp = (ctx: Ctx, grantId: string, f: Filter) => {
@@ -90,8 +91,9 @@ export const aiToolsModule: Module = {
     // Integrations catalogue: status of keys and OAuth connections per sub-account / agency.
     const count = (sql: string, ...p: string[]) => Number(db.get(sql, ...p)?.n ?? 0);
     const status = (keys: number, apps: number) => {
-      const parts = [keys && `${keys} Schlüssel`, apps && `${apps} ${apps === 1 ? 'App' : 'Apps'}`].filter(Boolean).join(' · ');
-      return parts ? { status: 'ok' as const, detail: parts } : { status: 'info' as const, detail: 'Bereit – Schlüssel anlegen oder App verbinden' };
+      const t = tApp();
+      const parts = [keys && t.plural(keys, { one: '{n} Schlüssel', other: '{n} Schlüssel' }), apps && t.plural(apps, { one: '{n} App', other: '{n} Apps' })].filter(Boolean).join(' · ');
+      return parts ? { status: 'ok' as const, detail: parts } : { status: 'info' as const, detail: t('Bereit – Schlüssel anlegen oder App verbinden') };
     };
     app.services.catalogExtra = [
       ...(app.services.catalogExtra ?? []),
@@ -176,7 +178,7 @@ export const aiToolsModule: Module = {
       const row = { id: id(), name: nameOf(tool, ctx.body?.label), prefix: key.slice(0, 12), key_hash: sha256(key), scope: ctx.body?.scope === 'read' ? 'read' : 'write', created_by: u.id, created_at: now() };
       db.insert('agency_api_keys', row);
       db.insert('ai_tool_keys', { key_id: row.id, kind: 'agency', tool, created_by: u.id, created_at: row.created_at });
-      audit({ ctx, action: 'ai_tools.agency_key.create', summary: `${row.name} (${row.scope === 'read' ? 'nur lesen' : 'lesen & schreiben'})`, entityId: row.id });
+      audit({ ctx, action: 'ai_tools.agency_key.create', summary: `${row.name} (${row.scope === 'read' ? tApp()('nur lesen') : tApp()('lesen & schreiben')})`, entityId: row.id });
       return { id: row.id, name: row.name, prefix: row.prefix, tool, key, scope: row.scope, mcp_url: mcpUrl() };
     });
     router.delete('/api/agency/ai-tools/keys/:id', 'admin', (ctx) => {

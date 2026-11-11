@@ -6,6 +6,7 @@ import type { Ctx, RawResult } from '../core/http.js';
 import { safeEqual } from '../core/util.js';
 import { BRIDGE_JS } from './office-bridge-js.js';
 import { KINDS, OFFICE_KINDS, isKind, type OfficeKind } from './office-model.js';
+import { tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * The browser editors (optional, docs/office.md): unmodified upstream WebAssembly builds unpacked under `PGHL_OFFICE_DIR/<kind>/`
@@ -82,8 +83,12 @@ export function editorCsp(nonce: string): string {
   ].join('; ');
 }
 
-const notInstalledPage = (kind: OfficeKind) =>
-  `<!doctype html><html lang="de"><meta charset="utf-8"><title>Editor nicht installiert</title><body style="font:15px system-ui,sans-serif;margin:2rem;color:#374151"><h1 style="font-size:1.2rem">Editor nicht installiert</h1><p>Der Browser-Editor für ${KINDS[kind].label} ist auf diesem Server nicht eingerichtet (<code>PGHL_OFFICE_DIR</code>). Die Datei lässt sich trotzdem herunterladen, in einer neuen Version hochladen und vom KI-Agenten bearbeiten. Einrichtung: docs/office.md.</p></body></html>`;
+const notInstalledPage = (kind: OfficeKind, t: STFn) => {
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const title = esc(t('Editor nicht installiert'));
+  const text = esc(t('Der Browser-Editor für {kind} ist auf diesem Server nicht eingerichtet ({env}). Die Datei lässt sich trotzdem herunterladen, in einer neuen Version hochladen und vom KI-Agenten bearbeiten. Einrichtung: docs/office.md.', { kind: t(KINDS[kind].label), env: '\u0000' })).replace('\u0000', '<code>PGHL_OFFICE_DIR</code>');
+  return `<!doctype html><html lang="${t.locale}"><meta charset="utf-8"><title>${title}</title><body style="font:15px system-ui,sans-serif;margin:2rem;color:#374151"><h1 style="font-size:1.2rem">${title}</h1><p>${text}</p></body></html>`;
+};
 
 /** The editor's page: upstream index.html with a nonce on every script and the bridge in front of them. */
 export function editorPage(app: App, ctx: Ctx, kindRaw: string, maxBytes: number): RawResult {
@@ -101,12 +106,12 @@ export function editorPage(app: App, ctx: Ctx, kindRaw: string, maxBytes: number
     'referrer-policy': 'no-referrer',
   };
   const dir = editorDir(kind);
-  if (!dir) return { __raw: true, status: 200, headers: { ...headers, 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self'" }, body: notInstalledPage(kind) };
+  if (!dir) return { __raw: true, status: 200, headers: { ...headers, 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self'" }, body: notInstalledPage(kind, tCtx(ctx)) };
   let html: string;
   try {
     html = readFileSync(join(dir, 'index.html'), 'utf8');
   } catch {
-    return plain(500, 'index.html nicht lesbar');
+    return plain(500, tCtx(ctx)('index.html nicht lesbar'));
   }
   const attr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   const bridge = `<script nonce="${nonce}" src="/office/bridge.js" data-kind="${kind}" data-exts="${KINDS[kind].saveExts.join(',')}" data-save="${KINDS[kind].saveShift ? 'shift' : 'plain'}" data-target="${attr(requestOrigin(app, ctx))}" data-max="${Math.floor(maxBytes)}"></script>`;
@@ -127,7 +132,7 @@ export const bridgeScript = (): RawResult => ({
 export function editorAsset(ctx: Ctx, kindRaw: string, name: string): RawResult {
   if (!isKind(kindRaw) || !ASSET_NAME.test(name) || name === 'index.html') return plain(404, 'Nicht gefunden');
   const dir = editorDir(kindRaw);
-  if (!dir) return plain(404, 'Editor nicht installiert');
+  if (!dir) return plain(404, tCtx(ctx)('Editor nicht installiert'));
   const file = resolve(dir, name);
   if (!file.startsWith(dir + sep)) return plain(403, 'Verboten');
   let st;
@@ -164,7 +169,7 @@ export function editorAsset(ctx: Ctx, kindRaw: string, name: string): RawResult 
     'access-control-allow-origin': '*',
     'cross-origin-resource-policy': 'cross-origin',
     'x-content-type-options': 'nosniff',
-    vary: 'Accept-Encoding',
+    vary: 'Accept-Encoding', // i18n-ignore
   };
   if (encoding) headers['content-encoding'] = encoding;
   if (ctx.method === 'HEAD') return { __raw: true, status: 200, headers, body: '' };

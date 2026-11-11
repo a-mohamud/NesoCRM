@@ -8,6 +8,7 @@ import { auditLog, clip, money, netForGross, purchaseTag, setPurchaseAccess, str
 import { MIN_AMOUNT_CENTS, stripeRequest } from '../services/stripe.js';
 import { registerTriggers } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 import { createInvoice, markInvoicePaid } from './payments.js';
 
 /**
@@ -282,7 +283,7 @@ export const creatorPlansModule: Module = {
         // Stripe no longer knows it (already ended): the plan is canceled here all the same.
         if (!/No such subscription|resource_missing/i.test((e as Error).message)) throw e;
       });
-      auditLog(app, ctx, s.location_id, 'payment_plan.cancel', `Ratenplan beendet (${s.plan_name}, ${s.paid_count}/${s.installments} bezahlt)`, s.id);
+      auditLog(app, ctx, s.location_id, 'payment_plan.cancel', tLoc(app, s.location_id)('Ratenplan beendet ({plan}, {paid}/{of} bezahlt)', { plan: s.plan_name, paid: s.paid_count, of: s.installments }), s.id);
       return subOut(db.get<PlanSub>('SELECT * FROM plan_subscriptions WHERE id = ?', s.id)!);
     });
 
@@ -298,9 +299,10 @@ export const creatorPlansModule: Module = {
         const radio = (value: string, title: string, sub: string, checked: boolean) =>
           `<label class="check plan-opt" style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 8px;align-items:center"><input type="radio" name="plan" value="${escapeHtml(value)}"${checked ? ' checked' : ''}> <span><strong>${escapeHtml(title)}</strong>${sub ? `<br><span class="muted" style="font-size:13px;font-weight:400">${escapeHtml(sub)}</span>` : ''}</span></label>`;
         const hit = plans.find((x) => x.id === want);
-        return `<fieldset style="border:0;padding:0;margin:16px 0 0" data-plan-choice><legend style="font-weight:600;font-size:14px;margin:0 0 8px">Zahlungsweise</legend>
-${radio('', lumpLabel(gross, p.currency), '', !hit)}
-${plans.map((x) => radio(x.id, x.name || planLabel(x, p.currency), `${x.name ? `${planLabel(x, p.currency)} · ` : ''}insgesamt ${money(totalCents(x), p.currency)}`, hit?.id === x.id)).join('\n')}
+        const t = tLoc(app, p.location_id);
+        return `<fieldset style="border:0;padding:0;margin:16px 0 0" data-plan-choice><legend style="font-weight:600;font-size:14px;margin:0 0 8px">${escapeHtml(t('Zahlungsart'))}</legend>
+${radio('', lumpLabel(gross, p.currency, t), '', !hit)}
+${plans.map((x) => radio(x.id, x.name || planLabel(x, p.currency, t), `${x.name ? `${planLabel(x, p.currency, t)} · ` : ''}${t('insgesamt {amount}', { amount: money(totalCents(x), p.currency) })}`, hit?.id === x.id)).join('\n')}
 </fieldset>`;
       },
     ];
@@ -317,18 +319,19 @@ ${plans.map((x) => radio(x.id, x.name || planLabel(x, p.currency), `${x.name ? `
         if (meta.coupon_code) throw bad('Rabattcodes gelten nicht bei Ratenzahlung – bitte „einmalig“ wählen oder den Code weglassen');
         const currency = String(p.currency).toLowerCase();
         const tax = taxOf(p);
-        const label = planLabel(plan, p.currency);
+        const tl = tLoc(app, p.location_id);
+        const label = planLabel(plan, p.currency, tl);
         const first = plan.first_amount_cents as number | null;
         const lines: any[] = [
           {
             quantity: 1,
-            price_data: { currency, unit_amount: plan.amount_cents, recurring: recurringOf(plan), product_data: { name: String(p.name).slice(0, 250), description: `Ratenzahlung: ${label}${tax ? ` · inkl. ${String(tax).replace('.', ',')} % USt.` : ''}`.slice(0, 500) } },
+            price_data: { currency, unit_amount: plan.amount_cents, recurring: recurringOf(plan), product_data: { name: String(p.name).slice(0, 250), description: `${tl('Ratenzahlung: {plan}', { plan: label })}${tax ? ` · ${tl('inkl. {rate} % USt.', { rate: tl.locale === 'de' ? String(tax).replace('.', ',') : String(tax) })}` : ''}`.slice(0, 500) } },
           },
         ];
         // More lines other hooks added (order bump): one-time items go on the first invoice of a subscription.
         const extra = params.line_items.slice(1);
         if (first && first > plan.amount_cents) {
-          extra.unshift({ quantity: 1, price_data: { currency, unit_amount: first - plan.amount_cents, product_data: { name: `${String(p.name).slice(0, 200)} – Aufpreis erste Rate`.slice(0, 250) } } });
+          extra.unshift({ quantity: 1, price_data: { currency, unit_amount: first - plan.amount_cents, product_data: { name: `${String(p.name).slice(0, 200)} – ${tl('Aufpreis erste Rate')}`.slice(0, 250) } } });
         }
         params.line_items = [...lines, ...extra];
         params.mode = 'subscription';
@@ -479,7 +482,10 @@ ${plans.map((x) => radio(x.id, x.name || planLabel(x, p.currency), `${x.name ? `
       if (!fresh) return { handled: 'duplicate' };
       if (surplus > 0) {
         const name = s.plan_name || planLabel(s, s.currency);
-        const text = `Ratenzahlung ${name}: Stripe hat ${money(amount, s.currency)} eingezogen, ${beyond ? `obwohl alle ${s.installments} Raten bezahlt sind` : `die Rate beträgt ${money(s.amount_cents, s.currency)}`} – ${money(surplus, s.currency)} nicht als Rate gebucht, bitte erstatten`;
+        const tl = tLoc(app, locationId);
+        const text = beyond
+          ? tl('Ratenzahlung {plan}: Stripe hat {amount} eingezogen, obwohl alle {n} Raten bezahlt sind – {surplus} nicht als Rate gebucht, bitte erstatten', { plan: name, amount: money(amount, s.currency), n: s.installments, surplus: money(surplus, s.currency) })
+          : tl('Ratenzahlung {plan}: Stripe hat {amount} eingezogen, die Rate beträgt {rate} – {surplus} nicht als Rate gebucht, bitte erstatten', { plan: name, amount: money(amount, s.currency), rate: money(s.amount_cents, s.currency), surplus: money(surplus, s.currency) });
         if (s.contact_id) logActivity(app, locationId, s.contact_id, 'payment_plan.overpaid', text);
         auditLog(app, undefined, locationId, 'payment_plan.overpaid', text, s.id);
         if (beyond) {
@@ -504,8 +510,9 @@ ${plans.map((x) => radio(x.id, x.name || planLabel(x, p.currency), `${x.name ? `
       if (!db.run(`UPDATE plan_subscriptions SET status = 'completed', completed_at = ?, access = 'active', updated_at = ? WHERE id = ? AND status NOT IN ('completed', 'canceled')`, now(), now(), s.id).changes) return;
       if (s.access !== 'active' && s.contact_id) setAccess(s, true, 'Plan abgeschlossen');
       enqueue(s, 'end_after_period');
-      if (s.contact_id) logActivity(app, s.location_id, s.contact_id, 'payment_plan.completed', `Ratenzahlung abgeschlossen: ${s.plan_name || planLabel(s, s.currency)} (${money(totalCents(s), s.currency)})`);
-      auditLog(app, undefined, s.location_id, 'payment_plan.completed', `Ratenplan abgeschlossen (${s.paid_count}/${s.installments})`, s.id);
+      const tl = tLoc(app, s.location_id);
+      if (s.contact_id) logActivity(app, s.location_id, s.contact_id, 'payment_plan.completed', tl('Ratenzahlung abgeschlossen: {plan} ({total})', { plan: s.plan_name || planLabel(s, s.currency, tl), total: money(totalCents(s), s.currency) }));
+      auditLog(app, undefined, s.location_id, 'payment_plan.completed', tl('Ratenplan abgeschlossen ({paid}/{of})', { paid: s.paid_count, of: s.installments }), s.id);
       app.events.emit(s.location_id, 'payment_plan.completed', eventData(db.get<PlanSub>('SELECT * FROM plan_subscriptions WHERE id = ?', s.id)!));
       void runJobs(5);
     }
@@ -584,13 +591,14 @@ ${plans.map((x) => radio(x.id, x.name || planLabel(x, p.currency), `${x.name ? `
       for (const p of db.all<any>('SELECT * FROM plan_payments WHERE plan_subscription_id = ? AND needs_invoice = 1 AND invoice_id IS NULL ORDER BY number', s.id)) {
         try {
           const tax = s.tax_rate;
+          const tl = tLoc(app, s.location_id);
           const created = createInvoice(app, s.location_id, {
             kind: 'invoice',
             contact_id: s.contact_id,
-            title: `${db.get<any>('SELECT name FROM products WHERE id = ?', s.product_id)?.name ?? s.plan_name} – Rate ${p.number}/${s.installments}`,
-            items: [{ name: `Rate ${p.number} von ${s.installments}`, description: `Ratenzahlung: ${s.plan_name || planLabel(s, s.currency)}`, qty: 1, price_cents: netForGross(p.amount_cents, tax), tax_rate: tax }],
+            title: `${db.get<any>('SELECT name FROM products WHERE id = ?', s.product_id)?.name ?? s.plan_name} – ${tl('Rate {n}/{of}', { n: p.number, of: s.installments })}`,
+            items: [{ name: tl('Rate {n} von {of}', { n: p.number, of: s.installments }), description: tl('Ratenzahlung: {plan}', { plan: s.plan_name || planLabel(s, s.currency, tl) }), qty: 1, price_cents: netForGross(p.amount_cents, tax), tax_rate: tax }],
             currency: s.currency,
-            notes: 'Ratenzahlung, online bezahlt über Stripe.',
+            notes: tl('Ratenzahlung, online bezahlt über Stripe.'),
           });
           db.run('UPDATE plan_payments SET invoice_id = ?, needs_invoice = 0 WHERE id = ?', created.id, p.id);
           db.run(

@@ -10,6 +10,7 @@ import { addDays, isYmd, q3, today, usersWithArea } from '../services/bo-common.
 import { DEFAULT_WORK_DAYS, STATES, absenceDays, balance as leaveBalance, entitlement, holidayMap, holidays, isState, isoWeekday, sumDays, type Balance } from '../services/hr-leave.js';
 import type { Tool } from './mcp.js';
 import { hiddenUser } from '../core/permissions.js';
+import { tApp, tCtx, tLoc, tUser, type STFn } from '../i18n/index.js';
 
 /**
  * Personal (HR basics): employee records – HyperLevel users and people without a login – with contract data, documents and a
@@ -329,12 +330,14 @@ export const hrModule: Module = {
     const audit = (ctx: Ctx, action: string, entityId: string, summary: string) => app.services.audit?.({ ctx, action, route: `${ctx.method} ${ctx.path.replace(/\/[A-Za-z0-9]{16,}/g, '/:id')}`, entityId, summary });
 
     // --- access info -----------------------------------------------------------------------------------------------
-    router.get('/api/hr/access', 'location', (ctx) => ({ hr: isHr(ctx), sensitive: canSeeSensitive(app, ctx), states: STATES }));
+    /** The federal states (holiday calendars) with their names in the viewer's language. */
+    const statesFor = (t: STFn) => Object.fromEntries(Object.entries(STATES).map(([k, v]) => [k, t(v)]));
+    router.get('/api/hr/access', 'location', (ctx) => ({ hr: isHr(ctx), sensitive: canSeeSensitive(app, ctx), states: statesFor(tCtx(ctx)) }));
 
     // --- settings ---------------------------------------------------------------------------------------------------
     const settingsOut = (ctx: Ctx) => {
       const s = getHrSettings(app, ctx.locationId);
-      return { ...s, sensitive_user_ids: canSeeSensitive(app, ctx) ? s.sensitive_user_ids : [], can_edit_sensitive_users: canSeeSensitive(app, ctx), states: STATES };
+      return { ...s, sensitive_user_ids: canSeeSensitive(app, ctx) ? s.sensitive_user_ids : [], can_edit_sensitive_users: canSeeSensitive(app, ctx), states: statesFor(tCtx(ctx)) };
     };
     router.get('/api/hr/settings', 'location', (ctx) => settingsOut(ctx));
     router.put('/api/hr/settings', 'location', (ctx) => {
@@ -369,7 +372,8 @@ export const hrModule: Module = {
         next.sensitive_user_ids = ids;
       }
       db.run(`INSERT INTO hr_settings (location_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(location_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`, ctx.locationId, JSON.stringify(next), now());
-      if (b.sensitive_user_ids !== undefined) audit(ctx, 'hr.sensitive.access.update', ctx.locationId, `Zugriff auf sensible Daten: ${next.sensitive_user_ids.length} Person(en)`);
+      const tl = tLoc(app, ctx.locationId);
+      if (b.sensitive_user_ids !== undefined) audit(ctx, 'hr.sensitive.access.update', ctx.locationId, tl.plural(next.sensitive_user_ids.length, { one: 'Zugriff auf sensible Daten: {n} Person', other: 'Zugriff auf sensible Daten: {n} Personen' }));
       return settingsOut(ctx);
     });
 
@@ -408,12 +412,12 @@ export const hrModule: Module = {
       for (const [k, max] of [['email', 200], ['phone', 50], ['position', 120], ['department', 120], ['notice_period', 80], ['notes', 3000]] as const) if (b[k] !== undefined) out[k] = str(b[k], k, { max });
       if (out.email && !/^[^\s@]+@[^\s@]+$/.test(out.email)) throw bad('E-Mail-Adresse ungültig');
       if (b.employment_type !== undefined) {
-        if (!(b.employment_type in EMPLOYMENT_TYPES)) throw bad(`Beschäftigungsart: ${Object.keys(EMPLOYMENT_TYPES).join(', ')}`);
+        if (!(b.employment_type in EMPLOYMENT_TYPES)) throw bad(tApp()('Beschäftigungsart: {list}', { list: Object.keys(EMPLOYMENT_TYPES).join(', ') }));
         out.employment_type = b.employment_type;
       }
       for (const k of ['start_date', 'end_date', 'probation_end'] as const)
         if (b[k] !== undefined) {
-          if (b[k] && !isYmd(b[k])) throw bad(`${k === 'start_date' ? 'Eintrittsdatum' : k === 'end_date' ? 'Austrittsdatum' : 'Ende der Probezeit'}: bitte als JJJJ-MM-TT angeben`);
+          if (b[k] && !isYmd(b[k])) throw bad(tApp()('{field}: bitte als JJJJ-MM-TT angeben', { field: tApp()(k === 'start_date' ? 'Eintrittsdatum' : k === 'end_date' ? 'Austrittsdatum' : 'Ende der Probezeit') }));
           out[k] = b[k] || null;
         }
       const start = out.start_date !== undefined ? out.start_date : cur?.start_date;
@@ -543,7 +547,7 @@ export const hrModule: Module = {
       const e = getEmployee(app, ctx.locationId, ctx.params.id);
       if (!canSeeSensitive(app, ctx)) throw new HttpError(403, SENSITIVE_DENIED);
       // Every look at personal data of this kind is logged: who, which person – never the values.
-      audit(ctx, 'hr.sensitive.read', e.id, `Sensible Daten von ${fullName(e)} angesehen`);
+      audit(ctx, 'hr.sensitive.read', e.id, tLoc(app, ctx.locationId)('Sensible Daten von {name} angesehen', { name: fullName(e) }));
       return { employee_id: e.id, ...readSensitive(e) };
     });
     router.put('/api/hr/employees/:id/sensitive', 'location', (ctx) => {
@@ -605,7 +609,7 @@ export const hrModule: Module = {
       const d = db.get<any>('SELECT * FROM hr_documents WHERE id = ? AND location_id = ?', ctx.params.id, ctx.locationId);
       if (!d) throw notFound('Dokument nicht gefunden');
       if (d.visibility === 'sensitive' && !canSeeSensitive(app, ctx)) throw new HttpError(403, SENSITIVE_DENIED);
-      audit(ctx, 'hr.document.read', d.employee_id, `${d.name} (${d.category}) geöffnet`);
+      audit(ctx, 'hr.document.read', d.employee_id, tLoc(app, ctx.locationId)('{name} ({category}) geöffnet', { name: d.name, category: d.category }));
       return fileOf(d);
     });
     router.delete('/api/hr/documents/:id', 'location', (ctx) => {
@@ -627,7 +631,7 @@ export const hrModule: Module = {
       const e = selfEmployee(app, ctx);
       const d = e && db.get<any>(`SELECT * FROM hr_documents WHERE id = ? AND employee_id = ? AND location_id = ? AND visibility = 'employee'`, ctx.params.id, e.id, ctx.locationId);
       if (!d) throw notFound('Dokument nicht gefunden');
-      audit(ctx, 'hr.document.read', d.employee_id, `${d.name} geöffnet (eigene Unterlagen)`);
+      audit(ctx, 'hr.document.read', d.employee_id, tLoc(app, ctx.locationId)('{name} geöffnet (eigene Unterlagen)', { name: d.name }));
       return fileOf(d);
     });
     router.get('/api/me/hr/holidays', 'location', (ctx) => {
@@ -715,16 +719,17 @@ export const hrModule: Module = {
     /** Checks an absence against the employment, the calendar, other absences and (vacation) the balance, and counts its days. */
     function planAbsence(e: EmployeeRow, b: any, o: { hr: boolean; force?: boolean; excludeId?: string }): Plan {
       const settings = getHrSettings(app, e.location_id);
+      const t = tApp();
       const type = String(b.type ?? '');
-      if (!(type in ABSENCE_TYPES)) throw bad(`Art der Abwesenheit: ${Object.keys(ABSENCE_TYPES).join(', ')}`);
+      if (!(type in ABSENCE_TYPES)) throw bad(t('Art der Abwesenheit: {list}', { list: Object.keys(ABSENCE_TYPES).join(', ') }));
       const start = b.start_date;
       const end = b.end_date || b.start_date;
       if (!isYmd(start) || !isYmd(end)) throw bad('Zeitraum bitte als JJJJ-MM-TT angeben');
       if (end < start) throw bad('Das Ende liegt vor dem Beginn');
       if (addDays(start, 366) < end) throw bad('Ein Antrag kann höchstens ein Jahr umfassen');
       if (e.status !== 'active') throw bad('Der Mitarbeiter ist nicht aktiv');
-      if (e.start_date && start < e.start_date) throw bad(`Der Zeitraum beginnt vor dem Eintritt (${e.start_date})`);
-      if (e.end_date && end > e.end_date) throw bad(`Der Zeitraum endet nach dem Austritt (${e.end_date})`);
+      if (e.start_date && start < e.start_date) throw bad(t('Der Zeitraum beginnt vor dem Eintritt ({date})', { date: e.start_date }));
+      if (e.end_date && end > e.end_date) throw bad(t('Der Zeitraum endet nach dem Austritt ({date})', { date: e.end_date }));
       if (!o.hr && type === 'vacation' && start < today(app, e.location_id)) throw bad('Urlaub in der Vergangenheit kann nur das Personalbüro eintragen');
       const half_start = b.half_start ? 1 : 0;
       const half_end = b.half_end ? 1 : 0;
@@ -737,14 +742,14 @@ export const hrModule: Module = {
       const used = new Map<string, number>();
       for (const other of db.all<AbsenceRow>(`SELECT * FROM hr_absences WHERE employee_id = ? AND status IN ('requested', 'approved') AND id != ? AND end_date >= ? AND start_date <= ?`, e.id, o.excludeId ?? '', start, end))
         for (const d of absenceDays(other, profile)) used.set(d.date, (used.get(d.date) ?? 0) + d.value);
-      for (const d of list) if ((used.get(d.date) ?? 0) + d.value > 1) throw bad(`Am ${d.date.split('-').reverse().join('.')} gibt es schon eine Abwesenheit`);
+      for (const d of list) if ((used.get(d.date) ?? 0) + d.value > 1) throw bad(t('Am {date} gibt es schon eine Abwesenheit', { date: d.date.split('-').reverse().join('.') }));
 
       if (type === 'vacation' && !(o.hr && o.force)) {
         const perYear = new Map<number, number>();
         for (const d of list) perYear.set(Number(d.date.slice(0, 4)), (perYear.get(Number(d.date.slice(0, 4))) ?? 0) + d.value);
         for (const [year, n] of perYear) {
           const bal = balanceOf(e, year, { excludeId: o.excludeId });
-          if (n > bal.available + 1e-9) throw bad(`Nicht genug Urlaub ${year}: ${q3(bal.available)} Tage frei, ${q3(n)} beantragt`);
+          if (n > bal.available + 1e-9) throw bad(t('Nicht genug Urlaub {year}: {free} Tage frei, {asked} beantragt', { year, free: q3(bal.available), asked: q3(n) }));
         }
       }
       const certificate = type === 'sick' && b.certificate ? 1 : 0;
@@ -765,19 +770,30 @@ export const hrModule: Module = {
     const absenceEvent = (name: 'absence.requested' | 'absence.approved' | 'absence.rejected', e: EmployeeRow, a: AbsenceRow) =>
       app.events.emit(e.location_id, name, { contactId: contactOfEmployee(app, e), absenceId: a.id, employeeId: e.id, name: fullName(e), type: a.type, label: a.label, start_date: a.start_date, end_date: a.end_date, days: a.days, status: a.status });
 
-    const push = (userIds: string[], title: string, body: string, tag: string) => {
+    /** A push to team members, each group in its own language (`text` builds title and body with a translator). */
+    const push = (userIds: string[], text: (t: STFn) => { title: string; body: string }, tag: string) => {
       if (!userIds.length) return;
-      try {
-        void Promise.resolve(app.services.pushNotify?.({ userIds, kind: 'absence', title, body, url: '/app/personal', tag })).catch(() => undefined);
-      } catch (err) {
-        console.error('[hr] notify', (err as Error).message);
+      const byLang = new Map<string, { t: STFn; ids: string[] }>();
+      for (const uid of userIds) {
+        const t = tUser(app as never, uid);
+        const g = byLang.get(t.locale) ?? { t, ids: [] };
+        g.ids.push(uid);
+        byLang.set(t.locale, g);
+      }
+      for (const { t, ids } of byLang.values()) {
+        try {
+          const { title, body } = text(t);
+          void Promise.resolve(app.services.pushNotify?.({ userIds: ids, kind: 'absence', title, body, url: '/app/personal', tag })).catch(() => undefined);
+        } catch (err) {
+          console.error('[hr] notify', (err as Error).message);
+        }
       }
     };
     const notifyApprovers = (e: EmployeeRow, a: AbsenceRow, actorId: string | null) => {
       const ids = new Set(usersWithArea(app, e.location_id, 'personal', { explicit: true }));
       if (e.manager_user_id) ids.add(e.manager_user_id);
       for (const skip of [actorId, e.user_id]) if (skip) ids.delete(skip);
-      push([...ids], `${ABSENCE_TYPES[a.type]} beantragt: ${fullName(e)}`, `${range(a)} (${a.days} ${a.days === 1 ? 'Tag' : 'Tage'})`, `absence-${a.id}`);
+      push([...ids], (t) => ({ title: t('{type} beantragt: {name}', { type: t(ABSENCE_TYPES[a.type]), name: fullName(e) }), body: `${range(a)} (${t.plural(a.days, { one: '{n} Tag', other: '{n} Tage' })})` }), `absence-${a.id}`);
     };
 
     /** Files an absence for `e`; sick notes are approved at once when the setting says so, HR may enter one already approved. */
@@ -786,13 +802,13 @@ export const hrModule: Module = {
       const settings = getHrSettings(app, e.location_id);
       const actor = userId(ctx);
       const approvedNow = (plan.type === 'sick' && settings.sick_auto_approve) || (o.hr && b.approved === true && canDecide(ctx, e));
-      const row: AbsenceRow = { id: id(), location_id: e.location_id, employee_id: e.id, ...plan, status: approvedNow ? 'approved' : 'requested', requested_by: actor, decided_by: approvedNow && !(plan.type === 'sick' && settings.sick_auto_approve) ? actor : null, decided_at: approvedNow ? now() : null, decision_note: approvedNow && plan.type === 'sick' && settings.sick_auto_approve ? 'automatisch bestätigt' : '', created_at: now(), updated_at: now() };
+      const row: AbsenceRow = { id: id(), location_id: e.location_id, employee_id: e.id, ...plan, status: approvedNow ? 'approved' : 'requested', requested_by: actor, decided_by: approvedNow && !(plan.type === 'sick' && settings.sick_auto_approve) ? actor : null, decided_at: approvedNow ? now() : null, decision_note: approvedNow && plan.type === 'sick' && settings.sick_auto_approve ? tLoc(app, e.location_id)('automatisch bestätigt') : '', created_at: now(), updated_at: now() };
       db.insert('hr_absences', row);
       absenceEvent('absence.requested', e, row);
       if (row.status === 'approved') absenceEvent('absence.approved', e, row);
       // A request by the employee is announced to the approvers; HR entering something for someone else is not news to HR.
       if (row.status === 'requested') notifyApprovers(e, row, actor);
-      else if (e.user_id && e.user_id !== actor) push([e.user_id], `${ABSENCE_TYPES[row.type]} eingetragen`, range(row), `absence-${row.id}`);
+      else if (e.user_id && e.user_id !== actor) push([e.user_id], (t) => ({ title: t('{type} eingetragen', { type: t(ABSENCE_TYPES[row.type]) }), body: range(row) }), `absence-${row.id}`);
       return row;
     }
 
@@ -805,7 +821,7 @@ export const hrModule: Module = {
       db.update('hr_absences', a.id, patch, ctx.locationId);
       const fresh = getAbsence(ctx.locationId, a.id);
       absenceEvent(decision === 'approved' ? 'absence.approved' : 'absence.rejected', e, fresh);
-      if (e.user_id && e.user_id !== ctx.user?.id) push([e.user_id], `${ABSENCE_TYPES[a.type]} ${decision === 'approved' ? 'genehmigt' : 'abgelehnt'}`, `${range(a)}${patch.decision_note ? ` – ${patch.decision_note}` : ''}`, `absence-${a.id}`);
+      if (e.user_id && e.user_id !== ctx.user?.id) push([e.user_id], (t) => ({ title: t(decision === 'approved' ? '{type} genehmigt' : '{type} abgelehnt', { type: t(ABSENCE_TYPES[a.type]) }), body: `${range(a)}${patch.decision_note ? ` – ${patch.decision_note}` : ''}` }), `absence-${a.id}`);
       return fresh;
     }
 
@@ -895,7 +911,8 @@ export const hrModule: Module = {
     router.get('/api/hr/holidays', 'location', (ctx) => {
       const state = ctx.query.get('state') || getHrSettings(app, ctx.locationId).default_state;
       if (!isState(state)) throw bad('Bundesland ungültig');
-      return { state, year: yearOf(ctx), holidays: holidays(yearOf(ctx), state) };
+      const t = tCtx(ctx);
+      return { state, year: yearOf(ctx), holidays: holidays(yearOf(ctx), state).map((h) => ({ ...h, name: t(h.name) })) };
     });
 
     const rangeOf = (ctx: Ctx) => {
@@ -907,7 +924,7 @@ export const hrModule: Module = {
     };
 
     /** Team calendar. HR sees every type and status; everybody else sees approved absences as "Urlaub" or just "abwesend" – never sick leave as such. */
-    const calendarFor = (loc: string, from: string, to: string, hr: boolean, selfId?: string) => {
+    const calendarFor = (loc: string, from: string, to: string, hr: boolean, selfId?: string, t: STFn = tLoc(app, loc)) => {
       const settings = getHrSettings(app, loc);
       const emps = new Map(db.all<EmployeeRow>(`SELECT * FROM hr_employees WHERE location_id = ? AND status = 'active'`, loc).map((e) => [e.id, e]));
       const items = db
@@ -919,11 +936,11 @@ export const hrModule: Module = {
           return { id: a.id, employee_id: a.employee_id, name: fullName(e), type: seeType ? a.type : a.type === 'vacation' ? 'vacation' : 'away', label: seeType ? a.label : '', status: a.status, start_date: a.start_date, end_date: a.end_date, half_start: !!a.half_start, half_end: !!a.half_end, days: seeType ? a.days : undefined };
         });
       const states = [...new Set([settings.default_state, ...[...emps.values()].map((e) => e.state).filter(Boolean)])];
-      return { from, to, state: settings.default_state, holidays: [...holidayMap(from, to, settings.default_state)].map(([date, name]) => ({ date, name })), other_states: states.filter((s) => s !== settings.default_state), items };
+      return { from, to, state: settings.default_state, holidays: [...holidayMap(from, to, settings.default_state)].map(([date, name]) => ({ date, name: t(name) })), other_states: states.filter((s) => s !== settings.default_state), items };
     };
     router.get('/api/hr/calendar', 'location', (ctx) => {
       const { from, to } = rangeOf(ctx);
-      return calendarFor(ctx.locationId, from, to, true);
+      return calendarFor(ctx.locationId, from, to, true, undefined, tCtx(ctx));
     });
 
     router.get('/api/hr/status', 'location', (ctx) => {
@@ -951,7 +968,7 @@ export const hrModule: Module = {
         for (const d of absenceDays(a, profile)) if (d.date >= from && d.date <= to) out.push({ date: d.date, type: a.type, value: d.value });
       // A public holiday only matters on a day the person would work.
       const works = new Set(profile.work_days);
-      for (const [date, name] of holidayMap(from, to, profile.state)) if (works.has(isoWeekday(date))) out.push({ date, type: 'holiday', value: 1, name });
+      for (const [date, name] of holidayMap(from, to, profile.state)) if (works.has(isoWeekday(date))) out.push({ date, type: 'holiday', value: 1, name: tLoc(app, e.location_id)(name) });
       return out.sort((x, y) => x.date.localeCompare(y.date));
     };
     /** Contract hours for a period: weekly hours spread over the work days, without public holidays, approved absences and days outside the employment. */
@@ -1052,7 +1069,9 @@ export const hrModule: Module = {
       const s = getHrSettings(app, loc);
       if (s.templates_seeded) return;
       db.tx(() => {
-        for (const t of SEED) db.insert('hr_checklist_templates', { id: id(), location_id: loc, kind: t.kind, name: t.name, items: JSON.stringify(t.items), created_at: now(), updated_at: now() });
+        // default templates in the sub-account's language (stored as text: the team edits them afterwards)
+        const tl = tLoc(app, loc);
+        for (const t of SEED) db.insert('hr_checklist_templates', { id: id(), location_id: loc, kind: t.kind, name: tl(t.name), items: JSON.stringify(t.items.map((it) => ({ ...it, title: tl(it.title) }))), created_at: now(), updated_at: now() });
         db.run(`INSERT INTO hr_settings (location_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(location_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`, loc, JSON.stringify({ ...s, templates_seeded: true }), now());
       });
     };
@@ -1071,7 +1090,7 @@ export const hrModule: Module = {
 
     router.get('/api/hr/checklist-templates', 'location', (ctx) => {
       seedTemplates(ctx.locationId);
-      return { assignees: ASSIGNEES, templates: db.all<any>('SELECT * FROM hr_checklist_templates WHERE location_id = ? ORDER BY kind, name', ctx.locationId).map(templateOut) };
+      return { assignees: Object.fromEntries(Object.entries(ASSIGNEES).map(([k, v]) => [k, tCtx(ctx)(v)])), templates: db.all<any>('SELECT * FROM hr_checklist_templates WHERE location_id = ? ORDER BY kind, name', ctx.locationId).map(templateOut) };
     });
     router.post('/api/hr/checklist-templates', 'location', (ctx) => {
       const b = ctx.body ?? {};
@@ -1159,7 +1178,8 @@ export const hrModule: Module = {
           /* already gone */
         }
       }
-      audit(ctx, 'hr.employee.delete', e.id, `${fullName(e)} gelöscht (${docs.length} Dokument(e))`);
+      const tl = tLoc(app, ctx.locationId);
+      audit(ctx, 'hr.employee.delete', e.id, tl.plural(docs.length, { one: '{name} gelöscht ({n} Dokument)', other: '{name} gelöscht ({n} Dokumente)' }, { name: fullName(e) }));
       return { ok: true };
     });
 
@@ -1185,7 +1205,7 @@ export const hrModule: Module = {
         employee: e ? selfOut(e) : null,
         balance: e ? balanceOf(e, year) : null,
         default_state: settings.default_state,
-        states: STATES,
+        states: statesFor(tCtx(ctx)),
       };
     });
     router.get('/api/me/hr/balance', 'location', (ctx) => {
@@ -1239,7 +1259,7 @@ export const hrModule: Module = {
       const { from, to } = rangeOf(ctx);
       // The team calendar shows colleagues' names – only for people who are employees (or manage some) themselves.
       if (!e && !manager && !isHr(ctx)) return { from, to, state: '', holidays: [], other_states: [], items: [] };
-      return calendarFor(ctx.locationId, from, to, isHr(ctx), e?.id);
+      return calendarFor(ctx.locationId, from, to, isHr(ctx), e?.id, tCtx(ctx));
     });
     router.get('/api/me/hr/checklists', 'location', (ctx) => {
       const e = selfEmployee(app, ctx);

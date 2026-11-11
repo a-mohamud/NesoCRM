@@ -3,6 +3,7 @@ import { bad } from '../core/http.js';
 import { id as newId, safeEqual, slugify } from '../core/util.js';
 import { DEFAULT_SCHEDULE, ScheduleError, cleanSchedule, type Schedule } from './webinar-schedule.js';
 import { NO_VIDEO, VideoError, cleanVideo, type VideoSource } from './webinar-video.js';
+import { interpolate, tApp, type STFn } from '../i18n/index.js';
 
 /**
  * The webinar object: what is stored, its defaults and the validation of everything the editor, the API and the MCP tools
@@ -104,6 +105,7 @@ export const DEFAULT_REPLAY_LABEL = 'Aufzeichnung';
 export const SCRIPTED_LABEL = 'Automatische Nachricht';
 
 export const DEFAULT_CONFIRMATION_SUBJECT = 'Du bist angemeldet: {{webinar.title}}';
+// i18n-ignore – multi-line message id, translated with t(DEFAULT_CONFIRMATION_BODY)
 export const DEFAULT_CONFIRMATION_BODY = `Hallo {{contact.first_name|du}},
 
 du bist für das Webinar „{{webinar.title}}“ angemeldet.
@@ -123,52 +125,53 @@ Das ist ein automatisiertes Webinar: Das Video wird zum Termin abgespielt. Frage
 
 {{location.name}}`;
 
-const REMINDER_BODY = (when: string) => `Hallo {{contact.first_name|du}},
+/** The reminder mail; {when} is one of the REMINDER_WHEN words. */
+// i18n-ignore – the body of the four default reminders (each one is translated as a whole)
+const REMINDER_TEXT = 'Hallo {{contact.first_name|du}},\n\n{when} startet das Webinar „{{webinar.title}}“ ({{session.start_text}}).\n\nHier geht es zum Webinar-Raum:\n{{join_url}}\n\n{{location.name}}';
+const REMINDER_WHEN: Record<string, string> = { '24h': 'Morgen', '1h': 'In einer Stunde', '15m': 'In 15 Minuten', start: 'Jetzt' };
 
-${when} startet das Webinar „{{webinar.title}}“ ({{session.start_text}}).
-
-Hier geht es zum Webinar-Raum:
-{{join_url}}
-
-{{location.name}}`;
-
+/** The German defaults (message ids); defaultReminders(t) gives them in a sub-account's language. */
 export const DEFAULT_REMINDERS: ReminderDef[] = [
-  { key: '24h', offset_min: 1440, email: true, sms: false, subject: 'Morgen: {{webinar.title}}', body: REMINDER_BODY('Morgen'), sms_text: '{{webinar.title}} startet morgen, {{session.start_text}}. Raum: {{join_url}}' },
-  { key: '1h', offset_min: 60, email: true, sms: false, subject: 'In einer Stunde: {{webinar.title}}', body: REMINDER_BODY('In einer Stunde'), sms_text: '{{webinar.title}} startet in einer Stunde. Raum: {{join_url}}' },
-  { key: '15m', offset_min: 15, email: true, sms: false, subject: 'In 15 Minuten: {{webinar.title}}', body: REMINDER_BODY('In 15 Minuten'), sms_text: '{{webinar.title}} startet in 15 Minuten. Raum: {{join_url}}' },
-  { key: 'start', offset_min: 0, email: true, sms: false, subject: 'Es geht los: {{webinar.title}}', body: REMINDER_BODY('Jetzt'), sms_text: '{{webinar.title}} startet jetzt. Raum: {{join_url}}' },
-];
+  { key: '24h', offset_min: 1440, email: true, sms: false, subject: 'Morgen: {{webinar.title}}', body: '', sms_text: '{{webinar.title}} startet morgen, {{session.start_text}}. Raum: {{join_url}}' },
+  { key: '1h', offset_min: 60, email: true, sms: false, subject: 'In einer Stunde: {{webinar.title}}', body: '', sms_text: '{{webinar.title}} startet in einer Stunde. Raum: {{join_url}}' },
+  { key: '15m', offset_min: 15, email: true, sms: false, subject: 'In 15 Minuten: {{webinar.title}}', body: '', sms_text: '{{webinar.title}} startet in 15 Minuten. Raum: {{join_url}}' },
+  { key: 'start', offset_min: 0, email: true, sms: false, subject: 'Es geht los: {{webinar.title}}', body: '', sms_text: '{{webinar.title}} startet jetzt. Raum: {{join_url}}' },
+].map((r) => ({ ...r, body: interpolate(REMINDER_TEXT, { when: REMINDER_WHEN[r.key] }) }));
+
+export const defaultReminders = (t: STFn = tApp()): ReminderDef[] =>
+  DEFAULT_REMINDERS.map((r) => ({ ...r, subject: t(r.subject), body: t(r.body), sms_text: t(r.sms_text) }));
 
 export const DEFAULT_OFFER: OfferDef = { enabled: false, at_s: 0, title: '', text: '', button_text: 'Zum Angebot', target: { type: 'url', url: '' }, countdown_s: 0, show_in_replay: true };
 
-export function defaultSettings(): WebinarSettings {
+/** A new webinar's settings, with every text in the sub-account's language (pass tLoc(app, locationId)). */
+export function defaultSettings(t: STFn = tApp()): WebinarSettings {
   return {
     registration: {
       headline: '',
-      button_text: 'Kostenlos anmelden',
-      consent_text: 'Ich bin einverstanden, dass meine Angaben zur Anmeldung zum Webinar verarbeitet werden und ich Erinnerungen per E-Mail erhalte. Diese Einwilligung kann ich jederzeit widerrufen.',
+      button_text: t('Kostenlos anmelden'),
+      consent_text: t('Ich bin einverstanden, dass meine Angaben zur Anmeldung zum Webinar verarbeitet werden und ich Erinnerungen per E-Mail erhalte. Diese Einwilligung kann ich jederzeit widerrufen.'),
       ask_phone: false,
       phone_required: false,
-      sms_consent_text: 'Ich möchte zusätzlich per SMS an den Termin erinnert werden.',
-      thanks_text: 'Danke, du bist angemeldet! Die Bestätigung mit dem Link zum Webinar-Raum ist unterwegs.',
+      sms_consent_text: t('Ich möchte zusätzlich per SMS an den Termin erinnert werden.'),
+      thanks_text: t('Danke, du bist angemeldet! Die Bestätigung mit dem Link zum Webinar-Raum ist unterwegs.'),
       redirect_url: '',
       tags: ['webinar-angemeldet'],
       form_ids: [],
       notify_team: false,
     },
     room: {
-      label: DEFAULT_LABEL,
-      replay_label: DEFAULT_REPLAY_LABEL,
-      waiting_text: 'Das Webinar startet gleich. Es ist ein automatisiertes Webinar: Das Video wird zum Termin für alle Angemeldeten abgespielt.',
-      ended_text: 'Das Webinar ist beendet. Danke fürs Zuschauen!',
+      label: t(DEFAULT_LABEL),
+      replay_label: t(DEFAULT_REPLAY_LABEL),
+      waiting_text: t('Das Webinar startet gleich. Es ist ein automatisiertes Webinar: Das Video wird zum Termin für alle Angemeldeten abgespielt.'),
+      ended_text: t('Das Webinar ist beendet. Danke fürs Zuschauen!'),
       show_counter: false,
       questions: true,
       scripted_enabled: false,
       scripted: [],
       polls: [],
     },
-    offer: JSON.parse(JSON.stringify(DEFAULT_OFFER)),
-    reminders: { items: JSON.parse(JSON.stringify(DEFAULT_REMINDERS)), confirmation_subject: DEFAULT_CONFIRMATION_SUBJECT, confirmation_body: DEFAULT_CONFIRMATION_BODY },
+    offer: { ...JSON.parse(JSON.stringify(DEFAULT_OFFER)), button_text: t(DEFAULT_OFFER.button_text) },
+    reminders: { items: defaultReminders(t), confirmation_subject: t(DEFAULT_CONFIRMATION_SUBJECT), confirmation_body: t(DEFAULT_CONFIRMATION_BODY) },
     replay: { enabled: true, hours: 48 },
     tags: { attended: ['webinar-teilgenommen'], missed: ['webinar-verpasst'], cta: ['webinar-angebot-geklickt'], purchased: ['webinar-gekauft'], replay: ['webinar-replay'] },
   };
@@ -182,13 +185,13 @@ const flag = (v: unknown, fallback: boolean) => (v === undefined || v === null ?
 function text(v: unknown, what: string, max: number, fallback = ''): string {
   if (v === undefined || v === null) return fallback;
   const s = String(v).replace(/\r\n/g, '\n').trim();
-  if (s.length > max) throw bad(`${what} ist zu lang (höchstens ${max} Zeichen)`);
+  if (s.length > max) throw bad(tApp()('{what} ist zu lang (höchstens {max} Zeichen)', { what: tApp()(what), max }));
   return s;
 }
 function whole(v: unknown, what: string, min: number, max: number, fallback: number): number {
   if (v === undefined || v === null || v === '') return fallback;
   const n = Number(v);
-  if (!Number.isFinite(n) || n < min || n > max) throw bad(`${what}: Zahl von ${min} bis ${max} erwartet`);
+  if (!Number.isFinite(n) || n < min || n > max) throw bad(tApp()('{what}: Zahl von {min} bis {max} erwartet', { what: tApp()(what), min, max }));
   return Math.round(n);
 }
 
@@ -201,46 +204,46 @@ export const LIVE_CLAIM = /(?:^|[^a-zäöüß])(?:live(?:[\s-]?stream)?|life[\s-
 export function honestText(v: unknown, what: string, max: number, fallback: string): string {
   const s = text(v, what, max, fallback);
   if (!s) return fallback;
-  if (LIVE_CLAIM.test(s)) throw bad(`${what}: Ein automatisiertes Webinar darf nicht als „live“ bezeichnet werden (irreführende Werbung, § 5 UWG). Nimm z. B. „Automatisiertes Webinar“ oder „Webinar“.`);
+  if (LIVE_CLAIM.test(s)) throw bad(tApp()('{what}: Ein automatisiertes Webinar darf nicht als „live“ bezeichnet werden (irreführende Werbung, § 5 UWG). Nimm z. B. „Automatisiertes Webinar“ oder „Webinar“.', { what: tApp()(what) }));
   return s;
 }
 
 const tags = (v: unknown, what: string): string[] => {
-  if (!Array.isArray(v)) throw bad(`${what}: Liste erwartet`);
+  if (!Array.isArray(v)) throw bad(tApp()('{what}: Liste erwartet', { what: tApp()(what) }));
   return [...new Set(v.map((t) => String(t).trim().slice(0, 60)).filter(Boolean))].slice(0, 20);
 };
 const ids = (v: unknown, what: string): string[] => {
-  if (!Array.isArray(v)) throw bad(`${what}: Liste erwartet`);
+  if (!Array.isArray(v)) throw bad(tApp()('{what}: Liste erwartet', { what: tApp()(what) }));
   return [...new Set(v.map((t) => String(t).trim()).filter((t) => /^[A-Za-z0-9_-]{6,40}$/.test(t)))].slice(0, 20);
 };
 
 export function cleanUrl(v: unknown, what: string, opts: { required?: boolean } = {}): string {
   const s = String(v ?? '').trim();
   if (!s) {
-    if (opts.required) throw bad(`${what} fehlt`);
+    if (opts.required) throw bad(tApp()('{field} fehlt', { field: tApp()(what) }));
     return '';
   }
-  if (s.length > 2000) throw bad(`${what} ist zu lang`);
+  if (s.length > 2000) throw bad(tApp()('{field} ist zu lang', { field: tApp()(what) }));
   let u: URL;
   try {
     u = new URL(s);
   } catch {
-    throw bad(`${what}: bitte eine vollständige Adresse mit https:// angeben`);
+    throw bad(tApp()('{what}: bitte eine vollständige Adresse mit https:// angeben', { what: tApp()(what) }));
   }
-  if (u.protocol !== 'https:') throw bad(`${what}: nur Adressen mit https:// sind erlaubt`);
-  if (u.username || u.password) throw bad(`${what}: Zugangsdaten gehören nicht in die Adresse`);
+  if (u.protocol !== 'https:') throw bad(tApp()('{what}: nur Adressen mit https:// sind erlaubt', { what: tApp()(what) }));
+  if (u.username || u.password) throw bad(tApp()('{what}: Zugangsdaten gehören nicht in die Adresse', { what: tApp()(what) }));
   return u.href;
 }
 
 function cleanPolls(v: unknown, durationS: number): PollDef[] {
   if (!Array.isArray(v)) throw bad('Umfragen: Liste erwartet');
   return v.slice(0, 10).map((p, n) => {
-    if (!isObj(p)) throw bad(`Umfrage ${n + 1}: Objekt erwartet`);
+    if (!isObj(p)) throw bad(tApp()('Umfrage {n}: Objekt erwartet', { n: n + 1 }));
     const options = (Array.isArray(p.options) ? p.options : []).map((o: unknown) => String(o ?? '').trim().slice(0, 120)).filter(Boolean).slice(0, 8);
-    const question = text(p.question, `Umfrage ${n + 1}: Frage`, 200);
-    if (!question) throw bad(`Umfrage ${n + 1}: Frage fehlt`);
-    if (options.length < 2) throw bad(`Umfrage ${n + 1}: mindestens zwei Antworten nötig`);
-    return { id: /^[A-Za-z0-9]{6,16}$/.test(String(p.id ?? '')) ? String(p.id) : newId(8), at_s: whole(p.at_s, `Umfrage ${n + 1}: Zeitpunkt`, 0, durationS > 0 ? durationS : 86_400, 0), question, options, multiple: flag(p.multiple, false), show_results: flag(p.show_results, true) };
+    const question = text(p.question, tApp()('Umfrage {n}: Frage', { n: n + 1 }), 200);
+    if (!question) throw bad(tApp()('Umfrage {n}: Frage fehlt', { n: n + 1 }));
+    if (options.length < 2) throw bad(tApp()('Umfrage {n}: mindestens zwei Antworten nötig', { n: n + 1 }));
+    return { id: /^[A-Za-z0-9]{6,16}$/.test(String(p.id ?? '')) ? String(p.id) : newId(8), at_s: whole(p.at_s, tApp()('Umfrage {n}: Zeitpunkt', { n: n + 1 }), 0, durationS > 0 ? durationS : 86_400, 0), question, options, multiple: flag(p.multiple, false), show_results: flag(p.show_results, true) };
   });
 }
 
@@ -249,10 +252,10 @@ function cleanScripted(v: unknown, durationS: number): ScriptedMessage[] {
   return v
     .slice(0, 60)
     .map((m, n) => {
-      if (!isObj(m)) throw bad(`Nachricht ${n + 1}: Objekt erwartet`);
-      const body = text(m.text, `Nachricht ${n + 1}`, 300);
-      if (!body) throw bad(`Nachricht ${n + 1}: Text fehlt`);
-      return { id: /^[A-Za-z0-9]{6,16}$/.test(String(m.id ?? '')) ? String(m.id) : newId(8), at_s: whole(m.at_s, `Nachricht ${n + 1}: Zeitpunkt`, 0, durationS > 0 ? durationS : 86_400, 0), name: text(m.name, `Nachricht ${n + 1}: Name`, 40, 'Team') || 'Team', text: body };
+      if (!isObj(m)) throw bad(tApp()('Nachricht {n}: Objekt erwartet', { n: n + 1 }));
+      const body = text(m.text, tApp()('Nachricht {n}', { n: n + 1 }), 300);
+      if (!body) throw bad(tApp()('Nachricht {n}: Text fehlt', { n: n + 1 }));
+      return { id: /^[A-Za-z0-9]{6,16}$/.test(String(m.id ?? '')) ? String(m.id) : newId(8), at_s: whole(m.at_s, tApp()('Nachricht {n}: Zeitpunkt', { n: n + 1 }), 0, durationS > 0 ? durationS : 86_400, 0), name: text(m.name, tApp()('Nachricht {n}: Name', { n: n + 1 }), 40, 'Team') || 'Team', text: body };
     })
     .sort((a, b) => a.at_s - b.at_s);
 }
@@ -261,20 +264,20 @@ function cleanReminders(v: unknown, base: ReminderDef[]): ReminderDef[] {
   if (!Array.isArray(v)) throw bad('Erinnerungen: Liste erwartet');
   const seen = new Set<string>();
   return v.slice(0, 8).map((r, n) => {
-    if (!isObj(r)) throw bad(`Erinnerung ${n + 1}: Objekt erwartet`);
-    const offset = whole(r.offset_min, `Erinnerung ${n + 1}: Minuten vor dem Start`, 0, 14 * 1440, 60);
+    if (!isObj(r)) throw bad(tApp()('Erinnerung {n}: Objekt erwartet', { n: n + 1 }));
+    const offset = whole(r.offset_min, tApp()('Erinnerung {n}: Minuten vor dem Start', { n: n + 1 }), 0, 14 * 1440, 60);
     let key = String(r.key ?? '').replace(/[^\w-]/g, '').slice(0, 20) || `r${offset}`;
     while (seen.has(key)) key = `${key}x`;
     seen.add(key);
-    const prev = base.find((b) => b.key === key) ?? DEFAULT_REMINDERS.find((b) => b.key === key) ?? DEFAULT_REMINDERS[1];
+    const prev = base.find((b) => b.key === key) ?? defaultReminders().find((b) => b.key === key) ?? defaultReminders()[1];
     return {
       key,
       offset_min: offset,
       email: flag(r.email, true),
       sms: flag(r.sms, false),
-      subject: text(r.subject, `Erinnerung ${n + 1}: Betreff`, 200, prev.subject) || prev.subject,
-      body: text(r.body, `Erinnerung ${n + 1}: Text`, 5000, prev.body) || prev.body,
-      sms_text: text(r.sms_text, `Erinnerung ${n + 1}: SMS-Text`, 320, prev.sms_text) || prev.sms_text,
+      subject: text(r.subject, tApp()('Erinnerung {n}: Betreff', { n: n + 1 }), 200, prev.subject) || prev.subject,
+      body: text(r.body, tApp()('Erinnerung {n}: Text', { n: n + 1 }), 5000, prev.body) || prev.body,
+      sms_text: text(r.sms_text, tApp()('Erinnerung {n}: SMS-Text', { n: n + 1 }), 320, prev.sms_text) || prev.sms_text,
     };
   });
 }
@@ -287,7 +290,7 @@ function cleanOffer(v: unknown, base: OfferDef, durationS: number): OfferDef {
   if (v.at_s !== undefined) out.at_s = whole(v.at_s, 'Angebot: Zeitpunkt', 0, durationS > 0 ? durationS : 86_400, out.at_s);
   if (v.title !== undefined) out.title = text(v.title, 'Angebot: Titel', 120);
   if (v.text !== undefined) out.text = text(v.text, 'Angebot: Text', 600);
-  if (v.button_text !== undefined) out.button_text = text(v.button_text, 'Angebot: Buttontext', 60, 'Zum Angebot') || 'Zum Angebot';
+  if (v.button_text !== undefined) out.button_text = text(v.button_text, 'Angebot: Buttontext', 60, tApp()('Zum Angebot')) || tApp()('Zum Angebot');
   if (v.countdown_s !== undefined) out.countdown_s = whole(v.countdown_s, 'Angebot: Frist (Sekunden)', 0, 30 * 86_400, 0);
   if (v.show_in_replay !== undefined) out.show_in_replay = flag(v.show_in_replay, true);
   if (v.target !== undefined) {
@@ -335,8 +338,8 @@ export function cleanSettings(input: unknown, base: WebinarSettings, durationS: 
     const r = input.room;
     if (!isObj(r)) throw bad('Raum: Objekt erwartet');
     const o = out.room;
-    if (r.label !== undefined) o.label = honestText(r.label, 'Bezeichnung des Raums', 60, DEFAULT_LABEL);
-    if (r.replay_label !== undefined) o.replay_label = honestText(r.replay_label, 'Bezeichnung der Aufzeichnung', 60, DEFAULT_REPLAY_LABEL);
+    if (r.label !== undefined) o.label = honestText(r.label, 'Bezeichnung des Raums', 60, d.room.label);
+    if (r.replay_label !== undefined) o.replay_label = honestText(r.replay_label, 'Bezeichnung der Aufzeichnung', 60, d.room.replay_label);
     if (r.waiting_text !== undefined) o.waiting_text = honestText(r.waiting_text, 'Text im Warteraum', 400, d.room.waiting_text);
     if (r.ended_text !== undefined) o.ended_text = honestText(r.ended_text, 'Text nach dem Ende', 400, d.room.ended_text);
     if (r.show_counter !== undefined) o.show_counter = flag(r.show_counter, false);
@@ -350,8 +353,8 @@ export function cleanSettings(input: unknown, base: WebinarSettings, durationS: 
     const r = input.reminders;
     if (!isObj(r)) throw bad('Erinnerungen: Objekt erwartet');
     if (r.items !== undefined) out.reminders.items = cleanReminders(r.items, out.reminders.items);
-    if (r.confirmation_subject !== undefined) out.reminders.confirmation_subject = text(r.confirmation_subject, 'Betreff der Bestätigung', 200, DEFAULT_CONFIRMATION_SUBJECT) || DEFAULT_CONFIRMATION_SUBJECT;
-    if (r.confirmation_body !== undefined) out.reminders.confirmation_body = text(r.confirmation_body, 'Text der Bestätigung', 5000, DEFAULT_CONFIRMATION_BODY) || DEFAULT_CONFIRMATION_BODY;
+    if (r.confirmation_subject !== undefined) out.reminders.confirmation_subject = text(r.confirmation_subject, 'Betreff der Bestätigung', 200, d.reminders.confirmation_subject) || d.reminders.confirmation_subject;
+    if (r.confirmation_body !== undefined) out.reminders.confirmation_body = text(r.confirmation_body, 'Text der Bestätigung', 5000, d.reminders.confirmation_body) || d.reminders.confirmation_body;
   }
   if (input.replay !== undefined) {
     const r = input.replay;
@@ -362,7 +365,7 @@ export function cleanSettings(input: unknown, base: WebinarSettings, durationS: 
   if (input.tags !== undefined) {
     const r = input.tags;
     if (!isObj(r)) throw bad('Tags: Objekt erwartet');
-    for (const k of ['attended', 'missed', 'cta', 'purchased', 'replay'] as const) if (r[k] !== undefined) out.tags[k] = tags(r[k], `Tags (${k})`);
+    for (const k of ['attended', 'missed', 'cta', 'purchased', 'replay'] as const) if (r[k] !== undefined) out.tags[k] = tags(r[k], tApp()('Tags ({kind})', { kind: k }));
   }
   return out;
 }
@@ -374,7 +377,11 @@ export function guard<T>(fn: () => T): T {
   try {
     return fn();
   } catch (e) {
-    if (e instanceof ScheduleError || e instanceof VideoError) throw bad(e.message);
+    if (e instanceof ScheduleError) {
+      const t = tApp();
+      throw bad(e.vars ? t(e.key, { ...e.vars, ...(typeof e.vars.what === 'string' ? { what: t(e.vars.what) } : {}) }) : e.key);
+    }
+    if (e instanceof VideoError) throw bad(e.message);
     throw e;
   }
 }
@@ -410,12 +417,12 @@ export function cleanWebinar(input: Record<string, any>, base?: WebinarInput): W
 }
 
 /** What is still missing before a webinar can be published (German sentences); empty = ready. */
-export function publishProblems(w: Pick<WebinarInput, 'video' | 'duration_s' | 'schedule' | 'title'>): string[] {
+export function publishProblems(w: Pick<WebinarInput, 'video' | 'duration_s' | 'schedule' | 'title'>, t: STFn = tApp()): string[] {
   const out: string[] = [];
-  if (w.video.type === 'none') out.push('Eine Videoquelle fehlt');
-  if (!(w.duration_s > 0)) out.push('Die Dauer des Videos fehlt');
+  if (w.video.type === 'none') out.push(t('Eine Videoquelle fehlt'));
+  if (!(w.duration_s > 0)) out.push(t('Die Dauer des Videos fehlt'));
   const s = w.schedule;
-  if (!(s.fixed.enabled || s.dates.length || s.jit.enabled || s.ondemand.enabled)) out.push('Es ist kein Termin eingerichtet (feste Zeiten, Einzeltermine, „Just in time“ oder „Sofort starten“)');
+  if (!(s.fixed.enabled || s.dates.length || s.jit.enabled || s.ondemand.enabled)) out.push(t('Es ist kein Termin eingerichtet (feste Zeiten, Einzeltermine, „Just in time“ oder „Sofort starten“)'));
   return out;
 }
 

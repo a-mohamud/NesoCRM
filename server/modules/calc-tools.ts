@@ -4,6 +4,7 @@ import { bodyLocation, checkArea } from '../services/mobile.js';
 import { PRESETS } from '../services/calc-presets.js';
 import { METRIC_KEYS } from '../services/calc-summary.js';
 import type { Tool } from './mcp.js';
+import { tApp, type STFn, tCtx } from '../i18n/index.js';
 
 /**
  * MCP tools of the Gewinnrechner (HyperLevel Agent, Claude, ChatGPT, Codex) and the native app's endpoints. Tools are thin
@@ -18,20 +19,24 @@ const obj = (props: Record<string, unknown>, required: string[] = []) => ({ type
 const RO = { readOnlyHint: true, openWorldHint: false };
 const W = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 
-const INPUT_DOC = `input = Teil-Eingabe über den Standardwerten bzw. der Vorlage – nur ändern, was bekannt ist; Objekte werden feldweise zusammengeführt, Listen komplett ersetzt, unbekannte Felder sind ein Fehler. Felder (Beträge in €, Prozent 0–100):
-pricing.plans[] {name, mix (Kunden-Anteil %), base_price (€/Monat), included_units (enthaltene Standorte/Plätze/Accounts), unit_price (je weitere Einheit), cap (Deckel, 0 = keiner), setup_fee, users, avg_units, extra_cost}; pricing.price_basis net|gross; pricing.annual {share, discount}; pricing.addons[] {name, price, take_rate, per_unit}
-customers {count, avg_units, unit_mix[{units, share}], b2b_share, eu_share, churn (%/Monat), growth {start, monthly_new, monthly_new_growth, months}}
-vat {rate 19|7|0, kleinunternehmer}
-costs.variable {payment.methods[{label, share, pct, fixed, cap}] (Standard Stripe 1,5 % + 0,25 €), hosting|ai|messaging {per_customer, per_user, per_unit}, support {minutes_per_customer, hourly_rate}, other, referral {commission_pct, share}, app_store {fee_pct, share}}; costs.fixed {servers_tools, salaries, insurance, marketing, other, one_time}; costs.cac
-tax {legal_form: einzelunternehmen|kapitalgesellschaft|keine, est {year: 2024–2026}, joint, church, other_income, vorsorge_monat, gewerbesteuer {enabled, hebesatz (400)}, kst {…}}
-matrix {customers[], columns: price|factor|plan, prices[], factors[], plan_index}
-Das vollständige Schema mit allen Standardwerten liefert die REST-Route GET /api/calc/schema.`;
+/** The input documentation, one catalog entry per line (the descriptions below are built in the instance language when read). */
+const INPUT_DOC = [
+  'input = Teil-Eingabe über den Standardwerten bzw. der Vorlage – nur ändern, was bekannt ist; Objekte werden feldweise zusammengeführt, Listen komplett ersetzt, unbekannte Felder sind ein Fehler. Felder (Beträge in €, Prozent 0–100):',
+  'pricing.plans[] {name, mix (Kunden-Anteil %), base_price (€/Monat), included_units (enthaltene Standorte/Plätze/Accounts), unit_price (je weitere Einheit), cap (Deckel, 0 = keiner), setup_fee, users, avg_units, extra_cost}; pricing.price_basis net|gross; pricing.annual {share, discount}; pricing.addons[] {name, price, take_rate, per_unit}',
+  'customers {count, avg_units, unit_mix[{units, share}], b2b_share, eu_share, churn (%/Monat), growth {start, monthly_new, monthly_new_growth, months}}',
+  'vat {rate 19|7|0, kleinunternehmer}',
+  'costs.variable {payment.methods[{label, share, pct, fixed, cap}] (Standard Stripe 1,5 % + 0,25 €), hosting|ai|messaging {per_customer, per_user, per_unit}, support {minutes_per_customer, hourly_rate}, other, referral {commission_pct, share}, app_store {fee_pct, share}}; costs.fixed {servers_tools, salaries, insurance, marketing, other, one_time}; costs.cac',
+  'tax {legal_form: einzelunternehmen|kapitalgesellschaft|keine, est {year: 2024–2026}, joint, church, other_income, vorsorge_monat, gewerbesteuer {enabled, hebesatz (400)}, kst {…}}',
+  'matrix {customers[], columns: price|factor|plan, prices[], factors[], plan_index}',
+  'Das vollständige Schema mit allen Standardwerten liefert die REST-Route GET /api/calc/schema.',
+];
+const inputDoc = (t: STFn) => INPUT_DOC.map((l) => t(l)).join('\n');
 
 const HINT =
   'Nutze das, wenn jemand nach Preisen, Gewinn, Marge, Break-even, Kundenwert, Kosten, Steuern oder „was bleibt übrig?“ fragt. Nenne in der Antwort die Kernzahlen (Umsatz, Nettogewinn, Break-even) UND die Annahmen (assumptions), auf denen sie beruhen, und weise darauf hin: „Schätzung, keine Steuerberatung“. Frage nach, wenn Preis oder Kundenzahl fehlen, statt zu raten.';
 
 const PRESET_KEYS = PRESETS.map((p) => p.key);
-const PRESET_DOC = `Vorlage (preset): ${PRESETS.map((p) => `${p.key} = ${p.name}`).join('; ')}.`;
+const presetDoc = (t: STFn) => t('Vorlage (preset): {list}.', { list: PRESETS.map((p) => `${p.key} = ${t(p.name)}`).join('; ') });
 
 const common = {
   preset: { type: 'string', enum: PRESET_KEYS, description: 'Ausgangspunkt statt der Standardwerte' },
@@ -58,7 +63,10 @@ export const CALC_TOOLS: Tool[] = [
   {
     name: 'ghl_calc_run',
     title: 'Gewinnrechner: Was bleibt übrig?',
-    description: `Gewinnrechner: rechnet, was bei einem Preismodell und einer Kundenzahl nach Umsatzsteuer, Zahlungsgebühren, variablen Kosten, Fixkosten, CAC und Steuern (Einzelunternehmen: ESt § 32a, Soli, Gewerbesteuer; GmbH: KSt) übrig bleibt. Antwort: Kernaussage (headline), Warnungen, Fokus (Zahlen pro Monat/Jahr, Wasserfall, Kundenwert LTV/CAC, Amortisation, Break-even, Prognose 12/24/36 Monate, wichtigste Hebel) und eine Matrix Kunden × Preisvarianten für EINE Kennzahl (metric). ${HINT} ${PRESET_DOC} ${INPUT_DOC}`,
+    get description() {
+      const t = tApp();
+      return `${t('Gewinnrechner: rechnet, was bei einem Preismodell und einer Kundenzahl nach Umsatzsteuer, Zahlungsgebühren, variablen Kosten, Fixkosten, CAC und Steuern (Einzelunternehmen: ESt § 32a, Soli, Gewerbesteuer; GmbH: KSt) übrig bleibt. Antwort: Kernaussage (headline), Warnungen, Fokus (Zahlen pro Monat/Jahr, Wasserfall, Kundenwert LTV/CAC, Amortisation, Break-even, Prognose 12/24/36 Monate, wichtigste Hebel) und eine Matrix Kunden × Preisvarianten für EINE Kennzahl (metric).')} ${t(HINT)} ${presetDoc(t)} ${inputDoc(t)}`;
+    },
     inputSchema: obj(
       {
         ...LOC_OPT,
@@ -81,7 +89,10 @@ export const CALC_TOOLS: Tool[] = [
   {
     name: 'ghl_calc_breakeven',
     title: 'Gewinnrechner: Break-even',
-    description: `Break-even des Gewinnrechners: ab wie vielen Kunden das Geschäft vor und nach Steuern im Plus ist (je Preisvariante), welcher Mindestpreis bei N Kunden nötig ist und – mit target_net_profit_month – wie viele Kunden bzw. welcher Preis für einen gewünschten Nettogewinn pro Monat nötig sind. ${HINT} ${PRESET_DOC} ${INPUT_DOC}`,
+    get description() {
+      const t = tApp();
+      return `${t('Break-even des Gewinnrechners: ab wie vielen Kunden das Geschäft vor und nach Steuern im Plus ist (je Preisvariante), welcher Mindestpreis bei N Kunden nötig ist und – mit target_net_profit_month – wie viele Kunden bzw. welcher Preis für einen gewünschten Nettogewinn pro Monat nötig sind.')} ${t(HINT)} ${presetDoc(t)} ${inputDoc(t)}`;
+    },
     inputSchema: obj({ ...LOC_OPT, ...common, scenario_id: { type: 'string' }, target_net_profit_month: { type: 'number', description: 'Gewünschter Nettogewinn pro Monat in € (nach Steuern)' } }, []),
     annotations: RO,
     run: async (call, a) => {
@@ -108,7 +119,10 @@ export const CALC_TOOLS: Tool[] = [
   {
     name: 'ghl_calc_scenario_run',
     title: 'Gewinnrechner: Szenario berechnen',
-    description: `Rechnet ein gespeichertes Szenario neu, optional mit Änderungen (input = Teil-Eingabe, z. B. anderer Preis oder Kundenzahl) – ohne es zu speichern. Mit compare_with (weitere Szenario-IDs) kommt stattdessen ein Vergleich nebeneinander: Kernzahlen je Szenario, Unterschied zum ersten und das beste. ${HINT} ${INPUT_DOC}`,
+    get description() {
+      const t = tApp();
+      return `${t('Rechnet ein gespeichertes Szenario neu, optional mit Änderungen (input = Teil-Eingabe, z. B. anderer Preis oder Kundenzahl) – ohne es zu speichern. Mit compare_with (weitere Szenario-IDs) kommt stattdessen ein Vergleich nebeneinander: Kernzahlen je Szenario, Unterschied zum ersten und das beste.')} ${t(HINT)} ${inputDoc(t)}`;
+    },
     inputSchema: obj(
       {
         ...LOC,
@@ -136,7 +150,10 @@ export const CALC_TOOLS: Tool[] = [
   {
     name: 'ghl_calc_scenario_save',
     title: 'Gewinnrechner: Szenario speichern',
-    description: `Speichert ein Szenario im Gewinnrechner des Sub-Accounts (neu) oder ändert ein vorhandenes (scenario_id: Name, Notiz und/oder input = Teil-Eingabe über dem gespeicherten Stand). Ohne preset/input starten neue Szenarien mit den Standardwerten. ${PRESET_DOC} ${INPUT_DOC}`,
+    get description() {
+      const t = tApp();
+      return `${t('Speichert ein Szenario im Gewinnrechner des Sub-Accounts (neu) oder ändert ein vorhandenes (scenario_id: Name, Notiz und/oder input = Teil-Eingabe über dem gespeicherten Stand). Ohne preset/input starten neue Szenarien mit den Standardwerten.')} ${presetDoc(t)} ${inputDoc(t)}`;
+    },
     inputSchema: obj({ ...LOC, scenario_id: { type: 'string', description: 'Vorhandenes Szenario ändern statt neu anlegen' }, name: { type: 'string', description: 'Name (höchstens 80 Zeichen)' }, note: { type: 'string' }, preset: common.preset, input: common.input }, ['location_id']),
     annotations: W,
     run: async (call, a) => {
@@ -183,7 +200,7 @@ export const calcToolsModule: Module = {
       ctx.skipAfterWrite = true;
       const l = loc(ctx);
       checkArea(app, ctx, l.id, 'payments');
-      return app.services.calc.run(l.id, ctx.params.id, { customers: ctx.body?.customers, input: ctx.body?.input, sensitivity: ctx.body?.sensitivity !== false });
+      return app.services.calc.run(l.id, ctx.params.id, { customers: ctx.body?.customers, input: ctx.body?.input, sensitivity: ctx.body?.sensitivity !== false }, tCtx(ctx));
     });
   },
 };

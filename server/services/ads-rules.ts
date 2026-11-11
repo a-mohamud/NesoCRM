@@ -1,3 +1,4 @@
+import { tApp } from '../i18n/index.js';
 /**
  * Rules for running campaigns: "pause when the cost per lead is above X". A rule can only stop spending (pause) or
  * tell someone (notify) – never start a campaign or raise a budget. Pure evaluation here; the module runs it.
@@ -67,10 +68,13 @@ export function evaluate(rule: Pick<Rule, 'metric' | 'op' | 'value' | 'min_spend
 }
 
 export function describeRule(r: Pick<Rule, 'metric' | 'op' | 'value' | 'window_days' | 'min_spend_cents' | 'action'>, currency = 'EUR'): string {
-  const money = (c: number) => (c / 100).toLocaleString('de-DE', { style: 'currency', currency });
-  const v = r.metric === 'ctr' ? `${r.value.toLocaleString('de-DE')} %` : r.metric === 'leads' ? String(r.value) : money(r.value);
-  const act = r.action === 'pause' ? 'pausieren' : 'benachrichtigen';
-  return `${RULE_LABEL[r.metric]} ${r.op === '>' ? 'über' : 'unter'} ${v} (letzte ${r.window_days} Tage${r.min_spend_cents ? `, ab ${money(r.min_spend_cents)} Ausgaben` : ''}) → ${act}`;
+  const t = tApp();
+  const nf = t.locale === 'de' ? 'de-DE' : 'en-GB';
+  const money = (c: number) => (c / 100).toLocaleString(nf, { style: 'currency', currency });
+  const v = r.metric === 'ctr' ? `${r.value.toLocaleString(nf)} %` : r.metric === 'leads' ? String(r.value) : money(r.value);
+  const vars = { metric: t(RULE_LABEL[r.metric]), value: v, days: r.window_days, spend: r.min_spend_cents ? money(r.min_spend_cents) : '', action: t(r.action === 'pause' ? 'pausieren' : 'benachrichtigen') };
+  if (r.min_spend_cents) return t(r.op === '>' ? '{metric} über {value} (letzte {days} Tage, ab {spend} Ausgaben) → {action}' : '{metric} unter {value} (letzte {days} Tage, ab {spend} Ausgaben) → {action}', vars);
+  return t(r.op === '>' ? '{metric} über {value} (letzte {days} Tage) → {action}' : '{metric} unter {value} (letzte {days} Tage) → {action}', vars);
 }
 
 /** Cleans a rule from a request; throws a plain German message. */
@@ -88,7 +92,7 @@ export function cleanRule(b: any, fail: (msg: string) => Error): Omit<Rule, 'id'
   const ref = String(b?.campaign_ref ?? '').trim();
   if (ref && !/^([\w-]{8,40}|(meta|google):\d{3,25})$/.test(ref)) throw fail('Kampagne ungültig');
   return {
-    name: String(b?.name ?? '').trim().slice(0, 100) || `${RULE_LABEL[metric]} ${op} ${value}`,
+    name: String(b?.name ?? '').trim().slice(0, 100) || `${tApp()(RULE_LABEL[metric])} ${op} ${value}`,
     platform,
     campaign_ref: ref,
     metric,

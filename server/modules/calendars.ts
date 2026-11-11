@@ -9,6 +9,7 @@ import { addTags, contactVars, getContact, logActivity, upsertContact } from '..
 import { notifyTeam, sendToContact } from '../services/messaging.js';
 import { createOpportunity } from '../services/opportunities.js';
 import { limitBlocks, normalizeBookingSettings, todayOf, windowsFor } from '../services/booking-rules.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 export type Availability = Partial<Record<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun', [string, string][]>>;
 
@@ -55,6 +56,24 @@ export const DEFAULT_SETTINGS = {
   ask_phone: true,
   ask_notes: true,
 };
+
+/** A catalog lookup for multi-line texts: the key is the text with its whitespace collapsed; untranslated, the original stays. */
+export const tMulti = (t: STFn, s: string) => {
+  const k = s.replace(/\s+/g, ' ').trim();
+  const r = t(k);
+  return r === k ? s : r;
+};
+
+/** The defaults of a new calendar in the sub-account's language. */
+export function defaultSettings(t: STFn) {
+  return {
+    ...DEFAULT_SETTINGS,
+    confirmation_subject: t(DEFAULT_SETTINGS.confirmation_subject),
+    confirmation_body: tMulti(t, DEFAULT_SETTINGS.confirmation_body),
+    reminder_subject: t(DEFAULT_SETTINGS.reminder_subject),
+    reminder_body: tMulti(t, DEFAULT_SETTINGS.reminder_body),
+  };
+}
 
 /** Free start times on a day (YYYY-MM-DD in the calendar's zone), as ISO instants. Pure, for tests. */
 export function computeSlots(
@@ -121,17 +140,23 @@ export function busyFor(app: App, cal: CalendarRow, ymd: string, except?: string
   return [...own, ...external, ...limitBlocks(app, cal, ymd, except)];
 }
 
+/** Date and time of an appointment in the sub-account's language (German keeps formatInTz). */
+export function whenText(t: STFn, at: string, tz: string) {
+  return t.locale === 'de' ? formatInTz(at, tz) : new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(at));
+}
+
 export function apptVars(app: App, appt: any, cal: CalendarRow) {
   const loc = app.location(cal.location_id)!;
+  const t = tLoc(app, cal.location_id);
   return {
     appointment: {
       ...appt,
-      start_text: formatInTz(appt.start_at, cal.timezone) + ` (${cal.timezone})`,
+      start_text: whenText(t, appt.start_at, cal.timezone) + ` (${cal.timezone})`,
       manage_url: `${app.baseUrl()}/book/manage/${appt.manage_token}`,
       // Team calendars (modules/teamcal*.ts): who hosts, and the video link made for this appointment.
       ...(app.services.teamcalVars?.(appt) ?? {}),
     },
-    calendar: { ...cal, meeting_location: appt.meeting_url ? `Ort/Link: ${appt.meeting_url}` : cal.settings.meeting_location ? `Ort/Link: ${cal.settings.meeting_location}` : '' },
+    calendar: { ...cal, meeting_location: appt.meeting_url ? t('Ort/Link: {where}', { where: appt.meeting_url }) : cal.settings.meeting_location ? t('Ort/Link: {where}', { where: cal.settings.meeting_location }) : '' },
     location: loc,
   };
 }
@@ -155,13 +180,14 @@ export interface BookInput {
 export function beginBooking(app: App, cal: CalendarRow, input: BookInput) {
   const start = new Date(input.start);
   if (Number.isNaN(start.getTime())) throw bad('Ungültige Startzeit');
+  const t = tLoc(app, cal.location_id);
   const ymd = ymdInTz(start, cal.timezone);
   // --- team calendars (modules/teamcal*.ts): hosts, capacity, payment and question rules; they check the slot themselves
   const prep = app.services.teamcalPrepare?.(cal, input, start) as { extra: Record<string, any>; checked: boolean } | undefined;
   if (!prep?.checked && !input.skipCheck && !computeSlots(cal, ymd, busyFor(app, cal, ymd)).includes(start.toISOString())) {
     throw new HttpError(409, 'Dieser Termin ist leider nicht mehr frei');
   }
-  const { contact } = upsertContact(app, cal.location_id, input.contact, { source: `Kalender: ${cal.name}`, publicInput: input.publicInput });
+  const { contact } = upsertContact(app, cal.location_id, input.contact, { source: t('Kalender: {name}', { name: cal.name }), publicInput: input.publicInput });
   const appt = {
     id: id(),
     location_id: cal.location_id,
@@ -172,6 +198,7 @@ export function beginBooking(app: App, cal: CalendarRow, input: BookInput) {
     end_at: new Date(start.getTime() + cal.duration * 60_000).toISOString(),
     status: 'confirmed',
     notes: str(input.notes, 'Notizen', { max: 5000 }),
+    // 'Buchungsseite' is compared by the team calendars (modules/teamcal.ts): a stored code, not translated.
     source: input.source ?? 'Buchungsseite',
     manage_token: token(18),
     reminder_sent: 0,
@@ -180,11 +207,11 @@ export function beginBooking(app: App, cal: CalendarRow, input: BookInput) {
     ...(input.extra ?? {}),
   };
   app.db.insert('appointments', appt);
-  logActivity(app, cal.location_id, contact.id, 'appointment.booked', `Termin gebucht: ${formatInTz(appt.start_at, cal.timezone)}`);
+  logActivity(app, cal.location_id, contact.id, 'appointment.booked', t('Termin gebucht: {when}', { when: whenText(t, appt.start_at, cal.timezone) }));
   if (cal.settings.tags?.length) addTags(app, cal.location_id, contact.id, cal.settings.tags);
   if (cal.settings.pipeline_id) {
     try {
-      createOpportunity(app, cal.location_id, { pipeline_id: cal.settings.pipeline_id, stage_id: cal.settings.stage_id, contact_id: contact.id, source: `Kalender: ${cal.name}` });
+      createOpportunity(app, cal.location_id, { pipeline_id: cal.settings.pipeline_id, stage_id: cal.settings.stage_id, contact_id: contact.id, source: t('Kalender: {name}', { name: cal.name }) });
     } catch (e) {
       console.warn('[calendars] opportunity:', (e as Error).message);
     }
@@ -199,12 +226,12 @@ export function beginBooking(app: App, cal: CalendarRow, input: BookInput) {
         channel: 'email',
         subject: render(cal.settings.confirmation_subject, vars),
         body: render(cal.settings.confirmation_body, vars),
-        source: 'Terminbestätigung',
+        source: t('Terminbestätigung'),
         ignoreDnd: true,
       });
     }
     if (cal.settings.notify_team) {
-      void notifyTeam(app, cal.location_id, `Neuer Termin: ${appt.title}`, `${appt.title}\n${vars.appointment.start_text}\nE-Mail: ${contact.email}\nTelefon: ${contact.phone}\nNotizen: ${appt.notes}`);
+      void notifyTeam(app, cal.location_id, t('Neuer Termin: {title}', { title: appt.title }), `${appt.title}\n${vars.appointment.start_text}\n${t('E-Mail: {email}', { email: contact.email ?? '' })}\n${t('Telefon: {phone}', { phone: contact.phone ?? '' })}\n${t('Notizen: {notes}', { notes: appt.notes ?? '' })}`);
     }
     // meta: attribution passed through from the booking page (e.g. the A/B test visitor `ab`).
     app.events.emit(cal.location_id, 'appointment.booked', { contactId: contact.id, appointment: { ...row, ...(app.services.teamcalPayload?.(row) ?? {}) }, calendarId: cal.id, meta: input.meta ?? {} });
@@ -246,28 +273,40 @@ function icsFor(appt: any, cal: CalendarRow, locName: string) {
 function bookingPage(app: App, cal: CalendarRow, embed: boolean) {
   const loc = app.location(cal.location_id)!;
   const s = cal.settings;
+  const t = tLoc(app, cal.location_id);
+  const L = {
+    lang: t.locale === 'de' ? 'de-DE' : 'en-GB',
+    loading: t('Lade freie Termine…'),
+    noTimes: t('keine freien Zeiten'),
+    noTimesDay: t('Keine freien Zeiten an diesem Tag.'),
+    oclock: t.locale === 'de' ? ' Uhr' : '', // i18n-ignore (German time suffix)
+    error: t('Fehler'),
+    booked: t('Termin gebucht! ✅'),
+    confirm: t('Eine Bestätigung kommt per E-Mail.'),
+    addCal: t('In Kalender eintragen'),
+  };
   const body = `
 <div class="wrap">
   <div class="card">
     <p class="muted" style="margin:0 0 4px">${escapeHtml(loc.name)}</p>
     <h1>${escapeHtml(cal.name)}</h1>
-    <p class="muted">⏱ ${cal.duration} Minuten${s.meeting_location ? ` · 📍 ${escapeHtml(s.meeting_location)}` : ''}</p>
+    <p class="muted">⏱ ${escapeHtml(t('{n} Minuten', { n: cal.duration }))}${s.meeting_location ? ` · 📍 ${escapeHtml(s.meeting_location)}` : ''}</p>
     ${cal.description ? `<p>${escapeHtml(cal.description).replace(/\n/g, '<br>')}</p>` : ''}
-    ${noscriptNotice('einen Termin zu buchen')}
+    ${noscriptNotice(t('einen Termin zu buchen'))}
     <div id="step1">
       <div class="days" id="days"></div>
-      <div class="slots" id="slots" aria-live="polite"><p class="muted">Lade freie Termine…</p></div>
-      <div class="row" style="margin-top:12px"><button class="btn secondary" id="prev" type="button">← Früher</button><button class="btn secondary" id="next" type="button">Später →</button></div>
-      <p class="muted" style="font-size:13px">Zeiten in deiner Zeitzone: <span id="tz"></span></p>
+      <div class="slots" id="slots" aria-live="polite"><p class="muted">${escapeHtml(L.loading)}</p></div>
+      <div class="row" style="margin-top:12px"><button class="btn secondary" id="prev" type="button">${escapeHtml(t('← Früher'))}</button><button class="btn secondary" id="next" type="button">${escapeHtml(t('Später →'))}</button></div>
+      <p class="muted" style="font-size:13px">${escapeHtml(t('Zeiten in deiner Zeitzone:'))} <span id="tz"></span></p>
     </div>
     <form id="step2" hidden>
-      <p><strong id="chosen"></strong> <a href="#" id="back">ändern</a></p>
-      <div class="row"><div><label for="bk-first">Vorname *</label><input id="bk-first" name="first_name" required autocomplete="given-name"></div><div><label for="bk-last">Nachname</label><input id="bk-last" name="last_name" autocomplete="family-name"></div></div>
-      <label for="bk-email">E-Mail *</label><input id="bk-email" name="email" type="email" required autocomplete="email">
-      ${s.ask_phone ? '<label for="bk-phone">Telefon</label><input id="bk-phone" name="phone" type="tel" autocomplete="tel">' : ''}
-      ${s.ask_notes ? '<label for="bk-notes">Worum geht es?</label><textarea id="bk-notes" name="notes"></textarea>' : ''}
-      <label class="check"><input type="checkbox" required> Ich bin einverstanden, dass meine Angaben zur Terminvereinbarung gespeichert werden.</label>
-      <div style="margin-top:16px"><button type="submit">Termin buchen</button></div>
+      <p><strong id="chosen"></strong> <a href="#" id="back">${escapeHtml(t('ändern'))}</a></p>
+      <div class="row"><div><label for="bk-first">${escapeHtml(t('Vorname'))} *</label><input id="bk-first" name="first_name" required autocomplete="given-name"></div><div><label for="bk-last">${escapeHtml(t('Nachname'))}</label><input id="bk-last" name="last_name" autocomplete="family-name"></div></div>
+      <label for="bk-email">${escapeHtml(t('E-Mail'))} *</label><input id="bk-email" name="email" type="email" required autocomplete="email">
+      ${s.ask_phone ? `<label for="bk-phone">${escapeHtml(t('Telefon'))}</label><input id="bk-phone" name="phone" type="tel" autocomplete="tel">` : ''}
+      ${s.ask_notes ? `<label for="bk-notes">${escapeHtml(t('Worum geht es?'))}</label><textarea id="bk-notes" name="notes"></textarea>` : ''}
+      <label class="check"><input type="checkbox" required> ${escapeHtml(t('Ich bin einverstanden, dass meine Angaben zur Terminvereinbarung gespeichert werden.'))}</label>
+      <div style="margin-top:16px"><button type="submit">${escapeHtml(t('Termin buchen'))}</button></div>
       <div class="error" id="err" role="alert"></div>
     </form>
     <div id="done" hidden class="ok" role="status"></div>
@@ -283,6 +322,7 @@ function bookingPage(app: App, cal: CalendarRow, embed: boolean) {
 </style>
 <script>
 const CFG = ${jsonForScript({ slug: cal.slug, redirect: s.redirect_url || '' })};
+const L = ${jsonForScript(L)};
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone; document.getElementById('tz').textContent = tz;
 // Days are YYYY-MM-DD and moved in UTC: local setDate() on a UTC midnight lands on the day before across a DST change in Europe.
 const shiftDay = (ymd, n) => { const d = new Date(ymd + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -290,7 +330,7 @@ const localToday = () => { const n = new Date(); return new Date(n.getTime() - n
 let from = localToday(), days = [], sel = null, chosen = null;
 const $ = (id) => document.getElementById(id);
 async function load() {
-  $('slots').innerHTML = '<p class="muted">Lade freie Termine…</p>';
+  $('slots').innerHTML = '<p class="muted"></p>'; $('slots').firstChild.textContent = L.loading;
   const r = await fetch('/api/public/calendars/' + CFG.slug + '/slots?from=' + from + '&days=7');
   const j = await r.json(); days = j.days || [];
   sel = days.find(d => d.slots.length) || days[0]; draw();
@@ -301,16 +341,16 @@ function draw() {
     const b = document.createElement('button'); b.type = 'button';
     b.className = 'day' + (d === sel ? ' on' : '') + (d.slots.length ? '' : ' none');
     const dt = new Date(d.date + 'T12:00:00');
-    b.innerHTML = dt.toLocaleDateString('de-DE', { weekday: 'short' }) + '<br>' + dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+    b.innerHTML = dt.toLocaleDateString(L.lang, { weekday: 'short' }) + '<br>' + dt.toLocaleDateString(L.lang, { day: '2-digit', month: '2-digit' });
     b.setAttribute('aria-pressed', String(d === sel));
-    b.setAttribute('aria-label', dt.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }) + (d.slots.length ? '' : ' – keine freien Zeiten'));
+    b.setAttribute('aria-label', dt.toLocaleDateString(L.lang, { weekday: 'long', day: 'numeric', month: 'long' }) + (d.slots.length ? '' : ' – ' + L.noTimes));
     b.onclick = () => { sel = d; draw(); }; $('days').appendChild(b);
   }
-  $('slots').innerHTML = sel && sel.slots.length ? '' : '<p class="muted">Keine freien Zeiten an diesem Tag.</p>';
+  $('slots').innerHTML = sel && sel.slots.length ? '' : '<p class="muted"></p>'; if ($('slots').firstChild) $('slots').firstChild.textContent = L.noTimesDay;
   for (const s of (sel ? sel.slots : [])) {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'slot';
-    b.textContent = new Date(s).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-    b.onclick = () => { chosen = s; $('chosen').textContent = new Date(s).toLocaleString('de-DE', { weekday:'long', day:'2-digit', month:'long', hour:'2-digit', minute:'2-digit' }) + ' Uhr'; $('step1').hidden = true; $('step2').hidden = false; };
+    b.textContent = new Date(s).toLocaleTimeString(L.lang, { hour: '2-digit', minute: '2-digit' });
+    b.onclick = () => { chosen = s; $('chosen').textContent = new Date(s).toLocaleString(L.lang, { weekday:'long', day:'2-digit', month:'long', hour:'2-digit', minute:'2-digit' }) + L.oclock; $('step1').hidden = true; $('step2').hidden = false; };
     $('slots').appendChild(b);
   }
 }
@@ -325,10 +365,11 @@ $('step2').onsubmit = async (e) => {
   data._page = (window.top === window ? location.href : document.referrer) || '';
   const r = await fetch('/api/public/calendars/' + CFG.slug + '/book', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
   const j = await r.json(); btn.disabled = false;
-  if (!r.ok) { $('err').textContent = j.error || 'Fehler'; if (r.status === 409) { $('step2').hidden = true; $('step1').hidden = false; load(); } return; }
+  if (!r.ok) { $('err').textContent = j.error || L.error; if (r.status === 409) { $('step2').hidden = true; $('step1').hidden = false; load(); } return; }
   if (CFG.redirect) { location.href = CFG.redirect; return; }
   $('step2').hidden = true; $('done').hidden = false;
-  $('done').innerHTML = '<strong>Termin gebucht! ✅</strong><br>' + $('chosen').textContent + '<br>Eine Bestätigung kommt per E-Mail. <a href="' + j.icsUrl + '">In Kalender eintragen</a>';
+  const esc = (x) => String(x).replace(/[&<>"']/g, (c) => '&#' + c.charCodeAt(0) + ';');
+  $('done').innerHTML = '<strong>' + esc(L.booked) + '</strong><br>' + esc($('chosen').textContent) + '<br>' + esc(L.confirm) + ' <a href="' + esc(j.icsUrl) + '">' + esc(L.addCal) + '</a>';
 };
 load();
 </script>`;
@@ -398,7 +439,7 @@ export const calendarsModule: Module = {
         timezone: tz,
         color: /^#[0-9a-f]{6}$/i.test(b.color ?? '') ? b.color : '#2563eb',
         active: 1,
-        settings: normalizeBookingSettings({ ...DEFAULT_SETTINGS, ...(b.settings ?? {}) }, {}, todayOf({ timezone: tz })),
+        settings: normalizeBookingSettings({ ...defaultSettings(tLoc(app, ctx.locationId)), ...(b.settings ?? {}) }, {}, todayOf({ timezone: tz })),
         created_at: now(),
       };
       db.insert('calendars', row);
@@ -465,7 +506,7 @@ export const calendarsModule: Module = {
           location_id: ctx.locationId,
           calendar_id: cal.id,
           contact_id: null,
-          title: str(ctx.body.title, 'Titel') || 'Blockiert',
+          title: str(ctx.body.title, 'Titel') || tLoc(app, ctx.locationId)('Blockiert'),
           start_at: new Date(startOf(ctx.body)).toISOString(),
           end_at: new Date(endOf(ctx.body)).toISOString(),
           status: 'blocked',
@@ -523,7 +564,7 @@ export const calendarsModule: Module = {
     // --- public booking -----------------------------------------------------
     router.get('/book/:slug', 'public', (ctx) => {
       const cal = getCalendarBySlug(app, ctx.params.slug);
-      if (!cal) return html(messagePage('Nicht gefunden', 'Diesen Kalender gibt es nicht (mehr).'), 404);
+      if (!cal) { const t = tCtx(ctx); return html(messagePage(t('Nicht gefunden'), t('Diesen Kalender gibt es nicht (mehr).')), 404); }
       // Team calendars (questions, payment, several hosts …) render their own server-side page.
       const team = app.services.teamcalPage?.(cal, ctx.query.get('embed') === '1', ctx) as string | undefined;
       return html(team ?? bookingPage(app, cal, ctx.query.get('embed') === '1'));
@@ -564,25 +605,27 @@ export const calendarsModule: Module = {
       if (!a) throw notFound();
       const cal = parseJson(db.get<CalendarRow>('SELECT * FROM calendars WHERE id = ?', a.calendar_id)!, ['availability', 'settings']);
       const r = text(icsFor(a, cal, app.location(a.location_id)!.name), 'text/calendar; charset=utf-8');
-      r.headers['content-disposition'] = 'attachment; filename="termin.ics"';
+      r.headers['content-disposition'] = `attachment; filename="${tLoc(app, a.location_id)('termin')}.ics"`;
       return r;
     });
     router.get('/book/manage/:token', 'public', (ctx) => {
       const a = db.get('SELECT * FROM appointments WHERE manage_token = ?', ctx.params.token);
-      if (!a) return html(messagePage('Nicht gefunden', 'Diesen Termin gibt es nicht.'), 404);
+      if (!a) { const t = tCtx(ctx); return html(messagePage(t('Nicht gefunden'), t('Diesen Termin gibt es nicht.')), 404); }
       const cal = parseJson(db.get<CalendarRow>('SELECT * FROM calendars WHERE id = ?', a.calendar_id)!, ['availability', 'settings']);
       // Cancel and reschedule with the calendar's rules (modules/teamcal-public.ts).
       const manage = app.services.teamcalManagePage?.(a, cal, ctx) as string | undefined;
       if (manage) return html(manage);
       const cancelled = a.status === 'cancelled';
+      const t = tLoc(app, a.location_id);
+      const L = { sure: t('Termin wirklich absagen?'), failed: t('Absagen ging nicht.') };
       const body = `<div class="wrap"><div class="card">
         <h1>${escapeHtml(cal.name)}</h1>
-        <p>${escapeHtml(formatInTz(a.start_at, cal.timezone))} (${escapeHtml(cal.timezone)})</p>
-        <p>Status: <strong>${cancelled ? 'abgesagt' : 'bestätigt'}</strong></p>
-        ${cancelled ? `<a class="btn" href="/book/${escapeHtml(cal.slug)}">Neuen Termin buchen</a>` : `${noscriptNotice('den Termin abzusagen')}<div class="row"><a class="btn secondary" href="/book/ics/${escapeHtml(a.manage_token)}">In Kalender eintragen</a><button id="cancel" class="btn">Termin absagen</button></div>`}
+        <p>${escapeHtml(whenText(t, a.start_at, cal.timezone))} (${escapeHtml(cal.timezone)})</p>
+        <p>${escapeHtml(t('Status:'))} <strong>${escapeHtml(cancelled ? t('abgesagt') : t('bestätigt'))}</strong></p>
+        ${cancelled ? `<a class="btn" href="/book/${escapeHtml(cal.slug)}">${escapeHtml(t('Neuen Termin buchen'))}</a>` : `${noscriptNotice(t('den Termin abzusagen'))}<div class="row"><a class="btn secondary" href="/book/ics/${escapeHtml(a.manage_token)}">${escapeHtml(t('In Kalender eintragen'))}</a><button id="cancel" class="btn">${escapeHtml(t('Termin absagen'))}</button></div>`}
         <p id="msg" class="muted"></p></div></div>
-        <script>const b=document.getElementById('cancel'); if (b) b.onclick=async()=>{ if(!confirm('Termin wirklich absagen?'))return; const r=await fetch('/api/public/appointments/${escapeHtml(a.manage_token)}/cancel',{method:'POST'}); if(r.ok) location.reload(); else document.getElementById('msg').textContent='Absagen ging nicht.'; };</script>`;
-      return html(publicPage({ title: 'Termin verwalten', body, color: cal.color }));
+        <script>const L=${jsonForScript(L)}; const b=document.getElementById('cancel'); if (b) b.onclick=async()=>{ if(!confirm(L.sure))return; const r=await fetch('/api/public/appointments/${escapeHtml(a.manage_token)}/cancel',{method:'POST'}); if(r.ok) location.reload(); else document.getElementById('msg').textContent=L.failed; };</script>`;
+      return html(publicPage({ title: t('Termin verwalten'), body, color: cal.color }));
     });
     router.post('/api/public/appointments/:token/cancel', 'public', (ctx) => {
       const a = db.get('SELECT * FROM appointments WHERE manage_token = ?', ctx.params.token);
@@ -592,9 +635,10 @@ export const calendarsModule: Module = {
       if (handled) return handled;
       if (a.status !== 'cancelled') {
         db.run(`UPDATE appointments SET status = 'cancelled' WHERE id = ?`, a.id);
-        if (a.contact_id) logActivity(app, a.location_id, a.contact_id, 'appointment.status_changed', 'Termin vom Kontakt abgesagt');
+        const t = tLoc(app, a.location_id);
+        if (a.contact_id) logActivity(app, a.location_id, a.contact_id, 'appointment.status_changed', t('Termin vom Kontakt abgesagt'));
         app.events.emit(a.location_id, 'appointment.status_changed', { contactId: a.contact_id, appointment: { ...a, status: 'cancelled' }, status: 'cancelled', calendarId: a.calendar_id });
-        void notifyTeam(app, a.location_id, `Termin abgesagt: ${a.title}`, `${a.title} wurde vom Kontakt abgesagt.`);
+        void notifyTeam(app, a.location_id, t('Termin abgesagt: {title}', { title: a.title }), t('{title} wurde vom Kontakt abgesagt.', { title: a.title }));
       }
       return { ok: true };
     });
@@ -616,12 +660,13 @@ export const calendarsModule: Module = {
         const a = db.get<any>('SELECT * FROM appointments WHERE id = ?', row.id)!;
         const cal = parseJson(db.get<CalendarRow>('SELECT * FROM calendars WHERE id = ?', a.calendar_id)!, ['availability', 'settings']);
         const vars = { contact: contactVars(getContact(app, a.location_id, a.contact_id)), ...apptVars(app, a, cal) };
+        const t = tLoc(app, a.location_id);
         await sendToContact(app, a.location_id, {
           contactId: a.contact_id,
           channel: 'email',
-          subject: render(cal.settings.reminder_subject || DEFAULT_SETTINGS.reminder_subject, vars),
-          body: render(cal.settings.reminder_body || DEFAULT_SETTINGS.reminder_body, vars),
-          source: 'Terminerinnerung',
+          subject: render(cal.settings.reminder_subject || t(DEFAULT_SETTINGS.reminder_subject), vars),
+          body: render(cal.settings.reminder_body || tMulti(t, DEFAULT_SETTINGS.reminder_body), vars),
+          source: t('Terminerinnerung'),
           ignoreDnd: true,
         });
       }

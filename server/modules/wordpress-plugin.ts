@@ -2,6 +2,7 @@ import type { App, Module } from '../core/app.js';
 import { zipStore } from '../services/zip-store.js';
 import { getBranding } from './agency.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * WordPress-Plugin – docs/forms.md#wordpress-plugin. A small plugin, generated per sub-account with its address baked in: shortcodes
@@ -12,12 +13,16 @@ import type { Tool } from './mcp.js';
 
 const phpString = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 
-export function pluginPhp(o: { base: string; locationId: string; brand: string; version: string }): string {
+export function pluginPhp(o: { base: string; locationId: string; brand: string; version: string; t?: STFn }): string {
   const brand = o.brand.replace(/[^\p{L}\p{N} .&-]/gu, '').slice(0, 40) || 'Neso CRM';
+  const t = o.t ?? tApp();
+  /** A translated text inside a single-quoted PHP string. */
+  const q = (s: string, vars?: Record<string, string>) => t(s, vars).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  // i18n-ignore (PHP source; its visible texts go through t above)
   return `<?php
 /*
 Plugin Name: ${brand}
-Description: Formulare, Terminbuchung und Live-Chat von ${brand} in WordPress einbinden – per Shortcode und Einstellung.
+Description: ${t('Formulare, Terminbuchung und Live-Chat von {brand} in WordPress einbinden – per Shortcode und Einstellung.', { brand }).replace(/[\r\n]+/g, ' ')}
 Version: ${o.version}
 Requires at least: 5.8
 Requires PHP: 7.4
@@ -68,14 +73,14 @@ function hyperlevel_settings_page() {
   if (isset($_POST['hyperlevel_save']) && check_admin_referer('hyperlevel_settings')) {
     update_option('hyperlevel_chat', isset($_POST['hyperlevel_chat']) ? '1' : '0');
     update_option('hyperlevel_tracking', isset($_POST['hyperlevel_tracking']) ? '1' : '0');
-    echo '<div class="updated"><p>Gespeichert.</p></div>';
+    echo '<div class="updated"><p>${q('Gespeichert.')}</p></div>';
   }
   echo '<div class="wrap"><h1>' . esc_html(${phpString(brand)}) . '</h1><form method="post">';
   wp_nonce_field('hyperlevel_settings');
-  echo '<p><label><input type="checkbox" name="hyperlevel_chat" ' . checked(get_option('hyperlevel_chat'), '1', false) . '> Live-Chat-Blase auf allen Seiten</label></p>';
-  echo '<p><label><input type="checkbox" name="hyperlevel_tracking" ' . checked(get_option('hyperlevel_tracking'), '1', false) . '> Besucher-Quellen erfassen (Attribution – nur mit Einwilligung im Cookie-Banner)</label></p>';
+  echo '<p><label><input type="checkbox" name="hyperlevel_chat" ' . checked(get_option('hyperlevel_chat'), '1', false) . '> ${q('Live-Chat-Blase auf allen Seiten')}</label></p>';
+  echo '<p><label><input type="checkbox" name="hyperlevel_tracking" ' . checked(get_option('hyperlevel_tracking'), '1', false) . '> ${q('Besucher-Quellen erfassen (Attribution – nur mit Einwilligung im Cookie-Banner)')}</label></p>';
   echo '<p>Shortcodes: <code>[hyperlevel_form id="…"]</code>, <code>[hyperlevel_calendar slug="…"]</code></p>';
-  echo '<p><button class="button button-primary" name="hyperlevel_save" value="1">Speichern</button></p></form></div>';
+  echo '<p><button class="button button-primary" name="hyperlevel_save" value="1">${q('Speichern')}</button></p></form></div>';
 }
 function hyperlevel_menu() {
   add_options_page(${phpString(brand)}, ${phpString(brand)}, 'manage_options', 'hyperlevel', 'hyperlevel_settings_page');
@@ -96,8 +101,9 @@ export const wordpressPluginModule: Module = {
       calendars: db.all<any>('SELECT name, slug FROM calendars WHERE location_id = ? AND active = 1 ORDER BY name LIMIT 50', ctx.locationId).map((c) => ({ name: c.name, shortcode: `[hyperlevel_calendar slug="${c.slug}"]` })),
     }));
     router.get('/api/wordpress-plugin.zip', 'location', (ctx) => {
-      const php = pluginPhp({ base: app.baseUrl(), locationId: ctx.locationId, brand: brandOf() || 'Neso CRM', version: '1.0.0' });
-      const readme = `=== HyperLevel ===\nStable tag: 1.0.0\n\nFormulare: [hyperlevel_form id="…"]\nTermine: [hyperlevel_calendar slug="…"]\nLive-Chat und Attribution: Einstellungen → HyperLevel.\n`;
+      const t = tCtx(ctx);
+      const php = pluginPhp({ base: app.baseUrl(), locationId: ctx.locationId, brand: brandOf() || 'Neso CRM', version: '1.0.0', t });
+      const readme = ['=== HyperLevel ===', 'Stable tag: 1.0.0', '', `${t('Formulare')}: [hyperlevel_form id="…"]`, `${t('Termine')}: [hyperlevel_calendar slug="…"]`, t('Live-Chat und Attribution: Einstellungen → HyperLevel.'), ''].join('\n');
       const zip = zipStore([
         { name: 'hyperlevel/hyperlevel.php', data: php },
         { name: 'hyperlevel/readme.txt', data: readme },

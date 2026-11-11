@@ -2,7 +2,6 @@ import type { Module } from '../core/app.js';
 import { parseJson, parseRows } from '../core/db.js';
 import { HttpError, redirect, text, type Ctx, type RawResult } from '../core/http.js';
 import { escapeHtml } from '../core/template.js';
-import { formatInTz } from '../core/time.js';
 import { safeEqual, sha256 } from '../core/util.js';
 import { getContact, type Contact } from '../services/contacts.js';
 import { icsFeed } from '../services/ical.js';
@@ -42,6 +41,7 @@ import { boardOf, type BoardPeriod } from '../services/community-gamify.js';
 import { inRegion, mapSvg, pointsOf, type Region } from '../services/community-geo.js';
 import { CAN, onlineIds, profileExt, roleOf, touchActive, touchPresence, extOf } from '../services/community-ext.js';
 import type { Member, Portal } from './portal.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * The community inside the member portal (/portal/<key>/community): groups → channels → posts with
@@ -209,7 +209,7 @@ const CSS = `<style>
 </style>`;
 
 /** Progressive enhancement: image picking with in-browser resizing, confirmations, Ctrl+Enter. */
-const SCRIPT = `(function(){
+const SCRIPT = (t: STFn) => `(function(){
 function readAs(file){return new Promise(function(ok,no){var r=new FileReader();r.onload=function(){ok(r.result)};r.onerror=no;r.readAsDataURL(file)})}
 function shrink(file){
   if(file.type==='image/gif'||((file.type==='image/png'||file.type==='image/webp')&&file.size<1500000))return readAs(file);
@@ -224,12 +224,12 @@ document.querySelectorAll('input[data-images]').forEach(function(inp){
   inp.addEventListener('change',function(){
     var files=[].slice.call(inp.files||[]);inp.value='';
     files.forEach(function(f){
-      if(form.querySelectorAll('input[name="'+name+'"]').length>=max){alert('Höchstens '+max+(max>1?' Bilder':' Bild'));return}
-      if(!/^image\\/(png|jpeg|gif|webp)$/.test(f.type)){alert('Nur PNG, JPG, GIF oder WebP');return}
+      if(form.querySelectorAll('input[name="'+name+'"]').length>=max){alert(max>1?${JSON.stringify(t('Höchstens {n} Bilder'))}.replace('{n}',max):${JSON.stringify(t('Höchstens 1 Bild'))});return}
+      if(!/^image\\/(png|jpeg|gif|webp)$/.test(f.type)){alert(${JSON.stringify(t('Nur PNG, JPG, GIF oder WebP'))});return}
       shrink(f).then(function(data){
-        if(data.length>4200000){alert('Bild ist zu groß (höchstens 3 MB)');return}
+        if(data.length>4200000){alert(${JSON.stringify(t('Bild ist zu groß (höchstens 3 MB)'))});return}
         var h=document.createElement('input');h.type='hidden';h.name=name;h.value=data;form.appendChild(h);
-        if(box){var s=document.createElement('span'),i=document.createElement('img'),b=document.createElement('button');i.src=data;i.alt='';b.type='button';b.textContent='✕';b.setAttribute('aria-label','Bild entfernen');
+        if(box){var s=document.createElement('span'),i=document.createElement('img'),b=document.createElement('button');i.src=data;i.alt='';b.type='button';b.textContent='✕';b.setAttribute('aria-label',${JSON.stringify(t('Bild entfernen'))});
           b.onclick=function(){h.remove();s.remove()};s.appendChild(i);s.appendChild(b);box.appendChild(s)}
       })})})});
 document.addEventListener('submit',function(e){var m=e.target.getAttribute('data-confirm');if(m&&!confirm(m))e.preventDefault()},true);
@@ -265,7 +265,12 @@ export const communityPortalModule: Module = {
     const csrf = (m: Member) => sha256(`${app.config.secret}:community-form:${m.sessionHash}`).slice(0, 32);
     const tokenInput = (m: Member) => `<input type="hidden" name="csrf" value="${csrf(m)}">`;
     const tz = (p: Portal) => p.loc.timezone || 'Europe/Berlin';
-    const when = (p: Portal, iso: string) => `<time datetime="${escapeHtml(iso)}" title="${escapeHtml(formatInTz(iso, tz(p)))}">${relTime(iso)}</time>`;
+    /** The member's language for this portal (the sub-account's). */
+    const T = (p: Portal) => tLoc(app, p.locationId);
+    /** Date and time in the portal's zone and language (core/time.ts formatInTz is German only). */
+    const fmtAt = (p: Portal, at: Date | string, opts: Intl.DateTimeFormatOptions = {}) =>
+      new Intl.DateTimeFormat(T(p).locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: tz(p), weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', ...opts }).format(typeof at === 'string' ? new Date(at) : at);
+    const when = (p: Portal, iso: string) => `<time datetime="${escapeHtml(iso)}" title="${escapeHtml(fmtAt(p, iso))}">${relTime(iso, Date.now(), T(p))}</time>`;
     const fileUrl = (p: Portal, fid: string) => `${cbase(p)}/files/${encodeURIComponent(fid)}`;
 
     const profilesById = new Map<string, Profile>();
@@ -281,12 +286,12 @@ export const communityPortalModule: Module = {
     const avatar = (p: Portal, name: string, pr?: Profile, size = '', level?: number) => {
       const color = COLORS[parseInt(sha256(name || 'x').slice(0, 6), 16) % COLORS.length];
       const img = pr?.avatar_file_id ? `<img class="av ${size}" src="${fileUrl(p, pr.avatar_file_id)}" alt="">` : `<span class="av ${size}" style="background:${color}" aria-hidden="true">${escapeHtml(initials(name))}</span>`;
-      return `<span class="avw">${img}${level ? `<span class="lv" title="Level ${level}">${level}</span>` : ''}</span>`;
+      return `<span class="avw">${img}${level ? `<span class="lv" title="${T(p)('Level {level}', { level })}">${level}</span>` : ''}</span>`;
     };
     const levelOf = (g: any, contactId: string | null) => (contactId ? levelFor(memberPoints(app, g.id, contactId), groupSettings(g).levels) : 0);
     const authorBits = (p: Portal, g: any, row: { contact_id: string | null; author_name: string }) => {
       const pr = row.contact_id ? profile(p, row.contact_id) : undefined;
-      const name = pr?.display_name || row.author_name || 'Mitglied';
+      const name = pr?.display_name || row.author_name || T(p)('Mitglied');
       const nameHtml = pr ? `<a class="nm" href="${cbase(p)}/u/${encodeURIComponent(pr.handle)}">${escapeHtml(name)}</a>` : `<strong>${escapeHtml(name)}</strong>`;
       return { name, nameHtml, avatar: (size = '') => avatar(p, name, pr, size, row.contact_id ? levelOf(g, row.contact_id) : 0), team: !row.contact_id };
     };
@@ -311,8 +316,11 @@ export const communityPortalModule: Module = {
       if (opts.permissions) r.headers['permissions-policy'] = opts.permissions;
       return r;
     };
-    const errorPage = (p: Portal, m: Member, msg: string, status: number) =>
-      frame(p, m, 'Hinweis', `<div class="panel empty"><h1>${status === 403 ? 'Kein Zugang' : 'Hinweis'}</h1><p class="muted">${escapeHtml(msg)}</p><a class="btn" href="${cbase(p)}">Zur Community</a></div>`, status);
+    const errorPage = (p: Portal, m: Member, msg: string, status: number) => {
+      const t = T(p);
+      // messages of thrown errors are German catalog keys: shown in the member's language
+      return frame(p, m, t('Hinweis'), `<div class="panel empty"><h1>${status === 403 ? t('Kein Zugang') : t('Hinweis')}</h1><p class="muted">${escapeHtml(t(msg))}</p><a class="btn" href="${cbase(p)}">${t('Zur Community')}</a></div>`, status);
+    };
 
     /** Looks up the portal and member; members without a session go to the login. */
     const withMember = (ctx: Ctx, fn: (p: Portal, m: Member) => RawResult | Promise<RawResult>) => {
@@ -321,7 +329,7 @@ export const communityPortalModule: Module = {
       if (!p) return k.unknownPortal();
       const m = k.memberOf(ctx, p);
       if (!m) return ctx.method === 'GET' ? k.loginPage(p, { status: 401, next: ctx.path }) : redirect(p.base, 303);
-      if (ctx.method !== 'GET' && (!k.sameOrigin(ctx) || !safeEqual(ctx.body?.csrf, csrf(m)))) return errorPage(p, m, 'Die Seite war zu lange offen. Bitte neu laden und noch einmal versuchen.', 403);
+      if (ctx.method !== 'GET' && (!k.sameOrigin(ctx) || !safeEqual(ctx.body?.csrf, csrf(m)))) return errorPage(p, m, 'Die Seite war zu lange offen. Bitte neu laden und noch einmal versuchen.', 403); // i18n: errorPage translates
       return fn(p, m);
     };
     /** …and the group, if the member may see it (first visit = joining). */
@@ -377,7 +385,8 @@ export const communityPortalModule: Module = {
       (p: Portal, m: Member) => {
         if (!accessibleGroups(app, p.locationId, m.contact).length) return '';
         const n = unreadBell(p, m);
-        return `<a class="pn-link" href="${cbase(p)}">${I.users}<span>Community</span></a><a class="pn-bell" href="${cbase(p)}/notifications" aria-label="Benachrichtigungen${n ? ` (${n} neu)` : ''}">${I.bell}${n ? `<b>${n > 99 ? '99+' : n}</b>` : ''}</a>`;
+        const t = T(p);
+        return `<a class="pn-link" href="${cbase(p)}">${I.users}<span>${t('Community')}</span></a><a class="pn-bell" href="${cbase(p)}/notifications" aria-label="${n ? t('Benachrichtigungen ({n} neu)', { n }) : t('Benachrichtigungen')}">${I.bell}${n ? `<b>${n > 99 ? '99+' : n}</b>` : ''}</a>`;
       },
     ];
     app.services.portalDashboard = [
@@ -385,7 +394,7 @@ export const communityPortalModule: Module = {
       (p: Portal, m: Member) => {
         const groups = accessibleGroups(app, p.locationId, m.contact);
         if (!groups.length) return '';
-        return `<section class="cm-dash"><h2>${I.users} Community</h2><div class="cm-groups">${groups.map((g) => groupCard(p, m, g)).join('')}</div></section>`;
+        return `<section class="cm-dash"><h2>${I.users} ${T(p)('Community')}</h2><div class="cm-groups">${groups.map((g) => groupCard(p, m, g)).join('')}</div></section>`;
       },
     ];
     app.services.portalMemberCheck = [
@@ -400,26 +409,29 @@ export const communityPortalModule: Module = {
       const members = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM community_members WHERE group_id = ? AND banned_at IS NULL', g.id)!.n;
       const unread = db.get('SELECT 1 FROM community_members WHERE group_id = ? AND contact_id = ?', g.id, m.contact.id) ? unreadInGroup(g, m.contact.id) : 0;
       const cover = g.cover_image ? ` style="background-image:url('${escapeHtml(String(g.cover_image).replace(/['()\\\s<>"]/g, (c) => `%${c.charCodeAt(0).toString(16)}`))}')"` : '';
-      return `<a class="cm-group" href="${gHref(p, g)}"><div class="cv"${cover}>${g.cover_image ? '' : escapeHtml(initials(g.name).slice(0, 1))}</div><div class="b"><h3>${escapeHtml(g.name)}${unread ? `<span class="cm-n">${unread} neu</span>` : ''}</h3>${g.description ? `<p class="muted small" style="margin:0">${escapeHtml(excerptOf(stripMarkdown(g.description), 140))}</p>` : ''}<span class="muted small">${I.users} ${members} ${members === 1 ? 'Mitglied' : 'Mitglieder'}</span></div></a>`;
+      const t = T(p);
+      return `<a class="cm-group" href="${gHref(p, g)}"><div class="cv"${cover}>${g.cover_image ? '' : escapeHtml(initials(g.name).slice(0, 1))}</div><div class="b"><h3>${escapeHtml(g.name)}${unread ? `<span class="cm-n">${t('{n} neu', { n: unread })}</span>` : ''}</h3>${g.description ? `<p class="muted small" style="margin:0">${escapeHtml(excerptOf(stripMarkdown(g.description), 140))}</p>` : ''}<span class="muted small">${I.users} ${t.plural(members, { one: '{n} Mitglied', other: '{n} Mitglieder' })}</span></div></a>`;
     };
 
     // --- group page parts -------------------------------------------------------------------------
     const channelsOf = (g: any) => db.all('SELECT * FROM community_channels WHERE group_id = ? ORDER BY position, created_at', g.id);
     const tabs = (p: Portal, m: Member, g: any, on: string) => {
       const evs = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM community_events WHERE group_id = ? AND ends_at >= ?', g.id, new Date().toISOString())!.n;
-      const t: [string, string, string][] = [
-        ['feed', gHref(p, g), `${I.chat} Community`],
-        ['events', `${gHref(p, g)}/events`, `${I.cal} Kalender${evs ? ` <span class="cm-n">${evs}</span>` : ''}`],
-        ['members', `${gHref(p, g)}/members`, `${I.users} Mitglieder`],
-        ['leaderboard', `${gHref(p, g)}/leaderboard`, `${I.trophy} Rangliste`],
+      const t = T(p);
+      const items: [string, string, string][] = [
+        ['feed', gHref(p, g), `${I.chat} ${t('Community')}`],
+        ['events', `${gHref(p, g)}/events`, `${I.cal} ${t('Kalender')}${evs ? ` <span class="cm-n">${evs}</span>` : ''}`],
+        ['members', `${gHref(p, g)}/members`, `${I.users} ${t('Mitglieder')}`],
+        ['leaderboard', `${gHref(p, g)}/leaderboard`, `${I.trophy} ${t('Rangliste')}`],
         ...ui.tabs.flatMap((fn) => fn(p, m, g).map((x): [string, string, string] => [x.key, x.href, x.label])),
       ];
-      return `<nav class="cm-tabs">${t.map(([k, href, label]) => `<a href="${href}" class="${k === on ? 'on' : ''}">${label}</a>`).join('')}</nav>`;
+      return `<nav class="cm-tabs">${items.map(([k, href, label]) => `<a href="${href}" class="${k === on ? 'on' : ''}">${label}</a>`).join('')}</nav>`;
     };
     const head = (p: Portal, g: any) => {
       const members = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM community_members WHERE group_id = ? AND banned_at IS NULL', g.id)!.n;
       const cover = g.cover_image ? ` style="background-image:url('${escapeHtml(String(g.cover_image).replace(/['()\\\s<>"]/g, (c) => `%${c.charCodeAt(0).toString(16)}`))}')"` : '';
-      return `<div class="cm-head"><div class="cm-cover"${cover}>${g.cover_image ? '' : escapeHtml(initials(g.name).slice(0, 1))}</div><div><h1>${escapeHtml(g.name)}</h1><div class="cm-stats"><span>${I.users} ${members} ${members === 1 ? 'Mitglied' : 'Mitglieder'}</span><a class="cm-link" href="${cbase(p)}">Alle Gruppen</a></div></div></div>`;
+      const t = T(p);
+      return `<div class="cm-head"><div class="cm-cover"${cover}>${g.cover_image ? '' : escapeHtml(initials(g.name).slice(0, 1))}</div><div><h1>${escapeHtml(g.name)}</h1><div class="cm-stats"><span>${I.users} ${t.plural(members, { one: '{n} Mitglied', other: '{n} Mitglieder' })}</span><a class="cm-link" href="${cbase(p)}">${t('Alle Gruppen')}</a></div></div></div>`;
     };
     const meCard = (p: Portal, m: Member, g: any) => {
       const s = groupSettings(g);
@@ -429,13 +441,15 @@ export const communityPortalModule: Module = {
       const cur = s.levels[lvl - 1]?.points ?? 0;
       const pct = nxt ? Math.round(((pts - cur) / Math.max(1, nxt.missing + pts - cur)) * 100) : 100;
       const pr = ensureProfile(app, p.locationId, m.contact);
-      return `<div class="cm-box"><div class="cm-me">${avatar(p, pr.display_name, pr, '', lvl)}<div style="flex:1;min-width:0"><strong>${escapeHtml(s.levels[lvl - 1]?.name ?? `Level ${lvl}`)}</strong><div class="muted small">${pts} Punkte${nxt ? ` · noch ${nxt.missing} bis ${escapeHtml(nxt.name)}` : ' · höchstes Level'}</div><div class="bar"><i style="width:${pct}%"></i></div></div></div><p class="small" style="margin:10px 0 0"><a href="${cbase(p)}/u/${encodeURIComponent(pr.handle)}">Mein Profil</a> · <a href="${cbase(p)}/profile">Bearbeiten</a></p></div>`;
+      const t = T(p);
+      return `<div class="cm-box"><div class="cm-me">${avatar(p, pr.display_name, pr, '', lvl)}<div style="flex:1;min-width:0"><strong>${escapeHtml(s.levels[lvl - 1]?.name ?? t('Level {level}', { level: lvl }))}</strong><div class="muted small">${t('{n} Punkte', { n: pts })}${nxt ? ` · ${t('noch {n} bis {level}', { n: nxt.missing, level: escapeHtml(nxt.name) })}` : ` · ${t('höchstes Level')}`}</div><div class="bar"><i style="width:${pct}%"></i></div></div></div><p class="small" style="margin:10px 0 0"><a href="${cbase(p)}/u/${encodeURIComponent(pr.handle)}">${t('Mein Profil')}</a> · <a href="${cbase(p)}/profile">${t('Bearbeiten')}</a></p></div>`;
     };
     const upcoming = (p: Portal, g: any, limit = 3) => {
       const evs = db.all('SELECT * FROM community_events WHERE group_id = ? AND ends_at >= ? ORDER BY starts_at LIMIT ?', g.id, new Date().toISOString(), limit);
       if (!evs.length) return '';
-      return `<div class="cm-box"><h3>Nächste Termine</h3>${evs
-        .map((e) => `<a class="cm-mev" href="${gHref(p, g)}/events#e-${escapeHtml(e.id)}"><span class="d">${escapeHtml(formatInTz(e.starts_at, tz(p), { weekday: undefined, day: '2-digit', month: undefined, year: undefined, hour: undefined, minute: undefined }))}<small>${escapeHtml(formatInTz(e.starts_at, tz(p), { weekday: undefined, day: undefined, month: 'short', year: undefined, hour: undefined, minute: undefined }))}</small></span><span><strong>${escapeHtml(e.title)}</strong><br><span class="muted small">${escapeHtml(formatInTz(e.starts_at, tz(p), { weekday: 'short', day: undefined, month: undefined, year: undefined }))} Uhr</span></span></a>`)
+      const t = T(p);
+      return `<div class="cm-box"><h3>${t('Nächste Termine')}</h3>${evs
+        .map((e) => `<a class="cm-mev" href="${gHref(p, g)}/events#e-${escapeHtml(e.id)}"><span class="d">${escapeHtml(fmtAt(p, e.starts_at, { weekday: undefined, day: '2-digit', month: undefined, year: undefined, hour: undefined, minute: undefined }))}<small>${escapeHtml(fmtAt(p, e.starts_at, { weekday: undefined, day: undefined, month: 'short', year: undefined, hour: undefined, minute: undefined }))}</small></span><span><strong>${escapeHtml(e.title)}</strong><br><span class="muted small">${escapeHtml(t('{time} Uhr', { time: fmtAt(p, e.starts_at, { weekday: 'short', day: undefined, month: undefined, year: undefined }) }))}</span></span></a>`)
         .join('')}</div>`;
     };
 
@@ -456,13 +470,14 @@ export const communityPortalModule: Module = {
       const imgs = (post.images ?? []).slice(0, 3);
       const own = post.contact_id === m.contact.id;
       const extras = ui.postExtras.map((h) => h.card?.(p, m, g, post) ?? '').join('');
+      const t = T(p);
       return `<article class="cm-post${post.pinned ? ' pinned' : ''}" id="post-${escapeHtml(post.id)}">
-<div class="cm-meta">${a.avatar()}<div class="who2">${a.nameHtml}${a.team ? ' <span class="cm-tag">Team</span>' : ''}<br>${when(p, post.created_at)}${ch ? ` · <a class="cm-link" href="${gHref(p, g)}?ch=${encodeURIComponent(ch.slug)}">${escapeHtml(`${ch.emoji ? `${ch.emoji} ` : ''}${ch.name}`)}</a>` : ''}</div><div class="flags">${post.pinned ? `<span class="cm-tag" title="Angeheftet">${I.pin}<span class="tx"> Angeheftet</span></span>` : ''}${unread ? '<span class="cm-tag new">Neu</span>' : ''}</div></div>
+<div class="cm-meta">${a.avatar()}<div class="who2">${a.nameHtml}${a.team ? ` <span class="cm-tag">${t('Team')}</span>` : ''}<br>${when(p, post.created_at)}${ch ? ` · <a class="cm-link" href="${gHref(p, g)}?ch=${encodeURIComponent(ch.slug)}">${escapeHtml(`${ch.emoji ? `${ch.emoji} ` : ''}${ch.name}`)}</a>` : ''}</div><div class="flags">${post.pinned ? `<span class="cm-tag" title="${t('Angeheftet')}">${I.pin}<span class="tx"> ${t('Angeheftet')}</span></span>` : ''}${unread ? `<span class="cm-tag new">${t('Neu')}</span>` : ''}</div></div>
 <a class="cm-title" href="${postHref(p, g, post.id)}">${escapeHtml(post.title)}</a>
 ${excerpt ? `<p class="cm-excerpt">${escapeHtml(excerpt)}</p>` : ''}
 ${extras}
 ${imgs.length ? `<a class="cm-thumbs" href="${postHref(p, g, post.id)}">${imgs.map((f: string) => `<img src="${fileUrl(p, f)}" alt="" loading="lazy">`).join('')}</a>` : ''}
-<div class="cm-acts">${own ? `<span class="cm-btn" title="Gefällt">${I.heart} ${post.like_count}</span>` : `<form method="post" action="${postHref(p, g, post.id)}/like">${tokenInput(m)}<input type="hidden" name="back" value="${escapeHtml(backTo)}#post-${escapeHtml(post.id)}"><button class="cm-btn${liked ? ' on' : ''}" aria-pressed="${liked}" title="Gefällt mir">${I.heart} ${post.like_count}</button></form>`}<a class="cm-btn" href="${postHref(p, g, post.id)}#kommentare">${I.chat} ${post.comment_count} ${post.comment_count === 1 ? 'Kommentar' : 'Kommentare'}</a>${post.comment_count && post.last_activity_at !== post.created_at ? `<span class="sp small">Letzte Aktivität ${relTime(post.last_activity_at)}</span>` : ''}</div>
+<div class="cm-acts">${own ? `<span class="cm-btn" title="${t('Likes')}">${I.heart} ${post.like_count}</span>` : `<form method="post" action="${postHref(p, g, post.id)}/like">${tokenInput(m)}<input type="hidden" name="back" value="${escapeHtml(backTo)}#post-${escapeHtml(post.id)}"><button class="cm-btn${liked ? ' on' : ''}" aria-pressed="${liked}" title="${t('Gefällt mir')}">${I.heart} ${post.like_count}</button></form>`}<a class="cm-btn" href="${postHref(p, g, post.id)}#kommentare">${I.chat} ${t.plural(post.comment_count, { one: '{n} Kommentar', other: '{n} Kommentare' })}</a>${post.comment_count && post.last_activity_at !== post.created_at ? `<span class="sp small">${t('Letzte Aktivität {time}', { time: relTime(post.last_activity_at, Date.now(), t) })}</span>` : ''}</div>
 </article>`;
     };
 
@@ -474,22 +489,24 @@ ${imgs.length ? `<a class="cm-thumbs" href="${postHref(p, g, post.id)}">${imgs.m
       const d = opts.draft ?? {};
       const sel = d.channel_id || (current && writable.some((c) => c.id === current.id) ? current.id : writable[0].id);
       const extras = ui.postExtras.map((h) => h.fields?.(p, m, g, d) ?? '').join('');
-      return `<details class="cm-compose"${opts.error || d.title ? ' open' : ''}><summary>${avatar(p, pr.display_name, pr, 's')}<span class="ph">Schreib etwas …</span></summary>
+      const t = T(p);
+      return `<details class="cm-compose"${opts.error || d.title ? ' open' : ''}><summary>${avatar(p, pr.display_name, pr, 's')}<span class="ph">${t('Schreib etwas …')}</span></summary>
 <form class="cm-form" method="post" action="${gHref(p, g)}/posts">${tokenInput(m)}
-${opts.error ? `<div class="cm-err" role="alert">${escapeHtml(opts.error)}</div>` : ''}
-<input type="text" name="title" placeholder="Titel" maxlength="200" required value="${escapeHtml(d.title ?? '')}" aria-label="Titel">
-<textarea name="body" placeholder="Was möchtest du teilen? **fett**, Listen, Links – @name erwähnt jemanden." maxlength="20000" aria-label="Text">${escapeHtml(d.body ?? '')}</textarea>
+${opts.error ? `<div class="cm-err" role="alert">${escapeHtml(t(opts.error))}</div>` : ''}
+<input type="text" name="title" placeholder="${t('Titel')}" maxlength="200" required value="${escapeHtml(d.title ?? '')}" aria-label="${t('Titel')}">
+<textarea name="body" placeholder="${t('Was möchtest du teilen? **fett**, Listen, Links – @name erwähnt jemanden.')}" maxlength="20000" aria-label="${t('Text')}">${escapeHtml(d.body ?? '')}</textarea>
 <div class="cm-previews"></div>
 ${extras}
-<div class="cm-row"><select name="channel_id" aria-label="Kanal" style="max-width:240px">${writable.map((c) => `<option value="${escapeHtml(c.id)}"${c.id === sel ? ' selected' : ''}>${escapeHtml(`${c.emoji ? `${c.emoji} ` : ''}${c.name}`)}</option>`).join('')}</select>
-<label class="cm-pick cm-btn" hidden>${I.image} Bild<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple data-images="${MAX_POST_IMAGES}" data-name="image" hidden></label>
-<span class="grow"></span><button class="btn">Veröffentlichen</button></div>
-<span class="cm-hint">Bis zu ${MAX_POST_IMAGES} Bilder (PNG, JPG, GIF, WebP, je höchstens 3 MB). Strg+Enter sendet.</span>
+<div class="cm-row"><select name="channel_id" aria-label="${t('Kanal')}" style="max-width:240px">${writable.map((c) => `<option value="${escapeHtml(c.id)}"${c.id === sel ? ' selected' : ''}>${escapeHtml(`${c.emoji ? `${c.emoji} ` : ''}${c.name}`)}</option>`).join('')}</select>
+<label class="cm-pick cm-btn" hidden>${I.image} ${t('Bild')}<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple data-images="${MAX_POST_IMAGES}" data-name="image" hidden></label>
+<span class="grow"></span><button class="btn">${t('Veröffentlichen')}</button></div>
+<span class="cm-hint">${t('Bis zu {n} Bilder (PNG, JPG, GIF, WebP, je höchstens 3 MB). Strg+Enter sendet.', { n: MAX_POST_IMAGES })}</span>
 </form></details>`;
     };
 
     const groupPage = (p: Portal, m: Member, g: any, q: URLSearchParams, opts: { error?: string; draft?: any; status?: number } = {}) => {
       const chans = channelsOf(g);
+      const t = T(p);
       const closed = closedFor(g, m.contact.id);
       const current = chans.find((c) => c.slug === q.get('ch'));
       const filters = ui.feedFilters.flatMap((fn) => fn(p, m, g));
@@ -511,8 +528,8 @@ ${extras}
       const chLink = (c: any | null, cls: string) => {
         const n = c ? unread.get(c.id) ?? 0 : allUnread;
         const on = (c?.id ?? '') === (current?.id ?? '');
-        const lock = c && closed.has(c.id) ? ' <span title="Gesperrt">🔒</span>' : '';
-        return `<a class="${cls}${on ? ' on' : ''}" href="${gHref(p, g)}${c ? `?ch=${encodeURIComponent(c.slug)}` : ''}">${cls === 'cm-ch' ? `<span class="e">${escapeHtml(c?.emoji || '#')}</span>` : c?.emoji ? `${escapeHtml(c.emoji)} ` : ''}${escapeHtml(c ? c.name : 'Alle Beiträge')}${lock}${n && !lock ? `<span class="cm-n">${n}</span>` : ''}</a>`;
+        const lock = c && closed.has(c.id) ? ` <span title="${t('Gesperrt')}">🔒</span>` : '';
+        return `<a class="${cls}${on ? ' on' : ''}" href="${gHref(p, g)}${c ? `?ch=${encodeURIComponent(c.slug)}` : ''}">${cls === 'cm-ch' ? `<span class="e">${escapeHtml(c?.emoji || '#')}</span>` : c?.emoji ? `${escapeHtml(c.emoji)} ` : ''}${escapeHtml(c ? c.name : t('Alle Beiträge'))}${lock}${n && !lock ? `<span class="cm-n">${n}</span>` : ''}</a>`;
       };
       let lastCat = '';
       const sideList = [chLink(null, 'cm-ch'), ...chans.map((c) => {
@@ -521,16 +538,16 @@ ${extras}
         return cat + chLink(c, 'cm-ch');
       })].join('');
       const pager = total > PER_PAGE
-        ? `<div class="cm-pager">${page > 1 ? `<a class="btn ghost" href="${gHref(p, g)}?${qs({ page: String(page - 1) })}">← Neuere</a>` : '<span></span>'}${page * PER_PAGE < total ? `<a class="btn ghost" href="${gHref(p, g)}?${qs({ page: String(page + 1) })}">Ältere →</a>` : ''}</div>`
+        ? `<div class="cm-pager">${page > 1 ? `<a class="btn ghost" href="${gHref(p, g)}?${qs({ page: String(page - 1) })}">← ${t('Neuere')}</a>` : '<span></span>'}${page * PER_PAGE < total ? `<a class="btn ghost" href="${gHref(p, g)}?${qs({ page: String(page + 1) })}">${t('Ältere')} →</a>` : ''}</div>`
         : '';
       const feed = lockedHere
-        ? `<div class="cm-box cm-empty"><p><strong>🔒 Dieser Kanal ist für dich noch gesperrt.</strong></p><p class="small">${escapeHtml(closed.get(current.id) ?? '')}</p></div>`
+        ? `<div class="cm-box cm-empty"><p><strong>🔒 ${t('Dieser Kanal ist für dich noch gesperrt.')}</strong></p><p class="small">${escapeHtml(closed.get(current.id) ?? '')}</p></div>`
         : posts.length
           ? posts.map((post) => postCard(p, m, g, post, current ? null : byId.get(post.channel_id), post.contact_id !== m.contact.id && post.last_activity_at > (reads.get(post.id) ?? since), here)).join('')
-          : `<div class="cm-box cm-empty"><p><strong>Noch keine Beiträge${current ? ' in diesem Kanal' : filter ? ' mit diesem Filter' : ''}.</strong></p><p class="small">Schreib den ersten – zum Beispiel eine kurze Vorstellung.</p></div>`;
-      const about = g.description ? `<div class="cm-box"><h3>Über die Gruppe</h3><div class="prose small">${renderMarkdown(g.description)}</div></div>` : '';
-      const chips = `<nav class="cm-chips" aria-label="Kanäle">${[chLink(null, ''), ...chans.map((c) => chLink(c, ''))].join('')}</nav>`;
-      const filterBar = filters.length ? `<nav class="cm-filter" aria-label="Beiträge filtern"><a href="${gHref(p, g)}${current ? `?ch=${encodeURIComponent(current.slug)}` : ''}" class="${filter ? '' : 'on'}">Alle</a>${filters.map((f) => `<a href="${gHref(p, g)}?${new URLSearchParams({ ...(current ? { ch: current.slug } : {}), f: f.key })}" class="${filter?.key === f.key ? 'on' : ''}">${f.label}</a>`).join('')}</nav>` : '';
+          : `<div class="cm-box cm-empty"><p><strong>${current ? t('Noch keine Beiträge in diesem Kanal.') : filter ? t('Noch keine Beiträge mit diesem Filter.') : t('Noch keine Beiträge.')}</strong></p><p class="small">${t('Schreib den ersten – zum Beispiel eine kurze Vorstellung.')}</p></div>`;
+      const about = g.description ? `<div class="cm-box"><h3>${t('Über die Gruppe')}</h3><div class="prose small">${renderMarkdown(g.description)}</div></div>` : '';
+      const chips = `<nav class="cm-chips" aria-label="${t('Kanäle')}">${[chLink(null, ''), ...chans.map((c) => chLink(c, ''))].join('')}</nav>`;
+      const filterBar = filters.length ? `<nav class="cm-filter" aria-label="${t('Beiträge filtern')}"><a href="${gHref(p, g)}${current ? `?ch=${encodeURIComponent(current.slug)}` : ''}" class="${filter ? '' : 'on'}">${t('Alle')}</a>${filters.map((f) => `<a href="${gHref(p, g)}?${new URLSearchParams({ ...(current ? { ch: current.slug } : {}), f: f.key })}" class="${filter?.key === f.key ? 'on' : ''}">${f.label}</a>`).join('')}</nav>` : '';
       const top = ui.feedTop.map((fn) => fn(p, m, g, q)).join('');
       const side = ui.side.map((fn) => fn(p, m, g)).join('');
       return frame(
@@ -541,9 +558,9 @@ ${extras}
 <div class="cm-grid"><section>
 ${chips}${top}
 ${current?.description ? `<p class="muted" style="margin:0 0 12px">${escapeHtml(current.description)}</p>` : ''}
-${lockedHere ? '' : current?.admin_only && !CAN.writeAnnouncements(roleIn(g, m.contact.id)) ? '<p class="cm-hint" style="margin:0 0 12px">In diesem Kanal schreibt nur das Team.</p>' : composer(p, m, g, open, current && !lockedHere ? current : null, opts)}
+${lockedHere ? '' : current?.admin_only && !CAN.writeAnnouncements(roleIn(g, m.contact.id)) ? `<p class="cm-hint" style="margin:0 0 12px">${t('In diesem Kanal schreibt nur das Team.')}</p>` : composer(p, m, g, open, current && !lockedHere ? current : null, opts)}
 ${filterBar}${feed}${pager}
-</section><aside class="cm-side"><nav class="cm-box cm-chlist" aria-label="Kanäle">${sideList}</nav>${meCard(p, m, g)}${side}${upcoming(p, g)}${about}</aside></div>`,
+</section><aside class="cm-side"><nav class="cm-box cm-chlist" aria-label="${t('Kanäle')}">${sideList}</nav>${meCard(p, m, g)}${side}${upcoming(p, g)}${about}</aside></div>`,
         opts.status,
       );
     };
@@ -554,19 +571,20 @@ ${filterBar}${feed}${pager}
       const own = c.contact_id === m.contact.id;
       const liked = !!db.get('SELECT 1 FROM community_likes WHERE target_id = ? AND contact_id = ?', c.id, m.contact.id);
       const here = `${postHref(p, g, post.id)}#c-${c.id}`;
-      const like = own || a.team ? (c.like_count ? `<span class="cm-link">${I.heart} ${c.like_count}</span>` : '') : `<form method="post" action="${gHref(p, g)}/c/${encodeURIComponent(c.id)}/like">${tokenInput(m)}<input type="hidden" name="back" value="${escapeHtml(here)}"><button class="cm-link" style="${liked ? 'color:#e11d48;font-weight:700' : ''}" aria-pressed="${liked}">${I.heart} ${liked ? 'Gefällt dir' : 'Gefällt mir'}${c.like_count ? ` · ${c.like_count}` : ''}</button></form>`;
+      const t = T(p);
+      const like = own || a.team ? (c.like_count ? `<span class="cm-link">${I.heart} ${c.like_count}</span>` : '') : `<form method="post" action="${gHref(p, g)}/c/${encodeURIComponent(c.id)}/like">${tokenInput(m)}<input type="hidden" name="back" value="${escapeHtml(here)}"><button class="cm-link" style="${liked ? 'color:#e11d48;font-weight:700' : ''}" aria-pressed="${liked}">${I.heart} ${liked ? t('Gefällt dir') : t('Gefällt mir')}${c.like_count ? ` · ${c.like_count}` : ''}</button></form>`;
       const reply = !c.parent_id
-        ? `<details><summary class="cm-link">Antworten</summary><form class="cm-mini" method="post" action="${postHref(p, g, post.id)}/comments">${tokenInput(m)}<input type="hidden" name="parent_id" value="${escapeHtml(c.id)}"><textarea class="cm-in" name="body" required maxlength="5000" placeholder="Antwort an ${escapeHtml(a.name)} …" aria-label="Antwort"></textarea><div><button class="btn">Antworten</button></div></form></details>`
+        ? `<details><summary class="cm-link">${t('Antwort schreiben')}</summary><form class="cm-mini" method="post" action="${postHref(p, g, post.id)}/comments">${tokenInput(m)}<input type="hidden" name="parent_id" value="${escapeHtml(c.id)}"><textarea class="cm-in" name="body" required maxlength="5000" placeholder="${t('Antwort an {name} …', { name: escapeHtml(a.name) })}" aria-label="${t('Deine Antwort')}"></textarea><div><button class="btn">${t('Antwort schreiben')}</button></div></form></details>`
         : '';
       const tools = own
-        ? `<form method="post" action="${gHref(p, g)}/c/${encodeURIComponent(c.id)}/delete" data-confirm="Kommentar löschen?">${tokenInput(m)}<button class="cm-link">Löschen</button></form>`
+        ? `<form method="post" action="${gHref(p, g)}/c/${encodeURIComponent(c.id)}/delete" data-confirm="${t('Kommentar löschen?')}">${tokenInput(m)}<button class="cm-link">${t('Kommentar löschen')}</button></form>`
         : a.team
           ? ''
-          : `<details class="cm-report"><summary class="cm-link">${I.flag} Melden</summary><form class="cm-mini" method="post" action="${gHref(p, g)}/c/${encodeURIComponent(c.id)}/report">${tokenInput(m)}<input class="cm-in" type="text" name="reason" maxlength="500" placeholder="Was stimmt nicht? (optional)" aria-label="Grund"><div><button class="btn ghost">Ans Team melden</button></div></form></details>`;
+          : `<details class="cm-report"><summary class="cm-link">${I.flag} ${t('Melden')}</summary><form class="cm-mini" method="post" action="${gHref(p, g)}/c/${encodeURIComponent(c.id)}/report">${tokenInput(m)}<input class="cm-in" type="text" name="reason" maxlength="500" placeholder="${t('Was stimmt nicht? (optional)')}" aria-label="${t('Grund')}"><div><button class="btn ghost">${t('Ans Team melden')}</button></div></form></details>`;
       const role = c.contact_id ? roleIn(g, c.contact_id) : null;
-      const roleTag = role ? `<span class="cm-tag">${role === 'admin' ? 'Admin' : 'Moderator'}</span>` : '';
+      const roleTag = role ? `<span class="cm-tag">${role === 'admin' ? t('Admin') : t('Moderator')}</span>` : '';
       const modTools = ui.commentActions.map((fn) => fn(p, m, g, post, c, csrf(m))).join('');
-      const self = `<div class="cm-c" id="c-${escapeHtml(c.id)}">${a.avatar('s')}<div class="bd"><div class="bubble"><div class="hd">${a.nameHtml}${a.team ? '<span class="cm-tag">Team</span>' : ''}${roleTag}<span>· ${when(p, c.created_at)}</span></div><div class="prose">${renderText(p, c.body, !a.team)}</div></div><div class="ft">${like}${reply}${tools}${modTools}</div></div></div>`;
+      const self = `<div class="cm-c" id="c-${escapeHtml(c.id)}">${a.avatar('s')}<div class="bd"><div class="bubble"><div class="hd">${a.nameHtml}${a.team ? `<span class="cm-tag">${t('Team')}</span>` : ''}${roleTag}<span>· ${when(p, c.created_at)}</span></div><div class="prose">${renderText(p, c.body, !a.team)}</div></div><div class="ft">${like}${reply}${tools}${modTools}</div></div></div>`;
       return replies.length ? `${self}<div class="cm-replies">${replies.map((r): string => commentHtml(p, m, g, post, r)).join('')}</div>` : self;
     };
 
@@ -581,32 +599,33 @@ ${filterBar}${feed}${pager}
       const kids = (cid: string) => comments.filter((c) => c.parent_id === cid);
       const imgs: string[] = post.images ?? [];
       const here = postHref(p, g, post.id);
+      const t = T(p);
       const actions = `<div class="cm-acts">
-${own ? `<span class="cm-btn">${I.heart} ${post.like_count}</span>` : `<form method="post" action="${here}/like">${tokenInput(m)}<input type="hidden" name="back" value="${escapeHtml(here)}"><button class="cm-btn${liked ? ' on' : ''}" aria-pressed="${liked}">${I.heart} ${liked ? 'Gefällt dir' : 'Gefällt mir'} · ${post.like_count}</button></form>`}
-<form method="post" action="${here}/follow">${tokenInput(m)}<button class="cm-btn f${following ? ' on' : ''}" aria-pressed="${following}" title="Bei neuen Kommentaren benachrichtigt werden">${I.bell} ${following ? 'Du folgst' : 'Folgen'}</button></form>
+${own ? `<span class="cm-btn">${I.heart} ${post.like_count}</span>` : `<form method="post" action="${here}/like">${tokenInput(m)}<input type="hidden" name="back" value="${escapeHtml(here)}"><button class="cm-btn${liked ? ' on' : ''}" aria-pressed="${liked}">${I.heart} ${liked ? t('Gefällt dir') : t('Gefällt mir')} · ${post.like_count}</button></form>`}
+<form method="post" action="${here}/follow">${tokenInput(m)}<button class="cm-btn f${following ? ' on' : ''}" aria-pressed="${following}" title="${t('Bei neuen Kommentaren benachrichtigt werden')}">${I.bell} ${following ? t('Du folgst') : t('Beitrag folgen')}</button></form>
 <span class="sp"></span>
-${own ? `<a class="cm-link" href="${here}/edit">Bearbeiten</a><form method="post" action="${here}/delete" data-confirm="Beitrag mit allen Kommentaren löschen?">${tokenInput(m)}<button class="cm-link">Löschen</button></form>` : a.team ? '' : `<details class="cm-report"><summary class="cm-link">${I.flag} Melden</summary><form class="cm-mini" method="post" action="${here}/report">${tokenInput(m)}<input class="cm-in" type="text" name="reason" maxlength="500" placeholder="Was stimmt nicht? (optional)" aria-label="Grund"><div><button class="btn ghost">Ans Team melden</button></div></form></details>`}
+${own ? `<a class="cm-link" href="${here}/edit">${t('Bearbeiten')}</a><form method="post" action="${here}/delete" data-confirm="${t('Beitrag mit allen Kommentaren löschen?')}">${tokenInput(m)}<button class="cm-link">${t('Beitrag löschen')}</button></form>` : a.team ? '' : `<details class="cm-report"><summary class="cm-link">${I.flag} ${t('Melden')}</summary><form class="cm-mini" method="post" action="${here}/report">${tokenInput(m)}<input class="cm-in" type="text" name="reason" maxlength="500" placeholder="${t('Was stimmt nicht? (optional)')}" aria-label="${t('Grund')}"><div><button class="btn ghost">${t('Ans Team melden')}</button></div></form></details>`}
 ${ui.postActions.map((fn) => fn(p, m, g, post, csrf(m))).join('')}
 </div>`;
       return frame(
         p,
         m,
         post.title,
-        `${opts.notice ? `<div class="cm-ok" role="status">${escapeHtml(opts.notice)}</div>` : ''}
+        `${opts.notice ? `<div class="cm-ok" role="status">${escapeHtml(t(opts.notice))}</div>` : ''}
 <div class="crumb"><a href="${gHref(p, g)}">${escapeHtml(g.name)}</a>${ch ? ` / <a href="${gHref(p, g)}?ch=${encodeURIComponent(ch.slug)}">${escapeHtml(ch.name)}</a>` : ''}</div>
 <div class="cm-grid"><section>
 <article class="cm-post cm-full">
-<div class="cm-meta">${a.avatar()}<div class="who2">${a.nameHtml}${a.team ? ' <span class="cm-tag">Team</span>' : ''}${post.contact_id && roleIn(g, post.contact_id) ? ` <span class="cm-tag">${roleIn(g, post.contact_id) === 'admin' ? 'Admin' : 'Moderator'}</span>` : ''}<br>${when(p, post.created_at)}${post.edited_at ? ' · bearbeitet' : ''}</div><div class="flags">${post.pinned ? `<span class="cm-tag">${I.pin} Angeheftet</span>` : ''}</div></div>
+<div class="cm-meta">${a.avatar()}<div class="who2">${a.nameHtml}${a.team ? ` <span class="cm-tag">${t('Team')}</span>` : ''}${post.contact_id && roleIn(g, post.contact_id) ? ` <span class="cm-tag">${roleIn(g, post.contact_id) === 'admin' ? t('Admin') : t('Moderator')}</span>` : ''}<br>${when(p, post.created_at)}${post.edited_at ? ` · ${t('bearbeitet')}` : ''}</div><div class="flags">${post.pinned ? `<span class="cm-tag">${I.pin} ${t('Angeheftet')}</span>` : ''}</div></div>
 <h1>${escapeHtml(post.title)}</h1>
 ${post.body ? `<div class="prose">${renderText(p, post.body, !a.team)}</div>` : ''}
 ${ui.postExtras.map((h) => h.full?.(p, m, g, post) ?? '').join('')}
-${imgs.length ? `<div class="cm-gallery${imgs.length === 1 ? ' one' : ''}">${imgs.map((f) => `<a href="${fileUrl(p, f)}" target="_blank" rel="noopener"><img src="${fileUrl(p, f)}" alt="Bild zum Beitrag" loading="lazy"></a>`).join('')}</div>` : ''}
+${imgs.length ? `<div class="cm-gallery${imgs.length === 1 ? ' one' : ''}">${imgs.map((f) => `<a href="${fileUrl(p, f)}" target="_blank" rel="noopener"><img src="${fileUrl(p, f)}" alt="${t('Bild zum Beitrag')}" loading="lazy"></a>`).join('')}</div>` : ''}
 ${actions}
 </article>
-<section class="cm-post cm-comments" id="kommentare"><h2>${comments.length} ${comments.length === 1 ? 'Kommentar' : 'Kommentare'}</h2>
+<section class="cm-post cm-comments" id="kommentare"><h2>${t.plural(comments.length, { one: '{n} Kommentar', other: '{n} Kommentare' })}</h2>
 <form class="cm-mini" method="post" action="${here}/comments" style="margin-bottom:6px">${tokenInput(m)}
-${opts.error ? `<div class="cm-err" role="alert">${escapeHtml(opts.error)}</div>` : ''}
-<textarea class="cm-in" name="body" required maxlength="5000" placeholder="Schreib einen Kommentar … (@name erwähnt jemanden)" aria-label="Kommentar">${escapeHtml(opts.draft ?? '')}</textarea><div><button class="btn">Kommentieren</button></div></form>
+${opts.error ? `<div class="cm-err" role="alert">${escapeHtml(t(opts.error))}</div>` : ''}
+<textarea class="cm-in" name="body" required maxlength="5000" placeholder="${t('Schreib einen Kommentar … (@name erwähnt jemanden)')}" aria-label="${t('Kommentar')}">${escapeHtml(opts.draft ?? '')}</textarea><div><button class="btn">${t('Kommentieren')}</button></div></form>
 ${top.map((c) => commentHtml(p, m, g, post, c, kids(c.id))).join('')}
 </section>
 </section><aside class="cm-side">${meCard(p, m, g)}${upcoming(p, g)}</aside></div>`,
@@ -616,7 +635,7 @@ ${top.map((c) => commentHtml(p, m, g, post, c, kids(c.id))).join('')}
 
     // --- routes: script, home, groups -----------------------------------------------------------
     router.get('/portal-community.js', 'public', () => {
-      const r = text(SCRIPT, 'text/javascript; charset=utf-8');
+      const r = text(SCRIPT(tApp()), 'text/javascript; charset=utf-8');
       r.headers['cache-control'] = 'public, max-age=3600';
       return r;
     });
@@ -625,12 +644,13 @@ ${top.map((c) => commentHtml(p, m, g, post, c, kids(c.id))).join('')}
       withMember(ctx, (p, m) => {
         const groups = accessibleGroups(app, p.locationId, m.contact);
         if (groups.length === 1) return redirect(gHref(p, groups[0]));
+        const t = T(p);
         return frame(
           p,
           m,
-          'Community',
-          `<div class="crumb"><a href="${p.base}">Start</a></div><h1>Community</h1><p class="muted">Tausch dich mit den anderen Mitgliedern aus.</p>
-${groups.length ? `<div class="cm-groups" style="margin-top:18px">${groups.map((g) => groupCard(p, m, g)).join('')}</div>` : '<div class="panel empty"><h2>Noch keine Gruppe für dich</h2><p class="muted">Sobald du Zugang zu einer Community-Gruppe hast, erscheint sie hier.</p></div>'}`,
+          t('Community'),
+          `<div class="crumb"><a href="${p.base}">${t('Start')}</a></div><h1>${t('Community')}</h1><p class="muted">${t('Tausch dich mit den anderen Mitgliedern aus.')}</p>
+${groups.length ? `<div class="cm-groups" style="margin-top:18px">${groups.map((g) => groupCard(p, m, g)).join('')}</div>` : `<div class="panel empty"><h2>${t('Noch keine Gruppe für dich')}</h2><p class="muted">${t('Sobald du Zugang zu einer Community-Gruppe hast, erscheint sie hier.')}</p></div>`}`,
         );
       }),
     );
@@ -673,7 +693,7 @@ ${groups.length ? `<div class="cm-groups" style="margin-top:18px">${groups.map((
 
     router.get('/portal/:p/community/g/:group/p/:post', 'public', (ctx) =>
       withPost(ctx, (p, m, g, post) => {
-        const r = postPage(p, m, g, post, { notice: ctx.query.get('gemeldet') === '1' ? 'Danke! Das Team schaut sich die Meldung an.' : '' });
+        const r = postPage(p, m, g, post, { notice: ctx.query.get('gemeldet') === '1' ? T(p)('Danke! Das Team schaut sich die Meldung an.') : '' });
         markRead(app, m.contact.id, post.id);
         return r;
       }),
@@ -749,19 +769,21 @@ ${groups.length ? `<div class="cm-groups" style="margin-top:18px">${groups.map((
         return redirect(`${postHref(p, g, post.id)}#kommentare`, 303);
       }),
     );
-    const editPage = (p: Portal, m: Member, g: any, post: any, error = '', draft?: { title: string; body: string }, status = 200) =>
-      frame(
+    const editPage = (p: Portal, m: Member, g: any, post: any, error = '', draft?: { title: string; body: string }, status = 200) => {
+      const t = T(p);
+      return frame(
         p,
         m,
-        'Beitrag bearbeiten',
-        `<div class="crumb"><a href="${gHref(p, g)}">${escapeHtml(g.name)}</a> / <a href="${postHref(p, g, post.id)}">${escapeHtml(post.title)}</a></div><h1>Beitrag bearbeiten</h1>
+        t('Beitrag bearbeiten'),
+        `<div class="crumb"><a href="${gHref(p, g)}">${escapeHtml(g.name)}</a> / <a href="${postHref(p, g, post.id)}">${escapeHtml(post.title)}</a></div><h1>${t('Beitrag bearbeiten')}</h1>
 <div class="cm-compose" style="max-width:760px"><form class="cm-form" method="post" action="${postHref(p, g, post.id)}/edit">${tokenInput(m)}
-${error ? `<div class="cm-err" role="alert">${escapeHtml(error)}</div>` : ''}
-<label for="t">Titel</label><input id="t" type="text" name="title" maxlength="200" required value="${escapeHtml(draft?.title ?? post.title)}">
-<label for="b">Text</label><textarea id="b" name="body" maxlength="20000" rows="10">${escapeHtml(draft?.body ?? post.body)}</textarea>
-<div class="cm-row"><a class="btn ghost" href="${postHref(p, g, post.id)}">Abbrechen</a><span class="grow"></span><button class="btn">Speichern</button></div></form></div>`,
+${error ? `<div class="cm-err" role="alert">${escapeHtml(t(error))}</div>` : ''}
+<label for="t">${t('Titel')}</label><input id="t" type="text" name="title" maxlength="200" required value="${escapeHtml(draft?.title ?? post.title)}">
+<label for="b">${t('Text')}</label><textarea id="b" name="body" maxlength="20000" rows="10">${escapeHtml(draft?.body ?? post.body)}</textarea>
+<div class="cm-row"><a class="btn ghost" href="${postHref(p, g, post.id)}">${t('Abbrechen')}</a><span class="grow"></span><button class="btn">${t('Speichern')}</button></div></form></div>`,
         status,
       );
+    };
     router.get('/portal/:p/community/g/:group/p/:post/edit', 'public', (ctx) =>
       withPost(ctx, (p, m, g, post) => (post.contact_id === m.contact.id ? editPage(p, m, g, post) : errorPage(p, m, 'Nur eigene Beiträge kannst du bearbeiten.', 403))),
     );
@@ -782,21 +804,22 @@ ${error ? `<div class="cm-err" role="alert">${escapeHtml(error)}</div>` : ''}
     router.get('/portal/:p/community/g/:group/events', 'public', (ctx) =>
       withGroup(ctx, (p, m, g) => {
         const nowIso = new Date().toISOString();
+        const t = T(p);
         const next = db.all('SELECT * FROM community_events WHERE group_id = ? AND ends_at >= ? ORDER BY starts_at LIMIT 100', g.id, nowIso);
         const past = db.all('SELECT * FROM community_events WHERE group_id = ? AND ends_at < ? ORDER BY starts_at DESC LIMIT 20', g.id, nowIso);
         const ev = (e: any) => {
           const live = e.starts_at <= nowIso && e.ends_at >= nowIso;
-          const day = formatInTz(e.starts_at, tz(p), { weekday: undefined, day: 'numeric', month: undefined, year: undefined, hour: undefined, minute: undefined });
-          const mon = formatInTz(e.starts_at, tz(p), { weekday: undefined, day: undefined, month: 'short', year: undefined, hour: undefined, minute: undefined });
-          const range = `${formatInTz(e.starts_at, tz(p), { weekday: 'long', year: undefined })} – ${formatInTz(e.ends_at, tz(p), { weekday: undefined, day: undefined, month: undefined, year: undefined })} Uhr`;
-          return `<div class="cm-ev" id="e-${escapeHtml(e.id)}"><div class="d"><b>${escapeHtml(day)}</b><small>${escapeHtml(mon)}</small></div><div class="bd"><h3>${escapeHtml(e.title)} ${live ? '<span class="cm-tag new">Läuft gerade</span>' : ''}</h3><div class="muted small">${escapeHtml(range)}</div>${e.description ? `<div class="prose small" style="margin-top:6px">${renderMarkdown(e.description)}</div>` : ''}<div class="cm-acts">${e.link && e.ends_at >= nowIso ? `<a class="btn" href="${escapeHtml(e.link)}" target="_blank" rel="noopener noreferrer">Teilnehmen</a>` : ''}<a class="cm-btn" href="${gHref(p, g)}/events/${encodeURIComponent(e.id)}/ics">${I.cal} In meinen Kalender</a></div></div></div>`;
+          const day = fmtAt(p, e.starts_at, { weekday: undefined, day: 'numeric', month: undefined, year: undefined, hour: undefined, minute: undefined });
+          const mon = fmtAt(p, e.starts_at, { weekday: undefined, day: undefined, month: 'short', year: undefined, hour: undefined, minute: undefined });
+          const range = t('{start} – {end} Uhr', { start: fmtAt(p, e.starts_at, { weekday: 'long', year: undefined }), end: fmtAt(p, e.ends_at, { weekday: undefined, day: undefined, month: undefined, year: undefined }) });
+          return `<div class="cm-ev" id="e-${escapeHtml(e.id)}"><div class="d"><b>${escapeHtml(day)}</b><small>${escapeHtml(mon)}</small></div><div class="bd"><h3>${escapeHtml(e.title)} ${live ? `<span class="cm-tag new">${t('Läuft gerade')}</span>` : ''}</h3><div class="muted small">${escapeHtml(range)}</div>${e.description ? `<div class="prose small" style="margin-top:6px">${renderMarkdown(e.description)}</div>` : ''}<div class="cm-acts">${e.link && e.ends_at >= nowIso ? `<a class="btn" href="${escapeHtml(e.link)}" target="_blank" rel="noopener noreferrer">${t('Teilnehmen')}</a>` : ''}<a class="cm-btn" href="${gHref(p, g)}/events/${encodeURIComponent(e.id)}/ics">${I.cal} ${t('In meinen Kalender')}</a></div></div></div>`;
         };
         return frame(
           p,
           m,
-          `Kalender · ${g.name}`,
-          `${head(p, g)}${tabs(p, m, g, 'events')}<div style="max-width:820px">${next.length ? next.map(ev).join('') : '<div class="cm-box cm-empty"><p><strong>Gerade keine Termine geplant.</strong></p><p class="small">Neue Termine erscheinen hier – und auf Wunsch in deinen Benachrichtigungen.</p></div>'}
-${past.length ? `<details style="margin-top:18px"><summary class="muted" style="cursor:pointer">Vergangene Termine (${past.length})</summary><div style="margin-top:12px;opacity:.75">${past.map(ev).join('')}</div></details>` : ''}</div>`,
+          `${t('Kalender')} · ${g.name}`,
+          `${head(p, g)}${tabs(p, m, g, 'events')}<div style="max-width:820px">${next.length ? next.map(ev).join('') : `<div class="cm-box cm-empty"><p><strong>${t('Gerade keine Termine geplant.')}</strong></p><p class="small">${t('Neue Termine erscheinen hier – und auf Wunsch in deinen Benachrichtigungen.')}</p></div>`}
+${past.length ? `<details style="margin-top:18px"><summary class="muted" style="cursor:pointer">${t('Vergangene Termine ({n})', { n: past.length })}</summary><div style="margin-top:12px;opacity:.75">${past.map(ev).join('')}</div></details>` : ''}</div>`,
         );
       }),
     );
@@ -805,7 +828,7 @@ ${past.length ? `<details style="margin-top:18px"><summary class="muted" style="
         const e = db.get('SELECT * FROM community_events WHERE id = ? AND group_id = ?', ctx.params.id, g.id);
         if (!e) return kit().notFoundPage(p, m);
         const r = text(icsFeed(g.name, [{ id: e.id, start_at: e.starts_at, end_at: e.ends_at, title: e.title, description: [e.description, e.link].filter(Boolean).join('\n\n') }]), 'text/calendar; charset=utf-8');
-        r.headers['content-disposition'] = 'attachment; filename="termin.ics"';
+        r.headers['content-disposition'] = `attachment; filename="${T(p)('termin')}.ics"`;
         return r;
       }),
     );
@@ -819,8 +842,9 @@ ${past.length ? `<details style="margin-top:18px"><summary class="muted" style="
         const sort = ['active', 'points', 'new'].includes(String(ctx.query.get('sort'))) ? String(ctx.query.get('sort')) : 'active';
         const onlyOnline = ctx.query.get('online') === '1' && ext.online.enabled;
         const view = ctx.query.get('view') === 'map' && ext.map.enabled ? 'map' : 'list';
+        const t = T(p);
         if (!ext.directory.enabled && !CAN.moderate(roleIn(g, m.contact.id)))
-          return frame(p, m, `Mitglieder · ${g.name}`, `${head(p, g)}${tabs(p, m, g, 'members')}<div class="cm-box cm-empty">Das Mitgliederverzeichnis ist in dieser Gruppe ausgeschaltet.</div>`);
+          return frame(p, m, `${t('Mitglieder')} · ${g.name}`, `${head(p, g)}${tabs(p, m, g, 'members')}<div class="cm-box cm-empty">${t('Das Mitgliederverzeichnis ist in dieser Gruppe ausgeschaltet.')}</div>`);
         const all = db.all<any>(
           `SELECT m.contact_id, m.joined_at, m.last_seen_at, pr.display_name, pr.handle, pr.bio, pr.avatar_file_id, pe.headline, pe.city, pe.country, COALESCE(pe.show_on_map, 0) AS show_on_map,
              (SELECT COALESCE(SUM(points), 0) FROM community_points WHERE group_id = m.group_id AND contact_id = m.contact_id) AS points
@@ -835,34 +859,34 @@ ${past.length ? `<details style="margin-top:18px"><summary class="muted" style="
         const roles = new Map(db.all<{ contact_id: string; role: string }>('SELECT contact_id, role FROM community_roles WHERE group_id = ?', g.id).map((r) => [r.contact_id, r.role]));
         const rows = all.filter((r) => levelFor(r.points, s.levels) >= minLevel && (!onlyOnline || online.has(r.contact_id)));
         const nOnline = ext.online.enabled ? all.filter((r) => online.has(r.contact_id)).length : 0;
-        const since = (iso: string) => escapeHtml(formatInTz(iso, tz(p), { weekday: undefined, day: undefined, month: 'long', year: 'numeric', hour: undefined, minute: undefined }));
+        const since = (iso: string) => escapeHtml(fmtAt(p, iso, { weekday: undefined, day: undefined, month: 'long', year: 'numeric', hour: undefined, minute: undefined }));
         const card = (r: any) => {
           const lvl = levelFor(r.points, s.levels);
           const role = roles.get(r.contact_id);
-          const dm = ext.dms.enabled && r.contact_id !== m.contact.id ? `<a class="cm-btn" href="${cbase(p)}/messages/${encodeURIComponent(r.handle)}" title="Nachricht schreiben" aria-label="Nachricht an ${escapeHtml(r.display_name)}">${I.chat}</a>` : '';
-          return `<div class="cm-mem"><a class="cm-memlink" href="${cbase(p)}/u/${encodeURIComponent(r.handle)}">${avatar(p, r.display_name, r as Profile, '', lvl)}${online.has(r.contact_id) ? '<span class="dot on" title="Gerade online"></span>' : ''}<div class="t"><div><strong>${escapeHtml(r.display_name)}</strong>${role ? ` <span class="cm-tag">${role === 'admin' ? 'Admin' : 'Moderator'}</span>` : ''}</div><div class="muted small">@${escapeHtml(r.handle)} · ${escapeHtml(s.levels[lvl - 1]?.name ?? `Level ${lvl}`)}</div>${r.headline || r.bio ? `<div class="muted small">${escapeHtml(excerptOf(r.headline || r.bio, 60))}</div>` : ''}<div class="muted small">Mitglied seit ${since(r.joined_at)}${r.city ? ` · ${escapeHtml(r.city)}` : ''}</div></div></a>${dm}</div>`;
+          const dm = ext.dms.enabled && r.contact_id !== m.contact.id ? `<a class="cm-btn" href="${cbase(p)}/messages/${encodeURIComponent(r.handle)}" title="${t('Nachricht schreiben')}" aria-label="${t('Nachricht an {name}', { name: escapeHtml(r.display_name) })}">${I.chat}</a>` : '';
+          return `<div class="cm-mem"><a class="cm-memlink" href="${cbase(p)}/u/${encodeURIComponent(r.handle)}">${avatar(p, r.display_name, r as Profile, '', lvl)}${online.has(r.contact_id) ? `<span class="dot on" title="${t('Gerade online')}"></span>` : ''}<div class="t"><div><strong>${escapeHtml(r.display_name)}</strong>${role ? ` <span class="cm-tag">${role === 'admin' ? t('Admin') : t('Moderator')}</span>` : ''}</div><div class="muted small">@${escapeHtml(r.handle)} · ${escapeHtml(s.levels[lvl - 1]?.name ?? t('Level {level}', { level: lvl }))}</div>${r.headline || r.bio ? `<div class="muted small">${escapeHtml(excerptOf(r.headline || r.bio, 60))}</div>` : ''}<div class="muted small">${t('Mitglied seit {date}', { date: since(r.joined_at) })}${r.city ? ` · ${escapeHtml(r.city)}` : ''}</div></div></a>${dm}</div>`;
         };
         const qsOf = (extra: Record<string, string>) => new URLSearchParams({ ...(q ? { q } : {}), ...(minLevel > 1 ? { level: String(minLevel) } : {}), ...(sort !== 'active' ? { sort } : {}), ...(onlyOnline ? { online: '1' } : {}), ...extra }).toString();
-        const toolbar = `<form method="get" class="cm-toolbar"><input class="cm-in grow" type="search" name="q" value="${escapeHtml(q)}" placeholder="Name, Stadt oder Thema suchen" aria-label="Mitglied suchen">
-<select class="cm-in" name="level" aria-label="Mindestens Level">${s.levels.map((l, i) => `<option value="${i + 1}"${minLevel === i + 1 ? ' selected' : ''}>${i ? `ab ${escapeHtml(l.name)}` : 'Alle Levels'}</option>`).join('')}</select>
-<select class="cm-in" name="sort" aria-label="Sortierung"><option value="active"${sort === 'active' ? ' selected' : ''}>Zuletzt aktiv</option><option value="points"${sort === 'points' ? ' selected' : ''}>Meiste Punkte</option><option value="new"${sort === 'new' ? ' selected' : ''}>Neueste</option></select>
-${ext.online.enabled ? `<label class="cm-pick"><input type="checkbox" name="online" value="1"${onlyOnline ? ' checked' : ''}> Nur online (${nOnline})</label>` : ''}<input type="hidden" name="view" value="${view}"><button class="btn ghost">Filtern</button></form>`;
-        const seg = ext.map.enabled ? `<div class="cm-seg"><a href="?${qsOf({ view: 'list' })}" class="${view === 'list' ? 'on' : ''}">Liste</a><a href="?${qsOf({ view: 'map' })}" class="${view === 'map' ? 'on' : ''}">Karte</a></div>` : '';
+        const toolbar = `<form method="get" class="cm-toolbar"><input class="cm-in grow" type="search" name="q" value="${escapeHtml(q)}" placeholder="${t('Name, Stadt oder Thema suchen')}" aria-label="${t('Mitglied suchen')}">
+<select class="cm-in" name="level" aria-label="${t('Mindestens Level')}">${s.levels.map((l, i) => `<option value="${i + 1}"${minLevel === i + 1 ? ' selected' : ''}>${i ? t('ab {level}', { level: escapeHtml(l.name) }) : t('Alle Levels')}</option>`).join('')}</select>
+<select class="cm-in" name="sort" aria-label="${t('Sortierung')}"><option value="active"${sort === 'active' ? ' selected' : ''}>${t('Zuletzt aktiv')}</option><option value="points"${sort === 'points' ? ' selected' : ''}>${t('Meiste Punkte')}</option><option value="new"${sort === 'new' ? ' selected' : ''}>${t('Neueste')}</option></select>
+${ext.online.enabled ? `<label class="cm-pick"><input type="checkbox" name="online" value="1"${onlyOnline ? ' checked' : ''}> ${t('Nur online ({n})', { n: nOnline })}</label>` : ''}<input type="hidden" name="view" value="${view}"><button class="btn ghost">${t('Filtern')}</button></form>`;
+        const seg = ext.map.enabled ? `<div class="cm-seg"><a href="?${qsOf({ view: 'list' })}" class="${view === 'list' ? 'on' : ''}">${t('Liste')}</a><a href="?${qsOf({ view: 'map' })}" class="${view === 'map' ? 'on' : ''}">${t('Karte')}</a></div>` : '';
         let content = '';
         if (view === 'map') {
           const mapped = rows.filter((r) => r.show_on_map && (r.city || r.country));
-          const geo = pointsOf(mapped.map((r) => ({ city: r.city, country: r.country })));
+          const geo = pointsOf(mapped.map((r) => ({ city: r.city, country: r.country })), t.locale);
           const inEurope = geo.points.filter((x) => inRegion('europe', x.lat, x.lon)).length;
           const region: Region = ctx.query.get('region') === 'world' ? 'world' : ctx.query.get('region') === 'europe' ? 'europe' : geo.points.length && inEurope / geo.points.length >= 0.6 ? 'europe' : 'world';
-          content = `<div class="cm-box"><div class="cm-row" style="margin-bottom:8px"><strong class="grow">${mapped.length} ${mapped.length === 1 ? 'Mitglied zeigt' : 'Mitglieder zeigen'} ihren Ort</strong><div class="cm-seg" style="margin:0"><a href="?${qsOf({ view: 'map', region: 'europe' })}" class="${region === 'europe' ? 'on' : ''}">Europa</a><a href="?${qsOf({ view: 'map', region: 'world' })}" class="${region === 'world' ? 'on' : ''}">Welt</a></div></div>${mapSvg(region, geo.points)}
-<p class="cm-hint" style="margin:8px 0 0">Nur wer in seinem Profil „Auf der Karte zeigen“ gewählt hat, taucht auf – und immer nur mit der Stadt, nie mit der genauen Adresse.</p></div>
-${geo.countries.length ? `<div class="cm-box" style="margin-top:12px"><h3>Nach Ländern</h3>${geo.countries.map((c) => `<p style="margin:0 0 6px"><strong>${escapeHtml(c.country)}</strong> · ${c.n}${c.cities.length ? ` <span class="muted small">(${c.cities.map(escapeHtml).join(', ')})</span>` : ''}</p>`).join('')}${geo.unplaced ? `<p class="muted small" style="margin:6px 0 0">${geo.unplaced} weitere Orte sind nicht auf der Karte zu finden.</p>` : ''}</div>` : ''}`;
-        } else content = rows.length ? `<div class="cm-members">${rows.slice(0, 300).map(card).join('')}</div>${rows.length > 300 ? `<p class="cm-hint">Die ersten 300 von ${rows.length} – verfeinere die Suche.</p>` : ''}` : '<div class="cm-box cm-empty">Niemanden gefunden.</div>';
+          content = `<div class="cm-box"><div class="cm-row" style="margin-bottom:8px"><strong class="grow">${t.plural(mapped.length, { one: '{n} Mitglied zeigt ihren Ort', other: '{n} Mitglieder zeigen ihren Ort' })}</strong><div class="cm-seg" style="margin:0"><a href="?${qsOf({ view: 'map', region: 'europe' })}" class="${region === 'europe' ? 'on' : ''}">${t('Europa')}</a><a href="?${qsOf({ view: 'map', region: 'world' })}" class="${region === 'world' ? 'on' : ''}">${t('Welt')}</a></div></div>${mapSvg(region, geo.points, t)}
+<p class="cm-hint" style="margin:8px 0 0">${t('Nur wer in seinem Profil „Auf der Karte zeigen“ gewählt hat, taucht auf – und immer nur mit der Stadt, nie mit der genauen Adresse.')}</p></div>
+${geo.countries.length ? `<div class="cm-box" style="margin-top:12px"><h3>${t('Nach Ländern')}</h3>${geo.countries.map((c) => `<p style="margin:0 0 6px"><strong>${escapeHtml(c.country)}</strong> · ${c.n}${c.cities.length ? ` <span class="muted small">(${c.cities.map(escapeHtml).join(', ')})</span>` : ''}</p>`).join('')}${geo.unplaced ? `<p class="muted small" style="margin:6px 0 0">${t.plural(geo.unplaced, { one: '{n} weiterer Ort ist nicht auf der Karte zu finden.', other: '{n} weitere Orte sind nicht auf der Karte zu finden.' })}</p>` : ''}</div>` : ''}`;
+        } else content = rows.length ? `<div class="cm-members">${rows.slice(0, 300).map(card).join('')}</div>${rows.length > 300 ? `<p class="cm-hint">${t('Die ersten 300 von {n} – verfeinere die Suche.', { n: rows.length })}</p>` : ''}` : `<div class="cm-box cm-empty">${t('Niemanden gefunden.')}</div>`;
         return frame(
           p,
           m,
-          `Mitglieder · ${g.name}`,
-          `${head(p, g)}${tabs(p, m, g, 'members')}<div class="cm-row" style="margin-bottom:6px"><span class="muted grow">${all.length} ${all.length === 1 ? 'Mitglied' : 'Mitglieder'}${ext.online.enabled ? ` · <span class="dot on"></span> ${nOnline} online` : ''}</span>${seg}</div>${toolbar}${content}`,
+          `${t('Mitglieder')} · ${g.name}`,
+          `${head(p, g)}${tabs(p, m, g, 'members')}<div class="cm-row" style="margin-bottom:6px"><span class="muted grow">${t.plural(all.length, { one: '{n} Mitglied', other: '{n} Mitglieder' })}${ext.online.enabled ? ` · <span class="dot on"></span> ${t('{n} online', { n: nOnline })}` : ''}</span>${seg}</div>${toolbar}${content}`,
         );
       }),
     );
@@ -881,29 +905,30 @@ ${geo.countries.length ? `<div class="cm-box" style="margin-top:12px"><h3>Nach L
           return all.filter((r) => levelFor(r.pts, s.levels) === i + 1).length;
         };
         const medal = ['🥇', '🥈', '🥉'];
+        const t = T(p);
         const seg = (k: string, l: string) => `<a class="${period === k ? 'on' : ''}" href="${gHref(p, g)}/leaderboard?period=${k}">${l}</a>`;
         const unlock = (lvl: number) => s.level_unlocks.filter((u) => u.level === lvl).map((u) => db.get('SELECT title FROM courses WHERE id = ?', u.course_id)?.title).filter(Boolean);
         return frame(
           p,
           m,
-          `Rangliste · ${g.name}`,
+          `${t('Rangliste')} · ${g.name}`,
           `${head(p, g)}${tabs(p, m, g, 'leaderboard')}
 <div class="cm-grid"><section><div class="cm-box">
-<div class="cm-seg">${seg('week', '7 Tage')}${seg('month', monthly ? 'Dieser Monat' : '30 Tage')}${monthly ? seg('last', 'Letzter Monat') : ''}${seg('all', 'Gesamt')}</div>
+<div class="cm-seg">${seg('week', t('7 Tage'))}${seg('month', monthly ? t('Dieser Monat') : t('30 Tage'))}${monthly ? seg('last', t('Letzter Monat')) : ''}${seg('all', t('Gesamt'))}</div>
 ${rows.length ? `<ol class="cm-lb">${rows
             .map((r, i) => {
               const pr = profile(p, r.contact_id);
-              const name = pr?.display_name ?? 'Mitglied';
+              const name = pr?.display_name ?? t('Mitglied');
               return `<li class="${r.contact_id === m.contact.id ? 'me' : ''}"><span class="r${i < 3 ? ' top' : ''}">${i < 3 ? medal[i] : i + 1}</span>${avatar(p, name, pr, 's', levelFor(memberPoints(app, g.id, r.contact_id), s.levels))}<a href="${pr ? `${cbase(p)}/u/${encodeURIComponent(pr.handle)}` : '#'}" style="color:inherit;text-decoration:none;font-weight:600">${escapeHtml(name)}</a><span class="p">+${r.points}</span></li>`;
             })
-            .join('')}</ol>` : '<p class="cm-empty">In diesem Zeitraum hat noch niemand Punkte gesammelt.</p>'}
-<p class="cm-hint" style="margin:12px 0 0">Punkte gibt es für Beiträge (${s.points.post}), Kommentare (${s.points.comment}) und jedes „Gefällt mir“, das du bekommst (${s.points.like}).</p>
+            .join('')}</ol>` : `<p class="cm-empty">${t('In diesem Zeitraum hat noch niemand Punkte gesammelt.')}</p>`}
+<p class="cm-hint" style="margin:12px 0 0">${t('Punkte gibt es für Beiträge ({post}), Kommentare ({comment}) und jedes „Gefällt mir“, das du bekommst ({like}).', { post: s.points.post, comment: s.points.comment, like: s.points.like })}</p>
 </div></section>
-<aside class="cm-side">${meCard(p, m, g)}<div class="cm-box"><h3>Levels</h3><div class="cm-lvls">${s.levels
+<aside class="cm-side">${meCard(p, m, g)}<div class="cm-box"><h3>${t('Levels')}</h3><div class="cm-lvls">${s.levels
             .map((l, i) => {
               const n = atLevel(i);
               const u = unlock(i + 1);
-              return `<div class="${myLvl === i + 1 ? 'on' : ''}"><b>${escapeHtml(l.name)}</b><span class="muted small">ab ${l.points} Punkten · ${total ? Math.round((n / total) * 100) : 0} %</span>${u.length ? `<br><span class="small">🔓 ${escapeHtml(u.join(', '))}</span>` : ''}</div>`;
+              return `<div class="${myLvl === i + 1 ? 'on' : ''}"><b>${escapeHtml(l.name)}</b><span class="muted small">${t('ab {points} Punkten', { points: l.points })} · ${total ? Math.round((n / total) * 100) : 0} %</span>${u.length ? `<br><span class="small">🔓 ${escapeHtml(u.join(', '))}</span>` : ''}</div>`;
             })
             .join('')}</div></div></aside></div>`,
         );
@@ -925,46 +950,48 @@ ${rows.length ? `<ol class="cm-lb">${rows
         const groups = new Map(shared.map((g) => [g.id, g]));
         const self = them.id === m.contact.id;
         const pe = profileExt(app, p.locationId, them.id);
+        const t = T(p);
         const joined = db.get<{ at: string }>(`SELECT MIN(joined_at) AS at FROM community_members WHERE contact_id = ? AND group_id IN (${(shared.length ? shared : [{ id: '' }]).map(() => '?').join(',')})`, them.id, ...(shared.length ? shared.map((g) => g.id) : ['']))?.at;
         const roleNames = shared.map((g) => roleIn(g, them.id)).filter(Boolean);
         const canDm = !self && shared.some((g) => extOf(app, g.id).dms.enabled);
         const online = !self && shared.some((g) => extOf(app, g.id).online.enabled) && onlineIds(app, p.locationId, [them.id]).has(them.id);
-        const meta = [joined ? `Mitglied seit ${escapeHtml(formatInTz(joined, tz(p), { weekday: undefined, day: undefined, month: 'long', year: 'numeric', hour: undefined, minute: undefined }))}` : '', pe.city || pe.country ? `${escapeHtml([pe.city, pe.country].filter(Boolean).join(', '))}` : ''].filter(Boolean);
+        const meta = [joined ? t('Mitglied seit {date}', { date: escapeHtml(fmtAt(p, joined, { weekday: undefined, day: undefined, month: 'long', year: 'numeric', hour: undefined, minute: undefined })) }) : '', pe.city || pe.country ? `${escapeHtml([pe.city, pe.country].filter(Boolean).join(', '))}` : ''].filter(Boolean);
         const links = pe.links.length ? `<p class="cm-links">${pe.links.map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="nofollow ugc noopener noreferrer">${escapeHtml(l.label)} ↗</a>`).join('')}</p>` : '';
         const extra = ui.profileView.map((fn) => fn(p, m, shared, them, pr)).join('');
         return frame(
           p,
           m,
           pr.display_name,
-          `<div class="cm-prof">${avatar(p, pr.display_name, pr, 'l')}<div><h1>${escapeHtml(pr.display_name)}${roleNames.includes('admin') ? ' <span class="cm-tag">Admin</span>' : roleNames.includes('moderator') ? ' <span class="cm-tag">Moderator</span>' : ''}</h1><div class="muted">@${escapeHtml(pr.handle)}${pe.headline ? ` · ${escapeHtml(pe.headline)}` : ''}${online ? ' · <span class="dot on"></span> online' : ''}</div>${pr.bio ? `<p style="margin:8px 0 0;white-space:pre-line">${escapeHtml(pr.bio)}</p>` : ''}${meta.length ? `<p class="muted small" style="margin:6px 0 0">${meta.join(' · ')}</p>` : ''}${links}<p style="margin:10px 0 0;display:flex;gap:8px;flex-wrap:wrap">${self ? `<a class="btn ghost" href="${cbase(p)}/profile">Profil bearbeiten</a>` : ''}${canDm ? `<a class="btn" href="${cbase(p)}/messages/${encodeURIComponent(pr.handle)}">${I.chat} Nachricht schreiben</a>` : ''}</p></div></div>
-${extra}<div class="cm-grid"><section><h2>Beiträge</h2>${posts.length ? posts.map((x) => `<a class="cm-post" style="display:block;text-decoration:none;color:inherit" href="${postHref(p, groups.get(x.group_id), x.id)}"><div class="muted small">${escapeHtml(groups.get(x.group_id)?.name ?? '')} · ${relTime(x.created_at)}</div><strong style="font-size:17px">${escapeHtml(x.title)}</strong><p class="cm-excerpt">${escapeHtml(excerptOf(stripMarkdown(x.body), 160))}</p></a>`).join('') : '<p class="muted">Noch keine Beiträge.</p>'}</section>
-<aside class="cm-side"><div class="cm-box"><h3>Gruppen</h3>${shared.map((g) => {
+          `<div class="cm-prof">${avatar(p, pr.display_name, pr, 'l')}<div><h1>${escapeHtml(pr.display_name)}${roleNames.includes('admin') ? ` <span class="cm-tag">${t('Admin')}</span>` : roleNames.includes('moderator') ? ` <span class="cm-tag">${t('Moderator')}</span>` : ''}</h1><div class="muted">@${escapeHtml(pr.handle)}${pe.headline ? ` · ${escapeHtml(pe.headline)}` : ''}${online ? ` · <span class="dot on"></span> ${t('online')}` : ''}</div>${pr.bio ? `<p style="margin:8px 0 0;white-space:pre-line">${escapeHtml(pr.bio)}</p>` : ''}${meta.length ? `<p class="muted small" style="margin:6px 0 0">${meta.join(' · ')}</p>` : ''}${links}<p style="margin:10px 0 0;display:flex;gap:8px;flex-wrap:wrap">${self ? `<a class="btn ghost" href="${cbase(p)}/profile">${t('Profil bearbeiten')}</a>` : ''}${canDm ? `<a class="btn" href="${cbase(p)}/messages/${encodeURIComponent(pr.handle)}">${I.chat} ${t('Nachricht schreiben')}</a>` : ''}</p></div></div>
+${extra}<div class="cm-grid"><section><h2>${t('Beiträge')}</h2>${posts.length ? posts.map((x) => `<a class="cm-post" style="display:block;text-decoration:none;color:inherit" href="${postHref(p, groups.get(x.group_id), x.id)}"><div class="muted small">${escapeHtml(groups.get(x.group_id)?.name ?? '')} · ${relTime(x.created_at, Date.now(), t)}</div><strong style="font-size:17px">${escapeHtml(x.title)}</strong><p class="cm-excerpt">${escapeHtml(excerptOf(stripMarkdown(x.body), 160))}</p></a>`).join('') : `<p class="muted">${t('Noch keine Beiträge.')}</p>`}</section>
+<aside class="cm-side"><div class="cm-box"><h3>${t('Gruppen')}</h3>${shared.map((g) => {
             const pts = memberPoints(app, g.id, them.id);
             const s = groupSettings(g);
             const l = levelFor(pts, s.levels);
-            return `<p style="margin:0 0 8px"><a href="${gHref(p, g)}">${escapeHtml(g.name)}</a><br><span class="muted small">${escapeHtml(s.levels[l - 1]?.name ?? `Level ${l}`)} · ${pts} Punkte</span></p>`;
-          }).join('') || '<p class="muted small">Noch in keiner Gruppe.</p>'}</div></aside></div>`,
+            return `<p style="margin:0 0 8px"><a href="${gHref(p, g)}">${escapeHtml(g.name)}</a><br><span class="muted small">${escapeHtml(s.levels[l - 1]?.name ?? t('Level {level}', { level: l }))} · ${t('{n} Punkte', { n: pts })}</span></p>`;
+          }).join('') || `<p class="muted small">${t('Noch in keiner Gruppe.')}</p>`}</div></aside></div>`,
         );
       }),
     );
 
     const profileForm = (p: Portal, m: Member, opts: { error?: string; notice?: string; status?: number } = {}) => {
       const pr = ensureProfile(app, p.locationId, m.contact);
+      const t = T(p);
       return frame(
         p,
         m,
-        'Mein Profil',
-        `<div class="crumb"><a href="${cbase(p)}">Community</a></div><h1>Mein Profil</h1>
-${opts.notice ? `<div class="cm-ok" role="status">${escapeHtml(opts.notice)}</div>` : ''}
+        t('Mein Profil'),
+        `<div class="crumb"><a href="${cbase(p)}">${t('Community')}</a></div><h1>${t('Mein Profil')}</h1>
+${opts.notice ? `<div class="cm-ok" role="status">${escapeHtml(t(opts.notice))}</div>` : ''}
 <div class="cm-compose" style="max-width:640px"><form class="cm-form" method="post" action="${cbase(p)}/profile">${tokenInput(m)}
-${opts.error ? `<div class="cm-err" role="alert">${escapeHtml(opts.error)}</div>` : ''}
-<div class="cm-row">${avatar(p, pr.display_name, pr, 'l')}<div class="cm-previews"></div><div style="display:flex;flex-direction:column;gap:8px"><label class="cm-pick cm-btn" hidden>${I.image} Neues Bild<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-images="1" data-name="avatar" hidden></label>${pr.avatar_file_id ? '<label class="small"><input type="checkbox" name="remove_avatar" value="1"> Bild entfernen</label>' : ''}</div></div>
-<label for="dn">Anzeigename</label><input id="dn" type="text" name="display_name" maxlength="60" required value="${escapeHtml(pr.display_name)}">
-<span class="cm-hint">Andere erwähnen dich mit <strong>@${escapeHtml(pr.handle)}</strong>. Deine E-Mail-Adresse sieht niemand.</span>
-<label for="bio">Über mich</label><textarea id="bio" name="bio" maxlength="500" rows="4" placeholder="Ein, zwei Sätze über dich">${escapeHtml(pr.bio)}</textarea>
+${opts.error ? `<div class="cm-err" role="alert">${escapeHtml(t(opts.error))}</div>` : ''}
+<div class="cm-row">${avatar(p, pr.display_name, pr, 'l')}<div class="cm-previews"></div><div style="display:flex;flex-direction:column;gap:8px"><label class="cm-pick cm-btn" hidden>${I.image} ${t('Neues Bild')}<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-images="1" data-name="avatar" hidden></label>${pr.avatar_file_id ? `<label class="small"><input type="checkbox" name="remove_avatar" value="1"> ${t('Bild entfernen')}</label>` : ''}</div></div>
+<label for="dn">${t('Anzeigename')}</label><input id="dn" type="text" name="display_name" maxlength="60" required value="${escapeHtml(pr.display_name)}">
+<span class="cm-hint">${t('Andere erwähnen dich mit {handle}. Deine E-Mail-Adresse sieht niemand.', { handle: `<strong>@${escapeHtml(pr.handle)}</strong>` })}</span>
+<label for="bio">${t('Über mich')}</label><textarea id="bio" name="bio" maxlength="500" rows="4" placeholder="${t('Ein, zwei Sätze über dich')}">${escapeHtml(pr.bio)}</textarea>
 ${ui.profileEdit.map((fn) => fn(p, m)).join('')}
-<label class="small" style="font-weight:500;color:var(--text)"><input type="hidden" name="digest" value="0"><input type="checkbox" name="digest" value="1"${pr.digest ? ' checked' : ''}> Tägliche E-Mail mit meinen ungelesenen Benachrichtigungen</label>
-<div class="cm-row"><a class="btn ghost" href="${cbase(p)}/u/${encodeURIComponent(pr.handle)}">Ansehen</a><span class="grow"></span><button class="btn">Speichern</button></div>
+<label class="small" style="font-weight:500;color:var(--text)"><input type="hidden" name="digest" value="0"><input type="checkbox" name="digest" value="1"${pr.digest ? ' checked' : ''}> ${t('Tägliche E-Mail mit meinen ungelesenen Benachrichtigungen')}</label>
+<div class="cm-row"><a class="btn ghost" href="${cbase(p)}/u/${encodeURIComponent(pr.handle)}">${t('Ansehen')}</a><span class="grow"></span><button class="btn">${t('Speichern')}</button></div>
 </form></div>`,
         opts.status,
       );
@@ -978,7 +1005,7 @@ ${ui.profileEdit.map((fn) => fn(p, m)).join('')}
           updateProfile(app, p.locationId, m.contact as Contact, { display_name: b.display_name, bio: b.bio, digest: digest.length ? digest.includes('1') : undefined, avatar: formAll(ctx, 'avatar')[0], remove_avatar: b.remove_avatar === '1' });
           for (const fn of ui.profileSave) fn(p, m, b, (name) => formAll(ctx, name));
           profilesById.clear();
-          return profileForm(p, m, { notice: 'Gespeichert.' });
+          return profileForm(p, m, { notice: T(p)('Gespeichert.') });
         } catch (e) {
           const f = fail(e);
           return profileForm(p, m, { error: f.msg, status: f.status });
@@ -996,14 +1023,15 @@ ${ui.profileEdit.map((fn) => fn(p, m)).join('')}
           m.contact.id,
         );
         const unread = rows.filter((r) => !r.read_at).length;
+        const t = T(p);
         const icon = (k: string) => ui.notificationIcon.map((fn) => fn(k)).find(Boolean) ?? (k === 'like' ? I.heart : k === 'event' ? I.cal : k === 'level' ? I.trophy : k === 'announcement' ? I.pin : I.chat);
         return frame(
           p,
           m,
-          'Benachrichtigungen',
-          `<div class="crumb"><a href="${cbase(p)}">Community</a></div><div class="cm-row" style="margin-bottom:14px;max-width:760px"><h1 class="grow" style="margin:0">Benachrichtigungen</h1>${unread ? `<form method="post" action="${cbase(p)}/notifications/read">${tokenInput(m)}<button class="btn ghost">Alle als gelesen markieren</button></form>` : ''}</div>
-<div class="cm-box" style="padding:0;max-width:760px;overflow:hidden">${rows.length ? `<ul class="cm-notes">${rows.map((n) => `<li><a class="${n.read_at ? '' : 'un'}" href="${cbase(p)}/notifications/${encodeURIComponent(n.id)}"><span class="ic">${icon(n.kind)}</span><span><strong>${escapeHtml(n.text)}</strong><br><span class="muted small">${n.group_name ? `${escapeHtml(n.group_name)} · ` : ''}${relTime(n.created_at)}</span></span></a></li>`).join('')}</ul>` : '<p class="cm-empty">Noch keine Benachrichtigungen. Wenn jemand auf deine Beiträge antwortet oder dich erwähnt, siehst du es hier.</p>'}</div>
-<p class="cm-hint">Die tägliche Zusammenfassung per E-Mail stellst du in deinem <a href="${cbase(p)}/profile">Profil</a> ein.</p>`,
+          t('Benachrichtigungen'),
+          `<div class="crumb"><a href="${cbase(p)}">${t('Community')}</a></div><div class="cm-row" style="margin-bottom:14px;max-width:760px"><h1 class="grow" style="margin:0">${t('Benachrichtigungen')}</h1>${unread ? `<form method="post" action="${cbase(p)}/notifications/read">${tokenInput(m)}<button class="btn ghost">${t('Alle als gelesen markieren')}</button></form>` : ''}</div>
+<div class="cm-box" style="padding:0;max-width:760px;overflow:hidden">${rows.length ? `<ul class="cm-notes">${rows.map((n) => `<li><a class="${n.read_at ? '' : 'un'}" href="${cbase(p)}/notifications/${encodeURIComponent(n.id)}"><span class="ic">${icon(n.kind)}</span><span><strong>${escapeHtml(n.text)}</strong><br><span class="muted small">${n.group_name ? `${escapeHtml(n.group_name)} · ` : ''}${relTime(n.created_at, Date.now(), t)}</span></span></a></li>`).join('')}</ul>` : `<p class="cm-empty">${t('Noch keine Benachrichtigungen. Wenn jemand auf deine Beiträge antwortet oder dich erwähnt, siehst du es hier.')}</p>`}</div>
+<p class="cm-hint">${t('Die tägliche Zusammenfassung per E-Mail stellst du in deinem {link}Profil{end} ein.', { link: `<a href="${cbase(p)}/profile">`, end: '</a>' })}</p>`,
         );
       }),
     );

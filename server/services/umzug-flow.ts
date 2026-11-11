@@ -1,5 +1,6 @@
 import type { RWorkflow } from './umzug-core.js';
 import { clip } from './umzug-text.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Small helpers the newer importers share for turning another tool's automation into a workflow DRAFT: a note step that carries the
@@ -9,7 +10,7 @@ import { clip } from './umzug-text.js';
 
 export type Json = Record<string, any>;
 
-export const noteStep = (vendor: string, what: string, original: unknown): Json => ({ type: 'add_note', body: `Nicht übernommen (${vendor}: ${what}). Original: ${clip(JSON.stringify(original), 3000)}` });
+export const noteStep = (vendor: string, what: string, original: unknown, t: STFn = tApp()): Json => ({ type: 'add_note', body: t('Nicht übernommen ({source}: {what}). Original: {original}', { source: vendor, what, original: clip(JSON.stringify(original), 3000) }) });
 
 /** "5 minute(s)" / "2 hours" / "3 days" / "1 week" → a wait step (never zero). */
 export function waitFor(value: unknown, unit: unknown): Json {
@@ -23,8 +24,8 @@ export function waitFor(value: unknown, unit: unknown): Json {
 }
 
 /** A mail step; body falls back to a placeholder text that says where to take the content from. */
-export function mailStep(vendor: string, subject: string, html: string | undefined | null, convert: (s: string) => string = (s) => s): { step: Json; missing: boolean } {
-  const body = html ? convert(html) : `[Inhalt der E-Mail „${clip(subject, 80)}“ aus ${vendor} einfügen]`;
+export function mailStep(vendor: string, subject: string, html: string | undefined | null, convert: (s: string) => string = (s) => s, t: STFn = tApp()): { step: Json; missing: boolean } {
+  const body = html ? convert(html) : t('[Inhalt der E-Mail „{subject}“ aus {source} einfügen]', { subject: clip(subject, 80), source: vendor });
   return { step: { type: 'send_email', subject: convert(subject), body, isHtml: /<[a-z][\s\S]*>/i.test(body) }, missing: !html };
 }
 
@@ -38,8 +39,8 @@ export function arg(o: Json | undefined, ...keys: string[]): any {
   return undefined;
 }
 
-export function draft(ext: string, name: string, trigger: { type: string; config?: Json }, steps: Json[], warnings: string[]): RWorkflow {
-  return { kind: 'workflow', ext, name: clip(name, 160) || 'Automation', trigger: { type: trigger.type, config: trigger.config ?? {} }, steps, warnings: [...new Set(warnings)] };
+export function draft(ext: string, name: string, trigger: { type: string; config?: Json }, steps: Json[], warnings: string[], t: STFn = tApp()): RWorkflow {
+  return { kind: 'workflow', ext, name: clip(name, 160) || t('Automation'), trigger: { type: trigger.type, config: trigger.config ?? {} }, steps, warnings: [...new Set(warnings)] };
 }
 
 /** Markdown table cell: pipes and line breaks would break the table. */

@@ -29,6 +29,7 @@ import {
 import { formTokenOk, formToken, pageCtx, pricingData, servePage } from './cloud-pages.js';
 import { messagePage, signupPage, type SignupData } from '../services/cloud-pages.js';
 import { fetchSubscription, fromStripeSub, logSaasEvent, planById, saasStripe, stripeKeyOf, upsertSubscription } from './saas.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Self-serve signup of the hosted service. /start → e-mail verification (or Google, which verifies it) → Stripe Checkout
@@ -96,9 +97,25 @@ export const cloudSignupModule: Module = {
     }
     Object.assign(app.services.cloud, { resetLimits: () => hits.clear() });
 
-    const checkMail = (title = 'Bitte prüfe dein Postfach') =>
-      servePage(messagePage(pageCtx(app), { title, text: 'Wir haben dir eine E-Mail geschickt. Mit einem Klick auf den Link darin bestätigst du deine Adresse – danach geht es direkt weiter. Der Link gilt 24 Stunden.', action: ['/cloud', 'Zurück zu den Preisen'] }));
-    const message = (title: string, text: string, status = 200, o: { action?: [string, string]; head?: string; error?: string; method?: { action: string; label: string; passwords?: boolean } } = {}) => servePage(messagePage(pageCtx(app), { title, text, ...o }), status);
+    const checkMail = (title = 'Bitte prüfe dein Postfach') => {
+      const t = tApp();
+      return servePage(messagePage(pageCtx(app), { title: t(title), text: t('Wir haben dir eine E-Mail geschickt. Mit einem Klick auf den Link darin bestätigst du deine Adresse – danach geht es direkt weiter. Der Link gilt 24 Stunden.'), action: ['/cloud', t('Zurück zu den Preisen')] }));
+    };
+    /** A message page in the instance language: fixed texts are message ids; built ones arrive translated and pass through. */
+    const message = (title: string, text: string, status = 200, o: { action?: [string, string]; head?: string; error?: string; method?: { action: string; label: string; passwords?: boolean } } = {}) => {
+      const t = tApp();
+      return servePage(
+        messagePage(pageCtx(app), {
+          title: t(title),
+          text: t(text),
+          ...o,
+          ...(o.action ? { action: [o.action[0], t(o.action[1])] as [string, string] } : {}),
+          ...(o.error ? { error: t(o.error) } : {}),
+          ...(o.method ? { method: { ...o.method, label: t(o.method.label) } } : {}),
+        }),
+        status,
+      );
+    };
 
     // --- Stripe: the Checkout of a verified signup -----------------------------------------------------------------
     /** A promotion code of the operator's Stripe account, or null when it does not exist / is not active. */
@@ -187,12 +204,13 @@ export const cloudSignupModule: Module = {
         const b2b = (JSON.parse(signup.legal || '{}') as { b2b?: Business }).b2b;
         if (b2b) logCloudEvent(app, tid, 'b2b_confirmed', businessNote(b2b));
         db.run(`UPDATE cloud_signups SET status = 'done', tenant_id = ?, location_id = ?, user_id = ?, password_hash = '', completed_at = ?, error = '' WHERE id = ?`, tid, loc.id, userId, now(), signup.id);
-        logCloudEvent(app, tid, 'provisioned', `${signup.company} · ${PLAN_INFO[signup.plan_key].name} (${signup.interval === 'year' ? 'jährlich' : 'monatlich'}${stripe ? '' : ', ohne Zahlungsmittel'})`);
-        if (s.trial_days > 0) logCloudEvent(app, tid, 'trial_started', `${s.trial_days} Tage`);
+        const tr = tApp();
+        logCloudEvent(app, tid, 'provisioned', `${signup.company} · ${PLAN_INFO[signup.plan_key].name} (${signup.interval === 'year' ? tr('jährlich') : tr('monatlich')}${stripe ? '' : tr(', ohne Zahlungsmittel')})`);
+        if (s.trial_days > 0) logCloudEvent(app, tid, 'trial_started', tr.plural(s.trial_days, { one: '{n} Tag', other: '{n} Tage' }));
         else logCloudEvent(app, tid, 'subscribed', PLAN_INFO[signup.plan_key].name);
         return { tid, loc, userId };
       });
-      app.services.audit?.({ action: 'cloud.provisioned', summary: `${signup.company} (${signup.plan_key})`, userId: out.userId, locationId: out.loc.id, actor: 'Cloud-Anmeldung' });
+      app.services.audit?.({ action: 'cloud.provisioned', summary: `${signup.company} (${signup.plan_key})`, userId: out.userId, locationId: out.loc.id, actor: tApp()('Cloud-Anmeldung') });
       return out;
     }
 
@@ -202,7 +220,8 @@ export const cloudSignupModule: Module = {
       const list = ['Firmendaten ergänzen: Einstellungen → Firma', 'E-Mail-Versand einrichten: Einstellungen → E-Mail & SMS', 'Erste Kontakte anlegen oder importieren', 'Die Akademie öffnen: kurze Touren für jeden Bereich'];
       if (entitlements(signup.plan_key, cloudSettings(app)).users !== 1) list.push('Kolleginnen und Kollegen einladen: Einstellungen → Cloud-Konto → Team');
       if (signup.plan_key === 'agency') list.push('Eigenes Branding festlegen und den ersten Kunden-Account anlegen: Einstellungen → Cloud-Konto');
-      return sendCloudMail(app, 'welcome', signup.email, { name: signup.name, company: signup.company, plan: PLAN_INFO[signup.plan_key].name, trial_end: sub?.trial_end ? fmtDay(sub.trial_end) : '', link: appLink(app, '/app'), checklist: list }, { tenantId: tid, dedupe: 'welcome' });
+      const tr = tApp();
+      return sendCloudMail(app, 'welcome', signup.email, { name: signup.name, company: signup.company, plan: PLAN_INFO[signup.plan_key].name, trial_end: sub?.trial_end ? fmtDay(sub.trial_end) : '', link: appLink(app, '/app'), checklist: list.map((x) => tr(x)) }, { tenantId: tid, dedupe: 'welcome' });
     }
 
     /** Stripe confirmed a Checkout (webhook or the customer's return). Safe to call twice. */
@@ -266,7 +285,7 @@ export const cloudSignupModule: Module = {
       const val = (k: string, max = 200) => String(b[k] ?? '').trim().slice(0, max);
       const values = { plan: val('plan', 20), interval: val('interval', 10) === 'year' ? 'year' : 'month', company: val('company', 130), name: val('name', 130), email: normalizeEmail(val('email', 210)), coupon: val('coupon', 70), vat_id: val('vat_id', 30), business: b.business ? '1' : '' };
       const fail = (error: string, status = 400) => {
-        const d: SignupData = { ...pricingData(app), values, error, token: formToken(app), google: !!googleReady() };
+        const d: SignupData = { ...pricingData(app), values, error: tApp()(error), token: formToken(app), google: !!googleReady() };
         return servePage(signupPage(pageCtx(app), d), status);
       };
       if (!s.signup_open) return fail('Neue Anmeldungen sind gerade pausiert.', 503);
@@ -335,11 +354,11 @@ export const cloudSignupModule: Module = {
     /** The verification page: the form's password counts only in the browser that sent the form; anywhere else the person sets it here. */
     const verifyPage = (t: string, s: Signup, own: boolean, error = '', status = 200) =>
       own && s.password_hash
-        ? message('Fast geschafft', `Bestätige, dass ${s.email} dir gehört – danach richten wir „${s.company}“ ein.`, status, { error, method: { action: `/start/verify/${t}`, label: 'E-Mail bestätigen und weiter' } })
-        : message('Fast geschafft', `Bestätige, dass ${s.email} dir gehört, und lege dein Passwort fest – danach richten wir „${s.company}“ ein. Ein Passwort, das vorher im Anmeldeformular eingegeben wurde, gilt nicht.`, status, { error, method: { action: `/start/verify/${t}`, label: 'Passwort speichern und weiter', passwords: true } });
+        ? message('Fast geschafft', tApp()('Bestätige, dass {email} dir gehört – danach richten wir „{company}“ ein.', { email: s.email, company: s.company }), status, { error, method: { action: `/start/verify/${t}`, label: 'E-Mail bestätigen und weiter' } })
+        : message('Fast geschafft', tApp()('Bestätige, dass {email} dir gehört, und lege dein Passwort fest – danach richten wir „{company}“ ein. Ein Passwort, das vorher im Anmeldeformular eingegeben wurde, gilt nicht.', { email: s.email, company: s.company }), status, { error, method: { action: `/start/verify/${t}`, label: 'Passwort speichern und weiter', passwords: true } });
     /** Every other open sign-up for the address dies with the first verification: links, passwords and browser bindings. Those already at Stripe stay – provisioning refuses a second account and cancels their subscription. */
     const closeOthers = (email: string, keep: string) =>
-      db.run(`UPDATE cloud_signups SET status = 'superseded', password_hash = '', verify_hash = '', browser_hash = '', google_state = '', error = 'Durch eine spätere Bestätigung der Adresse ersetzt' WHERE email = ? AND id <> ? AND status IN ('pending', 'verified', 'failed') AND session_id IS NULL`, email, keep);
+      db.run(`UPDATE cloud_signups SET status = 'superseded', password_hash = '', verify_hash = '', browser_hash = '', google_state = '', error = ? WHERE email = ? AND id <> ? AND status IN ('pending', 'verified', 'failed') AND session_id IS NULL`, tApp()('Durch eine spätere Bestätigung der Adresse ersetzt'), email, keep);
 
     router.get('/start/verify/:token', 'public', (ctx) => {
       const s = byVerify(ctx.params.token);
@@ -397,7 +416,7 @@ export const cloudSignupModule: Module = {
         const claims = await verifyIdToken(t.id_token, jwks, ep.jwks!, { issuer: socialIssuerCheck('google'), audience: cfg.client_id, nonce: signup.google_nonce });
         const ident = identityFromClaims('google', claims);
         if (!ident.email || !ident.emailVerified) throw new Error('Google hat keine bestätigte E-Mail-Adresse übermittelt');
-        if (db.get('SELECT id FROM users WHERE email = ?', ident.email)) return message('Für diese Adresse gibt es schon ein Konto', `${ident.email} hat schon ein Konto. Bitte melde dich an.`, 409, { action: ['/app', 'Zur Anmeldung'] });
+        if (db.get('SELECT id FROM users WHERE email = ?', ident.email)) return message('Für diese Adresse gibt es schon ein Konto', tApp()('{email} hat schon ein Konto. Bitte melde dich an.', { email: ident.email }), 409, { action: ['/app', 'Zur Anmeldung'] });
         db.run(`UPDATE cloud_signups SET email = ?, name = CASE WHEN name = '' THEN ? ELSE name END, google_sub = ?, verified_at = ?, status = 'verified' WHERE id = ?`, ident.email, ident.name.slice(0, 120), ident.subject, now(), signup.id);
         // Google proved the address: open sign-ups somebody else started for it (with a password of their choosing) end here.
         closeOthers(ident.email, signup.id);
@@ -431,7 +450,7 @@ export const cloudSignupModule: Module = {
           app.services.audit?.({ ctx, action: 'login', summary: `${user.email} (Cloud-Anmeldung)`, userId: user.id, actor: user.name });
           return redirect('/app', 303);
         }
-        return message('Dein Konto ist bereit', `Melde dich mit ${signup.email} an – wir haben dir außerdem eine E-Mail geschickt.`, 200, { action: ['/app', 'Zur Anmeldung'] });
+        return message('Dein Konto ist bereit', tApp()('Melde dich mit {email} an – wir haben dir außerdem eine E-Mail geschickt.', { email: signup.email }), 200, { action: ['/app', 'Zur Anmeldung'] });
       }
       if (signup.status === 'failed') return message('Das hat nicht geklappt', signup.error || 'Dein Konto konnte nicht angelegt werden. Eine Zahlung wird nicht abgebucht – bitte versuche es noch einmal oder melde dich beim Anbieter.', 409, { action: ['/start', 'Noch einmal'] });
       return message('Einen Moment …', 'Wir bestätigen gerade deine Zahlung und richten dein Konto ein. Diese Seite lädt sich von selbst neu.', 200, { head: '<meta http-equiv="refresh" content="3">' });

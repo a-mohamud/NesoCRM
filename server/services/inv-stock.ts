@@ -3,6 +3,7 @@ import { HttpError, bad, notFound } from '../core/http.js';
 import { addDaysYmd, zonedToUtc } from '../core/time.js';
 import { id, now } from '../core/util.js';
 import { q3, usersWithArea } from './bo-common.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Stock of the Lager: articles with stock per storage place, an append-only movement log (goods receipt, goods issue,
@@ -93,7 +94,7 @@ export function defaultPlace(app: App, locationId: string): string {
   const p = app.db.get<{ id: string }>('SELECT id FROM inv_places WHERE location_id = ? AND active = 1 ORDER BY is_default DESC, created_at LIMIT 1', locationId);
   if (p) return p.id;
   const pid = id();
-  app.db.run(`INSERT INTO inv_places (id, location_id, name, code, is_default, active, created_at) VALUES (?, ?, 'Hauptlager', 'HL', 1, 1, ?)`, pid, locationId, now());
+  app.db.run(`INSERT INTO inv_places (id, location_id, name, code, is_default, active, created_at) VALUES (?, ?, ?, 'HL', 1, 1, ?)`, pid, locationId, tLoc(app, locationId)('Hauptlager'), now());
   return pid;
 }
 
@@ -112,12 +113,12 @@ export function applyMovement(app: App, locationId: string, m: MovementIn): { id
   const signed = m.type === 'issue' || m.type === 'transfer_out' ? -qtyIn : qtyIn;
   return txn(app, () => {
     const a = getArticle(app, locationId, m.article_id);
-    if (!a.active) throw bad(`Artikel ${a.sku} ist deaktiviert`);
+    if (!a.active) throw bad(tApp()('Artikel {sku} ist deaktiviert', { sku: a.sku }));
     const place = m.place_id ?? a.default_place_id ?? defaultPlace(app, locationId);
     if (!app.db.get('SELECT 1 FROM inv_places WHERE id = ? AND location_id = ?', place, locationId)) throw notFound('Lagerort nicht gefunden');
     const before = placeQty(app, a.id, place);
     const after = q3(before + signed);
-    if (after < 0 && !m.allowNegative) throw bad(`Bestand nicht ausreichend: ${a.sku} hat im Lagerort ${q3(before)} ${a.unit}, gebucht werden sollen ${q3(-signed)}`);
+    if (after < 0 && !m.allowNegative) throw bad(tApp()('Bestand nicht ausreichend: {sku} hat im Lagerort {qty} {unit}, gebucht werden sollen {wanted}', { sku: a.sku, qty: q3(before), unit: a.unit, wanted: q3(-signed) }));
     const totalBefore = totalQty(app, locationId, a.id);
     let avg = a.avg_cost_cents;
     let unitCost = a.avg_cost_cents;
@@ -230,7 +231,7 @@ export function valuation(app: App, locationId: string, asof?: string) {
     const qty = q3(list.reduce((n, p) => n + p.qty, 0));
     rows.push({ article_id: a.id, sku: a.sku, name: a.name, unit: a.unit, qty, avg_cost_cents: cost, value_cents: plc.reduce((n, p) => n + p.value_cents, 0), places: plc });
   }
-  return { asof: asof ?? null, method: 'Gleitender Durchschnittspreis', rows, total_cents: rows.reduce((n, r) => n + r.value_cents, 0), articles: rows.length };
+  return { asof: asof ?? null, method: tLoc(app, locationId)('Gleitender Durchschnittspreis'), rows, total_cents: rows.reduce((n, r) => n + r.value_cents, 0), articles: rows.length };
 }
 
 // --- low stock ------------------------------------------------------------------------------------------------------
@@ -370,7 +371,7 @@ export function closeCount(app: App, locationId: string, countId: string, user: 
       const now0 = placeQty(app, l.article_id, l.place_id);
       const diff = q3(l.counted - now0);
       if (diff === 0) continue;
-      applyMovement(app, locationId, { article_id: l.article_id, place_id: l.place_id, type: 'count', qty: diff, ref_type: 'count', ref_id: countId, note: `Inventur ${c.name}`, user_id: user, allowNegative: true });
+      applyMovement(app, locationId, { article_id: l.article_id, place_id: l.place_id, type: 'count', qty: diff, ref_type: 'count', ref_id: countId, note: tLoc(app, locationId)('Inventur {name}', { name: c.name }), user_id: user, allowNegative: true });
       booked++;
     }
     app.db.run(`UPDATE inv_counts SET status = 'closed', closed_at = ? WHERE id = ?`, now(), countId);
@@ -378,4 +379,4 @@ export function closeCount(app: App, locationId: string, countId: string, user: 
   });
 }
 
-export const insufficient = (e: unknown) => e instanceof HttpError && /nicht ausreichend/.test(e.message);
+export const insufficient = (e: unknown) => e instanceof HttpError && /nicht ausreichend|insufficient stock/i.test(e.message);

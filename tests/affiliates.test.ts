@@ -306,7 +306,7 @@ describe('affiliate portal', () => {
     const mail = mails.find((m) => m.to === 'anna@partner.de')!;
     const link = mail.text.match(/http:\/\/localhost(\/affiliate\/\S+)/)![1];
     const tokenValue = new URL(`http://x${link}`).searchParams.get('token')!;
-    expect(await (await t.api.raw(link)).text()).toContain('Jetzt anmelden');
+    expect(await (await t.api.raw(link)).text()).toContain('Jetzt einloggen');
     const auth = await portal('/auth', form({ token: tokenValue }));
     expect(auth.status).toBe(303);
     const cookie = auth.headers.getSetCookie()[0].split(';')[0];

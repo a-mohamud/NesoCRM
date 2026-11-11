@@ -1,9 +1,10 @@
 import type { App, Module } from '../core/app.js';
 import { bad, notFound, str, type Ctx } from '../core/http.js';
 import { parseRows } from '../core/db.js';
+import { tCtx } from '../i18n/index.js';
 import type { ReportField, ReportSource } from '../services/report-engine.js';
 import { locationLookup, userLookup } from '../services/report-sources.js';
-import { AREAS, WISH_BOARD, cleanArea, publicStatus, stageFromInput, type FeedbackKind } from '../services/feedback.js';
+import { AREAS, cleanArea, publicStatus, stageFromInput, type FeedbackKind } from '../services/feedback.js';
 import {
   STAGES_OF_BOARD,
   ensureSupport,
@@ -43,6 +44,7 @@ function mustItem(app: App, ref: string): FeedbackRow {
 /** Everything the triage panel and ghl_get_bug_report show. */
 export function adminDetail(app: App, f: FeedbackRow, ctx: Ctx) {
   const { db } = app;
+  const tr = tCtx(ctx);
   const t = ticketOf(app, f);
   const st = statusOf(app, f, t);
   const reporters = db
@@ -51,12 +53,12 @@ export function adminDetail(app: App, f: FeedbackRow, ctx: Ctx) {
        FROM feedback_links l LEFT JOIN users u ON u.id = l.user_id LEFT JOIN locations loc ON loc.id = l.location_id WHERE l.feedback_id = ? ORDER BY l.created_at`,
       f.id,
     )
-    .map((r) => ({ user_id: r.user_id, name: r.name ?? '(gelöscht)', email: r.email ?? '', role: r.role ? roleLabel({ role: r.role, permissions: r.permissions ? JSON.parse(r.permissions) : null }) : '', link: r.link_role, location_id: r.location_id, location_name: r.location_name ?? '', at: r.created_at }));
+    .map((r) => ({ user_id: r.user_id, name: r.name ?? tr('(gelöscht)'), email: r.email ?? '', role: r.role ? tr(roleLabel({ role: r.role, permissions: r.permissions ? JSON.parse(r.permissions) : null })) : '', link: r.link_role, location_id: r.location_id, location_name: r.location_name ?? '', at: r.created_at }));
   // Affected sub-accounts: from reporters plus the counters of automatic errors (also users who did not opt in).
   const counts = new Map<string, number>();
   for (const r of reporters) if (r.location_id) counts.set(r.location_id, (counts.get(r.location_id) ?? 0) + 1);
   for (const [loc, n] of Object.entries((f.diagnostics as any)?.locations ?? {})) counts.set(loc, Math.max(counts.get(loc) ?? 0, Number(n) || 0));
-  const locations = [...counts.entries()].map(([id, n]) => ({ id, name: app.location(id)?.name ?? '(gelöscht)', n })).sort((a, b) => b.n - a.n);
+  const locations = [...counts.entries()].map(([id, n]) => ({ id, name: app.location(id)?.name ?? tr('(gelöscht)'), n })).sort((a, b) => b.n - a.n);
   const dup = f.duplicate_of ? getItem(app, f.duplicate_of) : undefined;
   const duplicates = db.all('SELECT id, title, ticket_id, support_location_id FROM feedback_items WHERE duplicate_of = ? ORDER BY created_at', f.id).map((d) => ({ id: d.id, title: d.title, ticket_id: d.ticket_id, number: db.get('SELECT number FROM tickets WHERE id = ?', d.ticket_id)?.number ?? null }));
   const voters = f.kind === 'wish' ? db.all('SELECT u.name FROM feedback_votes v JOIN users u ON u.id = v.user_id WHERE v.feedback_id = ? ORDER BY v.created_at LIMIT 100', f.id).map((r) => r.name as string) : [];
@@ -173,7 +175,7 @@ async function applyPatch(app: App, f: FeedbackRow, b: any, ctx: Ctx) {
   if (b.note !== undefined && String(b.note).trim() && t) addTicketEvent(app, t, 'note', { body: str(b.note, 'Notiz', { max: 20_000 }), userId: actor.userId ?? null });
   if (b.reply !== undefined && String(b.reply).trim()) await publicReply(app, getItem(app, f.id)!, b.reply, actor);
   const stage = b.status !== undefined && b.status !== '' ? stageFromInput(b.status) : undefined;
-  if (b.status !== undefined && b.status !== '' && !stage) throw bad(`Unbekannter Status – erlaubt: neu, bestaetigt, in_arbeit, behoben, ausgeliefert, abgelehnt (Wünsche: ${WISH_BOARD.map((x) => x[0]).join(', ')})`);
+  if (b.status !== undefined && b.status !== '' && !stage) throw bad('Unbekannter Status – erlaubt: neu, bestaetigt, in_arbeit, behoben, ausgeliefert, abgelehnt (Wünsche: idea, planned, in_progress, done, declined)');
   const version = b.fixed_in ?? b.shipped_in ?? b.version;
   if (version !== undefined && String(version).trim()) {
     await markFixed(app, getItem(app, f.id)!, { version, note: b.changelog ?? undefined, shipped: stage ? stage !== 'behoben' : b.shipped !== false }, actor);
@@ -188,7 +190,6 @@ async function applyPatch(app: App, f: FeedbackRow, b: any, ctx: Ctx) {
   return getItem(app, f.id)!;
 }
 
-const LOC_NOTE = 'Kein location_id nötig – die Meldungen liegen im Support-Sub-Account der Agentur.';
 const obj = (props: Record<string, any>, required: string[] = []) => ({ type: 'object', properties: props, required, additionalProperties: false });
 const qs = (params: Record<string, unknown>) => {
   const s = new URLSearchParams();
@@ -202,7 +203,7 @@ const TOOLS: Tool[] = [
   {
     name: 'ghl_list_bug_reports',
     title: 'Fehlermeldungen auflisten',
-    description: `Fehlermeldungen, Fragen und automatisch erfasste Fehler (Browser/Server) aller HyperLevel-Nutzer. kind: reports (Standard: bug+question+auto)|bug|question|auto|all; state: open (Standard)|done|all; status: neu|bestaetigt|in_arbeit|behoben|ausgeliefert|abgelehnt; sort: updated|new|priority|occurrences; q sucht in Titel/Text/#Nummer. ${LOC_NOTE}`,
+    description: 'Fehlermeldungen, Fragen und automatisch erfasste Fehler (Browser/Server) aller HyperLevel-Nutzer. kind: reports (Standard: bug+question+auto)|bug|question|auto|all; state: open (Standard)|done|all; status: neu|bestaetigt|in_arbeit|behoben|ausgeliefert|abgelehnt; sort: updated|new|priority|occurrences; q sucht in Titel/Text/#Nummer. Kein location_id nötig – die Meldungen liegen im Support-Sub-Account der Agentur.',
     inputSchema: obj({ kind: { type: 'string' }, state: { type: 'string' }, status: { type: 'string' }, sort: { type: 'string' }, q: { type: 'string' }, limit: { type: 'integer' } }),
     annotations: { readOnlyHint: true, openWorldHint: false },
     agencyOnly: true,
@@ -236,7 +237,7 @@ const TOOLS: Tool[] = [
   {
     name: 'ghl_list_wishes',
     title: 'Feature-Wünsche (nach Stimmen)',
-    description: `Die Wunschliste aller HyperLevel-Nutzer, sortiert nach Stimmen – Grundlage für die Planung. state: open (Standard)|done|all; status: idea|planned|in_progress|done|declined; area: ${AREAS.join(', ')}; q sucht in Titel/Text.`,
+    description: 'Die Wunschliste aller HyperLevel-Nutzer, sortiert nach Stimmen – Grundlage für die Planung. state: open (Standard)|done|all; status: idea|planned|in_progress|done|declined; area: CRM, Marketing, Websites & Funnels, Automationen, Service, Umsatz, KI, App, Agentur, Sonstiges; q sucht in Titel/Text.',
     inputSchema: obj({ state: { type: 'string' }, status: { type: 'string' }, area: { type: 'string' }, q: { type: 'string' }, limit: { type: 'integer' } }),
     annotations: { readOnlyHint: true, openWorldHint: false },
     agencyOnly: true,
@@ -311,7 +312,7 @@ const WISHES: ReportSource = {
   fields: [
     ...common,
     { key: 'area', label: 'Bereich', type: 'enum', sql: 'f.area', options: Object.fromEntries(AREAS.map((a) => [a, a])) },
-    { key: 'votes', label: 'Stimmen', type: 'number', sql: 'f.votes', format: 'number' },
+    { key: 'votes', label: 'Anzahl Stimmen', type: 'number', sql: 'f.votes', format: 'number' },
     { key: 'title', label: 'Wunsch', type: 'string', sql: 'f.title', noGroup: true },
   ],
   calcs: [

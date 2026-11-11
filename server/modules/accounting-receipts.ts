@@ -11,6 +11,7 @@ import { completeFields, extractWithAi, findEmbeddedInvoice, parseEInvoice, sugg
 import { codeForRate, type TaxCode } from '../services/acc-vat.js';
 import { actor, setReceiptKey } from './accounting.js';
 import type { Tool } from './mcp.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Belegeingang: receipts are archived with a SHA-256 hash the moment they arrive (upload, phone photo, forwarded
@@ -182,13 +183,14 @@ export const receiptsModule: Module = {
         applyExtraction(app, loc, receiptId, ex, { force: opts.force });
         return ex;
       }
+      const tl = tLoc(app, loc);
       if (XML_TYPES.has(d.mime)) {
-        db.run('UPDATE acc_receipts SET extraction = ?, updated_at = ? WHERE id = ?', JSON.stringify({ method: 'manual', status: 'failed', warnings: ['Die XML-Datei ist keine bekannte E-Rechnung (XRechnung/ZUGFeRD).'] }), now(), receiptId);
-        return { unavailable: 'Die XML-Datei ist keine bekannte E-Rechnung – bitte von Hand eintragen.' };
+        db.run('UPDATE acc_receipts SET extraction = ?, updated_at = ? WHERE id = ?', JSON.stringify({ method: 'manual', status: 'failed', warnings: [tl('Die XML-Datei ist keine bekannte E-Rechnung (XRechnung/ZUGFeRD).')] }), now(), receiptId);
+        return { unavailable: tl('Die XML-Datei ist keine bekannte E-Rechnung – bitte von Hand eintragen.') };
       }
       if (opts.ai === false) {
-        db.run('UPDATE acc_receipts SET extraction = ?, updated_at = ? WHERE id = ?', JSON.stringify({ method: 'manual', status: 'manual', note: 'Automatisches Auslesen ist ausgeschaltet.' }), now(), receiptId);
-        return { unavailable: 'Automatisches Auslesen ist ausgeschaltet (Einstellungen).' };
+        db.run('UPDATE acc_receipts SET extraction = ?, updated_at = ? WHERE id = ?', JSON.stringify({ method: 'manual', status: 'manual', note: tl('Automatisches Auslesen ist ausgeschaltet.') }), now(), receiptId);
+        return { unavailable: tl('Automatisches Auslesen ist ausgeschaltet (Einstellungen).') };
       }
       const ai = await extractWithAi(app, loc, { mime: d.mime, data, name: d.name }, [...chartMap(app, loc).values()]);
       if (ai.extraction) {
@@ -196,7 +198,7 @@ export const receiptsModule: Module = {
         return ai.extraction;
       }
       db.run('UPDATE acc_receipts SET extraction = ?, updated_at = ? WHERE id = ?', JSON.stringify({ method: 'manual', status: 'manual', warnings: [], note: ai.unavailable }), now(), receiptId);
-      return { unavailable: ai.unavailable ?? 'Nicht lesbar' };
+      return { unavailable: ai.unavailable ?? tl('Nicht lesbar') };
     }
 
     const background = (loc: string, receiptId: string, ai: boolean) => {
@@ -228,7 +230,8 @@ export const receiptsModule: Module = {
         updated_at: now(),
       };
       db.insert('acc_receipts', row);
-      trail(app, loc, { id: o.user.id, name: o.from || 'Beleg-Eingang' }, 'receipt.archive', null, `${document.name} (${document.sha256.slice(0, 12)}…)${duplicate ? ' – Dublette der Datei' : ''}`);
+      const tl = tLoc(app, loc);
+      trail(app, loc, { id: o.user.id, name: o.from || tl('Beleg-Eingang') }, 'receipt.archive', null, `${document.name} (${document.sha256.slice(0, 12)}…)${duplicate ? tl(' – Dublette der Datei') : ''}`);
       const xmlish = XML_TYPES.has(document.mime) || document.mime === 'application/pdf';
       const settings = getSettings(app, loc);
       // E-invoices are exact and free: read right away (a PDF without XML inside waits for the AI like a photo).
@@ -306,7 +309,7 @@ export const receiptsModule: Module = {
       if (b.currency !== undefined) patch.currency = /^[A-Z]{3}$/.test(String(b.currency)) ? String(b.currency) : 'EUR';
       if (b.account !== undefined) {
         const acc = b.account ? chartMap(app, ctx.locationId).get(String(b.account)) : undefined;
-        if (b.account && (!acc || !acc.active)) throw bad(`Konto ${String(b.account)} gibt es nicht`);
+        if (b.account && (!acc || !acc.active)) throw bad(tCtx(ctx)('Konto {account} gibt es nicht', { account: String(b.account) }));
         patch.account = b.account ? String(b.account) : '';
       }
       if (b.payment !== undefined) {
@@ -360,7 +363,8 @@ export const receiptsModule: Module = {
       const accountNo = String(b.account ?? r.account ?? '').trim();
       const expense = chart.get(accountNo);
       if (!expense || !expense.active) throw bad('Bitte ein Konto wählen (Aufwand oder Anlage)');
-      if (expense.type !== 'expense' && expense.type !== 'asset') throw bad(`Konto ${accountNo} ist kein Aufwands- oder Anlagekonto`);
+      const t = tCtx(ctx);
+      if (expense.type !== 'expense' && expense.type !== 'asset') throw bad(t('Konto {account} ist kein Aufwands- oder Anlagekonto', { account: accountNo }));
       if (!r.invoice_date) throw bad('Rechnungsdatum fehlt');
       const docDate = cleanDate(r.invoice_date, 'Rechnungsdatum');
       const payment = String(b.payment ?? r.payment ?? 'open');
@@ -370,11 +374,11 @@ export const receiptsModule: Module = {
       const lines: (ReceiptLine & { account?: string })[] = json(r.lines, []);
       const use: (ReceiptLine & { account?: string })[] = lines.length ? lines : r.net_cents !== null ? [{ net_cents: r.net_cents, vat_rate: r.vat_rate ?? 0, vat_cents: r.vat_cents ?? 0 }] : r.gross_cents ? [{ net_cents: r.gross_cents, vat_rate: 0, vat_cents: 0 }] : [];
       if (!use.length || !use.some((l) => l.net_cents > 0)) throw bad('Betrag fehlt');
-      if (r.currency !== 'EUR') throw bad(`Der Beleg ist in ${r.currency} – bitte erst den Eurobetrag eintragen`);
+      if (r.currency !== 'EUR') throw bad(t('Der Beleg ist in {currency} – bitte erst den Eurobetrag eintragen', { currency: r.currency }));
       const credit = !!r.credit_note;
       const postings: PostingIn[] = use.filter((l) => l.net_cents > 0).map((l) => {
         const code: TaxCode = rc ? 'rc19' : (() => { try { return codeForRate(l.vat_rate, 'input'); } catch { return 'vst0'; } })();
-        if (!rc && ![0, 7, 19].includes(l.vat_rate)) throw bad(`Steuersatz ${l.vat_rate} % wird nicht unterstützt (19, 7 oder 0) – bitte als Buchung von Hand erfassen`);
+        if (!rc && ![0, 7, 19].includes(l.vat_rate)) throw bad(t('Steuersatz {rate} % wird nicht unterstützt (19, 7 oder 0) – bitte als Buchung von Hand erfassen', { rate: l.vat_rate }));
         const lineAcc = l.account && chart.get(l.account)?.active ? l.account : accountNo;
         const gross = rc ? l.net_cents : l.net_cents + l.vat_cents;
         // Credit note from the supplier: the same posting the other way round.
@@ -454,7 +458,7 @@ export const receiptsModule: Module = {
     router.post('/api/accounting/inbound/rotate', 'location', (ctx) => {
       const key = token(18);
       setReceiptKey(app, ctx.locationId, key);
-      trail(app, ctx.locationId, actor(ctx), 'inbound.rotate', null, 'Schlüssel für die Beleg-Weiterleitung erneuert');
+      trail(app, ctx.locationId, actor(ctx), 'inbound.rotate', null, tLoc(app, ctx.locationId)('Schlüssel für die Beleg-Weiterleitung erneuert'));
       return { url: `${app.baseUrl()}/hooks/${ctx.locationId}/receipts?key=${key}` };
     });
     // Mail-forwarding services (Cloudflare Email Workers, Make, Zapier, n8n) post the attachments here as JSON.
@@ -510,7 +514,8 @@ export const receiptsModule: Module = {
           skipped.push(`${name}: ${(e as Error).message}`);
         }
       }
-      app.services.audit?.({ action: 'accounting.receipt.inbound', locationId: loc, actor: from || 'E-Mail', summary: `${created.length} ${created.length === 1 ? 'Beleg' : 'Belege'} per E-Mail, ${skipped.length} übersprungen`.slice(0, 200) });
+      const tl = tLoc(app, loc);
+      app.services.audit?.({ action: 'accounting.receipt.inbound', locationId: loc, actor: from || tl('E-Mail'), summary: tl.plural(created.length, { one: '{n} Beleg per E-Mail, {skipped} übersprungen', other: '{n} Belege per E-Mail, {skipped} übersprungen' }, { skipped: skipped.length }).slice(0, 200) });
       return { ok: true, created: created.length, skipped };
     });
   },

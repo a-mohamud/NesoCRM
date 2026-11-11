@@ -1,3 +1,4 @@
+import { tApp, type STFn } from '../i18n/index.js';
 import { contrast, colorHex, fixContrast, type Tokens } from './site-style.js';
 import type { Block } from './site-blocks.js';
 import { walkBlocks } from './site-layout.js';
@@ -133,17 +134,18 @@ export interface Piece {
 export function checkFragment(piece: Piece): A11yIssue[] {
   const html = stripNoise(piece.html);
   const issues: A11yIssue[] = [];
-  const add = (rule: string, level: Level, message: string, hint: string, excerpt?: string) =>
-    issues.push({ rule, level, wcag: RULES[rule].wcag, message, hint, excerpt: excerpt?.slice(0, 140), block_id: piece.block_id, block_type: piece.block_type });
+  const tx = tApp();
+  const addIssue = (rule: string, level: Level, message: string, hint: string, excerpt?: string) =>
+    issues.push({ rule, level, wcag: RULES[rule].wcag, message: tx(message), hint: tx(hint), excerpt: excerpt?.slice(0, 140), block_id: piece.block_id, block_type: piece.block_type });
 
   // images
   for (const t of tagsOf(html, ['img'])) {
     const alt = t.attrs.alt;
     const src = (t.attrs.src ?? '').split('?')[0].split('/').pop() ?? '';
     if (t.attrs.role === 'presentation' || t.attrs['aria-hidden'] === 'true') continue;
-    if (alt === undefined) add('alt_missing', 'error', 'Ein Bild hat keinen Alternativtext.', 'Beschreibe in einem Satz, was das Bild zeigt (Feld „Alt-Text“). Rein dekorative Bilder bekommen einen leeren Alt-Text (alt="").', src);
-    else if (alt.trim() && (WEAK_ALT.test(alt.trim()) || FILE_ALT.test(alt.trim()))) add('alt_weak', 'warning', `Der Alternativtext „${alt.trim().slice(0, 40)}“ sagt nichts über das Bild.`, 'Schreibe, was zu sehen ist oder was das Bild aussagt – nicht den Dateinamen.', src);
-    else if (alt.length > 150) add('alt_weak', 'warning', 'Der Alternativtext ist sehr lang.', 'Fasse dich kurz (unter 150 Zeichen); Längeres gehört in den Text neben dem Bild.', src);
+    if (alt === undefined) addIssue('alt_missing', 'error', 'Ein Bild hat keinen Alternativtext.', 'Beschreibe in einem Satz, was das Bild zeigt (Feld „Alt-Text“). Rein dekorative Bilder bekommen einen leeren Alt-Text (alt="").', src);
+    else if (alt.trim() && (WEAK_ALT.test(alt.trim()) || FILE_ALT.test(alt.trim()))) addIssue('alt_weak', 'warning', tx('Der Alternativtext „{alt}“ sagt nichts über das Bild.', { alt: alt.trim().slice(0, 40) }), 'Schreibe, was zu sehen ist oder was das Bild aussagt – nicht den Dateinamen.', src);
+    else if (alt.length > 150) addIssue('alt_weak', 'warning', 'Der Alternativtext ist sehr lang.', 'Fasse dich kurz (unter 150 Zeichen); Längeres gehört in den Text neben dem Bild.', src);
   }
 
   // links
@@ -152,16 +154,16 @@ export function checkFragment(piece: Piece): A11yIssue[] {
     // A picture link that duplicates the text link next to it is hidden from keyboard and screen readers on purpose.
     if (a['aria-hidden'] === 'true' && a.tabindex === '-1') continue;
     const name = accessibleName(e.inner, a);
-    if (a.href === undefined && !a.name && !a.id) add('link_href', 'warning', 'Ein Link hat kein Ziel.', 'Trage eine Adresse ein oder mache aus dem Link einen normalen Text.', plain(e.inner));
-    else if (a.href === '#' && !a['aria-label'] && !a.role) add('link_href', 'warning', 'Ein Link zeigt nur auf „#“ – er führt nirgendwohin.', 'Trage das echte Ziel ein (eine Seite, einen Abschnitt wie #kontakt oder eine Adresse).', plain(e.inner) || a.href);
-    if (!name) add('link_name', 'error', 'Ein Link hat keinen erkennbaren Namen (kein Text, kein Alt-Text).', 'Gib dem Link einen Text oder – bei einem Bild-Link – dem Bild einen Alt-Text.', a.href);
-    else if (GENERIC.test(name)) add('link_generic', 'warning', `Der Link-Text „${name}“ sagt allein nicht, wohin er führt.`, 'Schreibe das Ziel in den Text, z. B. „Preise ansehen“ statt „mehr erfahren“.', a.href);
+    if (a.href === undefined && !a.name && !a.id) addIssue('link_href', 'warning', 'Ein Link hat kein Ziel.', 'Trage eine Adresse ein oder mache aus dem Link einen normalen Text.', plain(e.inner));
+    else if (a.href === '#' && !a['aria-label'] && !a.role) addIssue('link_href', 'warning', 'Ein Link zeigt nur auf „#“ – er führt nirgendwohin.', 'Trage das echte Ziel ein (eine Seite, einen Abschnitt wie #kontakt oder eine Adresse).', plain(e.inner) || a.href);
+    if (!name) addIssue('link_name', 'error', 'Ein Link hat keinen erkennbaren Namen (kein Text, kein Alt-Text).', 'Gib dem Link einen Text oder – bei einem Bild-Link – dem Bild einen Alt-Text.', a.href);
+    else if (GENERIC.test(name)) addIssue('link_generic', 'warning', tx('Der Link-Text „{name}“ sagt allein nicht, wohin er führt.', { name }), 'Schreibe das Ziel in den Text, z. B. „Preise ansehen“ statt „mehr erfahren“.', a.href);
   }
 
   // buttons
   for (const e of elements(html, 'button')) {
     if (e.tag.attrs.type === 'hidden') continue;
-    if (!accessibleName(e.inner, e.tag.attrs)) add('button_name', 'error', 'Ein Button hat keinen Namen.', 'Gib dem Button einen Text oder ein aria-label.', e.tag.raw);
+    if (!accessibleName(e.inner, e.tag.attrs)) addIssue('button_name', 'error', 'Ein Button hat keinen Namen.', 'Gib dem Button einen Text oder ein aria-label.', e.tag.raw);
   }
 
   // form controls
@@ -173,28 +175,28 @@ export function checkFragment(piece: Piece): A11yIssue[] {
     if (['hidden', 'submit', 'button', 'image', 'reset'].includes(type) || t.attrs['aria-hidden'] === 'true' || t.attrs.tabindex === '-1') continue;
     const labelled = !!t.attrs['aria-label']?.trim() || !!t.attrs['aria-labelledby'] || (t.attrs.id && forIds.has(t.attrs.id)) || inLabel(t.at) || !!t.attrs.title;
     if (!labelled) {
-      if (t.attrs.placeholder) add('label_placeholder', 'error', 'Ein Feld hat nur einen Platzhalter, aber keine Beschriftung.', 'Platzhalter verschwinden beim Tippen. Gib dem Feld eine sichtbare Beschriftung (Label) oder zumindest ein aria-label.', t.attrs.name || t.attrs.placeholder);
-      else add('label', 'error', 'Ein Formularfeld hat keine Beschriftung.', 'Ordne dem Feld ein <label> zu (im Formular-Editor: Feld-Beschriftung ausfüllen).', t.attrs.name || t.raw);
+      if (t.attrs.placeholder) addIssue('label_placeholder', 'error', 'Ein Feld hat nur einen Platzhalter, aber keine Beschriftung.', 'Platzhalter verschwinden beim Tippen. Gib dem Feld eine sichtbare Beschriftung (Label) oder zumindest ein aria-label.', t.attrs.name || t.attrs.placeholder);
+      else addIssue('label', 'error', 'Ein Formularfeld hat keine Beschriftung.', 'Ordne dem Feld ein <label> zu (im Formular-Editor: Feld-Beschriftung ausfüllen).', t.attrs.name || t.raw);
     }
-    if (['email', 'tel'].includes(type) && !t.attrs.autocomplete) add('autocomplete', 'info', 'Dem Feld fehlt das Attribut autocomplete.', 'Browser und Hilfsmittel können E-Mail- und Telefonfelder dann automatisch ausfüllen.', t.attrs.name);
+    if (['email', 'tel'].includes(type) && !t.attrs.autocomplete) addIssue('autocomplete', 'info', 'Dem Feld fehlt das Attribut autocomplete.', 'Browser und Hilfsmittel können E-Mail- und Telefonfelder dann automatisch ausfüllen.', t.attrs.name);
   }
 
   // embedded content
-  for (const t of tagsOf(html, ['iframe'])) if (!t.attrs.title?.trim()) add('iframe_title', 'error', 'Ein eingebetteter Inhalt (iframe) hat keinen Titel.', 'Ein title-Attribut sagt Screenreadern, was dort eingebettet ist (z. B. „Terminbuchung“, „Video“).', t.attrs.src);
+  for (const t of tagsOf(html, ['iframe'])) if (!t.attrs.title?.trim()) addIssue('iframe_title', 'error', 'Ein eingebetteter Inhalt (iframe) hat keinen Titel.', 'Ein title-Attribut sagt Screenreadern, was dort eingebettet ist (z. B. „Terminbuchung“, „Video“).', t.attrs.src);
   for (const e of elements(html, 'video')) {
-    if (!/<track\b[^>]*kind=["']?(captions|subtitles)/i.test(e.inner)) add('video_captions', 'warning', 'Ein Video hat keine Untertitel-Spur.', 'Ergänze Untertitel (WebVTT) oder ein Transkript neben dem Video – bei eingebetteten YouTube/Vimeo-Videos in deren Einstellungen.');
+    if (!/<track\b[^>]*kind=["']?(captions|subtitles)/i.test(e.inner)) addIssue('video_captions', 'warning', 'Ein Video hat keine Untertitel-Spur.', 'Ergänze Untertitel (WebVTT) oder ein Transkript neben dem Video – bei eingebetteten YouTube/Vimeo-Videos in deren Einstellungen.');
   }
   // video embeds (iframe players) cannot be checked for captions: one hint
-  if (tagsOf(html, ['iframe']).some((t) => /youtube|vimeo|loom/i.test(t.attrs.src ?? ''))) add('video_captions', 'info', 'Eingebettetes Video: Untertitel lassen sich automatisch nicht prüfen.', 'Schalte beim Anbieter Untertitel ein oder lege ein Transkript daneben (BFSG verlangt Alternativen für Hörbehinderte).');
+  if (tagsOf(html, ['iframe']).some((t) => /youtube|vimeo|loom/i.test(t.attrs.src ?? ''))) addIssue('video_captions', 'info', 'Eingebettetes Video: Untertitel lassen sich automatisch nicht prüfen.', 'Schalte beim Anbieter Untertitel ein oder lege ein Transkript daneben (BFSG verlangt Alternativen für Hörbehinderte).');
 
   // focus, order, motion
-  if (/outline\s*:\s*(none|0)\b/i.test(piece.html) && !/:focus-visible|:focus\s*\{[^}]*(outline|box-shadow|border)/i.test(piece.html)) add('focus', 'warning', 'Der eigene Code entfernt den Fokus-Rahmen.', 'Wer mit der Tastatur navigiert, sieht sonst nicht, wo er ist. Lass den Rahmen stehen oder ersetze ihn durch ein sichtbares :focus-visible.');
-  for (const t of tagsOf(html)) if (Number(t.attrs.tabindex) > 0) add('tabindex', 'warning', 'tabindex größer als 0 verändert die Tab-Reihenfolge.', 'Nutze tabindex="0" oder keinen Wert; die Reihenfolge ergibt sich aus der Seitenstruktur.', t.raw);
-  if (/<(marquee|blink)\b/i.test(html)) add('motion', 'error', 'Blinkender oder laufender Text (marquee/blink).', 'Bewegung, die nicht anzuhalten ist, ist unzulässig. Entferne sie.');
-  for (const t of tagsOf(html, ['video', 'audio'])) if ('autoplay' in t.attrs && !('muted' in t.attrs)) add('motion', 'warning', 'Ein Medium startet automatisch mit Ton.', 'Spiele nichts automatisch ab oder starte stumm und gib Bedienelemente.', t.raw);
+  if (/outline\s*:\s*(none|0)\b/i.test(piece.html) && !/:focus-visible|:focus\s*\{[^}]*(outline|box-shadow|border)/i.test(piece.html)) addIssue('focus', 'warning', 'Der eigene Code entfernt den Fokus-Rahmen.', 'Wer mit der Tastatur navigiert, sieht sonst nicht, wo er ist. Lass den Rahmen stehen oder ersetze ihn durch ein sichtbares :focus-visible.');
+  for (const t of tagsOf(html)) if (Number(t.attrs.tabindex) > 0) addIssue('tabindex', 'warning', 'tabindex größer als 0 verändert die Tab-Reihenfolge.', 'Nutze tabindex="0" oder keinen Wert; die Reihenfolge ergibt sich aus der Seitenstruktur.', t.raw);
+  if (/<(marquee|blink)\b/i.test(html)) addIssue('motion', 'error', 'Blinkender oder laufender Text (marquee/blink).', 'Bewegung, die nicht anzuhalten ist, ist unzulässig. Entferne sie.');
+  for (const t of tagsOf(html, ['video', 'audio'])) if ('autoplay' in t.attrs && !('muted' in t.attrs)) addIssue('motion', 'warning', 'Ein Medium startet automatisch mit Ton.', 'Spiele nichts automatisch ab oder starte stumm und gib Bedienelemente.', t.raw);
 
   // tables
-  for (const e of elements(html, 'table')) if (!/<th\b/i.test(e.inner)) add('table_header', 'warning', 'Eine Tabelle hat keine Kopfzeile (<th>).', 'Kennzeichne Überschriften der Spalten/Zeilen mit <th>, damit Screenreader die Zellen zuordnen können.');
+  for (const e of elements(html, 'table')) if (!/<th\b/i.test(e.inner)) addIssue('table_header', 'warning', 'Eine Tabelle hat keine Kopfzeile (<th>).', 'Kennzeichne Überschriften der Spalten/Zeilen mit <th>, damit Screenreader die Zellen zuordnen können.');
   return issues;
 }
 
@@ -202,27 +204,28 @@ export function checkFragment(piece: Piece): A11yIssue[] {
 export function checkDocument(fullHtml: string, o: { skipLink?: boolean } = {}): A11yIssue[] {
   const html = stripNoise(fullHtml);
   const issues: A11yIssue[] = [];
-  const add = (rule: string, level: Level, message: string, hint: string, excerpt?: string) => issues.push({ rule, level, wcag: RULES[rule].wcag, message, hint, excerpt });
+  const tx = tApp();
+  const addIssue = (rule: string, level: Level, message: string, hint: string, excerpt?: string) => issues.push({ rule, level, wcag: RULES[rule].wcag, message: tx(message), hint: tx(hint), excerpt });
   const htmlTag = tagsOf(html, ['html'])[0];
-  if (!htmlTag?.attrs.lang || !/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(htmlTag.attrs.lang)) add('lang', 'error', 'Die Seite hat keine (gültige) Sprachangabe.', 'Setze die Sprache der Seite (Seiten-Einstellungen → Sprache); Screenreader sprechen sonst mit falscher Aussprache.');
+  if (!htmlTag?.attrs.lang || !/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(htmlTag.attrs.lang)) addIssue('lang', 'error', 'Die Seite hat keine (gültige) Sprachangabe.', 'Setze die Sprache der Seite (Seiten-Einstellungen → Sprache); Screenreader sprechen sonst mit falscher Aussprache.');
   const title = elements(html, 'title')[0];
-  if (!title || !plain(title.inner)) add('title', 'error', 'Die Seite hat keinen Titel.', 'Trage unter SEO einen aussagekräftigen Seitentitel ein.');
+  if (!title || !plain(title.inner)) addIssue('title', 'error', 'Die Seite hat keinen Titel.', 'Trage unter SEO einen aussagekräftigen Seitentitel ein.');
   const viewport = tagsOf(html, ['meta']).find((t) => t.attrs.name === 'viewport');
-  if (viewport && /user-scalable\s*=\s*(no|0)|maximum-scale\s*=\s*1(\.0)?\b/i.test(viewport.attrs.content ?? '')) add('viewport', 'error', 'Das Zoomen der Seite ist gesperrt.', 'Entferne user-scalable=no / maximum-scale aus dem viewport-Tag (Kopf-Code).');
+  if (viewport && /user-scalable\s*=\s*(no|0)|maximum-scale\s*=\s*1(\.0)?\b/i.test(viewport.attrs.content ?? '')) addIssue('viewport', 'error', 'Das Zoomen der Seite ist gesperrt.', 'Entferne user-scalable=no / maximum-scale aus dem viewport-Tag (Kopf-Code).');
   const mains = tagsOf(html, ['main']).length;
-  if (mains !== 1) add('landmark', mains ? 'warning' : 'error', mains ? 'Die Seite hat mehrere Hauptbereiche (<main>).' : 'Die Seite hat keinen Hauptbereich (<main>).', 'Genau ein <main> pro Seite hilft bei der Navigation per Screenreader.');
-  if (o.skipLink !== false && !/<a\b[^>]*class="skip"/i.test(html) && tagsOf(html, ['header']).length) add('skip', 'warning', 'Es fehlt ein Link „Zum Inhalt springen“.', 'Mit Tastatur müssen Besucher sonst bei jeder Seite durchs ganze Menü tabben.');
+  if (mains !== 1) addIssue('landmark', mains ? 'warning' : 'error', mains ? 'Die Seite hat mehrere Hauptbereiche (<main>).' : 'Die Seite hat keinen Hauptbereich (<main>).', 'Genau ein <main> pro Seite hilft bei der Navigation per Screenreader.');
+  if (o.skipLink !== false && !/<a\b[^>]*class="skip"/i.test(html) && tagsOf(html, ['header']).length) addIssue('skip', 'warning', 'Es fehlt ein Link „Zum Inhalt springen“.', 'Mit Tastatur müssen Besucher sonst bei jeder Seite durchs ganze Menü tabben.');
 
   // headings
   const hs = [1, 2, 3, 4, 5, 6].flatMap((n) => elements(html, `h${n}`).map((e) => ({ n, at: e.at, text: plain(e.inner), tag: e.tag })));
   hs.sort((a, b) => a.at - b.at);
   const h1 = hs.filter((h) => h.n === 1);
-  if (!h1.length) add('h1', 'error', 'Die Seite hat keine Hauptüberschrift (H1).', 'Setze genau eine H1 – meist im Hero- oder Überschrift-Block (Größe „1“).');
-  else if (h1.length > 1) add('h1', 'warning', `Die Seite hat ${h1.length} Hauptüberschriften (H1).`, 'Nutze nur eine H1 und gliedere den Rest mit H2/H3.', h1.map((h) => h.text).join(' | '));
+  if (!h1.length) addIssue('h1', 'error', 'Die Seite hat keine Hauptüberschrift (H1).', 'Setze genau eine H1 – meist im Hero- oder Überschrift-Block (Größe „1“).');
+  else if (h1.length > 1) addIssue('h1', 'warning', tx('Die Seite hat {n} Hauptüberschriften (H1).', { n: h1.length }), 'Nutze nur eine H1 und gliedere den Rest mit H2/H3.', h1.map((h) => h.text).join(' | '));
   let prev = 0;
   for (const h of hs) {
-    if (!h.text && !h.tag.attrs['aria-label']) add('heading_empty', 'error', `Eine Überschrift (H${h.n}) ist leer.`, 'Lösche die leere Überschrift oder schreibe einen Text hinein.');
-    if (prev && h.n > prev + 1) add('heading_order', 'warning', `Überschriften springen von H${prev} auf H${h.n}.`, 'Überspringe keine Ebenen: nach H2 folgt H3, nicht H4 (Block „Überschrift“ → Größe).', h.text);
+    if (!h.text && !h.tag.attrs['aria-label']) addIssue('heading_empty', 'error', tx('Eine Überschrift (H{n}) ist leer.', { n: h.n }), 'Lösche die leere Überschrift oder schreibe einen Text hinein.');
+    if (prev && h.n > prev + 1) addIssue('heading_order', 'warning', tx('Überschriften springen von H{from} auf H{to}.', { from: prev, to: h.n }), 'Überspringe keine Ebenen: nach H2 folgt H3, nicht H4 (Block „Überschrift“ → Größe).', h.text);
     prev = h.n;
   }
 
@@ -230,15 +233,16 @@ export function checkDocument(fullHtml: string, o: { skipLink?: boolean } = {}):
   const seen = new Set<string>();
   const dup = new Set<string>();
   for (const t of tagsOf(html)) if (t.attrs.id) (seen.has(t.attrs.id) ? dup : seen).add(t.attrs.id);
-  for (const d of dup) add('duplicate_id', 'warning', `Die ID „${d}“ kommt mehrfach vor.`, 'Anker und Formularfelder brauchen eindeutige IDs.', d);
+  for (const d of dup) addIssue('duplicate_id', 'warning', tx('Die ID „{id}“ kommt mehrfach vor.', { id: d }), 'Anker und Formularfelder brauchen eindeutige IDs.', d);
   return issues;
 }
 
 // --- colours -------------------------------------------------------------------------------------------------------------
 
 /** Contrast of the site's own colour pairs (what every page uses). */
-export function tokenContrast(t: Tokens): A11yIssue[] {
+export function tokenContrast(t: Tokens, tx: STFn = tApp()): A11yIssue[] {
   const c = t.colors;
+  const num = (r: number) => (tx.locale === 'de' ? r.toFixed(2).replace('.', ',') : r.toFixed(2));
   const out: A11yIssue[] = [];
   const pair = (fg: string, bg: string, what: string, min = 4.5) => {
     const r = contrast(fg, bg);
@@ -248,9 +252,9 @@ export function tokenContrast(t: Tokens): A11yIssue[] {
       rule: 'contrast',
       level: r < 3 ? 'error' : 'warning',
       wcag: '1.4.3',
-      message: `${what}: Kontrast ${r.toFixed(2).replace('.', ',')} : 1 (nötig: ${min} : 1).`,
-      hint: `Wähle ${fix === fg ? 'einen dunkleren/helleren Farbton' : `z. B. ${fix}`} (Design → Farben).`,
-      excerpt: `${fg} auf ${bg}`,
+      message: tx('{what}: Kontrast {ratio} : 1 (nötig: {min} : 1).', { what: tx(what), ratio: num(r), min }),
+      hint: fix === fg ? tx('Wähle einen dunkleren/helleren Farbton (Design → Farben).') : tx('Wähle z. B. {colour} (Design → Farben).', { colour: fix }),
+      excerpt: tx('{fg} auf {bg}', { fg, bg }),
     });
   };
   pair(c.text, c.bg, 'Text auf Seitenhintergrund');
@@ -263,8 +267,9 @@ export function tokenContrast(t: Tokens): A11yIssue[] {
 }
 
 /** Explicit text/background colours of blocks, sections and columns (the renderer picks readable text itself when none is set). */
-export function blockContrast(blocks: Block[], t: Tokens): A11yIssue[] {
+export function blockContrast(blocks: Block[], t: Tokens, tx: STFn = tApp()): A11yIssue[] {
   const out: A11yIssue[] = [];
+  const num = (r: number) => (tx.locale === 'de' ? r.toFixed(2).replace('.', ',') : r.toFixed(2));
   const check = (b: Record<string, any>, bgHex: string, type: string) => {
     const fg = colorHex(b.color, t);
     if (!fg || !bgHex) return;
@@ -275,9 +280,9 @@ export function blockContrast(blocks: Block[], t: Tokens): A11yIssue[] {
       rule: 'contrast',
       level: r < 3 ? 'error' : 'warning',
       wcag: '1.4.3',
-      message: `Textfarbe ${fg} auf ${bgHex}: Kontrast ${r.toFixed(2).replace('.', ',')} : 1${r >= 3 ? ' (reicht nur für große Schrift ab 24 px)' : ''}.`,
-      hint: `Nimm einen stärkeren Kontrast, z. B. ${fix}, oder lass die Textfarbe leer – dann wählt die Seite automatisch Weiß oder Dunkel.`,
-      excerpt: `${fg} auf ${bgHex}`,
+      message: r >= 3 ? tx('Textfarbe {fg} auf {bg}: Kontrast {ratio} : 1 (reicht nur für große Schrift ab 24 px).', { fg, bg: bgHex, ratio: num(r) }) : tx('Textfarbe {fg} auf {bg}: Kontrast {ratio} : 1.', { fg, bg: bgHex, ratio: num(r) }),
+      hint: tx('Nimm einen stärkeren Kontrast, z. B. {colour}, oder lass die Textfarbe leer – dann wählt die Seite automatisch Weiß oder Dunkel.', { colour: fix }),
+      excerpt: tx('{fg} auf {bg}', { fg, bg: bgHex }),
       block_id: b.id,
       block_type: type,
     });
@@ -349,27 +354,29 @@ export interface StatementInput {
   notice: string;
 }
 
-/** Draft of the "Erklärung zur Barrierefreiheit" (BFSG): scope, conformity status, known gaps, how it was assessed, feedback, enforcement. */
-export function statementDoc(i: StatementInput) {
+/** Draft of the "Erklärung zur Barrierefreiheit" (BFSG accessibility statement): scope, conformity status, known gaps, how it was assessed, feedback, enforcement. */
+export function statementDoc(i: StatementInput, tx: STFn = tApp()) {
   const errors = i.issues.filter((x) => x.level === 'error');
   const grouped = group(i.issues.filter((x) => x.level !== 'info'));
-  const gaps = grouped.length ? grouped.slice(0, 12).map((g) => `- ${RULES[g.rule]?.title ?? g.rule}: ${g.message}${g.count > 1 ? ` (${g.count}×)` : ''}`).join('\n') : '- Bei der automatischen Prüfung wurden keine Mängel festgestellt. Eine manuelle Prüfung steht noch aus.';
-  const status = errors.length ? 'teilweise vereinbar' : 'weitgehend vereinbar';
+  const gaps = grouped.length ? grouped.slice(0, 12).map((g) => `- ${RULES[g.rule] ? tx(RULES[g.rule].title) : g.rule}: ${g.message}${g.count > 1 ? ` (${g.count}×)` : ''}`).join('\n') : tx('- Bei der automatischen Prüfung wurden keine Mängel festgestellt. Eine manuelle Prüfung steht noch aus.');
+  const status = errors.length ? tx('teilweise vereinbar') : tx('weitgehend vereinbar');
   const miss: string[] = [];
-  if (!i.company) miss.push('Name des Anbieters');
-  if (!i.email) miss.push('Kontakt-E-Mail für Rückmeldungen');
+  if (!i.company) miss.push(tx('Name des Anbieters'));
+  if (!i.email) miss.push(tx('Kontakt-E-Mail für Rückmeldungen'));
+  const company = i.company || tx('[Name des Anbieters]');
+  const contactLines = `${i.company || tx('[Name]')}${i.address ? `\n${i.address}` : ''}\n${tx('E-Mail: {email}', { email: i.email || tx('[E-Mail]') })}${i.phone ? `\n${tx('Telefon: {phone}', { phone: i.phone })}` : ''}`;
   return {
     kind: 'barrierefreiheit',
-    title: 'Erklärung zur Barrierefreiheit',
-    subtitle: `Stand: ${i.date}`,
+    title: tx('Erklärung zur Barrierefreiheit'),
+    subtitle: tx('Stand: {date}', { date: i.date }),
     sections: [
-      { heading: 'Geltungsbereich', body: `${i.company || '[Name des Anbieters]'} ist bemüht, ${i.scope || 'diese Website'} im Einklang mit dem Barrierefreiheitsstärkungsgesetz (BFSG) und der Norm EN 301 549 (Anforderungen der Web Content Accessibility Guidelines WCAG 2.1, Stufe AA) barrierefrei zugänglich zu machen. Diese Erklärung gilt für die Website ${i.website || '[Adresse der Website]'}.` },
-      { heading: 'Stand der Vereinbarkeit', body: `Diese Website ist mit den Anforderungen **${status}** vereinbar. Grundlage ist eine Selbstbewertung (siehe „Erstellung dieser Erklärung“).` },
-      { heading: 'Nicht barrierefreie Inhalte', body: `Folgende Mängel sind uns bekannt:\n${gaps}\n\nWir arbeiten daran, diese Punkte zu beheben. Eine Befreiung wegen unverhältnismäßiger Belastung nehmen wir nicht in Anspruch, solange wir sie nicht ausdrücklich hier benennen.` },
-      { heading: 'Erstellung dieser Erklärung', body: `Diese Erklärung wurde am ${i.date} erstellt. Geprüft wurde ${i.pages.length ? `der Inhalt der Seiten ${i.pages.slice(0, 12).join(', ')}` : 'der Inhalt der Website'} mit einer automatischen Prüfung (Alternativtexte, Überschriften, Formularbeschriftungen, Link- und Button-Namen, Kontraste, Sprache, Fokus-Reihenfolge). Eine automatische Prüfung findet nur einen Teil möglicher Barrieren; [Ergänzen: manuelle Prüfung mit Tastatur und Screenreader am TT.MM.JJJJ].` },
-      { heading: 'Rückmeldung und Kontakt', body: `Sind Ihnen Barrieren aufgefallen, die hier nicht genannt sind, oder benötigen Sie Inhalte in einer anderen Form, schreiben Sie uns:\n\n${i.company || '[Name]'}${i.address ? `\n${i.address}` : ''}\nE-Mail: ${i.email || '[E-Mail]'}${i.phone ? `\nTelefon: ${i.phone}` : ''}\n\nWir antworten in der Regel innerhalb von [Frist, z. B. 14 Tagen].` },
-      { heading: 'Schlichtungs- und Durchsetzungsverfahren', body: 'Wenn Sie mit unserer Antwort nicht zufrieden sind, können Sie sich an die zuständige Marktüberwachungsbehörde der Länder für die Barrierefreiheit von Produkten und Dienstleistungen wenden. [Kontaktdaten der zuständigen Behörde eintragen – prüfen Sie diese Angabe vor der Veröffentlichung.]' },
-      { heading: 'Hinweis für Kleinstunternehmen', body: 'Kleinstunternehmen (weniger als 10 Beschäftigte und höchstens 2 Mio. Euro Jahresumsatz bzw. Bilanzsumme), die **Dienstleistungen** erbringen, sind von den Anforderungen des BFSG ausgenommen. Wer Produkte im Anwendungsbereich anbietet, ist nicht ausgenommen. [Prüfen, ob die Ausnahme zutrifft, und diesen Abschnitt dann entfernen oder anpassen.]' },
+      { heading: tx('Geltungsbereich'), body: tx('{company} ist bemüht, {scope} im Einklang mit dem Barrierefreiheitsstärkungsgesetz (BFSG) und der Norm EN 301 549 (Anforderungen der Web Content Accessibility Guidelines WCAG 2.1, Stufe AA) barrierefrei zugänglich zu machen. Diese Erklärung gilt für die Website {website}.', { company, scope: i.scope || tx('diese Website'), website: i.website || tx('[Adresse der Website]') }) },
+      { heading: tx('Stand der Vereinbarkeit'), body: tx('Diese Website ist mit den Anforderungen **{status}** vereinbar. Grundlage ist eine Selbstbewertung (siehe „Erstellung dieser Erklärung“).', { status }) },
+      { heading: tx('Nicht barrierefreie Inhalte'), body: tx('Folgende Mängel sind uns bekannt: {gaps} Wir arbeiten daran, diese Punkte zu beheben. Eine Befreiung wegen unverhältnismäßiger Belastung nehmen wir nicht in Anspruch, solange wir sie nicht ausdrücklich hier benennen.', { gaps: `\n${gaps}\n\n` }) },
+      { heading: tx('Erstellung dieser Erklärung'), body: tx('Diese Erklärung wurde am {date} erstellt. Geprüft wurde {what} mit einer automatischen Prüfung (Alternativtexte, Überschriften, Formularbeschriftungen, Link- und Button-Namen, Kontraste, Sprache, Fokus-Reihenfolge). Eine automatische Prüfung findet nur einen Teil möglicher Barrieren; [Ergänzen: manuelle Prüfung mit Tastatur und Screenreader am TT.MM.JJJJ].', { date: i.date, what: i.pages.length ? tx('der Inhalt der Seiten {pages}', { pages: i.pages.slice(0, 12).join(', ') }) : tx('der Inhalt der Website') }) },
+      { heading: tx('Rückmeldung und Kontakt'), body: tx('Sind Ihnen Barrieren aufgefallen, die hier nicht genannt sind, oder benötigen Sie Inhalte in einer anderen Form, schreiben Sie uns: {contact} Wir antworten in der Regel innerhalb von [Frist, z. B. 14 Tagen].', { contact: `\n\n${contactLines}\n\n` }) },
+      { heading: tx('Schlichtungs- und Durchsetzungsverfahren'), body: tx('Wenn Sie mit unserer Antwort nicht zufrieden sind, können Sie sich an die zuständige Marktüberwachungsbehörde der Länder für die Barrierefreiheit von Produkten und Dienstleistungen wenden. [Kontaktdaten der zuständigen Behörde eintragen – prüfen Sie diese Angabe vor der Veröffentlichung.]') },
+      { heading: tx('Hinweis für Kleinstunternehmen'), body: tx('Kleinstunternehmen (weniger als 10 Beschäftigte und höchstens 2 Mio. Euro Jahresumsatz bzw. Bilanzsumme), die **Dienstleistungen** erbringen, sind von den Anforderungen des BFSG ausgenommen. Wer Produkte im Anwendungsbereich anbietet, ist nicht ausgenommen. [Prüfen, ob die Ausnahme zutrifft, und diesen Abschnitt dann entfernen oder anpassen.]') },
     ],
     missing: miss,
     notice: i.notice,

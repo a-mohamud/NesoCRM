@@ -25,6 +25,7 @@ import { DEFAULT_SCHEDULE_RANGE, FREQUENCIES, nextRun, renderReportEmail, type F
 import { TEMPLATES, VIZ, packWidgets, type ReportConfig, type Widget } from '../services/report-templates.js';
 import { effectiveBranding } from './agency.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tUser } from '../i18n/index.js';
 
 /**
  * Berichte & Dashboards (HubSpot-style reporting): free reports over every registered source
@@ -91,7 +92,8 @@ const isAdmin = (p: Principal) => p.user?.role === 'admin';
 function allowedLocations(app: App, p: Principal, src: ReportSource, scope: string, wanted?: unknown): string[] {
   const u = p.user;
   if (u && u.role !== 'admin' && u.permissions && !u.permissions.includes(src.area as Permission)) {
-    throw new HttpError(403, `Kein Zugriff auf „${PERMISSIONS[src.area as Permission] ?? src.area}“`);
+    const t = tUser(app as never, u.id);
+    throw new HttpError(403, t('Kein Zugriff auf „{area}“', { area: t(PERMISSIONS[src.area as Permission] ?? src.area) }));
   }
   let locs: string[];
   if (scope !== 'all') locs = [p.locationId];
@@ -111,7 +113,8 @@ function allowedLocations(app: App, p: Principal, src: ReportSource, scope: stri
   if (!isAdmin(p) && blocked) {
     const before = locs.length;
     locs = locs.filter((l) => !blocked(l, src.area) && !blocked(l, 'dashboard'));
-    if (before && !locs.length) throw new HttpError(403, `„${PERMISSIONS[src.area as Permission] ?? src.area}“ ist in deinem Tarif nicht enthalten`);
+    const t = tUser(app as never, u?.id);
+    if (before && !locs.length) throw new HttpError(403, t('„{area}“ ist in deinem Tarif nicht enthalten', { area: t(PERMISSIONS[src.area as Permission] ?? src.area) }));
   }
   return locs;
 }
@@ -138,7 +141,7 @@ function run(app: App, p: Principal, input: any, opts: { scope?: string; locatio
     const locations = allowedLocations(app, p, src, opts.scope ?? 'location', opts.locationIds);
     // Record-access rules: a source whose numbers would show a field hidden from this person is closed to them.
     const why = (app.services.reportBlocked as ((p: Principal, sourceKey: string, locations: string[]) => string | undefined) | undefined)?.(p, src.key, locations);
-    if (why) throw new HttpError(403, why);
+    if (why) throw new HttpError(403, tUser(app as never, p.user?.id)(why));
     return runReport({ db: app.db, sources: list, locations, tz: tzOf(app, p.locationId), timeoutMs: app.services.reportTimeoutMs ?? 8000, maxRows: 1000, ...rowScope(app, p, locations) }, q);
   });
 }
@@ -190,7 +193,7 @@ function cleanWidgets(app: App, list: unknown): Widget[] {
     const width = clamp(w?.w, 1, 12, 6);
     return {
       id: w?.id && /^[\w-]{1,40}$/.test(String(w.id)) ? String(w.id) : id(10),
-      title: str(w?.title, 'Titel', { max: 120 }) || 'Bericht',
+      title: str(w?.title, 'Titel', { max: 120 }) || tApp()('Bericht'),
       ...(reportId ? { report_id: reportId } : { config: cleanConfig(app, w?.config) }),
       w: width,
       h: clamp(w?.h, 1, 12, 4),
@@ -204,8 +207,9 @@ function cleanWidgets(app: App, list: unknown): Widget[] {
 function resolveWidget(app: App, p: Principal, w: Widget): { config?: ReportConfig; error?: string } {
   if (!w.report_id) return { config: w.config };
   const r = parseJson(app.db.get('SELECT * FROM report_definitions WHERE id = ?', w.report_id), ['config']);
-  if (!r) return { error: 'Bericht wurde gelöscht' };
-  if (!canSee(p, r as Owned)) return { error: 'Kein Zugriff auf diesen Bericht' };
+  const t = tUser(app as never, p.user?.id);
+  if (!r) return { error: t('Bericht wurde gelöscht') };
+  if (!canSee(p, r as Owned)) return { error: t('Kein Zugriff auf diesen Bericht') };
   return { config: r.config };
 }
 
@@ -221,7 +225,7 @@ function dashboardData(app: App, p: Principal, dash: any, overrides: { range?: u
       const result = run(app, p, config.query, { scope, locationIds, ...(config.fixed_range ? {} : { range }), ...(overrides.compare ? { compare: true } : {}) });
       return { id: w.id, viz: config.viz, result };
     } catch (e) {
-      return { id: w.id, viz: config.viz, error: (e as Error).message };
+      return { id: w.id, viz: config.viz, error: tUser(app as never, p.user?.id)((e as Error).message) };
     }
   });
   return { widgets, range, scope };
@@ -354,19 +358,20 @@ export const reportsModule: Module = {
       const p = principal(ctx);
       const u = p.user;
       const blocked = app.services.saasAreaBlocked as ((loc: string, area: string) => boolean) | undefined;
+      const t = tCtx(ctx);
       return {
         sources: sourcesFor(app, p)
           .filter((s) => !u || u.role === 'admin' || !u.permissions || u.permissions.includes(s.area as Permission))
           .filter((s) => isAdmin(p) || !blocked?.(p.locationId, s.area))
           .map((s) => ({
             key: s.key,
-            label: s.label,
-            description: s.description ?? '',
+            label: t(s.label),
+            description: s.description ? t(s.description) : '',
             dateField: s.dateField,
-            countLabel: s.countLabel ?? 'Anzahl',
+            countLabel: t(s.countLabel ?? 'Anzahl'),
             fields: usableFields(db, s).map((f) => ({
               key: f.key,
-              label: f.label,
+              label: t(f.label),
               type: f.type,
               format: f.format,
               group: f.group,
@@ -375,9 +380,9 @@ export const reportsModule: Module = {
               groupable: !f.noGroup && f.type !== 'number' && f.type !== 'tags',
               ops: OPS[f.type],
             })),
-            calcs: (s.calcs ?? []).filter((c) => !c.join || s.joins?.[c.join]).map((c) => ({ key: c.key, label: c.label, format: c.format ?? 'number', description: c.description ?? '' })),
+            calcs: (s.calcs ?? []).filter((c) => !c.join || s.joins?.[c.join]).map((c) => ({ key: c.key, label: t(c.label), format: c.format ?? 'number', description: c.description ? t(c.description) : '' })),
           })),
-        ranges: RANGE_PRESETS,
+        ranges: Object.fromEntries(Object.entries(RANGE_PRESETS).map(([k, v]) => [k, t(v)])),
         canAgency: isAdmin(p) || (u?.locations.length ?? 0) > 1,
         locations: (isAdmin(p) ? visibleLocations(app, u, db.all('SELECT id, name FROM locations ORDER BY name')) : db.all(`SELECT id, name FROM locations WHERE id IN (SELECT value FROM json_each(?)) ORDER BY name`, JSON.stringify(u ? u.locations : [p.locationId]))),
       };
@@ -543,20 +548,24 @@ export const reportsModule: Module = {
     });
 
     // --- templates ----------------------------------------------------------------------------
-    router.get('/api/reports/templates', 'location', () => TEMPLATES.map((t) => ({ key: t.key, name: t.name, description: t.description, widgets: t.widgets.map((w) => w.title) })));
+    router.get('/api/reports/templates', 'location', (ctx) => {
+      const tr = tCtx(ctx);
+      return TEMPLATES.map((t) => ({ key: t.key, name: tr(t.name), description: tr(t.description), widgets: t.widgets.map((w) => tr(w.title)) }));
+    });
     router.post('/api/reports/templates/:key', 'location', (ctx) => {
       const u = needUser(principal(ctx));
+      const tr = tCtx(ctx);
       const t = TEMPLATES.find((x) => x.key === ctx.params.key);
       if (!t) throw notFound('Vorlage nicht gefunden');
       const available = new Set(sources(app).map((s) => s.key));
       const parts = t.widgets.filter((w) => available.has(String(w.config.query.source)));
       const pos = packWidgets(parts);
-      const widgets: Widget[] = parts.map((w, i) => ({ id: id(10), title: w.title, config: w.config, w: w.w, h: w.h, ...pos[i] }));
+      const widgets: Widget[] = parts.map((w, i) => ({ id: id(10), title: tr(w.title), config: w.config, w: w.w, h: w.h, ...pos[i] }));
       const row = {
         id: id(),
         location_id: ctx.locationId,
         owner_id: u.id,
-        name: str(ctx.body?.name, 'Name', { max: 120 }) || t.name,
+        name: str(ctx.body?.name, 'Name', { max: 120 }) || tr(t.name),
         visibility: cleanVisibility(ctx.body?.visibility),
         widgets,
         settings: { range: t.range, scope: 'location', refresh: 0 },
@@ -581,7 +590,7 @@ export const reportsModule: Module = {
       const list = (Array.isArray(v) ? v : String(v ?? '').split(/[,;\s]+/)).map((x) => String(x).trim().toLowerCase()).filter(Boolean);
       if (!list.length) throw bad('Mindestens eine E-Mail-Adresse');
       if (list.length > 20) throw bad('Höchstens 20 Empfänger');
-      for (const e of list) if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw bad(`Ungültige E-Mail-Adresse: ${e}`);
+      for (const e of list) if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw bad(tApp()('Ungültige E-Mail-Adresse: {email}', { email: e }));
       return [...new Set(list)];
     };
     const timing = (b: any, cur: any = {}) => {
@@ -625,7 +634,7 @@ export const reportsModule: Module = {
         try {
           widgets = [{ title: r.name, viz: r.config.viz, result: run(app, p, r.config.query, { ...(r.config.fixed_range ? {} : { range }), compare: true }) }];
         } catch (e) {
-          widgets = [{ title: r.name, viz: r.config.viz, error: (e as Error).message }];
+          widgets = [{ title: r.name, viz: r.config.viz, error: tUser(app as never, s.owner_id)((e as Error).message) }];
         }
       }
       // The period the schedule reports on (fixed-range widgets keep theirs, e.g. "open invoices").
@@ -637,15 +646,16 @@ export const reportsModule: Module = {
 
     const sendSchedule = async (s: any) => {
       const loc = app.location(s.location_id);
-      if (!loc) return 'Sub-Account fehlt';
+      const t = tUser(app as never, s.owner_id);
+      if (!loc) return t('Sub-Account fehlt');
       let status = '';
       try {
         const mail = buildEmail(s);
         const results: string[] = [];
         for (const to of s.recipients as string[]) results.push((await mailer(loc, { to, subject: mail.subject, html: mail.html, text: mail.text })).status);
-        status = results.includes('sent') ? `gesendet an ${results.length}` : results.includes('logged') ? 'nur protokolliert (kein E-Mail-Versand eingerichtet)' : results.join(', ');
+        status = results.includes('sent') ? t('gesendet an {n}', { n: results.length }) : results.includes('logged') ? t('nur protokolliert (kein E-Mail-Versand eingerichtet)') : results.join(', ');
       } catch (e) {
-        status = `Fehler: ${(e as Error).message}`;
+        status = t('Fehler: {error}', { error: t((e as Error).message) });
       }
       db.run('UPDATE report_schedules SET last_sent_at = ?, last_status = ? WHERE id = ?', now(), status.slice(0, 300), s.id);
       return status;

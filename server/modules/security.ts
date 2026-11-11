@@ -2,6 +2,7 @@ import type { App, Module } from '../core/app.js';
 import { SESSION_COOKIE } from '../core/app.js';
 import { HttpError, notFound, type Ctx, clampLimit } from '../core/http.js';
 import { id, now, sha256 } from '../core/util.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Security: an audit log of every write (who, how – session, API key, agency key, MCP – from where,
@@ -93,7 +94,7 @@ export const securityModule: Module = {
     app.afterWrite.push((ctx, route) => {
       if (route.pattern !== '/api/users/:id' || ctx.method !== 'PATCH') return;
       const fields = ['role', 'locations', 'permissions', 'password', 'name'].filter((k) => ctx.body?.[k] !== undefined);
-      if (fields.length) writeAudit(app, { ctx, action: 'users.rights.update', route: `PATCH ${route.pattern}`, entityId: ctx.params.id, summary: `geändert: ${fields.join(', ')}${ctx.body?.role ? ` (Rolle: ${String(ctx.body.role).slice(0, 20)})` : ''}` });
+      if (fields.length) writeAudit(app, { ctx, action: 'users.rights.update', route: `PATCH ${route.pattern}`, entityId: ctx.params.id, summary: ctx.body?.role ? tApp()('geändert: {fields} (Rolle: {role})', { fields: fields.join(', '), role: String(ctx.body.role).slice(0, 20) }) : tApp()('geändert: {fields}', { fields: fields.join(', ') }) });
     });
     // Old entries go after a year.
     let lastPrune = 0;

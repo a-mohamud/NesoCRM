@@ -3,6 +3,7 @@ import type { Json } from './umzug-flow.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { counter, seg, stubCtx } from './umzug-lib.js';
 import { clip, toIso } from './umzug-text.js';
+import { translator } from '../i18n/index.js';
 
 /**
  * Airtable (Web API, https://api.airtable.com/v0, a personal access token): every table → a custom object with typed properties (the
@@ -245,15 +246,16 @@ const steps = (): StepDef[] => [
     label: 'Tabellen → eigene Objekte',
     part: 'objects',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const bases = await allBases(ctx.http, ctx.creds);
       const out: RObjectType[] = [];
       for (const base of bases) {
         for (const table of await tablesOf(ctx.http, String(base.id))) {
-          const t = airtableType(base, table, bases.length > 1);
-          out.push(t.rec);
+          const ty = airtableType(base, table, bases.length > 1);
+          out.push(ty.rec);
           const skipped = (Array.isArray(table.fields) ? table.fields : []).filter((f: Json) => !airtableMap(f)).map((f: Json) => `${f.name} (${f.type})`);
-          if (skipped.length) ctx.warn(`Tabelle „${clip(table.name, 40)}“: Felder ohne Gegenstück (nicht übernommen): ${skipped.slice(0, 6).join(', ')}`);
-          if ((Array.isArray(table.fields) ? table.fields : []).some((f: Json) => f.type === 'multipleAttachments')) ctx.warn(`Tabelle „${clip(table.name, 40)}“: Anhänge werden nicht kopiert (die Adressen laufen bei Airtable nach zwei Stunden ab) – nur die Dateinamen kommen mit`);
+          if (skipped.length) ctx.warn(t('Tabelle „{name}“: Felder ohne Gegenstück (nicht übernommen): {skipped}', { name: clip(table.name, 40), skipped: skipped.slice(0, 6).join(', ') }));
+          if ((Array.isArray(table.fields) ? table.fields : []).some((f: Json) => f.type === 'multipleAttachments')) ctx.warn(t('Tabelle „{name}“: Anhänge werden nicht kopiert (die Adressen laufen bei Airtable nach zwei Stunden ab) – nur die Dateinamen kommen mit', { name: clip(table.name, 40) }));
         }
       }
       if (out.length) yield { records: out };

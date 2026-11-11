@@ -1,4 +1,5 @@
 import { inflateRawSync } from 'node:zlib';
+import { tApp } from '../i18n/index.js';
 
 /**
  * A small ZIP reader for export files (Mailchimp hands out its audience export as a ZIP of CSV files).
@@ -30,11 +31,13 @@ export function readZip(buf: Buffer, limits: Partial<ZipLimits> = {}): ZipEntry[
       break;
     }
   }
+  // Errors reach the client through bad(): fixed texts are translated there, built ones here (instance language).
+  const t = tApp();
   if (eocd < 0) throw new Error('Das ist keine gültige ZIP-Datei');
   const count = buf.readUInt16LE(eocd + 10);
   const dirOffset = buf.readUInt32LE(eocd + 16);
   if (count === 0xffff || dirOffset === 0xffffffff) throw new Error('ZIP64-Archive werden nicht unterstützt – bitte die Dateien einzeln hochladen');
-  if (count > lim.maxEntries) throw new Error(`Das Archiv enthält mehr als ${lim.maxEntries} Dateien`);
+  if (count > lim.maxEntries) throw new Error(t('Das Archiv enthält mehr als {n} Dateien', { n: lim.maxEntries }));
   const out: ZipEntry[] = [];
   let total = 0;
   let p = dirOffset;
@@ -56,7 +59,7 @@ export function readZip(buf: Buffer, limits: Partial<ZipLimits> = {}): ZipEntry[
     if (!name || name.startsWith('.') || rawName.startsWith('__MACOSX/')) continue;
     if (flags & 1) throw new Error('Das Archiv ist mit einem Passwort geschützt');
     if (csize === 0xffffffff || usize === 0xffffffff) throw new Error('ZIP64-Archive werden nicht unterstützt – bitte die Dateien einzeln hochladen');
-    if (usize > lim.maxEntryBytes) throw new Error(`„${name}“ ist größer als ${Math.round(lim.maxEntryBytes / 1048576)} MB`);
+    if (usize > lim.maxEntryBytes) throw new Error(t('„{name}“ ist größer als {mb} MB', { name, mb: Math.round(lim.maxEntryBytes / 1048576) }));
     if (local + 30 > buf.length || buf.readUInt32LE(local) !== 0x04034b50) throw new Error('ZIP-Eintrag beschädigt');
     const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
     const raw = buf.subarray(start, start + csize);
@@ -67,9 +70,9 @@ export function readZip(buf: Buffer, limits: Partial<ZipLimits> = {}): ZipEntry[
       try {
         data = inflateRawSync(raw, { maxOutputLength: lim.maxEntryBytes });
       } catch {
-        throw new Error(`„${name}“ lässt sich nicht entpacken (beschädigt oder zu groß)`);
+        throw new Error(t('„{name}“ lässt sich nicht entpacken (beschädigt oder zu groß)', { name }));
       }
-    } else throw new Error(`„${name}“ nutzt ein nicht unterstütztes Packverfahren`);
+    } else throw new Error(t('„{name}“ nutzt ein nicht unterstütztes Packverfahren', { name }));
     total += data.length;
     if (total > lim.maxTotalBytes) throw new Error('Das Archiv ist entpackt zu groß');
     out.push({ name, data });

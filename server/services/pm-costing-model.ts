@@ -29,8 +29,14 @@ export function monthDays(ym: string): [string, string] {
   return [`${ym}-01`, `${ym}-${String(last).padStart(2, '0')}`];
 }
 
-const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-export const monthLabel = (ym: string): string => `${MONTHS[Number(ym.slice(5, 7)) - 1] ?? ''} ${ym.slice(0, 4)}`.trim();
+const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']; // i18n-ignore
+const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']; // i18n-ignore
+/** "Oktober 2026" (de) or "October 2026" (any other language). */
+export const monthLabel = (ym: string, locale = 'de'): string => `${(locale === 'de' ? MONTHS : MONTHS_EN)[Number(ym.slice(5, 7)) - 1] ?? ''} ${ym.slice(0, 4)}`.trim();
+
+/** A translator (services/i18n STFn) – this file has no imports, so the default only fills in `{placeholders}` (German). */
+export type Tr = { (text: string, vars?: Record<string, string | number>): string; locale?: string };
+const plain: Tr = (s, v) => (v ? s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? String(v[k]) : m)) : s);
 
 // --- budgets --------------------------------------------------------------------------------------------------------------------
 
@@ -113,18 +119,18 @@ export interface RetainerLine {
   unit?: string;
 }
 
-const hoursText = (h: number) => `${round2(h).toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} Std.`;
-
-/** The lines of a month's invoice: the retainer fee and – if hours went over and there is a rate – the overage. */
-export function retainerLines(r: { name: string; price_cents: number; overage_rate_cents: number }, p: PeriodResult, ym: string): RetainerLine[] {
-  const label = monthLabel(ym);
-  const parts = [`Kontingent ${hoursText(p.included_hours)}`];
-  if (p.carry_in_hours > 0) parts.push(`Übertrag ${hoursText(p.carry_in_hours)}`);
-  parts.push(`genutzt ${hoursText(p.used_hours)}`);
-  if (p.carry_out_hours > 0) parts.push(`Übertrag in den Folgemonat ${hoursText(p.carry_out_hours)}`);
-  const lines: RetainerLine[] = [{ name: `Retainer „${r.name}“ – ${label}`.slice(0, 300), description: parts.join(' · '), qty: 1, price_cents: Math.max(0, Math.round(r.price_cents)) }];
+/** The lines of a month's invoice: the retainer fee and – if hours went over and there is a rate – the overage. `t`: the sub-account's language. */
+export function retainerLines(r: { name: string; price_cents: number; overage_rate_cents: number }, p: PeriodResult, ym: string, t: Tr = plain): RetainerLine[] {
+  const locale = t.locale ?? 'de';
+  const hoursText = (h: number) => t('{hours} Std.', { hours: round2(h).toLocaleString(locale === 'de' ? 'de-DE' : 'en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) });
+  const label = monthLabel(ym, locale);
+  const parts = [t('Kontingent {hours}', { hours: hoursText(p.included_hours) })];
+  if (p.carry_in_hours > 0) parts.push(t('Übertrag {hours}', { hours: hoursText(p.carry_in_hours) }));
+  parts.push(t('genutzt {hours}', { hours: hoursText(p.used_hours) }));
+  if (p.carry_out_hours > 0) parts.push(t('Übertrag in den Folgemonat {hours}', { hours: hoursText(p.carry_out_hours) }));
+  const lines: RetainerLine[] = [{ name: t('Retainer „{name}“ – {month}', { name: r.name, month: label }).slice(0, 300), description: parts.join(' · '), qty: 1, price_cents: Math.max(0, Math.round(r.price_cents)) }];
   if (p.overage_hours > 0 && r.overage_rate_cents > 0) {
-    lines.push({ name: `Mehrstunden ${label}`.slice(0, 300), description: `${hoursText(p.overage_hours)} über dem Kontingent`, qty: round2(p.overage_hours), price_cents: Math.round(r.overage_rate_cents), unit: 'HUR' });
+    lines.push({ name: t('Mehrstunden {month}', { month: label }).slice(0, 300), description: t('{hours} über dem Kontingent', { hours: hoursText(p.overage_hours) }), qty: round2(p.overage_hours), price_cents: Math.round(r.overage_rate_cents), unit: 'HUR' });
   }
   return lines;
 }

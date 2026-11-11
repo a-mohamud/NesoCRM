@@ -12,6 +12,8 @@ import type { PhoneReply, VoiceBrain } from '../services/voice-types.js';
 import { acceptWebSocket, refuse } from '../services/voice-ws.js';
 import { syncMessage, telephonyConfig, twilioRequest, verifyTwilio, type Config } from './telephony.js';
 import { voiceTiming } from './voice-ai.js';
+import { LANGUAGE_NAME } from '../services/voice-ai.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Telefon mit eigener Stimme: carries the KI-Telefonagent's calls with the sub-account's own speech providers instead of
@@ -67,7 +69,7 @@ export async function twilioRecording(app: App, cfg: Pick<Config, 'accountSid' |
     if (r.status === 404 && i < tries - 1) await sleep(400);
     else break;
   }
-  throw new Error(`Twilio: Aufnahme nicht abrufbar (HTTP ${status})`);
+  throw new Error(tApp()('Twilio: Aufnahme nicht abrufbar (HTTP {status})', { status }));
 }
 
 export const voicePhoneModule: Module = {
@@ -198,7 +200,7 @@ export const voicePhoneModule: Module = {
         return e.next ?? HANGUP;
       }
       // Nobody told us: the connection broke while the call is alive → carry on with Twilio's voice instead of silence.
-      return brain()?.degrade(loc.id, sid, '', 'Verbindung zum Live-Stream abgebrochen')?.twiml ?? HANGUP;
+      return brain()?.degrade(loc.id, sid, '', tLoc(app, loc.id)('Verbindung zum Live-Stream abgebrochen'))?.twiml ?? HANGUP;
     });
 
     // --- recorded turns -------------------------------------------------------------------------------------------------------
@@ -289,7 +291,7 @@ export const voicePhoneModule: Module = {
       const info = b?.open(loc.id, sid);
       const job = turnJobs.get(sid);
       if (!b || !info) return HANGUP;
-      if (!job) return b.degrade(loc.id, sid, '', 'Antwort des Agenten fehlt')?.twiml ?? HANGUP;
+      if (!job) return b.degrade(loc.id, sid, '', tLoc(app, loc.id)('Antwort des Agenten fehlt'))?.twiml ?? HANGUP;
       const n = Math.max(1, Math.round(Number(q.get('n') ?? 1)));
       const done = await race(job.promise, voiceTiming.waitMs);
       if (done !== TIMEOUT) {
@@ -298,7 +300,7 @@ export const voicePhoneModule: Module = {
       }
       if (n >= 2) {
         turnJobs.delete(sid);
-        return b.degrade(loc.id, sid, '', 'Der Agent hat zu lange gebraucht')?.twiml ?? HANGUP;
+        return b.degrade(loc.id, sid, '', tLoc(app, loc.id)('Der Agent hat zu lange gebraucht'))?.twiml ?? HANGUP;
       }
       return fillerTwiml('Ich bin gleich so weit.', info.voice, `${hook('voice-ai-turn-wait', loc.id)}?n=${n + 1}`);
     });
@@ -333,22 +335,24 @@ export const voicePhoneModule: Module = {
           const r = await app.services.aiRun({
             locationId: e.locationId,
             purpose: 'voice_agent',
-            user: `<voicemail>\n${heard.slice(0, 6000)}\n</voicemail>\n\nAufgabe: Fasse diese Voicemail in ein bis zwei Sätzen zusammen (Wer? Was will die Person? Bis wann?) und nenne den nächsten Schritt für das Team. Antworte als JSON mit summary und next_step.`,
+            user: `<voicemail>\n${heard.slice(0, 6000)}\n</voicemail>\n\nTask: summarise this voicemail in one or two sentences (Who? What does the person want? By when?) and name the next step for the team. Write in ${LANGUAGE_NAME}. Answer as JSON with summary and next_step.`,
             schema: SUMMARY_SCHEMA,
             maxTokens: 600,
             contactId: call.contact_id,
           });
           const parsed = parseSummary(r.text);
-          if (parsed.ok) body = `${heard}\n\nZusammenfassung: ${parsed.value.summary}${parsed.value.next_step ? `\nNächster Schritt: ${parsed.value.next_step}` : ''}`;
+          const t = tLoc(app, e.locationId);
+          if (parsed.ok) body = `${heard}\n\n${t('Zusammenfassung: {summary}', { summary: parsed.value.summary })}${parsed.value.next_step ? `\n${t('Nächster Schritt: {step}', { step: parsed.value.next_step })}` : ''}`;
         } catch {
           /* logged by aiRun; the plain transcript is still saved */
         }
       }
       db.run('UPDATE calls SET transcription = ?, updated_at = ? WHERE id = ?', body.slice(0, 5000), now(), call.id);
-      app.services.audit?.({ action: 'voice.voicemail.transcribe', actor: 'Stimme (automatisch)', locationId: e.locationId, entityId: call.id, route: 'event call.voicemail', summary: vs.call_summary ? 'Voicemail transkribiert und zusammengefasst' : 'Voicemail transkribiert' });
+      const tl = tLoc(app, e.locationId);
+      app.services.audit?.({ action: 'voice.voicemail.transcribe', actor: tl('Stimme (automatisch)'), locationId: e.locationId, entityId: call.id, route: 'event call.voicemail', summary: vs.call_summary ? tl('Voicemail transkribiert und zusammengefasst') : tl('Voicemail transkribiert') });
       const fresh = db.get<any>('SELECT * FROM calls WHERE id = ?', call.id);
       if (fresh) syncMessage(app, fresh);
-      if (call.contact_id) logActivity(app, e.locationId, call.contact_id, 'call.voicemail_text', `Voicemail transkribiert: ${heard.slice(0, 160)}`);
+      if (call.contact_id) logActivity(app, e.locationId, call.contact_id, 'call.voicemail_text', tl('Voicemail transkribiert: {text}', { text: heard.slice(0, 160) }));
     });
 
     // --- housekeeping ----------------------------------------------------------------------------------------------------

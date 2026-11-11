@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { Db, Param } from '../core/db.js';
 import { addDaysYmd, localDayStart, tzOffsetMinutes, ymdInTz, zonedToUtc } from '../core/time.js';
 import { csvSafe } from '../core/csv.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Report engine: turns a declarative report query (source, measures, group-by, filters, date range)
@@ -15,7 +16,8 @@ export type FieldType = 'string' | 'enum' | 'number' | 'date' | 'boolean' | 'tag
 export type Format = 'number' | 'money' | 'percent' | 'days' | 'minutes';
 export type Agg = 'count' | 'sum' | 'avg' | 'min' | 'max' | 'count_distinct';
 export type Bucket = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'weekday' | 'hour';
-export type Lookup = (db: Db, keys: string[]) => Map<string, { label: string; order?: number }>;
+/** `t` (optional): the report's language, for fallback labels such as „Unbekannt“. */
+export type Lookup = (db: Db, keys: string[], t?: STFn) => Map<string, { label: string; order?: number }>;
 
 export interface ReportField {
   key: string;
@@ -125,6 +127,8 @@ export interface RunContext {
   maxRows?: number;
   /** Narrows a source's rows to what the caller may see (record-access rules, docs/sales.md): a SQL condition over the source's aliases. */
   rowScope?: (src: ReportSource) => { sql: string; params: Param[] } | undefined;
+  /** Language of labels and messages in the result (default: the instance language). Source texts are German message ids. */
+  t?: STFn;
 }
 
 export interface ResultRow {
@@ -215,13 +219,14 @@ function toUtcArgs(ymd: string): [number, number, number] {
   return [y, m - 1, d];
 }
 const isoDow = (ymd: string) => ((new Date(Date.UTC(...toUtcArgs(ymd))).getUTCDay() + 6) % 7) + 1;
-const deDate = (ymd: string) => {
+/** A local day for display: 31.12.2026 in German, 31/12/2026 in English (the catalog's pattern). */
+const dayLabel = (ymd: string, t: STFn) => {
   const [y, m, d] = ymdParts(ymd);
-  return `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`;
+  return t('{d}.{m}.{y}', { d: String(d).padStart(2, '0'), m: String(m).padStart(2, '0'), y });
 };
 
-function info(fromYmd: string | null, toYmd: string | null, tz: string, label: string): RangeInfo {
-  const dates = fromYmd && toYmd ? (daysBetween(fromYmd, toYmd) <= 1 ? deDate(fromYmd) : `${deDate(fromYmd)} – ${deDate(addDaysYmd(toYmd, -1))}`) : 'alle Daten';
+function info(fromYmd: string | null, toYmd: string | null, tz: string, label: string, t: STFn): RangeInfo {
+  const dates = fromYmd && toYmd ? (daysBetween(fromYmd, toYmd) <= 1 ? dayLabel(fromYmd, t) : `${dayLabel(fromYmd, t)} – ${dayLabel(addDaysYmd(toYmd, -1), t)}`) : t('alle Daten');
   return {
     from: fromYmd ? zonedToUtc(fromYmd, '00:00', tz).toISOString() : null,
     to: toYmd ? zonedToUtc(toYmd, '00:00', tz).toISOString() : null,
@@ -233,12 +238,12 @@ function info(fromYmd: string | null, toYmd: string | null, tz: string, label: s
 }
 
 /** Resolves a preset ("last_30_days", "this_month" …) or {from, to} (inclusive days) in the zone, plus the period before it. */
-export function resolveRange(spec: RangeSpec | undefined, tz: string, now = new Date()): { current: RangeInfo; previous: RangeInfo | null } {
+export function resolveRange(spec: RangeSpec | undefined, tz: string, now = new Date(), t: STFn = tApp()): { current: RangeInfo; previous: RangeInfo | null } {
   const today = ymdInTz(now, tz);
   const tomorrow = addDaysYmd(today, 1);
   const shift = (from: string, to: string, prevFrom: string, prevTo: string, label: string) => ({
-    current: info(from, to, tz, label),
-    previous: info(prevFrom, prevTo, tz, 'Vorperiode'),
+    current: info(from, to, tz, label, t),
+    previous: info(prevFrom, prevTo, tz, t('Vorperiode'), t),
   });
   if (spec && typeof spec === 'object') {
     const from = String(spec.from ?? '');
@@ -247,11 +252,11 @@ export function resolveRange(spec: RangeSpec | undefined, tz: string, now = new 
     const end = addDaysYmd(to, 1);
     const len = daysBetween(from, end);
     if (len > 366 * 20) throw new ReportError('Zeitraum ist zu lang');
-    return shift(from, end, addDaysYmd(from, -len), from, `${deDate(from)} – ${deDate(to)}`);
+    return shift(from, end, addDaysYmd(from, -len), from, `${dayLabel(from, t)} – ${dayLabel(to, t)}`);
   }
   const key = spec || 'last_30_days';
-  const label = RANGE_PRESETS[key];
-  if (!label) throw new ReportError(`Unbekannter Zeitraum: ${key}`);
+  if (!RANGE_PRESETS[key]) throw new ReportError(t('Unbekannter Zeitraum: {key}', { key }));
+  const label = t(RANGE_PRESETS[key]);
   const [y, m] = ymdParts(today);
   const monthStart = fmtYmd(y, m, 1);
   const qStart = fmtYmd(y, Math.floor((m - 1) / 3) * 3 + 1, 1);
@@ -298,7 +303,7 @@ export function resolveRange(spec: RangeSpec | undefined, tz: string, now = new 
       return shift(start, tomorrow, addMonthsYmd(start, -12), addMonthsYmd(tomorrow, -12), label);
     }
     default:
-      return { current: info(null, null, tz, label), previous: null };
+      return { current: info(null, null, tz, label, t), previous: null };
   }
 }
 
@@ -337,24 +342,28 @@ export function isoWeek(ymd: string): { week: number; year: number } {
   return { week: Math.ceil(((t.getTime() - yearStart) / 864e5 + 1) / 7), year: t.getUTCFullYear() };
 }
 
-export function bucketLabel(key: string, unit: Bucket): string {
+export function bucketLabel(key: string, unit: Bucket, t: STFn = tApp()): string {
   switch (unit) {
     case 'day':
-      return deDate(key);
+      return dayLabel(key, t);
     case 'week': {
       const w = isoWeek(key);
-      return `KW ${w.week}/${w.year}`;
+      return t('KW {week}/{year}', { week: w.week, year: w.year });
     }
-    case 'month':
-      return `${MONTHS[Number(key.slice(5, 7)) - 1] ?? key} ${key.slice(0, 4)}`;
+    case 'month': {
+      const name = MONTHS[Number(key.slice(5, 7)) - 1];
+      return `${name ? t(name) : key} ${key.slice(0, 4)}`;
+    }
     case 'quarter':
       return `${key.slice(5)} ${key.slice(0, 4)}`;
     case 'year':
       return key;
-    case 'weekday':
-      return WEEKDAYS[Number(key) - 1] ?? key;
+    case 'weekday': {
+      const name = WEEKDAYS[Number(key) - 1];
+      return name ? t(name) : key;
+    }
     case 'hour':
-      return `${Number(key)} Uhr`;
+      return t('{hour} Uhr', { hour: Number(key) });
   }
 }
 
@@ -424,7 +433,7 @@ export function prepareDb(db: Db): void {
   });
   db.raw.function('rpt_day_start', { deterministic: false }, () => dayStart || new Date().toISOString());
   db.raw.function('rpt_tick', { deterministic: false }, () => {
-    if (++ticks % 512 === 0 && Date.now() > deadline) throw new Error('RPT_TIMEOUT');
+    if (++ticks % 512 === 0 && Date.now() > deadline) throw new Error('RPT_TIMEOUT'); // i18n-ignore
     return 1;
   });
 }
@@ -462,23 +471,23 @@ export function usableFields(db: Db, src: ReportSource): ReportField[] {
   return src.fields.filter((f) => !f.join || (src.joins?.[f.join] && hasTables(db, src.joins[f.join].requires)));
 }
 
-export function findSource(sources: ReportSource[], key: string): ReportSource {
+export function findSource(sources: ReportSource[], key: string, t: STFn = tApp()): ReportSource {
   const s = sources.find((x) => x.key === key);
-  if (!s) throw new ReportError(`Unbekannte Datenquelle: ${key}`);
+  if (!s) throw new ReportError(t('Unbekannte Datenquelle: {key}', { key }));
   return s;
 }
 
 const asList = (v: unknown): unknown[] => (Array.isArray(v) ? v : v === undefined || v === null || v === '' ? [] : [v]);
 
 /** Validates and completes a query from the API/MCP (strings like "sum:value" or "created_at:month" accepted). */
-export function normalizeQuery(input: any, sources: ReportSource[], db: Db): ReportQuery {
+export function normalizeQuery(input: any, sources: ReportSource[], db: Db, t: STFn = tApp()): ReportQuery {
   if (!input || typeof input !== 'object') throw new ReportError('Bericht fehlt');
-  const src = findSource(sources, String(input.source ?? ''));
+  const src = findSource(sources, String(input.source ?? ''), t);
   const fields = new Map(usableFields(db, src).map((f) => [f.key, f]));
   const measures = asList(input.measures).map(String).filter(Boolean);
   if (!measures.length) measures.push('count');
-  if (measures.length > MAX_MEASURES) throw new ReportError(`Höchstens ${MAX_MEASURES} Kennzahlen`);
-  for (const m of measures) measureOf(src, fields, m);
+  if (measures.length > MAX_MEASURES) throw new ReportError(t('Höchstens {n} Kennzahlen', { n: MAX_MEASURES }));
+  for (const m of measures) measureOf(src, fields, m, t);
   const groupBy = asList(input.group_by ?? input.groupBy).map((g: any): GroupBy => {
     if (typeof g === 'string') {
       const [field, bucket] = g.split(':');
@@ -486,24 +495,24 @@ export function normalizeQuery(input: any, sources: ReportSource[], db: Db): Rep
     }
     return { field: String(g?.field ?? ''), bucket: g?.bucket };
   });
-  if (groupBy.length > MAX_GROUPS) throw new ReportError(`Höchstens ${MAX_GROUPS} Gruppierungen`);
+  if (groupBy.length > MAX_GROUPS) throw new ReportError(t('Höchstens {n} Gruppierungen', { n: MAX_GROUPS }));
   for (const g of groupBy) {
     const f = fields.get(g.field);
-    if (!f || f.noGroup || f.type === 'tags' || f.type === 'number') throw new ReportError(`Nach „${f?.label ?? g.field}“ kann nicht gruppiert werden`);
+    if (!f || f.noGroup || f.type === 'tags' || f.type === 'number') throw new ReportError(t('Nach „{field}“ kann nicht gruppiert werden', { field: f ? t(f.label) : g.field }));
     if (f.type === 'date') {
       g.bucket = g.bucket || 'month';
-      if (!BUCKETS.includes(g.bucket)) throw new ReportError(`Unbekannte Zeiteinheit: ${g.bucket}`);
+      if (!BUCKETS.includes(g.bucket)) throw new ReportError(t('Unbekannte Zeiteinheit: {unit}', { unit: g.bucket }));
     } else delete g.bucket;
   }
   const filters = asList(input.filters).map((f: any): ReportFilter => ({ field: String(f?.field ?? ''), op: String(f?.op ?? ''), value: f?.value }));
-  if (filters.length > MAX_FILTERS) throw new ReportError(`Höchstens ${MAX_FILTERS} Filter`);
+  if (filters.length > MAX_FILTERS) throw new ReportError(t('Höchstens {n} Filter', { n: MAX_FILTERS }));
   for (const f of filters) {
     const def = fields.get(f.field);
-    if (!def) throw new ReportError(`Unbekanntes Feld: ${f.field}`);
-    if (!OPS[def.type].includes(f.op)) throw new ReportError(`Operator „${f.op}“ passt nicht zu „${def.label}“`);
+    if (!def) throw new ReportError(t('Unbekanntes Feld: {field}', { field: f.field }));
+    if (!OPS[def.type].includes(f.op)) throw new ReportError(t('Operator „{op}“ passt nicht zu „{field}“', { op: f.op, field: t(def.label) }));
   }
   const dateField = String(input.date_field ?? input.dateField ?? src.dateField);
-  if (fields.get(dateField)?.type !== 'date') throw new ReportError(`„${dateField}“ ist kein Datumsfeld`);
+  if (fields.get(dateField)?.type !== 'date') throw new ReportError(t('„{field}“ ist kein Datumsfeld', { field: dateField }));
   const range: RangeSpec = input.range && typeof input.range === 'object' ? { from: String(input.range.from ?? ''), to: String(input.range.to ?? '') } : String(input.range || 'last_30_days');
   let sort: ReportQuery['sort'];
   if (input.sort && typeof input.sort === 'object' && /^(d[01]|m[0-5])$/.test(String(input.sort.by))) sort = { by: String(input.sort.by), dir: input.sort.dir === 'asc' ? 'asc' : 'desc' };
@@ -519,28 +528,30 @@ interface MeasureDef {
   join?: string;
 }
 
-function measureOf(src: ReportSource, fields: Map<string, ReportField>, key: string): MeasureDef {
-  if (key === 'count') return { key, label: src.countLabel ?? 'Anzahl', sql: src.count ?? 'COUNT(*)', format: 'number' };
+/** A measure with its label in the language of `t` (field and calc labels are German message ids). */
+function measureOf(src: ReportSource, fields: Map<string, ReportField>, key: string, t: STFn = tApp()): MeasureDef {
+  if (key === 'count') return { key, label: t(src.countLabel ?? 'Anzahl'), sql: src.count ?? 'COUNT(*)', format: 'number' };
   const [kind, name] = key.split(':');
   if (kind === 'calc') {
     const c = src.calcs?.find((x) => x.key === name);
-    if (!c || (c.join && !src.joins?.[c.join])) throw new ReportError(`Unbekannte Kennzahl: ${key}`);
-    return { key, label: c.label, sql: c.sql, format: c.format ?? 'number', join: c.join };
+    if (!c || (c.join && !src.joins?.[c.join])) throw new ReportError(t('Unbekannte Kennzahl: {key}', { key }));
+    return { key, label: t(c.label), sql: c.sql, format: c.format ?? 'number', join: c.join };
   }
   const f = fields.get(name ?? '');
-  if (!f || !AGGS.includes(kind as Agg)) throw new ReportError(`Unbekannte Kennzahl: ${key}`);
-  if (kind === 'count_distinct') return { key, label: `${f.label} (eindeutig)`, sql: `COUNT(DISTINCT ${f.sql})`, format: 'number', join: f.join };
-  if (f.type !== 'number') throw new ReportError(`„${f.label}“ ist keine Zahl`);
+  if (!f || !AGGS.includes(kind as Agg)) throw new ReportError(t('Unbekannte Kennzahl: {key}', { key }));
+  const fl = t(f.label);
+  if (kind === 'count_distinct') return { key, label: t('{label} (eindeutig)', { label: fl }), sql: `COUNT(DISTINCT ${f.sql})`, format: 'number', join: f.join };
+  if (f.type !== 'number') throw new ReportError(t('„{field}“ ist keine Zahl', { field: fl }));
   const fn = { sum: 'SUM', avg: 'AVG', min: 'MIN', max: 'MAX' }[kind as 'sum' | 'avg' | 'min' | 'max'];
-  if (!fn) throw new ReportError(`Unbekannte Kennzahl: ${key}`);
-  const label = { sum: `${f.label} (Summe)`, avg: `Ø ${f.label}`, min: `${f.label} (Min.)`, max: `${f.label} (Max.)` }[kind as 'sum'];
+  if (!fn) throw new ReportError(t('Unbekannte Kennzahl: {key}', { key }));
+  const label = { sum: t('{label} (Summe)', { label: fl }), avg: t('Ø {label}', { label: fl }), min: t('{label} (Min.)', { label: fl }), max: t('{label} (Max.)', { label: fl }) }[kind as 'sum'];
   return { key, label, sql: kind === 'sum' ? `COALESCE(SUM(${f.sql}), 0)` : `${fn}(${f.sql})`, format: f.format ?? 'number', join: f.join };
 }
 
 /** Human-readable label of a measure key (UI/email). */
-export function measureLabel(src: ReportSource, key: string, db: Db): string {
+export function measureLabel(src: ReportSource, key: string, db: Db, t: STFn = tApp()): string {
   try {
-    return measureOf(src, new Map(usableFields(db, src).map((f) => [f.key, f])), key).label;
+    return measureOf(src, new Map(usableFields(db, src).map((f) => [f.key, f])), key, t).label;
   } catch {
     return key;
   }
@@ -549,22 +560,23 @@ export function measureLabel(src: ReportSource, key: string, db: Db): string {
 // --- SQL building -------------------------------------------------------------------------------
 
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
-const NUM = (v: unknown, label: string) => {
+const NUM = (v: unknown, label: string, t: STFn) => {
   const n = Number(v);
-  if (v === '' || v === null || v === undefined || !Number.isFinite(n)) throw new ReportError(`Filter „${label}“: Zahl erwartet`);
+  if (v === '' || v === null || v === undefined || !Number.isFinite(n)) throw new ReportError(t('Filter „{label}“: Zahl erwartet', { label }));
   return n;
 };
 
-function filterSql(f: ReportField, flt: ReportFilter, params: Param[], tz: string, now: Date): string {
+function filterSql(f: ReportField, flt: ReportFilter, params: Param[], tz: string, now: Date, t: STFn = tApp()): string {
   const s = f.sql;
   const v = flt.value;
+  const label = t(f.label);
   const one = () => {
-    if (v === undefined || v === null || (typeof v === 'object' && !Array.isArray(v))) throw new ReportError(`Filter „${f.label}“: Wert fehlt`);
-    return f.type === 'number' ? NUM(v, f.label) : String(Array.isArray(v) ? v[0] ?? '' : v).slice(0, 500);
+    if (v === undefined || v === null || (typeof v === 'object' && !Array.isArray(v))) throw new ReportError(t('Filter „{label}“: Wert fehlt', { label }));
+    return f.type === 'number' ? NUM(v, label, t) : String(Array.isArray(v) ? v[0] ?? '' : v).slice(0, 500);
   };
   const list = () => {
-    const xs = asList(v).slice(0, 200).map((x) => (f.type === 'number' ? NUM(x, f.label) : String(x).slice(0, 500)));
-    if (!xs.length) throw new ReportError(`Filter „${f.label}“: mindestens ein Wert`);
+    const xs = asList(v).slice(0, 200).map((x) => (f.type === 'number' ? NUM(x, label, t) : String(x).slice(0, 500)));
+    if (!xs.length) throw new ReportError(t('Filter „{label}“: mindestens ein Wert', { label }));
     params.push(...xs);
     return xs.map(() => '?').join(', ');
   };
@@ -596,7 +608,7 @@ function filterSql(f: ReportField, flt: ReportFilter, params: Param[], tz: strin
       return `${s} ${{ gt: '>', gte: '>=', lt: '<', lte: '<=' }[flt.op]} ?`;
     case 'between': {
       const [a, b] = asList(v);
-      params.push(NUM(a, f.label), NUM(b, f.label));
+      params.push(NUM(a, label, t), NUM(b, label, t));
       return `${s} BETWEEN ? AND ?`;
     }
     case 'empty':
@@ -614,7 +626,7 @@ function filterSql(f: ReportField, flt: ReportFilter, params: Param[], tz: strin
       params.push(one());
       return `NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(${s}) THEN ${s} ELSE '[]' END) WHERE value = ?)`;
     case 'in_range': {
-      const r = resolveRange(v && typeof v === 'object' && !Array.isArray(v) ? (v as { from: string; to: string }) : String(v ?? ''), tz, now).current;
+      const r = resolveRange(v && typeof v === 'object' && !Array.isArray(v) ? (v as { from: string; to: string }) : String(v ?? ''), tz, now, t).current;
       const parts: string[] = [];
       if (r.from) {
         params.push(r.from);
@@ -629,12 +641,12 @@ function filterSql(f: ReportField, flt: ReportFilter, params: Param[], tz: strin
     case 'before':
     case 'after': {
       const day = String(one());
-      if (!YMD.test(day)) throw new ReportError(`Filter „${f.label}“: Datum als JJJJ-MM-TT`);
+      if (!YMD.test(day)) throw new ReportError(t('Filter „{label}“: Datum als JJJJ-MM-TT', { label }));
       params.push(zonedToUtc(flt.op === 'before' ? day : addDaysYmd(day, 1), '00:00', tz).toISOString());
       return flt.op === 'before' ? `${s} < ?` : `${s} >= ?`;
     }
   }
-  throw new ReportError(`Unbekannter Operator: ${flt.op}`);
+  throw new ReportError(t('Unbekannter Operator: {op}', { op: flt.op }));
 }
 
 interface Plan {
@@ -645,13 +657,14 @@ interface Plan {
 }
 
 function plan(rc: RunContext, q: ReportQuery): Plan {
-  const src = findSource(rc.sources, q.source);
+  const t = rc.t ?? tApp();
+  const src = findSource(rc.sources, q.source, t);
   const fields = new Map(usableFields(rc.db, src).map((f) => [f.key, f]));
   return {
     src,
     fields,
     dims: q.groupBy.map((g) => ({ f: fields.get(g.field)!, bucket: g.bucket })),
-    measures: q.measures.map((m) => measureOf(src, fields, m)),
+    measures: q.measures.map((m) => measureOf(src, fields, m, t)),
   };
 }
 
@@ -701,7 +714,7 @@ export function buildSql(rc: RunContext, q: ReportQuery, range: RangeInfo, opts:
   for (const flt of q.filters) {
     const f = p.fields.get(flt.field)!;
     need(f.join);
-    where.push(`(${filterSql(f, flt, whereParams, rc.tz, now)})`);
+    where.push(`(${filterSql(f, flt, whereParams, rc.tz, now, rc.t ?? tApp())})`);
   }
   where.push('rpt_tick() = 1');
   const joinSql = [...joins].map((j) => p.src.joins?.[j]?.sql ?? '').join(' ');
@@ -722,14 +735,15 @@ export function buildSql(rc: RunContext, q: ReportQuery, range: RangeInfo, opts:
 const numOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
 function dimLabels(rc: RunContext, d: { f: ReportField; bucket?: Bucket }, keys: (string | null)[]): Map<string, { label: string; order?: number }> {
+  const t = rc.t ?? tApp();
   const out = new Map<string, { label: string; order?: number }>();
   const present = [...new Set(keys.filter((k): k is string => k !== null && k !== ''))];
-  if (d.f.type === 'date') for (const k of present) out.set(k, { label: bucketLabel(k, d.bucket!) });
-  else if (d.f.lookup && present.length) for (const [k, v] of d.f.lookup(rc.db, present)) out.set(k, v);
+  if (d.f.type === 'date') for (const k of present) out.set(k, { label: bucketLabel(k, d.bucket!, t) });
+  else if (d.f.lookup && present.length) for (const [k, v] of d.f.lookup(rc.db, present, t)) out.set(k, v);
   else if (d.f.options) {
     const opts = Object.keys(d.f.options);
-    for (const k of present) out.set(k, { label: d.f.options[k] ?? k, order: opts.includes(k) ? opts.indexOf(k) : opts.length });
-  } else if (d.f.type === 'boolean') for (const k of present) out.set(k, { label: Number(k) ? 'Ja' : 'Nein', order: Number(k) ? 0 : 1 });
+    for (const k of present) out.set(k, { label: d.f.options[k] !== undefined ? t(d.f.options[k]) : k, order: opts.includes(k) ? opts.indexOf(k) : opts.length });
+  } else if (d.f.type === 'boolean') for (const k of present) out.set(k, { label: Number(k) ? t('Ja') : t('Nein'), order: Number(k) ? 0 : 1 });
   return out;
 }
 
@@ -739,10 +753,11 @@ const keyOf = (v: unknown): string | null => (v === null || v === undefined ? nu
 export function runReport(rc: RunContext, input: any): ReportResult {
   const started = Date.now();
   prepareDb(rc.db);
-  const q = normalizeQuery(input, rc.sources, rc.db);
+  const t = rc.t ?? tApp();
+  const q = normalizeQuery(input, rc.sources, rc.db, t);
   const p = plan(rc, q);
   const now = rc.now ?? new Date();
-  const { current, previous: prevRange } = resolveRange(q.range, rc.tz, now);
+  const { current, previous: prevRange } = resolveRange(q.range, rc.tz, now, t);
   const previous = q.compare ? prevRange : null;
   const maxRows = Math.min(q.limit ?? rc.maxRows ?? 500, rc.maxRows ?? 1000);
   const grouped = p.dims.length > 0;
@@ -777,7 +792,7 @@ export function runReport(rc: RunContext, input: any): ReportResult {
         if (present.length && d0.bucket !== 'weekday' && d0.bucket !== 'hour') keys = bucketsBetween(keyStartYmd(present[0], d0.bucket!), addDaysYmd(keyStartYmd(present[present.length - 1], d0.bucket!), 1), d0.bucket!);
         else if (present.length) keys = bucketsBetween('2000-01-01', '2000-01-02', d0.bucket!);
       }
-      axis = keys.map((k) => ({ k, l: bucketLabel(k, d0.bucket!) }));
+      axis = keys.map((k) => ({ k, l: bucketLabel(k, d0.bucket!, t) }));
       if (p.dims.length === 1 && keys.length) {
         const have = new Set(rows.map((r) => r.k[0]));
         const zero = p.measures.map((m) => (m.key === 'count' || m.sql.startsWith('COALESCE(SUM') ? 0 : null));
@@ -789,7 +804,7 @@ export function runReport(rc: RunContext, input: any): ReportResult {
     for (const r of rows) {
       r.l = p.dims.map((d, i) => {
         const k = r.k[i];
-        if (k === null || k === '') return d.f.empty ?? '(leer)';
+        if (k === null || k === '') return t(d.f.empty ?? '(leer)');
         return labelMaps[i].get(k)?.label ?? k;
       });
     }
@@ -853,8 +868,8 @@ export function runReport(rc: RunContext, input: any): ReportResult {
   }
 
   return {
-    source: { key: p.src.key, label: p.src.label },
-    dims: p.dims.map((d, i) => ({ field: d.f.key, label: d.f.label, type: d.f.type, ...(d.bucket ? { bucket: d.bucket } : {}), values: dimValues[i] ?? [] })),
+    source: { key: p.src.key, label: t(p.src.label) },
+    dims: p.dims.map((d, i) => ({ field: d.f.key, label: t(d.f.label), type: d.f.type, ...(d.bucket ? { bucket: d.bucket } : {}), values: dimValues[i] ?? [] })),
     measures: p.measures.map((m) => ({ key: m.key, label: m.label, format: m.format })),
     rows,
     totals,
@@ -869,11 +884,12 @@ export function runReport(rc: RunContext, input: any): ReportResult {
 /** Distinct values of a field for the filter picker (scoped like reports). */
 export function fieldValues(rc: RunContext, sourceKey: string, fieldKey: string, limit = 200): { value: string; label: string }[] {
   prepareDb(rc.db);
-  const src = findSource(rc.sources, sourceKey);
+  const t = rc.t ?? tApp();
+  const src = findSource(rc.sources, sourceKey, t);
   const f = usableFields(rc.db, src).find((x) => x.key === fieldKey);
-  if (!f) throw new ReportError(`Unbekanntes Feld: ${fieldKey}`);
-  if (f.options) return Object.entries(f.options).map(([value, label]) => ({ value, label }));
-  if (f.type === 'boolean') return [{ value: '1', label: 'Ja' }, { value: '0', label: 'Nein' }];
+  if (!f) throw new ReportError(t('Unbekanntes Feld: {field}', { field: fieldKey }));
+  if (f.options) return Object.entries(f.options).map(([value, label]) => ({ value, label: t(label) }));
+  if (f.type === 'boolean') return [{ value: '1', label: t('Ja') }, { value: '0', label: t('Nein') }];
   if (f.type !== 'string' && f.type !== 'enum' && f.type !== 'tags') return [];
   if (!rc.locations.length) return [];
   const loc = `${src.location} IN (${rc.locations.map(() => '?').join(', ')})`;
@@ -882,28 +898,29 @@ export function fieldValues(rc: RunContext, sourceKey: string, fieldKey: string,
   const scoped = rc.rowScope?.(src);
   const sql = `${base} WHERE ${loc}${src.where ? ` AND (${src.where})` : ''}${scoped ? ` AND (${scoped.sql})` : ''} AND rpt_tick() = 1 AND v IS NOT NULL AND v != '' LIMIT ?`;
   const keys = guarded(rc.timeoutMs ?? 8000, () => rc.db.all(sql, ...rc.locations, ...(scoped?.params ?? []), limit), localDayStart(rc.tz, rc.now ?? new Date())).map((r) => String(r.v));
-  const labels = f.lookup ? f.lookup(rc.db, keys) : new Map();
+  const labels = f.lookup ? f.lookup(rc.db, keys, t) : new Map();
   return keys.map((value) => ({ value, label: labels.get(value)?.label ?? value })).sort((a, b) => a.label.localeCompare(b.label, 'de'));
 }
 
 // --- output -------------------------------------------------------------------------------------
 
-const nf = (digits: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+const numLocale = (t: STFn) => (t.locale === 'de' ? 'de-DE' : 'en-GB');
+const nf = (digits: number, t: STFn) => new Intl.NumberFormat(numLocale(t), { maximumFractionDigits: digits, minimumFractionDigits: 0 });
 
-/** de-DE display of a measure value. */
-export function formatValue(v: number | null | undefined, format: Format): string {
+/** Display of a measure value in the language of `t` (de-DE or en-GB number format). */
+export function formatValue(v: number | null | undefined, format: Format, t: STFn = tApp()): string {
   if (v === null || v === undefined || Number.isNaN(v)) return '–';
   switch (format) {
     case 'money':
-      return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 2 }).format(v);
+      return new Intl.NumberFormat(numLocale(t), { style: 'currency', currency: 'EUR', maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 2 }).format(v);
     case 'percent':
-      return `${nf(1).format(v)} %`;
+      return t('{value} %', { value: nf(1, t).format(v) });
     case 'days':
-      return `${nf(1).format(v)} Tage`;
+      return t('{value} Tage', { value: nf(1, t).format(v) });
     case 'minutes':
-      return `${nf(1).format(v)} Min.`;
+      return t('{value} Min.', { value: nf(1, t).format(v) });
     default:
-      return nf(Number.isInteger(v) ? 0 : 2).format(v);
+      return nf(Number.isInteger(v) ? 0 : 2, t).format(v);
   }
 }
 
@@ -916,17 +933,21 @@ export function deltaPercent(cur: number | null | undefined, prev: number | null
 /** Measures where a rise is bad news (shown red with ▲); the client has the same list. */
 export const lowerIsBetter = (key: string) => /no_show|cancel|overdue|missed|lost|velocity|days_|open_amount|unread/.test(key);
 
-const csvCell = (raw: string) => {
+const csvCell = (raw: string, sep = ';') => {
   const v = csvSafe(raw);
-  return /[";\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  return /[";,\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 };
-const csvNum = (v: number | null) => (v === null || v === undefined ? '' : String(Math.round(v * 100) / 100).replace('.', ','));
+const csvNum = (v: number | null, comma = true) => (v === null || v === undefined ? '' : comma ? String(Math.round(v * 100) / 100).replace('.', ',') : String(Math.round(v * 100) / 100));
 
-/** CSV for Excel (semicolon, decimal comma, BOM). */
-export function toCsv(r: ReportResult): string {
-  const head = [...r.dims.map((d) => d.label), ...r.measures.map((m) => m.label), ...(r.previous ? r.measures.map((m) => `${m.label} (Vorperiode)`) : [])];
-  const lines = [head.map(csvCell).join(';')];
+/** CSV for Excel with BOM: German – semicolon and decimal comma; English – comma and decimal point. */
+export function toCsv(r: ReportResult, t: STFn = tApp()): string {
+  const de = t.locale === 'de';
+  const sep = de ? ';' : ',';
+  const cell = (x: string) => csvCell(x, sep);
+  const num = (x: number | null) => csvNum(x, de);
+  const head = [...r.dims.map((d) => d.label), ...r.measures.map((m) => m.label), ...(r.previous ? r.measures.map((m) => t('{label} (Vorperiode)', { label: m.label })) : [])];
+  const lines = [head.map(cell).join(sep)];
   const rows = r.dims.length ? r.rows : [{ k: [], l: [], v: r.totals.v, p: r.totals.p }];
-  for (const row of rows) lines.push([...row.l.map(csvCell), ...row.v.map(csvNum), ...(r.previous ? (row.p ?? []).map(csvNum) : [])].join(';'));
+  for (const row of rows) lines.push([...row.l.map(cell), ...row.v.map(num), ...(r.previous ? (row.p ?? []).map(num) : [])].join(sep));
   return `﻿${lines.join('\r\n')}\r\n`;
 }

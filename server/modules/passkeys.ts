@@ -4,6 +4,7 @@ import { id, now, token } from '../core/util.js';
 import { WebAuthnError, verifyAssertion, verifyRegistration, type CredentialJSON } from '../services/webauthn.js';
 import { getBranding } from './agency.js';
 import type { HostInfo } from './login-policy.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Passkeys (WebAuthn): register them under "Mein Konto", sign in without a password ("Mit Passkey
@@ -122,7 +123,7 @@ export const passkeysModule: Module = {
       if (!lp().get().passkey) throw new HttpError(403, 'Passkeys sind von der Agentur ausgeschaltet');
       const u = ctx.user!;
       const rp = rpOf(ctx);
-      if (credsOf(u.id).length >= MAX_PER_USER) throw bad(`Höchstens ${MAX_PER_USER} Passkeys je Konto`);
+      if (credsOf(u.id).length >= MAX_PER_USER) throw bad(tApp()('Höchstens {n} Passkeys je Konto', { n: MAX_PER_USER }));
       const ch = newChallenge('register', rp, u.id);
       return {
         challenge_id: ch.challenge_id,
@@ -150,7 +151,7 @@ export const passkeysModule: Module = {
         throw bad((e as Error).message);
       }
       if (db.get('SELECT id FROM webauthn_credentials WHERE credential_id = ?', r.credentialId)) throw bad('Dieser Passkey ist schon registriert');
-      const name = str(ctx.body.name, 'Name', { max: 60 }) || (r.backedUp ? 'Passkey (synchronisiert)' : 'Sicherheitsschlüssel');
+      const name = str(ctx.body.name, 'Name', { max: 60 }) || tCtx(ctx)(r.backedUp ? 'Passkey (synchronisiert)' : 'Sicherheitsschlüssel');
       const row = { id: id(), credential_id: r.credentialId, user_id: u.id, name, public_key: JSON.stringify(r.jwk), alg: r.alg, sign_count: r.signCount, transports: JSON.stringify(r.transports), rp_id: rp.id, backed_up: r.backedUp ? 1 : 0, created_at: now() };
       db.insert('webauthn_credentials', row);
       app.services.audit?.({ ctx, action: 'passkey.create', summary: `${name} (${rp.id})` });

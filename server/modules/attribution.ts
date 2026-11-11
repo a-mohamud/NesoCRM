@@ -26,6 +26,7 @@ import {
 import type { Tool } from './mcp.js';
 import { sealSettings } from '../core/secrets.js';
 import { paidRevenueSql } from '../services/invoice-model.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Marketing attribution: where leads and customers come from.
@@ -138,6 +139,8 @@ export const attributionModule: Module = {
 
     const settingsOf = (locationId: string): AttributionSettings => {
       const s = { ...DEFAULTS, ...(app.location(locationId)?.settings.attribution ?? {}) };
+      // The default banner text follows the sub-account's language; an own text stays as written.
+      if (!s.banner_text || s.banner_text === DEFAULTS.banner_text) s.banner_text = tLoc(app, locationId)(DEFAULTS.banner_text);
       return { ...s, cookie: ['consent', 'always', 'never'].includes(s.cookie) ? s.cookie : 'consent', cookie_days: Math.min(Math.max(Math.round(num(s.cookie_days, 90)), 1), 730) };
     };
     // With the cookie banner (modules/consent-banner.ts) on, its choice decides (statistics or marketing allowed); otherwise the older consent cookie.
@@ -314,10 +317,10 @@ export const attributionModule: Module = {
     };
     // On the app's own host pages live under /p/<funnel>; on a connected domain at the root.
     const sitePrefix = (ctx: Ctx, funnel: any) => (ctx.url.pathname.startsWith('/p/') ? `/p/${funnel.slug}` : '');
-    const banner = (s: AttributionSettings, prefix: string, back: string) => `
+    const banner = (s: AttributionSettings, prefix: string, back: string, t: STFn) => `
 <div id="pghl-consent" style="position:fixed;left:16px;right:16px;bottom:16px;max-width:560px;margin:0 auto;background:#111827;color:#fff;border-radius:12px;padding:14px 16px;z-index:2147483000;box-shadow:0 10px 30px rgba(0,0,0,.3);font:14px/1.45 system-ui,sans-serif">
 ${escapeHtml(s.banner_text)}
-<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a href="${escapeHtml(`${prefix}/pghl-consent?v=1&r=${encodeURIComponent(back)}`)}" style="background:#fff;color:#111827;padding:8px 14px;border-radius:8px;text-decoration:none;font-weight:600">Einverstanden</a><a href="${escapeHtml(`${prefix}/pghl-consent?v=0&r=${encodeURIComponent(back)}`)}" style="color:#fff;padding:8px 14px;border-radius:8px;text-decoration:underline">Nein, danke</a></div></div>`;
+<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a href="${escapeHtml(`${prefix}/pghl-consent?v=1&r=${encodeURIComponent(back)}`)}" style="background:#fff;color:#111827;padding:8px 14px;border-radius:8px;text-decoration:none;font-weight:600">${escapeHtml(t('Einverstanden'))}</a><a href="${escapeHtml(`${prefix}/pghl-consent?v=0&r=${encodeURIComponent(back)}`)}" style="color:#fff;padding:8px 14px;border-radius:8px;text-decoration:underline">${escapeHtml(t('Nein, danke'))}</a></div></div>`;
 
     app.services.pageVisit = [
       ...(app.services.pageVisit ?? []),
@@ -327,7 +330,7 @@ ${escapeHtml(s.banner_text)}
         const tok = visit(ctx, funnel.location_id, { funnelId: funnel.id, pageId: page.id });
         let out = tok ? tokenInto(html, tok) : html;
         // One banner only: with the cookie banner on, this older one stays away.
-        if (s.banner && s.cookie === 'consent' && !app.services.cmp?.active(funnel.location_id) && consentOf(ctx) === 'unknown') out = out.replace('</body>', `${banner(s, sitePrefix(ctx, funnel), `${ctx.url.pathname}${ctx.url.search}`)}</body>`);
+        if (s.banner && s.cookie === 'consent' && !app.services.cmp?.active(funnel.location_id) && consentOf(ctx) === 'unknown') out = out.replace('</body>', `${banner(s, sitePrefix(ctx, funnel), `${ctx.url.pathname}${ctx.url.search}`, tLoc(app, funnel.location_id))}</body>`);
         return out;
       },
     ];
@@ -483,8 +486,9 @@ fetch(base+'/api/public/attribution/'+encodeURIComponent(loc)+'/touch',{method:'
         x.customers += r.n;
       }
       const funnels = new Map(db.all('SELECT id, name FROM funnels WHERE location_id = ?', locationId).map((f) => [f.id, f.name]));
+      const t = tLoc(app, locationId);
       const list = [...rows.values()]
-        .map((x) => ({ ...x, funnel_name: x.funnel_id ? (funnels.get(x.funnel_id) ?? '(gelöscht)') : '', label: opts.group === 'funnel' ? (x.funnel_id ? (funnels.get(x.funnel_id) ?? '(gelöscht)') : '(kein Funnel)') : [x.source, opts.group !== 'source' ? x.medium : '', opts.group === 'campaign' ? x.campaign || '–' : ''].filter((v, i) => i === 0 || v).map(sourceLabel).join(' / ') }))
+        .map((x) => ({ ...x, funnel_name: x.funnel_id ? (funnels.get(x.funnel_id) ?? t('(gelöscht)')) : '', label: opts.group === 'funnel' ? (x.funnel_id ? (funnels.get(x.funnel_id) ?? t('(gelöscht)')) : t('(kein Funnel)')) : [x.source, opts.group !== 'source' ? x.medium : '', opts.group === 'campaign' ? x.campaign || '–' : ''].filter((v, i) => i === 0 || v).map((v) => t(sourceLabel(v))).join(' / ') }))
         .sort((a, b) => b.revenue_cents - a.revenue_cents || b.leads - a.leads || a.label.localeCompare(b.label));
       const totals = list.reduce((t, x) => ({ leads: t.leads + x.leads, deals_won: t.deals_won + x.deals_won, deal_value: t.deal_value + x.deal_value, revenue_cents: t.revenue_cents + x.revenue_cents, customers: t.customers + x.customers }), { leads: 0, deals_won: 0, deal_value: 0, revenue_cents: 0, customers: 0 });
       return { rows: list, totals };
@@ -504,11 +508,12 @@ fetch(base+'/api/public/attribution/'+encodeURIComponent(loc)+'/touch',{method:'
     router.get('/api/attribution/report.csv', 'location', (ctx) => {
       const a = reportArgs(ctx);
       const { rows } = report(ctx.locationId, a);
-      const head = a.group === 'funnel' ? ['Funnel'] : ['Quelle', 'Medium', 'Kampagne'];
+      const t = tCtx(ctx);
+      const head = a.group === 'funnel' ? [t('Funnel')] : [t('Quelle'), t('Medium'), t('Kampagne')];
       const csv = toCsv([
-        [...head, 'Leads', 'Gewonnene Deals', 'Deal-Wert (EUR)', 'Kunden', 'Umsatz (EUR)'],
+        [...head, t('Leads'), t('Gewonnene Deals'), t('Deal-Wert (EUR)'), t('Kunden'), t('Umsatz (EUR)')],
         ...rows.map((r) => [
-          ...(a.group === 'funnel' ? [r.label] : [sourceLabel(r.source), a.group === 'source' ? '' : sourceLabel(r.medium), a.group === 'campaign' ? r.campaign : '']),
+          ...(a.group === 'funnel' ? [r.label] : [t(sourceLabel(r.source)), a.group === 'source' ? '' : t(sourceLabel(r.medium)), a.group === 'campaign' ? r.campaign : '']),
           r.leads,
           r.deals_won,
           r.deal_value,

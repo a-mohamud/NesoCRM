@@ -9,6 +9,7 @@ import { notifyTeam } from './messaging.js';
 import { track } from './collab-actor.js';
 import { freeOver, freePerDay, priceOf, rangeOf, rangeText, stayTimes, unitsProblem, type Price, type Range, type RentalRules, type Taken, type Unit } from './rentals-model.js';
 import { itemsForGross } from './teamcal-model.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Vermietung – booking with the database (docs/booking.md#rentals): availability = quantity minus the overlapping bookings (confirmed
@@ -110,9 +111,11 @@ export interface Quote extends Price {
 
 /** Range, length rules, horizon, free units and price of a request – without writing anything. */
 export function quote(app: App, r: RentalRow, cal: CalendarRow, input: { from?: unknown; to?: unknown; days?: unknown; qty?: unknown }, except = ''): Quote {
+  // What the customer sees: in the sub-account's language.
+  const t = tLoc(app, r.location_id);
   let range: Range;
   try {
-    range = rangeOf(r.unit, input);
+    range = rangeOf(r.unit, input, t);
   } catch (e) {
     throw bad((e as Error).message);
   }
@@ -120,13 +123,13 @@ export function quote(app: App, r: RentalRow, cal: CalendarRow, input: { from?: 
   if (!Number.isInteger(qty) || qty < 1) throw bad('Ungültige Anzahl');
   const w = bookableWindow(cal);
   const free = freeOver(r.quantity, takenIn(app, r, cal, range.from, range.to, except), range.from, range.to);
-  let problem = unitsProblem(r, range.units);
-  if (!problem && range.from < w.today) problem = 'Dieser Zeitraum liegt in der Vergangenheit';
-  if (!problem && range.from > w.last) problem = 'So weit im Voraus kann man noch nicht buchen';
-  if (!problem && qty > r.quantity) problem = `Es gibt nur ${r.quantity} Stück`;
-  if (!problem && free < qty) problem = free ? `In diesem Zeitraum ${free === 1 ? 'ist nur noch 1 frei' : `sind nur noch ${free} frei`}` : 'In diesem Zeitraum ist nichts mehr frei';
+  let problem = unitsProblem(r, range.units, t);
+  if (!problem && range.from < w.today) problem = t('Dieser Zeitraum liegt in der Vergangenheit');
+  if (!problem && range.from > w.last) problem = t('So weit im Voraus kann man noch nicht buchen');
+  if (!problem && qty > r.quantity) problem = t('Es gibt nur {n} Stück', { n: r.quantity });
+  if (!problem && free < qty) problem = free ? t.plural(free, { one: 'In diesem Zeitraum ist nur noch {n} frei', other: 'In diesem Zeitraum sind nur noch {n} frei' }) : t('In diesem Zeitraum ist nichts mehr frei');
   const times = stayTimes(r, range, cal.timezone);
-  return { ok: !problem, ...(problem ? { problem } : {}), from: range.from, to: range.to, until: r.unit === 'night' ? range.to : addDaysYmd(range.to, -1), free, text: rangeText(r.unit, range), currency: r.currency, ...times, ...priceOf(r, range.units, qty) };
+  return { ok: !problem, ...(problem ? { problem } : {}), from: range.from, to: range.to, until: r.unit === 'night' ? range.to : addDaysYmd(range.to, -1), free, text: rangeText(r.unit, range, t), currency: r.currency, ...times, ...priceOf(r, range.units, qty) };
 }
 
 export interface RentalForm {
@@ -157,7 +160,7 @@ export type RentalResult =
   | { status: 'payment_required'; booking: BookingOut; checkout_url: string; expires_at: string; due_cents: number; currency: string };
 
 export type BookingOut = ReturnType<typeof bookingOut>;
-export const bookingOut = (b: BookingRow, r: Pick<RentalRow, 'unit'>) => ({
+export const bookingOut = (b: BookingRow, r: Pick<RentalRow, 'unit' | 'location_id'>) => ({
   id: b.id,
   rental_id: b.rental_id,
   appointment_id: b.appointment_id,
@@ -168,7 +171,7 @@ export const bookingOut = (b: BookingRow, r: Pick<RentalRow, 'unit'>) => ({
   to_date: b.to_date,
   units: b.units,
   qty: b.qty,
-  text: rangeText(r.unit as Unit, { from: b.from_date, to: b.to_date, units: b.units }),
+  text: rangeText(r.unit as Unit, { from: b.from_date, to: b.to_date, units: b.units }, tLoc(null, r.location_id)),
   rent_cents: b.rent_cents,
   deposit_cents: b.deposit_cents,
   total_cents: b.total_cents,
@@ -267,8 +270,9 @@ export function bookRental(app: App, r: RentalRow, cal: CalendarRow, f: RentalFo
   }
   // Paid first: the pay page of the registry (Stripe, PayPal, Mollie, gift card – whatever the sub-account has set up).
   const b = out.row;
+  const t = tLoc(app, r.location_id);
   const label = `${cal.name}${b.qty > 1 ? ` ×${b.qty}` : ''}`;
-  const lines = [{ name: label.slice(0, 250), qty: 1, unit_cents: b.rent_cents }, ...(b.deposit_cents ? [{ name: 'Kaution', qty: 1, unit_cents: b.deposit_cents }] : [])].filter((l) => l.unit_cents > 0);
+  const lines = [{ name: label.slice(0, 250), qty: 1, unit_cents: b.rent_cents }, ...(b.deposit_cents ? [{ name: t('Kaution'), qty: 1, unit_cents: b.deposit_cents }] : [])].filter((l) => l.unit_cents > 0);
   try {
     const s = registry.start({
       locationId: r.location_id,
@@ -276,7 +280,7 @@ export function bookRental(app: App, r: RentalRow, cal: CalendarRow, f: RentalFo
       refId: b.id,
       amountCents: b.total_cents,
       currency: b.currency,
-      description: `${label} · ${rangeText(r.unit, { from: b.from_date, to: b.to_date, units: b.units })}`.slice(0, 200),
+      description: `${label} · ${rangeText(r.unit, { from: b.from_date, to: b.to_date, units: b.units }, t)}`.slice(0, 200),
       email: contact.email,
       name: [contact.first_name, contact.last_name].filter(Boolean).join(' '),
       lines,
@@ -318,7 +322,8 @@ export async function settleRental(app: App, bookingId: string): Promise<Booking
   if (res.refund) {
     if (b0.pay_session_id) await app.services.payRegistry?.refundAll(b0.pay_session_id).catch((e: Error) => console.error('[rentals] refund', e.message));
     const c = JSON.parse(b0.contact || '{}');
-    track(app, notifyTeam(app, r.location_id, `Zahlung ohne freien Zeitraum erstattet: ${cal.name}`, `${c.email ?? ''} hat nach Ablauf der Reservierung bezahlt, ${rangeText(r.unit, { from: b0.from_date, to: b0.to_date, units: b0.units })} war inzwischen vergeben. Die Zahlung wurde erstattet – bitte bei der Zahlungsart prüfen.`).then(() => undefined));
+    const t = tLoc(app, r.location_id);
+    track(app, notifyTeam(app, r.location_id, t('Zahlung ohne freien Zeitraum erstattet: {name}', { name: cal.name }), t('{email} hat nach Ablauf der Reservierung bezahlt, {range} war inzwischen vergeben. Die Zahlung wurde erstattet – bitte bei der Zahlungsart prüfen.', { email: c.email ?? '', range: rangeText(r.unit, { from: b0.from_date, to: b0.to_date, units: b0.units }, t) })).then(() => undefined));
   }
   res.begun?.finish();
   return getBooking(app, bookingId);
@@ -328,14 +333,16 @@ export async function settleRental(app: App, bookingId: string): Promise<Booking
 function paidInvoice(app: App, r: RentalRow, cal: CalendarRow, b: BookingRow, contactId: string) {
   try {
     const s = app.location(r.location_id)?.settings.invoices ?? {};
+    const t = tLoc(app, r.location_id);
     const rate = s.small_business ? 0 : Number(s.tax_rate ?? 19);
-    const when = rangeText(r.unit, { from: b.from_date, to: b.to_date, units: b.units });
+    const when = rangeText(r.unit, { from: b.from_date, to: b.to_date, units: b.units }, t);
     const items = [
       ...(b.rent_cents > 0 ? itemsForGross({ name: `${cal.name}${b.qty > 1 ? ` ×${b.qty}` : ''}`, description: when }, b.rent_cents, rate) : []),
-      ...(b.deposit_cents > 0 ? [{ name: 'Kaution', description: 'Wird nach der Rückgabe erstattet', qty: 1, price_cents: b.deposit_cents, tax_rate: 0 }] : []),
+      ...(b.deposit_cents > 0 ? [{ name: t('Kaution'), description: t('Wird nach der Rückgabe erstattet'), qty: 1, price_cents: b.deposit_cents, tax_rate: 0 }] : []),
     ];
-    const inv = createInvoice(app, r.location_id, { kind: 'invoice', contact_id: contactId, title: `Vermietung: ${cal.name}`, items, currency: b.currency, notes: `Online bezahlt.${b.deposit_cents ? ` Darin enthalten: Kaution ${centsToMoney(b.deposit_cents, b.currency)}.` : ''}` });
-    markInvoicePaid(app, r.location_id, inv.id, 'Online (Vermietung)');
+    const notes = [t('Online bezahlt.'), b.deposit_cents ? t('Darin enthalten: Kaution {amount}.', { amount: centsToMoney(b.deposit_cents, b.currency) }) : ''].filter(Boolean).join(' ');
+    const inv = createInvoice(app, r.location_id, { kind: 'invoice', contact_id: contactId, title: t('Vermietung: {name}', { name: cal.name }), items, currency: b.currency, notes });
+    markInvoicePaid(app, r.location_id, inv.id, t('Online (Vermietung)'));
     return inv;
   } catch (e) {
     // The booking stands even if the books refuse the invoice (e.g. a missing invoice setting); the team sees the payment in the pay session.

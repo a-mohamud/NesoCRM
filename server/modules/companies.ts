@@ -27,6 +27,7 @@ import {
 import type { AssociationsService, Ref } from './associations.js';
 import type { ObjectSchema } from './object-schema.js';
 import { sealSettings } from '../core/secrets.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Companies (HubSpot's built-in object): standard properties plus custom ones, many-to-many with
@@ -120,12 +121,12 @@ function cleanFields(app: App, locationId: string, input: Record<string, any>, p
     if (!v) out.size = '';
     else if (COMPANY_SIZES.includes(v)) out.size = v;
     else if (/^\d+$/.test(v.replace(/[.\s]/g, '')) && n > 0) out.size = n <= 10 ? '1-10' : n <= 50 ? '11-50' : n <= 200 ? '51-200' : n <= 500 ? '201-500' : n <= 1000 ? '501-1000' : '1000+';
-    else throw bad(`Größe: ${COMPANY_SIZES.join(', ')} oder eine Zahl`);
+    else throw bad(tApp()('Größe: {sizes} oder eine Zahl', { sizes: COMPANY_SIZES.join(', ') }));
   }
   if (has('lifecycle_stage')) {
     const v = s('lifecycle_stage', 60).toLowerCase();
     const hit = LIFECYCLE_STAGES.find(([k, l]) => k === v || l.toLowerCase() === v || l.toLowerCase().startsWith(`${v} `));
-    if (v && !hit) throw bad(`Lebenszyklusphase: ${STAGE_KEYS.join(', ')}`);
+    if (v && !hit) throw bad(tApp()('Lebenszyklusphase: {stages}', { stages: STAGE_KEYS.join(', ') }));
     out.lifecycle_stage = hit?.[0] ?? '';
   }
   if (has('owner_id')) {
@@ -151,7 +152,7 @@ export function createCompany(app: App, locationId: string, input: Record<string
   if (!fields.name) throw bad('Name oder Domain angeben');
   if (fields.domain) {
     const dup = findCompanyByDomain(app, locationId, fields.domain);
-    if (dup) throw new HttpError(409, `Die Domain ${fields.domain} gehört schon zu „${dup.name}“`);
+    if (dup) throw new HttpError(409, tApp()('Die Domain {domain} gehört schon zu „{name}“', { domain: fields.domain, name: dup.name }));
   }
   const custom = schema(app).validate(locationId, 'company', input.custom ?? {}, {});
   const row = {
@@ -178,7 +179,7 @@ export function createCompany(app: App, locationId: string, input: Record<string
   };
   app.db.insert('companies', row);
   const company = getCompany(app, locationId, row.id)!;
-  schema(app).log(locationId, 'company', row.id, 'company.created', `Firma angelegt (${row.source})`, {}, opts.userId);
+  schema(app).log(locationId, 'company', row.id, 'company.created', tLoc(app, locationId)('Firma angelegt ({source})', { source: tLoc(app, locationId)(row.source) }), {}, opts.userId);
   if (!opts.quiet) app.events.emit(locationId, 'company.created', { companyId: row.id, company });
   if (company.domain) associateDomainContacts(app, locationId, company);
   return company;
@@ -191,7 +192,7 @@ export function updateCompany(app: App, locationId: string, cid: string, input: 
   if (fields.name !== undefined && !fields.name) throw bad('Name darf nicht leer sein');
   if (fields.domain && fields.domain !== cur.domain) {
     const dup = findCompanyByDomain(app, locationId, fields.domain);
-    if (dup && dup.id !== cur.id) throw new HttpError(409, `Die Domain ${fields.domain} gehört schon zu „${dup.name}“ – Firmen zusammenführen?`);
+    if (dup && dup.id !== cur.id) throw new HttpError(409, tApp()('Die Domain {domain} gehört schon zu „{name}“ – Firmen zusammenführen?', { domain: fields.domain, name: dup.name }));
   }
   const customPatch = input.custom !== undefined ? schema(app).validate(locationId, 'company', input.custom, { partial: true, current: cur.custom, recordId: cur.id }) : {};
   const nextCustom = mergeProps(cur.custom, customPatch);
@@ -204,7 +205,7 @@ export function updateCompany(app: App, locationId: string, cid: string, input: 
   app.db.update('companies', cur.id, { ...fields, custom: nextCustom, updated_at: now() });
   const company = getCompany(app, locationId, cur.id)!;
   const defs = new Map(schema(app).defs(locationId, 'company').map((d) => [d.key, d]));
-  const label = (k: string) => (k.startsWith('custom.') ? (defs.get(k.slice(7))?.label ?? k.slice(7)) : (LABELS[k] ?? k));
+  const label = (k: string) => (k.startsWith('custom.') ? (defs.get(k.slice(7))?.label ?? k.slice(7)) : (LABELS[k] ? tLoc(app, locationId)(LABELS[k]) : k));
   const show = (k: string, v: unknown) => (k.startsWith('custom.') ? displayValue(defs.get(k.slice(7)), v) : displayValue(undefined, v)) || '–';
   schema(app).log(locationId, 'company', cur.id, 'company.updated', changed.map((k) => `${label(k)}: ${show(k, before[k])} → ${show(k, after[k])}`).join(' · ').slice(0, 480), { changed }, opts.userId);
   if (fields.name !== undefined && fields.name !== cur.name) {
@@ -323,7 +324,7 @@ export function syncContact(app: App, locationId: string, contactId: string) {
   }
   if (workDomain && set.auto_associate) {
     let byDomain = findCompanyByDomain(app, locationId, workDomain);
-    if (!byDomain && set.create_from_domain && !A.primary(locationId, ref, 'company')) byDomain = createCompany(app, locationId, { domain: workDomain }, { source: 'E-Mail-Domain' });
+    if (!byDomain && set.create_from_domain && !A.primary(locationId, ref, 'company')) byDomain = createCompany(app, locationId, { domain: workDomain }, { source: tLoc(app, locationId)('E-Mail-Domain') });
     if (byDomain && !A.ids(locationId, ref, 'company').includes(byDomain.id)) A.link(locationId, ref, { type: 'company', id: byDomain.id }, { primary: !A.primary(locationId, ref, 'company') && !textValue });
   }
 }
@@ -473,7 +474,7 @@ export const companiesModule: Module = {
         const other = c.a === company ? c.b : c.a;
         if (c.kind !== 'updated' && other.type !== 'task') {
           const info = A.type(c.locationId, other.type)?.get(c.locationId, other.id);
-          if (info) S.log(c.locationId, 'company', company.id, c.kind === 'linked' ? 'association.added' : 'association.removed', `${A.type(c.locationId, other.type)?.label ?? other.type} „${info.name}“ ${c.kind === 'linked' ? 'verknüpft' : 'entfernt'}`);
+          if (info) S.log(c.locationId, 'company', company.id, c.kind === 'linked' ? 'association.added' : 'association.removed', tLoc(app, c.locationId)(c.kind === 'linked' ? '{type} „{name}“ verknüpft' : '{type} „{name}“ entfernt', { type: A.type(c.locationId, other.type)?.label ?? other.type, name: info.name }));
         }
       }
       if (!contact || !company) return;
@@ -717,7 +718,7 @@ export const companiesModule: Module = {
         db.run(`UPDATE record_activities SET record_id = ? WHERE object_key = 'company' AND record_id = ?`, keep.id, other.id);
         A.removeAll(ref);
         db.run('DELETE FROM companies WHERE id = ?', other.id);
-        S.log(loc, 'company', keep.id, 'company.merged', `„${other.name}“ zusammengeführt`, { from: other.id }, uid(ctx));
+        S.log(loc, 'company', keep.id, 'company.merged', tLoc(app, loc)('„{name}“ zusammengeführt', { name: other.name }), { from: other.id }, uid(ctx));
       });
       const company = getCompany(app, loc, keep.id)!;
       app.events.emit(loc, 'company.updated', { companyId: keep.id, company, changed: ['merged'] });
@@ -746,7 +747,7 @@ export const companiesModule: Module = {
       };
       db.insert('tasks', t);
       A.link(ctx.locationId, { type: 'task', id: t.id }, { type: 'company', id: c.id });
-      S.log(ctx.locationId, 'company', c.id, 'task.created', `Aufgabe „${t.title}“ angelegt`, {}, uid(ctx));
+      S.log(ctx.locationId, 'company', c.id, 'task.created', tLoc(app, ctx.locationId)('Aufgabe „{title}“ angelegt', { title: t.title }), {}, uid(ctx));
       return t;
     });
     router.get('/api/companies/:id/activities', 'location', (ctx) => {

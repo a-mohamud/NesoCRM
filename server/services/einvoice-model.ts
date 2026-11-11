@@ -5,6 +5,7 @@
  */
 
 import { TAX_MODES, categoryOf, checkVatId, countryCode, deAmount, deYmd, deductionYmd, lineNet, type CreditType, type Deduction, type InvType, type LineItem, type Skonto, type TaxCategory, type TaxGroup, type TaxMode, type Totals, unitCode } from './invoice-model.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 export const XRECHNUNG_CUSTOMIZATION = 'urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0';
 export const PEPPOL_PROFILE = 'urn:fdc:peppol.eu:2017:poacc:billing:01:1.0';
@@ -157,10 +158,11 @@ export function skontoLines(s: Skonto | null, baseCents: number): string[] {
  * Builds the e-invoice from a frozen document. `problems` lists what XRechnung needs and the document does not have
  * (the generator refuses to write a file that would be rejected on the first check).
  */
-export function buildEInvoice(doc: DocSnapshot): { einvoice: EInvoice; problems: EInvoiceProblem[] } {
+export function buildEInvoice(doc: DocSnapshot, t: STFn = tApp()): { einvoice: EInvoice; problems: EInvoiceProblem[] } {
   const problems: EInvoiceProblem[] = [];
+  // The messages are German ids, shown in the language of `t`.
   const need = (ok: unknown, message: string) => {
-    if (!ok || (typeof ok === 'string' && !ok.trim())) problems.push({ message });
+    if (!ok || (typeof ok === 'string' && !ok.trim())) problems.push({ message: t(message) });
   };
   const mode = TAX_MODES[doc.tax_mode];
   const credit = doc.kind === 'credit_note';
@@ -217,13 +219,13 @@ export function buildEInvoice(doc: DocSnapshot): { einvoice: EInvoice; problems:
 
   const customerRef = b.leitweg_id || b.buyer_ref || doc.number;
   const notes = [doc.tax_note && doc.tax_mode !== 'standard' ? doc.tax_note : '', doc.notes].map((n) => clip(n, 1500)).filter(Boolean);
-  if (doc.supply_auto) notes.push('Leistungsdatum entspricht dem Rechnungsdatum.');
+  if (doc.supply_auto) notes.push(t('Leistungsdatum entspricht dem Rechnungsdatum.'));
   const terms = [
-    doc.due_ymd ? `Zahlbar ohne Abzug bis ${deYmd(doc.due_ymd)}.` : '',
-    doc.skonto ? `Bei Zahlung bis ${deYmd(shiftYmd(doc.issued_ymd, doc.skonto.days))} ${String(doc.skonto.percent).replace('.', ',')} % Skonto.` : '',
+    doc.due_ymd ? t('Zahlbar ohne Abzug bis {date}.', { date: deYmd(doc.due_ymd) }) : '',
+    doc.skonto ? t('Bei Zahlung bis {date} {percent} % Skonto.', { date: deYmd(shiftYmd(doc.issued_ymd, doc.skonto.days)), percent: t.locale === 'de' ? String(doc.skonto.percent).replace('.', ',') : String(doc.skonto.percent) }) : '',
   ].filter(Boolean);
   // A credit note has no due date; BR-CO-25 still wants payment terms for a positive amount – it says what happens to the credit.
-  if (credit) terms.push(doc.credit_type === 'storno' ? 'Der Betrag wird erstattet bzw. mit offenen Forderungen verrechnet (Stornorechnung).' : 'Der Gutschriftsbetrag wird erstattet bzw. mit offenen Forderungen verrechnet.');
+  if (credit) terms.push(doc.credit_type === 'storno' ? t('Der Betrag wird erstattet bzw. mit offenen Forderungen verrechnet (Stornorechnung).') : t('Der Gutschriftsbetrag wird erstattet bzw. mit offenen Forderungen verrechnet.'));
   const termLines = [...skontoLines(doc.skonto, due), ...terms];
 
   const preceding: { number: string; date: string }[] = [];

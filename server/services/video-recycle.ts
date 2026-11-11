@@ -1,6 +1,7 @@
 import { bad } from '../core/http.js';
 import { addDaysYmd, weekdayKey, ymdInTz, zonedToUtc, type DayKey } from '../core/time.js';
 import { newBlock, newSection, emptyDesign, type EmailDesign } from './email-render.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Content-Recycling for the Video-Studio – pure building blocks: which pieces exist, the prompts and
@@ -28,6 +29,8 @@ export const isKind = (k: unknown): k is RecycleKind => typeof k === 'string' &&
 export const SOCIAL_KINDS: RecycleKind[] = ['linkedin', 'x_thread', 'instagram', 'facebook'];
 
 export const LANGUAGES: Record<string, string> = { auto: 'Sprache des Videos', de: 'Deutsch', en: 'Englisch', es: 'Spanisch', fr: 'Französisch', it: 'Italienisch', nl: 'Niederländisch' };
+/** The same languages named for the model (English prompt). */
+const PROMPT_LANGUAGES: Record<string, string> = { de: 'German', en: 'English', es: 'Spanish', fr: 'French', it: 'Italian', nl: 'Dutch' }; // i18n-ignore
 
 // --- transcript ---------------------------------------------------------------------------------
 
@@ -74,21 +77,23 @@ export interface RecycleContext {
 }
 
 export function systemBlocks(c: RecycleContext, transcript: string) {
-  const lang = c.language === 'auto' || !LANGUAGES[c.language] ? 'in der Sprache des Transkripts' : `auf ${LANGUAGES[c.language]}`;
+  // prompt for the model, in English; the output language is the video's or the chosen one
+  const lang = c.language === 'auto' || !PROMPT_LANGUAGES[c.language] ? 'in the language of the transcript' : `in ${PROMPT_LANGUAGES[c.language]}`;
   const clips = c.clips
     .slice(0, 8)
-    .map((x) => `- ${x.start !== null && x.end !== null ? `[${fmtTime(x.start)}–${fmtTime(x.end)}] ` : ''}${x.title}${x.score !== null ? ` (Viralität ${x.score}/100)` : ''}${x.description ? ` – ${x.description}` : ''}`)
+    .map((x) => `- ${x.start !== null && x.end !== null ? `[${fmtTime(x.start)}–${fmtTime(x.end)}] ` : ''}${x.title}${x.score !== null ? ` (virality ${x.score}/100)` : ''}${x.description ? ` – ${x.description}` : ''}`)
     .join('\n');
   return [
     {
       text:
-        `Du bist Content-Redakteur für „${c.locationName}“ und machst aus einem Video weitere Inhalte. ` +
-        'Nutze nur, was im Transkript und in den Clip-Infos steht: keine erfundenen Fakten, Zahlen, Namen oder Zitate. ' +
-        'Schreibe klar und konkret, ohne Floskeln und ohne Emojis-Spam. ' +
-        `Schreibe ${lang}. Antworte ausschließlich im verlangten JSON.`,
+        `You are a content editor for "${c.locationName}" and turn a video into further content. ` + // i18n-ignore
+        'Use only what is in the transcript and the clip info: no invented facts, figures, names or quotes. ' +
+        'Write clearly and concretely, without filler phrases and without emoji spam. ' +
+        `Write ${lang}. Answer only in the requested JSON.`,
     },
     {
-      text: `Video: ${c.title}\n${c.sourceUrl ? `Quelle: ${c.sourceUrl}\n` : ''}${c.durationSec ? `Länge: ${fmtTime(c.durationSec)}\n` : ''}${clips ? `Beste Clips:\n${clips}\n` : ''}\nTranskript mit Zeitmarken:\n${transcript || '(kein Transkript verfügbar – nur die Clip-Infos nutzen)'}`,
+      // i18n-ignore (prompt)
+      text: `Video: ${c.title}\n${c.sourceUrl ? `Source: ${c.sourceUrl}\n` : ''}${c.durationSec ? `Length: ${fmtTime(c.durationSec)}\n` : ''}${clips ? `Best clips:\n${clips}\n` : ''}\nTranscript with timestamps:\n${transcript || '(no transcript available – use only the clip info)'}`,
       cache: true,
     },
   ];
@@ -105,61 +110,61 @@ export function promptFor(kind: RecycleKind): { user: string; schema: Record<str
   switch (kind) {
     case 'blog':
       return {
-        user: 'Schreibe daraus einen Blog-Beitrag: Titel (max. 80 Zeichen), Kurzbeschreibung (max. 300 Zeichen), Text in Markdown mit kurzer Einleitung und 3–6 Zwischenüberschriften (## …), konkrete Tipps und Beispiele aus dem Video, Schluss mit Handlungsaufforderung, 700–1200 Wörter, keine H1. Dazu SEO-Titel (max. 60 Zeichen), Meta-Beschreibung (max. 155 Zeichen) und 3–6 Tags.',
+        user: 'Turn it into a blog post: title (max. 80 characters), short description (max. 300 characters), text in Markdown with a short introduction and 3–6 subheadings (## …), concrete tips and examples from the video, ending with a call to action, 700–1200 words, no H1. Plus an SEO title (max. 60 characters), meta description (max. 155 characters) and 3–6 tags.',
         schema: obj({ title: S('string'), excerpt: S('string'), markdown: S('string'), seo_title: S('string'), seo_description: S('string'), tags: arr(S('string')) }),
         maxTokens: 6000,
       };
     case 'newsletter':
       return {
-        user: 'Schreibe daraus einen Newsletter: Betreff (max. 60 Zeichen, neugierig machend), Vorschautext (max. 110 Zeichen), Überschrift, Einleitung (2–3 Sätze, ohne Anrede – die setzen wir), genau 3 wichtigste Erkenntnisse (je Titel + 1–2 Sätze) und einen Button-Text (max. 30 Zeichen) zum Video.',
+        user: 'Turn it into a newsletter: subject line (max. 60 characters, intriguing), preview text (max. 110 characters), headline, introduction (2–3 sentences, no greeting – we add that), exactly the 3 most important takeaways (each a title + 1–2 sentences) and a button label (max. 30 characters) for the video.',
         schema: obj({ subject: S('string'), preheader: S('string'), headline: S('string'), intro: S('string'), takeaways: arr(obj({ title: S('string'), text: S('string') })), cta_label: S('string') }),
         maxTokens: 2500,
       };
     case 'linkedin':
       return {
-        user: 'Schreibe daraus einen LinkedIn-Beitrag (1200–2000 Zeichen): starke erste Zeile, kurze Absätze, eine konkrete Erkenntnis oder Geschichte aus dem Video, Frage an die Leser am Ende, 3–5 passende Hashtags in der letzten Zeile.',
+        user: 'Turn it into a LinkedIn post (1200–2000 characters): strong first line, short paragraphs, one concrete insight or story from the video, a question to readers at the end, 3–5 fitting hashtags on the last line.',
         schema: obj({ text: S('string') }),
         maxTokens: 1800,
       };
     case 'x_thread':
       return {
-        user: 'Schreibe daraus einen X-Thread mit 4–8 Posts, jeder höchstens 270 Zeichen: Post 1 ist der Hook, dann je ein Gedanke, der letzte Post verweist auf das Video. Keine Nummerierung wie „1/“ nötig.',
+        user: 'Turn it into an X thread of 4–8 posts, each at most 270 characters: post 1 is the hook, then one thought each, the last post points to the video. No numbering like "1/" needed.',
         schema: obj({ tweets: arr(S('string')) }),
         maxTokens: 1800,
       };
     case 'instagram':
       return {
-        user: 'Schreibe daraus eine Instagram-Caption für den besten Clip (Reel): Hook in der ersten Zeile, 3–6 kurze Zeilen Inhalt, Handlungsaufforderung, höchstens 1800 Zeichen ohne Hashtags. Dazu 6–10 passende Hashtags separat.',
+        user: 'Turn it into an Instagram caption for the best clip (Reel): hook on the first line, 3–6 short lines of content, a call to action, at most 1800 characters without hashtags. Plus 6–10 fitting hashtags separately.',
         schema: obj({ caption: S('string'), hashtags: arr(S('string')) }),
         maxTokens: 1400,
       };
     case 'facebook':
       return {
-        user: 'Schreibe daraus einen Facebook-Beitrag (400–900 Zeichen): persönlich, ein konkreter Nutzen aus dem Video, Frage oder Handlungsaufforderung am Ende, höchstens 3 Hashtags.',
+        user: 'Turn it into a Facebook post (400–900 characters): personal, one concrete benefit from the video, a question or call to action at the end, at most 3 hashtags.',
         schema: obj({ text: S('string') }),
         maxTokens: 1200,
       };
     case 'youtube':
       return {
-        user: 'Erstelle für das lange Video auf YouTube: genau 10 Titel-Ideen (je max. 70 Zeichen, neugierig, ehrlich), eine Beschreibung (Einleitung in 2–3 Sätzen) und Kapitelmarken aus den Zeitmarken des Transkripts (erstes Kapitel 00:00, 4–12 Kapitel, Format mm:ss oder h:mm:ss) sowie 3–5 Hashtags.',
+        user: 'For the long video on YouTube, create: exactly 10 title ideas (each max. 70 characters, intriguing, honest), a description (introduction in 2–3 sentences) and chapter markers from the transcript timestamps (first chapter 00:00, 4–12 chapters, format mm:ss or h:mm:ss), plus 3–5 hashtags.',
         schema: obj({ titles: arr(S('string')), intro: S('string'), chapters: arr(chapter), hashtags: arr(S('string')) }),
         maxTokens: 2500,
       };
     case 'shownotes':
       return {
-        user: 'Schreibe Podcast-Shownotes: Titel, Zusammenfassung (3–5 Sätze), Kapitel aus den Zeitmarken (erstes 00:00), 3–7 Kernaussagen und 0–3 wörtliche Zitate (nur exakt so, wie sie im Transkript stehen).',
+        user: 'Write podcast show notes: title, summary (3–5 sentences), chapters from the timestamps (first 00:00), 3–7 key points and 0–3 verbatim quotes (only exactly as they appear in the transcript).',
         schema: obj({ title: S('string'), summary: S('string'), chapters: arr(chapter), key_points: arr(S('string')), quotes: arr(S('string')) }),
         maxTokens: 2500,
       };
     case 'community':
       return {
-        user: 'Schreibe einen Beitrag für die Community (Mitgliederbereich): Titel (max. 100 Zeichen) und Text in Markdown (600–1200 Zeichen) mit der wichtigsten Erkenntnis aus dem Video und einer Frage an die Mitglieder am Ende.',
+        user: 'Write a post for the community (members area): title (max. 100 characters) and text in Markdown (600–1200 characters) with the most important insight from the video and a question to the members at the end.',
         schema: obj({ title: S('string'), body: S('string') }),
         maxTokens: 1400,
       };
     case 'lesson':
       return {
-        user: 'Schreibe einen Teaser für eine Kurs-Lektion, der den besten Clip als Vorschau zeigt: kurze Überschrift (max. 60 Zeichen) und 2–3 Sätze, warum sich die Lektion lohnt.',
+        user: 'Write a teaser for a course lesson that shows the best clip as a preview: short heading (max. 60 characters) and 2–3 sentences on why the lesson is worth it.',
         schema: obj({ title: S('string'), teaser: S('string') }),
         maxTokens: 800,
       };
@@ -174,7 +179,7 @@ export function parseJsonAnswer(text: string): any {
   } catch {
     const m = t.match(/\{[\s\S]*\}/);
     if (m) return JSON.parse(m[0]);
-    throw new Error('Die KI hat kein gültiges JSON geliefert');
+    throw new Error(tApp()('Die KI hat kein gültiges JSON geliefert')); // i18n-ignore (key in catalog)
   }
 }
 
@@ -190,7 +195,7 @@ const chapters = (v: unknown) =>
     .filter((c) => TIME.test(c.time) && c.title)
     .slice(0, 30);
 
-export function cleanContent(kind: RecycleKind, raw: any): Record<string, any> {
+export function cleanContent(kind: RecycleKind, raw: any, t: STFn = tApp()): Record<string, any> {
   const r = raw && typeof raw === 'object' ? raw : {};
   switch (kind) {
     case 'blog':
@@ -202,7 +207,7 @@ export function cleanContent(kind: RecycleKind, raw: any): Record<string, any> {
         headline: txt(r.headline, 200),
         intro: txt(r.intro, 3000),
         takeaways: (Array.isArray(r.takeaways) ? r.takeaways : []).slice(0, 5).map((t: any) => ({ title: txt(t?.title, 200), text: txt(t?.text, 1000) })).filter((t: any) => t.title || t.text),
-        cta_label: txt(r.cta_label, 60) || 'Video ansehen',
+        cta_label: txt(r.cta_label, 60) || t('Video ansehen'),
         cta_url: /^https:\/\/\S+$/i.test(String(r.cta_url ?? '')) ? txt(r.cta_url, 1000) : '',
       };
     case 'linkedin':
@@ -239,7 +244,10 @@ export function assertUsable(kind: RecycleKind, c: Record<string, any>) {
   };
   for (const [k, label] of need[kind]) {
     const v = c[k];
-    if (Array.isArray(v) ? !v.length : !String(v ?? '').trim()) throw bad(`${label} fehlt`);
+    if (Array.isArray(v) ? !v.length : !String(v ?? '').trim()) {
+      const t = tApp();
+      throw bad(t('{label} fehlt', { label: t(label) }));
+    }
   }
 }
 
@@ -249,17 +257,17 @@ export function chaptersText(ch: { time: string; title: string }[]): string {
   return ch.map((c) => `${c.time} ${c.title}`).join('\n');
 }
 
-export function youtubeDescription(c: Record<string, any>): string {
-  return [c.intro, c.chapters?.length ? `Kapitel:\n${chaptersText(c.chapters)}` : '', (c.hashtags ?? []).join(' ')].filter(Boolean).join('\n\n');
+export function youtubeDescription(c: Record<string, any>, t: STFn = tApp()): string {
+  return [c.intro, c.chapters?.length ? `${t('Kapitel:')}\n${chaptersText(c.chapters)}` : '', (c.hashtags ?? []).join(' ')].filter(Boolean).join('\n\n');
 }
 
 /** Plain text of a piece (copy button, documents, social posts). */
-export function asText(kind: RecycleKind, c: Record<string, any>): string {
+export function asText(kind: RecycleKind, c: Record<string, any>, t: STFn = tApp()): string {
   switch (kind) {
     case 'blog':
       return `# ${c.title}\n\n${c.markdown}`;
     case 'newsletter':
-      return [`Betreff: ${c.subject}`, c.headline, c.intro, ...(c.takeaways ?? []).map((t: any, i: number) => `${i + 1}. ${t.title}: ${t.text}`)].filter(Boolean).join('\n\n');
+      return [t('Betreff: {subject}', { subject: c.subject }), c.headline, c.intro, ...(c.takeaways ?? []).map((t: any, i: number) => `${i + 1}. ${t.title}: ${t.text}`)].filter(Boolean).join('\n\n');
     case 'linkedin':
     case 'facebook':
       return c.text;
@@ -268,9 +276,9 @@ export function asText(kind: RecycleKind, c: Record<string, any>): string {
     case 'instagram':
       return [c.caption, (c.hashtags ?? []).join(' ')].filter(Boolean).join('\n\n');
     case 'youtube':
-      return `${(c.titles ?? []).map((t: string, i: number) => `${i + 1}. ${t}`).join('\n')}\n\n${youtubeDescription(c)}`;
+      return `${(c.titles ?? []).map((x: string, i: number) => `${i + 1}. ${x}`).join('\n')}\n\n${youtubeDescription(c, t)}`;
     case 'shownotes':
-      return [c.title, c.summary, c.chapters?.length ? `Kapitel:\n${chaptersText(c.chapters)}` : '', c.key_points?.length ? `Kernaussagen:\n${c.key_points.map((p: string) => `• ${p}`).join('\n')}` : '', c.quotes?.length ? `Zitate:\n${c.quotes.map((q: string) => `„${q}“`).join('\n')}` : ''].filter(Boolean).join('\n\n');
+      return [c.title, c.summary, c.chapters?.length ? `${t('Kapitel:')}\n${chaptersText(c.chapters)}` : '', c.key_points?.length ? `${t('Kernaussagen:')}\n${c.key_points.map((p: string) => `• ${p}`).join('\n')}` : '', c.quotes?.length ? `${t('Zitate:')}\n${c.quotes.map((q: string) => (t.locale === 'de' ? `„${q}“` : `"${q}"`)).join('\n')}` : ''].filter(Boolean).join('\n\n');
     case 'community':
       return `${c.title}\n\n${c.body}`;
     case 'lesson':
@@ -292,29 +300,29 @@ export function youtubeId(url: string | null | undefined): string | null {
 }
 
 /** Newsletter as e-mail-builder design: greeting, video, 3 takeaways, clips, button, footer (needed for campaigns). */
-export function newsletterDesign(c: Record<string, any>, media: { videoUrl: string | null; videoThumb: string | null; clips: { title: string; url: string; thumb: string | null }[]; ctaUrl: string | null; color?: string }): EmailDesign {
+export function newsletterDesign(c: Record<string, any>, media: { videoUrl: string | null; videoThumb: string | null; clips: { title: string; url: string; thumb: string | null }[]; ctaUrl: string | null; color?: string }, t: STFn = tApp()): EmailDesign {
   const d = emptyDesign();
   d.settings.preheader = String(c.preheader ?? '').slice(0, 200);
   const color = /^#[0-9a-f]{6}$/i.test(media.color ?? '') ? media.color! : '#2563eb';
   const one = (...blocks: ReturnType<typeof newBlock>[]) => d.sections.push(newSection(1, [blocks]));
-  one(newBlock('heading', { text: c.headline || c.subject, level: 1 }, { paddingY: 18 }), newBlock('text', { text: `Hallo {{contact.first_name|du}},\n\n${c.intro}` }));
-  if (media.videoUrl && media.videoThumb) one(newBlock('video', { url: media.videoUrl, thumbnail: media.videoThumb, alt: 'Video ansehen', caption: '▶ Video ansehen' }));
+  one(newBlock('heading', { text: c.headline || c.subject, level: 1 }, { paddingY: 18 }), newBlock('text', { text: t('Hallo {{contact.first_name|du}},\n\n{intro}', { intro: c.intro }) }));
+  if (media.videoUrl && media.videoThumb) one(newBlock('video', { url: media.videoUrl, thumbnail: media.videoThumb, alt: t('Video ansehen'), caption: t('▶ Video ansehen') }));
   if (c.takeaways?.length) {
     one(
-      newBlock('heading', { text: c.takeaways.length === 3 ? 'Die 3 wichtigsten Punkte' : 'Die wichtigsten Punkte', level: 2 }),
+      newBlock('heading', { text: c.takeaways.length === 3 ? t('Die 3 wichtigsten Punkte') : t('Die wichtigsten Punkte'), level: 2 }),
       newBlock('text', { text: c.takeaways.map((t: any, i: number) => `**${i + 1}. ${t.title}**\n${t.text}`).join('\n\n') }),
     );
   }
   const clips = media.clips.slice(0, 3);
   if (clips.length) {
-    one(newBlock('heading', { text: 'Die besten Momente als Kurzvideo', level: 3 }, { paddingY: 8 }));
+    one(newBlock('heading', { text: t('Die besten Momente als Kurzvideo'), level: 3 }, { paddingY: 8 }));
     if (clips.every((x) => x.thumb)) {
       const widths = clips.length === 3 ? [33, 34, 33] : clips.length === 2 ? [50, 50] : [100];
       d.sections.push(newSection(clips.length, clips.map((x) => [newBlock('image', { src: x.thumb, alt: x.title, href: x.url, width: 0 }, { paddingX: 8 }), newBlock('text', { text: `[▶ ${x.title}](${x.url})` }, { paddingX: 8, fontSize: 14, align: 'center' })]), widths));
     } else one(newBlock('text', { text: clips.map((x) => `▶ [${x.title}](${x.url})`).join('\n') }));
   }
   const cta = c.cta_url || media.ctaUrl;
-  if (cta) one(newBlock('button', { label: c.cta_label || 'Video ansehen', href: cta, background: color }));
+  if (cta) one(newBlock('button', { label: c.cta_label || t('Video ansehen'), href: cta, background: color }));
   one(newBlock('footer', {}));
   return d;
 }

@@ -1,5 +1,6 @@
 import type { App } from '../../core/app.js';
 import { CATALOG, type CogneeType } from './model.js';
+import { tApp, tLoc } from '../../i18n/index.js';
 
 /**
  * What HyperLevel records become documents for the memory: one `KindDef` per kind of record. A kind knows
@@ -40,7 +41,7 @@ export const MAX_CHARS = 40_000;
 const MSG_CHARS = 2_000;
 
 const day = (iso: string) => String(iso ?? '').slice(0, 16).replace('T', ' ');
-const nameOf = (c: { first_name?: string; last_name?: string; company?: string } | undefined) => [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.company || 'Kontakt ohne Namen';
+const nameOf = (c: { first_name?: string; last_name?: string; company?: string } | undefined) => [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.company || tApp()('Kontakt ohne Namen');
 
 /** Markup out, line breaks kept. */
 export function plain(s: unknown): string {
@@ -57,7 +58,7 @@ export function plain(s: unknown): string {
     .trim();
 }
 
-const cut = (s: string, n = MAX_CHARS) => (s.length > n ? `${s.slice(0, n)}\n[gekürzt]` : s);
+const cut = (s: string, n = MAX_CHARS) => (s.length > n ? `${s.slice(0, n)}\n${tApp()('[gekürzt]')}` : s);
 const after = (col: string, idCol: string) => `(${col} > ? OR (${col} = ? AND ${idCol} > ?))`;
 const monthEnd = (month: string) => {
   const [y, m] = month.split('-').map(Number);
@@ -86,7 +87,10 @@ const WIKI_PAGE: KindDef = {
         loc, a.at, a.at, a.id, limit,
       )
       .map((r) => ({ rid: r.id, at: r.updated_at, data: r })),
-  build: (_app, _loc, r) => ({ title: r.data.title, body: cut(`Wiki-Seite: ${r.data.title}\nBereich: ${r.data.space_name}\n\n${r.data.text}`) }),
+  build: (app, loc, r) => {
+    const t = tLoc(app, loc);
+    return { title: r.data.title, body: cut(`${t('Wiki-Seite: {title}', { title: r.data.title })}\n${t('Bereich: {area}', { area: r.data.space_name })}\n\n${r.data.text}`) };
+  },
   describe: (app, loc, id) => {
     const p = app.db.get('SELECT id, title FROM wiki_pages WHERE id = ? AND location_id = ? AND trashed_at IS NULL', id, loc);
     return p ? { title: p.title, link: `/app/wiki/${p.id}` } : null;
@@ -102,7 +106,10 @@ const DOC: KindDef = {
       .all(`SELECT id, title, kind, source, summary, url, updated_at FROM docs WHERE location_id = ? AND ${after('updated_at', 'id')} ORDER BY updated_at, id LIMIT ?`, loc, a.at, a.at, a.id, limit)
       .map((r) => ({ rid: r.id, at: r.updated_at, data: r })),
   // The link without its query string: capability links must not end up in the memory.
-  build: (_app, _loc, r) => ({ title: r.data.title, body: cut(`Dokument: ${r.data.title}\nArt: ${r.data.kind}${r.data.source ? `\nQuelle: ${r.data.source}` : ''}${host(r.data.url) ? `\nLink: ${host(r.data.url)}` : ''}${r.data.summary ? `\n\n${r.data.summary}` : ''}`) }),
+  build: (app, loc, r) => {
+    const t = tLoc(app, loc);
+    return { title: r.data.title, body: cut(`${t('Dokument: {title}', { title: r.data.title })}\n${t('Art: {kind}', { kind: r.data.kind })}${r.data.source ? `\n${t('Quelle: {source}', { source: r.data.source })}` : ''}${host(r.data.url) ? `\nLink: ${host(r.data.url)}` : ''}${r.data.summary ? `\n\n${r.data.summary}` : ''}`) };
+  },
   describe: (app, loc, id) => {
     const d = app.db.get('SELECT title, url FROM docs WHERE id = ? AND location_id = ?', id, loc);
     return d ? { title: d.title, link: host(d.url) } : null;
@@ -123,10 +130,13 @@ const NOTE: KindDef = {
         loc, a.at, a.at, a.id, limit,
       )
       .map((r) => ({ rid: r.id, at: r.created_at, data: r })),
-  build: (_app, _loc, r) => ({ title: `Notiz zu ${nameOf(r.data)}`, body: cut(`Notiz zu Kontakt „${nameOf(r.data)}“ vom ${day(r.data.created_at)}:\n${r.data.body}`), contactId: r.data.contact_id }),
+  build: (app, loc, r) => {
+    const t = tLoc(app, loc);
+    return { title: t('Notiz zu {name}', { name: nameOf(r.data) }), body: cut(`${t('Notiz zu Kontakt „{name}“ vom {date}:', { name: nameOf(r.data), date: day(r.data.created_at) })}\n${r.data.body}`), contactId: r.data.contact_id };
+  },
   describe: (app, loc, id) => {
     const n = app.db.get('SELECT n.contact_id, c.first_name, c.last_name, c.company FROM notes n JOIN contacts c ON c.id = n.contact_id WHERE n.id = ? AND n.location_id = ?', id, loc);
-    return n ? { title: `Notiz zu ${nameOf(n)}`, link: `/app/contacts/${n.contact_id}` } : null;
+    return n ? { title: tLoc(app, loc)('Notiz zu {name}', { name: nameOf(n) }), link: `/app/contacts/${n.contact_id}` } : null;
   },
 };
 
@@ -150,8 +160,9 @@ const TICKET: KindDef = {
       loc,
     );
     const contact = t.contact_id ? app.db.get('SELECT first_name, last_name, company FROM contacts WHERE id = ? AND location_id = ?', t.contact_id, loc) : undefined;
-    const lines = events.map((e) => `[${day(e.created_at)}] ${WHO[e.type] ?? e.type}: ${plain(e.body).slice(0, MSG_CHARS)}`);
-    const head = [`Ticket #${t.number}: ${t.subject}`, `Status: ${t.status_kind}, Priorität: ${t.priority}${t.category ? `, Kategorie: ${t.category}` : ''}`, ...(contact ? [`Kontakt: ${nameOf(contact)}`] : [])];
+    const tr = tLoc(app, loc);
+    const lines = events.map((e) => `[${day(e.created_at)}] ${WHO[e.type] ? tr(WHO[e.type]) : e.type}: ${plain(e.body).slice(0, MSG_CHARS)}`);
+    const head = [`Ticket #${t.number}: ${t.subject}`, t.category ? tr('Status: {status}, Priorität: {priority}, Kategorie: {category}', { status: t.status_kind, priority: t.priority, category: t.category }) : tr('Status: {status}, Priorität: {priority}', { status: t.status_kind, priority: t.priority }), ...(contact ? [tr('Kontakt: {name}', { name: nameOf(contact) })] : [])];
     const body = events.some((e) => e.type === 'created') ? lines.join('\n') : [t.description ? plain(t.description).slice(0, MSG_CHARS) : '', ...lines].filter(Boolean).join('\n');
     return { title: `#${t.number} ${t.subject}`, body: cut(`${head.join('\n')}\n\n${body}`), contactId: t.contact_id ?? null };
   },
@@ -173,7 +184,10 @@ const KB: KindDef = {
         loc, a.at, a.at, a.id, limit,
       )
       .map((r) => ({ rid: r.id, at: r.updated_at, data: r })),
-  build: (_app, _loc, r) => ({ title: r.data.title, body: cut(`Wissensdatenbank-Artikel: ${r.data.title}${r.data.category ? `\nKategorie: ${r.data.category}` : ''}\n\n${plain(r.data.body)}`) }),
+  build: (app, loc, r) => {
+    const t = tLoc(app, loc);
+    return { title: r.data.title, body: cut(`${t('Wissensdatenbank-Artikel: {title}', { title: r.data.title })}${r.data.category ? `\n${t('Kategorie: {category}', { category: r.data.category })}` : ''}\n\n${plain(r.data.body)}`) };
+  },
   describe: (app, loc, id) => {
     const a = app.db.get(`SELECT title FROM kb_articles WHERE id = ? AND location_id = ? AND status = 'published'`, id, loc);
     return a ? { title: a.title, link: '/app/help-center' } : null;
@@ -197,7 +211,10 @@ const LESSON: KindDef = {
         loc, a.at, a.at, a.id, limit,
       )
       .map((r) => ({ rid: r.id, at: r.updated_at, data: r })),
-  build: (_app, _loc, r) => ({ title: `${r.data.course_title}: ${r.data.title}`, body: cut(`Kurs: ${r.data.course_title}\nModul: ${r.data.module_title}\nLektion: ${r.data.title}\n\n${plain(r.data.body)}`) }),
+  build: (app, loc, r) => {
+    const t = tLoc(app, loc);
+    return { title: `${r.data.course_title}: ${r.data.title}`, body: cut(`${t('Kurs: {name}', { name: r.data.course_title })}\n${t('Modul: {name}', { name: r.data.module_title })}\n${t('Lektion: {name}', { name: r.data.title })}\n\n${plain(r.data.body)}`) };
+  },
   describe: (app, loc, id) => {
     const l = app.db.get(`SELECT l.title, l.course_id, c.title AS course_title ${LESSON_FROM} WHERE l.id = ? AND l.location_id = ?`, id, loc);
     return l ? { title: `${l.course_title}: ${l.title}`, link: `/app/courses/${l.course_id}` } : null;
@@ -234,13 +251,14 @@ const THREAD: KindDef = {
     );
     if (!msgs.length) return null;
     const contact = app.db.get('SELECT first_name, last_name, company FROM contacts WHERE id = ? AND location_id = ?', contactId, loc);
-    const lines = msgs.map((m) => `[${day(m.created_at)}] ${m.direction === 'in' ? 'Kontakt' : 'Team'} (${m.channel}${m.subject ? `, ${m.subject}` : ''}): ${plain(m.body).slice(0, MSG_CHARS)}`);
-    return { title: `Gespräch mit ${nameOf(contact)} (${month})`, body: cut(`Gesprächsverlauf mit ${nameOf(contact)}, ${month}\n\n${lines.join('\n')}`), contactId, parentId: cid };
+    const t = tLoc(app, loc);
+    const lines = msgs.map((m) => `[${day(m.created_at)}] ${m.direction === 'in' ? t('Kontakt') : 'Team'} (${m.channel}${m.subject ? `, ${m.subject}` : ''}): ${plain(m.body).slice(0, MSG_CHARS)}`);
+    return { title: t('Gespräch mit {name} ({month})', { name: nameOf(contact), month }), body: cut(`${t('Gesprächsverlauf mit {name}, {month}', { name: nameOf(contact), month })}\n\n${lines.join('\n')}`), contactId, parentId: cid };
   },
   describe: (app, loc, id, parent) => {
     const month = id.split(':')[1] ?? '';
     const c = app.db.get('SELECT c.first_name, c.last_name, c.company FROM conversations v JOIN contacts c ON c.id = v.contact_id WHERE v.id = ? AND v.location_id = ?', parent ?? '', loc);
-    return c ? { title: `Gespräch mit ${nameOf(c)}${month ? ` (${month})` : ''}`, link: `/app/conversations/${parent}` } : null;
+    return c ? { title: month ? tLoc(app, loc)('Gespräch mit {name} ({month})', { name: nameOf(c), month }) : tLoc(app, loc)('Gespräch mit {name}', { name: nameOf(c) }), link: `/app/conversations/${parent}` } : null;
   },
 };
 
@@ -254,18 +272,19 @@ const CONTACT: KindDef = {
     app.db
       .all(`SELECT c.* FROM contacts c WHERE c.location_id = ? AND ${after('c.updated_at', 'c.id')} ORDER BY c.updated_at, c.id LIMIT ?`, loc, a.at, a.at, a.id, limit)
       .map((r) => ({ rid: r.id, at: r.updated_at, data: r })),
-  build: (_app, _loc, r) => {
+  build: (app, loc, r) => {
+    const t = tLoc(app, loc);
     const c = r.data;
     const tags = safeJson<string[]>(c.tags, []);
     const custom = Object.entries(safeJson<Record<string, unknown>>(c.custom, {})).filter(([, v]) => v !== '' && v !== null && typeof v !== 'object');
     const lines = [
-      `Kontakt: ${nameOf(c)}`,
-      c.company && `Firma: ${c.company}`,
-      (c.city || c.country) && `Ort: ${[c.city, c.country].filter(Boolean).join(', ')}`,
-      c.source && `Quelle: ${c.source}`,
+      t('Kontakt: {name}', { name: nameOf(c) }),
+      c.company && t('Firma: {company}', { company: c.company }),
+      (c.city || c.country) && t('Ort: {place}', { place: [c.city, c.country].filter(Boolean).join(', ') }),
+      c.source && t('Quelle: {source}', { source: c.source }),
       tags.length && `Tags: ${tags.join(', ')}`,
-      c.email && `E-Mail: ${c.email}`,
-      c.phone && `Telefon: ${c.phone}`,
+      c.email && t('E-Mail: {email}', { email: c.email }),
+      c.phone && t('Telefon: {phone}', { phone: c.phone }),
       ...custom.map(([k, v]) => `${k}: ${String(v).slice(0, 300)}`),
     ].filter(Boolean);
     return { title: nameOf(c), body: cut(lines.join('\n')), contactId: c.id };
@@ -286,10 +305,13 @@ const MEMORY: KindDef = {
     app.db
       .all(`SELECT id, text, created_by_name, created_at, updated_at FROM cognee_memories WHERE location_id = ? AND ${after('updated_at', 'id')} ORDER BY updated_at, id LIMIT ?`, loc, a.at, a.at, a.id, limit)
       .map((r) => ({ rid: r.id, at: r.updated_at, data: r })),
-  build: (_app, _loc, r) => ({ title: `Gemerkter Hinweis vom ${day(r.data.created_at).slice(0, 10)}`, body: cut(`Gemerkter Hinweis vom ${day(r.data.created_at)}${r.data.created_by_name ? ` (${r.data.created_by_name})` : ''}:\n${r.data.text}`) }),
+  build: (app, loc, r) => {
+    const t = tLoc(app, loc);
+    return { title: t('Gemerkter Hinweis vom {date}', { date: day(r.data.created_at).slice(0, 10) }), body: cut(`${r.data.created_by_name ? t('Gemerkter Hinweis vom {date} ({name}):', { date: day(r.data.created_at), name: r.data.created_by_name }) : t('Gemerkter Hinweis vom {date}:', { date: day(r.data.created_at) })}\n${r.data.text}`) };
+  },
   describe: (app, loc, id) => {
     const m = app.db.get('SELECT created_at FROM cognee_memories WHERE id = ? AND location_id = ?', id, loc);
-    return m ? { title: `Gemerkter Hinweis vom ${day(m.created_at).slice(0, 10)}`, link: '' } : null;
+    return m ? { title: tLoc(app, loc)('Gemerkter Hinweis vom {date}', { date: day(m.created_at).slice(0, 10) }), link: '' } : null;
   },
 };
 

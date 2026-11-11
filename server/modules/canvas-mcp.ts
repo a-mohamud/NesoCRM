@@ -1,5 +1,6 @@
 import type { Module } from '../core/app.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * MCP tools for the Canvas – agents (Claude, ChatGPT, the in-app HyperLevel Agent) read and draw on
@@ -16,6 +17,7 @@ const boardLink = (id: string, focus: string[] = []) => `/app/canvas/${id}${focu
 const RO = { readOnlyHint: true, openWorldHint: false };
 const W = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 
+// i18n-ignore – only a part: the catalog has the full descriptions of ghl_canvas_create and ghl_canvas_add_elements that include it.
 const ELEMENTS_DOC = `Elemente (JSON, Koordinaten in px, x/y = links oben, y wächst nach unten):
 - Formen: {type:"rect"|"ellipse"|"diamond", x, y, w, h, text?, fill?, stroke?, strokeWidth?, radius?, fontSize?, bold?, color?, sketch?:true (handgezeichnet)}
 - Notiz: {type:"sticky", text, fill? (#fff3a3 gelb, #ffc9de rosa, #c5e4ff blau, #c3f0c8 grün, #e5dbff lila, #ffd8a8 orange)}
@@ -44,6 +46,7 @@ const TOOLS: Tool[] = [
   {
     name: 'ghl_canvas_create',
     title: 'Canvas-Board anlegen',
+    // i18n-ignore – composed with ELEMENTS_DOC; the catalog key is the full text (mcp.ts translates it on tools/list).
     description: `Legt ein neues Board an – leer, aus einer Vorlage (template: mindmap, flowchart, journey, funnel, sales, org, swot, kanban, wireframe, social), aus Mermaid-Text oder direkt mit Elementen. team_access: edit (Standard), view oder none (privat). ${ELEMENTS_DOC}`,
     inputSchema: obj(
       {
@@ -83,6 +86,7 @@ const TOOLS: Tool[] = [
   {
     name: 'ghl_canvas_add_elements',
     title: 'Auf dem Canvas zeichnen',
+    // i18n-ignore – composed with ELEMENTS_DOC; the catalog key is the full text (mcp.ts translates it on tools/list).
     description: `Fügt mehrere Elemente auf einmal hinzu (bis 1000). Pfeile verbinden Formen über from/to (ref oder id). layout ordnet die neuen Formen automatisch an: {kind:"flow"|"tree"|"mindmap"|"radial"|"grid", direction?:"right"|"down"}. origin {x,y} setzt die linke obere Ecke. Gibt refs → ids zurück. ${ELEMENTS_DOC}`,
     inputSchema: obj(
       {
@@ -158,7 +162,7 @@ const TOOLS: Tool[] = [
     annotations: W,
     run: async (call, a) => {
       if (!a.board_id) {
-        const b = await call.api('POST', '/api/canvas', { location: a.location_id, body: { name: a.name || 'Diagramm', mermaid: a.mermaid } });
+        const b = await call.api('POST', '/api/canvas', { location: a.location_id, body: { name: a.name || tLoc(null, a.location_id)('Diagramm'), mermaid: a.mermaid } });
         return { board_id: b.id, name: b.name, element_count: b.element_count, url: b.url, link: boardLink(b.id) };
       }
       const r = await call.api('POST', `/api/canvas/${encodeURIComponent(a.board_id)}/mermaid`, { location: a.location_id, body: { source: a.mermaid, x: a.x, y: a.y, sketch: a.sketch } });

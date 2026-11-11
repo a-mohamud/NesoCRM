@@ -2,6 +2,7 @@ import { authFor, baseOf } from './genmedia/http.js';
 import { azureEndpoints, azureSsml, localeOf, langOf } from './voice-adapters.js';
 import { PcmAligner, Resampler, pcmToUlaw, wavToUlaw8k } from './voice-audio.js';
 import { VoiceError, type StreamCtx, type StreamTtsReq, type TtsStreamer } from './voice-types.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Streaming text to speech for live calls: every streamer returns µ-law audio at 8 kHz (what Twilio
@@ -46,7 +47,8 @@ async function ok(res: Response, what: string, provider: string): Promise<Respon
   } catch {
     /* no body */
   }
-  const hint = res.status === 401 || res.status === 403 ? ' – Schlüssel prüfen' : res.status === 402 ? ' – Guthaben aufladen' : res.status === 429 ? ' – Limit erreicht' : '';
+  const t = tApp();
+  const hint = res.status === 401 || res.status === 403 ? ` – ${t('Schlüssel prüfen')}` : res.status === 402 ? ` – ${t('Guthaben aufladen')}` : res.status === 429 ? ` – ${t('Limit erreicht')}` : '';
   throw new VoiceError(`${what}: ${msg.replace(/\s+/g, ' ').slice(0, 200) || `Fehler ${res.status}`} (HTTP ${res.status})${hint}`, retryable(res.status), res.status, provider);
 }
 

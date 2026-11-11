@@ -7,6 +7,7 @@ import { getContact } from '../services/contacts.js';
 import { notifyTeam, receiveMessage } from '../services/messaging.js';
 import { firstSeen, inboundMessageId } from '../services/channel-kit.js';
 import type { Tool } from './mcp.js';
+import { tCtx, tLoc, tUser } from '../i18n/index.js';
 import { PRIORITIES, PRIORITY_LABELS, SOURCES, STAGE_KINDS, addresses, cleanHelpdeskSettings, cleanStages, defaultStages } from '../services/helpdesk.js';
 import {
   addTicketEvent,
@@ -335,14 +336,15 @@ export const ticketsModule: Module = {
       const call = db.get('SELECT * FROM calls WHERE id = ? AND location_id = ?', str(ctx.body.call_id, 'Anruf', { required: true }), ctx.locationId);
       if (!call) throw notFound('Anruf nicht gefunden');
       if (!call.contact_id) throw bad('Der Anruf hat keinen Kontakt');
-      const when = new Date(call.started_at).toLocaleString('de-DE', { timeZone: app.location(ctx.locationId)?.timezone || 'Europe/Berlin' });
+      const tl = tLoc(app, ctx.locationId);
+      const when = new Date(call.started_at).toLocaleString(tl.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: app.location(ctx.locationId)?.timezone || 'Europe/Berlin' });
       const t = createTicket(
         app,
         ctx.locationId,
         {
           ...ctx.body,
-          subject: str(ctx.body.subject, 'Betreff', { max: 300 }) || `${call.direction === 'in' ? 'Anruf' : 'Rückruf'} vom ${when}`,
-          description: ctx.body.description ?? (call.transcription ? `Voicemail/Transkript:\n${call.transcription}` : `Anruf (${call.direction === 'in' ? 'eingehend' : 'ausgehend'}, ${call.status}) am ${when}.`),
+          subject: str(ctx.body.subject, 'Betreff', { max: 300 }) || tl(call.direction === 'in' ? 'Anruf vom {when}' : 'Rückruf vom {when}', { when }),
+          description: ctx.body.description ?? (call.transcription ? `${tl('Voicemail/Transkript:')}\n${call.transcription}` : tl(call.direction === 'in' ? 'Anruf (eingehend, {status}) am {when}.' : 'Anruf (ausgehend, {status}) am {when}.', { status: call.status, when })),
           contact_id: call.contact_id,
           source: 'Telefon',
           channel: ctx.body.channel ?? 'sms',
@@ -372,7 +374,8 @@ export const ticketsModule: Module = {
         const gone = (p.stages as any[]).filter((s) => !stages.some((x) => x.id === s.id)).map((s) => s.id);
         if (gone.length) {
           const used = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM tickets WHERE pipeline_id = ? AND stage_id IN (${gone.map(() => '?').join(',')})`, p.id, ...gone)!.n;
-          if (used) throw bad(`In entfernten Stufen liegen noch ${used} Tickets – bitte erst verschieben`);
+          const tc = tCtx(ctx);
+          if (used) throw bad(tc.plural(used, { one: 'In entfernten Stufen liegt noch {n} Ticket – bitte erst verschieben', other: 'In entfernten Stufen liegen noch {n} Tickets – bitte erst verschieben' }));
         }
         patch.stages = stages;
         // Kind changes (e.g. a stage now counts as "Gelöst") apply to the tickets in it.
@@ -596,33 +599,36 @@ export const ticketsModule: Module = {
       ...(app.services.workflowActions ?? {}),
       ticket_create: async (run: any, step: any, vars: Record<string, any>) => {
         const t = (s: unknown) => render(String(s ?? ''), vars);
+        const tl = tLoc(app, run.location_id);
         const ticket = createTicket(
           app,
           run.location_id,
-          { subject: t(step.subject) || 'Neues Ticket', description: t(step.description), contact_id: run.contact_id, priority: step.priority || 'normal', category: step.category || '', team_id: step.team_id || undefined, owner_id: step.owner_id || undefined, pipeline_id: step.pipeline_id || undefined, source: 'Workflow' },
+          { subject: t(step.subject) || tl('Neues Ticket'), description: t(step.description), contact_id: run.contact_id, priority: step.priority || 'normal', category: step.category || '', team_id: step.team_id || undefined, owner_id: step.owner_id || undefined, pipeline_id: step.pipeline_id || undefined, source: 'Workflow' },
           { via: 'workflow' },
         );
-        return `Ticket #${ticket.number} angelegt`;
+        return tl('Ticket #{n} angelegt', { n: ticket.number });
       },
       /** Escalation: raise priority, reassign, change status, note – on the ticket from the trigger (else the contact's open ticket). */
       ticket_update: async (run: any, step: any, vars: Record<string, any>) => {
         const tid = ticketForRun(run);
-        if (!tid) return 'kein offenes Ticket';
+        const tl = tLoc(app, run.location_id);
+        if (!tid) return tl('kein offenes Ticket');
         const patch: Record<string, any> = {};
         if (step.status) patch.status = step.status;
         if (step.priority) patch.priority = step.priority;
         if (step.team_id) patch.team_id = step.team_id === '__none' ? '' : step.team_id;
         if (step.owner_id) patch.owner_id = step.owner_id === '__none' ? '' : step.owner_id;
-        if (step.note) patch.note = render(String(step.note), vars);
+        if (step.note) patch.note = render(tl(String(step.note)), vars);
         const before = getTicketRow(app, run.location_id, tid);
         if (Array.isArray(step.tags) && step.tags.length) patch.tags = uniq([...(before.tags ?? []), ...step.tags.map(String)]);
         const t = updateTicket(app, run.location_id, tid, patch, { via: 'workflow' });
         if (step.notify_owner && t.owner_id) {
           const owner = db.get('SELECT email, name FROM users WHERE id = ?', t.owner_id);
-          if (owner?.email) await notifyTeam(app, run.location_id, `Ticket #${t.number} braucht Aufmerksamkeit`, `${t.subject}\n\n${render(String(step.note ?? ''), vars)}\n\n${app.baseUrl()}/app/tickets/${t.id}`, owner.email);
-          void Promise.resolve(app.services.pushNotify?.({ userIds: [t.owner_id], kind: 'tasks', title: `Ticket #${t.number} eskaliert`, body: t.subject, url: `/app/tickets/${t.id}`, tag: `ticket-${t.id}` })).catch(() => {});
+          const tu = tUser(app as never, t.owner_id);
+          if (owner?.email) await notifyTeam(app, run.location_id, tu('Ticket #{n} braucht Aufmerksamkeit', { n: t.number }), `${t.subject}\n\n${render(String(step.note ?? ''), vars)}\n\n${app.baseUrl()}/app/tickets/${t.id}`, owner.email);
+          void Promise.resolve(app.services.pushNotify?.({ userIds: [t.owner_id], kind: 'tasks', title: tu('Ticket #{n} eskaliert', { n: t.number }), body: t.subject, url: `/app/tickets/${t.id}`, tag: `ticket-${t.id}` })).catch(() => {});
         }
-        return `Ticket #${t.number} geändert`;
+        return tl('Ticket #{n} geändert', { n: t.number });
       },
     };
     app.services.workflowRecipes = {
@@ -640,6 +646,7 @@ export const ticketsModule: Module = {
         name: 'Neues Ticket: Eingangsbestätigung',
         trigger: { type: 'ticket.created', config: {} },
         settings: { allow_reentry: true },
+        // i18n-ignore – multi-line catalog key; workflows.ts localizeRecipe translates it when the recipe is used
         steps: [{ type: 'send_email', subject: 'Deine Anfrage #{{event.ticket.number}}: {{event.ticket.subject}}', body: 'Hallo {{contact.first_name|}},\n\nwir haben deine Anfrage erhalten und kümmern uns darum.\n\nViele Grüße\n{{location.name}}' }],
       },
     };

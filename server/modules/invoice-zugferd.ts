@@ -5,6 +5,7 @@ import { archiveFile } from '../services/invoice-render.js';
 import { zugferdOf, type ZugferdOut } from '../services/invoice-zugferd.js';
 import { FX_PROFILES, isFxProfile, type FxProfile } from '../services/zugferd-pdf.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * ZUGFeRD 2.3 / Factur-X 1.07 for the GoBD invoicing: the download route next to the XRechnung (archived immutably like it),
@@ -21,7 +22,8 @@ const profileOf = (v: string | null): FxProfile => {
 /** Writes the file into the invoice archive (identical bytes once) and notes it in the invoice trail. */
 function archive(app: App, inv: Inv, out: ZugferdOut, actor: Actor) {
   const doc = archiveFile(app, inv, 'zugferd', { name: out.filename, mime: 'application/pdf', data: out.pdf }, actor);
-  if (!doc.duplicate) invAudit(app, inv.location_id, inv.id, 'zugferd.generated', `ZUGFeRD 2.3 / Factur-X ${FX_PROFILES[out.profile].conformance} · SHA-256 ${doc.sha256.slice(0, 16)}… · Aufbewahrung bis ${doc.retention_until}`, actor);
+  const t = tLoc(app, inv.location_id);
+  if (!doc.duplicate) invAudit(app, inv.location_id, inv.id, 'zugferd.generated', t('ZUGFeRD 2.3 / Factur-X {conformance} · SHA-256 {hash}… · Aufbewahrung bis {until}', { conformance: FX_PROFILES[out.profile].conformance, hash: doc.sha256.slice(0, 16), until: doc.retention_until }), actor);
   return doc;
 }
 

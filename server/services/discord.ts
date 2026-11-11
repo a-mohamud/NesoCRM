@@ -1,5 +1,6 @@
 import { createPublicKey, verify } from 'node:crypto';
 import type { FetchLike } from './channel-kit.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Discord: REST calls, the Gateway connection that delivers messages (Discord has no message
@@ -27,12 +28,13 @@ export class DiscordError extends Error {
 }
 
 export function discordErrorText(status: number, code: number, message: string): string {
-  if (status === 401) return 'Bot-Token ungültig';
-  if (code === 50007) return 'Kontakt nimmt keine Direktnachrichten vom Bot an (Datenschutz-Einstellung oder kein gemeinsamer Server)';
-  if (code === 50001 || code === 50013) return 'Dem Bot fehlt die Berechtigung für diesen Kanal';
-  if (code === 10003) return 'Kanal nicht gefunden';
-  if (status === 429) return 'Zu viele Anfragen – Discord bittet um eine kurze Pause';
-  return `Discord: ${message.slice(0, 200) || `Fehler ${status}`}`;
+  const t = tApp();
+  if (status === 401) return t('Bot-Token ungültig');
+  if (code === 50007) return t('Kontakt nimmt keine Direktnachrichten vom Bot an (Datenschutz-Einstellung oder kein gemeinsamer Server)');
+  if (code === 50001 || code === 50013) return t('Dem Bot fehlt die Berechtigung für diesen Kanal');
+  if (code === 10003) return t('Kanal nicht gefunden');
+  if (status === 429) return t('Zu viele Anfragen – Discord bittet um eine kurze Pause');
+  return `Discord: ${message.slice(0, 200) || t('Fehler {status}', { status })}`;
 }
 
 export async function discordCall<T = any>(fetcher: FetchLike, botToken: string, method: string, path: string, body?: unknown, timeoutMs = 15_000): Promise<T> {
@@ -45,7 +47,7 @@ export async function discordCall<T = any>(fetcher: FetchLike, botToken: string,
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
-    throw new DiscordError(0, 0, `Discord nicht erreichbar: ${(e as Error).message}`);
+    throw new DiscordError(0, 0, tApp()('Discord nicht erreichbar: {error}', { error: (e as Error).message }));
   }
   if (r.status === 204) return undefined as T;
   const j: any = await r.json().catch(() => ({}));
@@ -299,7 +301,7 @@ export class DiscordGateway {
       const fatal = FATAL[ev?.code];
       if (fatal) {
         this.stopped = true;
-        return this.set('error', fatal);
+        return this.set('error', tApp()(fatal));
       }
       this.retry(true);
     };

@@ -14,6 +14,7 @@ import type { App } from '../core/app.js';
 import type { Ctx, User } from '../core/http.js';
 import { DEFAULT_LIMITS, type Limits } from './boards-layout.js';
 import { cleanLine, cleanText } from './boards-model.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 export type Tone = 'gray' | 'green' | 'red' | 'blue' | 'yellow' | 'purple';
 export type NumberFormat = 'number' | 'money' | 'percent' | 'days' | 'minutes';
@@ -163,14 +164,15 @@ const FIELD_KEY = /^[a-z][a-z0-9_]{0,40}$/;
 const ID_VALUE = /^[A-Za-z0-9_:.-]{0,80}$/;
 
 function checkFields(type: string, fields: ConfigField[], depth = 0) {
+  const t = tApp();
   const seen = new Set<string>();
   for (const f of fields) {
-    if (!FIELD_KEY.test(f.key)) throw new Error(`Widget „${type}“: ungültiger Feldname „${f.key}“`);
-    if (seen.has(f.key)) throw new Error(`Widget „${type}“: Feld „${f.key}“ doppelt`);
+    if (!FIELD_KEY.test(f.key)) throw new Error(t('Widget „{type}“: ungültiger Feldname „{key}“', { type, key: f.key }));
+    if (seen.has(f.key)) throw new Error(t('Widget „{type}“: Feld „{key}“ doppelt', { type, key: f.key }));
     seen.add(f.key);
-    if ((f.type === 'select' || f.type === 'multi') && !f.options?.length && !f.optionsFrom) throw new Error(`Widget „${type}“: Feld „${f.key}“ braucht options oder optionsFrom`);
+    if ((f.type === 'select' || f.type === 'multi') && !f.options?.length && !f.optionsFrom) throw new Error(t('Widget „{type}“: Feld „{key}“ braucht options oder optionsFrom', { type, key: f.key }));
     if (f.type === 'list') {
-      if (!f.item?.length || depth > 0) throw new Error(`Widget „${type}“: Feld „${f.key}“ (list) braucht item (eine Ebene)`);
+      if (!f.item?.length || depth > 0) throw new Error(t('Widget „{type}“: Feld „{key}“ (list) braucht item (eine Ebene)', { type, key: f.key }));
       checkFields(type, f.item, depth + 1);
     }
   }
@@ -183,13 +185,14 @@ export class WidgetRegistry {
   private locked = new Set<string>();
 
   register(def: WidgetDef): void {
-    if (!TYPE.test(def.type)) throw new Error(`Widget-Typ „${def.type}“ ist ungültig (a–z, 0–9, _; beginnt mit einem Buchstaben)`);
-    if (!def.label?.trim() || !def.description?.trim()) throw new Error(`Widget „${def.type}“ braucht label und description`);
-    if (!def.size || !(def.size.w >= 1 && def.size.w <= 12) || !(def.size.h >= 1 && def.size.h <= 12)) throw new Error(`Widget „${def.type}“: size.w/h müssen 1–12 sein`);
-    if (!CATEGORIES.some(([k]) => k === def.category)) throw new Error(`Widget „${def.type}“: unbekannte Kategorie „${def.category}“`);
+    const t = tApp();
+    if (!TYPE.test(def.type)) throw new Error(t('Widget-Typ „{type}“ ist ungültig (a–z, 0–9, _; beginnt mit einem Buchstaben)', { type: def.type }));
+    if (!def.label?.trim() || !def.description?.trim()) throw new Error(t('Widget „{type}“ braucht label und description', { type: def.type }));
+    if (!def.size || !(def.size.w >= 1 && def.size.w <= 12) || !(def.size.h >= 1 && def.size.h <= 12)) throw new Error(t('Widget „{type}“: size.w/h müssen 1–12 sein', { type: def.type }));
+    if (!CATEGORIES.some(([k]) => k === def.category)) throw new Error(t('Widget „{type}“: unbekannte Kategorie „{category}“', { type: def.type, category: def.category }));
     checkFields(def.type, def.fields ?? []);
     const old = this.defs.get(def.type);
-    if (old && (this.locked.has(def.type) || (old.source ?? 'core') !== (def.source ?? 'core'))) throw new Error(`Widget-Typ „${def.type}“ ist schon vergeben (${old.source ?? 'core'})`);
+    if (old && (this.locked.has(def.type) || (old.source ?? 'core') !== (def.source ?? 'core'))) throw new Error(t('Widget-Typ „{type}“ ist schon vergeben ({source})', { type: def.type, source: old.source ?? 'core' }));
     this.defs.set(def.type, { ...def, source: def.source ?? 'core', fields: def.fields ?? [] });
   }
   /** The built-in widgets cannot be replaced by another module. */
@@ -213,27 +216,61 @@ export class WidgetRegistry {
     if (!d) return DEFAULT_LIMITS;
     return { minW: d.size.minW ?? Math.min(2, d.size.w), minH: d.size.minH ?? Math.min(2, d.size.h), maxW: d.size.maxW ?? 12, maxH: d.size.maxH ?? 12 };
   }
-  describe(def: WidgetDef): Described {
+  /** A widget type for the settings panel, the catalogue and the AI, in the language of `t` (German texts are the catalog keys). */
+  describe(def: WidgetDef, t: STFn = tApp()): Described {
     const l = this.limits(def.type);
+    const keywords = def.keywords ?? [];
+    const category = CATEGORIES.find(([k]) => k === def.category)?.[1];
     return {
       type: def.type,
-      label: def.label,
-      description: def.description,
+      label: t(def.label),
+      description: t(def.description),
       icon: def.icon,
       category: def.category,
-      category_label: CATEGORIES.find(([k]) => k === def.category)?.[1] ?? def.category,
-      keywords: def.keywords ?? [],
+      category_label: category ? t(category) : def.category,
+      // the German keywords stay searchable next to their translations
+      keywords: [...new Set([...keywords, ...keywords.map((k) => t(k))])],
       access: def.access ?? '',
-      access_label: def.accessLabel ?? '',
+      access_label: def.accessLabel ? t(def.accessLabel) : '',
       size: { w: def.size.w, h: def.size.h, ...l },
       risk: def.risk ?? 'normal',
-      fields: def.fields,
+      fields: translateFields(def.fields, t),
       source: def.source ?? 'core',
     };
   }
-  catalogue(): Described[] {
-    return this.list().map((d) => this.describe(d));
+  catalogue(t: STFn = tApp()): Described[] {
+    return this.list().map((d) => this.describe(d, t));
   }
+}
+
+/** Config fields with their visible texts (label, hint, placeholder, option labels) in the language of `t`. */
+export function translateFields(fields: ConfigField[], t: STFn): ConfigField[] {
+  return fields.map((f) => ({
+    ...f,
+    label: t(f.label),
+    ...(f.hint ? { hint: t(f.hint) } : {}),
+    ...(f.placeholder ? { placeholder: t(f.placeholder) } : {}),
+    ...(f.options ? { options: f.options.map(([v, label]) => [v, t(label)] as [string, string]) } : {}),
+    ...(f.item ? { item: translateFields(f.item, t) } : {}),
+  }));
+}
+
+/**
+ * A widget's view in the viewer's language: the fixed texts a widget writes (messages, empty states, hints, labels,
+ * reasons) are catalog keys. Rows, cards and titles are data and stay as they are.
+ */
+export function translateView(view: View, t: STFn): View {
+  const v = { ...view } as any;
+  if (typeof v.text === 'string' && v.kind === 'message') v.text = t(v.text);
+  if (v.action?.label) v.action = { ...v.action, label: t(v.action.label) };
+  if (typeof v.reason === 'string') v.reason = t(v.reason);
+  if (typeof v.empty === 'string') v.empty = t(v.empty);
+  if (typeof v.hint === 'string') v.hint = t(v.hint);
+  if (v.kind === 'number' && typeof v.label === 'string') v.label = t(v.label);
+  if (v.kind === 'numbers' && Array.isArray(v.items)) v.items = v.items.map((i: any) => ({ ...i, label: t(i.label) }));
+  if (v.kind === 'table' && Array.isArray(v.columns)) v.columns = v.columns.map((c: any) => ({ ...c, label: t(c.label) }));
+  if (v.kind === 'actions' && Array.isArray(v.actions)) v.actions = v.actions.map((a: any) => (a.why ? { ...a, why: t(a.why) } : a));
+  return v as View;
 }
 
 /** The registry of this app, created on first use – a module may call this before or after the board module registered. */
@@ -246,6 +283,8 @@ export function boardWidgets(app: App): WidgetRegistry {
 const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 function cleanValue(f: ConfigField, v: unknown, where: string, strict: boolean, errors: string[]): unknown {
+  const t = tApp();
+  const label = t(f.label);
   const bad = (msg: string) => {
     errors.push(`${where}: ${msg}`);
     return undefined;
@@ -253,64 +292,64 @@ function cleanValue(f: ConfigField, v: unknown, where: string, strict: boolean, 
   switch (f.type) {
     case 'text': {
       if (v === null || v === undefined || v === '') return f.default ?? '';
-      if (typeof v !== 'string' && typeof v !== 'number') return bad(`„${f.label}“ muss Text sein`);
+      if (typeof v !== 'string' && typeof v !== 'number') return bad(t('„{label}“ muss Text sein', { label }));
       return cleanLine(v, f.maxLength ?? 200);
     }
     case 'textarea': {
       if (v === null || v === undefined || v === '') return f.default ?? '';
-      if (typeof v !== 'string') return bad(`„${f.label}“ muss Text sein`);
+      if (typeof v !== 'string') return bad(t('„{label}“ muss Text sein', { label }));
       return cleanText(v, f.maxLength ?? 8000);
     }
     case 'url': {
       if (v === null || v === undefined || v === '') return '';
-      if (typeof v !== 'string' || v.length > 600 || /\s/.test(v.trim())) return bad(`„${f.label}“ ist keine gültige Adresse`);
+      if (typeof v !== 'string' || v.length > 600 || /\s/.test(v.trim())) return bad(t('„{label}“ ist keine gültige Adresse', { label }));
       return v.trim();
     }
     case 'number': {
       if (v === null || v === undefined || v === '') return f.default ?? null;
       const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
-      if (!Number.isFinite(n)) return bad(`„${f.label}“ muss eine Zahl sein`);
+      if (!Number.isFinite(n)) return bad(t('„{label}“ muss eine Zahl sein', { label }));
       if ((f.min !== undefined && n < f.min) || (f.max !== undefined && n > f.max)) {
-        if (strict) return bad(`„${f.label}“ muss zwischen ${f.min ?? '−∞'} und ${f.max ?? '∞'} liegen`);
+        if (strict) return bad(t('„{label}“ muss zwischen {min} und {max} liegen', { label, min: f.min ?? '−∞', max: f.max ?? '∞' }));
         return Math.max(f.min ?? -Infinity, Math.min(f.max ?? Infinity, n));
       }
       return n;
     }
     case 'bool': {
       if (v === null || v === undefined || v === '') return f.default ?? false;
-      if (typeof v !== 'boolean') return bad(`„${f.label}“ muss ja oder nein sein`);
+      if (typeof v !== 'boolean') return bad(t('„{label}“ muss ja oder nein sein', { label }));
       return v;
     }
     case 'select': {
       if (v === null || v === undefined || v === '') return f.default ?? '';
-      if (typeof v !== 'string') return bad(`„${f.label}“ muss ein Wert aus der Liste sein`);
+      if (typeof v !== 'string') return bad(t('„{label}“ muss ein Wert aus der Liste sein', { label }));
       if (f.options) {
-        if (!f.options.some(([val]) => val === v)) return bad(`„${f.label}“: „${String(v).slice(0, 40)}“ ist nicht erlaubt (erlaubt: ${f.options.map(([val]) => val).join(', ')})`);
+        if (!f.options.some(([val]) => val === v)) return bad(t('„{label}“: „{value}“ ist nicht erlaubt (erlaubt: {list})', { label, value: String(v).slice(0, 40), list: f.options.map(([val]) => val).join(', ') }));
         return v;
       }
-      if (!ID_VALUE.test(v)) return bad(`„${f.label}“ ist keine gültige ID`);
+      if (!ID_VALUE.test(v)) return bad(t('„{label}“ ist keine gültige ID', { label }));
       return v;
     }
     case 'multi': {
       if (v === null || v === undefined || v === '') return f.default ?? [];
-      if (!Array.isArray(v)) return bad(`„${f.label}“ muss eine Liste sein`);
+      if (!Array.isArray(v)) return bad(t('„{label}“ muss eine Liste sein', { label }));
       const out: string[] = [];
       for (const x of v.slice(0, f.maxItems ?? 20)) {
-        if (typeof x !== 'string') return bad(`„${f.label}“ muss eine Liste aus Text sein`);
-        if (f.options && !f.options.some(([val]) => val === x)) return bad(`„${f.label}“: „${x.slice(0, 40)}“ ist nicht erlaubt`);
-        if (!f.options && !ID_VALUE.test(x)) return bad(`„${f.label}“ enthält eine ungültige ID`);
+        if (typeof x !== 'string') return bad(t('„{label}“ muss eine Liste aus Text sein', { label }));
+        if (f.options && !f.options.some(([val]) => val === x)) return bad(t('„{label}“: „{value}“ ist nicht erlaubt', { label, value: x.slice(0, 40) }));
+        if (!f.options && !ID_VALUE.test(x)) return bad(t('„{label}“ enthält eine ungültige ID', { label }));
         if (!out.includes(x)) out.push(x);
       }
       return out;
     }
     case 'list': {
       if (v === null || v === undefined || v === '') return f.default ?? [];
-      if (!Array.isArray(v)) return bad(`„${f.label}“ muss eine Liste sein`);
-      if (v.length > (f.maxItems ?? 10)) return bad(`„${f.label}“: höchstens ${f.maxItems ?? 10} Einträge`);
+      if (!Array.isArray(v)) return bad(t('„{label}“ muss eine Liste sein', { label }));
+      if (v.length > (f.maxItems ?? 10)) return bad(t('„{label}“: höchstens {n} Einträge', { label, n: f.maxItems ?? 10 }));
       const out: Record<string, unknown>[] = [];
       for (const [i, entry] of v.entries()) {
-        if (!isObj(entry)) return bad(`„${f.label}“ #${i + 1} ist kein Eintrag`);
-        const r = cleanFields(f.item!, entry, `${where} → ${f.label} #${i + 1}`, strict);
+        if (!isObj(entry)) return bad(t('„{label}“ #{n} ist kein Eintrag', { label, n: i + 1 }));
+        const r = cleanFields(f.item!, entry, `${where} → ${label} #${i + 1}`, strict);
         errors.push(...r.errors);
         out.push(r.config);
       }
@@ -318,9 +357,9 @@ function cleanValue(f: ConfigField, v: unknown, where: string, strict: boolean, 
     }
     case 'json': {
       if (v === null || v === undefined || v === '') return f.default ?? null;
-      if (!isObj(v)) return bad(`„${f.label}“ muss ein Objekt sein`);
+      if (!isObj(v)) return bad(t('„{label}“ muss ein Objekt sein', { label }));
       const text = JSON.stringify(v);
-      if (text.length > (f.maxLength ?? 4000)) return bad(`„${f.label}“ ist zu groß`);
+      if (text.length > (f.maxLength ?? 4000)) return bad(t('„{label}“ ist zu groß', { label }));
       return JSON.parse(text);
     }
   }
@@ -329,7 +368,7 @@ function cleanValue(f: ConfigField, v: unknown, where: string, strict: boolean, 
 function cleanFields(fields: ConfigField[], input: Record<string, unknown>, where: string, strict: boolean): { config: Record<string, unknown>; errors: string[] } {
   const errors: string[] = [];
   const config: Record<string, unknown> = {};
-  if (strict) for (const k of Object.keys(input)) if (!fields.some((f) => f.key === k)) errors.push(`${where}: unbekanntes Feld „${k.slice(0, 40)}“`);
+  if (strict) for (const k of Object.keys(input)) if (!fields.some((f) => f.key === k)) errors.push(`${where}: ${tApp()('unbekanntes Feld „{key}“', { key: k.slice(0, 40) })}`);
   for (const f of fields) {
     const v = cleanValue(f, input[f.key], where, strict, errors);
     if (v !== undefined) config[f.key] = v;
@@ -345,7 +384,7 @@ function cleanFields(fields: ConfigField[], input: Record<string, unknown>, wher
  */
 export function cleanConfig(def: WidgetDef, input: unknown, opts: { strict?: boolean; where?: string } = {}): { config: Record<string, unknown>; errors: string[] } {
   const src = isObj(input) ? input : {};
-  return cleanFields(def.fields, src, opts.where ?? `Widget „${def.label}“`, !!opts.strict);
+  return cleanFields(def.fields, src, opts.where ?? `Widget „${tApp()(def.label)}“`, !!opts.strict);
 }
 
 /** The values of a config that differ from the defaults of the type (for compact prompts and diffs). */

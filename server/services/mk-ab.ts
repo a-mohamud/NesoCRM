@@ -4,6 +4,7 @@ import { sha256 } from '../core/util.js';
 import { MIN_VISITORS, summarize, type VariantResult } from './ab-stats.js';
 import { paidRevenueSql } from './invoice-model.js';
 import { designFields } from './email-design.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * A/B tests for campaigns. Variants differ in subject (always), and optionally in content and sender name. A share of the audience
@@ -107,7 +108,7 @@ export function cleanAbConfig(input: unknown, campaign: { channel: string; subje
   });
   for (const v of variants.slice(1)) {
     const same = (!v.subject || v.subject === (campaign.subject ?? '')) && !v.sender_name && !v.body;
-    if (same) throw bad(`A/B-Test: Variante ${v.key} unterscheidet sich nicht von A – Betreff, Absendername oder Inhalt ändern`);
+    if (same) throw bad(tApp()('A/B-Test: Variante {key} unterscheidet sich nicht von A – Betreff, Absendername oder Inhalt ändern', { key: v.key }));
   }
   return {
     enabled: true,
@@ -136,8 +137,8 @@ export interface Split {
 export function planSplit(ids: string[], keys: string[], percent: number, seed: string): Split {
   const k = keys.length;
   const n = ids.length;
-  if (k < 2) return { test: new Map(), held: [], skipped: 'Weniger als zwei Varianten' };
-  if (n < k * 2) return { test: new Map(), held: [], skipped: `Zu wenige Empfänger für einen Test (mindestens ${k * 2})` };
+  if (k < 2) return { test: new Map(), held: [], skipped: tApp()('Weniger als zwei Varianten') };
+  if (n < k * 2) return { test: new Map(), held: [], skipped: tApp()('Zu wenige Empfänger für einen Test (mindestens {n})', { n: k * 2 }) };
   const shuffled = ids.map((id) => [sha256(`${seed}:${id}`), id] as const).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).map((x) => x[1]);
   const testCount = Math.min(n - 1, Math.max(k, Math.round((n * percent) / 100)));
   const test = new Map<string, string>();
@@ -247,7 +248,7 @@ export interface AbResults {
 const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
 
 /** The results view: numbers, rates, significance against variant A, and where the test stands. */
-export function abResults(app: App, campaign: { id: string; location_id: string; subject: string; ab?: AbConfig | null }): AbResults | null {
+export function abResults(app: App, campaign: { id: string; location_id: string; subject: string; ab?: AbConfig | null }, t: STFn = tApp()): AbResults | null {
   const cfg = campaign.ab;
   if (!cfg?.enabled) return null;
   const live = abStats(app, campaign.id, campaign.location_id);
@@ -275,17 +276,24 @@ export function abResults(app: App, campaign: { id: string; location_id: string;
   });
   const note =
     cfg.phase === 'winner'
-      ? `Gewinner: Variante ${cfg.winner}${cfg.decided_by === 'manual' ? ' (von dir gewählt)' : cfg.decided_by === 'fallback' ? ' (keine Daten – die Originalversion geht raus)' : ''}.`
+      ? t('Gewinner: Variante {key}{how}.', {
+          key: cfg.winner ?? '',
+          how: cfg.decided_by === 'manual' ? ` ${t('(von dir gewählt)')}` : cfg.decided_by === 'fallback' ? ` ${t('(keine Daten – die Originalversion geht raus)')}` : '',
+        })
       : cfg.phase === 'waiting'
-        ? `Testversand abgeschlossen – die Entscheidung fällt ${cfg.decide_at ? `am ${new Date(cfg.decide_at).toLocaleString('de-DE', { timeZone: app.location(campaign.location_id)?.timezone ?? 'Europe/Berlin' })}` : 'nach der Wartezeit'}.`
+        ? t('Testversand abgeschlossen – die Entscheidung fällt {when}.', {
+            when: cfg.decide_at
+              ? t('am {date}', { date: new Date(cfg.decide_at).toLocaleString(t.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: app.location(campaign.location_id)?.timezone ?? 'Europe/Berlin' }) })
+              : t('nach der Wartezeit'),
+          })
         : cfg.skipped
-          ? cfg.skipped
-          : 'Der Test startet mit dem Versand.';
+          ? t(cfg.skipped)
+          : t('Der Test startet mit dem Versand.');
   return {
     enabled: true,
     phase: cfg.phase ?? null,
     metric: cfg.metric,
-    metric_label: METRIC_LABEL[cfg.metric],
+    metric_label: t(METRIC_LABEL[cfg.metric]),
     wait_hours: cfg.wait_hours,
     test_percent: cfg.test_percent,
     decide_at: cfg.decide_at ?? null,

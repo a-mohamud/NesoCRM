@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { hmInTz, weekdayKey, ymdInTz, type DayKey } from '../core/time.js';
+import { defaultLocale, tApp } from '../i18n/index.js';
 
 /**
  * Twilio Voice helpers without the Twilio SDK: webhook signatures, TwiML and business hours.
@@ -82,8 +83,10 @@ export const attrs = (a: Record<string, string | number | boolean | undefined>) 
     .map(([k, v]) => ` ${k}="${xml(v)}"`)
     .join('');
 
-export const VOICE = { voice: 'Polly.Vicki', language: 'de-DE' };
-export const say = (text: string) => (text.trim() ? `<Say${attrs(VOICE)}>${xml(text.trim())}</Say>` : '');
+/** The voice that reads announcements: matches the language the texts are in (British English unless the instance is German). */
+const VOICES = { en: { voice: 'Polly.Amy', language: 'en-GB' }, de: { voice: 'Polly.Vicki', language: 'de-DE' } } as const;
+export const voiceFor = (locale: string = defaultLocale()) => VOICES[locale === 'de' ? 'de' : 'en'];
+export const say = (text: string) => (text.trim() ? `<Say${attrs(voiceFor())}>${xml(text.trim())}</Say>` : '');
 export const twiml = (inner: string) => `<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`;
 export const hangup = (text = '') => twiml(`${say(text)}<Hangup/>`);
 
@@ -121,7 +124,7 @@ export function voicemailTwiml(o: { greeting: string; record: boolean; maxLength
       recordingStatusCallbackMethod: 'POST',
       transcribe: o.transcribe ? true : undefined,
       transcribeCallback: o.transcribe ? o.action : undefined,
-    })}/>${say('Wir haben keine Nachricht erhalten. Auf Wiederhören.')}<Hangup/>`,
+    })}/>${say(tApp()('Wir haben keine Nachricht erhalten. Auf Wiederhören.'))}<Hangup/>`,
   );
 }
 

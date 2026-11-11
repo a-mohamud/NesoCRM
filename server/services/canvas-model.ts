@@ -173,7 +173,15 @@ export const LIMITS = {
 
 // --- cleaning ------------------------------------------------------------------------------
 
-export class SceneError extends Error {}
+/** `key`: the German message id with {placeholders} (the server translates it, server/i18n); `vars`: its values. */
+export class SceneError extends Error {
+  constructor(
+    readonly key: string,
+    readonly vars?: Record<string, string | number>,
+  ) {
+    super(vars ? key.replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m)) : key);
+  }
+}
 
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 export const isId = (v: unknown): v is string => typeof v === 'string' && ID_RE.test(v);
@@ -397,7 +405,7 @@ export const CARD_SIZE: Record<CardKind, [number, number]> = {
  */
 export function createElement(input: Record<string, any>, newId: () => string, opts: { base?: string; seed?: () => number } = {}): CanvasElement {
   const type = oneOf(input?.type, ELEMENT_TYPES);
-  if (!type) throw new SceneError(`Unbekannter Elementtyp: ${String(input?.type ?? '').slice(0, 30) || '(leer)'}`);
+  if (!type) throw new SceneError('Unbekannter Elementtyp: {type}', { type: String(input?.type ?? '').slice(0, 30) || '(–)' });
   const defaults = defaultsFor(type);
   const base: CanvasElement = { id: isId(input.id) ? input.id : newId(), type, x: 0, y: 0, w: 0, h: 0, ...defaults } as CanvasElement;
   if (type === 'card' && input.card?.kind && CARD_SIZE[input.card.kind as CardKind]) {
@@ -509,6 +517,7 @@ export function sortByZ<T extends { z?: number; id: string }>(els: T[]): T[] {
 
 // --- text outline (agents) -----------------------------------------------------------------
 
+/** German labels for the editor (the web translates them with its catalogs). */
 const TYPE_LABELS: Record<ElementType, string> = {
   rect: 'Rechteck',
   ellipse: 'Ellipse',
@@ -532,29 +541,32 @@ const short = (s: string | undefined, n = 80) => {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 
-/** A readable outline of the board for language models: frames with their contents, connections, cards. */
+/**
+ * A readable outline of the board for language models: frames with their contents, connections, cards. Written in
+ * English (it is read by models, not shown to people); element types are the scene's own type names.
+ */
 export function sceneOutline(elements: CanvasElement[], name = 'Board'): string {
   const els = sortByZ(elements.filter((e) => !e.hidden));
   const byId = new Map(els.map((e) => [e.id, e]));
   const label = (e: CanvasElement | undefined) => {
     if (!e) return '?';
-    const t = e.type === 'frame' ? e.name : e.type === 'card' ? `${CARD_LABELS[e.card!.kind]} ${e.card!.id}` : e.type === 'table' ? (e.cells?.[0] ?? []).join(' | ') : e.type === 'chart' ? (e.chart?.title ?? e.chart?.kind) : e.type === 'icon' ? e.icon : e.text;
-    return `${typeLabel(e.type)} "${short(t, 60)}" [${e.id}]`;
+    const t = e.type === 'frame' ? e.name : e.type === 'card' ? `${e.card!.kind} ${e.card!.id}` : e.type === 'table' ? (e.cells?.[0] ?? []).join(' | ') : e.type === 'chart' ? (e.chart?.title ?? e.chart?.kind) : e.type === 'icon' ? e.icon : e.text;
+    return `${e.type} "${short(t, 60)}" [${e.id}]`;
   };
-  const lines: string[] = [`# ${name} – ${els.length} Elemente`];
+  const lines: string[] = [`# ${name} – ${els.length} elements`];
   const line = (e: CanvasElement, indent: string) => {
     if (e.type === 'arrow' || e.type === 'line') {
       const from = e.start ? label(byId.get(e.start.id)) : `(${Math.round(e.x)},${Math.round(e.y)})`;
       const to = e.end ? label(byId.get(e.end.id)) : `(${Math.round(e.x + e.w)},${Math.round(e.y + e.h)})`;
-      lines.push(`${indent}- ${typeLabel(e.type)} [${e.id}]: ${from} → ${to}${e.text ? ` „${short(e.text, 40)}“` : ''}`);
+      lines.push(`${indent}- ${e.type} [${e.id}]: ${from} → ${to}${e.text ? ` "${short(e.text, 40)}"` : ''}`);
       return;
     }
-    lines.push(`${indent}- ${label(e)} @ ${Math.round(e.x)},${Math.round(e.y)} ${Math.round(e.w)}×${Math.round(e.h)}${e.locked ? ' (gesperrt)' : ''}`);
+    lines.push(`${indent}- ${label(e)} @ ${Math.round(e.x)},${Math.round(e.y)} ${Math.round(e.w)}×${Math.round(e.h)}${e.locked ? ' (locked)' : ''}`);
   };
   const frames = els.filter((e) => e.type === 'frame');
   const inFrame = new Set<string>();
   for (const f of frames) {
-    lines.push(`## Rahmen "${short(f.name, 60)}" [${f.id}] ${Math.round(f.w)}×${Math.round(f.h)}${f.preset ? ` (${f.preset})` : ''}`);
+    lines.push(`## Frame "${short(f.name, 60)}" [${f.id}] ${Math.round(f.w)}×${Math.round(f.h)}${f.preset ? ` (${f.preset})` : ''}`);
     for (const e of els) if (e.frameId === f.id && e.type !== 'frame') {
       inFrame.add(e.id);
       line(e, '  ');
@@ -562,9 +574,9 @@ export function sceneOutline(elements: CanvasElement[], name = 'Board'): string 
   }
   const rest = els.filter((e) => e.type !== 'frame' && !inFrame.has(e.id));
   if (rest.length) {
-    if (frames.length) lines.push('## Ohne Rahmen');
+    if (frames.length) lines.push('## Outside frames');
     for (const e of rest.slice(0, 2000)) line(e, '');
-    if (rest.length > 2000) lines.push(`… und ${rest.length - 2000} weitere`);
+    if (rest.length > 2000) lines.push(`… and ${rest.length - 2000} more`);
   }
   return lines.join('\n');
 }

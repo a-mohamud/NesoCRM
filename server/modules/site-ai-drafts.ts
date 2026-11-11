@@ -8,6 +8,7 @@ import { callRoute } from '../services/route-call.js';
 import { askChecked, estimate } from '../services/site-ai-kit.js';
 import { LANGS, TONES, WRITE_KINDS, checkWritten, estimateTokens, writerRules, type WriteKind } from '../services/site-ai.js';
 import { cleanBlocks } from '../services/site-layout.js';
+import { defaultLocale, tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Funnel & Website AI, the safety net around generation: AI-built sites stay DRAFTS (off the public web – /p/<site>, custom
@@ -62,7 +63,8 @@ export const siteAiDraftsModule: Module = {
     const previous = app.services.siteRedirect as ((ctx: Ctx, f: any, segments: string[]) => unknown) | undefined;
     app.services.siteRedirect = (ctx: Ctx, f: any, segments: string[]) => {
       if (f?.id && isDraft(f.id)) {
-        const r = html(messagePage('Noch nicht veröffentlicht', 'Diese Seite wird gerade vorbereitet.'), 404);
+        const t = tLoc(app, f.location_id);
+        const r = html(messagePage(t('Noch nicht veröffentlicht'), t('Diese Seite wird gerade vorbereitet.')), 404);
         r.headers['cache-control'] = 'no-store';
         r.headers['x-robots-tag'] = 'noindex';
         return r;
@@ -83,7 +85,7 @@ export const siteAiDraftsModule: Module = {
       if (!f) throw notFound('Website/Funnel nicht gefunden');
       const r = db.run('UPDATE site_ai_drafts SET published_at = ?, published_by = ? WHERE funnel_id = ? AND published_at IS NULL', now(), ctx.user?.name ?? '', f.id);
       if (!r.changes) throw new HttpError(409, 'Diese Seite ist schon veröffentlicht.');
-      auditLog(app, ctx, ctx.locationId, 'site_ai.publish', `KI-Entwurf „${f.name}“ veröffentlicht`, f.id);
+      auditLog(app, ctx, ctx.locationId, 'site_ai.publish', tApp()('KI-Entwurf „{name}“ veröffentlicht', { name: f.name }), f.id);
       return { ok: true, funnel_id: f.id, published: true };
     });
 
@@ -124,12 +126,12 @@ export const siteAiDraftsModule: Module = {
       const current = typeof b.current === 'string' ? b.current.trim().slice(0, 12_000) : '';
       const instruction = typeof b.instruction === 'string' ? b.instruction.trim().slice(0, 600) : '';
       if (topic.length + instruction.length < 6 && !current) throw bad('Worum soll es gehen? Ein Thema oder ein Satz genügt.');
-      const lang = (LANGS as readonly string[]).includes(b.language) ? b.language : 'de';
+      const lang = (LANGS as readonly string[]).includes(b.language) ? b.language : defaultLocale();
       const address = b.address === 'sie' ? 'sie' : 'du';
       const tone = (TONES as readonly string[]).includes(b.tone) ? b.tone : 'freundlich';
       const length = ['kurz', 'mittel', 'lang'].includes(b.length) ? b.length : 'mittel';
       const rules = writerRules(kind, lang, address, tone);
-      const user = [`Thema: ${topic || '(siehe Text)'}`, kind === 'blog' ? `Länge: ${length === 'kurz' ? 'etwa 400' : length === 'lang' ? 'etwa 1500' : 'etwa 800'} Wörter` : '', instruction && `Auftrag: ${instruction}`, current && `BISHERIGER TEXT (überarbeiten, nicht neu erfinden)\n${current}`].filter(Boolean).join('\n');
+      const user = [`Topic: ${topic || '(see text)'}`, kind === 'blog' ? `Length: about ${length === 'kurz' ? '400' : length === 'lang' ? '1500' : '800'} words` : '', instruction && `Instruction: ${instruction}`, current && `CURRENT TEXT (revise it, do not reinvent it)\n${current}`].filter(Boolean).join('\n');
       const est = estimate(app, ctx.locationId, 'site_writer', ctx.user?.id, estimateTokens({ mode: 'write', systemChars: rules.length, userChars: user.length + (kind === 'blog' ? 4000 : 0) }));
       if (writeLimit(ctx.locationId)) throw new HttpError(429, 'Zu viele KI-Texte in kurzer Zeit – bitte in einigen Minuten erneut versuchen.');
       const ready: string | null = app.services.aiReady?.(ctx.locationId) ?? (app.services.aiRun ? null : 'Der KI-Assistent ist nicht verfügbar.');

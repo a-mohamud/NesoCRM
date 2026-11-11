@@ -20,6 +20,7 @@ import {
 import { invAudit, loadInvoice, recordPayment } from '../services/invoice-flow.js';
 import { openCents } from '../services/invoice-model.js';
 import { composeEmail, deliverEmail, sendToContact } from '../services/messaging.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Gift cards (docs/store.md#gift-cards): cards with a code and a balance ledger, issued by hand (Umsatz → Gutscheine), sold as a
@@ -29,7 +30,7 @@ import { composeEmail, deliverEmail, sendToContact } from '../services/messaging
  * Routes /api/gift-cards (area "payments"); the service app.services.giftCards for the registry and the store.
  */
 
-const SQL = `
+const SQL = /* i18n-ignore */ `
 CREATE TABLE gift_cards (
   id TEXT PRIMARY KEY, location_id TEXT NOT NULL REFERENCES locations(id) ON DELETE CASCADE, code TEXT NOT NULL,
   initial_cents INTEGER NOT NULL DEFAULT 0, balance_cents INTEGER NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'EUR', status TEXT NOT NULL DEFAULT 'active',
@@ -88,16 +89,17 @@ export const giftCardsModule: Module = {
     async function send(c: GiftCard, fromName = ''): Promise<{ status: string; to: string }> {
       const loc = app.location(c.location_id)!;
       const shop = loc.name;
-      const m = giftMailText(c, shop, fromName);
+      const t = tLoc(app, c.location_id);
+      const m = giftMailText(c, shop, fromName, t, loc.timezone || undefined);
       const to = normalizeEmail(c.recipient_email);
       if (to) {
         const mail = composeEmail({ body: m.body, unsubUrl: '', company: loc.name, address: loc.address, unsubscribe: false });
         const r = await deliverEmail(loc, { to, subject: m.subject, html: mail.html, text: mail.text });
-        if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'gift_card.sent', `Gutschein ${maskCode(c.code)} an ${to} geschickt`);
+        if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'gift_card.sent', t('Gutschein {code} an {to} geschickt', { code: maskCode(c.code), to }));
         return { status: r.status, to };
       }
       if (!c.contact_id) throw bad('Weder Empfänger-E-Mail noch Kontakt – an wen soll der Gutschein gehen?');
-      const r = await sendToContact(app, c.location_id, { contactId: c.contact_id, channel: 'email', subject: m.subject, body: m.body, source: 'Gutschein', purpose: 'transactional', ignoreDnd: true, track: false });
+      const r = await sendToContact(app, c.location_id, { contactId: c.contact_id, channel: 'email', subject: m.subject, body: m.body, source: t('Gutschein'), purpose: 'transactional', ignoreDnd: true, track: false });
       return { status: r.status, to: getContact(app, c.location_id, c.contact_id)?.email ?? '' };
     }
 
@@ -109,7 +111,7 @@ export const giftCardsModule: Module = {
       activeIn: (loc: string) => !!db.get(`SELECT 1 AS x FROM gift_cards WHERE location_id = ? AND status = 'active' AND balance_cents > 0 AND (expires_at IS NULL OR expires_at > ?) LIMIT 1`, loc, now()),
       refund: (loc: string, cardId: string, amount: number, refType: string, refId: string) => {
         const c = cardById(app, loc, cardId);
-        if (c && amount > 0) ledger(app, c, 'refund', amount, { type: refType, id: refId, note: 'Erstattung' });
+        if (c && amount > 0) ledger(app, c, 'refund', amount, { type: refType, id: refId, note: tLoc(app, loc)('Erstattung') });
       },
       mask: (loc: string, cardId: string) => {
         const c = cardById(app, loc, cardId);
@@ -131,10 +133,11 @@ export const giftCardsModule: Module = {
         const open = inv && inv.kind === 'invoice' && inv.status !== 'paid' && inv.status !== 'void' ? openCents(inv) : 0;
         const take = Math.min(open, amount);
         const masked = app.services.giftCards.mask(loc, cardId);
-        if (take > 0) recordPayment(app, loc, invoiceId, { amount_cents: take, method: 'Gutschein', note: `${masked} · ${ref}` }, { id: null, name: 'Automatik (Gutschein)' }, { source: 'auto', via: 'Gutschein' });
+        const t = tLoc(app, loc);
+        if (take > 0) recordPayment(app, loc, invoiceId, { amount_cents: take, method: 'Gutschein', note: `${masked} · ${ref}` }, { id: null, name: t('Automatik (Gutschein)') }, { source: 'auto', via: 'Gutschein' });
         if (amount > take) {
           app.services.giftCards.refund(loc, cardId, amount - take, 'invoice', invoiceId);
-          invAudit(app, loc, invoiceId, 'payment.mismatch', `Gutschein ${masked}: ${centsToMoney(amount - take, inv?.currency ?? 'EUR')} passten nicht mehr auf die Rechnung und sind wieder auf dem Gutschein`);
+          invAudit(app, loc, invoiceId, 'payment.mismatch', t('Gutschein {code}: {amount} passten nicht mehr auf die Rechnung und sind wieder auf dem Gutschein', { code: masked, amount: centsToMoney(amount - take, inv?.currency ?? 'EUR') }));
         }
         return take;
       },
@@ -189,13 +192,14 @@ export const giftCardsModule: Module = {
         source: 'manual',
         by: actor(ctx),
       });
-      if (contactId) logActivity(app, ctx.locationId, contactId, 'gift_card.issued', `Gutschein ${maskCode(card.code)} über ${centsToMoney(card.initial_cents, card.currency)}`);
+      if (contactId) logActivity(app, ctx.locationId, contactId, 'gift_card.issued', tLoc(app, ctx.locationId)('Gutschein {code} über {amount}', { code: maskCode(card.code), amount: centsToMoney(card.initial_cents, card.currency) }));
       const sent = b.send ? await send(card).catch((e) => ({ status: 'failed', to: '', error: (e as Error).message })) : null;
       return { ...out(card), sent };
     });
     router.get('/api/gift-cards/:id', 'location', (ctx) => {
       const c = mine(ctx);
-      const lines = db.all('SELECT * FROM gift_card_ledger WHERE card_id = ? ORDER BY created_at, rowid', c.id).map((l: any) => ({ ...l, kind_label: KIND_LABELS[l.kind] ?? l.kind }));
+      const t = tCtx(ctx);
+      const lines = db.all('SELECT * FROM gift_card_ledger WHERE card_id = ? ORDER BY created_at, rowid', c.id).map((l: any) => ({ ...l, kind_label: KIND_LABELS[l.kind] ? t(KIND_LABELS[l.kind]) : l.kind }));
       const holds = db.all('SELECT ref, amount_cents, expires_at, created_at FROM gift_card_holds WHERE card_id = ? AND expires_at > ?', c.id, now());
       return { ...out(c), ledger: lines, holds };
     });
@@ -224,7 +228,7 @@ export const giftCardsModule: Module = {
       const amount = Math.round(num(ctx.body?.amount_cents, 0));
       if (!amount) throw bad('Betrag fehlt (positiv: aufladen, negativ: abziehen)');
       const note = str(ctx.body?.note, 'Grund', { required: true, max: 300 });
-      if (c.balance_cents + amount < 0) throw new HttpError(409, `Höchstens ${centsToMoney(c.balance_cents, c.currency)} lassen sich abziehen`);
+      if (c.balance_cents + amount < 0) throw new HttpError(409, tCtx(ctx)('Höchstens {amount} lassen sich abziehen', { amount: centsToMoney(c.balance_cents, c.currency) }));
       ledger(app, c, 'adjust', amount, { type: 'manual', note, by: actor(ctx) });
       return out(cardById(app, ctx.locationId, c.id)!);
     });

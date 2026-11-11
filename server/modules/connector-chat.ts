@@ -1,5 +1,6 @@
 import type { App, Module } from '../core/app.js';
 import { render } from '../core/template.js';
+import { tApp, tLoc } from '../i18n/index.js';
 import { DISCORD_WEBHOOK, SLACK_WEBHOOK, connectorFetch, discordPayload, registerConnector, slackPayload, type ConnectorConfig } from '../services/connectors.js';
 
 /**
@@ -13,15 +14,16 @@ const LABEL: Record<Service, string> = { slack: 'Slack', discord: 'Discord' };
 
 async function post(app: App, service: Service, url: string, text: string, title?: string): Promise<string> {
   const ok = service === 'slack' ? SLACK_WEBHOOK.test(url) : DISCORD_WEBHOOK.test(url);
-  if (!ok) throw new Error(`${LABEL[service]}-Webhook-URL ungültig`);
+  const t = tApp();
+  if (!ok) throw new Error(t('{service}-Webhook-URL ungültig', { service: LABEL[service] }));
   const body = JSON.stringify(service === 'slack' ? slackPayload(text, title) : discordPayload(text, title, 'HyperLevel'));
   const r = await connectorFetch(app)(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body, timeoutMs: 15_000, maxBytes: 64 * 1024 });
   if (!r.ok) {
     const detail = (await r.text()).slice(0, 120);
-    if (r.status === 404 || r.status === 410) throw new Error(`${LABEL[service]}: Webhook gibt es nicht mehr (${r.status}) – neue URL eintragen`);
-    throw new Error(`${LABEL[service]} antwortet ${r.status}${detail ? `: ${detail}` : ''}`);
+    if (r.status === 404 || r.status === 410) throw new Error(t('{service}: Webhook gibt es nicht mehr ({status}) – neue URL eintragen', { service: LABEL[service], status: r.status }));
+    throw new Error(t('{service} antwortet {status}', { service: LABEL[service], status: r.status }) + (detail ? `: ${detail}` : ''));
   }
-  return `${LABEL[service]}: gesendet`;
+  return t('{service}: gesendet', { service: LABEL[service] });
 }
 
 export const connectorChatModule: Module = {
@@ -46,11 +48,11 @@ export const connectorChatModule: Module = {
         name: `${LABEL[service]} (Webhook)`,
         category: 'Kommunikation',
         icon: 'chat',
-        description: `Benachrichtigungen aus Workflows direkt in einen ${LABEL[service]}-Kanal – ohne Composio, ohne Bot.`,
-        credentials: `${LABEL[service]}-Incoming-Webhook-URL unter Apps → Direkt-Verbindungen (wird verschlüsselt gespeichert).`,
+        description: service === 'slack' ? 'Benachrichtigungen aus Workflows direkt in einen Slack-Kanal – ohne Composio, ohne Bot.' : 'Benachrichtigungen aus Workflows direkt in einen Discord-Kanal – ohne Composio, ohne Bot.',
+        credentials: service === 'slack' ? 'Slack-Incoming-Webhook-URL unter Apps → Direkt-Verbindungen (wird verschlüsselt gespeichert).' : 'Discord-Incoming-Webhook-URL unter Apps → Direkt-Verbindungen (wird verschlüsselt gespeichert).',
         fields: fields(service),
         steps: ['Benachrichtigung an Slack/Discord'],
-        test: (a, cfg) => post(a, service, cfg.webhook_url, '✅ HyperLevel ist verbunden – Benachrichtigungen aus Workflows kommen hier an.'),
+        test: (a, cfg) => post(a, service, cfg.webhook_url, tApp()('✅ HyperLevel ist verbunden – Benachrichtigungen aus Workflows kommen hier an.')),
         guide:
           service === 'slack'
             ? ['In Slack: api.slack.com/apps → App erstellen → „Incoming Webhooks“ aktivieren → „Add New Webhook to Workspace“ → Kanal wählen.', 'Die Webhook-URL unter Apps → Direkt-Verbindungen → Slack eintragen und testen.', 'Im Workflow den Schritt „Benachrichtigung an Slack/Discord“ einfügen.']
@@ -68,7 +70,7 @@ export const connectorChatModule: Module = {
         let url = String(step.webhook_url ?? '').trim();
         if (!url) {
           const cfg: ConnectorConfig | null = app.services.connectorConfig?.(run.location_id, service) ?? null;
-          if (!cfg) throw new Error(`${LABEL[service]} ist in diesem Sub-Account nicht eingerichtet (Apps → Direkt-Verbindungen).`);
+          if (!cfg) throw new Error(tLoc(app, run.location_id)('{name} ist in diesem Sub-Account nicht eingerichtet (Apps → Direkt-Verbindungen).', { name: LABEL[service] }));
           url = cfg.webhook_url;
         }
         return post(app, service, url, text, title);

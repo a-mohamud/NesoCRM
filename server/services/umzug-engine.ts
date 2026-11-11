@@ -6,6 +6,7 @@ import { UmzugError } from './umzug-http.js';
 import { undoExtra } from './umzug-extra.js';
 import { undoSubmissions } from './umzug-booking.js';
 import { Writer, type Stats } from './umzug-write.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * The job runner of the switch-over importers: runs a source's steps page by page, applies each page in one
@@ -117,14 +118,16 @@ const STEP_LIMIT_DRY = 2000;
 /** Runs (or continues) a job; resolves when finished, throws Cancelled when paused. */
 export async function runJob(app: App, job: JobRow, input: JobInput, hooks: { cancelled(): boolean; log(line: string): void; save(p: Progress, warnings: string[]): void }): Promise<Progress> {
   const dry = job.kind === 'dry_run';
+  const t = tLoc(app, job.location_id);
   const p: Progress = { ...emptyProgress(), ...job.progress };
   const warnings = [...(job.warnings ?? [])];
-  const warn = (m: string) => {
+  const warn = (msg: string) => {
+    const m = t(msg); // fixed texts from the sources are catalog keys; built ones arrive translated
     if (warnings.length < 300 && !warnings.includes(m)) warnings.push(m);
   };
   const writer = new Writer({ app, locationId: job.location_id, jobId: job.id, ns: input.ns, source: job.source, mapping: job.mapping ?? {}, options: { ...DEFAULT_OPTIONS, ...(job.options ?? {}) }, dry, stats: p.stats, warn });
   const steps = input.fileSteps ? input.fileSteps(job.parts) : (input.def?.steps(job.parts) ?? []);
-  p.steps = steps.map((s) => ({ id: s.id, label: s.label }));
+  p.steps = steps.map((s) => ({ id: s.id, label: t(s.label) }));
   const http = input.def ? input.def.http(input.creds, input.meta, input.deps) : (null as any);
 
   // The custom fields of the mapping exist before the first contact arrives.
@@ -154,19 +157,20 @@ export async function runJob(app: App, job: JobRow, input: JobInput, hooks: { ca
       limit: dry ? STEP_LIMIT_DRY : Infinity,
       options: { ...DEFAULT_OPTIONS, ...(job.options ?? {}) },
       parts: job.parts,
+      lang: t.locale,
     };
     try {
       let read = 0;
       for await (const batch of step.run(ctx)) {
         if (hooks.cancelled()) throw new Cancelled('Pausiert');
-        applyBatch(app, writer, batch, p, warn, step.id);
+        applyBatch(app, writer, batch, p, warn, step.id, t);
         read += batch.records.length;
         p.processed += batch.records.length;
         if (batch.total !== undefined) p.total = batch.total;
         p.cursor = batch.cursor ?? null;
         hooks.save(p, warnings);
         if (dry && read >= ctx.limit) {
-          warn(`Probelauf: „${step.label}“ wurde nach ${read} Datensätzen angehalten – der echte Import liest alles.`);
+          warn(t('Probelauf: „{step}“ wurde nach {read} Datensätzen angehalten – der echte Import liest alles.', { step: t(step.label), read }));
           break;
         }
         await new Promise<void>((r) => setImmediate(r));
@@ -174,14 +178,15 @@ export async function runJob(app: App, job: JobRow, input: JobInput, hooks: { ca
     } catch (e) {
       if (e instanceof Cancelled) throw e;
       if (e instanceof UmzugError && e.skippable) {
-        p.notes.push(`${step.label}: übersprungen – ${e.message}`);
-        hooks.log(`${step.label}: übersprungen – ${e.message}`);
+        const line = t('{step}: übersprungen – {reason}', { step: t(step.label), reason: t(e.message) });
+        p.notes.push(line);
+        hooks.log(line);
       } else throw e;
     }
     p.done_steps.push(step.id);
     p.cursor = null;
     hooks.save(p, warnings);
-    hooks.log(`${step.label}: fertig`);
+    hooks.log(t('{step}: fertig', { step: t(step.label) }));
   }
   p.step = 'fertig';
   hooks.save(p, warnings);
@@ -189,7 +194,7 @@ export async function runJob(app: App, job: JobRow, input: JobInput, hooks: { ca
 }
 
 /** One page: every record in a savepoint of one transaction. */
-function applyBatch(app: App, writer: Writer, batch: Batch, p: Progress, warn: (m: string) => void, stepId: string) {
+function applyBatch(app: App, writer: Writer, batch: Batch, p: Progress, warn: (m: string) => void, stepId: string, t: STFn) {
   const db = app.db;
   db.tx(() => {
     for (const rec of batch.records as Rec[]) {
@@ -203,7 +208,7 @@ function applyBatch(app: App, writer: Writer, batch: Batch, p: Progress, warn: (
         db.raw.exec('RELEASE umzug_rec');
         const key = FAIL_KEY[rec.kind] ?? `${rec.kind}s`;
         (p.stats[key] ??= { created: 0, updated: 0, skipped: 0, failed: 0 }).failed++;
-        warn(`${stepId}: ${rec.kind} ${'ext' in rec ? String(rec.ext).slice(0, 40) : ''} nicht übernommen – ${(e as Error).message}`.slice(0, 300));
+        warn(t('{step}: {kind} {ext} nicht übernommen – {reason}', { step: stepId, kind: rec.kind, ext: 'ext' in rec ? String(rec.ext).slice(0, 40) : '', reason: t((e as Error).message) }).slice(0, 300));
       }
     }
   });
@@ -250,10 +255,10 @@ export interface ReportLine {
   failed: number;
 }
 
-export function reportLines(stats: Stats): ReportLine[] {
+export function reportLines(stats: Stats, t: STFn = tApp()): ReportLine[] {
   return Object.entries(stats)
     .filter(([, s]) => s.created + s.updated + s.skipped + s.failed > 0)
-    .map(([key, s]) => ({ key, label: STAT_LABELS[key] ?? key, ...s }))
+    .map(([key, s]) => ({ key, label: STAT_LABELS[key] ? t(STAT_LABELS[key]) : key, ...s }))
     .sort((a, b) => Object.keys(STAT_LABELS).indexOf(a.key) - Object.keys(STAT_LABELS).indexOf(b.key));
 }
 
@@ -272,6 +277,7 @@ const chunks = <T>(list: T[], n = 400): T[][] => Array.from({ length: Math.ceil(
 export async function undoJob(app: App, job: JobRow, progress?: (done: number, total: number) => void): Promise<UndoResult> {
   const db = app.db;
   const loc = job.location_id;
+  const t = tLoc(app, loc);
   const res: UndoResult = { deleted: {}, restored: 0, kept: {}, notes: [] };
   const del = (k: string, n = 1) => (res.deleted[k] = (res.deleted[k] ?? 0) + n);
   const keep = (k: string, n = 1) => (res.kept[k] = (res.kept[k] ?? 0) + n);
@@ -321,7 +327,7 @@ export async function undoJob(app: App, job: JobRow, progress?: (done: number, t
   for (const it of of('course')) {
     if (db.get('SELECT 1 FROM course_enrollments WHERE course_id = ?', it.local_id)) {
       keep('course');
-      res.notes.push('Ein Kurs bleibt, weil sich seitdem Personen eingeschrieben haben.');
+      res.notes.push(t('Ein Kurs bleibt, weil sich seitdem Personen eingeschrieben haben.'));
       continue;
     }
     if (db.run('DELETE FROM courses WHERE id = ? AND location_id = ?', it.local_id, loc).changes) (del('course'), gone.push(it.local_id));
@@ -329,7 +335,7 @@ export async function undoJob(app: App, job: JobRow, progress?: (done: number, t
   for (const it of of('pipeline')) {
     if (db.get('SELECT 1 FROM opportunities WHERE pipeline_id = ?', it.local_id)) {
       keep('pipeline');
-      res.notes.push('Eine Pipeline bleibt, weil sie noch Deals enthält, die nicht aus dem Umzug stammen.');
+      res.notes.push(t('Eine Pipeline bleibt, weil sie noch Deals enthält, die nicht aus dem Umzug stammen.'));
       continue;
     }
     if (db.run('DELETE FROM pipelines WHERE id = ? AND location_id = ?', it.local_id, loc).changes) (del('pipeline'), gone.push(it.local_id));
@@ -344,7 +350,7 @@ export async function undoJob(app: App, job: JobRow, progress?: (done: number, t
     if (!w) continue;
     if (w.status !== 'draft') {
       keep('workflow');
-      res.notes.push('Eine Automation bleibt, weil sie inzwischen aktiviert wurde.');
+      res.notes.push(t('Eine Automation bleibt, weil sie inzwischen aktiviert wurde.'));
       continue;
     }
     db.run('DELETE FROM workflows WHERE id = ? AND location_id = ?', it.local_id, loc);
@@ -377,7 +383,7 @@ export async function undoJob(app: App, job: JobRow, progress?: (done: number, t
     });
     for (const _ of batch) await tick();
   }
-  if (res.kept.contacts) res.notes.push(`${res.kept.contacts} Kontakte bleiben, weil es seitdem Nachrichten, Rechnungen, Termine oder Formular-Antworten gibt.`);
+  if (res.kept.contacts) res.notes.push(t.plural(res.kept.contacts, { one: '{n} Kontakt bleibt, weil es seitdem Nachrichten, Rechnungen, Termine oder Formular-Antworten gibt.', other: '{n} Kontakte bleiben, weil es seitdem Nachrichten, Rechnungen, Termine oder Formular-Antworten gibt.' }));
   for (const it of of('contact', 0)) {
     if (!it.before) continue;
     const b = JSON.parse(it.before);

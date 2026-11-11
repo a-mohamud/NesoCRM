@@ -7,6 +7,7 @@ import { logActivity, upsertContact } from './contacts.js';
 import { notifyTeam, sendToContact } from './messaging.js';
 import { MIN_CENTS, bookInvoicePayment, type PaySession } from './pay-registry.js';
 import { itemsForGross } from './teamcal-model.js';
+import { tLoc } from '../i18n/index.js';
 import { HOLD_MINUTES, cleanPicks, maxPick, saleState, ticketCode, SALE_LABEL, type TicketEventRow, type TicketTypeRow } from './ticket-events-model.js';
 
 /**
@@ -34,10 +35,11 @@ export function takenByType(app: App, eventId: string, at = now()): Map<string, 
 /** The types with what is left and whether they are on sale – for the public page, the admin and the report. */
 export function typesWithState(app: App, ev: TicketEventRow, at = new Date()) {
   const taken = takenByType(app, ev.id, at.toISOString());
+  const tl = tLoc(app, ev.location_id);
   return typesOf(app, ev.id).map((t) => {
     const n = taken.get(t.id) ?? 0;
     const s = saleState(t, n, at, ev.starts_at);
-    return { ...t, taken: n, left: s.left, state: s.state, state_label: SALE_LABEL[s.state], max_pick: s.state === 'on_sale' ? maxPick(t, s.left) : 0 };
+    return { ...t, taken: n, left: s.left, state: s.state, state_label: tl(SALE_LABEL[s.state]), max_pick: s.state === 'on_sale' ? maxPick(t, s.left) : 0 };
   });
 }
 
@@ -112,18 +114,19 @@ export function placeOrder(app: App, ev: TicketEventRow, body: Record<string, an
     const at = new Date();
     const types = new Map(typesWithState(app, ev, at).map((t) => [t.id, t]));
     let total = 0;
+    const tl = tLoc(app, ev.location_id);
     for (const p of picks) {
       const t = types.get(p.type_id);
       if (!t) throw bad('Unbekannte Ticketart');
       if (t.state !== 'on_sale') throw new HttpError(409, `„${t.name}“: ${t.state_label}`);
-      if (t.left !== null && p.qty > t.left) throw new HttpError(409, `„${t.name}“: nur noch ${t.left} verfügbar`);
-      if (p.qty > t.max_pick) throw new HttpError(409, `„${t.name}“: höchstens ${t.max_pick} je Bestellung`);
+      if (t.left !== null && p.qty > t.left) throw new HttpError(409, tl('„{name}“: nur noch {n} verfügbar', { name: t.name, n: t.left }));
+      if (p.qty > t.max_pick) throw new HttpError(409, tl('„{name}“: höchstens {n} je Bestellung', { name: t.name, n: t.max_pick }));
       total += p.qty * t.price_cents;
     }
     if (total > 0 && total < MIN_CENTS) throw bad('Der Betrag ist zu klein für eine Online-Zahlung');
     if (total > 0 && !(app.services.payRegistry?.ready(ev.location_id)?.length > 0)) throw new HttpError(409, 'Die Online-Zahlung ist für dieses Event noch nicht eingerichtet (Einstellungen → Stripe & Zahlungen)');
     const [first, ...rest] = buyer.name.split(/\s+/);
-    const contact = upsertContact(app, ev.location_id, { first_name: first, last_name: rest.join(' '), email: buyer.email }, { source: `Event-Tickets: ${ev.name}`, publicInput: true }).contact;
+    const contact = upsertContact(app, ev.location_id, { first_name: first, last_name: rest.join(' '), email: buyer.email }, { source: tl('Event-Tickets: {name}', { name: ev.name }), publicInput: true }).contact;
     const t0 = now();
     const free = total === 0;
     const order: OrderRow = {
@@ -220,8 +223,9 @@ export async function settleOrder(app: App, s: PaySession, received: number) {
   const ev = eventOf(app, o.location_id, o.event_id);
   if (!ev) return;
   const money = (c: number) => centsToMoney(c, o.currency);
+  const tl = tLoc(app, o.location_id);
   if (received + s.gift_cents < o.total_cents) {
-    void notifyTeam(app, o.location_id, `Tickets „${ev.name}“: Betrag passt nicht`, `Für die Bestellung von ${o.name} <${o.email}> kamen ${money(received + s.gift_cents)} statt ${money(o.total_cents)} an. Bitte prüfen.`).catch(() => undefined);
+    void notifyTeam(app, o.location_id, tl('Tickets „{event}“: Betrag passt nicht', { event: ev.name }), tl('Für die Bestellung von {name} <{email}> kamen {received} statt {total} an. Bitte prüfen.', { name: o.name, email: o.email, received: money(received + s.gift_cents), total: money(o.total_cents) })).catch(() => undefined);
     return;
   }
   const ok = app.db.tx(() => {
@@ -240,11 +244,11 @@ export async function settleOrder(app: App, s: PaySession, received: number) {
   });
   if (!ok) {
     app.db.run(`UPDATE tix_orders SET status = 'refunded', pay_session_id = ?, updated_at = ? WHERE id = ?`, s.id, now(), o.id);
-    let how = 'automatisch erstattet';
+    let how = tl('automatisch erstattet');
     await Promise.resolve(app.services.payRegistry?.refundAll(s.id)).catch((e: Error) => {
-      how = `NICHT automatisch erstattet (${e.message}) – bitte von Hand erstatten`;
+      how = tl('NICHT automatisch erstattet ({error}) – bitte von Hand erstatten', { error: e.message });
     });
-    void notifyTeam(app, o.location_id, `Tickets „${ev.name}“: Zahlung nach Ablauf`, `${o.name} <${o.email}> hat nach Ablauf der Reservierung bezahlt (${money(o.total_cents)}), die Tickets waren inzwischen vergeben. Der Betrag wurde ${how}.`).catch(() => undefined);
+    void notifyTeam(app, o.location_id, tl('Tickets „{event}“: Zahlung nach Ablauf', { event: ev.name }), tl('{name} <{email}> hat nach Ablauf der Reservierung bezahlt ({total}), die Tickets waren inzwischen vergeben. Der Betrag wurde {how}.', { name: o.name, email: o.email, total: money(o.total_cents), how })).catch(() => undefined);
     return;
   }
   const via = app.services.payRegistry?.label(s.provider) ?? s.provider;
@@ -255,7 +259,7 @@ export async function settleOrder(app: App, s: PaySession, received: number) {
     app.db.run('UPDATE tix_orders SET invoice_id = ? WHERE id = ?', inv, o.id);
   } catch (e) {
     console.error('[tickets] invoice', (e as Error).message);
-    void notifyTeam(app, o.location_id, `Tickets „${ev.name}“: Rechnung nicht erstellt`, `Die Bestellung von ${o.name} ist bezahlt, die Rechnung konnte nicht erstellt werden: ${(e as Error).message}`).catch(() => undefined);
+    void notifyTeam(app, o.location_id, tl('Tickets „{event}“: Rechnung nicht erstellt', { event: ev.name }), tl('Die Bestellung von {name} ist bezahlt, die Rechnung konnte nicht erstellt werden: {error}', { name: o.name, error: (e as Error).message })).catch(() => undefined);
   }
   afterConfirmed(app, ev, { ...o, status: 'paid' });
 }
@@ -265,20 +269,22 @@ function paidInvoice(app: App, ev: TicketEventRow, o: OrderRow, via: string): st
   const rate = ev.tax_rate ?? (s.small_business ? 0 : Number(s.tax_rate ?? 19));
   const tz = app.location(o.location_id)?.timezone || 'Europe/Berlin';
   const when = formatInTz(ev.starts_at, tz);
-  const items = linesOf(app, o).flatMap((l) => itemsForGross({ name: `Ticket ${l.name} – ${ev.name}`, description: `${l.qty} × ${centsToMoney(l.unit, o.currency)} · Event am ${when}` }, l.qty * l.unit, rate));
-  return createInvoice(app, o.location_id, { kind: 'invoice', contact_id: o.contact_id, title: `Tickets: ${ev.name}`, items, currency: o.currency, notes: `Online bezahlt über ${via}. Deine Tickets: ${orderUrl(app, o)}` }).id;
+  const tl = tLoc(app, o.location_id);
+  const items = linesOf(app, o).flatMap((l) => itemsForGross({ name: `Ticket ${l.name} – ${ev.name}`, description: `${l.qty} × ${centsToMoney(l.unit, o.currency)} · ${tl('Event am {when}', { when })}` }, l.qty * l.unit, rate));
+  return createInvoice(app, o.location_id, { kind: 'invoice', contact_id: o.contact_id, title: tl('Tickets: {event}', { event: ev.name }), items, currency: o.currency, notes: tl('Online bezahlt über {via}. Deine Tickets: {url}', { via, url: orderUrl(app, o) }) }).id;
 }
 
 /** Confirmation: activity on the contact and an e-mail with the link to the tickets (each with its own QR code). */
 export function afterConfirmed(app: App, ev: TicketEventRow, o: OrderRow) {
   const tickets = ticketsOfOrder(app, o.id);
   const tz = app.location(o.location_id)?.timezone || 'Europe/Berlin';
-  if (o.contact_id) logActivity(app, o.location_id, o.contact_id, 'tickets.ordered', `${tickets.length} Ticket(s) für „${ev.name}“${o.total_cents ? ` (${centsToMoney(o.total_cents, o.currency)})` : ''}`);
+  const tl = tLoc(app, o.location_id);
+  if (o.contact_id) logActivity(app, o.location_id, o.contact_id, 'tickets.ordered', `${tl.plural(tickets.length, { one: '{n} Ticket für „{event}“', other: '{n} Tickets für „{event}“' }, { event: ev.name })}${o.total_cents ? ` (${centsToMoney(o.total_cents, o.currency)})` : ''}`);
   app.events.emit(o.location_id, 'tickets.ordered', { contactId: o.contact_id ?? undefined, eventId: ev.id, orderId: o.id, count: tickets.length, amount_cents: o.total_cents, currency: o.currency });
   if (!o.contact_id) return;
-  const list = tickets.map((t) => `- ${t.type_name}: ${ticketUrl(app, t.token)} (Code ${t.code})`).join('\n');
-  const body = `Hallo ${o.name.split(/\s+/)[0]},\n\ndeine Tickets für „${ev.name}“ am ${formatInTz(ev.starts_at, tz)} Uhr${ev.venue ? ` (${ev.venue})` : ''}:\n\n${list}\n\nAlle Tickets mit QR-Code: ${orderUrl(app, o)}\nZeig beim Einlass den QR-Code oder den Code.\n\nViele Grüße\n${app.location(o.location_id)?.name ?? ''}`;
-  void sendToContact(app, o.location_id, { contactId: o.contact_id, channel: 'email', subject: `Deine Tickets: ${ev.name}`, body, source: 'Event-Tickets', purpose: 'transactional', ignoreDnd: true }).catch((e) => console.error('[tickets] mail', (e as Error).message));
+  const list = tickets.map((t) => `- ${t.type_name}: ${ticketUrl(app, t.token)} (${tl('Code {code}', { code: t.code })})`).join('\n');
+  const body = tl(ev.venue ? 'Hallo {name},\n\ndeine Tickets für „{event}“ am {when} Uhr ({venue}):\n\n{list}\n\nAlle Tickets mit QR-Code: {url}\nZeig beim Einlass den QR-Code oder den Code.\n\nViele Grüße\n{location}' : 'Hallo {name},\n\ndeine Tickets für „{event}“ am {when} Uhr:\n\n{list}\n\nAlle Tickets mit QR-Code: {url}\nZeig beim Einlass den QR-Code oder den Code.\n\nViele Grüße\n{location}', { name: o.name.split(/\s+/)[0], event: ev.name, when: formatInTz(ev.starts_at, tz), venue: ev.venue ?? '', list, url: orderUrl(app, o), location: app.location(o.location_id)?.name ?? '' });
+  void sendToContact(app, o.location_id, { contactId: o.contact_id, channel: 'email', subject: tl('Deine Tickets: {event}', { event: ev.name }), body, source: tl('Event-Tickets'), purpose: 'transactional', ignoreDnd: true }).catch((e) => console.error('[tickets] mail', (e as Error).message));
 }
 
 /** Code (10 characters), full token or ticket link → the ticket of this sub-account. */
@@ -305,8 +311,8 @@ export function checkIn(app: App, locationId: string, code: string, userId: stri
   const t = findTicket(app, locationId, code);
   if (!t) throw notFound('Kein Ticket mit diesem Code');
   const out = { kind: 'event_ticket', ticket_id: t.id, code: t.code, name: t.holder, email: t.email, event: t.event_name, event_id: t.event_id, type: t.type_name, type_id: t.type_id, start_at: t.starts_at };
-  if (t.status === 'held') throw new HttpError(409, `Nicht bezahlt: ${t.holder} – ${t.type_name}`);
-  if (t.status !== 'valid') throw new HttpError(409, `Storniert: ${t.holder} – ${t.type_name}`);
+  if (t.status === 'held') throw new HttpError(409, tLoc(app, locationId)('Nicht bezahlt: {holder} – {type}', { holder: t.holder, type: t.type_name }));
+  if (t.status !== 'valid') throw new HttpError(409, tLoc(app, locationId)('Storniert: {holder} – {type}', { holder: t.holder, type: t.type_name }));
   if (t.checked_in_at) return { ...out, status: 'already', checked_in_at: t.checked_in_at };
   const at = now();
   if (!app.db.run('UPDATE tix_tickets SET checked_in_at = ?, checked_in_by = ? WHERE id = ? AND checked_in_at IS NULL', at, userId, t.id).changes) {

@@ -3,6 +3,7 @@ import { id, normalizeEmail, now, slugify, token } from '../core/util.js';
 import type { RAppointment, RCalendar, RSubmission } from './umzug-core.js';
 import type { ExtraEnv, Host, UndoHelpers } from './umzug-extra.js';
 import { clip } from './umzug-text.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Calendars, appointments and form answers of the switch-over importers (Calendly, Typeform), written straight into the tables:
@@ -51,6 +52,7 @@ export class BookingWriter {
   // --- calendars ------------------------------------------------------------------------------------------------------
 
   calendar(rec: RCalendar) {
+    const t = tLoc(this.env.app, this.loc);
     const known = this.host.getId('calendar', rec.ext);
     if (this.env.dry) {
       this.host.stat('calendars', known ? 'updated' : 'created');
@@ -58,7 +60,7 @@ export class BookingWriter {
     }
     if (!this.has('calendars')) {
       this.host.stat('calendars', 'skipped');
-      return void this.tell('nocal', `Kalender „${clip(rec.name, 60)}“ nicht angelegt: die Terminbuchung ist in dieser Installation nicht verfügbar`);
+      return void this.tell('nocal', t('Kalender „{name}“ nicht angelegt: die Terminbuchung ist in dieser Installation nicht verfügbar', { name: clip(rec.name, 60) }));
     }
     const availability: Record<string, [string, string][]> = {};
     for (const d of DAYS) {
@@ -69,7 +71,7 @@ export class BookingWriter {
     const overrides = Object.fromEntries(Object.entries(rec.date_overrides ?? {}).filter(([d, w]) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= today && Array.isArray(w)).slice(0, 200).map(([d, w]) => [d, w.filter((x) => hhmm.test(x[0]) && hhmm.test(x[1]) && x[0] < x[1])]));
     const duration = Math.max(5, Math.min(1440, Math.round(rec.duration) || 30));
     const color = rec.color && /^#[0-9a-f]{6}$/i.test(rec.color) ? rec.color : '#2563eb';
-    const row = { name: clip(rec.name, 120).trim() || 'Termin', description: clip(rec.description, 2000), duration, availability: JSON.stringify(availability), timezone: rec.timezone || 'Europe/Berlin', color };
+    const row = { name: clip(rec.name, 120).trim() || t('Termin'), description: clip(rec.description, 2000), duration, availability: JSON.stringify(availability), timezone: rec.timezone || 'Europe/Berlin', color };
     const have = known ? this.db.get<any>('SELECT * FROM calendars WHERE id = ? AND location_id = ?', known.local, this.loc) : undefined;
     const print = (r: any) => fp(r.name, r.description, r.duration, r.availability, r.timezone, r.color, r.active);
     if (have) {
@@ -96,7 +98,7 @@ export class BookingWriter {
       min_notice: 4,
       max_days: 60,
       active: 0,
-      settings: { confirmation_email: false, notify_team: false, reminder_hours: 0, meeting_location: clip(rec.location, 300), tags: [], ask_phone: true, ask_notes: true, ...(Object.keys(overrides).length ? { date_overrides: overrides } : {}), umzug: { source: this.env.source, note: `Aus ${this.env.label} übernommen – prüfen und aktivieren` } },
+      settings: { confirmation_email: false, notify_team: false, reminder_hours: 0, meeting_location: clip(rec.location, 300), tags: [], ask_phone: true, ask_notes: true, ...(Object.keys(overrides).length ? { date_overrides: overrides } : {}), umzug: { source: this.env.source, note: t('Aus {source} übernommen – prüfen und aktivieren', { source: this.env.label }) } },
       external_id: null,
       created_at: now(),
       ...row,
@@ -109,6 +111,7 @@ export class BookingWriter {
   // --- appointments ---------------------------------------------------------------------------------------------------
 
   appointment(rec: RAppointment) {
+    const t = tLoc(this.env.app, this.loc);
     const known = this.host.getId('appointment', rec.ext);
     if (this.env.dry) {
       this.host.stat('appointments', known ? 'updated' : 'created');
@@ -117,7 +120,7 @@ export class BookingWriter {
     const cal = this.host.getId('calendar', rec.calendar);
     if (!this.has('calendars') || !cal || cal.local.startsWith('dry:') || !this.db.get('SELECT 1 FROM calendars WHERE id = ? AND location_id = ?', cal.local, this.loc)) {
       this.host.stat('appointments', 'skipped');
-      return void this.tell(`nocal:${rec.calendar}`, `Termine übersprungen: der Kalender „${clip(rec.calendar, 40)}“ ist nicht angelegt`);
+      return void this.tell(`nocal:${rec.calendar}`, t('Termine übersprungen: der Kalender „{name}“ ist nicht angelegt', { name: clip(rec.calendar, 40) }));
     }
     const start = iso(rec.start_at);
     const end = iso(rec.end_at) ?? start;
@@ -126,7 +129,7 @@ export class BookingWriter {
       return;
     }
     const contact = this.contact(rec.contact, rec.contact_hint?.email);
-    const row = { calendar_id: cal.local, contact_id: contact, title: clip(rec.title, 300).trim() || 'Termin', start_at: start, end_at: end, status: rec.status === 'cancelled' ? 'cancelled' : 'confirmed', notes: clip(rec.notes, 5000) };
+    const row = { calendar_id: cal.local, contact_id: contact, title: clip(rec.title, 300).trim() || t('Termin'), start_at: start, end_at: end, status: rec.status === 'cancelled' ? 'cancelled' : 'confirmed', notes: clip(rec.notes, 5000) };
     const print = (r: any) => fp(r.calendar_id, r.contact_id, r.title, r.start_at, r.end_at, r.status, r.notes);
     const have = known ? this.db.get<any>('SELECT * FROM appointments WHERE id = ? AND location_id = ?', known.local, this.loc) : undefined;
     if (have) {
@@ -149,6 +152,7 @@ export class BookingWriter {
   // --- form answers ---------------------------------------------------------------------------------------------------
 
   submission(rec: RSubmission) {
+    const t = tLoc(this.env.app, this.loc);
     const known = this.host.getId('submission', rec.ext);
     if (this.env.dry) {
       this.host.stat('submissions', known ? 'updated' : 'created');
@@ -157,7 +161,7 @@ export class BookingWriter {
     const form = this.host.getId('form', rec.form);
     if (!this.has('forms') || !form || form.local.startsWith('dry:') || !this.db.get('SELECT 1 FROM forms WHERE id = ? AND location_id = ?', form.local, this.loc)) {
       this.host.stat('submissions', 'skipped');
-      return void this.tell(`noform:${rec.form}`, `Antworten übersprungen: das Formular „${clip(rec.form, 40)}“ ist nicht angelegt (Teil „Formulare“ mitnehmen)`);
+      return void this.tell(`noform:${rec.form}`, t('Antworten übersprungen: das Formular „{name}“ ist nicht angelegt (Teil „Formulare“ mitnehmen)', { name: clip(rec.form, 40) }));
     }
     const have = known ? this.db.get<{ id: string; contact_id: string | null }>('SELECT id, contact_id FROM form_submissions WHERE id = ? AND location_id = ?', known.local, this.loc) : undefined;
     if (have) {
@@ -171,7 +175,7 @@ export class BookingWriter {
     const answers: Record<string, string | string[]> = {};
     for (const [q, a] of Object.entries(rec.answers)) {
       const v = Array.isArray(a) ? a.map((x) => clip(x, 10_000)) : clip(a, 10_000);
-      if (v !== '' && !(Array.isArray(v) && !v.length)) answers[clip(q, 300) || 'Antwort'] = v;
+      if (v !== '' && !(Array.isArray(v) && !v.length)) answers[clip(q, 300) || t('Antwort')] = v;
     }
     const sid = id();
     this.db.insert('form_submissions', { id: sid, location_id: this.loc, form_id: form.local, contact_id: this.contact(rec.contact, rec.contact_hint?.email), data: answers, meta: { ...rec.meta, import: this.env.label }, created_at: iso(rec.at) ?? now() });

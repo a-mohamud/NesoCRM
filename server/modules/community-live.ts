@@ -8,6 +8,7 @@ import { createPost, notify, type Author } from '../services/community-actions.j
 import { OPEN_BEFORE_MIN, disableLive, enableLive, extOfEvent, jitsiBase, jitsiUrl, livePath, mustEvent, phaseOf, recordAttendance } from '../services/community-live.js';
 import { communityUi, kitOf } from '../services/community-ui.js';
 import { nameOf } from '../services/community-dm.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Live calls: switch a calendar event to a Jitsi room, the page where members join (attendance, points, workflow event), a
@@ -92,9 +93,10 @@ export const communityLiveModule: Module = {
       if (!b.video_url && !b.video_upload) throw bad('Bitte einen Video-Link (YouTube, Vimeo, Loom oder MP4) oder einen hochgeladenen Upload angeben');
       const ch = b.channel_id ? db.get<any>('SELECT * FROM community_channels WHERE id = ? AND group_id = ?', String(b.channel_id), g.id) : db.get<any>('SELECT * FROM community_channels WHERE group_id = ? AND admin_only = 0 ORDER BY position, created_at', g.id);
       if (!ch) throw bad('Kanal nicht gefunden');
-      const author: Author = { kind: 'team', userId: ctx.user?.id ?? (ctx.via ?? 'api'), name: ctx.user?.name || 'Team' };
+      const t = tLoc(app, ctx.locationId);
+      const author: Author = { kind: 'team', userId: ctx.user?.id ?? (ctx.via ?? 'api'), name: ctx.user?.name || t('Team') };
       const prepared = ui.postExtras.map((h) => h.fromApi?.({ video_url: b.video_url, video_upload: b.video_upload }, g));
-      const post = createPost(app, g, ch, author, { title: b.title || `Aufzeichnung: ${e.title}`, body: b.body ?? `Hier ist die Aufzeichnung von „${e.title}“ zum Nachschauen.` }, { notifyAll: b.notify !== false });
+      const post = createPost(app, g, ch, author, { title: b.title || t('Aufzeichnung: {title}', { title: e.title }), body: b.body ?? t('Hier ist die Aufzeichnung von „{title}“ zum Nachschauen.', { title: e.title }) }, { notifyAll: b.notify !== false });
       ui.postExtras.forEach((h, i) => h.attach?.(post, g, prepared[i], 'team'));
       db.run(
         `INSERT INTO community_event_ext (event_id, group_id, location_id, live, room, recording_post_id) VALUES (?, ?, ?, 0, '', ?)
@@ -116,12 +118,14 @@ export const communityLiveModule: Module = {
         const g = db.get<any>('SELECT * FROM community_groups WHERE id = ? AND status = ?', x.group_id, 'active');
         if (!e || !g) continue;
         const members = db.all<{ contact_id: string }>('SELECT contact_id FROM community_members WHERE group_id = ? AND banned_at IS NULL', g.id).map((r) => r.contact_id);
-        notify(app, g, members, { kind: 'event', text: `Gleich geht’s los: ${e.title}`, actor: 'Live-Call' });
+        notify(app, g, members, { kind: 'event', text: tLoc(app, g.location_id)('Gleich geht’s los: {title}', { title: e.title }), actor: tLoc(app, g.location_id)('Live-Call') });
       }
     });
 
     // --- member pages ---------------------------------------------------------------------------------------------------------------
-    const whenText = (p: any, iso: string) => formatInTz(iso, kitOf(app).tz(p), { year: undefined });
+    const fmt = (p: any, iso: string, opts: Intl.DateTimeFormatOptions) =>
+      tLoc(app, p.locationId).locale === 'de' ? formatInTz(iso, kitOf(app).tz(p), opts) : new Intl.DateTimeFormat('en-GB', { timeZone: kitOf(app).tz(p), weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', ...opts }).format(new Date(iso));
+    const whenText = (p: any, iso: string) => fmt(p, iso, { year: undefined });
     const livePage = (ctx: any) =>
       kitOf(app).withGroup(ctx, (p, m, g) => {
         const kit = kitOf(app);
@@ -131,8 +135,9 @@ export const communityLiveModule: Module = {
         const ph = phaseOf(e);
         const base = `${kit.gHref(p, g)}/live/${encodeURIComponent(e.id)}`;
         const joined = !!db.get('SELECT 1 FROM community_event_attendance WHERE event_id = ? AND contact_id = ?', e.id, m.contact.id);
-        const head = `${kit.groupHead(p, g)}${kit.groupTabs(p, m, g, 'events')}<div class="crumb"><a href="${kit.gHref(p, g)}/events">Kalender</a></div>`;
-        const ics = `<a class="cm-btn" href="${kit.gHref(p, g)}/events/${encodeURIComponent(e.id)}/ics">In meinen Kalender</a>`;
+        const t = tLoc(app, p.locationId);
+        const head = `${kit.groupHead(p, g)}${kit.groupTabs(p, m, g, 'events')}<div class="crumb"><a href="${kit.gHref(p, g)}/events">${t('Kalender')}</a></div>`;
+        const ics = `<a class="cm-btn" href="${kit.gHref(p, g)}/events/${encodeURIComponent(e.id)}/ics">${t('In meinen Kalender')}</a>`;
         if (ph === 'on' && ctx.query.get('in') === '1' && joined) {
           const origin = jitsiBase(app, g);
           const name = nameOf(app, p.locationId, m.contact.id);
@@ -142,8 +147,8 @@ export const communityLiveModule: Module = {
           return kit.frame(
             p,
             m,
-            `${e.title} · Live`,
-            `${head}<h1 style="margin:0 0 10px"><span class="cm-pulse"></span>${escapeHtml(e.title)}</h1><iframe class="cm-live" src="${escapeHtml(url)}" allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write" allowfullscreen referrerpolicy="no-referrer" title="Live-Call ${escapeHtml(e.title)}"></iframe><p class="muted small" style="margin:10px 0 0">Läuft das Bild nicht (z. B. auf dem Handy)? <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Call in neuem Tab öffnen</a>. Videodaten laufen über ${escapeHtml(new URL(origin).host)}.</p>`,
+            `${e.title} · ${t('Live')}`,
+            `${head}<h1 style="margin:0 0 10px"><span class="cm-pulse"></span>${escapeHtml(e.title)}</h1><iframe class="cm-live" src="${escapeHtml(url)}" allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write" allowfullscreen referrerpolicy="no-referrer" title="${t('Live-Call {title}', { title: escapeHtml(e.title) })}"></iframe><p class="muted small" style="margin:10px 0 0">${t('Läuft das Bild nicht (z. B. auf dem Handy)?')} <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${t('Call in neuem Tab öffnen')}</a>. ${t('Videodaten laufen über {host}.', { host: escapeHtml(new URL(origin).host) })}</p>`,
             200,
             { frameSrc: [origin], permissions: policy },
           );
@@ -151,17 +156,17 @@ export const communityLiveModule: Module = {
         const rec = x.recording_post_id ? db.get<any>(`SELECT id, title FROM community_posts WHERE id = ? AND status = 'visible'`, x.recording_post_id) : undefined;
         let body: string;
         if (ph === 'on') {
-          body = `<p><span class="cm-pulse"></span><strong>Der Call läuft.</strong></p><form method="post" action="${base}/join">${kit.tokenInput(m)}<button class="btn" style="font-size:17px;padding:14px 28px">Jetzt beitreten</button></form><p class="muted small" style="margin:12px 0 0">Beim Beitreten wird der Raum auf ${escapeHtml(new URL(jitsiBase(app, g)).host)} geladen. Kamera und Mikrofon fragt dein Browser erst dort ab.</p>`;
+          body = `<p><span class="cm-pulse"></span><strong>${t('Der Call läuft.')}</strong></p><form method="post" action="${base}/join">${kit.tokenInput(m)}<button class="btn" style="font-size:17px;padding:14px 28px">${t('Jetzt beitreten')}</button></form><p class="muted small" style="margin:12px 0 0">${t('Beim Beitreten wird der Raum auf {host} geladen. Kamera und Mikrofon fragt dein Browser erst dort ab.', { host: escapeHtml(new URL(jitsiBase(app, g)).host) })}</p>`;
         } else if (ph === 'before') {
-          body = `<p>Der Raum öffnet ${OPEN_BEFORE_MIN} Minuten vor dem Start.</p><p>${ics}</p>`;
+          body = `<p>${t('Der Raum öffnet {n} Minuten vor dem Start.', { n: OPEN_BEFORE_MIN })}</p><p>${ics}</p>`;
         } else {
-          body = rec ? `<p><strong>Die Aufzeichnung ist da.</strong></p><p><a class="btn" href="${kit.postHref(p, g, rec.id)}">Aufzeichnung ansehen</a></p>` : '<p>Der Call ist vorbei. Eine Aufzeichnung gibt es (noch) nicht.</p>';
+          body = rec ? `<p><strong>${t('Die Aufzeichnung ist da.')}</strong></p><p><a class="btn" href="${kit.postHref(p, g, rec.id)}">${t('Aufzeichnung ansehen')}</a></p>` : `<p>${t('Der Call ist vorbei. Eine Aufzeichnung gibt es (noch) nicht.')}</p>`;
         }
         return kit.frame(
           p,
           m,
-          `${e.title} · Live-Call`,
-          `${head}<div class="cm-box cm-livecard"><div class="muted small">Live-Call</div><h1>${escapeHtml(e.title)}</h1><div class="muted">${escapeHtml(whenText(p, e.starts_at))} Uhr</div>${e.description ? `<div class="prose small" style="margin:12px auto;max-width:560px;text-align:left">${kit.renderText(p, e.description, false)}</div>` : ''}${body}</div>`,
+          `${e.title} · ${t('Live-Call')}`,
+          `${head}<div class="cm-box cm-livecard"><div class="muted small">${t('Live-Call')}</div><h1>${escapeHtml(e.title)}</h1><div class="muted">${escapeHtml(t('{time} Uhr', { time: whenText(p, e.starts_at) }))}</div>${e.description ? `<div class="prose small" style="margin:12px auto;max-width:560px;text-align:left">${kit.renderText(p, e.description, false)}</div>` : ''}${body}</div>`,
         );
       });
     router.get('/portal/:p/community/g/:group/live/:eid', 'public', livePage);
@@ -185,7 +190,8 @@ export const communityLiveModule: Module = {
         .find((x) => phaseOf(x) === 'on');
       if (!e) return '';
       const live = e.starts_at <= now();
-      return `<div class="cm-box cm-ch"><span class="cm-pulse"></span><div class="grow"><strong>${live ? 'Live jetzt' : 'Gleich live'}: ${escapeHtml(e.title)}</strong><div class="muted small">${live ? 'Der Call läuft – komm dazu.' : `Startet um ${escapeHtml(formatInTz(e.starts_at, kit.tz(p), { weekday: undefined, day: undefined, month: undefined, year: undefined }))} Uhr`}</div></div><a class="btn" href="${kit.gHref(p, g)}/live/${encodeURIComponent(e.id)}">${live ? 'Beitreten' : 'Zum Call'}</a></div>`;
+      const t = tLoc(app, p.locationId);
+      return `<div class="cm-box cm-ch"><span class="cm-pulse"></span><div class="grow"><strong>${live ? t('Live jetzt: {title}', { title: escapeHtml(e.title) }) : t('Gleich live: {title}', { title: escapeHtml(e.title) })}</strong><div class="muted small">${live ? t('Der Call läuft – komm dazu.') : t('Startet um {time} Uhr', { time: escapeHtml(fmt(p, e.starts_at, { weekday: undefined, day: undefined, month: undefined, year: undefined })) })}</div></div><a class="btn" href="${kit.gHref(p, g)}/live/${encodeURIComponent(e.id)}">${live ? t('Beitreten') : t('Zum Call')}</a></div>`;
     });
   },
 };

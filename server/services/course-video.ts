@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renam
 import { join } from 'node:path';
 import type { App } from '../core/app.js';
 import { HttpError, bad } from '../core/http.js';
+import { tApp, tLoc } from '../i18n/index.js';
 import { id, now } from '../core/util.js';
 import { CHUNK } from './community-posts-ext.js';
 import { openToken, signToken } from './creator-kit.js';
@@ -69,9 +70,9 @@ export const readyVideo = (app: App, locationId: string, videoId: unknown): Cour
 
 export function startUpload(app: App, locationId: string, name: string, size: number): CourseVideo {
   const n = String(name ?? '').replace(/[\r\n\\/]/g, '_').trim().slice(0, 200);
-  if (!VIDEO_EXT.includes(extOf(n))) throw bad(`Nur Videodateien (${VIDEO_EXT.join(', ')})`);
+  if (!VIDEO_EXT.includes(extOf(n))) throw bad(tApp()('Nur Videodateien ({types})', { types: VIDEO_EXT.join(', ') }));
   if (!(size > 0)) throw bad('Dateigröße fehlt');
-  if (size > maxCourseVideoMb() * 1024 * 1024) throw bad(`Video größer als ${maxCourseVideoMb()} MB (Grenze einstellbar mit PGHL_COURSE_VIDEO_MB)`);
+  if (size > maxCourseVideoMb() * 1024 * 1024) throw bad(tApp()('Video größer als {mb} MB (Grenze einstellbar mit PGHL_COURSE_VIDEO_MB)', { mb: maxCourseVideoMb() }));
   const open = app.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM course_videos WHERE location_id = ? AND status = 'open'`, locationId)!.n;
   if (open >= 3) throw new HttpError(429, 'Es laufen schon drei Uploads – bitte warten oder einen abbrechen.');
   // Hosted service: the plan's media storage (fair use) counts videos too.
@@ -88,10 +89,10 @@ export function startUpload(app: App, locationId: string, name: string, size: nu
 export function appendChunk(app: App, v: CourseVideo, offset: number, buf: Buffer): { id: string; received: number; complete: boolean } {
   if (v.status !== 'open') return { id: v.id, received: v.received, complete: true };
   if (!buf?.length) throw bad('Daten fehlen');
-  if (buf.length > CHUNK) throw bad(`Höchstens ${CHUNK / 1024 / 1024} MB pro Teil`);
+  if (buf.length > CHUNK) throw bad(tApp()('Höchstens {mb} MB pro Teil', { mb: CHUNK / 1024 / 1024 }));
   if (offset !== v.received) {
     if (offset + buf.length === v.received) return { id: v.id, received: v.received, complete: false };
-    throw new HttpError(409, `Erwartet wird der Teil ab Byte ${v.received}`, { received: v.received });
+    throw new HttpError(409, tApp()('Erwartet wird der Teil ab Byte {n}', { n: v.received }), { received: v.received });
   }
   if (offset + buf.length > v.size) throw bad('Mehr Daten als angekündigt');
   if (offset === 0 && !looksLikeVideo(buf)) {
@@ -230,7 +231,7 @@ export async function startHls(app: App, locationId: string, videoId: string): P
       mkdirSync(dir, { recursive: true });
       const info = await probe(app, videoFile(app, v));
       const r = await toolRun(app, 'ffmpeg', hlsArgs(videoFile(app, v), dir, info.height, info.audio), 6 * 3600_000);
-      if (r.code !== 0 || !existsSync(join(dir, 'master.m3u8'))) throw new Error(r.stderr.split('\n').filter(Boolean).slice(-2).join(' ').slice(0, 300) || 'ffmpeg ist fehlgeschlagen');
+      if (r.code !== 0 || !existsSync(join(dir, 'master.m3u8'))) throw new Error(r.stderr.split('\n').filter(Boolean).slice(-2).join(' ').slice(0, 300) || tLoc(app, locationId)('ffmpeg ist fehlgeschlagen'));
       app.db.run(`UPDATE course_videos SET hls = 'ready', hls_note = '' WHERE id = ?`, v.id);
     } catch (e) {
       rmSync(hlsDir(app, v), { recursive: true, force: true });
@@ -267,7 +268,7 @@ export interface Caption {
 
 /** Stores (or replaces) a caption track from an uploaded WebVTT/SRT text. */
 export function saveCaption(app: App, v: CourseVideo, lang: string, label: string, text: string, source: 'upload' | 'ai' = 'upload'): Caption {
-  if (Buffer.byteLength(text) > CAPTION_MAX_BYTES) throw bad(`Die Untertitel-Datei ist größer als ${CAPTION_MAX_BYTES / 1024} KB`);
+  if (Buffer.byteLength(text) > CAPTION_MAX_BYTES) throw bad(tApp()('Die Untertitel-Datei ist größer als {kb} KB', { kb: CAPTION_MAX_BYTES / 1024 }));
   const vtt = formatVtt(parseCaptions(text));
   app.db.run('DELETE FROM course_captions WHERE video_id = ? AND lang = ?', v.id, lang);
   const row: Caption = { id: id(20), location_id: v.location_id, video_id: v.id, lang, label: label.slice(0, 60) || lang, vtt, source, created_at: now() };
@@ -303,8 +304,10 @@ export async function startTranscribe(app: App, locationId: string, videoId: str
       mkdirSync(dir, { recursive: true });
       const r = await toolRun(app, 'ffmpeg', audioSegmentArgs(videoFile(app, v), join(dir, 'seg%04d.mp3'), 60), 3600_000);
       const parts = readdirSync(dir).filter((f) => /^seg\d{4}\.mp3$/.test(f)).sort();
-      if (r.code !== 0 || !parts.length) throw new Error('Der Ton konnte nicht gelesen werden (hat das Video eine Tonspur?)');
-      if (parts.length > MAX_AI_SEGMENTS) throw new Error(`Das Video ist zu lang für die automatische Transkription (höchstens ${MAX_AI_SEGMENTS} Minuten)`);
+      // The note is stored on the video and shown to the team: in the sub-account's language.
+      const t = tLoc(app, locationId);
+      if (r.code !== 0 || !parts.length) throw new Error(t('Der Ton konnte nicht gelesen werden (hat das Video eine Tonspur?)'));
+      if (parts.length > MAX_AI_SEGMENTS) throw new Error(t('Das Video ist zu lang für die automatische Transkription (höchstens {n} Minuten)', { n: MAX_AI_SEGMENTS }));
       const chunks: { start: number; end: number; text: string }[] = [];
       const total = v.duration_sec > 0 ? v.duration_sec : parts.length * 60;
       for (let i = 0; i < parts.length; i++) {
@@ -312,7 +315,7 @@ export async function startTranscribe(app: App, locationId: string, videoId: str
         chunks.push({ start: i * 60, end: Math.min((i + 1) * 60, Math.max(total, i * 60 + 1)), text: out.text });
       }
       const cues = cuesFromChunks(chunks);
-      if (!cues.length) throw new Error('Es wurde keine Sprache erkannt');
+      if (!cues.length) throw new Error(t('Es wurde keine Sprache erkannt'));
       saveCaption(app, getVideo(app, locationId, v.id) ?? v, language, langLabel(language), formatVtt(cues), 'ai');
       app.db.run(`UPDATE course_videos SET ai_status = 'done', ai_note = '' WHERE id = ?`, v.id);
     } catch (e) {

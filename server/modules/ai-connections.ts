@@ -37,6 +37,7 @@ import {
 import { MAX_MODEL_INFOS, parseModelInfo, rememberPrices, type ModelInfo } from '../services/ai-model-info.js';
 import { DEFAULT_MODEL as OPENAI_DEFAULT } from '../services/openai.js';
 import { openSecret, sealSecret } from '../core/secrets.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * KI-Anbieter (BYOK) – the one registry of AI connections: any text model (OpenAI, Anthropic, Gemini,
@@ -178,14 +179,14 @@ export const aiConnectionsModule: Module = {
       try {
         const ai = db.get('SELECT data, api_key FROM ai_settings WHERE location_id = ?', locId);
         const k = open(ai?.api_key);
-        if (k) out.push(base('implicit:ai-anthropic', 'anthropic', 'Anthropic (aus dem KI-Assistenten)', k, withDefaults(json(ai?.data, null)).model || CLAUDE_DEFAULT, locId));
+        if (k) out.push(base('implicit:ai-anthropic', 'anthropic', tApp()('Anthropic (aus dem KI-Assistenten)'), k, withDefaults(json(ai?.data, null)).model || CLAUDE_DEFAULT, locId));
       } catch {
         /* no KI-Assistent */
       }
       try {
         const p = db.get('SELECT openai_model, openai_key FROM ai_provider_settings WHERE location_id = ?', locId);
         const k = open(p?.openai_key);
-        if (k) out.push(base('implicit:ai-openai', 'openai', 'OpenAI (aus dem KI-Assistenten)', k, p?.openai_model || OPENAI_DEFAULT, locId));
+        if (k) out.push(base('implicit:ai-openai', 'openai', tApp()('OpenAI (aus dem KI-Assistenten)'), k, p?.openai_model || OPENAI_DEFAULT, locId));
         const a = json<any>(db.get('SELECT value FROM agency_settings WHERE key = ?', 'ai_provider')?.value, {});
         const ak = open(a.openai_key);
         if (ak) out.push(base('implicit:agency-openai', 'openai', 'OpenAI (Agentur, KI-Werkzeuge)', ak, a.openai_model || OPENAI_DEFAULT, null));
@@ -193,9 +194,9 @@ export const aiConnectionsModule: Module = {
         /* no provider module */
       }
       const envA = (process.env.PGHL_ANTHROPIC_API_KEY ?? '').trim();
-      if (envA) out.push(base('implicit:env-anthropic', 'anthropic', 'Anthropic (Server-Schlüssel)', envA, CLAUDE_DEFAULT, null));
+      if (envA) out.push(base('implicit:env-anthropic', 'anthropic', tApp()('Anthropic (Server-Schlüssel)'), envA, CLAUDE_DEFAULT, null));
       const envO = (process.env.PGHL_OPENAI_API_KEY ?? '').trim();
-      if (envO) out.push(base('implicit:env-openai', 'openai', 'OpenAI (Server-Schlüssel)', envO, OPENAI_DEFAULT, null));
+      if (envO) out.push(base('implicit:env-openai', 'openai', tApp()('OpenAI (Server-Schlüssel)'), envO, OPENAI_DEFAULT, null));
       return out;
     };
 
@@ -502,7 +503,7 @@ export const aiConnectionsModule: Module = {
         if (/[{}]|%7[Bb]|%7[Dd]/.test(baseUrl)) throw bad('Die Adresse enthält noch einen Platzhalter in {geschweiften Klammern} – bitte durch deine Konto- bzw. Workspace-ID ersetzen.');
         const problem = checkBaseUrl(baseUrl, !!o.allow_private);
         if (problem) throw bad(problem);
-      } else if (baseUrl && baseUrl !== preset.baseUrl) throw bad(`Für ${preset.label} ist die Adresse fest.`);
+      } else if (baseUrl && baseUrl !== preset.baseUrl) throw bad(tApp()('Für {provider} ist die Adresse fest.', { provider: tApp()(preset.label) }));
       else baseUrl = '';
       let authStyle: AuthStyle = cur?.auth_style ?? preset.auth;
       if (b.auth_style !== undefined) {
@@ -524,7 +525,7 @@ export const aiConnectionsModule: Module = {
           const prev = json<Record<string, string>>(open(cur?.extra_headers) || null, {});
           const out: Record<string, string> = {};
           for (const [k, v] of entries) {
-            if (!headerAllowed(k)) throw bad(`Header „${k}“ ist nicht erlaubt.`);
+            if (!headerAllowed(k)) throw bad(tApp()('Header „{name}“ ist nicht erlaubt.', { name: k }));
             // An empty value keeps the stored one (values are never shown again).
             const val = v === '' || v === undefined ? prev[k] : String(v);
             if (val !== undefined && val !== null) out[k] = String(val).slice(0, 500);
@@ -538,7 +539,7 @@ export const aiConnectionsModule: Module = {
         caps = [...new Set(b.capabilities.filter(isCapability))] as Capability[];
       }
       if (!caps.length) throw bad('Bitte mindestens eine Fähigkeit wählen.');
-      if (preset.wire === 'http' && caps.includes('text')) throw bad(`${preset.label} ist kein Text-Anbieter – für Text bitte eine OpenAI-kompatible Verbindung anlegen.`);
+      if (preset.wire === 'http' && caps.includes('text')) throw bad(tApp()('{provider} ist kein Text-Anbieter – für Text bitte eine OpenAI-kompatible Verbindung anlegen.', { provider: tApp()(preset.label) }));
       let mdl: Partial<Record<Capability, string>> = cur ? json(cur.models, {}) : {};
       if (b.models !== undefined) {
         if (!b.models || typeof b.models !== 'object') throw bad('Modelle je Fähigkeit als {"text": "…"}');
@@ -546,7 +547,7 @@ export const aiConnectionsModule: Module = {
         for (const [k, v] of Object.entries(b.models as Record<string, unknown>)) {
           if (!isCapability(k) || v === '' || v === null || v === undefined) continue;
           const m = String(v).trim();
-          if (!MODEL_RE.test(m)) throw bad(`Modell „${m.slice(0, 40)}“: bitte die Modell-ID des Anbieters (Buchstaben, Ziffern, . _ - : / @ +).`);
+          if (!MODEL_RE.test(m)) throw bad(tApp()('Modell „{model}“: bitte die Modell-ID des Anbieters (Buchstaben, Ziffern, . _ - : / @ +).', { model: m.slice(0, 40) }));
           mdl[k] = m;
         }
       }
@@ -599,12 +600,15 @@ export const aiConnectionsModule: Module = {
       return Object.fromEntries(rows.map((r) => [r.connection_id, { calls: r.calls, input_tokens: r.input_tokens, output_tokens: r.output_tokens, cost_usd: (r.cost ?? 0) / 1e6 }]));
     };
 
-    router.get('/api/ai-connections/presets', 'user', () => ({
-      presets: PRESETS.map(presetOut),
-      capabilities: CAPABILITIES.map((c) => ({ id: c, label: CAPABILITY_LABELS[c] })),
-      usages: USAGE_KEYS.map((u) => ({ id: u, label: USAGES[u].label, capability: USAGES[u].cap })),
-      auth_styles: AUTH_STYLES,
-    }));
+    router.get('/api/ai-connections/presets', 'user', (ctx) => {
+      const t = tCtx(ctx);
+      return {
+        presets: PRESETS.map((p) => presetOut(p, t)),
+        capabilities: CAPABILITIES.map((c) => ({ id: c, label: t(CAPABILITY_LABELS[c]) })),
+        usages: USAGE_KEYS.map((u) => ({ id: u, label: t(USAGES[u].label), capability: USAGES[u].cap })),
+        auth_styles: AUTH_STYLES,
+      };
+    });
     router.get('/api/ai-connections', 'location', (ctx) => {
       const u = ctx.user;
       const all = rawFor(ctx.locationId, { all: true }).map((c) => info(c, u));
@@ -686,7 +690,7 @@ export const aiConnectionsModule: Module = {
         }
         const c = rawFor(ctx.locationId, { all: true }).find((x) => x.id === cid && (agency ? !x.location_id : true));
         if (!c) throw bad('Verbindung nicht gefunden');
-        if (!c.capabilities.includes(USAGES[usage].cap)) throw bad(`„${c.label || c.provider}“ kann kein ${CAPABILITY_LABELS[USAGES[usage].cap]}.`);
+        if (!c.capabilities.includes(USAGES[usage].cap)) throw bad(tApp()('„{name}“ kann kein {capability}.', { name: c.label || c.provider, capability: tApp()(CAPABILITY_LABELS[USAGES[usage].cap]) }));
         const model = String(v?.model ?? '').trim();
         if (model && !MODEL_RE.test(model)) throw bad('Modell: bitte die Modell-ID des Anbieters.');
         let fallbacks: string[] = [];
@@ -746,8 +750,8 @@ export const aiConnectionsModule: Module = {
           const res = await chatWithTools(
             {
               connection: r,
-              system: 'Du testest eine Verbindung. Rufe das Werkzeug ping auf.',
-              messages: [{ role: 'user', content: [{ type: 'text', text: 'Bitte rufe jetzt das Werkzeug ping mit ok=true auf.' }] }],
+              system: 'You are testing a connection. Call the ping tool.',
+              messages: [{ role: 'user', content: [{ type: 'text', text: 'Please call the ping tool now with ok=true.' }] }],
               tools: [{ name: 'ping', description: 'Verbindungstest', inputSchema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] } }],
               maxTokens: 300,
               timeoutMs: 45_000,
@@ -760,17 +764,17 @@ export const aiConnectionsModule: Module = {
         }
         if ((!url || noList) && cap !== 'text') {
           out.ok = true;
-          out.message = 'Gespeichert. Dieser Anbieter hat keine Modell-Liste zum Prüfen – der Schlüssel wird beim ersten Auftrag geprüft.';
+          out.message = tApp()('Gespeichert. Dieser Anbieter hat keine Modell-Liste zum Prüfen – der Schlüssel wird beim ersten Auftrag geprüft.');
           return out;
         }
         out.ok = true;
         out.ms = Date.now() - started;
         out.message =
           out.model_found === false
-            ? `Verbunden – aber das Modell „${r.model}“ steht nicht in der Liste des Anbieters (Freitext ist trotzdem erlaubt).`
+            ? tApp()('Verbunden – aber das Modell „{model}“ steht nicht in der Liste des Anbieters (Freitext ist trotzdem erlaubt).', { model: r.model })
             : out.tools === false
-              ? 'Verbunden – das Modell hat das Test-Werkzeug aber nicht benutzt. Für den KI-Agenten bitte ein Modell mit Werkzeug-Unterstützung (Tool Calling) wählen.'
-              : 'Verbindung funktioniert.';
+              ? tApp()('Verbunden – das Modell hat das Test-Werkzeug aber nicht benutzt. Für den KI-Agenten bitte ein Modell mit Werkzeug-Unterstützung (Tool Calling) wählen.')
+              : tApp()('Verbindung funktioniert.');
         if (row) db.run('UPDATE ai_connections SET status = ?, status_message = ?, checked_at = ? WHERE id = ?', out.model_found === false || out.tools === false ? 'warning' : 'ok', out.message, now(), row.id);
         return out;
       } catch (e) {

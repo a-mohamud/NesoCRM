@@ -10,6 +10,7 @@ import type { Manifest } from './manifest.js';
 import { opsFor } from './ops.js';
 import { loadPolicy } from './policy.js';
 import { probeSandbox, runSandbox } from './sandbox.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * Runs a plugin's server logic (workflow actions, scheduled jobs) as the user it belongs to: a script in the
@@ -71,11 +72,11 @@ export async function runLogic(app: App, r: LogicRun): Promise<LogicResult> {
     }
     return out;
   };
-  if (policy.server_logic === 'off') return finish({ ok: false, error: 'Server-Logik für Plugins ist ausgeschaltet (Richtlinie).', logs: [] });
+  if (policy.server_logic === 'off') return finish({ ok: false, error: tApp()('Server-Logik für Plugins ist ausgeschaltet (Richtlinie).'), logs: [] });
   if (mode === 'script') {
-    if (policy.server_logic === 'declarative') return finish({ ok: false, error: 'Skripte sind laut Richtlinie aus – nur deklarative Plugins laufen.', logs: [] });
+    if (policy.server_logic === 'declarative') return finish({ ok: false, error: tApp()('Skripte sind laut Richtlinie aus – nur deklarative Plugins laufen.'), logs: [] });
     const status = await probeSandbox();
-    if (!status.ok) return finish({ ok: false, error: `Die Skript-Sandbox ist auf diesem Server nicht verfügbar: ${status.reason ?? 'unbekannt'}`, logs: [] });
+    if (!status.ok) return finish({ ok: false, error: tApp()('Die Skript-Sandbox ist auf diesem Server nicht verfügbar: {x}', { x: status.reason ?? 'unbekannt' }), logs: [] });
     const res = await runSandbox({ mode: 'server', code: r.target.code, kind: r.kind, id: r.id, input: r.input ?? {}, ops: opsFor(m.scopes), context: { ...ctx, input: r.input ?? {} }, timeoutMs: r.timeoutMs ?? 10_000, maxCalls: 200, call: (op, args) => bridge.call(op, args) });
     return finish({ ok: res.ok, result: res.result, error: res.error, errorType: res.errorType, logs: res.logs, killed: res.killed });
   }
@@ -87,7 +88,7 @@ export async function runLogic(app: App, r: LogicRun): Promise<LogicResult> {
       return finish({ ok: false, error: (e as Error).message, logs: [] });
     }
   }
-  return finish({ ok: false, error: 'Dieses Plugin hat keine Server-Logik.', logs: [] });
+  return finish({ ok: false, error: tApp()('Dieses Plugin hat keine Server-Logik.'), logs: [] });
 }
 
 // --- self-test ---------------------------------------------------------------------------------------------------
@@ -133,17 +134,17 @@ export async function selfTest(app: App, files: PluginFiles, locationId: string)
       for (const pt of points) {
         const bridge = new Bridge({ app, plugin, manifest: m, locationId, user: SAMPLE_USER, source: 'selftest', dry: true, quiet: true });
         const res = await runSandbox({ mode: 'ui', scripts, ops: opsFor(m.scopes), context: { ...ctx, entry: { kind: pt.kind, id: pt.id }, entity: pt.entity, plugin: { name: m.name, version: m.version }, demo: true }, timeoutMs: 6000, maxCalls: 60, call: (op, args) => bridge.call(op, args) });
-        const where = `${pt.kind === 'page' ? 'Seite' : pt.kind === 'panel' ? `Panel „${pt.id}“` : `Widget „${pt.id}“`}`;
+        const where = pt.kind === 'page' ? tApp()('Seite') : pt.kind === 'panel' ? tApp()('Panel „{id}“', { id: pt.id }) : tApp()('Widget „{id}“', { id: pt.id });
         out.ui.calls += bridge.calls;
         out.ui.errors.push(...(res.errors ?? []));
         if (res.syntax) out.ui.syntax = res.error;
         out.entries.push({ kind: pt.kind, id: pt.id, ok: !res.syntax && res.ok && !(res.errors ?? []).length && !bridge.denials.length, ...(res.ok ? {} : { error: res.error }) });
         // The same script runs everywhere: a syntax error is reported once, everything else per entry point.
         if (res.syntax) {
-          if (pt === points[0]) issues.push({ level: 'error', message: `Selbsttest Oberfläche: ${res.error}` });
-        } else if (!res.ok) issues.push({ level: 'warn', message: `Selbsttest ${where}: ${res.error ?? 'abgebrochen'}` });
-        for (const e of res.errors ?? []) issues.push({ level: 'warn', message: `Selbsttest ${where} (Beispieldaten): ${e.type}: ${e.message}` });
-        for (const d of bridge.denials) issues.push({ level: 'error', message: `Selbsttest ${where}: Aufruf nicht erlaubt – ${d}` });
+          if (pt === points[0]) issues.push({ level: 'error', message: tApp()('Selbsttest Oberfläche: {error}', { error: res.error ?? '' }) });
+        } else if (!res.ok) issues.push({ level: 'warn', message: tApp()('Selbsttest {where}: {error}', { where, error: res.error ? tApp()(res.error) : tApp()('abgebrochen') }) });
+        for (const e of res.errors ?? []) issues.push({ level: 'warn', message: tApp()('Selbsttest {where} (Beispieldaten): {type}: {message}', { where, type: e.type, message: e.message }) });
+        for (const d of bridge.denials) issues.push({ level: 'error', message: tApp()('Selbsttest {where}: Aufruf nicht erlaubt – {d}', { where, d }) });
       }
     } else if (scripts.length) out.ui = { ran: false, calls: 0, errors: [] };
   }
@@ -154,11 +155,11 @@ export async function selfTest(app: App, files: PluginFiles, locationId: string)
     if (!m.server) break;
     const r = await runLogic(app, { target, kind, id, input: kind === 'action' ? sampleInput(m, id) : {}, user: SAMPLE_USER, locationId, dry: true, quiet: true, timeoutMs: 6000 });
     out.handlers.push({ kind, id, ok: r.ok, error: r.error, ms: r.ms, calls: r.calls });
-    for (const d of r.denials) issues.push({ level: 'error', message: `Selbsttest ${kind} „${id}“: Aufruf nicht erlaubt – ${d}` });
+    for (const d of r.denials) issues.push({ level: 'error', message: tApp()('Selbsttest {kind} „{id}“: Aufruf nicht erlaubt – {d}', { kind, id, d }) });
     if (!r.ok) {
       // A TypeError on sample data may only mean the sample lacks a field; everything else is a real defect.
       const soft = r.errorType === 'TypeError';
-      issues.push({ level: soft ? 'warn' : 'error', message: `Selbsttest ${kind} „${id}“: ${r.error}${soft ? ' (mit Beispieldaten – bitte Fälle ohne Daten prüfen)' : ''}` });
+      issues.push({ level: soft ? 'warn' : 'error', message: soft ? tApp()('Selbsttest {kind} „{id}“: {error} (mit Beispieldaten – bitte Fälle ohne Daten prüfen)', { kind, id, error: String(r.error) }) : tApp()('Selbsttest {kind} „{id}“: {error}', { kind, id, error: tApp()(String(r.error)) }) });
     }
   }
   out.ok = !issues.some((i) => i.level === 'error');

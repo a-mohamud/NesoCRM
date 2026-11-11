@@ -4,8 +4,9 @@ import { portalUrl } from '../services/courses.js';
 import { getGroup } from '../services/community.js';
 import { pushPrefs } from '../services/community-ext.js';
 import { ICON_KINDS, iconPng, type IconKind } from '../services/community-icons.js';
-import { OFFLINE_PATH, PWA_JS, headOf, manifestOf, offlineHtml, swJs } from '../services/community-pwa.js';
+import { OFFLINE_PATH, headOf, manifestOf, offlineHtml, pwaJs, swJs } from '../services/community-pwa.js';
 import { communityUi, kitOf, type PortalCtx } from '../services/community-ui.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * The member app: manifest, icons and service worker of every member area (client name, colour and logo), the offline page, the
@@ -44,7 +45,7 @@ export const communityPwaModule: Module = {
     };
     router.get('/portal/:p/manifest.webmanifest', 'public', (ctx) => {
       const p = portalOf(ctx.params.p);
-      const manifest = manifestOf(pwa(p));
+      const manifest = manifestOf(pwa(p), tLoc(app, p.locationId));
       // The member app is more than the community when the sub-account has courses (modules/course-pwa.ts): app.services.memberAppManifest = [(manifest, portal) => void].
       for (const fn of (app.services.memberAppManifest ?? []) as ((m: ReturnType<typeof manifestOf>, p: PortalCtx) => void)[]) fn(manifest, p);
       const r = text(JSON.stringify(manifest), 'application/manifest+json; charset=utf-8');
@@ -53,7 +54,7 @@ export const communityPwaModule: Module = {
     });
     router.get('/portal/:p/community-sw.js', 'public', (ctx) => {
       const p = portalOf(ctx.params.p);
-      const r = text(swJs(pwa(p)), 'text/javascript; charset=utf-8');
+      const r = text(swJs(pwa(p), tLoc(app, p.locationId)), 'text/javascript; charset=utf-8');
       r.headers['cache-control'] = 'no-cache';
       r.headers['service-worker-allowed'] = `${p.base}/`;
       return r;
@@ -65,13 +66,14 @@ export const communityPwaModule: Module = {
       return { __raw: true, status: 200, headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff' }, body: iconPng({ name: pwa(p).name, color: pwa(p).color, logo: String(p.logo ?? '') }, kind) };
     });
     router.get(`/portal/:p/${OFFLINE_PATH}`, 'public', (ctx) => {
-      const r = html(offlineHtml(pwa(portalOf(ctx.params.p))));
+      const p = portalOf(ctx.params.p);
+      const r = html(offlineHtml(pwa(p), tLoc(app, p.locationId)));
       r.headers['content-security-policy'] = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
       r.headers['cache-control'] = 'no-cache';
       return r;
     });
     router.get('/portal-pwa.js', 'public', () => {
-      const r = text(PWA_JS, 'text/javascript; charset=utf-8');
+      const r = text(pwaJs(tApp()), 'text/javascript; charset=utf-8');
       r.headers['cache-control'] = 'public, max-age=3600';
       return r;
     });
@@ -141,7 +143,7 @@ export const communityPwaModule: Module = {
       if (!pushPrefs(app, e.locationId, d.contactId).dms) return;
       const g = db.get<any>(`SELECT g.* FROM community_groups g JOIN community_members m ON m.group_id = g.id AND m.contact_id = ? AND m.banned_at IS NULL WHERE g.location_id = ? AND g.status = 'active' ORDER BY g.position LIMIT 1`, d.contactId, e.locationId);
       if (!g) return;
-      fire(e.locationId, d.contactId, String(d.from?.name ?? 'Neue Nachricht'), String(d.message?.text ?? ''), urlOf(g, d.contactId, { kind: 'dm', postId: d.threadId }), `dm-${d.threadId}`);
+      fire(e.locationId, d.contactId, String(d.from?.name ?? tLoc(app, e.locationId)('Neue Nachricht')), String(d.message?.text ?? ''), urlOf(g, d.contactId, { kind: 'dm', postId: d.threadId }), `dm-${d.threadId}`);
     });
 
     // New posts for members who asked for all of them (off by default).
@@ -152,7 +154,7 @@ export const communityPwaModule: Module = {
       const by = e.data.contactId ? db.get<{ display_name: string }>('SELECT display_name FROM community_profiles WHERE location_id = ? AND contact_id = ?', e.locationId, String(e.data.contactId))?.display_name : undefined;
       for (const m of db.all<{ contact_id: string }>('SELECT m.contact_id FROM community_members m JOIN community_push_prefs p ON p.location_id = m.location_id AND p.contact_id = m.contact_id AND p.posts = 1 WHERE m.group_id = ? AND m.banned_at IS NULL', g.id)) {
         if (m.contact_id === e.data.contactId || closed(m.contact_id)) continue;
-        fire(e.locationId, m.contact_id, g.name, `${by ?? 'Team'}: ${String(e.data.post?.title ?? 'Neuer Beitrag')}`.slice(0, 200), urlOf(g, m.contact_id, { kind: 'post', postId: String(e.data.postId) }), `post-${e.data.postId}`);
+        fire(e.locationId, m.contact_id, g.name, `${by ?? tLoc(app, e.locationId)('Team')}: ${String(e.data.post?.title ?? tLoc(app, e.locationId)('Neuer Beitrag'))}`.slice(0, 200), urlOf(g, m.contact_id, { kind: 'post', postId: String(e.data.postId) }), `post-${e.data.postId}`);
       }
     });
   },

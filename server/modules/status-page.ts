@@ -5,6 +5,7 @@ import { id, now } from '../core/util.js';
 import type { HealthReport } from '../services/ops-alerts.js';
 import { bucketOf, COMPONENTS, currentStatus, dailyUptime, DAYS, IMPACT_LABEL, renderStatusPage, STATUS_LABEL, type Incident, type Sample } from '../services/status-page.js';
 import { getBranding } from './agency.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Public status page `/status` (docs/backups.md#status-page): components, 90 days of uptime from the instance's own health samples
@@ -107,7 +108,7 @@ export const statusPageModule: Module = {
       const status = b.status !== undefined ? String(b.status) : cur?.status ?? 'investigating';
       if (!STATUSES.includes(status)) throw bad('Status: investigating, identified, monitoring oder resolved');
       const components = b.components !== undefined ? (Array.isArray(b.components) ? b.components.map(String) : []) : JSON.parse(cur?.components ?? '[]');
-      if (components.some((k: string) => !KEYS.includes(k))) throw bad(`Unbekannte Komponente (erlaubt: ${KEYS.join(', ')})`);
+      if (components.some((k: string) => !KEYS.includes(k))) throw bad(tApp()('Unbekannte Komponente (erlaubt: {keys})', { keys: KEYS.join(', ') }));
       const message = b.message !== undefined ? str(b.message, 'Text', { max: 4000 }) : '';
       return { title, impact, status, components: JSON.stringify([...new Set(components)]), message };
     };

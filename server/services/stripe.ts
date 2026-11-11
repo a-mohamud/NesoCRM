@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { centsToMoney } from '../core/util.js';
 import { openCents } from './invoice-model.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Minimal Stripe client on fetch (no SDK): form-encoded requests, webhook signatures and the
@@ -50,11 +51,11 @@ export async function stripeRequest<T = any>(secretKey: string, method: 'GET' | 
   try {
     r = await stripeFetch(`https://api.stripe.com${path}${query}`, { method, headers, body, signal: AbortSignal.timeout(15_000) });
   } catch (e) {
-    throw new StripeError(0, `Stripe nicht erreichbar: ${(e as Error).message}`);
+    throw new StripeError(0, tApp()('Stripe nicht erreichbar: {error}', { error: (e as Error).message }));
   }
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const msg = j?.error?.message || `Stripe-Fehler ${r.status}`;
+    const msg = j?.error?.message || tApp()('Stripe-Fehler {status}', { status: r.status });
     throw new StripeError(r.status, r.status === 401 ? 'Stripe lehnt den Schlüssel ab (401) – bitte den Secret Key prüfen' : msg, j?.error?.code ?? '');
   }
   return j as T;

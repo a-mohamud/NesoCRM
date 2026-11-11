@@ -21,6 +21,7 @@ import { contactName, getContact, logActivity, upsertContact } from '../services
 import { E164, hangup, twiml } from '../services/twilio.js';
 import { openSecret, sealSecret } from './mail-sync.js';
 import { finalizeCall, syncMessage, telephonyConfig, twilioRequest, verifyTwilio, type DialTargets } from './telephony.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Browser phone: calls straight from the app over WebRTC (Twilio Voice JS SDK). The server hands out
@@ -93,7 +94,7 @@ export const browserPhoneModule: Module = {
       const missing = [
         !tel.accountSid && 'Account SID',
         !tel.token && 'Auth Token',
-        !tel.numbers.length && 'Twilio-Nummer',
+        !tel.numbers.length && tApp()('Twilio-Nummer'),
         !s.api_key_sid && 'API Key SID',
         !secret && 'API Key Secret',
         !s.twiml_app_sid && 'TwiML App SID',
@@ -166,20 +167,20 @@ export const browserPhoneModule: Module = {
       const s = { ...c.s };
       let secret: string | undefined;
       if (!s.api_key_sid || !c.secret) {
-        const k = await twilioRequest(app, c.tel, 'POST', '/Keys.json', [['FriendlyName', `HyperLevel Browser-Telefon (${loc.name})`.slice(0, 64)]]);
+        const k = await twilioRequest(app, c.tel, 'POST', '/Keys.json', [['FriendlyName', `HyperLevel Browser-Telefon (${loc.name})`.slice(0, 64)]]); // Twilio parameter – i18n-ignore
         if (!API_KEY_SID.test(k.sid ?? '') || !k.secret) throw new HttpError(502, 'Twilio hat keinen API-Schlüssel geliefert');
         s.api_key_sid = k.sid;
         secret = k.secret;
       }
       const appParams: [string, string][] = [
-        ['VoiceUrl', hook('phone-out', loc.id)],
-        ['VoiceMethod', 'POST'],
-        ['StatusCallback', hook('voice-status', loc.id)],
-        ['StatusCallbackMethod', 'POST'],
+        ['VoiceUrl', hook('phone-out', loc.id)], // Twilio parameter – i18n-ignore
+        ['VoiceMethod', 'POST'], // Twilio parameter – i18n-ignore
+        ['StatusCallback', hook('voice-status', loc.id)], // Twilio parameter – i18n-ignore
+        ['StatusCallbackMethod', 'POST'], // Twilio parameter – i18n-ignore
       ];
       if (s.twiml_app_sid) await twilioRequest(app, c.tel, 'POST', `/Applications/${s.twiml_app_sid}.json`, appParams);
       else {
-        const a = await twilioRequest(app, c.tel, 'POST', '/Applications.json', [['FriendlyName', `HyperLevel – ${loc.name}`.slice(0, 64)], ...appParams]);
+        const a = await twilioRequest(app, c.tel, 'POST', '/Applications.json', [['FriendlyName', `HyperLevel – ${loc.name}`.slice(0, 64)], ...appParams]); // Twilio parameter – i18n-ignore
         if (!APP_SID.test(a.sid ?? '')) throw new HttpError(502, 'Twilio hat keine TwiML-App angelegt');
         s.twiml_app_sid = a.sid;
       }
@@ -201,7 +202,7 @@ export const browserPhoneModule: Module = {
     router.get('/api/phone/token', 'location', (ctx) => {
       const user = requireUser(ctx);
       const c = config(ctx.locationId);
-      if (!c.ready) throw bad(c.s.enabled ? `Browser-Telefon ist nicht fertig eingerichtet – es fehlt: ${c.missing.join(', ')}` : 'Das Browser-Telefon ist aus');
+      if (!c.ready) throw bad(c.s.enabled ? tApp()('Browser-Telefon ist nicht fertig eingerichtet – es fehlt: {missing}', { missing: c.missing.join(', ') }) : 'Das Browser-Telefon ist aus');
       const identity = identityFor(user.id, ctx.locationId);
       const token = voiceAccessToken({ accountSid: c.tel.accountSid, apiKeySid: c.s.api_key_sid, apiSecret: c.secret, identity, appSid: c.s.twiml_app_sid, incoming: c.s.incoming !== 'off', ttl: TOKEN_TTL });
       return { token, identity, edge: c.s.edge, ttl: TOKEN_TTL, incoming: c.s.incoming !== 'off', number: c.tel.numbers[0] ?? '' };
@@ -273,26 +274,27 @@ export const browserPhoneModule: Module = {
     /** TwiML app voice URL: a browser places a call (or resumes one it put on hold). */
     route('phone-out', (loc, p) => {
       const c = config(loc.id);
-      if (!c.s.enabled) return hangup('Das Browser-Telefon ist ausgeschaltet.');
-      if (p.AccountSid && p.AccountSid !== c.tel.accountSid) return hangup('Falsches Twilio-Konto.');
-      if (p.ApplicationSid && c.s.twiml_app_sid && p.ApplicationSid !== c.s.twiml_app_sid) return hangup('Falsche TwiML-App.');
+      const tl = tLoc(app, loc.id);
+      if (!c.s.enabled) return hangup(tl('Das Browser-Telefon ist ausgeschaltet.'));
+      if (p.AccountSid && p.AccountSid !== c.tel.accountSid) return hangup(tl('Falsches Twilio-Konto.'));
+      if (p.ApplicationSid && c.s.twiml_app_sid && p.ApplicationSid !== c.s.twiml_app_sid) return hangup(tl('Falsche TwiML-App.'));
       const who = parseIdentity(p.From ?? p.Caller);
       const user = who && who.locationId === loc.id ? db.get('SELECT * FROM users WHERE id = ?', who.userId) : undefined;
-      if (!user || !mayTakeCalls(user, loc.id)) return hangup('Dieser Browser darf hier nicht telefonieren.');
+      if (!user || !mayTakeCalls(user, loc.id)) return hangup(tl('Dieser Browser darf hier nicht telefonieren.'));
       if (!p.CallSid) return hangup();
 
       if (p.resume) {
         const pc = phoneCall(loc.id, p.resume);
         const call = pc ? getCall(pc.call_id) : undefined;
-        if (!pc || !call || call.ended_at || !pc.hold || pc.user_id !== user.id) return hangup('Dieser Anruf wird nicht mehr gehalten.');
+        if (!pc || !call || call.ended_at || !pc.hold || pc.user_id !== user.id) return hangup(tl('Dieser Anruf wird nicht mehr gehalten.'));
         db.run('UPDATE phone_calls SET hold = 0, agent_sid = ?, updated_at = ? WHERE call_id = ?', p.CallSid, now(), pc.call_id);
         return resumeTwiml(holdRoom(pc.call_id), `${hook('phone-dial', loc.id)}?call=${pc.call_id}`);
       }
 
       const to = normalizePhone(String(p.To ?? ''));
-      if (!E164.test(to)) return hangup('Diese Nummer ist ungültig.');
+      if (!E164.test(to)) return hangup(tl('Diese Nummer ist ungültig.'));
       const tel = c.tel;
-      if (tel.numbers.includes(to)) return hangup('Das ist eine eigene Nummer.');
+      if (tel.numbers.includes(to)) return hangup(tl('Das ist eine eigene Nummer.'));
       let contactId: string | null = null;
       if (p.contactId) contactId = getContact(app, loc.id, p.contactId)?.id ?? null;
       if (!contactId) contactId = db.get('SELECT id FROM contacts WHERE location_id = ? AND phone = ?', loc.id, to)?.id ?? upsertContact(app, loc.id, { phone: to }, { source: 'Anruf' }).contact.id;
@@ -301,7 +303,7 @@ export const browserPhoneModule: Module = {
       let listFrom = '';
       if (p.dialerItem) {
         const v: { ok: boolean; reason?: string; itemId?: string; from?: string } | undefined = app.services.dialer?.authorize(loc.id, p.dialerItem, user.id);
-        if (!v?.ok) return hangup(v?.reason || 'Dieser Kontakt darf gerade nicht angerufen werden.');
+        if (!v?.ok) return hangup(v?.reason || tl('Dieser Kontakt darf gerade nicht angerufen werden.'));
         dialerItem = v.itemId ?? null;
         listFrom = v.from ?? '';
       }
@@ -313,7 +315,7 @@ export const browserPhoneModule: Module = {
       db.insert('calls', { id: callId, location_id: loc.id, contact_id: contactId, sid: p.CallSid, direction: 'out', from_number: from, to_number: to, status: 'initiated', user_id: user.id, dialer_item_id: dialerItem, consent_announced: tel.s.record_outbound && tel.s.record_announce ? 1 : 0, started_at: t, updated_at: t });
       db.insert('phone_calls', { call_id: callId, location_id: loc.id, user_id: user.id, direction: 'out', agent_sid: p.CallSid, created_at: t, updated_at: t });
       syncMessage(app, getCall(callId)!);
-      if (contactId) logActivity(app, loc.id, contactId, 'call.started', `Anruf aus dem Browser von ${user.name}${tel.s.record_outbound ? ' (mit Aufzeichnung)' : ''}`);
+      if (contactId) logActivity(app, loc.id, contactId, 'call.started', tel.s.record_outbound ? tl('Anruf aus dem Browser von {name} (mit Aufzeichnung)', { name: user.name }) : tl('Anruf aus dem Browser von {name}', { name: user.name }));
       return outgoingTwiml({
         callerId: from,
         number: to,
@@ -421,7 +423,7 @@ export const browserPhoneModule: Module = {
       );
       db.run('UPDATE calls SET user_id = ?, answered = 1, answered_at = COALESCE(answered_at, ?), updated_at = ? WHERE id = ?', user.id, t, t, call.id);
       syncMessage(app, getCall(call.id)!);
-      if (call.contact_id) logActivity(app, ctx.locationId, call.contact_id, 'call.answered', `Anruf im Browser angenommen von ${user.name}`);
+      if (call.contact_id) logActivity(app, ctx.locationId, call.contact_id, 'call.answered', tLoc(app, ctx.locationId)('Anruf im Browser angenommen von {name}', { name: user.name }));
       return callState(ctx.locationId, call.id);
     });
     router.get('/api/phone/calls/:id', 'location', (ctx) => callState(ctx.locationId, ctx.params.id));
@@ -443,7 +445,7 @@ export const browserPhoneModule: Module = {
       // From now on the call is tracked by the held party's leg (the browser leg ends).
       db.run('UPDATE calls SET answered = 1, answered_at = COALESCE(answered_at, ?), sid = ?, updated_at = ? WHERE id = ?', now(), remote, now(), call.id);
       try {
-        await twilioRequest(app, c.tel, 'POST', `/Calls/${encodeURIComponent(remote)}.json`, [['Twiml', holdTwiml(holdRoom(call.id), `${hook('phone-held', ctx.locationId)}?call=${call.id}`)]]);
+        await twilioRequest(app, c.tel, 'POST', `/Calls/${encodeURIComponent(remote)}.json`, [['Twiml', holdTwiml(holdRoom(call.id), `${hook('phone-held', ctx.locationId)}?call=${call.id}`)]]); // Twilio parameter – i18n-ignore
       } catch (e) {
         db.run('UPDATE phone_calls SET hold = 0, hold_at = NULL, updated_at = ? WHERE call_id = ?', now(), call.id);
         db.run('UPDATE calls SET sid = ? WHERE id = ?', prevSid, call.id);

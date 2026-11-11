@@ -8,6 +8,7 @@
  *  studio_upload – a video that was uploaded to the Video-Studio of this sub-account
  */
 
+import { tApp } from '../i18n/index.js';
 export type VideoSource =
   | { type: 'none' }
   | { type: 'upload'; upload_id: string; name: string }
@@ -29,16 +30,16 @@ const VIMEO = /^(?:https?:\/\/)?(?:www\.)?(?:player\.)?vimeo\.com\/(?:video\/|[\
 /** An https URL without credentials, or an error. */
 export function httpsUrl(v: unknown, what = 'Link'): string {
   const raw = String(v ?? '').trim();
-  if (!raw) throw new VideoError(`${what} fehlt`);
-  if (raw.length > 2000) throw new VideoError(`${what} ist zu lang`);
+  if (!raw) throw new VideoError(tApp()('{field} fehlt', { field: tApp()(what) }));
+  if (raw.length > 2000) throw new VideoError(tApp()('{field} ist zu lang', { field: tApp()(what) }));
   let u: URL;
   try {
     u = new URL(raw);
   } catch {
-    throw new VideoError(`${what}: bitte eine vollständige Adresse mit https:// angeben`);
+    throw new VideoError(tApp()('{what}: bitte eine vollständige Adresse mit https:// angeben', { what: tApp()(what) }));
   }
-  if (u.protocol !== 'https:') throw new VideoError(`${what}: nur https:// ist erlaubt (Browser blockieren gemischte Inhalte)`);
-  if (u.username || u.password) throw new VideoError(`${what}: Zugangsdaten gehören nicht in die Adresse`);
+  if (u.protocol !== 'https:') throw new VideoError(tApp()('{what}: nur https:// ist erlaubt (Browser blockieren gemischte Inhalte)', { what: tApp()(what) }));
+  if (u.username || u.password) throw new VideoError(tApp()('{what}: Zugangsdaten gehören nicht in die Adresse', { what: tApp()(what) }));
   return u.href;
 }
 
@@ -80,7 +81,7 @@ export function cleanVideo(input: unknown): VideoSource {
       return { type, upload_id: id, name: String(i.name ?? '').slice(0, 200) };
     }
     default:
-      throw new VideoError(`Videoquelle „${type.slice(0, 30)}“ gibt es nicht (${VIDEO_TYPES.join(', ')})`);
+      throw new VideoError(tApp()('Videoquelle „{type}“ gibt es nicht ({types})', { type: type.slice(0, 30), types: VIDEO_TYPES.join(', ') }));
   }
 }
 

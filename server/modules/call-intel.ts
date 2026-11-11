@@ -29,6 +29,7 @@ import { registerTriggers, type TriggerMeta } from '../services/wfx-kit.js';
 import { PURPOSES } from './ai-assistant.js';
 import type { Tool } from './mcp.js';
 import { syncMessage, telephonyConfig } from './telephony.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Gesprächs-Intelligenz: what was said in a conversation, turned into something the team can use. A recorded call (or an
@@ -222,7 +223,7 @@ export const callIntelModule: Module = {
       }
       return s;
     };
-    const aiProblem = (locationId: string): string | null => (app.services.aiReady ? (app.services.aiReady(locationId) as string | null) : 'Das Modul KI-Assistent fehlt.');
+    const aiProblem = (locationId: string): string | null => (app.services.aiReady ? (app.services.aiReady(locationId) as string | null) : tApp()('Das Modul KI-Assistent fehlt.'));
     router.get('/api/call-intel/settings', 'location', (ctx) => {
       const s = settingsOf(ctx.locationId);
       const stt = app.services.aiConnections?.list?.(ctx.locationId, 'stt');
@@ -304,16 +305,17 @@ export const callIntelModule: Module = {
 
     async function recordingOf(locationId: string, call: Record<string, any>): Promise<Buffer> {
       const cfg = telephonyConfig(app, locationId);
-      if (!call.recording_sid || !cfg.accountSid || !cfg.token) throw new HttpError(409, 'Zu diesem Anruf gibt es keine abrufbare Aufnahme');
+      const t = tLoc(app, locationId);
+      if (!call.recording_sid || !cfg.accountSid || !cfg.token) throw new HttpError(409, t('Zu diesem Anruf gibt es keine abrufbare Aufnahme'));
       const fetcher: typeof fetch = app.services.twilioFetch ?? fetch;
       const stereo = Number(call.recording_channels) >= 2;
       const r = await fetcher(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Recordings/${call.recording_sid}.${stereo ? 'wav?RequestedChannels=2' : 'mp3'}`, {
         headers: { authorization: `Basic ${Buffer.from(`${cfg.accountSid}:${cfg.token}`).toString('base64')}` },
         signal: AbortSignal.timeout(60_000),
       });
-      if (!r.ok) throw new HttpError(502, `Aufnahme bei Twilio nicht abrufbar (HTTP ${r.status})`);
+      if (!r.ok) throw new HttpError(502, t('Aufnahme bei Twilio nicht abrufbar (HTTP {status})', { status: r.status }));
       const buf = Buffer.from(await r.arrayBuffer());
-      if (!buf.length) throw new HttpError(502, 'Die Aufnahme ist leer');
+      if (!buf.length) throw new HttpError(502, t('Die Aufnahme ist leer'));
       return buf;
     }
 
@@ -345,12 +347,13 @@ export const callIntelModule: Module = {
           texts.push(parts.join(' ').trim());
         }
         const utterances: { speaker: string; text: string }[] = roles.map((role, i) => ({ speaker: role as string, text: texts[i] })).filter((u) => u.text);
-        const label = (sp: string) => (sp === 'customer' ? 'Kunde' : 'Mitarbeiter');
+        const tl = tLoc(app, locationId);
+        const label = (sp: string) => (sp === 'customer' ? tl('Kunde:') : tl('Mitarbeiter:'));
         const talk = talkStats(wav.pcm, wav.rate);
         const ordered = ['customer', 'agent'].flatMap((sp) => utterances.filter((u) => u.speaker === sp));
-        return { text: ordered.map((u) => `${label(u.speaker)}: ${u.text}`).join('\n'), utterances, separated: true, talk, roles, provider, seconds: Math.round(talk.total_ms / 1000) };
+        return { text: ordered.map((u) => `${label(u.speaker)} ${u.text}`).join('\n'), utterances, separated: true, talk, roles, provider, seconds: Math.round(talk.total_ms / 1000) };
       }
-      if (audio.length > MAX_STT_BYTES) throw new HttpError(413, `Die Aufnahme ist größer als ${Math.round(MAX_STT_BYTES / 1024 / 1024)} MB – bitte in kleinere Teile aufteilen oder als WAV hochladen`);
+      if (audio.length > MAX_STT_BYTES) throw new HttpError(413, tLoc(app, locationId)('Die Aufnahme ist größer als {mb} MB – bitte in kleinere Teile aufteilen oder als WAV hochladen', { mb: Math.round(MAX_STT_BYTES / 1024 / 1024) }));
       const t = await transcribe(app, { ...common, audio, hint: sniff(audio, 'audio/') });
       return { text: t.text, utterances: [], separated: false, talk: null, roles: null, provider: t.provider, seconds: 0 };
     }
@@ -399,20 +402,21 @@ export const callIntelModule: Module = {
     async function analyse(r: IntelRow, s: IntelSettings, transcript: string, separated: boolean): Promise<{ analysis: Analysis | null; error: string }> {
       if (!s.ai) return { analysis: null, error: '' };
       const problem = aiProblem(r.location_id);
-      if (problem || !app.services.aiRun) return { analysis: null, error: problem || 'KI-Assistent fehlt' };
+      const t = tLoc(app, r.location_id);
+      if (problem || !app.services.aiRun) return { analysis: null, error: problem || t('KI-Assistent fehlt') };
       const loc = app.location(r.location_id)!;
       const contact = r.contact_id ? getContact(app, r.location_id, r.contact_id) : undefined;
       try {
         const res = await app.services.aiRun({
           locationId: r.location_id,
           purpose: 'call_intel',
-          user: analysisPrompt({ transcript, separated, today: new Intl.DateTimeFormat('de-DE', { timeZone: loc.timezone, weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date()) + ` (${ymdInTz(new Date(), loc.timezone)})`, contact: contactBlock(contact), kind: r.source === 'call' ? 'call' : 'meeting', language: r.language || s.language }),
+          user: analysisPrompt({ transcript, separated, today: new Intl.DateTimeFormat('en-GB', { timeZone: loc.timezone, weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date()) + ` (${ymdInTz(new Date(), loc.timezone)})`, contact: contactBlock(contact), kind: r.source === 'call' ? 'call' : 'meeting', language: r.language || s.language }),
           schema: ANALYSIS_SCHEMA,
           maxTokens: 3000,
           contactId: r.contact_id,
         });
         const parsed = parseAnalysis(res.text);
-        return parsed.ok ? { analysis: parsed.value, error: '' } : { analysis: null, error: `Ungültige KI-Antwort: ${parsed.error}` };
+        return parsed.ok ? { analysis: parsed.value, error: '' } : { analysis: null, error: t('Ungültige KI-Antwort: {error}', { error: parsed.error }) };
       } catch (e) {
         return { analysis: null, error: (e as Error).message };
       }
@@ -422,13 +426,14 @@ export const callIntelModule: Module = {
     function effects(r: IntelRow, s: IntelSettings) {
       const fresh = row(r.location_id, r.id)!;
       const loc = app.location(r.location_id)!;
-      if (fresh.contact_id && s.timeline && fresh.summary) logActivity(app, r.location_id, fresh.contact_id, 'call.summary', `Gesprächsauswertung: ${fresh.title || 'Gespräch'} – ${fresh.summary.slice(0, 220)}`, { intelId: fresh.id, callId: fresh.call_id, sentiment: fresh.sentiment?.overall ?? '' });
+      const t = tLoc(app, r.location_id);
+      if (fresh.contact_id && s.timeline && fresh.summary) logActivity(app, r.location_id, fresh.contact_id, 'call.summary', t('Gesprächsauswertung: {title} – {summary}', { title: fresh.title || t('Gespräch'), summary: fresh.summary.slice(0, 220) }), { intelId: fresh.id, callId: fresh.call_id, sentiment: fresh.sentiment?.overall ?? '' });
       if (s.auto_tasks) fresh.action_items.forEach((a, i) => a.owner === 'agent' && makeTask(fresh, i, loc.timezone));
       // The call log and the conversation show the summary where nothing else was transcribed.
       if (fresh.call_id && fresh.summary) {
         const call = db.get<any>('SELECT * FROM calls WHERE id = ?', fresh.call_id);
         if (call && !call.transcription && call.status !== 'voicemail') {
-          db.run('UPDATE calls SET transcription = ?, updated_at = ? WHERE id = ?', `Zusammenfassung: ${fresh.summary}`.slice(0, 1000), now(), call.id);
+          db.run('UPDATE calls SET transcription = ?, updated_at = ? WHERE id = ?', t('Zusammenfassung: {summary}', { summary: fresh.summary }).slice(0, 1000), now(), call.id);
           syncMessage(app, db.get('SELECT * FROM calls WHERE id = ?', call.id)!);
         }
       }
@@ -448,12 +453,13 @@ export const callIntelModule: Module = {
       const item = r.action_items[index];
       if (!item || item.task_id) return item?.task_id ?? null;
       const taskId = id();
+      const t = tLoc(app, r.location_id);
       db.insert('tasks', {
         id: taskId,
         location_id: r.location_id,
         contact_id: r.contact_id,
         title: item.title.slice(0, 200),
-        description: `Aus der Gesprächsauswertung „${r.title || 'Gespräch'}“.${r.next_step ? `\nNächster Schritt: ${r.next_step}` : ''}`.slice(0, 4000),
+        description: `${t('Aus der Gesprächsauswertung „{title}“.', { title: r.title || t('Gespräch') })}${r.next_step ? `\n${t('Nächster Schritt: {step}', { step: r.next_step })}` : ''}`.slice(0, 4000),
         due_at: item.due ? zonedToUtc(item.due, '09:00', tz).toISOString() : now(),
         assigned_to: r.user_id,
         done: 0,
@@ -470,6 +476,7 @@ export const callIntelModule: Module = {
       if (!r0) return;
       const r = parseJson(r0, JSON_COLS) as IntelRow;
       const s = settingsOf(r.location_id);
+      const t = tLoc(app, r.location_id);
       try {
         let text = r.transcript;
         let utterances = r.utterances;
@@ -481,16 +488,16 @@ export const callIntelModule: Module = {
           let direction = 'in';
           if (r.source === 'call') {
             const call = db.get<any>('SELECT * FROM calls WHERE id = ?', r.call_id ?? '');
-            if (!call) throw new HttpError(404, 'Der Anruf existiert nicht mehr');
+            if (!call) throw new HttpError(404, t('Der Anruf existiert nicht mehr'));
             direction = call.direction;
             audio = await recordingOf(r.location_id, call);
           } else {
             const path = join(callIntelDir(app), r.audio_file);
-            if (!r.audio_file || !existsSync(path)) throw new HttpError(404, 'Die hochgeladene Aufnahme fehlt auf dem Server');
+            if (!r.audio_file || !existsSync(path)) throw new HttpError(404, t('Die hochgeladene Aufnahme fehlt auf dem Server'));
             audio = readFileSync(path);
           }
           heard = await hear(r.location_id, r, audio, direction, s);
-          if (!heard.text.trim()) throw new HttpError(422, 'In der Aufnahme wurde keine Sprache erkannt');
+          if (!heard.text.trim()) throw new HttpError(422, t('In der Aufnahme wurde keine Sprache erkannt'));
           text = heard.text;
           utterances = heard.utterances;
           separated = heard.separated;
@@ -504,7 +511,7 @@ export const callIntelModule: Module = {
         const local = sentimentOf(separated && customerText ? customerText : text);
         setRow(r.id, {
           status: 'done',
-          title: r.title || analysis?.title || (r.source === 'call' ? 'Telefonat' : 'Gespräch'),
+          title: r.title || analysis?.title || (r.source === 'call' ? t('Telefonat') : t('Gespräch')),
           summary: analysis?.summary ?? '',
           next_step: analysis?.next_step ?? '',
           action_items: analysis?.action_items ?? [],
@@ -648,7 +655,7 @@ export const callIntelModule: Module = {
       const audio = ctx.rawBuffer;
       if (!audio?.length) throw bad('Aufnahme fehlt');
       if (!consentGiven(ctx.query.get('consent'))) throw bad('Bitte bestätigen, dass alle Beteiligten der Aufzeichnung zugestimmt haben (§ 201 StGB, DSGVO)');
-      if (audio.length > MAX_STT_BYTES) throw new HttpError(413, `Aufnahme ist zu groß (höchstens ${Math.round(MAX_STT_BYTES / 1024 / 1024)} MB)`);
+      if (audio.length > MAX_STT_BYTES) throw new HttpError(413, tCtx(ctx)('Aufnahme ist zu groß (höchstens {mb} MB)', { mb: Math.round(MAX_STT_BYTES / 1024 / 1024) }));
       const mime = sniff(audio, 'audio/');
       if (!mime.startsWith('audio/')) throw bad('Das ist keine Audioaufnahme (erlaubt: MP3, WAV, M4A, WebM, Ogg, FLAC)');
       const ext = { 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/mp4': 'm4a', 'audio/flac': 'flac', 'audio/aac': 'aac' }[mime] ?? 'bin';
@@ -665,7 +672,7 @@ export const callIntelModule: Module = {
         audio_file: file,
         audio_bytes: audio.length,
         language: /^[a-z]{2}(-[a-z]{2})?$/.test(language) ? language : settingsOf(ctx.locationId).language,
-        consent_note: `Zustimmung aller Beteiligten bestätigt von ${ctx.user?.name ?? 'API'} am ${now()}`,
+        consent_note: tLoc(app, ctx.locationId)('Zustimmung aller Beteiligten bestätigt von {name} am {date}', { name: ctx.user?.name ?? 'API', date: now() }),
       });
       return out(row(ctx.locationId, rid)!);
     });

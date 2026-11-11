@@ -5,6 +5,7 @@ import { UmzugError, VendorHttp, networkFetch } from './umzug-http.js';
 import { counter } from './umzug-lib.js';
 import type { Json } from './umzug-flow.js';
 import { toIso } from './umzug-text.js';
+import { translator, tApp, type ServerLocale } from '../i18n/index.js';
 
 /**
  * KlickTipp (REST API, https://api.klicktipp.com): subscribers with their fields, tags and status → contacts + consent ledger (a
@@ -34,13 +35,14 @@ const http = (creds: Record<string, string>, _meta: Record<string, string>, deps
     pauseMs: deps.pauseMs ?? 150,
     errorText: (b) => (Array.isArray(b) ? String(b[0] ?? '') : typeof b?.error === 'string' ? b.error : typeof b?.message === 'string' ? b.message : undefined),
     prepare: async () => {
+      const t = tApp();
       if (session) return;
       const f = deps.fetch ?? networkFetch;
       let r;
       try {
         r = await f(`${BASE}/account/login`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: new URLSearchParams({ username: creds.username ?? '', password: creds.password ?? '' }).toString() });
       } catch (e) {
-        throw new UmzugError(0, `KlickTipp nicht erreichbar: ${(e as Error).message}`);
+        throw new UmzugError(0, t('KlickTipp nicht erreichbar: {reason}', { reason: (e as Error).message }));
       }
       const j: any = await r.json().catch(() => ({}));
       const sessid = j?.sessid ?? j?.data?.sessid;
@@ -154,7 +156,8 @@ export function klicktippContact(o: Json, tags: Map<string, string>, labels: Map
   return { kind: 'contact', ext: `s:${o.id}`, values, tags: tagNamesOf(o.tags, tags), consent: c.consent, native_status: c.native, created_at: ts(o.date ?? o.created ?? o.subscribed ?? o.optin), proof: c.proof.length ? c.proof : undefined };
 }
 
-async function describe(h: VendorHttp, parts: PartKey[]) {
+async function describe(h: VendorHttp, parts: PartKey[], lang?: ServerLocale) {
+  const t = translator(lang);
   const counts: CountRow[] = [];
   const fields: SourceField[] = [];
   const warnings: string[] = [];
@@ -168,7 +171,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
       for (const [k, name] of Object.entries(mapOf(await h.get('/field')))) if (!labels.has(k)) labels.set(k, name);
     } catch (e) {
       if (!(e instanceof UmzugError && e.skippable)) throw e;
-      warnings.push(`Eigene Felder nicht lesbar: ${e.message}`);
+      warnings.push(t('Eigene Felder nicht lesbar: {reason}', { reason: e.message }));
     }
     const typeOf = new Map<string, FieldType>(STD_LABEL.map(([k, , t]) => [k, t]));
     for (const [k, label] of labels) fields.push({ ref: `f:${k}`, label, type: typeOf.get(k) ?? (DATE_NAME.test(label) ? 'date' : 'text'), std: STD_FIELD[k], group: STD_FIELD[k] ? 'standard' : 'custom' });
@@ -251,7 +254,7 @@ export const KLICKTIPP: SourceDef = {
     const user = String(creds.username ?? '').trim().toLowerCase();
     return { account: `acct-${createHash('sha256').update(user).digest('hex').slice(0, 12)}`, label: 'KlickTipp-Konto', meta: {} };
   },
-  describe: (h, parts) => describe(h, parts),
+  describe: (h, parts, c) => describe(h, parts, c.lang),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),
 };
 

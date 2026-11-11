@@ -8,6 +8,7 @@ import { notifyTeam } from '../services/messaging.js';
 import { isAway } from '../services/team-people.js';
 import { autoAssign } from '../services/teaminbox-assign.js';
 import { responseDeadline, slaStateOf, type InboxSettings } from '../services/teaminbox-model.js';
+import { tApp, tLoc, tUser } from '../i18n/index.js';
 import {
   SYSTEM,
   addTimeline,
@@ -36,8 +37,9 @@ const TICK_LIMIT = 200;
 const VIEWING_MS = 45_000;
 const TYPING_MS = 6_000;
 
-const customer: Who = { userId: null, name: 'Neue Nachricht', via: 'customer' };
-const auto: Who = { ...SYSTEM, name: 'Automatik' };
+// Actor names shown in the timeline: the instance language.
+const customer: Who = { userId: null, name: tApp()('Neue Nachricht'), via: 'customer' };
+const auto: Who = { ...SYSTEM, name: tApp()('Automatik') };
 
 export const teamInboxEngineModule: Module = {
   name: 'teaminbox-engine',
@@ -80,13 +82,14 @@ export const teamInboxEngineModule: Module = {
       if (msg?.channel === 'call') return;
       const s = settingsOf(app, locationId);
       let conv = row;
-      if (conv.inbox_status !== 'open' || conv.snoozed_until) conv = wake(conv, customer, 'Neue Nachricht', s);
+      const tl = tLoc(app, locationId);
+      if (conv.inbox_status !== 'open' || conv.snoozed_until) conv = wake(conv, customer, tl('Neue Nachricht'), s);
       if (s.assignment.mode !== 'manual') {
         const away = !!conv.assignee_id && s.assignment.reassign_when_away && isAway(app, locationId, conv.assignee_id);
         if (!conv.assignee_id || away) {
           const before = conv.assignee_id;
           conv = autoAssign(app, conv.id, locationId, s);
-          if (away && conv.assignee_id !== before) addTimeline(app, conv, 'auto', { name: 'Automatik', body: 'Neu zugewiesen, weil die bisherige Person abwesend ist' });
+          if (away && conv.assignee_id !== before) addTimeline(app, conv, 'auto', { name: tl('Automatik'), body: tl('Neu zugewiesen, weil die bisherige Person abwesend ist') });
         }
       }
       if (conv.sla_dirty) conv = computeSla(conv, s);
@@ -99,18 +102,25 @@ export const teamInboxEngineModule: Module = {
       if (fresh.sla_state === 'breached' || !fresh.awaiting_since) return;
       db.run(`UPDATE conversations SET sla_state = 'breached' WHERE id = ? AND sla_state != 'breached'`, fresh.id);
       const kind = fresh.awaiting_kind === 'next' ? 'next' : 'first';
-      addTimeline(app, fresh, 'sla', { name: 'SLA', body: `${kind === 'first' ? 'Erste' : 'Weitere'} Antwort überfällig (fällig ${new Date(fresh.response_due_at ?? Date.now()).toLocaleString('de-DE', { timeZone: app.location(fresh.location_id)?.timezone || 'Europe/Berlin' })})`, data: { kind, due: fresh.response_due_at } });
-      app.services.audit?.({ action: 'inbox.sla_breached', actor: 'System', locationId: fresh.location_id, entityId: fresh.id, summary: `${kind === 'first' ? 'Erste' : 'Weitere'} Antwort überfällig` });
+      const tl = tLoc(app, fresh.location_id);
+      const overdue = kind === 'first' ? tl('Erste Antwort überfällig') : tl('Weitere Antwort überfällig');
+      const dueText = new Date(fresh.response_due_at ?? Date.now()).toLocaleString(tl.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: app.location(fresh.location_id)?.timezone || 'Europe/Berlin' });
+      addTimeline(app, fresh, 'sla', { name: 'SLA', body: `${overdue} (${tl('fällig {date}', { date: dueText })})`, data: { kind, due: fresh.response_due_at } });
+      app.services.audit?.({ action: 'inbox.sla_breached', actor: 'System', locationId: fresh.location_id, entityId: fresh.id, summary: overdue });
       const next = getConv(app, fresh.location_id, fresh.id);
       app.events.emit(next.location_id, 'conversation.sla_breached', { contactId: next.contact_id, conversationId: next.id, slaKind: kind, dueAt: next.response_due_at, assigneeId: next.assignee_id, conversation: brief(app, next) });
       announceConversation(app, next, 'sla');
       if (s.sla.notify_assignee) {
         const label = brief(app, next).contact_name;
-        pushToUsers(app, next.assignee_id ? [next.assignee_id] : [], `Antwort überfällig: ${label}`, next.last_message, next, `inbox-sla-${next.id}`, 'high', !next.assignee_id);
+        // To the assignee in their language; to everybody in the sub-account's.
+        const tp = next.assignee_id ? tUser(app as never, next.assignee_id) : tl;
+        pushToUsers(app, next.assignee_id ? [next.assignee_id] : [], tp('Antwort überfällig: {name}', { name: label }), next.last_message, next, `inbox-sla-${next.id}`, 'high', !next.assignee_id);
       }
       if (s.sla.notify_email) {
         const a = next.assignee_id ? agentsOf(app, next.location_id).find((x) => x.id === next.assignee_id) : undefined;
-        track(app, notifyTeam(app, next.location_id, `Antwort überfällig: ${brief(app, next).contact_name}`, `Die Antwort an ${brief(app, next).contact_name} ist überfällig.\n\n${app.baseUrl()}/app/conversations/${next.id}`, a?.email).catch(() => undefined));
+        const tm = a ? tUser(app as never, a.id) : tl;
+        const name = brief(app, next).contact_name;
+        track(app, notifyTeam(app, next.location_id, tm('Antwort überfällig: {name}', { name }), `${tm('Die Antwort an {name} ist überfällig.', { name })}\n\n${app.baseUrl()}/app/conversations/${next.id}`, a?.email).catch(() => undefined));
       }
     }
 
@@ -118,7 +128,7 @@ export const teamInboxEngineModule: Module = {
       if (!db.run(`UPDATE conversations SET sla_state = 'warning' WHERE id = ? AND sla_state = ''`, conv.id).changes) return;
       const next = getConv(app, conv.location_id, conv.id);
       announceConversation(app, next, 'sla');
-      if (s.sla.notify_assignee && next.assignee_id) pushToUsers(app, [next.assignee_id], `Antwort läuft bald ab: ${brief(app, next).contact_name}`, next.last_message, next, `inbox-sla-warn-${next.id}`);
+      if (s.sla.notify_assignee && next.assignee_id) pushToUsers(app, [next.assignee_id], tUser(app as never, next.assignee_id)('Antwort läuft bald ab: {name}', { name: brief(app, next).contact_name }), next.last_message, next, `inbox-sla-warn-${next.id}`);
     }
 
     // --- scheduler -----------------------------------------------------------------------------------------
@@ -136,8 +146,8 @@ export const teamInboxEngineModule: Module = {
 
       // 2. Snoozes that ran out.
       for (const c of db.all<ConvRow>(`SELECT * FROM conversations WHERE snoozed_until IS NOT NULL AND snoozed_until <= ? AND inbox_status != 'closed' LIMIT ?`, iso, TICK_LIMIT)) {
-        const woke = wake(c, auto, 'Zurückstellen abgelaufen', sOf(c.location_id));
-        if (woke.assignee_id) pushToUsers(app, [woke.assignee_id], `Wieder da: ${brief(app, woke).contact_name}`, woke.last_message, woke, `inbox-wake-${woke.id}`);
+        const woke = wake(c, auto, tLoc(app, c.location_id)('Zurückstellen abgelaufen'), sOf(c.location_id));
+        if (woke.assignee_id) pushToUsers(app, [woke.assignee_id], tUser(app as never, woke.assignee_id)('Wieder da: {name}', { name: brief(app, woke).contact_name }), woke.last_message, woke, `inbox-wake-${woke.id}`);
       }
 
       // 3. Answer timers: warning, then breach.
@@ -158,10 +168,11 @@ export const teamInboxEngineModule: Module = {
         db.run('UPDATE conversations SET out_pending = 0 WHERE id = ?', c.id);
         const s = sOf(c.location_id);
         let cur = c;
+        const tl = tLoc(app, c.location_id);
         if (!cur.assignee_id && s.assignment.assign_on_reply && cur.last_out_user && agentsOf(app, cur.location_id).some((a) => a.id === cur.last_out_user)) {
-          cur = setAssignee(app, { ...auto, name: 'Antwort', via: 'rule' }, cur, { userId: cur.last_out_user, reason: 'hat geantwortet', quiet: true });
+          cur = setAssignee(app, { ...auto, name: tl('Antwort'), via: 'rule' }, cur, { userId: cur.last_out_user, reason: tl('hat geantwortet'), quiet: true });
         }
-        if (s.reply_sets_waiting && cur.inbox_status === 'open') cur = setStatus(app, auto, cur, { status: 'waiting', reason: 'Antwort gesendet' });
+        if (s.reply_sets_waiting && cur.inbox_status === 'open') cur = setStatus(app, auto, cur, { status: 'waiting', reason: tl('Antwort gesendet') });
         announceConversation(app, cur, 'outbound');
       }
 
@@ -178,7 +189,7 @@ export const teamInboxEngineModule: Module = {
                AND awaiting_since IS NULL AND (snoozed_until IS NULL OR snoozed_until <= ?) LIMIT 100`,
             r.location_id, cutoff, iso,
           );
-          for (const c of rows) setStatus(app, auto, c, { status: 'closed', reason: `Keine Antwort seit ${s.auto_close_days} Tagen` });
+          for (const c of rows) setStatus(app, auto, c, { status: 'closed', reason: tLoc(app, c.location_id).plural(s.auto_close_days, { one: 'Keine Antwort seit {n} Tag', other: 'Keine Antwort seit {n} Tagen' }) });
         }
       }
 

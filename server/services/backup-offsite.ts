@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { backupKeys, decryptFile, encryptFile, type BackupKey } from './backup-crypto.js';
 import { parseRetention, type Retention } from './backup-retention.js';
 import { S3Client, type S3Config } from './s3-lite.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Off-site backups: the pieces both the app (modules/offsite-backup.ts) and the restore command (cli/backup-restore.ts) use –
@@ -34,7 +35,7 @@ const REQUIRED = ['PGHL_BACKUP_S3_ENDPOINT', 'PGHL_BACKUP_S3_BUCKET', 'PGHL_BACK
 export function offsiteConfig(env: NodeJS.ProcessEnv = process.env): { config?: OffsiteConfig; missing: string[]; error?: string } {
   const missing = REQUIRED.filter((k) => !String(env[k] ?? '').trim());
   if (missing.length === REQUIRED.length) return { missing };
-  if (missing.length) return { missing, error: `Off-site-Backup unvollständig eingerichtet – es fehlt: ${missing.join(', ')}` };
+  if (missing.length) return { missing, error: tApp()('Off-site-Backup unvollständig eingerichtet – es fehlt: {missing}', { missing: missing.join(', ') }) };
   let keys: BackupKey[];
   try {
     keys = backupKeys(env);
@@ -218,7 +219,7 @@ export async function restoreSnapshot(cfg: OffsiteConfig, o: { stamp?: string; d
   try {
     manifest = await readManifest(s3, cfg, stamp, o.dir);
   } catch (e) {
-    problems.push(`Manifest fehlt oder ist unlesbar: ${(e as Error).message}`);
+    problems.push(tApp()('Manifest fehlt oder ist unlesbar: {error}', { error: (e as Error).message }));
   }
   const dbFile = join(o.dir, 'pghl.db');
   rmSync(dbFile, { force: true });
@@ -229,14 +230,14 @@ export async function restoreSnapshot(cfg: OffsiteConfig, o: { stamp?: string; d
   if (manifest) {
     const diff = Object.entries(manifest.rows).filter(([t, n]) => rows[t] !== n);
     rowsMatch = diff.length === 0;
-    if (!rowsMatch) problems.push(`Zeilen stimmen nicht: ${diff.map(([t, n]) => `${t} ${rows[t] ?? '–'} statt ${n}`).join(', ')}`);
+    if (!rowsMatch) problems.push(tApp()('Zeilen stimmen nicht: {diff}', { diff: diff.map(([t, n]) => tApp()('{table} {got} statt {want}', { table: t, got: rows[t] ?? '–', want: n })).join(', ') }));
   }
   let filesChecked = 0;
   const list = manifest?.files ?? [];
   const wanted = o.files ? list : o.sampleFiles ? pickSample(list, o.sampleFiles) : [];
   for (const [rel, key, size] of wanted) {
     if (rel.split('/').some((p) => p === '..' || p === '')) {
-      problems.push(`Ungültiger Pfad im Manifest: ${rel}`);
+      problems.push(tApp()('Ungültiger Pfad im Manifest: {path}', { path: rel }));
       continue;
     }
     const dst = join(o.dir, ...rel.split('/'));

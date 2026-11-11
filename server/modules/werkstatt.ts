@@ -22,6 +22,7 @@ import { EFFORT_LABELS, type EffortPlan } from '../services/ai-effort.js';
 import { probeSandbox } from '../services/werkstatt/sandbox.js';
 import { canManage, createPlugin, getPlugin, getVersion, nextVersion, setVersionMeta, versionsOf } from '../services/werkstatt/store.js';
 import { diffVersions } from '../services/werkstatt/diff.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Werkstatt: a wish becomes a build. The AI analyses it and proposes a plan in one of two stages –
@@ -75,9 +76,9 @@ export const werkstattModule: Module = {
   ],
   register(app) {
     const { db, router } = app;
-    Object.assign(PURPOSES, { werkstatt_plan: `${NAMES.werkstatt}: Plan`, werkstatt_build: `${NAMES.werkstatt}: Bau`, werkstatt_review: `${NAMES.werkstatt}: Sicherheitsprüfung`, werkstatt_review2: `${NAMES.werkstatt}: Zweitmeinung`, werkstatt_spec: `${NAMES.werkstatt}: Kernfeature-Spezifikation`, plugin: 'Plugin' });
+    Object.assign(PURPOSES, { werkstatt_plan: tApp()('{werkstatt}: Plan', { werkstatt: tApp()(NAMES.werkstatt) }), werkstatt_build: tApp()('{werkstatt}: Bau', { werkstatt: tApp()(NAMES.werkstatt) }), werkstatt_review: tApp()('{werkstatt}: Sicherheitsprüfung', { werkstatt: tApp()(NAMES.werkstatt) }), werkstatt_review2: `${NAMES.werkstatt}: Zweitmeinung`, werkstatt_spec: `${NAMES.werkstatt}: Kernfeature-Spezifikation`, plugin: 'Plugin' });
     // Members can switch these push notifications off in Einstellungen → Mein Konto like the other kinds.
-    Object.assign(PUSH_KINDS, { werkstatt: { label: `${NAMES.werkstatt}: Pläne, Freigaben und fertige Aufträge`, perm: '' } });
+    Object.assign(PUSH_KINDS, { werkstatt: { label: tApp()('{werkstatt}: Pläne, Freigaben und fertige Aufträge', { werkstatt: tApp()(NAMES.werkstatt) }), perm: '' } });
     const running = new Set<Promise<unknown>>();
     const detach = (p: Promise<unknown>) => {
       const q = p.catch((e) => console.error('[werkstatt]', (e as Error).message)).finally(() => running.delete(q));
@@ -120,7 +121,7 @@ export const werkstattModule: Module = {
       calls.push(entry);
       const main = purpose === 'werkstatt_build' || !cur.model ? entry : { model: cur.model, applied: cur.applied, requested: cur.requested, note: cur.note };
       set(id, { ai: { model: main.model, requested: main.requested, applied: main.applied, label: main.applied ? EFFORT_LABELS[main.applied as keyof typeof EFFORT_LABELS] : '', note: main.note, calls: calls.slice(-12) } });
-      if (fresh) log(id, `KI: ${r.model} · Denkstufe ${e?.applied ? EFFORT_LABELS[e.applied] : 'nicht gesendet'}${e?.note ? ` (${e.note})` : ''}`);
+      if (fresh) log(id, `${tApp()('KI: {model} · Denkstufe {effort}', { model: r.model, effort: e?.applied ? tApp()(EFFORT_LABELS[e.applied]) : tApp()('nicht gesendet') })}${e?.note ? ` (${tApp()(e.note)})` : ''}`);
     };
     /** One AI call for a build: budget check first, cost and tokens added to the build afterwards. */
     const ask = async (b: Row, purpose: string, system: SystemBlock[], userText: string, schema: Record<string, unknown>, maxTokens: number): Promise<CallResult> => {
@@ -155,7 +156,7 @@ export const werkstattModule: Module = {
     const get = (id: string): Row | undefined => db.get('SELECT * FROM werkstatt_builds WHERE id = ?', id);
     const log = (id: string, text: string, level: 'info' | 'error' = 'info') => {
       const cur = jsonOr<any[]>(db.get<{ log: string }>('SELECT log FROM werkstatt_builds WHERE id = ?', id)?.log, []);
-      cur.push({ at: now(), level, text: text.slice(0, 400) });
+      cur.push({ at: now(), level, text: tApp()(text).slice(0, 400) });
       db.run('UPDATE werkstatt_builds SET log = ?, updated_at = ? WHERE id = ?', JSON.stringify(cur.slice(-LOG_MAX)), now(), id);
     };
     const set = (id: string, patch: Row) => {
@@ -163,9 +164,9 @@ export const werkstattModule: Module = {
       db.run(`UPDATE werkstatt_builds SET ${keys.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ?`, ...keys.map((k) => (patch[k] !== null && typeof patch[k] === 'object' ? JSON.stringify(patch[k]) : patch[k])), now(), id);
     };
     /** What the build is doing right now ("Schritt 2 von 3 …"): shown live next to the log. */
-    const progress = (id: string, label: string, current = 0, total = 0) => set(id, { progress: { label, current, total } });
+    const progress = (id: string, label: string, current = 0, total = 0) => set(id, { progress: { label: tApp()(label), current, total } });
     /** In-app note + push (+ email for decisions people wait for), in the background. */
-    const notify = (t: Tell) => detach(tell(app, t));
+    const notify = (t: Tell) => detach(tell(app, { ...t, title: tApp()(t.title), ...(typeof t.body === 'string' ? { body: tApp()(t.body) } : {}) }));
     const admins = () => db.all<{ id: string }>(`SELECT id FROM users WHERE role = 'admin'`).map((r) => r.id);
 
     const out = (b: Row, full = false) => {
@@ -175,9 +176,9 @@ export const werkstattModule: Module = {
         id: b.id,
         kind: b.kind,
         status: b.status,
-        status_label: STATUS_LABELS[b.status] ?? b.status,
+        status_label: STATUS_LABELS[b.status] ? tApp()(STATUS_LABELS[b.status]) : b.status,
         stage: b.stage,
-        stage_label: STAGE_LABELS[b.stage] ?? '',
+        stage_label: STAGE_LABELS[b.stage] ? tApp()(STAGE_LABELS[b.stage]) : '',
         title: b.title || plan.title || b.text.slice(0, 80),
         text: b.text,
         wish_id: b.wish_id,
@@ -200,7 +201,7 @@ export const werkstattModule: Module = {
       const manifest: Manifest | undefined = plan.manifest;
       return {
         ...brief,
-        plan: { stage: plan.stage ?? b.stage, title: plan.title, summary: plan.summary, rationale: plan.rationale, notes: plan.notes ?? [], steps: (plan.steps ?? []).map((s: PlanStep) => ({ block: s.block, title: s.title, area: s.area })), areas: plan.areas ?? [], scopes: (plan.scopes ?? []).map((k: string) => ({ key: k, label: SCOPES[k]?.label ?? k, hint: SCOPES[k]?.hint ?? '', risk: SCOPES[k]?.risk ?? 'medium', write: !!SCOPES[k]?.write })), risk: riskOf(plan.scopes ?? []), manifest: manifest ? { name: manifest.name, icon: manifest.icon, description: manifest.description, category: manifest.category, entries: manifest.entries, server: manifest.server } : null, change: plan.change ?? null, estimate: plan.estimate ?? null, missing_areas: plan.missing_areas ?? [], draft_issues: plan.draft_issues ?? [], model_gate: plan.model_gate ?? { ok: true }, ai: plan.ai ?? null, diff: plan.diff ?? null, new_scopes: plan.new_scopes ?? [] },
+        plan: { stage: plan.stage ?? b.stage, title: plan.title, summary: plan.summary, rationale: plan.rationale, notes: plan.notes ?? [], steps: (plan.steps ?? []).map((s: PlanStep) => ({ block: s.block, title: s.title, area: s.area })), areas: plan.areas ?? [], scopes: (plan.scopes ?? []).map((k: string) => ({ key: k, label: SCOPES[k] ? tApp()(SCOPES[k].label) : k, hint: SCOPES[k] ? tApp()(SCOPES[k].hint) : '', risk: SCOPES[k]?.risk ?? 'medium', write: !!SCOPES[k]?.write })), risk: riskOf(plan.scopes ?? []), manifest: manifest ? { name: manifest.name, icon: manifest.icon, description: manifest.description, category: manifest.category, entries: manifest.entries, server: manifest.server } : null, change: plan.change ?? null, estimate: plan.estimate ?? null, missing_areas: plan.missing_areas ?? [], draft_issues: plan.draft_issues ?? [], model_gate: plan.model_gate ?? { ok: true }, ai: plan.ai ?? null, diff: plan.diff ?? null, new_scopes: plan.new_scopes ?? [] },
         log: jsonOr(b.log, []),
         created: jsonOr(b.created, []),
         approval: b.approval_at ? { by: db.get('SELECT name FROM users WHERE id = ?', b.approval_by)?.name ?? '', at: b.approval_at, note: b.approval_note } : null,
@@ -250,23 +251,23 @@ export const werkstattModule: Module = {
         let plan: ParsedPlan | undefined;
         const rounds = 1 + loadPolicy(app).repair_rounds;
         for (let attempt = 0; attempt < rounds && !plan; attempt++) {
-          log(id, attempt ? `Der Plan war unbrauchbar (${repair}) – die KI korrigiert ihn (Versuch ${attempt + 1} von ${rounds}).` : 'Die KI analysiert den Wunsch …', attempt ? 'error' : 'info');
-          progress(id, attempt ? `Plan wird korrigiert (Versuch ${attempt + 1} von ${rounds})` : 'Die KI analysiert den Wunsch', attempt + 1, rounds);
+          log(id, attempt ? tApp()('Der Plan war unbrauchbar ({repair}) – die KI korrigiert ihn (Versuch {n} von {rounds}).', { repair: repair ?? '', n: attempt + 1, rounds }) : 'Die KI analysiert den Wunsch …', attempt ? 'error' : 'info');
+          progress(id, attempt ? tApp()('Plan wird korrigiert (Versuch {n} von {rounds})', { n: attempt + 1, rounds }) : 'Die KI analysiert den Wunsch', attempt + 1, rounds);
           const r = await ask(get(id)!, 'werkstatt_plan', system, planUser({ title: b.title || title, body: rest.join('\n').trim(), locationName: loc?.name ?? '', inventory: inventory(b.location_id), repair }), PLAN_SCHEMA, 4000);
           const parsed = parsePlan(r.text);
           if (parsed.ok) plan = parsed.value;
           else repair = parsed.error;
         }
-        if (!plan) throw new HttpError(502, `Die KI hat auch nach ${rounds} Versuch${rounds === 1 ? '' : 'en'} keinen brauchbaren Plan geliefert (${repair}). Bitte beschreibe den Wunsch genauer – oder prüfe unter Einstellungen → KI-Anbieter, ob das gewählte Modell strukturierte Antworten (JSON) liefern kann.`);
+        if (!plan) throw new HttpError(502, tApp().plural(rounds, { one: 'Die KI hat auch nach {n} Versuch keinen brauchbaren Plan geliefert ({repair}). Bitte beschreibe den Wunsch genauer – oder prüfe unter Einstellungen → KI-Anbieter, ob das gewählte Modell strukturierte Antworten (JSON) liefern kann.', other: 'Die KI hat auch nach {n} Versuchen keinen brauchbaren Plan geliefert ({repair}). Bitte beschreibe den Wunsch genauer – oder prüfe unter Einstellungen → KI-Anbieter, ob das gewählte Modell strukturierte Antworten (JSON) liefern kann.' }, { repair: repair ?? '' }));
         const policy = loadPolicy(app);
         const notes = [...plan.notes];
         const areas = [...new Set(plan.steps.map((s) => s.area).filter((a): a is string => !!a))];
         const scopes = plan.manifest?.scopes ?? [];
         // Server logic the policy does not allow is said now, not after the build.
         if (plan.manifest && (plan.manifest.entries.actions?.length || plan.manifest.entries.jobs?.length)) {
-          if (policy.server_logic === 'off') notes.push('Aktionen und Jobs sind laut Richtlinie ausgeschaltet – dieses Plugin kann so nicht gebaut werden.');
-          else if (plan.manifest.server?.mode === 'script' && policy.server_logic === 'declarative') notes.push('Skripte sind laut Richtlinie aus – das Plugin muss aus deklarativen Schritten bestehen.');
-          else if (plan.manifest.server?.mode === 'script' && !(await probeSandbox()).ok) notes.push('Die Skript-Sandbox ist auf diesem Server nicht verfügbar – Server-Logik ist nur deklarativ möglich.');
+          if (policy.server_logic === 'off') notes.push(tApp()('Aktionen und Jobs sind laut Richtlinie ausgeschaltet – dieses Plugin kann so nicht gebaut werden.'));
+          else if (plan.manifest.server?.mode === 'script' && policy.server_logic === 'declarative') notes.push(tApp()('Skripte sind laut Richtlinie aus – das Plugin muss aus deklarativen Schritten bestehen.'));
+          else if (plan.manifest.server?.mode === 'script' && !(await probeSandbox()).ok) notes.push(tApp()('Die Skript-Sandbox ist auf diesem Server nicht verfügbar – Server-Logik ist nur deklarativ möglich.'));
         }
         const est = plan.stage === 2 ? estimate(b.location_id, 'build') : { model: modelOf(b.location_id).model, typical_micros: 0, max_micros: 0 };
         const missing = missingAreas(u ?? undefined, plan.steps);
@@ -276,22 +277,22 @@ export const werkstattModule: Module = {
         const buildAi = describeAi(app, b.location_id, 'werkstatt_build');
         const stored = { stage: plan.stage, title: plan.title, summary: plan.summary, rationale: plan.rationale, notes, steps: plan.steps, areas, scopes, manifest: plan.manifest ?? null, estimate: { model: est.model, typical_usd: est.typical_micros / 1e6, max_usd: est.max_micros / 1e6 }, missing_areas: missing, model_gate: modelGate ? { ok: false, message: modelGate } : { ok: true }, ai: plan.stage === 2 ? { model: buildAi.model, effort: effortOverview(app, b.location_id, buildAi) } : null };
         set(id, { plan: stored, stage: plan.stage, title: plan.title, status: 'planned', est_cost_micros: est.typical_micros, progress: {} });
-        log(id, `Plan: ${STAGE_LABELS[plan.stage]} – ${plan.title}`);
-        notify({ userIds: [b.user_id], kind: 'plan', title: `${NAMES.werkstatt}: Dein Plan liegt vor`, body: plan.title, path: `/app/werkstatt/${id}`, buildId: id, locationId: b.location_id });
+        log(id, `Plan: ${tApp()(STAGE_LABELS[plan.stage] ?? '')} – ${plan.title}`);
+        notify({ userIds: [b.user_id], kind: 'plan', title: tApp()('{werkstatt}: Dein Plan liegt vor', { werkstatt: tApp()(NAMES.werkstatt) }), body: plan.title, path: `/app/werkstatt/${id}`, buildId: id, locationId: b.location_id });
       } catch (e) {
         const msg = (e as Error).message || 'Fehler';
         log(id, `Analyse fehlgeschlagen: ${msg}`, 'error');
         set(id, { status: 'failed', error: msg, finished_at: now(), progress: {} });
         const b2 = get(id);
-        if (b2) notify({ userIds: [b2.user_id], kind: 'failed', title: `${NAMES.werkstatt}: Der Plan ist fehlgeschlagen`, body: msg.slice(0, 200), path: `/app/werkstatt/${id}`, buildId: id, locationId: b2.location_id });
+        if (b2) notify({ userIds: [b2.user_id], kind: 'failed', title: tApp()('{werkstatt}: Der Plan ist fehlgeschlagen', { werkstatt: tApp()(NAMES.werkstatt) }), body: msg.slice(0, 200), path: `/app/werkstatt/${id}`, buildId: id, locationId: b2.location_id });
       }
     };
 
     // --- stage 1/2: the build -------------------------------------------------------------------------------------------
     const finish = (id: string, status: 'done' | 'failed', patch: Row = {}) => {
-      set(id, { status, finished_at: now(), progress: {}, ...patch });
+      set(id, { status, finished_at: now(), progress: {}, ...patch, ...(typeof patch.error === 'string' ? { error: tApp()(patch.error) } : {}) });
       const b = get(id)!;
-      notify({ userIds: [b.user_id], kind: status === 'done' ? 'done' : 'failed', title: status === 'done' ? `${NAMES.werkstatt}: „${b.title}“ ist fertig` : `${NAMES.werkstatt}: Bau fehlgeschlagen`, body: status === 'done' ? 'Jetzt ansehen' : String(b.error).slice(0, 200), path: `/app/werkstatt/${id}`, buildId: id, locationId: b.location_id });
+      notify({ userIds: [b.user_id], kind: status === 'done' ? 'done' : 'failed', title: status === 'done' ? tApp()('{werkstatt}: „{title}“ ist fertig', { werkstatt: tApp()(NAMES.werkstatt), title: b.title }) : tApp()('{werkstatt}: Bau fehlgeschlagen', { werkstatt: tApp()(NAMES.werkstatt) }), body: status === 'done' ? 'Jetzt ansehen' : String(b.error).slice(0, 200), path: `/app/werkstatt/${id}`, buildId: id, locationId: b.location_id });
     };
 
     /** Writes the plugin with the AI, repairing up to twice until the checks and the sandbox self-test pass. */
@@ -300,13 +301,13 @@ export const werkstattModule: Module = {
       let last: PluginDraft | undefined;
       const rounds = 1 + loadPolicy(app).repair_rounds;
       for (let attempt = 0; attempt < rounds; attempt++) {
-        log(id, attempt ? `Die KI überarbeitet das Plugin (Versuch ${attempt + 1} von ${rounds}) …` : 'Die KI schreibt das Plugin …');
-        progress(id, attempt ? `Plugin wird überarbeitet (Versuch ${attempt + 1} von ${rounds})` : 'Die KI schreibt das Plugin', attempt + 1, rounds);
+        log(id, attempt ? tApp()('Die KI überarbeitet das Plugin (Versuch {n} von {rounds}) …', { n: attempt + 1, rounds }) : 'Die KI schreibt das Plugin …');
+        progress(id, attempt ? tApp()('Plugin wird überarbeitet (Versuch {n} von {rounds})', { n: attempt + 1, rounds }) : 'Die KI schreibt das Plugin', attempt + 1, rounds);
         const b = get(id)!;
         const r = await ask(b, 'werkstatt_build', [{ text: PLUGIN_SYSTEM, cache: true }], input(repair).user, PLUGIN_SCHEMA, 14_000);
         const parsed = parsePluginOutput(r.text, version, keep);
         if (!parsed.ok) {
-          repair = `Die Ausgabe war unbrauchbar: ${parsed.error}`;
+          repair = tApp()('Die Ausgabe war unbrauchbar: {error}', { error: parsed.error });
           log(id, repair, 'error');
           continue;
         }
@@ -314,20 +315,20 @@ export const werkstattModule: Module = {
         progress(id, 'Sicherheitsprüfung und Selbsttest laufen', attempt + 1, rounds);
         const v = await verify(app, { manifest: last.manifest, ui_html: last.ui_html, server_js: last.server_js, steps: last.steps }, b.location_id);
         if (v.ok) {
-          log(id, `Prüfungen bestanden${v.issues.some((i) => i.level === 'warn') ? ` (${v.issues.filter((i) => i.level === 'warn').length} Hinweise)` : ''}.`);
+          log(id, v.issues.some((i) => i.level === 'warn') ? tApp()('Prüfungen bestanden ({n} Hinweise).', { n: v.issues.filter((i) => i.level === 'warn').length }) : tApp()('Prüfungen bestanden.'));
           return { draft: last, verification: v };
         }
         repair = verificationText(v);
-        log(id, `Die Prüfung hat Probleme gefunden:\n${repair}`, 'error');
-        if (attempt === rounds - 1) return { error: `Das Plugin hat die automatische Prüfung auch nach ${rounds} Versuch${rounds === 1 ? '' : 'en'} nicht bestanden:\n${repair}`, draft: last, issues: v.issues.filter((i) => i.level === 'error').map((i) => i.message) };
+        log(id, tApp()('Die Prüfung hat Probleme gefunden:\n{repair}', { repair }), 'error');
+        if (attempt === rounds - 1) return { error: tApp().plural(rounds, { one: 'Das Plugin hat die automatische Prüfung auch nach {n} Versuch nicht bestanden:\n{repair}', other: 'Das Plugin hat die automatische Prüfung auch nach {n} Versuchen nicht bestanden:\n{repair}' }, { repair }), draft: last, issues: v.issues.filter((i) => i.level === 'error').map((i) => i.message) };
       }
-      return { error: `Die KI hat auch nach ${rounds} Versuch${rounds === 1 ? '' : 'en'} kein brauchbares Plugin geliefert (${repair}). Prüfe unter Einstellungen → KI-Anbieter, ob das Modell lange, strukturierte Antworten (JSON) liefern kann – oder wähle ein stärkeres.`, draft: last };
+      return { error: tApp().plural(rounds, { one: 'Die KI hat auch nach {n} Versuch kein brauchbares Plugin geliefert ({repair}). Prüfe unter Einstellungen → KI-Anbieter, ob das Modell lange, strukturierte Antworten (JSON) liefern kann – oder wähle ein stärkeres.', other: 'Die KI hat auch nach {n} Versuchen kein brauchbares Plugin geliefert ({repair}). Prüfe unter Einstellungen → KI-Anbieter, ob das Modell lange, strukturierte Antworten (JSON) liefern kann – oder wähle ein stärkeres.' }, { repair: repair ?? '' }), draft: last };
     };
 
     const buildStage1 = async (id: string, runner: User) => {
       const b = get(id)!;
       const plan = jsonOr<Row>(b.plan, {});
-      log(id, `Baue ${plan.steps.length} Schritt${plan.steps.length === 1 ? '' : 'e'} im Sub-Account „${app.location(b.location_id)?.name ?? ''}“ …`);
+      log(id, tApp().plural(plan.steps.length, { one: 'Baue {n} Schritt im Sub-Account „{location}“ …', other: 'Baue {n} Schritte im Sub-Account „{location}“ …' }, { location: app.location(b.location_id)?.name ?? '' }));
       const r = await executeSteps(app, { user: runner, locationId: b.location_id, steps: plan.steps, label: NAMES.werkstatt, log: (t, l) => log(id, t, l), progress: (i, n, title) => progress(id, title, i, n) });
       set(id, { created: r.created });
       if (r.error) return finish(id, 'failed', { error: r.error });
@@ -352,7 +353,7 @@ export const werkstattModule: Module = {
       const { version } = await storeVersion(app, p, { ...draft, changelog: draft.changelog || 'Erste Version', source: 'ai', buildId: id, meta: { ai: versionAi(id) } }, runner, b.location_id, verification);
       activateVersion(app, p, version, runner, version.manifest.scopes);
       upsertInstall(app, { pluginId: p.id, locationId: b.location_id, userId: runner.id, consent: version.manifest.scopes, by: runner.id });
-      log(id, `Das Plugin „${draft.manifest.name}“ ist jetzt für dich aktiv – privat, nur in diesem Sub-Account.`);
+      log(id, tApp()('Das Plugin „{name}“ ist jetzt für dich aktiv – privat, nur in diesem Sub-Account.', { name: draft.manifest.name }));
       finish(id, 'done', { plugin_id: p.id, version_id: version.id, plan: { ...plan, notes: [...(plan.notes ?? []), ...draft.notes] } });
     };
 
@@ -369,13 +370,13 @@ export const werkstattModule: Module = {
       const { version: v } = await storeVersion(app, p, { ...draft, changelog: draft.changelog || b.text.slice(0, 200), source: 'ai', buildId: id, meta: { ai: versionAi(id) } }, runner, b.location_id, verification);
       const diff = diffVersions(cur, v);
       setVersionMeta(app, v.id, { diff });
-      for (const line of diff.summary) log(id, `Änderung: ${line}`);
+      for (const line of diff.summary) log(id, tApp()('Änderung: {line}', { line }));
       const added = newScopes(cur.manifest.scopes, draft.manifest.scopes);
       // A private plugin switches to the new version at once; a shared one, or one that asks for more, waits for its author's click.
       if (p.scope === 'private' && !added.length) {
         activateVersion(app, p, v, runner);
-        log(id, `Version ${v.version} ist aktiv. Die alte Version bleibt in der Versionsliste (Zurückrollen möglich).`);
-      } else log(id, `Version ${v.version} ist fertig geprüft${added.length ? ` und fragt neue Berechtigungen an (${added.join(', ')})` : ''} – bitte beim Plugin aktivieren.`);
+        log(id, tApp()('Version {version} ist aktiv. Die alte Version bleibt in der Versionsliste (Zurückrollen möglich).', { version: v.version }));
+      } else log(id, added.length ? tApp()('Version {version} ist fertig geprüft und fragt neue Berechtigungen an ({list}) – bitte beim Plugin aktivieren.', { version: v.version, list: added.join(', ') }) : tApp()('Version {version} ist fertig geprüft – bitte beim Plugin aktivieren.', { version: v.version }));
       finish(id, 'done', { version_id: v.id, plan: { ...plan, new_scopes: added, diff } });
     };
 
@@ -395,7 +396,10 @@ export const werkstattModule: Module = {
 
     // --- creating builds -------------------------------------------------------------------------------------------------
     const AI_HINT = 'Die KI wird pro Sub-Account freigeschaltet: Einstellungen → KI-Assistent einschalten und unter „KI-Anbieter“ eine Verbindung hinterlegen (Anthropic, OpenAI oder jeder OpenAI-kompatible Dienst wie OpenRouter) – oder die Agentur hinterlegt eine Verbindung für alle.';
-    const aiProblem = (locId: string): string | null => (app.services.aiReady?.(locId) as string | null | undefined) ?? (app.services.aiRun ? null : 'Die KI ist nicht eingerichtet.');
+    const aiProblem = (locId: string): string | null => {
+      const p = (app.services.aiReady?.(locId) as string | null | undefined) ?? (app.services.aiRun ? null : 'Die KI ist nicht eingerichtet.');
+      return p ? tApp()(p) : null;
+    };
     const gate = (ctx: Ctx) => {
       const policy = loadPolicy(app);
       const can = mayBuild(policy, user(ctx), ctx.locationId);
@@ -409,7 +413,7 @@ export const werkstattModule: Module = {
     };
     const create = (ctx: Ctx, o: { kind: 'new' | 'change'; text: string; title?: string; wishId?: string | null; pluginId?: string | null }) => {
       const u = user(ctx);
-      const row = { id: newId(), location_id: ctx.locationId, user_id: u?.id ?? null, user_name: (u ? (db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', u.id)?.name ?? u.name) : 'API-Schlüssel'), kind: o.kind, wish_id: o.wishId ?? null, plugin_id: o.pluginId ?? null, text: o.text, title: o.title ?? '', stage: o.kind === 'change' ? 2 : 0, status: o.kind === 'change' ? 'planned' : 'planning', plan: '{}', created: '[]', log: '[]', est_cost_micros: 0, cost_micros: 0, tokens_in: 0, tokens_out: 0, ai_calls: 0, error: '', consent: '{}', approval_note: '', created_at: now(), updated_at: now() };
+      const row = { id: newId(), location_id: ctx.locationId, user_id: u?.id ?? null, user_name: (u ? (db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', u.id)?.name ?? u.name) : tApp()('API-Schlüssel')), kind: o.kind, wish_id: o.wishId ?? null, plugin_id: o.pluginId ?? null, text: o.text, title: o.title ?? '', stage: o.kind === 'change' ? 2 : 0, status: o.kind === 'change' ? 'planned' : 'planning', plan: '{}', created: '[]', log: '[]', est_cost_micros: 0, cost_micros: 0, tokens_in: 0, tokens_out: 0, ai_calls: 0, error: '', consent: '{}', approval_note: '', created_at: now(), updated_at: now() };
       db.insert('werkstatt_builds', row);
       return row.id;
     };
@@ -456,7 +460,7 @@ export const werkstattModule: Module = {
       const u = user(ctx);
       const plan = jsonOr<Row>(b.plan, {});
       const policy = loadPolicy(app);
-      if (plan.missing_areas?.length && !isAdmin(u)) throw new HttpError(403, `Dir fehlt das Recht für: ${plan.missing_areas.join(', ')}. Ein Admin kann den Plan bestätigen.`);
+      if (plan.missing_areas?.length && !isAdmin(u)) throw new HttpError(403, tApp()('Dir fehlt das Recht für: {list}. Ein Admin kann den Plan bestätigen.', { list: plan.missing_areas.join(', ') }));
       // Consent: the confirm lists exactly the permissions the plan shows.
       const wantScopes = [...(plan.scopes ?? [])].sort().join(',');
       const wantAreas = [...(plan.areas ?? [])].sort().join(',');
@@ -473,12 +477,12 @@ export const werkstattModule: Module = {
       set(b.id, { consent: { scopes: plan.scopes ?? [], areas: plan.areas ?? [], by: u?.id ?? null, at: now() } });
       if (needsApproval(policy, u)) {
         set(b.id, { status: 'awaiting_approval' });
-        log(b.id, `${u?.name ?? 'Der Auftraggeber'} hat den Plan bestätigt – wartet auf die Freigabe eines Admins.`);
+        log(b.id, tApp()('{name} hat den Plan bestätigt – wartet auf die Freigabe eines Admins.', { name: u?.name ?? tApp()('Der Auftraggeber') }));
         notify({
           userIds: admins().filter((a) => a !== u?.id),
           kind: 'approval',
-          title: `${NAMES.werkstatt}: Freigabe nötig – ${b.title || b.text.slice(0, 60)}`,
-          body: `${b.user_name} (${app.location(b.location_id)?.name ?? ''}) möchte „${b.title || b.text.slice(0, 80)}“ bauen lassen${plan.estimate?.typical_usd ? ` – geschätzt ${plan.estimate.typical_usd.toLocaleString('de-DE', { minimumFractionDigits: 2 })} $ KI-Kosten` : ''}.`,
+          title: tApp()('{werkstatt}: Freigabe nötig – {title}', { werkstatt: tApp()(NAMES.werkstatt), title: b.title || b.text.slice(0, 60) }),
+          body: plan.estimate?.typical_usd ? tApp()('{name} ({location}) möchte „{title}“ bauen lassen – geschätzt {usd} $ KI-Kosten.', { name: b.user_name, location: app.location(b.location_id)?.name ?? '', title: b.title || b.text.slice(0, 80), usd: plan.estimate.typical_usd.toLocaleString(tApp().locale === 'de' ? 'de-DE' : 'en-GB', { minimumFractionDigits: 2 }) }) : tApp()('{name} ({location}) möchte „{title}“ bauen lassen.', { name: b.user_name, location: app.location(b.location_id)?.name ?? '', title: b.title || b.text.slice(0, 80) }),
           path: `/app/werkstatt/${b.id}`,
           buildId: b.id,
           locationId: b.location_id,
@@ -537,8 +541,8 @@ export const werkstattModule: Module = {
       // It runs under the requester's rights (they consented), or the admin's when they are gone.
       const runner = owner(b) ?? ctx.user!;
       set(b.id, { approval_by: ctx.user!.id, approval_at: now(), approval_note: str(ctx.body?.note, 'Notiz', { max: 300 }) });
-      log(b.id, `Freigegeben von ${ctx.user!.name}.`);
-      notify({ userIds: [b.user_id], kind: 'decision', title: `${NAMES.werkstatt}: Freigegeben – „${b.title || b.text.slice(0, 60)}“ wird gebaut`, body: `${ctx.user!.name} hat den Auftrag freigegeben.`, path: `/app/werkstatt/${b.id}`, buildId: b.id, locationId: b.location_id, email: true });
+      log(b.id, tApp()('Freigegeben von {name}.', { name: ctx.user!.name }));
+      notify({ userIds: [b.user_id], kind: 'decision', title: tApp()('{werkstatt}: Freigegeben – „{title}“ wird gebaut', { werkstatt: tApp()(NAMES.werkstatt), title: b.title || b.text.slice(0, 60) }), body: tApp()('{name} hat den Auftrag freigegeben.', { name: ctx.user!.name }), path: `/app/werkstatt/${b.id}`, buildId: b.id, locationId: b.location_id, email: true });
       start(b.id, runner);
       return out(get(b.id)!, true);
     });
@@ -546,8 +550,8 @@ export const werkstattModule: Module = {
       const b = pending(ctx.params.id);
       const note = str(ctx.body?.note, 'Begründung', { max: 300 });
       set(b.id, { status: 'rejected', approval_by: ctx.user!.id, approval_at: now(), approval_note: note, finished_at: now(), error: note ? `Abgelehnt: ${note}` : 'Abgelehnt.' });
-      log(b.id, `Abgelehnt von ${ctx.user!.name}${note ? `: ${note}` : ''}.`);
-      notify({ userIds: [b.user_id], kind: 'decision', title: `${NAMES.werkstatt}: Abgelehnt – „${b.title || b.text.slice(0, 60)}“`, body: note || `${ctx.user!.name} hat den Auftrag abgelehnt.`, path: `/app/werkstatt/${b.id}`, buildId: b.id, locationId: b.location_id, email: true });
+      log(b.id, note ? tApp()('Abgelehnt von {name}: {note}.', { name: ctx.user!.name, note }) : tApp()('Abgelehnt von {name}.', { name: ctx.user!.name }));
+      notify({ userIds: [b.user_id], kind: 'decision', title: tApp()('{werkstatt}: Abgelehnt – „{title}“', { werkstatt: tApp()(NAMES.werkstatt), title: b.title || b.text.slice(0, 60) }), body: note || tApp()('{name} hat den Auftrag abgelehnt.', { name: ctx.user!.name }), path: `/app/werkstatt/${b.id}`, buildId: b.id, locationId: b.location_id, email: true });
       return out(get(b.id)!, true);
     });
 
@@ -560,7 +564,7 @@ export const werkstattModule: Module = {
       if (!['done', 'failed'].includes(b.status)) throw bad('Dieser Auftrag läuft noch.');
       const r = await undoCreated(app, { user: u, locationId: b.location_id, baseCtx: ctx, created: jsonOr<Created[]>(b.created, []), label: NAMES.werkstatt });
       set(b.id, { created: r.created, ...(r.created.every((c) => c.undone) ? { status: 'undone' } : {}) });
-      log(b.id, `Rückgängig gemacht: ${r.removed} entfernt${r.failed ? `, ${r.failed} konnten nicht entfernt werden` : ''}.`);
+      log(b.id, r.failed ? tApp()('Rückgängig gemacht: {removed} entfernt, {failed} konnten nicht entfernt werden.', { removed: r.removed, failed: r.failed }) : tApp()('Rückgängig gemacht: {removed} entfernt.', { removed: r.removed }));
       return { ...out(get(b.id)!, true), removed: r.removed, failed: r.failed };
     });
 
@@ -580,8 +584,8 @@ export const werkstattModule: Module = {
       const est = estimate(ctx.locationId, 'change');
       const over = budgetProblem(app, policy, ctx.locationId, est.typical_micros);
       if (over) throw new HttpError(409, over);
-      const id = create(ctx, { kind: 'change', text: feedback, title: `Änderung: ${p.name}`, pluginId: p.id });
-      set(id, { plan: { stage: 2, title: `Änderung: ${p.name}`, summary: feedback, rationale: '', notes: [], steps: [], areas: [], scopes: [], manifest: null, change: { plugin: p.name, from: p.active_version_id }, estimate: { model: est.model, typical_usd: est.typical_micros / 1e6, max_usd: est.max_micros / 1e6 }, missing_areas: [] }, est_cost_micros: est.typical_micros });
+      const id = create(ctx, { kind: 'change', text: feedback, title: tApp()('Änderung: {name}', { name: p.name }), pluginId: p.id });
+      set(id, { plan: { stage: 2, title: tApp()('Änderung: {name}', { name: p.name }), summary: feedback, rationale: '', notes: [], steps: [], areas: [], scopes: [], manifest: null, change: { plugin: p.name, from: p.active_version_id }, estimate: { model: est.model, typical_usd: est.typical_micros / 1e6, max_usd: est.max_micros / 1e6 }, missing_areas: [] }, est_cost_micros: est.typical_micros });
       log(id, 'Änderungswunsch angelegt.');
       return confirm(ctx, get(id)!, {});
     });
@@ -602,7 +606,7 @@ export const werkstattModule: Module = {
         can_build: can.ok,
         reason: can.ok ? '' : can.reason,
         ai_problem: aiProblem(ctx.locationId),
-        ai_hint: aiProblem(ctx.locationId) ? AI_HINT : '',
+        ai_hint: aiProblem(ctx.locationId) ? tApp()(AI_HINT) : '',
         ai: describeAi(app, ctx.locationId),
         model_gate: gateStatus(app, ctx.locationId, u),
         license: licenseInfo(app),
@@ -640,8 +644,8 @@ export const werkstattModule: Module = {
       const text = wished.trim().slice(0, 4000);
       const gatePlan = gateProblem(app, ctx.locationId, 'werkstatt_plan', u);
       const status = gateStatus(app, ctx.locationId, u);
-      const problems = [...(can.ok ? [] : [can.reason]), ...(ai ? [ai] : []), ...(gatePlan ? [gatePlan] : []), ...(budget ? [budget] : []), ...(text && text.length < 8 ? ['Der Wunsch ist zu kurz (mindestens ein Satz).'] : [])];
-      const [title, ...rest] = (text || 'Beispielwunsch').split('\n');
+      const problems = [...(can.ok ? [] : [can.reason]), ...(ai ? [ai] : []), ...(gatePlan ? [gatePlan] : []), ...(budget ? [budget] : []), ...(text && text.length < 8 ? [tApp()('Der Wunsch ist zu kurz (mindestens ein Satz).')] : [])];
+      const [title, ...rest] = (text || tApp()('Beispielwunsch')).split('\n');
       const loc = app.location(ctx.locationId);
       const sys = PLAN_SYSTEM;
       const usr = planUser({ title, body: rest.join('\n').trim(), locationName: loc?.name ?? '', inventory: inventory(ctx.locationId) });
@@ -654,7 +658,7 @@ export const werkstattModule: Module = {
       return {
         ok: problems.length === 0,
         problems,
-        user: u ? { name: u.name, role: u.role } : { name: 'API-Schlüssel', role: 'api' },
+        user: u ? { name: u.name, role: u.role } : { name: tApp()('API-Schlüssel'), role: 'api' },
         location: { id: ctx.locationId, name: loc?.name ?? '' },
         policy: { who: policy.who, allowed: can.ok, approval: policy.approval, needs_approval: needsApproval(policy, u), repair_rounds: policy.repair_rounds, server_logic: policy.server_logic },
         budget: { limit_usd: budgetUsd(policy, ctx.locationId), used_usd: Math.round(spentMicros(app, ctx.locationId)) / 1e6, problem: budget },
@@ -666,7 +670,7 @@ export const werkstattModule: Module = {
         prompt: { system_chars: sys.length, user_chars: usr.length, approx_tokens: Math.round((sys.length + usr.length) / 3.5), schema_bytes: JSON.stringify(PLAN_SCHEMA).length },
         sandbox: { ok: sandbox.ok, network: sandbox.network ?? null, reason: sandbox.reason ?? null },
         github: { token: !!gh?.hasToken?.(ctx.locationId), default_repo: gh?.defaultRepo?.(ctx.locationId) ?? '', core_repo: policy.core.repo },
-        note: 'Trockenlauf: Es wurde keine KI angefragt, nichts gespeichert und nichts verbraucht.',
+        note: tApp()('Trockenlauf: Es wurde keine KI angefragt, nichts gespeichert und nichts verbraucht.'),
       };
     };
     router.post('/api/werkstatt/dry-run', 'location', (ctx) => dryRun(ctx, String(ctx.body?.text ?? '')));
@@ -701,7 +705,7 @@ export const werkstattModule: Module = {
 
     // Stale work after a restart: a build that was running cannot continue, say so instead of hanging.
     for (const b of db.all(`SELECT id FROM werkstatt_builds WHERE status IN ('planning', 'building')`)) {
-      set(b.id, { status: 'failed', error: 'Der Server wurde während des Baus neu gestartet – bitte den Auftrag noch einmal starten.', finished_at: now() });
+      set(b.id, { status: 'failed', error: tApp()('Der Server wurde während des Baus neu gestartet – bitte den Auftrag noch einmal starten.'), finished_at: now() });
     }
   },
 };

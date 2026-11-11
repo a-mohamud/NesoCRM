@@ -1,4 +1,5 @@
 import { HttpError } from '../core/http.js';
+import { tApp } from '../i18n/index.js';
 
 /** Minimal client for the Postiz public API (self-hosted: https://<domain>/api/public/v1). */
 
@@ -27,7 +28,7 @@ export async function postiz<T = any>(cfg: PostizConfig, method: string, path: s
       signal: AbortSignal.timeout(25_000),
     });
   } catch (e) {
-    throw new HttpError(502, `Postiz nicht erreichbar: ${(e as Error).message}`);
+    throw new HttpError(502, tApp()('Postiz nicht erreichbar: {error}', { error: (e as Error).message }));
   }
   const raw = await r.text();
   let data: any = raw;

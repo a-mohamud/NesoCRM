@@ -1,4 +1,5 @@
 import { bad } from '../core/http.js';
+import { tApp, type STFn } from '../i18n/index.js';
 import { fold } from './site-search.js';
 import type { Block } from './site-blocks.js';
 import { newSection } from './site-layout.js';
@@ -65,20 +66,21 @@ export const MAX_FIELDS = 30;
 const str = (v: unknown, max: number) => String(v ?? '').replace(/\r/g, '').trim().slice(0, max);
 
 export function cleanFields(input: unknown): Field[] {
+  const t = tApp();
   if (!Array.isArray(input)) throw bad('Felder fehlen');
   const seen = new Set<string>();
   const out: Field[] = [];
   for (const f of input.slice(0, MAX_FIELDS)) {
     const key = str(f?.key, 30).toLowerCase();
-    if (!KEY.test(key) || RESERVED_KEYS.includes(key)) throw bad(`Feld-Schlüssel „${key || '…'}“: Kleinbuchstaben, Ziffern und _, mit einem Buchstaben beginnen (nicht ${RESERVED_KEYS.slice(0, 4).join(', ')} …)`);
-    if (seen.has(key)) throw bad(`Feld „${key}“ kommt doppelt vor`);
+    if (!KEY.test(key) || RESERVED_KEYS.includes(key)) throw bad(t('Feld-Schlüssel „{key}“: Kleinbuchstaben, Ziffern und _, mit einem Buchstaben beginnen (nicht {reserved} …)', { key: key || '…', reserved: RESERVED_KEYS.slice(0, 4).join(', ') }));
+    if (seen.has(key)) throw bad(t('Feld „{key}“ kommt doppelt vor', { key }));
     seen.add(key);
     const type = (FIELD_TYPES as readonly string[]).includes(f?.type) ? (f.type as FieldType) : 'text';
     const field: Field = { key, label: str(f?.label, 60) || key, type };
     if (f?.required) field.required = true;
     if (type === 'select') {
       field.options = [...new Set((Array.isArray(f?.options) ? f.options : String(f?.options ?? '').split('\n')).map((o: unknown) => str(o, 60)).filter(Boolean))].slice(0, 40) as string[];
-      if (!field.options.length) throw bad(`Feld „${field.label}“ (Auswahl) braucht mindestens eine Option`);
+      if (!field.options.length) throw bad(t('Feld „{label}“ (Auswahl) braucht mindestens eine Option', { label: field.label }));
     }
     if (f?.filterable && ['select', 'tags', 'bool', 'text'].includes(type)) field.filterable = true;
     out.push(field);
@@ -87,7 +89,7 @@ export function cleanFields(input: unknown): Field[] {
   return out;
 }
 
-export function cleanSettings(input: any, fields: Field[], cur?: Partial<CollectionSettings>): CollectionSettings {
+export function cleanSettings(input: any, fields: Field[], cur?: Partial<CollectionSettings>, t: STFn = tApp()): CollectionSettings {
   const i = { ...(cur ?? {}), ...(input && typeof input === 'object' ? input : {}) };
   const keys = new Set(fields.map((f) => f.key));
   const pick = (v: unknown, types: FieldType[], d: string) => (typeof v === 'string' && keys.has(v) && types.includes(fields.find((f) => f.key === v)!.type) ? v : d);
@@ -109,7 +111,7 @@ export function cleanSettings(input: any, fields: Field[], cur?: Partial<Collect
     indexable: i.indexable !== false,
     seo_title: str(i.seo_title, 200),
     seo_description: str(i.seo_description, 400),
-    button_text: str(i.button_text, 40) || 'Mehr erfahren',
+    button_text: str(i.button_text, 40) || t('Mehr erfahren'),
   };
 }
 
@@ -120,9 +122,10 @@ const MAIL = /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/;
 
 /** One value of a record, checked and shaped by its field type. `products` tells whether a product id exists in this sub-account. */
 export function cleanValue(f: Field, raw: unknown, products?: (id: string) => boolean): unknown {
+  const t = tApp();
   const empty = raw === undefined || raw === null || raw === '' || (Array.isArray(raw) && !raw.length);
   if (empty) {
-    if (f.required && f.type !== 'bool') throw bad(`Bitte „${f.label}“ ausfüllen`);
+    if (f.required && f.type !== 'bool') throw bad(t('Bitte „{label}“ ausfüllen', { label: f.label }));
     return f.type === 'bool' ? false : f.type === 'tags' ? [] : f.type === 'number' || f.type === 'rating' ? null : '';
   }
   switch (f.type) {
@@ -132,47 +135,47 @@ export function cleanValue(f: Field, raw: unknown, products?: (id: string) => bo
       return String(raw).replace(/\r/g, '').slice(0, 20_000);
     case 'number': {
       const n = Number(String(raw).replace(',', '.'));
-      if (!Number.isFinite(n)) throw bad(`„${f.label}“ muss eine Zahl sein`);
+      if (!Number.isFinite(n)) throw bad(t('„{label}“ muss eine Zahl sein', { label: f.label }));
       return n;
     }
     case 'rating': {
       const n = Math.round(Number(raw));
-      if (!Number.isFinite(n) || n < 0 || n > 5) throw bad(`„${f.label}“: 1 bis 5 Sterne`);
+      if (!Number.isFinite(n) || n < 0 || n > 5) throw bad(t('„{label}“: 1 bis 5 Sterne', { label: f.label }));
       return n || null;
     }
     case 'image':
     case 'url': {
       const s = str(raw, 1000);
-      if (!URLISH.test(s)) throw bad(`„${f.label}“: bitte eine Adresse mit https:// (oder ein Bild aus der Mediathek)`);
+      if (!URLISH.test(s)) throw bad(t('„{label}“: bitte eine Adresse mit https:// (oder ein Bild aus der Mediathek)', { label: f.label }));
       return s;
     }
     case 'email': {
       const s = str(raw, 200);
-      if (!MAIL.test(s)) throw bad(`„${f.label}“: keine gültige E-Mail-Adresse`);
+      if (!MAIL.test(s)) throw bad(t('„{label}“: keine gültige E-Mail-Adresse', { label: f.label }));
       return s;
     }
     case 'phone': {
       const s = str(raw, 40);
-      if (!/^[+\d\s()/.-]{3,40}$/.test(s)) throw bad(`„${f.label}“: keine gültige Telefonnummer`);
+      if (!/^[+\d\s()/.-]{3,40}$/.test(s)) throw bad(t('„{label}“: keine gültige Telefonnummer', { label: f.label }));
       return s;
     }
     case 'date': {
       const s = str(raw, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) throw bad(`„${f.label}“: Datum als JJJJ-MM-TT`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) throw bad(t('„{label}“: Datum als JJJJ-MM-TT', { label: f.label }));
       return s;
     }
     case 'bool':
       return raw === true || raw === 'true' || raw === 1 || raw === '1' || raw === 'ja';
     case 'select': {
       const s = str(raw, 60);
-      if (!f.options?.includes(s)) throw bad(`„${f.label}“: bitte eine der Optionen wählen`);
+      if (!f.options?.includes(s)) throw bad(t('„{label}“: bitte eine der Optionen wählen', { label: f.label }));
       return s;
     }
     case 'tags':
       return [...new Set((Array.isArray(raw) ? raw : String(raw).split(',')).map((t) => str(t, 40)).filter(Boolean))].slice(0, 20);
     case 'product': {
       const s = str(raw, 60);
-      if (products && !products(s)) throw bad(`„${f.label}“: Produkt nicht gefunden`);
+      if (products && !products(s)) throw bad(t('„{label}“: Produkt nicht gefunden', { label: f.label }));
       return s;
     }
   }
@@ -189,21 +192,22 @@ export function cleanData(fields: Field[], data: unknown, products?: (id: string
   return out;
 }
 
-const DE_DATE = (iso: string) => {
+const DATE = (iso: string, de: boolean) => {
   const [y, m, d] = iso.split('-');
-  return `${d}.${m}.${y}`;
+  return de ? `${d}.${m}.${y}` : `${d}/${m}/${y}`;
 };
 
-/** A value as text for a placeholder or a card. */
-export function display(f: Field | undefined, v: unknown): string {
+/** A value as text for a placeholder or a card (in the instance language: dd/mm/yyyy, Yes/No in English). */
+export function display(f: Field | undefined, v: unknown, t: STFn = tApp()): string {
   if (v === undefined || v === null || v === '') return '';
+  const de = t.locale === 'de';
   switch (f?.type) {
     case 'date':
-      return /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? DE_DATE(String(v)) : String(v);
+      return /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? DATE(String(v), de) : String(v);
     case 'bool':
-      return v ? 'Ja' : 'Nein';
+      return v ? t('Ja') : t('Nein');
     case 'number':
-      return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 6 }).format(Number(v));
+      return new Intl.NumberFormat(de ? 'de-DE' : 'en-GB', { maximumFractionDigits: 6 }).format(Number(v));
     case 'tags':
       return Array.isArray(v) ? v.join(', ') : String(v);
     case 'rating':
@@ -465,6 +469,40 @@ export const PRESETS: Preset[] = [
 ];
 
 export const presetOf = (key: unknown) => PRESETS.find((p) => p.key === key);
+
+/**
+ * A preset in a sub-account's language: name, field labels, select options, default button texts, detail template and the example
+ * entries (the same translator for options and entries, so a sample's category still matches its option).
+ */
+export function localizePreset(p: Preset, t: STFn): Preset {
+  const CODE = new Set(['id', 'key', 'type', 'url', 'src', 'button_url', 'product_id', 'date', 'rating', 'photo', 'image']);
+  const tx = (v: string): string => {
+    if (!v || !/\p{L}/u.test(v) || v.startsWith('{{')) return v;
+    const hit = t(v);
+    if (hit !== v) return hit;
+    // catalog keys are written on one line; the English value keeps its own line breaks
+    const flat = v.replace(/\s+/g, ' ').trim();
+    const h2 = t(flat);
+    return h2 !== flat ? h2 : v;
+  };
+  const walk = (v: any): any => {
+    if (typeof v === 'string') return tx(v);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, CODE.has(k) ? x : walk(x)]));
+    return v;
+  };
+  return {
+    ...p,
+    name: t(p.name),
+    singular: t(p.singular),
+    description: t(p.description),
+    slug: p.slug,
+    fields: p.fields.map((f) => ({ ...f, label: t(f.label), ...(f.options ? { options: f.options.map((o) => t(o)) } : {}) })),
+    settings: { ...p.settings, ...(p.settings.button_text ? { button_text: t(p.settings.button_text) } : {}) },
+    detail: () => walk(p.detail()),
+    samples: p.samples.map((x) => walk(x)),
+  };
+}
 
 /** Detail template used when a collection has none: title, picture, all text fields. */
 export function defaultDetail(fields: Field[], s: CollectionSettings): Block[] {

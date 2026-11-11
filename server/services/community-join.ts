@@ -4,6 +4,7 @@ import { id, normalizeEmail, now, token } from '../core/util.js';
 import { StripeError, stripeRequest } from './stripe.js';
 import { getContact, logActivity, upsertContact, type Contact } from './contacts.js';
 import { ensureQuestionFields, membershipOf, openMembership, tierOf, tierPrices, tiersOf, activateMembership, checkoutUrl, communityMail, notifyStaff, grants, type Billing, type Membership, type PageRow, type Tier } from './community-tiers.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * The join itself: invite codes, discount codes, the questions, and what a request turns into – a member (free, no approval),
@@ -221,8 +222,10 @@ export function usableCoupon(app: App, groupId: string, code: unknown, tierId?: 
   return { coupon: row };
 }
 
-export const couponLabel = (c: Coupon, currency = 'EUR') =>
-  `${c.percent_off ? `−${c.percent_off} %` : `−${new Intl.NumberFormat('de-DE', { style: 'currency', currency }).format((c.amount_off_cents ?? 0) / 100)}`}${c.duration === 'once' ? ' auf die erste Zahlung' : c.duration === 'repeating' ? ` für ${c.months} Monate` : ' dauerhaft'}`;
+export const couponLabel = (c: Coupon, currency = 'EUR', t: STFn = tApp()) => {
+  const off = c.percent_off ? `−${c.percent_off} %` : `−${new Intl.NumberFormat(t.locale === 'de' ? 'de-DE' : 'en-GB', { style: 'currency', currency }).format((c.amount_off_cents ?? 0) / 100)}`;
+  return c.duration === 'once' ? t('{discount} auf die erste Zahlung', { discount: off }) : c.duration === 'repeating' ? t.plural(Number(c.months), { one: '{discount} für {n} Monat', other: '{discount} für {n} Monate' }, { discount: off }) : t('{discount} dauerhaft', { discount: off });
+};
 
 /** The Stripe coupon for a code (created once with the sub-account's key, then reused). */
 export async function stripeCouponId(app: App, locationId: string, c: Coupon, currency: string, force = false): Promise<string> {
@@ -273,7 +276,7 @@ export function validateAnswers(page: PageRow, answers: Record<string, unknown> 
   const out: Record<string, string> = {};
   for (const q of page.questions) {
     const v = String(answers?.[q.id] ?? '').replace(/\r\n?/g, '\n').trim().slice(0, 500);
-    if (q.required && !v) throw bad(`Bitte beantworte: ${q.label}`);
+    if (q.required && !v) throw bad(tApp()('Bitte beantworte: {question}', { question: q.label }));
     if (v) out[q.id] = v;
   }
   return out;
@@ -342,9 +345,10 @@ export function joinCommunity(app: App, g: G, page: PageRow, input: JoinInput): 
 
   if (needsApproval) {
     const m = openMembership(app, g, contact, { ...base, status: 'pending' });
-    logActivity(app, g.location_id, contact.id, 'community.join_requested', `Beitritt zu „${g.name}“ angefragt (Stufe ${tier.name})`);
+    const t = tLoc(app, g.location_id);
+    logActivity(app, g.location_id, contact.id, 'community.join_requested', t('Beitritt zu „{group}“ angefragt (Stufe {tier})', { group: g.name, tier: tier.name }));
     app.events.emit(g.location_id, 'community.join_requested', { contactId: contact.id, groupId: g.id, group: { id: g.id, name: g.name }, tier: { id: tier.id, name: tier.name }, answers: Object.fromEntries(page.questions.filter((q) => answers[q.id]).map((q) => [q.label, answers[q.id]])) });
-    void notifyStaff(app, g.location_id, `Neue Beitrittsanfrage: ${name} möchte „${g.name}“ beitreten`, `${name} (${email}) hat sich für „${g.name}“ (Stufe ${tier.name}) angemeldet.\n\n${page.questions.filter((q) => answers[q.id]).map((q) => `${q.label}\n→ ${answers[q.id]}`).join('\n\n')}\n\nDie Anfrage prüfst du unter Community → ${g.name} → Beitritt → Anfragen.`);
+    void notifyStaff(app, g.location_id, t('Neue Beitrittsanfrage: {name} möchte „{group}“ beitreten', { name, group: g.name }), `${t('{name} ({email}) hat sich für „{group}“ (Stufe {tier}) angemeldet.', { name, email, group: g.name, tier: tier.name })}\n\n${page.questions.filter((q) => answers[q.id]).map((q) => `${q.label}\n→ ${answers[q.id]}`).join('\n\n')}\n\n${t('Die Anfrage prüfst du unter Community → {group} → Beitritt → Anfragen.', { group: g.name })}`);
     return { membership: m, contact, next: 'pending' };
   }
   if (!product) {
@@ -369,5 +373,5 @@ export async function sendWelcome(app: App, g: G, contact: Contact, text?: strin
   } catch (e) {
     console.error('[community] login link', (e as Error).message);
   }
-  if (text) await communityMail(app, g.location_id, contact.email, `Willkommen in „${g.name}“`, [text]);
+  if (text) await communityMail(app, g.location_id, contact.email, tLoc(app, g.location_id)('Willkommen in „{group}“', { group: g.name }), [text]);
 }

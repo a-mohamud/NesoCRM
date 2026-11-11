@@ -1,4 +1,5 @@
 import type { App } from '../core/app.js';
+import { tApp, tUser, type STFn } from '../i18n/index.js';
 import { bad, notFound, str } from '../core/http.js';
 import { id as newId, now } from '../core/util.js';
 import { membersWhere, notifyMember } from './member-notify.js';
@@ -6,6 +7,9 @@ import { DEFAULT_THRESHOLDS, budgetState, burndown, cleanThresholds, margin, per
 import { dayOf, getProject, getSettings, isTeamMember, json, projectContact, team, todayIn, tzOf, type Actor, type ProjectRow } from './pm-core.js';
 import { addDays } from './pm-schedule.js';
 import { billedSeconds, type TimeRow } from './pm-time.js';
+
+/** Messages in the instance language (static ids for the catalog). */
+const tm = tApp();
 
 /**
  * Job costing on top of the time tracking (docs/projects.md#job-costing-and-retainers): internal cost rates per person, external
@@ -24,7 +28,7 @@ const cents = (v: unknown, label: string, { min = 0, max = 100_000_000_00 }: { m
 const ymdOr = (v: unknown, fallback: string, label: string): string => {
   if (v === undefined || v === null || v === '') return fallback;
   const s = String(v).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) !== s) throw bad(`${label}: Datum als JJJJ-MM-TT`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) !== s) throw bad(tm('{label}: Datum als JJJJ-MM-TT', { label: tm(label) }));
   return s;
 };
 
@@ -347,8 +351,8 @@ export function listBudgets(app: App, loc: string) {
 /** Leitung of a sub-account: agency admins and members with the settings area. */
 export const managersOf = (app: App, loc: string) => membersWhere(app, loc, (u) => u.role === 'admin' || !u.permissions || u.permissions.includes('settings'));
 
-const fmtHours = (h: number) => `${round2(h).toLocaleString('de-DE')} Std.`;
-const fmtEur = (c: number) => `${(c / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+const fmtHours = (t: STFn, h: number) => t('{hours} Std.', { hours: round2(h).toLocaleString(t.locale === 'de' ? 'de-DE' : 'en-GB') });
+const fmtEur = (t: STFn, c: number) => `${(c / 100).toLocaleString(t.locale === 'de' ? 'de-DE' : 'en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 
 /**
  * Compares a project's use with its budget and fires every threshold reached for the first time: one notification (the highest
@@ -386,10 +390,19 @@ export function checkBudget(app: App, loc: string, projectId: string): { kind: '
     const mine = hits.filter((h) => h.kind === kind);
     if (!mine.length) continue;
     const top = mine[mine.length - 1];
-    const what = kind === 'hours' ? `${fmtHours(top.used)} von ${fmtHours(top.budget)}` : `${fmtEur(top.used)} von ${fmtEur(top.budget)}`;
-    const title = `Budget „${project.name}“: ${String(round1(top.percent)).replace('.', ',')} % ${kind === 'hours' ? 'der Stunden' : 'des Budgets'} verbraucht`;
+    const texts = (t: STFn) => {
+      const what = kind === 'hours' ? t('{used} von {budget}', { used: fmtHours(t, top.used), budget: fmtHours(t, top.budget) }) : t('{used} von {budget}', { used: fmtEur(t, top.used), budget: fmtEur(t, top.budget) });
+      const pct = t.locale === 'de' ? String(round1(top.percent)).replace('.', ',') : String(round1(top.percent));
+      const title = kind === 'hours' ? t('Budget „{project}“: {percent} % der Stunden verbraucht', { project: project.name, percent: pct }) : t('Budget „{project}“: {percent} % des Budgets verbraucht', { project: project.name, percent: pct });
+      return { what, title };
+    };
+    const { what, title } = texts(tm);
     const stamp = now().slice(0, 16);
-    for (const u of people) notifyMember(app, { locationId: loc, userId: u, kind: 'budget', title, body: `${what} (Schwelle ${top.threshold} %)`, link: `/app/pm/${project.id}`, projectId: project.id, ref: `budget:${project.id}:${kind}:${top.threshold}:${stamp}`, area: kind === 'amount' ? 'payments' : 'contacts', push: 'payments' });
+    for (const u of people) {
+      const tu = tUser(app as never, u);
+      const mine = texts(tu);
+      notifyMember(app, { locationId: loc, userId: u, kind: 'budget', title: mine.title, body: tu('{what} (Schwelle {threshold} %)', { what: mine.what, threshold: top.threshold }), link: `/app/pm/${project.id}`, projectId: project.id, ref: `budget:${project.id}:${kind}:${top.threshold}:${stamp}`, area: kind === 'amount' ? 'payments' : 'contacts', push: 'payments' });
+    }
     app.services.audit?.({ action: 'pm.budget.threshold', actor: 'System', locationId: loc, entityId: project.id, summary: `${title} – ${what}` });
   }
   for (const h of hits) {
@@ -578,10 +591,10 @@ export function profitability(app: App, loc: string, f: ProfitFilter, retainers:
 const money = (c: number) => (c / 100).toFixed(2).replace('.', ',');
 const dec = (n: number) => n.toFixed(2).replace('.', ',');
 
-export function profitCsv(report: ReturnType<typeof profitability>): string[][] {
-  const head = [report.group === 'client' ? 'Kunde' : 'Projekt', 'Stunden', 'davon abrechenbar', 'Umsatz abgerechnet (EUR)', 'Umsatz offen (EUR)', 'Umsatz gesamt (EUR)', 'Kosten Zeit (EUR)', 'Fremdkosten (EUR)', 'Kosten gesamt (EUR)', 'Marge (EUR)', 'Marge (%)'];
+export function profitCsv(report: ReturnType<typeof profitability>, t: STFn = tApp()): string[][] {
+  const head = [report.group === 'client' ? t('Kunde') : t('Projekt'), t('Stunden'), t('davon abrechenbar'), t('Umsatz abgerechnet (EUR)'), t('Umsatz offen (EUR)'), t('Umsatz gesamt (EUR)'), t('Kosten Zeit (EUR)'), t('Fremdkosten (EUR)'), t('Kosten gesamt (EUR)'), t('Marge (EUR)'), t('Marge (%)')];
   const line = (label: string, r: Omit<ProfitRow, 'key' | 'label'> | typeof report.totals) => [label, dec(r.hours), dec(r.billable_hours), money(r.revenue_invoiced_cents), money(r.revenue_unbilled_cents), money(r.revenue_cents), money(r.time_cost_cents), money(r.external_cost_cents), money(r.cost_cents), money(r.margin_cents), r.margin_percent === null ? '' : dec(r.margin_percent)];
-  return [head, ...report.rows.map((r) => line(r.label, r)), line('Summe', report.totals)];
+  return [head, ...report.rows.map((r) => line(r.label, r)), line(t('Summe'), report.totals)];
 }
 
 /** Remaining budget over time (hours and/or money) from the project's start (or first entry) until today. */

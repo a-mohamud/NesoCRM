@@ -1,5 +1,6 @@
 import { parseCsv } from '../core/csv.js';
 import { sha256 } from '../core/util.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Review sources for Reputation: one adapter per platform behind a small registry (registerReviewAdapter). An adapter reads the
@@ -102,7 +103,8 @@ const round1 = (v: number | null) => (v === null ? null : Math.round(v * 10) / 1
 function must(r: HttpResult, label: string) {
   if (!r.ok) {
     const msg = r.data?.error?.message ?? r.data?.error?.description ?? r.data?.message ?? r.data?.errorMessage ?? (typeof r.data?.error === 'string' ? r.data.error : '');
-    throw new Error(`${label}: ${clip(msg, 200) || `Fehler ${r.status}`}`);
+    const t = tApp();
+    throw new Error(`${t(label)}: ${clip(msg, 200) || t('Fehler {status}', { status: r.status })}`);
   }
   return r.data;
 }
@@ -128,7 +130,7 @@ registerReviewAdapter({
       const created = iso(r?.created_time);
       reviews.push({
         externalId: story || sha256(`${r?.reviewer?.id ?? ''}|${created ?? ''}|${r?.review_text ?? ''}`).slice(0, 40),
-        author: clip(r?.reviewer?.name, 200) || 'Facebook-Nutzer',
+        author: clip(r?.reviewer?.name, 200) || tApp()('Facebook-Nutzer'),
         rating: stars(r?.rating) ?? (rec === true ? 5 : rec === false ? 1 : null),
         recommend: rec,
         text: clip(r?.review_text, 5000),
@@ -176,7 +178,7 @@ registerReviewAdapter({
     const j = must(await ctx.http(`${TP}/business-units/${encodeURIComponent(unit)}/reviews?perPage=100&orderBy=createdat.desc`, h), 'Trustpilot');
     const reviews: ReviewIn[] = (Array.isArray(j?.reviews) ? j.reviews : []).map((r: any) => ({
       externalId: String(r.id),
-      author: clip(r?.consumer?.displayName, 200) || 'Trustpilot-Nutzer',
+      author: clip(r?.consumer?.displayName, 200) || tApp()('Trustpilot-Nutzer'),
       rating: stars(r?.stars),
       title: clip(r?.title, 300),
       text: clip(r?.text, 5000),
@@ -219,7 +221,7 @@ registerReviewAdapter({
   ],
   async fetch(ctx) {
     const j = must(await ctx.http('https://www.provenexpert.com/api/v1/rating/summary/get', { method: 'POST', headers: { authorization: basic(ctx.config.api_id, ctx.secrets.api_key) }, json: {} }), 'ProvenExpert');
-    if (j?.status === 'error') throw new Error(`ProvenExpert: ${clip(j?.errors?.[0] ?? j?.message, 200) || 'Fehler'}`);
+    if (j?.status === 'error') throw new Error(tApp()('ProvenExpert: {error}', { error: clip(j?.errors?.[0] ?? j?.message, 200) || tApp()('Fehler ohne Details') }));
     const d = j?.ratingSummary ?? j?.data ?? j;
     return { reviews: [], rating: round1(num(d?.ratingValue ?? d?.rating ?? d?.averageRating)), total: num(d?.reviewCount ?? d?.ratingCount ?? d?.count), profileUrl: https(ctx.config.profile_url) || https(d?.profileUrl) };
   },
@@ -246,7 +248,7 @@ registerReviewAdapter({
     const j = must(await ctx.http(`${base}/reviews?limit=20&sort_by=newest`, h), 'Yelp');
     const reviews: ReviewIn[] = (Array.isArray(j?.reviews) ? j.reviews : []).map((r: any) => ({
       externalId: String(r.id),
-      author: clip(r?.user?.name, 200) || 'Yelp-Nutzer',
+      author: clip(r?.user?.name, 200) || tApp()('Yelp-Nutzer'),
       authorUrl: https(r?.user?.profile_url),
       rating: stars(r?.rating),
       text: clip(r?.text, 5000),
@@ -280,7 +282,7 @@ registerReviewAdapter({
     const j = must(await ctx.http(`${base}/reviews?${q}`, { headers: { accept: 'application/json' } }), 'Tripadvisor');
     const reviews: ReviewIn[] = (Array.isArray(j?.data) ? j.data : []).map((r: any) => ({
       externalId: String(r.id),
-      author: clip(r?.user?.username, 200) || 'Tripadvisor-Nutzer',
+      author: clip(r?.user?.username, 200) || tApp()('Tripadvisor-Nutzer'),
       rating: stars(r?.rating),
       title: clip(r?.title, 300),
       text: clip(r?.text, 5000),
@@ -320,7 +322,7 @@ export function reviewFromRecord(r: Record<string, unknown>, fallbackLink = ''):
   const published = iso(pick('date', 'published_at', 'datum', 'created_at', 'time'));
   const link = https(pick('link', 'url')) || fallbackLink;
   const ext = clip(pick('id', 'external_id', 'review_id'), 200) || sha256(`${author}|${published ?? ''}|${text}`).slice(0, 40);
-  return { externalId: ext, author: author || 'Anonym', rating, title: clip(pick('title', 'titel', 'headline'), 300), text, publishedAt: published, link, replyText: clip(pick('reply', 'antwort', 'response'), 5000) };
+  return { externalId: ext, author: author || tApp()('Anonym'), rating, title: clip(pick('title', 'titel', 'headline'), 300), text, publishedAt: published, link, replyText: clip(pick('reply', 'antwort', 'response'), 5000) };
 }
 
 /** CSV with a header row → reviews (rows without text and rating are skipped). */
@@ -365,7 +367,7 @@ export function reviewsFromFeed(xml: string): ReviewIn[] {
     const rating = ratingFromText(`${title} ${text}`);
     if (!text && !title) continue;
     const guid = plain(tag(it, 'guid') || tag(it, 'id')) || link;
-    out.push({ externalId: (guid || sha256(`${title}|${text}`)).slice(0, 300), author: author || 'Anonym', rating, title: title.slice(0, 300), text: text || title, publishedAt: published, link });
+    out.push({ externalId: (guid || sha256(`${title}|${text}`)).slice(0, 300), author: author || tApp()('Anonym'), rating, title: title.slice(0, 300), text: text || title, publishedAt: published, link });
   }
   return out;
 }

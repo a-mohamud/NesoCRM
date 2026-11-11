@@ -2,6 +2,7 @@ import type { App, Module } from '../core/app.js';
 import { readConn } from '../services/cognee/connection.js';
 import { reconcileAll, queueContactErasure, syncCycle, type CycleReport } from '../services/cognee/sync.js';
 import { refreshPosture } from './cognee.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * The background job of the Wissensgedächtnis: every few seconds the scheduler tick looks which sub-accounts have work
@@ -117,7 +118,10 @@ export const cogneeSyncModule: Module = {
       ...(app.services.privacyErase ?? []),
       (a: App, locationId: string, contact: { id: string }) => {
         const n = queueContactErasure(a, locationId, contact.id);
-        if (n) a.services.audit?.({ action: 'cognee.erase', locationId, actor: 'Wissensgedächtnis', summary: `${n} ${n === 1 ? 'Eintrag' : 'Einträge'} einer gelöschten Person in Cognee zur Löschung vorgemerkt` });
+        if (n) {
+          const t = tLoc(a, locationId);
+          a.services.audit?.({ action: 'cognee.erase', locationId, actor: t('Wissensgedächtnis'), summary: t.plural(n, { one: '{n} Eintrag einer gelöschten Person in Cognee zur Löschung vorgemerkt', other: '{n} Einträge einer gelöschten Person in Cognee zur Löschung vorgemerkt' }) });
+        }
       },
     ];
     app.events.on('contact.deleted', (e) => {

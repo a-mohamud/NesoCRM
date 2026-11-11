@@ -1,4 +1,5 @@
 import { addDaysYmd, zonedToUtc } from '../core/time.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Vermietung (rentals, docs/booking.md#rentals) – pure rules, tested in tests/rentals.test.ts: the date range of a booking, the
@@ -42,29 +43,29 @@ export interface Range {
 
 /**
  * The range a request means: `from` plus `to` (night: check-out day; day: last day, inclusive) or `days` (the number of days or
- * nights). Throws a German message.
+ * nights). Throws a message in the language of `t`.
  */
-export function rangeOf(unit: Unit, input: { from?: unknown; to?: unknown; days?: unknown }): Range {
+export function rangeOf(unit: Unit, input: { from?: unknown; to?: unknown; days?: unknown }, t: STFn = tApp()): Range {
   const from = input.from;
-  if (!validYmd(from)) throw new Error(unit === 'night' ? 'Bitte das Anreisedatum angeben (JJJJ-MM-TT)' : 'Bitte den ersten Tag angeben (JJJJ-MM-TT)');
+  if (!validYmd(from)) throw new Error(unit === 'night' ? t('Bitte das Anreisedatum angeben (JJJJ-MM-TT)') : t('Bitte den ersten Tag angeben (JJJJ-MM-TT)'));
   let units: number;
   if (input.to !== undefined && input.to !== null && input.to !== '') {
-    if (!validYmd(input.to)) throw new Error(unit === 'night' ? 'Ungültiges Abreisedatum' : 'Ungültiger letzter Tag');
+    if (!validYmd(input.to)) throw new Error(unit === 'night' ? t('Ungültiges Abreisedatum') : t('Ungültiger letzter Tag'));
     units = diffDays(from, input.to) + (unit === 'day' ? 1 : 0);
-    if (units < 1) throw new Error(unit === 'night' ? 'Die Abreise muss nach der Anreise liegen' : 'Der letzte Tag darf nicht vor dem ersten liegen');
+    if (units < 1) throw new Error(unit === 'night' ? t('Die Abreise muss nach der Anreise liegen') : t('Der letzte Tag darf nicht vor dem ersten liegen'));
   } else {
     units = Number(input.days);
-    if (!Number.isInteger(units) || units < 1) throw new Error(unit === 'night' ? 'Bitte die Anzahl der Nächte angeben' : 'Bitte die Anzahl der Tage angeben');
+    if (!Number.isInteger(units) || units < 1) throw new Error(unit === 'night' ? t('Bitte die Anzahl der Nächte angeben') : t('Bitte die Anzahl der Tage angeben'));
   }
-  if (units > MAX_UNITS) throw new Error(`Höchstens ${MAX_UNITS} ${unit === 'night' ? 'Nächte' : 'Tage'} am Stück`);
+  if (units > MAX_UNITS) throw new Error(unit === 'night' ? t('Höchstens {n} Nächte am Stück', { n: MAX_UNITS }) : t('Höchstens {n} Tage am Stück', { n: MAX_UNITS }));
   return { from, to: addDaysYmd(from, units), units };
 }
 
-/** Is the length within the item's minimum and maximum? German reason or null. */
-export function unitsProblem(r: Pick<RentalRules, 'unit' | 'min_units' | 'max_units'>, units: number): string | null {
-  const word = (n: number) => (r.unit === 'night' ? (n === 1 ? 'Nacht' : 'Nächte') : n === 1 ? 'Tag' : 'Tage');
-  if (units < r.min_units) return `Mindestens ${r.min_units} ${word(r.min_units)}`;
-  if (r.max_units && units > r.max_units) return `Höchstens ${r.max_units} ${word(r.max_units)}`;
+/** Is the length within the item's minimum and maximum? The reason (in the language of `t`) or null. */
+export function unitsProblem(r: Pick<RentalRules, 'unit' | 'min_units' | 'max_units'>, units: number, t: STFn = tApp()): string | null {
+  const nights = r.unit === 'night';
+  if (units < r.min_units) return nights ? t.plural(r.min_units, { one: 'Mindestens {n} Nacht', other: 'Mindestens {n} Nächte' }) : t.plural(r.min_units, { one: 'Mindestens {n} Tag', other: 'Mindestens {n} Tage' });
+  if (r.max_units && units > r.max_units) return nights ? t.plural(r.max_units, { one: 'Höchstens {n} Nacht', other: 'Höchstens {n} Nächte' }) : t.plural(r.max_units, { one: 'Höchstens {n} Tag', other: 'Höchstens {n} Tage' });
   return null;
 }
 
@@ -123,10 +124,10 @@ export function stayTimes(r: Pick<RentalRules, 'unit' | 'checkin_time' | 'checko
   return { start_at: start.toISOString(), end_at: end.toISOString() };
 }
 
-/** "12.06.2027 – 15.06.2027 · 3 Nächte" */
-export function rangeText(unit: Unit, range: Pick<Range, 'from' | 'to' | 'units'>): string {
-  const de = (ymd: string) => ymd.split('-').reverse().join('.');
+/** "12.06.2027 – 15.06.2027 · 3 Nächte" (English: "12/06/2027 – 15/06/2027 · 3 nights") */
+export function rangeText(unit: Unit, range: Pick<Range, 'from' | 'to' | 'units'>, t: STFn = tApp()): string {
+  const day = (ymd: string) => ymd.split('-').reverse().join(t.locale === 'de' ? '.' : '/');
   const last = unit === 'night' ? range.to : addDaysYmd(range.to, -1);
-  const word = unit === 'night' ? (range.units === 1 ? 'Nacht' : 'Nächte') : range.units === 1 ? 'Tag' : 'Tage';
-  return `${de(range.from)}${last !== range.from ? ` – ${de(last)}` : ''} · ${range.units} ${word}`;
+  const length = unit === 'night' ? t.plural(range.units, { one: '{n} Nacht', other: '{n} Nächte' }) : t.plural(range.units, { one: '{n} Tag', other: '{n} Tage' });
+  return `${day(range.from)}${last !== range.from ? ` – ${day(last)}` : ''} · ${length}`;
 }

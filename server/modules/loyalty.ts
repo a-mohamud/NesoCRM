@@ -5,6 +5,7 @@ import { getContact, logActivity } from '../services/contacts.js';
 import { registerActions, registerTriggers, text, type ActionDef, type TriggerMeta } from '../services/wfx-kit.js';
 import { issueCodes } from './coupon-codes.js';
 import type { Tool } from './mcp.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Treuepunkte – customer loyalty for buyers (HighLevel "Loyalty", docs/store.md#loyalty-points): every paid invoice (store order,
@@ -102,10 +103,13 @@ export const loyaltyModule: Module = {
 
     const settingsOf = (loc: string): Settings => {
       const row = db.get<{ data: string }>('SELECT data FROM loyalty_settings WHERE location_id = ?', loc);
+      // the default tiers in the sub-account's language (saved settings keep the names the owner chose)
+      const t = tLoc(app, loc);
+      const defaults: Settings = { ...DEFAULTS, tiers: DEFAULTS.tiers.map((x) => ({ ...x, name: t(x.name) })) };
       try {
-        return { ...DEFAULTS, ...(row ? JSON.parse(row.data) : {}) };
+        return { ...defaults, ...(row ? JSON.parse(row.data) : {}) };
       } catch {
-        return { ...DEFAULTS };
+        return { ...defaults };
       }
     };
     const sums = (contactId: string) => db.get<{ balance: number; lifetime: number }>('SELECT COALESCE(SUM(points), 0) AS balance, COALESCE(SUM(CASE WHEN points > 0 AND source != ? THEN points ELSE 0 END), 0) AS lifetime FROM loyalty_ledger WHERE contact_id = ?', 'refund', contactId)!;
@@ -114,8 +118,9 @@ export const loyaltyModule: Module = {
     /** One ledger line; fires the triggers. `ref` makes it idempotent (one line per invoice). */
     function book(loc: string, contactId: string, points: number, o: { reason: string; source: string; ref?: string; by?: string | null }) {
       const s = settingsOf(loc);
+      const t = tLoc(app, loc);
       const before = sums(contactId);
-      if (points < 0 && before.balance + points < 0) throw bad(`Nicht genug Punkte (Stand ${before.balance})`);
+      if (points < 0 && before.balance + points < 0) throw bad(tApp()('Nicht genug Punkte (Stand {balance})', { balance: before.balance }));
       try {
         db.insert('loyalty_ledger', { id: id(), location_id: loc, contact_id: contactId, points, reason: o.reason.slice(0, 200), source: o.source, ref: o.ref ?? null, created_by: o.by ?? null, created_at: now() });
       } catch (e) {
@@ -125,7 +130,7 @@ export const loyaltyModule: Module = {
       const after = sums(contactId);
       const tier = tierOf(s, after.lifetime);
       const prev = tierOf(s, before.lifetime);
-      logActivity(app, loc, contactId, 'loyalty.points', `${points > 0 ? '+' : ''}${points} Treuepunkte – ${o.reason}`);
+      logActivity(app, loc, contactId, 'loyalty.points', t('{points} Treuepunkte – {reason}', { points: `${points > 0 ? '+' : ''}${points}`, reason: o.reason }));
       if (points > 0) app.events.emit(loc, 'loyalty.points_earned', { contactId, points, balance: after.balance, lifetime: after.lifetime, tier: tier?.name ?? '', reason: o.reason });
       if (tier && tier.name !== prev?.name && (prev?.min_points ?? -1) < tier.min_points) app.events.emit(loc, 'loyalty.tier_reached', { contactId, tier: tier.name, previous: prev?.name ?? '', lifetime: after.lifetime });
       return after;
@@ -141,7 +146,7 @@ export const loyaltyModule: Module = {
       const points = Math.floor((Number(inv.total_cents) || 0) / 100 * s.points_per_euro);
       if (points <= 0) return;
       try {
-        book(e.locationId, contactId, points, { reason: `Rechnung ${inv.number || inv.id}`, source: 'invoice', ref: inv.id });
+        book(e.locationId, contactId, points, { reason: tLoc(app, e.locationId)('Rechnung {number}', { number: inv.number || inv.id }), source: 'invoice', ref: inv.id });
       } catch (err) {
         console.error('[loyalty]', (err as Error).message);
       }
@@ -160,24 +165,24 @@ export const loyaltyModule: Module = {
       }
       if (b.tiers !== undefined) {
         if (!Array.isArray(b.tiers) || b.tiers.length > 10) throw bad('Stufen: höchstens 10');
-        s.tiers = b.tiers.map((t: any, i: number) => ({ name: str(t?.name, `Stufe ${i + 1}: Name`, { required: true, max: 40 }), min_points: Math.max(0, Math.round(num(t?.min_points, 0))) })).sort((a: Tier, z: Tier) => a.min_points - z.min_points);
+        s.tiers = b.tiers.map((t: any, i: number) => ({ name: str(t?.name, tApp()('Stufe {n}: Name', { n: i + 1 }), { required: true, max: 40 }), min_points: Math.max(0, Math.round(num(t?.min_points, 0))) })).sort((a: Tier, z: Tier) => a.min_points - z.min_points);
       }
       if (b.rewards !== undefined) {
         if (!Array.isArray(b.rewards) || b.rewards.length > 20) throw bad('Prämien: höchstens 20');
         s.rewards = b.rewards.map((r: any, i: number) => {
           const kind = r?.kind === 'gift_card' ? 'gift_card' : 'coupon';
           const points = Math.round(num(r?.points, 0));
-          if (points < 1) throw bad(`Prämie ${i + 1}: Punkte fehlen`);
+          if (points < 1) throw bad(tApp()('Prämie {n}: Punkte fehlen', { n: i + 1 }));
           const value = Math.round(num(r?.value, 0));
-          const out: Reward = { id: typeof r?.id === 'string' && /^[\w-]{1,40}$/.test(r.id) ? r.id : id(8), name: str(r?.name, `Prämie ${i + 1}: Name`, { required: true, max: 80 }), points, kind, value };
+          const out: Reward = { id: typeof r?.id === 'string' && /^[\w-]{1,40}$/.test(r.id) ? r.id : id(8), name: str(r?.name, tApp()('Prämie {n}: Name', { n: i + 1 }), { required: true, max: 80 }), points, kind, value };
           if (kind === 'coupon') {
-            out.product_id = str(r?.product_id, `Prämie ${i + 1}: Produkt`, { required: true, max: 64 });
+            out.product_id = str(r?.product_id, tApp()('Prämie {n}: Produkt', { n: i + 1 }), { required: true, max: 64 });
             const p = db.get<{ recurring: string | null }>('SELECT recurring FROM products WHERE id = ? AND location_id = ?', out.product_id, loc);
-            if (!p || p.recurring) throw bad(`Prämie ${i + 1}: Einmal-Produkt nicht gefunden`);
+            if (!p || p.recurring) throw bad(tApp()('Prämie {n}: Einmal-Produkt nicht gefunden', { n: i + 1 }));
             out.coupon_kind = r?.coupon_kind === 'amount' ? 'amount' : 'percent';
-            if (out.coupon_kind === 'percent' && (value < 1 || value > 100)) throw bad(`Prämie ${i + 1}: Rabatt 1 bis 100 %`);
+            if (out.coupon_kind === 'percent' && (value < 1 || value > 100)) throw bad(tApp()('Prämie {n}: Rabatt 1 bis 100 %', { n: i + 1 }));
           }
-          if ((kind === 'gift_card' || out.coupon_kind === 'amount') && value < 100) throw bad(`Prämie ${i + 1}: Wert mindestens 100 Cent`);
+          if ((kind === 'gift_card' || out.coupon_kind === 'amount') && value < 100) throw bad(tApp()('Prämie {n}: Wert mindestens 100 Cent', { n: i + 1 }));
           return out;
         });
       }
@@ -217,7 +222,7 @@ export const loyaltyModule: Module = {
       contactOr404(ctx.locationId, ctx.params.id);
       const points = Math.round(num(ctx.body?.points, 0));
       if (!points || Math.abs(points) > 100_000) throw bad('Punkte: eine ganze Zahl ungleich 0 (höchstens ±100000)');
-      book(ctx.locationId, ctx.params.id, points, { reason: str(ctx.body?.reason, 'Grund', { max: 200 }) || 'Korrektur', source: 'manual', by: ctx.user?.id ?? null });
+      book(ctx.locationId, ctx.params.id, points, { reason: str(ctx.body?.reason, 'Grund', { max: 200 }) || tLoc(app, ctx.locationId)('Korrektur'), source: 'manual', by: ctx.user?.id ?? null });
       return contactOut(ctx.locationId, ctx.params.id);
     });
     router.post('/api/loyalty/contacts/:id/redeem', 'location', (ctx) => {
@@ -226,16 +231,16 @@ export const loyaltyModule: Module = {
       if (!s.enabled) throw bad('Das Treueprogramm ist ausgeschaltet');
       const r = s.rewards.find((x) => x.id === String(ctx.body?.reward_id ?? ''));
       if (!r) throw notFound('Prämie nicht gefunden');
-      if (sums(c.id).balance < r.points) throw new HttpError(409, `Nicht genug Punkte – ${r.name} braucht ${r.points}`);
+      if (sums(c.id).balance < r.points) throw new HttpError(409, tApp()('Nicht genug Punkte – {reward} braucht {points}', { reward: r.name, points: r.points }));
       let code = '';
       db.tx(() => {
         if (r.kind === 'coupon') code = issueCodes(app, ctx.locationId, { productId: r.product_id!, kind: r.coupon_kind ?? 'percent', value: r.value, validDays: 90, prefix: 'TREUE', contactId: c.id, source: 'api' }).codes[0];
         else {
           const svc = app.services.giftCards;
           if (!svc?.issue) throw bad('Gutscheine sind nicht verfügbar');
-          code = svc.issue(ctx.locationId, { amount_cents: r.value, contact_id: c.id, source: 'loyalty', note: `Treueprämie: ${r.name}`, by: ctx.user?.id ?? null }).code;
+          code = svc.issue(ctx.locationId, { amount_cents: r.value, contact_id: c.id, source: 'loyalty', note: tLoc(app, ctx.locationId)('Treueprämie: {reward}', { reward: r.name }), by: ctx.user?.id ?? null }).code;
         }
-        book(ctx.locationId, c.id, -r.points, { reason: `Prämie: ${r.name}`, source: 'reward', by: ctx.user?.id ?? null });
+        book(ctx.locationId, c.id, -r.points, { reason: tLoc(app, ctx.locationId)('Prämie: {reward}', { reward: r.name }), source: 'reward', by: ctx.user?.id ?? null });
       });
       return { ...contactOut(ctx.locationId, c.id), redeemed: { reward: r.name, kind: r.kind, code } };
     });
@@ -272,8 +277,8 @@ export const loyaltyModule: Module = {
         if (!settingsOf(run.location_id).enabled) throw new Error('Das Treueprogramm ist ausgeschaltet');
         const points = Math.round(Number(text(s.points, vars)));
         if (!Number.isFinite(points) || !points || Math.abs(points) > 100_000) throw new Error('Punkte: eine ganze Zahl ungleich 0');
-        const after = book(run.location_id, run.contact_id, points, { reason: text(s.reason, vars).trim() || 'Workflow', source: 'workflow' });
-        return { result: `${points > 0 ? '+' : ''}${points} Treuepunkte (Stand ${after?.balance ?? '?'})`, vars: { loyalty_balance: after?.balance ?? 0 } };
+        const after = book(run.location_id, run.contact_id, points, { reason: text(s.reason, vars).trim() || tLoc(app, run.location_id)('Workflow'), source: 'workflow' });
+        return { result: tApp()('{points} Treuepunkte (Stand {balance})', { points: `${points > 0 ? '+' : ''}${points}`, balance: after?.balance ?? '?' }), vars: { loyalty_balance: after?.balance ?? 0 } };
       },
     };
     registerActions(app, [step]);

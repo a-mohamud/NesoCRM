@@ -11,7 +11,8 @@ import { actorOf, asUser, isBot, teamUsers } from '../services/collab-actor.js';
 import { registerCardKind, resolveEmbeds, type EmbedCard } from '../services/collab-cards.js';
 import { createFts } from '../services/collab-fts.js';
 import { CARD_KINDS, extractRefs, firstHeading, htmlToMarkdown, lineDiff, markdownToText, portableMarkdown, renderMarkdown, renderChat, taskCount, toggleTask } from '../services/wiki-markdown.js';
-import { WIKI_TEMPLATES, fillTemplate, templateByKey } from '../services/wiki-templates.js';
+import { WIKI_TEMPLATES, fillTemplate, localizeWikiTemplate, templateByKey } from '../services/wiki-templates.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 import {
   LIMITS,
   accessibleSpaces,
@@ -189,7 +190,7 @@ export const wikiModule: Module = {
     registerCardKind(app, 'wiki', (a, ctx, pid) => {
       const p = a.db.get<PageRow>('SELECT * FROM wiki_pages WHERE id = ? AND location_id = ? AND trashed_at IS NULL', pid, ctx.locationId);
       const s = p && a.db.get<SpaceRow>('SELECT * FROM wiki_spaces WHERE id = ?', p.space_id);
-      if (!p || !s || !spaceAccess(ctx, s) || !areaAllowed(a, ctx, '/api/wiki')) return { ok: false, kind: 'wiki', error: 'Seite nicht gefunden (gelöscht oder kein Zugriff)' };
+      if (!p || !s || !spaceAccess(ctx, s) || !areaAllowed(a, ctx, '/api/wiki')) return { ok: false, kind: 'wiki', error: tCtx(ctx)('Seite nicht gefunden (gelöscht oder kein Zugriff)') };
       return {
         ok: true,
         kind: 'wiki',
@@ -197,8 +198,8 @@ export const wikiModule: Module = {
         subtitle: p.text.replace(/\s+/g, ' ').slice(0, 140),
         badge: { text: s.name, tone: 'blue' },
         fields: [
-          ['Zuletzt geändert', new Date(p.updated_at).toLocaleString('de-DE', { timeZone: a.location(ctx.locationId)?.timezone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })],
-          ['Von', p.updated_by_name || '–'],
+          [tCtx(ctx)('Zuletzt geändert'), new Date(p.updated_at).toLocaleString(tCtx(ctx).locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: a.location(ctx.locationId)?.timezone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })],
+          [tCtx(ctx)('Geändert von'), p.updated_by_name || '–'],
         ],
         url: `/app/wiki/${p.id}`,
       } satisfies EmbedCard;
@@ -261,7 +262,7 @@ export const wikiModule: Module = {
         pages: pages.map((p) => ({ id: p.id, space_id: p.space_id, parent_id: p.parent_id, position: p.position, title: p.title, icon: p.icon, updated_at: p.updated_at, updated_by_name: p.updated_by_name, favorite: fav.has(p.id), published: !!p.kb_article_id })),
       };
     });
-    router.get('/api/wiki/templates', 'location', () => WIKI_TEMPLATES.map((t) => ({ key: t.key, name: t.name, description: t.description, icon: t.icon, title: t.title, pages: 1 + (t.children?.length ?? 0) })));
+    router.get('/api/wiki/templates', 'location', (ctx) => WIKI_TEMPLATES.map((x) => localizeWikiTemplate(x, tCtx(ctx))).map((t) => ({ key: t.key, name: t.name, description: t.description, icon: t.icon, title: t.title, pages: 1 + (t.children?.length ?? 0) })));
     router.get('/api/wiki/people', 'location', (ctx) => teamUsers(app, ctx.locationId, 'wiki').map((u) => ({ id: u.id, name: u.name, admin: u.role === 'admin' })));
 
     router.post('/api/wiki/render', 'location', (ctx) => {
@@ -298,7 +299,7 @@ export const wikiModule: Module = {
         case 'pipeline':
           return db.all<any>(`SELECT id, name FROM pipelines WHERE location_id = ? AND (? = '' OR name LIKE ? ESCAPE '\\') ORDER BY name LIMIT 20`, loc, q, like).map((p) => ({ id: p.id, label: p.name, sub: 'Pipeline' }));
         case 'task':
-          return db.all<any>(`SELECT id, title, done, due_at FROM tasks WHERE location_id = ? AND (? = '' OR title LIKE ? ESCAPE '\\') ORDER BY done, created_at DESC LIMIT 20`, loc, q, like).map((t) => ({ id: t.id, label: t.title, sub: t.done ? 'erledigt' : t.due_at ? `fällig ${String(t.due_at).slice(0, 10)}` : 'offen' }));
+          return db.all<any>(`SELECT id, title, done, due_at FROM tasks WHERE location_id = ? AND (? = '' OR title LIKE ? ESCAPE '\\') ORDER BY done, created_at DESC LIMIT 20`, loc, q, like).map((t) => ({ id: t.id, label: t.title, sub: t.done ? tCtx(ctx)('erledigt') : t.due_at ? tCtx(ctx)('fällig {date}', { date: String(t.due_at).slice(0, 10) }) : tCtx(ctx)('offen') }));
         case 'ticket':
           return db.all<any>(`SELECT id, number, subject, status_kind FROM tickets WHERE location_id = ? AND (? = '' OR subject LIKE ? ESCAPE '\\' OR CAST(number AS TEXT) = ?) ORDER BY created_at DESC LIMIT 20`, loc, q, like, q).map((t) => ({ id: t.id, label: `#${t.number} ${t.subject}`, sub: t.status_kind }));
         case 'canvas':
@@ -368,9 +369,11 @@ export const wikiModule: Module = {
       const b = ctx.body ?? {};
       const spaceId = str(b.space_id, 'Bereich', { required: true, max: 40 });
       const { space } = loadSpace(app, ctx, spaceId, 'edit');
-      const tpl = b.template ? templateByKey(String(b.template)) : undefined;
-      if (b.template && !tpl) throw bad('Unbekannte Vorlage');
-      const vars = { datum: new Date().toLocaleDateString('de-DE', { timeZone: app.location(ctx.locationId)?.timezone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' }), autor: actorOf(app, ctx).name, projekt: app.location(ctx.locationId)?.name ?? '' };
+      const tr = tLoc(app, ctx.locationId);
+      const found = b.template ? templateByKey(String(b.template)) : undefined;
+      if (b.template && !found) throw bad('Unbekannte Vorlage');
+      const tpl = found ? localizeWikiTemplate(found, tr) : undefined;
+      const vars = { datum: new Date().toLocaleDateString(tr.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: app.location(ctx.locationId)?.timezone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' }), autor: actorOf(app, ctx).name, projekt: app.location(ctx.locationId)?.name ?? '' };
       const page = createPage(app, ctx, {
         spaceId: space.id,
         parentId: b.parent_id || null,
@@ -388,12 +391,12 @@ export const wikiModule: Module = {
       const { space } = loadSpace(app, ctx, str(b.space_id, 'Bereich', { required: true, max: 40 }), 'edit');
       const files: { name: string; content: string }[] = Array.isArray(b.files) ? b.files : typeof b.markdown === 'string' ? [{ name: String(b.title ?? 'Import'), content: b.markdown }] : [];
       if (!files.length) throw bad('Keine Dateien übergeben');
-      if (files.length > IMPORT_LIMITS.files) throw bad(`Höchstens ${IMPORT_LIMITS.files} Dateien auf einmal`);
+      if (files.length > IMPORT_LIMITS.files) throw bad(tCtx(ctx)('Höchstens {n} Dateien auf einmal', { n: IMPORT_LIMITS.files }));
       const parent = b.parent_id ? String(b.parent_id) : null;
       const out: ReturnType<typeof pageOut>[] = [];
       for (const f of files) {
         let content = String(f?.content ?? '');
-        if (content.length > IMPORT_LIMITS.bytes) throw bad(`„${String(f?.name ?? '').slice(0, 60)}“ ist größer als 1 MB`);
+        if (content.length > IMPORT_LIMITS.bytes) throw bad(tCtx(ctx)('„{name}“ ist größer als 1 MB', { name: String(f?.name ?? '').slice(0, 60) }));
         const fileName = String(f?.name ?? 'Import').replace(/\.(md|markdown|txt|html?)$/i, '').slice(0, 200);
         if (/\.html?$/i.test(String(f?.name ?? '')) || /^\s*<(!doctype|html|body|h1|h2|p|div)\b/i.test(content)) content = htmlToMarkdown(content);
         content = content.replace(/\r\n?/g, '\n').replace(/^﻿/, '');
@@ -436,7 +439,7 @@ export const wikiModule: Module = {
         if (Date.now() - (lastAudit.get(key) ?? 0) > 10 * 60_000 || fresh.title !== page.title) {
           lastAudit.set(key, Date.now());
           if (lastAudit.size > 5000) lastAudit.clear();
-          app.services.audit?.({ ctx, action: 'wiki.edit', route: 'PATCH /api/wiki/pages/:id', entityId: page.id, summary: `Seite „${fresh.title}“ bearbeitet` });
+          app.services.audit?.({ ctx, action: 'wiki.edit', route: 'PATCH /api/wiki/pages/:id', entityId: page.id, summary: tCtx(ctx)('Seite „{title}“ bearbeitet', { title: fresh.title }) });
         }
       } else quiet(ctx);
       return pageOut(ctx, fresh, space, access);
@@ -472,7 +475,7 @@ export const wikiModule: Module = {
       const { page, space } = loadPage(app, ctx, ctx.params.id, 'edit');
       const withChildren = ctx.body?.children === true;
       const copy = (src: PageRow, parentId: string | null, title?: string, beforeId?: string | null): PageRow => {
-        const c = createPage(app, ctx, { spaceId: space.id, parentId, beforeId, title: title ?? src.title, body: src.body, icon: src.icon, note: 'Kopie' });
+        const c = createPage(app, ctx, { spaceId: space.id, parentId, beforeId, title: title ?? src.title, body: src.body, icon: src.icon, note: tCtx(ctx)('Kopie') });
         if (withChildren) for (const child of db.all<PageRow>('SELECT * FROM wiki_pages WHERE parent_id = ? AND trashed_at IS NULL ORDER BY position LIMIT 200', src.id)) copy(child, c.id);
         return c;
       };

@@ -7,6 +7,7 @@ import { coerceArgs, renderArgs } from '../services/composio-schema.js';
 import { contactVars, getContact } from '../services/contacts.js';
 import type { CatalogExtra } from './integrations-catalog.js';
 import { openSecret, sealSecret } from './mail-sync.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Composio: 250+ apps (Slack, Notion, HubSpot, Shopify, Google Sheets …) with Composio's managed
@@ -265,15 +266,15 @@ export const composioModule: Module = {
       try {
         tool = await getTool(info, slug);
       } catch (e) {
-        if (e instanceof HttpError && e.status === 404) throw bad(`Unbekannte Aktion: ${slug}`);
+        if (e instanceof HttpError && e.status === 404) throw bad(tApp()('Unbekannte Aktion: {slug}', { slug }));
         throw e;
       }
-      if (opts.enforceAllow && !isAllowed(allowOf(loc), tool.slug, tool.toolkit.slug)) throw new HttpError(403, `Die Aktion ${tool.slug} ist für KI & MCP nicht freigegeben (Apps → Composio → KI & MCP).`);
+      if (opts.enforceAllow && !isAllowed(allowOf(loc), tool.slug, tool.toolkit.slug)) throw new HttpError(403, tApp()('Die Aktion {slug} ist für KI & MCP nicht freigegeben (Apps → Composio → KI & MCP).', { slug: tool.slug }));
       const conn = tool.no_auth ? undefined : activeConnection(loc, tool.toolkit.slug, info.scope);
-      if (!tool.no_auth && !conn) throw new HttpError(409, `${tool.toolkit.name || tool.toolkit.slug} ist in diesem Sub-Account nicht verbunden (Apps → Composio → Verbinden).`);
+      if (!tool.no_auth && !conn) throw new HttpError(409, tApp()('{app} ist in diesem Sub-Account nicht verbunden (Apps → Composio → Verbinden).', { app: tool.toolkit.name || tool.toolkit.slug }));
       const rendered = opts.vars ? renderArgs(rawArgs ?? {}, opts.vars) : (rawArgs ?? {});
       const { args, errors } = coerceArgs(tool.input_parameters, rendered);
-      if (errors.length) throw bad(`Eingaben für ${tool.name} passen nicht: ${errors.slice(0, 6).join('; ')}`);
+      if (errors.length) throw bad(tApp()('Eingaben für {name} passen nicht: {errors}', { name: tool.name, errors: errors.slice(0, 6).join('; ') }));
       const started = Date.now();
       try {
         const r = await client(info).executeTool(tool.slug, { userId: userIdFor(loc), connectedAccountId: conn?.connected_account_id, arguments: args });
@@ -454,7 +455,7 @@ export const composioModule: Module = {
       const info = requireKey(loc);
       const c = client(info);
       const tk = await cached(info, `toolkit:${toolkit}`, 3600_000, () => c.getToolkit(toolkit));
-      if (tk.no_auth) throw bad(`${tk.name} braucht keine Verbindung – die Aktionen gehen sofort.`);
+      if (tk.no_auth) throw bad(tCtx(ctx)('{app} braucht keine Verbindung – die Aktionen gehen sofort.', { app: tk.name }));
       const configs = await call(() => c.listAuthConfigs({ toolkit }));
       const usable = configs.items.filter((x) => x.enabled && x.toolkit === toolkit);
       let authConfigId = (usable.find((x) => x.managed) ?? usable[0])?.id;
@@ -462,7 +463,7 @@ export const composioModule: Module = {
         try {
           authConfigId = await c.createManagedAuthConfig(toolkit);
         } catch (e) {
-          if (e instanceof ComposioError && e.status === 400) throw bad(`Für ${tk.name} gibt es bei Composio keine fertige Anmeldung. Leg im Composio-Dashboard unter „Auth Configs“ eine an (z. B. mit eigener OAuth-App) und versuch es erneut.`);
+          if (e instanceof ComposioError && e.status === 400) throw bad(tCtx(ctx)('Für {app} gibt es bei Composio keine fertige Anmeldung. Leg im Composio-Dashboard unter „Auth Configs“ eine an (z. B. mit eigener OAuth-App) und versuch es erneut.', { app: tk.name }));
           throw e instanceof ComposioError ? new HttpError(e.status, e.message) : e;
         }
       }
@@ -487,49 +488,50 @@ export const composioModule: Module = {
         updated_at: now(),
       };
       db.insert('composio_connections', row);
-      app.services.audit?.({ ctx, action: 'composio.connect', summary: `App verbinden: ${tk.name}`, locationId: loc, entityId: row.id });
+      app.services.audit?.({ ctx, action: 'composio.connect', summary: tCtx(ctx)('App verbinden: {app}', { app: tk.name }), locationId: loc, entityId: row.id });
       return { url: link.redirect_url, id: row.id };
     });
 
     const back = (params: Record<string, string>) => redirect(`/app/apps/composio?${new URLSearchParams(params)}`);
     router.get('/composio/callback', 'public', async (ctx) => {
+      const t = tCtx(ctx);
       const sid = ctx.cookies[SESSION_COOKIE];
       const user = sid ? db.get(`SELECT u.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`, sha256(sid), now()) : undefined;
-      if (!user) return html(messagePage('Nicht angemeldet', 'Bitte zuerst anmelden und die App dann noch einmal verbinden.'), 401);
+      if (!user) return html(messagePage(t('Nicht angemeldet'), t('Bitte zuerst anmelden und die App dann noch einmal verbinden.')), 401);
       let st;
       try {
         st = verifyLinkState(app.config.secret, String(ctx.query.get('state') ?? ''), sha256(sid!));
-        if (st.u !== user.id) throw new Error('Das Verbinden gehört zu einer anderen Anmeldung');
+        if (st.u !== user.id) throw new Error(t('Das Verbinden gehört zu einer anderen Anmeldung'));
       } catch (e) {
-        return html(messagePage('Verbinden fehlgeschlagen', (e as Error).message), 400);
+        return html(messagePage(t('Verbinden fehlgeschlagen'), t((e as Error).message)), 400);
       }
       const row = db.get('SELECT * FROM composio_connections WHERE nonce = ?', st.n);
-      if (!row || row.location_id !== st.l || row.user_id !== user.id || row.status !== 'pending') return back({ composio: 'error', msg: 'Dieser Anmelde-Link ist abgelaufen oder wurde schon benutzt – bitte noch einmal verbinden.' });
+      if (!row || row.location_id !== st.l || row.user_id !== user.id || row.status !== 'pending') return back({ composio: 'error', msg: t('Dieser Anmelde-Link ist abgelaufen oder wurde schon benutzt – bitte noch einmal verbinden.') });
       db.run('UPDATE composio_connections SET nonce = NULL, updated_at = ? WHERE id = ?', now(), row.id);
       const fail = (msg: string) => {
         db.run(`UPDATE composio_connections SET status = 'failed', status_reason = ?, updated_at = ? WHERE id = ?`, msg.slice(0, 300), now(), row.id);
         return back({ composio: 'error', app: row.toolkit, msg });
       };
-      if (ctx.query.get('status') === 'failed') return fail('Die Anmeldung bei der App wurde abgebrochen oder abgelehnt.');
+      if (ctx.query.get('status') === 'failed') return fail(t('Die Anmeldung bei der App wurde abgebrochen oder abgelehnt.'));
       // Callback parameters alone prove nothing: the account must be the one this attempt created.
       const returned = String(ctx.query.get('connected_account_id') ?? ctx.query.get('connectedAccountId') ?? '');
       const placeholder = String(row.connected_account_id).startsWith('pending:');
       const expected = placeholder ? returned : row.connected_account_id;
-      if (!expected || (returned && returned !== expected)) return fail('Die Rückmeldung von Composio passt nicht zu diesem Verbindungsversuch.');
+      if (!expected || (returned && returned !== expected)) return fail(t('Die Rückmeldung von Composio passt nicht zu diesem Verbindungsversuch.'));
       const info = keyInfo(row.location_id);
-      if (!info || info.scope !== row.scope) return fail('Der Composio-Schlüssel wurde inzwischen geändert – bitte noch einmal verbinden.');
+      if (!info || info.scope !== row.scope) return fail(t('Der Composio-Schlüssel wurde inzwischen geändert – bitte noch einmal verbinden.'));
       try {
         // Without an id from the link call, the account must at least belong to this sub-account's Composio user.
         if (placeholder && !(await client(info).listConnectedAccounts({ userId: userIdFor(row.location_id), toolkit: row.toolkit })).some((a) => a.id === expected)) {
-          return fail('Composio kennt dieses Konto für diesen Sub-Account nicht.');
+          return fail(t('Composio kennt dieses Konto für diesen Sub-Account nicht.'));
         }
         const acc = await client(info).getConnectedAccount(expected);
-        if (acc.toolkit && acc.toolkit !== row.toolkit) return fail('Composio meldet eine andere App als erwartet.');
-        if (acc.user_id && acc.user_id !== userIdFor(row.location_id)) return fail('Composio meldet einen anderen Sub-Account als erwartet.');
+        if (acc.toolkit && acc.toolkit !== row.toolkit) return fail(t('Composio meldet eine andere App als erwartet.'));
+        if (acc.user_id && acc.user_id !== userIdFor(row.location_id)) return fail(t('Composio meldet einen anderen Sub-Account als erwartet.'));
         const status = mapStatus(acc.status);
         db.run('UPDATE composio_connections SET connected_account_id = ?, status = ?, status_reason = ?, updated_at = ? WHERE id = ?', acc.id || expected, status, acc.status_reason.slice(0, 300), now(), row.id);
-        if (status === 'failed' || status === 'expired' || status === 'revoked') return back({ composio: 'error', app: row.toolkit, msg: acc.status_reason || 'Die Verbindung ist nicht aktiv.' });
-        app.services.audit?.({ ctx, action: 'composio.connected', summary: `App verbunden: ${row.toolkit_name || row.toolkit}`, userId: user.id, locationId: row.location_id, entityId: row.id });
+        if (status === 'failed' || status === 'expired' || status === 'revoked') return back({ composio: 'error', app: row.toolkit, msg: acc.status_reason || t('Die Verbindung ist nicht aktiv.') });
+        app.services.audit?.({ ctx, action: 'composio.connected', summary: t('App verbunden: {app}', { app: row.toolkit_name || row.toolkit }), userId: user.id, locationId: row.location_id, entityId: row.id });
         return back({ composio: status === 'active' ? 'ok' : 'pending', app: row.toolkit });
       } catch (e) {
         return fail((e as Error).message);
@@ -584,7 +586,7 @@ export const composioModule: Module = {
       const info = requireKey(ctx.locationId);
       const t = await getTool(info, ctx.params.slug);
       const allowed = isAllowed(allowOf(ctx.locationId), t.slug, t.toolkit.slug);
-      if (machine(ctx) && !allowed) throw new HttpError(403, `Die Aktion ${t.slug} ist für KI & MCP nicht freigegeben.`);
+      if (machine(ctx) && !allowed) throw new HttpError(403, tCtx(ctx)('Die Aktion {slug} ist für KI & MCP nicht freigegeben.', { slug: t.slug }));
       return { ...t, allowed, connected: t.no_auth || !!activeConnection(ctx.locationId, t.toolkit.slug, info.scope) };
     });
     router.post('/api/composio/execute', 'location', async (ctx) => {
@@ -619,17 +621,19 @@ export const composioModule: Module = {
           'In Workflows die Aktion „App-Aktion ausführen (Composio)“ oder den Auslöser „App-Ereignis (Composio)“ nutzen.',
         ],
       },
-      location: (_ctx, loc) => {
+      location: (ctx, loc) => {
+        const t = tCtx(ctx);
         const info = keyInfo(loc);
-        if (!info) return { status: 'missing', detail: 'Kein Composio-Schlüssel' };
+        if (!info) return { status: 'missing', detail: t('Kein Composio-Schlüssel') };
         const on = db.all(`SELECT DISTINCT toolkit_name, toolkit FROM composio_connections WHERE location_id = ? AND status = 'active' AND scope = ?`, loc, info.scope);
-        if (!on.length) return { status: 'info', detail: 'Bereit – noch keine App verbunden' };
+        if (!on.length) return { status: 'info', detail: t('Bereit – noch keine App verbunden') };
         const names = on.map((r) => r.toolkit_name || r.toolkit);
-        return { status: 'ok', detail: `${names.length} ${names.length === 1 ? 'App' : 'Apps'}: ${names.slice(0, 4).join(', ')}${names.length > 4 ? ' …' : ''}` };
+        return { status: 'ok', detail: t.plural(names.length, { one: '{n} App: {list}', other: '{n} Apps: {list}' }, { list: `${names.slice(0, 4).join(', ')}${names.length > 4 ? ' …' : ''}` }) };
       },
-      agency: () => {
+      agency: (ctx) => {
+        const t = tCtx(ctx);
         const info = agencyKey();
-        return info ? { status: 'ok', detail: `Agentur-Schlüssel ${info.hint}${info.source === 'env' ? ' (Umgebung)' : ''}` } : { status: 'missing', detail: 'Kein Composio-Schlüssel' };
+        return info ? { status: 'ok', detail: info.source === 'env' ? t('Agentur-Schlüssel {hint} (Umgebung)', { hint: info.hint }) : t('Agentur-Schlüssel {hint}', { hint: info.hint }) } : { status: 'missing', detail: t('Kein Composio-Schlüssel') };
       },
     };
     app.services.catalogExtra = [...(app.services.catalogExtra ?? []), catalog];

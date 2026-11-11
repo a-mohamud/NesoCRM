@@ -5,6 +5,7 @@ import { formatInTz } from '../core/time.js';
 import { safeEqual, sha256 } from '../core/util.js';
 import { addCustomerMessage, createTicket, getTicketRow, loadHelpdeskSettings, sendAutoReply, ticketOut } from '../services/tickets.js';
 import type { Member, Portal } from './portal.js';
+import { tLoc, tUser, type STFn } from '../i18n/index.js';
 
 /**
  * "Meine Anfragen" in the member portal (/portal/<id>/tickets): members see their tickets with
@@ -69,8 +70,10 @@ export const helpdeskPortalModule: Module = {
     const tokenInput = (m: Member) => `<input type="hidden" name="csrf" value="${csrf(m)}">`;
     const tz = (p: Portal) => p.loc.timezone || 'Europe/Berlin';
     const when = (p: Portal, iso: string) => escapeHtml(formatInTz(iso, tz(p), { weekday: undefined }));
-    const pill = (kind: string, label?: string) => `<span class="st ${escapeHtml(kind)}">${escapeHtml(label || KIND_LABEL[kind] || kind)}</span>`;
-    const statusLabel = (t: any) => (t.status_kind === 'waiting' ? KIND_LABEL.waiting : t.status || KIND_LABEL[t.status_kind]);
+    const tr = (p: Portal): STFn => tLoc(app, p.locationId);
+    const pill = (tx: STFn, kind: string, label?: string) => `<span class="st ${escapeHtml(kind)}">${escapeHtml(label || (KIND_LABEL[kind] ? tx(KIND_LABEL[kind]) : kind))}</span>`;
+    // Stage names are the sub-account's own; the default (German) ones still read in the customer's language.
+    const statusLabel = (tx: STFn, t: any) => (t.status_kind === 'waiting' ? tx(KIND_LABEL.waiting) : t.status ? tx(t.status) : tx(KIND_LABEL[t.status_kind] ?? t.status_kind));
     const mine = (p: Portal, m: Member) =>
       db
         .all(`SELECT * FROM tickets WHERE location_id = ? AND contact_id = ? AND merged_into IS NULL ORDER BY (status_kind IN ('new','open','waiting')) DESC, updated_at DESC LIMIT 200`, p.locationId, m.contact.id)
@@ -81,7 +84,11 @@ export const helpdeskPortalModule: Module = {
     // --- portal hooks ----------------------------------------------------------------------------
     app.services.portalHeader = [
       ...(app.services.portalHeader ?? []),
-      (p: Portal) => (enabled(p.locationId) ? `<a class="hd-link" href="${base(p)}" aria-label="Meine Anfragen">${ICON_INBOX}<span>Meine Anfragen</span></a>` : ''),
+      (p: Portal) => {
+        if (!enabled(p.locationId)) return '';
+        const label = escapeHtml(tr(p)('Meine Anfragen'));
+        return `<a class="hd-link" href="${base(p)}" aria-label="${label}">${ICON_INBOX}<span>${label}</span></a>`;
+      },
     ];
     app.services.portalDashboard = [
       ...(app.services.portalDashboard ?? []),
@@ -90,7 +97,11 @@ export const helpdeskPortalModule: Module = {
         if (!enabled(p.locationId) || !db.get('SELECT 1 FROM tickets WHERE location_id = ? AND contact_id = ? LIMIT 1', p.locationId, m.contact.id)) return '';
         const open = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM tickets WHERE location_id = ? AND contact_id = ? AND status_kind IN ('new','open','waiting') AND merged_into IS NULL`, p.locationId, m.contact.id)!.n;
         const waiting = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM tickets WHERE location_id = ? AND contact_id = ? AND status_kind = 'waiting' AND merged_into IS NULL`, p.locationId, m.contact.id)!.n;
-        return `<section class="hd-dash"><h2>${ICON_INBOX} Meine Anfragen</h2><div class="hd-card"><div>${open ? `<strong>${open} offene ${open === 1 ? 'Anfrage' : 'Anfragen'}</strong>${waiting ? `<div class="muted small">${waiting} ${waiting === 1 ? 'wartet' : 'warten'} auf deine Antwort</div>` : ''}` : '<strong>Alle Anfragen erledigt</strong><div class="muted small">Neue Frage oder ein Problem? Schreib uns jederzeit.</div>'}</div><a class="btn" href="${base(p)}">${open ? 'Anfragen ansehen' : 'Anfrage stellen'}</a></div></section>`;
+        const t = tr(p);
+        const summary = open
+          ? `<strong>${escapeHtml(t.plural(open, { one: '{n} offene Anfrage', other: '{n} offene Anfragen' }))}</strong>${waiting ? `<div class="muted small">${escapeHtml(t.plural(waiting, { one: '{n} wartet auf deine Antwort', other: '{n} warten auf deine Antwort' }))}</div>` : ''}`
+          : `<strong>${escapeHtml(t('Alle Anfragen erledigt'))}</strong><div class="muted small">${escapeHtml(t('Neue Frage oder ein Problem? Schreib uns jederzeit.'))}</div>`;
+        return `<section class="hd-dash"><h2>${ICON_INBOX} ${escapeHtml(t('Meine Anfragen'))}</h2><div class="hd-card"><div>${summary}</div><a class="btn" href="${base(p)}">${escapeHtml(open ? t('Anfragen ansehen') : t('Anfrage stellen'))}</a></div></section>`;
       },
     ];
     app.services.portalMemberCheck = [
@@ -111,7 +122,10 @@ export const helpdeskPortalModule: Module = {
       const m = k.memberOf(ctx, p);
       if (!m) return ctx.method === 'GET' ? k.loginPage(p, { status: 401, next: ctx.path }) : redirect(p.base, 303);
       if (!enabled(p.locationId)) return k.notFoundPage(p, m);
-      if (ctx.method !== 'GET' && (!k.sameOrigin(ctx) || !safeEqual(ctx.body?.csrf, csrf(m)))) return frame(p, m, 'Hinweis', `<div class="panel empty"><h1>Bitte neu laden</h1><p class="muted">Die Seite war zu lange offen. Bitte neu laden und noch einmal senden.</p><a class="btn" href="${base(p)}">Zu meinen Anfragen</a></div>`, 403);
+      if (ctx.method !== 'GET' && (!k.sameOrigin(ctx) || !safeEqual(ctx.body?.csrf, csrf(m)))) {
+        const t = tr(p);
+        return frame(p, m, t('Hinweis'), `<div class="panel empty"><h1>${escapeHtml(t('Bitte neu laden'))}</h1><p class="muted">${escapeHtml(t('Die Seite war zu lange offen. Bitte neu laden und noch einmal senden.'))}</p><a class="btn" href="${base(p)}">${escapeHtml(t('Zu meinen Anfragen'))}</a></div>`, 403);
+      }
       return fn(p, m);
     };
     const ticketOf = (p: Portal, m: Member, n: string) => {
@@ -123,24 +137,29 @@ export const helpdeskPortalModule: Module = {
 
     const newForm = (p: Portal, m: Member, err = '', v: { subject?: string; body?: string; category?: string } = {}) => {
       const cats = loadHelpdeskSettings(app, p.locationId).categories;
-      return `<section class="panel hd-form"><h2>Neue Anfrage</h2><form method="post" action="${base(p)}">${tokenInput(m)}
-<label for="s">Betreff</label><input id="s" name="subject" maxlength="200" required value="${escapeHtml(v.subject ?? '')}" placeholder="Worum geht es?">
-${cats.length ? `<label for="k">Thema</label><select id="k" name="category"><option value="">Bitte wählen…</option>${cats.map((c) => `<option${v.category === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>` : ''}
-<label for="b">Nachricht</label><textarea id="b" name="body" maxlength="20000" required placeholder="Beschreib dein Anliegen so genau wie möglich.">${escapeHtml(v.body ?? '')}</textarea>
-${err ? `<p class="err" style="color:#dc2626">${escapeHtml(err)}</p>` : ''}<button class="btn wide">Anfrage senden</button></form></section>`;
+      const t = tr(p);
+      const h = (s: string) => escapeHtml(t(s));
+      // The category's value stays the stored name; only its label reads in the customer's language.
+      return `<section class="panel hd-form"><h2>${h('Neue Anfrage')}</h2><form method="post" action="${base(p)}">${tokenInput(m)}
+<label for="s">${h('Betreff')}</label><input id="s" name="subject" maxlength="200" required value="${escapeHtml(v.subject ?? '')}" placeholder="${h('Worum geht es?')}">
+${cats.length ? `<label for="k">${h('Thema')}</label><select id="k" name="category"><option value="">${h('Bitte wählen…')}</option>${cats.map((c) => `<option value="${escapeHtml(c)}"${v.category === c ? ' selected' : ''}>${escapeHtml(t(c))}</option>`).join('')}</select>` : ''}
+<label for="b">${h('Nachricht')}</label><textarea id="b" name="body" maxlength="20000" required placeholder="${h('Beschreib dein Anliegen so genau wie möglich.')}">${escapeHtml(v.body ?? '')}</textarea>
+${err ? `<p class="err" style="color:#dc2626">${escapeHtml(err)}</p>` : ''}<button class="btn wide">${h('Anfrage abschicken')}</button></form></section>`;
     };
 
     const listPage = (p: Portal, m: Member, err = '', v = {}) => {
       const list = mine(p, m);
+      const tx = tr(p);
+      const h = (s: string) => escapeHtml(tx(s));
       const rows = list
-        .map((t) => `<a class="hd-row" href="${base(p)}/${t.number}"><div class="t"><strong>${escapeHtml(t.subject)}</strong><div class="m">#${t.number} · aktualisiert ${when(p, t.updated_at)}</div></div>${pill(t.status_kind, statusLabel(t))}</a>`)
+        .map((t) => `<a class="hd-row" href="${base(p)}/${t.number}"><div class="t"><strong>${escapeHtml(t.subject)}</strong><div class="m">#${t.number} · ${tx('aktualisiert {when}', { when: when(p, t.updated_at) })}</div></div>${pill(tx, t.status_kind, statusLabel(tx, t))}</a>`)
         .join('');
       return frame(
         p,
         m,
-        'Meine Anfragen',
-        `<div class="crumb"><a href="${p.base}">Start</a></div><h1>Meine Anfragen</h1><p class="muted" style="margin:0 0 20px">Hier siehst du alle deine Anfragen und unsere Antworten.</p>
-<div class="hd-grid"><section class="panel hd-list">${rows || '<div class="empty"><h2>Noch keine Anfragen</h2><p class="muted">Sobald du uns schreibst, siehst du hier den Stand.</p></div>'}</section>${newForm(p, m, err, v)}</div>`,
+        tx('Meine Anfragen'),
+        `<div class="crumb"><a href="${p.base}">${h('Start')}</a></div><h1>${h('Meine Anfragen')}</h1><p class="muted" style="margin:0 0 20px">${h('Hier siehst du alle deine Anfragen und unsere Antworten.')}</p>
+<div class="hd-grid"><section class="panel hd-list">${rows || `<div class="empty"><h2>${h('Noch keine Anfragen')}</h2><p class="muted">${h('Sobald du uns schreibst, siehst du hier den Stand.')}</p></div>`}</section>${newForm(p, m, err, v)}</div>`,
       );
     };
 
@@ -149,29 +168,31 @@ ${err ? `<p class="err" style="color:#dc2626">${escapeHtml(err)}</p>` : ''}<butt
       const out = ticketOut(app, t);
       const events = db.all(`SELECT e.*, u.name AS user_name FROM ticket_events e LEFT JOIN users u ON u.id = e.user_id WHERE e.ticket_id = ? AND e.type IN (${PUBLIC_EVENTS.map(() => '?').join(',')}) ORDER BY e.created_at, e.rowid`, t.id, ...PUBLIC_EVENTS);
       const team = escapeHtml(p.name);
+      const tx = tr(p);
+      const h = (s: string) => escapeHtml(tx(s));
       const items = events
         .map((e) => {
           const data = JSON.parse(e.data || '{}');
-          if (e.type === 'created') return `<div class="msg me"><div class="who"><span>Du</span><span>${when(p, e.created_at)}</span></div>${escapeHtml(e.body || t.subject)}</div>`;
-          if (e.type === 'customer_reply') return data.origin ? '' : `<div class="msg me"><div class="who"><span>Du</span><span>${when(p, e.created_at)}</span></div>${escapeHtml(e.body)}</div>`;
+          if (e.type === 'created') return `<div class="msg me"><div class="who"><span>${h('Du')}</span><span>${when(p, e.created_at)}</span></div>${escapeHtml(e.body || t.subject)}</div>`;
+          if (e.type === 'customer_reply') return data.origin ? '' : `<div class="msg me"><div class="who"><span>${h('Du')}</span><span>${when(p, e.created_at)}</span></div>${escapeHtml(e.body)}</div>`;
           if (e.type === 'reply' || e.type === 'auto_reply') return data.status === 'failed' ? '' : `<div class="msg"><div class="who"><span>${e.user_name ? `${escapeHtml(e.user_name)} · ${team}` : team}</span><span>${when(p, e.created_at)}</span></div>${escapeHtml(e.body.replace(/<[^>]+>/g, ''))}</div>`;
-          if (e.type === 'status') return `<div class="sys">Status: ${escapeHtml(String(e.body).split('→').pop()?.trim() ?? '')} · ${when(p, e.created_at)}</div>`;
+          if (e.type === 'status') return `<div class="sys">${escapeHtml(tx('Status: {status}', { status: tx(String(e.body).split('→').pop()?.trim() ?? '') }))} · ${when(p, e.created_at)}</div>`;
           return '';
         })
         .join('');
       const done = t.status_kind === 'resolved' || t.status_kind === 'closed';
-      const csat = done && t.csat_score == null && app.services.csatLink ? `<p class="muted small">Wie zufrieden warst du? <a href="${escapeHtml(app.services.csatLink(t.id))}">Kurz bewerten</a></p>` : '';
+      const csat = done && t.csat_score == null && app.services.csatLink ? `<p class="muted small">${h('Wie zufrieden warst du?')} <a href="${escapeHtml(app.services.csatLink(t.id))}">${h('Kurz bewerten')}</a></p>` : '';
       const reply =
         t.status_kind === 'closed'
-          ? `<div class="panel"><p class="muted" style="margin:0">Diese Anfrage ist geschlossen. Hast du ein neues Anliegen? <a href="${base(p)}">Neue Anfrage stellen</a></p>${csat}</div>`
-          : `<section class="panel hd-form"><h2>${done ? 'Noch etwas offen?' : 'Antworten'}</h2>${done ? '<p class="muted small" style="margin:0">Diese Anfrage ist gelöst. Wenn du antwortest, öffnen wir sie wieder.</p>' : ''}${csat}
-<form method="post" action="${base(p)}/${t.number}/reply">${tokenInput(m)}<label for="r">Deine Nachricht</label><textarea id="r" name="body" maxlength="20000" required></textarea><button class="btn">Senden</button></form></section>`;
+          ? `<div class="panel"><p class="muted" style="margin:0">${h('Diese Anfrage ist geschlossen. Hast du ein neues Anliegen?')} <a href="${base(p)}">${h('Neue Anfrage stellen')}</a></p>${csat}</div>`
+          : `<section class="panel hd-form"><h2>${done ? h('Noch etwas offen?') : h('Antwort schreiben')}</h2>${done ? `<p class="muted small" style="margin:0">${h('Diese Anfrage ist gelöst. Wenn du antwortest, öffnen wir sie wieder.')}</p>` : ''}${csat}
+<form method="post" action="${base(p)}/${t.number}/reply">${tokenInput(m)}<label for="r">${h('Deine Nachricht')}</label><textarea id="r" name="body" maxlength="20000" required></textarea><button class="btn">${h('Senden')}</button></form></section>`;
       return frame(
         p,
         m,
-        `Anfrage #${t.number}`,
-        `${notice ? `<div class="notice">${escapeHtml(notice)}</div>` : ''}<div class="crumb"><a href="${p.base}">Start</a> / <a href="${base(p)}">Meine Anfragen</a></div>
-<div class="hd-head"><div><h1>${escapeHtml(t.subject)}</h1><div class="muted small">Anfrage #${t.number} · erstellt ${when(p, t.created_at)}</div></div>${pill(t.status_kind, statusLabel(out))}</div>
+        tx('Anfrage #{number}', { number: t.number }),
+        `${notice ? `<div class="notice">${escapeHtml(tx(notice))}</div>` : ''}<div class="crumb"><a href="${p.base}">${h('Start')}</a> / <a href="${base(p)}">${h('Meine Anfragen')}</a></div>
+<div class="hd-head"><div><h1>${escapeHtml(t.subject)}</h1><div class="muted small">${tx('Anfrage #{number} · erstellt {when}', { number: t.number, when: when(p, t.created_at) })}</div></div>${pill(tx, t.status_kind, statusLabel(tx, out))}</div>
 <div class="thread">${items}</div>${reply}`,
       );
     };
@@ -184,7 +205,7 @@ ${err ? `<p class="err" style="color:#dc2626">${escapeHtml(err)}</p>` : ''}<butt
         const body = String(ctx.body?.body ?? '').trim().slice(0, 20_000);
         const cats = loadHelpdeskSettings(app, p.locationId).categories;
         const category = cats.includes(String(ctx.body?.category ?? '')) ? String(ctx.body.category) : '';
-        if (!subject || !body) return listPage(p, m, 'Bitte Betreff und Nachricht ausfüllen.', { subject, body, category });
+        if (!subject || !body) return listPage(p, m, tLoc(app, p.locationId)('Bitte Betreff und Nachricht ausfüllen.'), { subject, body, category });
         const t = createTicket(app, p.locationId, { subject, description: body, contact_id: m.contact.id, category, source: 'Portal', channel: m.contact.email ? 'email' : '' }, { via: 'portal' });
         await sendAutoReply(app, p.locationId, t.id).catch(() => null);
         return redirect(`${base(p)}/${t.number}?neu=1`, 303);
@@ -204,7 +225,7 @@ ${err ? `<p class="err" style="color:#dc2626">${escapeHtml(err)}</p>` : ''}<butt
         const body = String(ctx.body?.body ?? '').trim().slice(0, 20_000);
         if (!body) return detailPage(p, m, t);
         const next = addCustomerMessage(app, t, { body, via: 'portal', channel: 'portal' });
-        if (next.owner_id) void Promise.resolve(app.services.pushNotify?.({ userIds: [next.owner_id], kind: 'messages', title: `Antwort zu Ticket #${next.number}`, body: body.slice(0, 140), url: `/app/tickets/${next.id}`, tag: `ticket-${next.id}` })).catch(() => {});
+        if (next.owner_id) void Promise.resolve(app.services.pushNotify?.({ userIds: [next.owner_id], kind: 'messages', title: tUser(app as never, next.owner_id)('Antwort zu Ticket #{number}', { number: next.number }), body: body.slice(0, 140), url: `/app/tickets/${next.id}`, tag: `ticket-${next.id}` })).catch(() => {});
         return redirect(`${base(p)}/${t.number}?ok=1`, 303);
       }),
     );

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { escapeHtml } from '../../core/template.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * The two documents behind a plugin's user interface.
@@ -91,7 +92,7 @@ const BOOTSTRAP = String.raw`
     });
   }
   function report(e) {
-    post({ type: 'error', message: String((e && e.message) || e || 'Fehler').slice(0, 300), stack: String((e && e.stack) || '').slice(0, 1500) });
+    post({ type: 'error', message: String((e && e.message) || e || 'Error').slice(0, 300), stack: String((e && e.stack) || '').slice(0, 1500) });
   }
   var api = {
     call: call,
@@ -111,7 +112,7 @@ const BOOTSTRAP = String.raw`
       if (!p) return;
       delete pending[m.id];
       if (m.ok) p.resolve(m.data);
-      else { var err = new Error(m.error || 'Fehler'); err.status = m.status; p.reject(err); }
+      else { var err = new Error(m.error || 'Error'); err.status = m.status; p.reject(err); }
     } else if (m.type === 'init') {
       ctx = m.context;
       api.context = ctx;
@@ -160,7 +161,7 @@ export interface FrameOptions {
 /** The document inside the sandboxed frame: base styles, the bootstrap, then the plugin's own markup and scripts. */
 export function buildFrameDoc(o: FrameOptions): { html: string; csp: string } {
   const html = `<!doctype html>
-<html lang="de" data-theme="${o.theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(o.title)}</title>
+<html lang="${tApp().locale}" data-theme="${o.theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(o.title)}</title>
 <style>${BASE_CSS}</style>
 <script>${BOOTSTRAP}</script>
 </head><body>
@@ -225,7 +226,7 @@ const HOST_SCRIPT = String.raw`
       if (op === 'storage.remove') { delete mem[args.key]; return Promise.resolve({ ok: true }); }
       return Promise.resolve(Object.keys(mem).map(function (k) { return { key: k, value: mem[k] }; }));
     }
-    if (cfg.ops.indexOf(op) < 0) return Promise.reject({ status: 403, error: 'Diese Funktion hat das Plugin nicht angefragt.' });
+    if (cfg.ops.indexOf(op) < 0) return Promise.reject({ status: 403, error: cfg.msgs.notRequested });
     return Promise.resolve(cfg.samples[op] === undefined ? null : cfg.samples[op]);
   }
   function realCall(op, args) {
@@ -244,7 +245,7 @@ const HOST_SCRIPT = String.raw`
       inflight++;
       (cfg.demo ? demoCall(m.op, m.args || {}) : realCall(m.op, m.args)).then(
         function (data) { inflight--; toFrame({ type: 'result', id: m.id, ok: true, data: data }); },
-        function (err) { inflight--; toFrame({ type: 'result', id: m.id, ok: false, error: String((err && err.error) || (err && err.message) || 'Fehler').slice(0, 300), status: (err && err.status) || 500 }); }
+        function (err) { inflight--; toFrame({ type: 'result', id: m.id, ok: false, error: String((err && err.error) || (err && err.message) || cfg.msgs.error).slice(0, 300), status: (err && err.status) || 500 }); }
       );
     } else if (m.type === 'error') report(String(m.message || '').slice(0, 300), String(m.stack || '').slice(0, 1500));
     else if (m.type === 'size') { window.__ghSize = { at: Date.now() }; if (!cfg.height) toApp({ type: 'resize', height: Math.min(4000, Number(m.height) || 0) }); }
@@ -256,15 +257,18 @@ const HOST_SCRIPT = String.raw`
   // off. (The first load fires after the plugin's scripts ran and said hello – so "hello seen" is no sign of a navigation.)
   var loads = 0;
   frame.src = cfg.frameUrl;
-  frame.addEventListener('load', function () { if (++loads > 1) stop('Das Plugin wurde beendet: Es hat versucht, die Seite zu verlassen.'); });
+  frame.addEventListener('load', function () { if (++loads > 1) stop(cfg.msgs.navigated); });
 })();
 `;
 
 export function buildHostPage(cfg: HostConfig): { html: string; csp: string } {
   const nonce = randomBytes(16).toString('base64url');
-  const json = JSON.stringify(cfg).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const t = tApp();
+  // The host script's own messages, in the instance language.
+  const msgs = { notRequested: t('Diese Funktion hat das Plugin nicht angefragt.'), error: t('Fehler'), navigated: t('Das Plugin wurde beendet: Es hat versucht, die Seite zu verlassen.') };
+  const json = JSON.stringify({ ...cfg, msgs }).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const html = `<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(cfg.name)}</title>
+<html lang="${t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(cfg.name)}</title>
 <style>html,body{margin:0;height:100%;background:transparent}iframe{display:block;width:100%;height:100%;border:0;background:transparent}#dead{display:none;padding:14px;font:14px system-ui,sans-serif;color:#b91c1c}</style>
 </head><body>
 <iframe id="f" sandbox="allow-scripts" title="${escapeHtml(cfg.name)}" referrerpolicy="no-referrer" allow="" loading="eager"></iframe>

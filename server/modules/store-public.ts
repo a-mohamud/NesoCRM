@@ -14,6 +14,7 @@ import { catalog, quoteProduct, settingsOf, storeByKey, storeKey, type CatalogPr
 import { COUNTRY_NAMES, EU, buildQuote, grossUnit, taxModeFor, type StoreSettings } from '../services/store-model.js';
 import { invoiceSettings } from './payments.js';
 import { cleanLaw } from './checkout-law.js';
+import { tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * The public side of the online store (docs/store.md): the cart API (a server cart per browser token – the browser keeps the same
@@ -88,17 +89,18 @@ export const storePublicModule: Module = {
         buyerVat: !!vat?.valid && vat.country === country,
         sellerVat: !!checkVatId(seller.vat_id).valid,
       });
-      return { quote: buildQuote({ items: lines, settings, mode, country, shipping_id: o.shipping_id }), country, vat: vat?.valid ? vat.normalized : '' };
+      return { quote: buildQuote({ items: lines, settings, mode, country, shipping_id: o.shipping_id, t: tLoc(app, loc) }), country, vat: vat?.valid ? vat.normalized : '' };
     }
     /** What a gift card would pay of a total (preview; the checkout holds it for real). */
     function giftPreview(loc: string, code: string, total: number, currency: string): { gift_cents: number; gift_error: string } {
       if (!code) return { gift_cents: 0, gift_error: '' };
       const c = app.services.giftCards?.check(loc, code, currency);
-      if (!c || c.available_cents <= 0) return { gift_cents: 0, gift_error: 'Dieser Gutschein ist ungültig, abgelaufen oder aufgebraucht' };
+      const t = tLoc(app, loc);
+      if (!c || c.available_cents <= 0) return { gift_cents: 0, gift_error: t('Dieser Gutschein ist ungültig, abgelaufen oder aufgebraucht') };
       let gift = Math.min(c.available_cents, total);
       const rest = total - gift;
       if (rest > 0 && rest < MIN_CENTS) gift = Math.max(0, total - MIN_CENTS);
-      return { gift_cents: gift, gift_error: gift > 0 ? '' : 'Der Gutschein lässt sich für diesen kleinen Betrag nicht einlösen' };
+      return { gift_cents: gift, gift_error: gift > 0 ? '' : t('Der Gutschein lässt sich für diesen kleinen Betrag nicht einlösen') };
     }
     const providersOf = (loc: string) => readyProviders(app, loc).map((p) => ({ id: p.id, label: p.label, methods: p.methods(app, loc) }));
 
@@ -168,7 +170,7 @@ export const storePublicModule: Module = {
       if (recipientEmail && !EMAIL.test(recipientEmail)) throw bad('Die E-Mail für den Gutschein ist ungültig');
       const name = `${first} ${last}`;
       const phone = str(b.phone, 'Telefon', { max: 40 });
-      const contact = upsertContact(app, loc, { email, first_name: first, last_name: last, phone: phone || undefined, company: company || undefined, address: address.street || undefined, postal_code: address.postal_code || undefined, city: address.city || undefined, country }, { source: 'Online-Shop', publicInput: true }).contact;
+      const contact = upsertContact(app, loc, { email, first_name: first, last_name: last, phone: phone || undefined, company: company || undefined, address: address.street || undefined, postal_code: address.postal_code || undefined, city: address.city || undefined, country }, { source: tLoc(app, loc)('Online-Shop'), publicInput: true }).contact;
       const cartId = typeof b.token === 'string' && db.get('SELECT 1 AS x FROM store_carts WHERE id = ? AND location_id = ?', b.token, loc) ? b.token : null;
       if (cartId) db.run('UPDATE store_carts SET email = ?, contact_id = ?, updated_at = ? WHERE id = ?', email, contact.id, now(), cartId);
       const orderId = id();
@@ -218,11 +220,11 @@ export const storePublicModule: Module = {
           refId: orderId,
           amountCents: quote.total_cents,
           currency: settings.currency,
-          description: `Bestellung ${number} – ${app.location(loc)?.name ?? ''}`.slice(0, 120),
+          description: `${tLoc(app, loc)('Bestellung {number}', { number })} – ${app.location(loc)?.name ?? ''}`.slice(0, 120),
           email,
           name,
           address: { name, street: address.street, postal_code: address.postal_code, city: address.city, country },
-          lines: [...quote.lines.map((x) => ({ name: x.variant ? `${x.name} (${x.variant})` : x.name, qty: x.qty, unit_cents: x.unit_cents, tax_rate: quote.mode === 'standard' && x.kind !== 'gift_card' ? (products.find((p) => p.id === x.product_id)?.tax_rate ?? 0) : 0, sku: x.sku })), ...(shippingCents ? [{ name: `Versand: ${quote.shipping!.name}`, qty: 1, unit_cents: shippingCents, tax_rate: quote.mode === 'standard' ? (quote.items.find((i) => i.name.startsWith('Versand'))?.tax_rate ?? 0) : 0 }] : [])],
+          lines: [...quote.lines.map((x) => ({ name: x.variant ? `${x.name} (${x.variant})` : x.name, qty: x.qty, unit_cents: x.unit_cents, tax_rate: quote.mode === 'standard' && x.kind !== 'gift_card' ? (products.find((p) => p.id === x.product_id)?.tax_rate ?? 0) : 0, sku: x.sku })), ...(shippingCents ? [{ name: tLoc(app, loc)('Versand: {name}', { name: quote.shipping!.name }), qty: 1, unit_cents: shippingCents, tax_rate: quote.mode === 'standard' ? (quote.items[quote.lines.length]?.tax_rate ?? 0) : 0 }] : [])],
           returnUrl: `${base}/order/${orderToken}`,
           cancelUrl: `${base}/checkout`,
           giftCode: giftCode || undefined,
@@ -256,52 +258,58 @@ export const storePublicModule: Module = {
 
     router.get('/store/:key/checkout', 'public', (ctx) => {
       const found = storeByKey(app, ctx.params.key);
-      if (!found) return html(publicPage({ title: 'Nicht gefunden', body: '<div class="wrap"><div class="card"><h1>Nicht gefunden</h1><p class="muted">Diesen Shop gibt es nicht (mehr).</p></div></div>' }), 404);
+      if (!found) return notFoundPage(tLoc(app), 'Diesen Shop gibt es nicht (mehr).');
       const { locationId: loc, settings } = found;
       const location = app.location(loc)!;
+      const t = tLoc(app, loc);
+      const h = (s: string) => escapeHtml(t(s));
       const l = law(loc);
       const n = nonce();
+      const button = t(l.button_text);
       const data = {
         key: storeKey(app, loc),
         currency: settings.currency,
-        countries: settings.countries.map((c) => [c, COUNTRY_NAMES[c] ?? c]),
+        countries: settings.countries.map((c) => [c, COUNTRY_NAMES[c] ? t(COUNTRY_NAMES[c]) : c]),
         terms_url: settings.terms_required ? l.terms_url : '',
         withdrawal_url: l.withdrawal_url,
-        button: l.button_text.charAt(0).toUpperCase() + l.button_text.slice(1),
+        button: button.charAt(0).toUpperCase() + button.slice(1),
         note: settings.checkout_note,
         small_business: smallBusiness(loc),
         gift: !!app.services.giftCards,
         eu: EU,
+        locale: numLocale(t),
+        // The script's own words, in the shop's language.
+        l: checkoutLabels(t),
       };
       const body = `<div class="wrap" style="max-width:1000px">
-<div class="ck-head">${location.logo_url ? `<img src="${escapeHtml(location.logo_url)}" alt="">` : ''}<h1 style="margin:0">${escapeHtml(settings.name || location.name)} · Kasse</h1></div>
+<div class="ck-head">${location.logo_url ? `<img src="${escapeHtml(location.logo_url)}" alt="">` : ''}<h1 style="margin:0">${escapeHtml(settings.name || location.name)} · ${h('Kasse')}</h1></div>
 <div class="ck">
-<section class="card" aria-labelledby="h-cart"><h2 id="h-cart">Warenkorb</h2><div id="lines" aria-live="polite"></div><p id="empty" class="muted" hidden>Dein Warenkorb ist leer.</p><p><a id="back" href="#" class="muted">← Weiter einkaufen</a></p>
+<section class="card" aria-labelledby="h-cart"><h2 id="h-cart">${h('Warenkorb')}</h2><div id="lines" aria-live="polite"></div><p id="empty" class="muted" hidden>${h('Dein Warenkorb ist leer.')}</p><p><a id="back" href="#" class="muted">${h('← Weiter einkaufen')}</a></p>
 <table class="ck-sum" id="sum" aria-live="polite"></table></section>
 <form class="card" id="f" novalidate>
-<h2>Deine Angaben</h2>
-<label for="email">E-Mail *</label><input id="email" name="email" type="email" autocomplete="email" required>
-<div class="grid2"><div><label for="first_name">Vorname *</label><input id="first_name" autocomplete="given-name" required></div><div><label for="last_name">Nachname *</label><input id="last_name" autocomplete="family-name" required></div></div>
-<label for="company">Firma (optional)</label><input id="company" autocomplete="organization">
-<div id="vat-row" hidden><label for="vat_id">USt-IdNr. (Unternehmen in einem anderen EU-Land)</label><input id="vat_id" autocomplete="off" placeholder="z. B. ATU12345678"></div>
-<div id="addr"><label for="street">Straße und Hausnummer *</label><input id="street" autocomplete="street-address">
-<div class="grid2"><div><label for="postal_code">PLZ *</label><input id="postal_code" autocomplete="postal-code"></div><div><label for="city">Ort *</label><input id="city" autocomplete="address-level2"></div></div></div>
-<label for="country">Land *</label><select id="country" autocomplete="country"></select>
-<label for="phone">Telefon (optional)</label><input id="phone" type="tel" autocomplete="tel">
-<div id="giftfor" hidden><h2>Gutschein verschenken (optional)</h2><p class="muted" style="margin:0">Ohne Angabe schicken wir den Gutschein an dich.</p>
-<div class="grid2"><div><label for="gr_name">Name</label><input id="gr_name"></div><div><label for="gr_email">E-Mail</label><input id="gr_email" type="email"></div></div><label for="gr_msg">Nachricht</label><input id="gr_msg" maxlength="300"></div>
-<div id="ship-box"><h2>Versand</h2><div id="ship" role="radiogroup" aria-label="Versandart"></div></div>
-<div id="gift-box"><h2>Gutschein</h2><div class="row"><input id="gift" placeholder="Gutscheincode" autocomplete="off" aria-label="Gutscheincode"><button type="button" class="btn secondary" id="gift-btn" style="flex:0 0 auto">Einlösen</button></div><p id="gift-msg" class="muted" style="margin:6px 0 0"></p></div>
-<div id="pay-box"><h2>Zahlung</h2><div id="pay" role="radiogroup" aria-label="Zahlungsart"></div></div>
-<label for="note">Anmerkung zur Bestellung (optional)</label><input id="note" maxlength="500">
+<h2>${h('Deine Angaben')}</h2>
+<label for="email">${h('E-Mail *')}</label><input id="email" name="email" type="email" autocomplete="email" required>
+<div class="grid2"><div><label for="first_name">${h('Vorname *')}</label><input id="first_name" autocomplete="given-name" required></div><div><label for="last_name">${h('Nachname *')}</label><input id="last_name" autocomplete="family-name" required></div></div>
+<label for="company">${h('Firma (optional)')}</label><input id="company" autocomplete="organization">
+<div id="vat-row" hidden><label for="vat_id">${h('USt-IdNr. (Unternehmen in einem anderen EU-Land)')}</label><input id="vat_id" autocomplete="off" placeholder="${h('z. B. ATU12345678')}"></div>
+<div id="addr"><label for="street">${h('Straße und Hausnummer *')}</label><input id="street" autocomplete="street-address">
+<div class="grid2"><div><label for="postal_code">${h('PLZ *')}</label><input id="postal_code" autocomplete="postal-code"></div><div><label for="city">${h('Ort *')}</label><input id="city" autocomplete="address-level2"></div></div></div>
+<label for="country">${h('Land *')}</label><select id="country" autocomplete="country"></select>
+<label for="phone">${h('Telefon (optional)')}</label><input id="phone" type="tel" autocomplete="tel">
+<div id="giftfor" hidden><h2>${h('Gutschein verschenken (optional)')}</h2><p class="muted" style="margin:0">${h('Ohne Angabe schicken wir den Gutschein an dich.')}</p>
+<div class="grid2"><div><label for="gr_name">${h('Name')}</label><input id="gr_name"></div><div><label for="gr_email">${h('E-Mail')}</label><input id="gr_email" type="email"></div></div><label for="gr_msg">${h('Nachricht')}</label><input id="gr_msg" maxlength="300"></div>
+<div id="ship-box"><h2>${h('Versand')}</h2><div id="ship" role="radiogroup" aria-label="${h('Versandart')}"></div></div>
+<div id="gift-box"><h2>${h('Gutschein')}</h2><div class="row"><input id="gift" placeholder="${h('Gutschein-Code')}" autocomplete="off" aria-label="${h('Gutschein-Code')}"><button type="button" class="btn secondary" id="gift-btn" style="flex:0 0 auto">${h('Einlösen')}</button></div><p id="gift-msg" class="muted" style="margin:6px 0 0"></p></div>
+<div id="pay-box"><h2>${h('Zahlung')}</h2><div id="pay" role="radiogroup" aria-label="${h('Zahlungsart')}"></div></div>
+<label for="note">${h('Anmerkung zur Bestellung (optional)')}</label><input id="note" maxlength="500">
 <p class="muted" id="ck-note" style="font-size:14px"></p>
-<div id="terms-row" hidden><label class="check"><input type="checkbox" id="terms"> <span>Ich habe die <a id="terms-link" target="_blank" rel="noopener">Allgemeinen Geschäftsbedingungen</a> gelesen und akzeptiere sie.</span></label></div>
-<p class="muted" id="wd" style="font-size:13px" hidden>Informationen zum <a id="wd-link" target="_blank" rel="noopener">Widerrufsrecht</a>.</p>
+<div id="terms-row" hidden><label class="check"><input type="checkbox" id="terms"> <span>${t('Ich habe die {link}Allgemeinen Geschäftsbedingungen{end} gelesen und akzeptiere sie.', { link: '<a id="terms-link" target="_blank" rel="noopener">', end: '</a>' })}</span></label></div>
+<p class="muted" id="wd" style="font-size:13px" hidden>${t('Informationen zum {link}Widerrufsrecht{end}.', { link: '<a id="wd-link" target="_blank" rel="noopener">', end: '</a>' })}</p>
 <button type="submit" id="go"></button><p class="error" id="err" role="alert"></p>
 </form></div></div>
 <script type="application/json" id="store-data">${jsonForScript(data)}</script>
 <script nonce="${n}">${CHECKOUT_JS}</script>`;
-      const r = html(publicPage({ title: `Kasse – ${settings.name || location.name}`, body, head: CSS, color: location.settings?.branding?.color || undefined }));
+      const r = html(publicPage({ title: t('Kasse – {name}', { name: settings.name || location.name }), body, head: CSS, color: location.settings?.branding?.color || undefined }));
       r.headers['content-security-policy'] = `default-src 'none'; script-src 'nonce-${n}'; style-src 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'`;
       r.headers['cache-control'] = 'no-store';
       return r;
@@ -311,7 +319,7 @@ export const storePublicModule: Module = {
     router.get('/store/:key/order/:token', 'public', async (ctx) => {
       const found = storeByKey(app, ctx.params.key);
       let o = found ? parseJson(db.get<any>('SELECT * FROM store_orders WHERE token = ? AND location_id = ?', ctx.params.token, found.locationId), ['items', 'address', 'shipping', 'meta']) : undefined;
-      if (!found || !o) return html(publicPage({ title: 'Nicht gefunden', body: '<div class="wrap"><div class="card"><h1>Nicht gefunden</h1><p class="muted">Diese Bestellung gibt es nicht.</p></div></div>' }), 404);
+      if (!found || !o) return notFoundPage(tLoc(app, found?.locationId), 'Diese Bestellung gibt es nicht.');
       // Back from the provider before its webhook: ask once in a while.
       if (o.status === 'pending' && o.pay_session_id && !throttled(`ord:${ctx.ip}`, 120)) {
         const s = getSession(app, o.pay_session_id);
@@ -319,27 +327,29 @@ export const storePublicModule: Module = {
         o = parseJson(db.get<any>('SELECT * FROM store_orders WHERE id = ?', o.id), ['items', 'address', 'shipping', 'meta']);
       }
       const location = app.location(o.location_id)!;
+      const t = tLoc(app, o.location_id);
+      const h = (x: string, vars?: Record<string, string | number>) => escapeHtml(t(x, vars));
       const s = o.pay_session_id ? getSession(app, o.pay_session_id) : undefined;
       const inv = o.invoice_id ? db.get<{ public_token: string; number: string; finalised_at: string | null }>('SELECT public_token, number, finalised_at FROM invoices WHERE id = ?', o.invoice_id) : undefined;
       const state =
         o.status === 'paid'
-          ? `<p class="ok">Danke! Die Zahlung ist eingegangen.${o.fulfilment === 'shipped' ? ' Deine Bestellung ist unterwegs.' : o.fulfilment === 'delivered' ? ' Deine Bestellung wurde zugestellt.' : ''}</p>`
+          ? `<p class="ok">${h('Danke! Die Zahlung ist eingegangen.')}${o.fulfilment === 'shipped' ? ` ${h('Deine Bestellung ist unterwegs.')}` : o.fulfilment === 'delivered' ? ` ${h('Deine Bestellung wurde zugestellt.')}` : ''}</p>`
           : o.status === 'pending'
             ? s?.status === 'pending'
-              ? '<p>Deine Zahlung wird bearbeitet (z. B. eine Überweisung oder Lastschrift). Sobald sie bestätigt ist, bekommst du eine E-Mail.</p>'
-              : `<p>Die Zahlung steht noch aus.</p>${s && s.status === 'open' ? `<p><a class="btn" href="/pay/${escapeHtml(s.id)}">Jetzt bezahlen</a></p>` : ''}`
-            : `<p class="muted">Diese Bestellung ist ${o.status === 'refunded' ? 'erstattet' : 'abgebrochen'}.</p>`;
+              ? `<p>${h('Deine Zahlung wird bearbeitet (z. B. eine Überweisung oder Lastschrift). Sobald sie bestätigt ist, bekommst du eine E-Mail.')}</p>`
+              : `<p>${h('Die Zahlung steht noch aus.')}</p>${s && s.status === 'open' ? `<p><a class="btn" href="/pay/${escapeHtml(s.id)}">${h('Jetzt bezahlen')}</a></p>` : ''}`
+            : `<p class="muted">${h(o.status === 'refunded' ? 'Diese Bestellung ist erstattet.' : 'Diese Bestellung ist abgebrochen.')}</p>`;
       const rows = o.items.map((x: any) => `<tr><td>${x.qty} × ${escapeHtml(x.name)}${x.variant ? ` <span class="muted">(${escapeHtml(x.variant)})</span>` : ''}</td><td style="text-align:right">${escapeHtml(money(x.total_cents, o.currency))}</td></tr>`).join('');
-      const tracking = o.tracking_number ? `<p>Sendungsnummer: <strong>${escapeHtml(o.tracking_number)}</strong>${o.tracking_url ? ` – <a href="${escapeHtml(o.tracking_url)}" target="_blank" rel="noopener">Sendung verfolgen</a>` : ''}</p>` : '';
+      const tracking = o.tracking_number ? `<p>${h('Sendungsnummer:')} <strong>${escapeHtml(o.tracking_number)}</strong>${o.tracking_url ? ` – <a href="${escapeHtml(o.tracking_url)}" target="_blank" rel="noopener">${h('Sendung verfolgen')}</a>` : ''}</p>` : '';
       const body = `<div class="wrap" style="max-width:640px"><div class="card">
 ${location.logo_url ? `<img src="${escapeHtml(location.logo_url)}" alt="" style="max-height:44px;margin-bottom:10px">` : `<p class="muted" style="margin:0 0 6px">${escapeHtml(location.name)}</p>`}
-<h1>Bestellung ${escapeHtml(o.number)}</h1>${state}${tracking}
-<table>${rows}${o.shipping?.name ? `<tr><td>Versand: ${escapeHtml(o.shipping.name)}</td><td style="text-align:right">${escapeHtml(money(o.shipping_cents, o.currency))}</td></tr>` : ''}
-<tr><td><strong>Gesamt</strong></td><td style="text-align:right"><strong>${escapeHtml(money(o.total_cents, o.currency))}</strong></td></tr>
-${o.gift_cents ? `<tr><td class="muted">davon mit Gutschein</td><td style="text-align:right" class="muted">${escapeHtml(money(o.gift_cents, o.currency))}</td></tr>` : ''}</table>
-${inv?.finalised_at ? `<p><a class="btn secondary" href="/i/${escapeHtml(inv.public_token)}">Rechnung ${escapeHtml(inv.number)} ansehen</a></p>` : ''}
+<h1>${h('Bestellung {number}', { number: o.number })}</h1>${state}${tracking}
+<table>${rows}${o.shipping?.name ? `<tr><td>${h('Versand: {name}', { name: t(o.shipping.name) })}</td><td style="text-align:right">${escapeHtml(money(o.shipping_cents, o.currency))}</td></tr>` : ''}
+<tr><td><strong>${h('Gesamt')}</strong></td><td style="text-align:right"><strong>${escapeHtml(money(o.total_cents, o.currency))}</strong></td></tr>
+${o.gift_cents ? `<tr><td class="muted">${h('davon mit Gutschein')}</td><td style="text-align:right" class="muted">${escapeHtml(money(o.gift_cents, o.currency))}</td></tr>` : ''}</table>
+${inv?.finalised_at ? `<p><a class="btn secondary" href="/i/${escapeHtml(inv.public_token)}">${h('Rechnung {number} ansehen', { number: inv.number })}</a></p>` : ''}
 </div></div>`;
-      const r = html(publicPage({ title: `Bestellung ${o.number}`, body, color: location.settings?.branding?.color || undefined }));
+      const r = html(publicPage({ title: t('Bestellung {number}', { number: o.number }), body, color: location.settings?.branding?.color || undefined }));
       r.headers['cache-control'] = 'no-store';
       return r;
     });
@@ -359,26 +369,29 @@ ${inv?.finalised_at ? `<p><a class="btn secondary" href="/i/${escapeHtml(inv.pub
       return settings.enabled ? { settings, url: `${app.baseUrl()}/store/${encodeURIComponent(storeKey(app, env.locationId))}/checkout` } : undefined;
     };
     const taxNote = (env: BlockEnv, p: CatalogProduct, physical: boolean) => {
+      const t = tLoc(app, env.locationId);
       const small = smallBusiness(env.locationId);
-      const vat = p.kind === 'gift_card' ? 'Gutschein, umsatzsteuerfrei bei Kauf' : small ? 'Gemäß § 19 UStG ohne Umsatzsteuer' : p.tax_rate ? `inkl. ${String(p.tax_rate).replace('.', ',')} % USt.` : 'ohne Umsatzsteuer';
-      return `${vat}${physical ? ', zzgl. Versand' : ''}`;
+      const rate = t.locale === 'de' ? String(p.tax_rate).replace('.', ',') : String(p.tax_rate);
+      const vat = p.kind === 'gift_card' ? t('Gutschein, umsatzsteuerfrei bei Kauf') : small ? t('Gemäß § 19 UStG ohne Umsatzsteuer') : p.tax_rate ? t('inkl. {rate} % USt.', { rate }) : t('ohne Umsatzsteuer');
+      return `${vat}${physical ? t(', zzgl. Versand') : ''}`;
     };
     const priceOf = (env: BlockEnv, p: CatalogProduct) => {
       const mode: TaxMode = smallBusiness(env.locationId) ? 'small_business' : 'standard';
       const prices = (p.variants.length ? p.variants.map((v) => v.net_cents) : [p.net_cents]).map((net) => grossUnit({ net_cents: net, tax_rate: p.tax_rate, kind: p.kind }, mode));
       const min = Math.min(...prices);
-      return `${prices.some((x) => x !== min) ? 'ab ' : ''}${money(min, p.currency)}`;
+      return prices.some((x) => x !== min) ? tLoc(app, env.locationId)('ab {price}', { price: money(min, p.currency) }) : money(min, p.currency);
     };
     const soldOut = (p: CatalogProduct) => p.kind !== 'gift_card' && !p.allow_backorder && (p.variants.length ? p.variants.every((v) => v.stock !== null && v.stock <= 0) : p.stock !== null && p.stock <= 0);
-    const variantSelect = (p: CatalogProduct, idp: string) =>
+    const variantSelect = (t: STFn, p: CatalogProduct, idp: string) =>
       p.variants.length
-        ? `<label class="sr-only" for="${idp}">Variante</label><select id="${idp}" name="add_variant" required aria-label="Variante">${p.variants.map((v) => `<option value="${escapeHtml(v.article_id)}"${!p.allow_backorder && v.stock !== null && v.stock <= 0 ? ' disabled' : ''}>${escapeHtml(v.label)}${!p.allow_backorder && v.stock !== null && v.stock <= 0 ? ' – ausverkauft' : ''}</option>`).join('')}</select>`
+        ? `<label class="sr-only" for="${idp}">${escapeHtml(t('Variante'))}</label><select id="${idp}" name="add_variant" required aria-label="${escapeHtml(t('Variante'))}">${p.variants.map((v) => `<option value="${escapeHtml(v.article_id)}"${!p.allow_backorder && v.stock !== null && v.stock <= 0 ? ' disabled' : ''}>${escapeHtml(v.label)}${!p.allow_backorder && v.stock !== null && v.stock <= 0 ? escapeHtml(t(' – ausverkauft')) : ''}</option>`).join('')}</select>`
         : '';
-    const addForm = (url: string, p: CatalogProduct, inner: string, label: string) =>
+    const addForm = (t: STFn, url: string, p: CatalogProduct, inner: string, label: string) =>
       soldOut(p)
-        ? '<p class="sout">Ausverkauft</p>'
+        ? `<p class="sout">${escapeHtml(t('Ausverkauft'))}</p>`
         : `<form method="get" action="${escapeHtml(url)}" target="_top"><input type="hidden" name="add_product" value="${escapeHtml(p.id)}">${inner}<button type="submit" class="btn">${escapeHtml(label)}</button></form>`;
-    const hint = (env: BlockEnv, b: any, o: { bare: boolean }, text: string) => (env.preview ? wrap(env, b, o.bare, `<p class="muted" style="text-align:center">${escapeHtml(text)}</p>`) : '');
+    // Only in the editor's preview: a note for the person building the page (their own language is not known here: the sub-account's).
+    const hint = (env: BlockEnv, b: any, o: { bare: boolean }, text: string) => (env.preview ? wrap(env, b, o.bare, `<p class="muted" style="text-align:center">${escapeHtml(tLoc(app, env.locationId)(text))}</p>`) : '');
 
     siteBlocks(app).set('store_products', {
       type: 'store_products',
@@ -386,6 +399,7 @@ ${inv?.finalised_at ? `<p><a class="btn secondary" href="/i/${escapeHtml(inv.pub
       render: (env, b, o) => {
         const store = env2store(env);
         if (!store) return hint(env, b, o, 'Der Online-Shop ist noch nicht aktiviert (Umsatz → Online-Shop → Einstellungen).');
+        const t = tLoc(app, env.locationId);
         let list = catalog(app, env.locationId, { publishedOnly: true });
         const col = String(b.collection ?? '').trim();
         if (col) {
@@ -400,7 +414,7 @@ ${inv?.finalised_at ? `<p><a class="btn secondary" href="/i/${escapeHtml(inv.pub
           .map((p, i) => {
             const link = detail ? `${resolveHref(env, detail)}${resolveHref(env, detail).includes('?') ? '&' : '?'}product=${encodeURIComponent(p.slug)}` : '';
             const image = p.images[0] ? imgTag(env, { src: p.images[0], alt: p.name, sizes: '(max-width:480px) 100vw, 33vw' }) : '';
-            return `<article class="scard"><div class="simg">${link ? `<a href="${escapeHtml(link)}" tabindex="-1" aria-hidden="true">${image}</a>` : image}</div><div class="sbody"><h3>${link ? `<a href="${escapeHtml(link)}">${escapeHtml(p.name)}</a>` : escapeHtml(p.name)}</h3><p class="sprice">${escapeHtml(priceOf(env, p))}</p><p class="stax">${escapeHtml(taxNote(env, p, p.kind === 'physical'))}</p>${addForm(store.url, p, variantSelect(p, `v-${b.id}-${i}`), String(b.button_text || 'In den Warenkorb'))}</div></article>`;
+            return `<article class="scard"><div class="simg">${link ? `<a href="${escapeHtml(link)}" tabindex="-1" aria-hidden="true">${image}</a>` : image}</div><div class="sbody"><h3>${link ? `<a href="${escapeHtml(link)}">${escapeHtml(p.name)}</a>` : escapeHtml(p.name)}</h3><p class="sprice">${escapeHtml(priceOf(env, p))}</p><p class="stax">${escapeHtml(taxNote(env, p, p.kind === 'physical'))}</p>${addForm(t, store.url, p, variantSelect(t, p, `v-${b.id}-${i}`), String(b.button_text || t('In den Warenkorb')))}</div></article>`;
           })
           .join('');
         return wrap(env, b, o.bare, `${b.heading ? `<h2>${escapeHtml(String(b.heading))}</h2>` : ''}<div class="sgrid" style="--cols:${cols}">${cards}</div>`, { wide: true });
@@ -413,6 +427,7 @@ ${inv?.finalised_at ? `<p><a class="btn secondary" href="/i/${escapeHtml(inv.pub
       render: (env, b, o) => {
         const store = env2store(env);
         if (!store) return hint(env, b, o, 'Der Online-Shop ist noch nicht aktiviert (Umsatz → Online-Shop → Einstellungen).');
+        const t = tLoc(app, env.locationId);
         const list = catalog(app, env.locationId, { publishedOnly: true });
         // A fixed product, or the one the product list links to (?product=<slug>) – one detail page for the whole store.
         const want = String(b.product_id || env.ctx?.query.get('product') || '').slice(0, 80);
@@ -420,21 +435,47 @@ ${inv?.finalised_at ? `<p><a class="btn secondary" href="/i/${escapeHtml(inv.pub
         if (!p) return hint(env, b, o, 'Produkt wählen – oder die Seite aus der Produktliste mit ?product=… öffnen.');
         const imgs = p.images.map((src, i) => imgTag(env, { src, alt: i ? '' : p.name, eager: i === 0 }));
         const level = b.heading_level === '2' ? 'h2' : 'h1';
-        const stock = p.variants.length ? '' : p.stock !== null && p.stock > 0 && p.stock <= 5 ? `<p class="stax">Nur noch ${p.stock} verfügbar</p>` : '';
+        const stock = p.variants.length ? '' : p.stock !== null && p.stock > 0 && p.stock <= 5 ? `<p class="stax">${escapeHtml(t('Nur noch {n} verfügbar', { n: p.stock }))}</p>` : '';
         const body = `<div class="sdetail"><div class="sgal">${imgs[0] ?? ''}${imgs.length > 1 ? `<div class="sthumbs">${imgs.slice(1, 6).join('')}</div>` : ''}</div><div>
 <${level}>${escapeHtml(String(b.heading || p.name))}</${level}><p class="sprice">${escapeHtml(priceOf(env, p))}</p><p class="stax">${escapeHtml(taxNote(env, p, p.kind === 'physical'))}</p>${stock}
 ${b.show_description === false || !p.description ? '' : `<div class="sdesc">${miniMarkdown(p.description)}</div>`}
-${addForm(store.url, p, `${variantSelect(p, `v-${b.id}`)}<div class="sqty"><label for="q-${b.id}">Menge</label><input id="q-${b.id}" type="number" name="qty" min="1" max="99" value="1"></div>`, String(b.button_text || 'In den Warenkorb'))}</div></div>`;
+${addForm(t, store.url, p, `${variantSelect(t, p, `v-${b.id}`)}<div class="sqty"><label for="q-${b.id}">${escapeHtml(t('Stückzahl'))}</label><input id="q-${b.id}" type="number" name="qty" min="1" max="99" value="1"></div>`, String(b.button_text || t('In den Warenkorb')))}</div></div>`;
         return wrap(env, b, o.bare, body, { wide: true });
       },
     });
   },
 };
 
+const numLocale = (t: STFn) => (t.locale === 'de' ? 'de-DE' : 'en-GB');
+const notFoundPage = (t: STFn, text: string) =>
+  html(publicPage({ title: t('Nicht gefunden'), body: `<div class="wrap"><div class="card"><h1>${escapeHtml(t('Nicht gefunden'))}</h1><p class="muted">${escapeHtml(t(text))}</p></div></div>` }), 404);
+
+/** The words the checkout script writes itself (D.l.*). */
+const checkoutLabels = (t: STFn) => ({
+  error: t('Fehler'),
+  each: t('{price} / Stück'),
+  qty: t('Menge {name}'),
+  remove: t('{name} entfernen'),
+  subtotal: t('Zwischensumme'),
+  shipping: t('Versand ({name})'),
+  free: t('kostenlos'),
+  total: t('Gesamt'),
+  vat: t('enthaltene USt. {rate} %'),
+  small_business: t('Gemäß § 19 UStG ohne Umsatzsteuer'),
+  export: t('Steuerfreie Ausfuhr'),
+  ig_supply: t('Steuerfreie innergemeinschaftliche Lieferung'),
+  gift: t('Gutschein'),
+  due: t('Noch zu zahlen'),
+  gift_applied: t('Gutschein: {amount} werden angerechnet'),
+  card: t('Karte, SEPA, Apple Pay'),
+  no_payment: t('Gerade ist keine Online-Zahlung eingerichtet.'),
+});
+
 /** The checkout page's script: the cart in localStorage + the server cart, live quote (shipping, tax, gift card), the order. */
 const CHECKOUT_JS = `(function(){
 var D=JSON.parse(document.getElementById('store-data').textContent);var KEY='ghl-cart-'+D.key;var $=function(i){return document.getElementById(i)};
-var fmt=function(c){return new Intl.NumberFormat('de-DE',{style:'currency',currency:D.currency}).format((c||0)/100)};
+var L=D.l;var fill=function(s,v){return s.replace(/\\{(\\w+)\\}/g,function(m,k){return k in v?v[k]:m})};
+var fmt=function(c){return new Intl.NumberFormat(D.locale,{style:'currency',currency:D.currency}).format((c||0)/100)};
 var st={token:'',items:[]};try{var sv=JSON.parse(localStorage.getItem(KEY)||'null');if(sv&&Array.isArray(sv.items))st=sv}catch(e){}
 var q=new URLSearchParams(location.search);var add=q.get('add_product');
 if(add){var art=q.get('add_variant')||null;var n=Math.max(1,Math.min(99,parseInt(q.get('qty')||'1',10)||1));var ex=st.items.filter(function(i){return i.product_id===add&&(i.article_id||null)===art})[0];if(ex)ex.qty=Math.min(99,ex.qty+n);else st.items.push({product_id:add,article_id:art,qty:n})}
@@ -443,7 +484,7 @@ try{if(document.referrer&&document.referrer.indexOf('/store/')<0)sessionStorage.
 if(add||rec)history.replaceState(null,'',location.pathname);
 var back=null;try{back=sessionStorage.getItem(KEY+'-back')}catch(e){}$('back').onclick=function(e){e.preventDefault();if(back)location.href=back;else history.back()};
 function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}}
-function post(p,b){return fetch('/api/public/store/'+encodeURIComponent(D.key)+p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json().catch(function(){return{}}).then(function(j){if(!r.ok)throw new Error(j.error||'Fehler');return j})})}
+function post(p,b){return fetch('/api/public/store/'+encodeURIComponent(D.key)+p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json().catch(function(){return{}}).then(function(j){if(!r.ok)throw new Error(j.error||L.error);return j})})}
 function el(t,a,txt){var e=document.createElement(t);if(a)for(var k in a)e.setAttribute(k,a[k]);if(txt!==undefined)e.textContent=txt;return e}
 D.countries.forEach(function(c){$('country').appendChild(el('option',{value:c[0]},c[1]))});
 $('go').textContent=D.button;if(D.note)$('ck-note').textContent=D.note;
@@ -453,22 +494,22 @@ var quote=null,gift='',lines=[];
 function setItems(j){st.token=j.token||st.token;st.items=j.items||[];lines=j.lines||[];save();renderCart()}
 function renderCart(){var box=$('lines');box.textContent='';$('empty').hidden=st.items.length>0;$('f').hidden=!st.items.length;
 lines.forEach(function(l,i){var row=el('div',{'class':'ck-line'});if(l.image)row.appendChild(el('img',{src:l.image,alt:''}));else row.appendChild(el('img',{alt:'',src:'data:image/gif;base64,R0lGODlhAQABAAAAACw='}));
-var nm=el('div',{'class':'nm'});nm.appendChild(el('strong',null,l.name));if(l.variant)nm.appendChild(el('small',null,l.variant));nm.appendChild(el('small',null,fmt(l.unit_cents)+' / Stück'));row.appendChild(nm);
-var inp=el('input',{type:'number',min:'1',max:'99',value:String(l.qty),'aria-label':'Menge '+l.name});inp.onchange=function(){st.items[i].qty=Math.max(1,Math.min(99,parseInt(inp.value,10)||1));sync()};row.appendChild(inp);
-row.appendChild(el('span',{style:'min-width:80px;text-align:right'},fmt(l.total_cents)));var rm=el('button',{type:'button','aria-label':l.name+' entfernen'},'✕');rm.onclick=function(){st.items.splice(i,1);sync()};row.appendChild(rm);box.appendChild(row)});
+var nm=el('div',{'class':'nm'});nm.appendChild(el('strong',null,l.name));if(l.variant)nm.appendChild(el('small',null,l.variant));nm.appendChild(el('small',null,fill(L.each,{price:fmt(l.unit_cents)})));row.appendChild(nm);
+var inp=el('input',{type:'number',min:'1',max:'99',value:String(l.qty),'aria-label':fill(L.qty,{name:l.name})});inp.onchange=function(){st.items[i].qty=Math.max(1,Math.min(99,parseInt(inp.value,10)||1));sync()};row.appendChild(inp);
+row.appendChild(el('span',{style:'min-width:80px;text-align:right'},fmt(l.total_cents)));var rm=el('button',{type:'button','aria-label':fill(L.remove,{name:l.name})},'✕');rm.onclick=function(){st.items.splice(i,1);sync()};row.appendChild(rm);box.appendChild(row)});
 $('giftfor').hidden=!lines.some(function(l){return l.kind==='gift_card'})}
 function sel(name){var c=document.querySelector('input[name='+name+']:checked');return c?c.value:''}
 function renderSum(){var t=$('sum');t.textContent='';if(!quote){$('ship-box').hidden=true;$('pay-box').hidden=true;return}
 var tr=function(a,b,cls){var r=el('tr',cls?{'class':cls}:null);r.appendChild(el('td',null,a));r.appendChild(el('td',null,b));t.appendChild(r)};
-tr('Zwischensumme',fmt(quote.goods_cents));if(quote.shipping)tr('Versand ('+quote.shipping.name+')',quote.shipping.price_cents?fmt(quote.shipping.price_cents):'kostenlos');
-tr('Gesamt',fmt(quote.total_cents),'tot');(quote.tax_groups||[]).forEach(function(g){tr('enthaltene USt. '+String(g.rate).replace('.',',')+' %',fmt(g.tax_cents))});
-if(quote.mode==='small_business')tr('Gemäß § 19 UStG ohne Umsatzsteuer','');if(quote.mode==='export')tr('Steuerfreie Ausfuhr','');if(quote.mode==='ig_supply')tr('Steuerfreie innergemeinschaftliche Lieferung','');
-if(quote.gift_cents){tr('Gutschein','−'+fmt(quote.gift_cents));tr('Noch zu zahlen',fmt(quote.due_cents),'tot')}
-$('gift-msg').textContent=gift?(quote.gift_error||('Gutschein: '+fmt(quote.gift_cents)+' werden angerechnet')):'';
+tr(L.subtotal,fmt(quote.goods_cents));if(quote.shipping)tr(fill(L.shipping,{name:quote.shipping.name}),quote.shipping.price_cents?fmt(quote.shipping.price_cents):L.free);
+tr(L.total,fmt(quote.total_cents),'tot');(quote.tax_groups||[]).forEach(function(g){tr(fill(L.vat,{rate:D.locale==='de-DE'?String(g.rate).replace('.',','):String(g.rate)}),fmt(g.tax_cents))});
+if(quote.mode==='small_business')tr(L.small_business,'');if(quote.mode==='export')tr(L.export,'');if(quote.mode==='ig_supply')tr(L.ig_supply,'');
+if(quote.gift_cents){tr(L.gift,'−'+fmt(quote.gift_cents));tr(L.due,fmt(quote.due_cents),'tot')}
+$('gift-msg').textContent=gift?(quote.gift_error||fill(L.gift_applied,{amount:fmt(quote.gift_cents)})):'';
 $('addr').hidden=!quote.needs_shipping;$('ship-box').hidden=!quote.needs_shipping;var s=$('ship');var cur=sel('ship');s.textContent='';
-(quote.shipping_options||[]).forEach(function(o){var lab=el('label',{'class':'ck-opt'});var r=el('input',{type:'radio',name:'ship',value:o.id});if(quote.shipping&&quote.shipping.id===o.id)r.checked=true;r.onchange=requote;lab.appendChild(r);var sp=el('span',null,o.name+(o.delivery?' · '+o.delivery:''));sp.appendChild(el('b',null,o.price_cents?fmt(o.price_cents):'kostenlos'));lab.appendChild(sp);s.appendChild(lab)});
-var p=$('pay');var pc=sel('pay');p.textContent='';$('pay-box').hidden=quote.due_cents<=0;(quote.providers||[]).forEach(function(o,i){var lab=el('label',{'class':'ck-opt'});var r=el('input',{type:'radio',name:'pay',value:o.id});if(pc?pc===o.id:i===0)r.checked=true;lab.appendChild(r);var sp=el('span');sp.appendChild(el('strong',null,o.id==='stripe'?'Karte, SEPA, Apple Pay':o.label));sp.appendChild(el('br'));sp.appendChild(el('small',{'class':'muted'},o.methods.join(' · ')));lab.appendChild(sp);p.appendChild(lab)});
-if(!(quote.providers||[]).length&&quote.due_cents>0)p.appendChild(el('p',{'class':'error'},'Gerade ist keine Online-Zahlung eingerichtet.'));
+(quote.shipping_options||[]).forEach(function(o){var lab=el('label',{'class':'ck-opt'});var r=el('input',{type:'radio',name:'ship',value:o.id});if(quote.shipping&&quote.shipping.id===o.id)r.checked=true;r.onchange=requote;lab.appendChild(r);var sp=el('span',null,o.name+(o.delivery?' · '+o.delivery:''));sp.appendChild(el('b',null,o.price_cents?fmt(o.price_cents):L.free));lab.appendChild(sp);s.appendChild(lab)});
+var p=$('pay');var pc=sel('pay');p.textContent='';$('pay-box').hidden=quote.due_cents<=0;(quote.providers||[]).forEach(function(o,i){var lab=el('label',{'class':'ck-opt'});var r=el('input',{type:'radio',name:'pay',value:o.id});if(pc?pc===o.id:i===0)r.checked=true;lab.appendChild(r);var sp=el('span');sp.appendChild(el('strong',null,o.id==='stripe'?L.card:o.label));sp.appendChild(el('br'));sp.appendChild(el('small',{'class':'muted'},o.methods.join(' · ')));lab.appendChild(sp);p.appendChild(lab)});
+if(!(quote.providers||[]).length&&quote.due_cents>0)p.appendChild(el('p',{'class':'error'},L.no_payment));
 $('err').textContent=(quote.problems||[])[0]||''}
 function requote(){if(!st.items.length){quote=null;renderSum();return Promise.resolve()}
 return post('/quote',{items:st.items,country:$('country').value,shipping_id:sel('ship'),gift_code:gift,vat_id:$('vat_id').value,company:$('company').value}).then(function(j){quote=j;renderSum()}).catch(function(e){$('err').textContent=e.message})}

@@ -6,6 +6,7 @@ import { type CanvasElement, CARD_SIZE, cleanText, elementBox, isId, sceneOutlin
 import { type GraphEdge, type GraphNode, buildGraph, graphOfElements } from '../services/canvas-layout.js';
 import { type OpIn, applyOps, boardElements, freeSpot, graphOps, liftZ, loadBoard, relayoutOps, type BoardRow } from '../services/canvas-store.js';
 import { callRoute } from '../services/route-call.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 import { DRAW_KINDS, DRAW_SCHEMA, EXPLAIN_SCHEMA, SYSTEM, TASKS_SCHEMA, drawToGraph, wireframeElements } from '../services/canvas-ai.js';
 
 /**
@@ -55,22 +56,22 @@ const TRIGGER_TEXT: Record<string, string> = {
   'ticket.created': 'Ticket angelegt',
 };
 
-function stepLabel(s: any): string {
-  const base = STEP_TEXT[s.type] ?? String(s.type).replace(/_/g, ' ');
+function stepLabel(s: any, t: STFn): string {
+  const base = STEP_TEXT[s.type] ? t(STEP_TEXT[s.type]) : String(s.type).replace(/_/g, ' ');
   const detail =
-    s.type === 'send_email' ? s.subject : s.type === 'send_sms' ? s.body : s.type === 'wait' ? (s.mode && s.mode !== 'delay' ? s.mode : `${s.amount ?? ''} ${s.unit === 'days' ? 'Tage' : s.unit === 'hours' ? 'Stunden' : 'Minuten'}`) : s.type === 'add_tag' || s.type === 'remove_tag' ? (s.tags ?? []).join(', ') : s.type === 'create_task' ? s.title : s.type === 'notify' ? s.subject : '';
+    s.type === 'send_email' ? s.subject : s.type === 'send_sms' ? s.body : s.type === 'wait' ? (s.mode && s.mode !== 'delay' ? s.mode : `${s.amount ?? ''} ${s.unit === 'days' ? t('Tage') : s.unit === 'hours' ? t('Stunden') : t('Minuten')}`) : s.type === 'add_tag' || s.type === 'remove_tag' ? (s.tags ?? []).join(', ') : s.type === 'create_task' ? s.title : s.type === 'notify' ? s.subject : '';
   const d = String(detail ?? '').replace(/\s+/g, ' ').trim();
   return d ? `${base}: ${d.length > 60 ? `${d.slice(0, 59)}…` : d}` : base;
 }
 
 /** A workflow (trigger + nested steps) as nodes and edges, top to bottom. */
-export function workflowGraph(wf: any): { nodes: GraphNode[]; edges: GraphEdge[] } {
+export function workflowGraph(wf: any, t: STFn = tApp()): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
   let n = 0;
   const trig = wf.trigger?.type ?? '';
   const start = `n${n++}`;
-  nodes.push({ id: start, label: `Auslöser: ${TRIGGER_TEXT[trig] ?? trig}`, shape: 'pill', fill: '#ebfbee', stroke: '#2f9e44' });
+  nodes.push({ id: start, label: t('Auslöser: {trigger}', { trigger: TRIGGER_TEXT[trig] ? t(TRIGGER_TEXT[trig]) : trig }), shape: 'pill', fill: '#ebfbee', stroke: '#2f9e44' });
   /** Adds a list of steps after `from` nodes; returns the open ends (node ids + optional edge label). */
   const walk = (steps: any[], from: { id: string; label?: string }[], depth: number): { id: string; label?: string }[] => {
     let ends = from;
@@ -78,18 +79,18 @@ export function workflowGraph(wf: any): { nodes: GraphNode[]; edges: GraphEdge[]
       if (nodes.length > 200 || depth > 8) break;
       const nid = `n${n++}`;
       const isIf = s.type === 'if' || s.type === 'goal';
-      nodes.push({ id: nid, label: stepLabel(s), shape: isIf ? 'diamond' : s.type === 'end' ? 'ellipse' : s.type === 'wait' ? 'round' : 'rect', ...(s.type === 'end' ? { fill: '#fff5f5', stroke: '#e03131' } : {}) });
+      nodes.push({ id: nid, label: stepLabel(s, t), shape: isIf ? 'diamond' : s.type === 'end' ? 'ellipse' : s.type === 'wait' ? 'round' : 'rect', ...(s.type === 'end' ? { fill: '#fff5f5', stroke: '#e03131' } : {}) });
       for (const e of ends) edges.push({ from: e.id, to: nid, ...(e.label ? { label: e.label } : {}) });
       if (s.type === 'end') return [];
       if (s.type === 'if') {
-        const yes = (s.then ?? []).length ? walk(s.then, [{ id: nid, label: 'Ja' }], depth + 1) : [{ id: nid, label: 'Ja' }];
-        const no = (s.else ?? []).length ? walk(s.else, [{ id: nid, label: 'Nein' }], depth + 1) : [{ id: nid, label: 'Nein' }];
+        const yes = (s.then ?? []).length ? walk(s.then, [{ id: nid, label: t('Ja') }], depth + 1) : [{ id: nid, label: t('Ja') }];
+        const no = (s.else ?? []).length ? walk(s.else, [{ id: nid, label: t('Nein') }], depth + 1) : [{ id: nid, label: t('Nein') }];
         ends = [...yes, ...no];
       } else if (s.type === 'goal') {
         const endId = `n${n++}`;
-        nodes.push({ id: endId, label: 'Ziel erreicht → Ende', shape: 'ellipse', fill: '#fff5f5', stroke: '#e03131' });
-        edges.push({ from: nid, to: endId, label: 'Ja' });
-        ends = [{ id: nid, label: 'Nein' }];
+        nodes.push({ id: endId, label: t('Ziel erreicht → Ende'), shape: 'ellipse', fill: '#fff5f5', stroke: '#e03131' });
+        edges.push({ from: nid, to: endId, label: t('Ja') });
+        ends = [{ id: nid, label: t('Nein') }];
       } else ends = [{ id: nid }];
     }
     return ends;
@@ -101,17 +102,17 @@ export function workflowGraph(wf: any): { nodes: GraphNode[]; edges: GraphEdge[]
 const has = (t: string, re: RegExp) => re.test(t.toLowerCase());
 
 /** One flowchart node's text → a workflow step (drafts: people check them in the editor). */
-function stepFor(text: string): Record<string, any> {
+function stepFor(text: string, tr: STFn): Record<string, any> {
   const t = text.replace(/\s+/g, ' ').trim();
   const num = Number(t.match(/(\d+)/)?.[1] ?? 1) || 1;
   if (has(t, /\b(warte|warten|wait|pause)\b/)) return { type: 'wait', mode: 'delay', amount: num, unit: has(t, /stunde|hour/) ? 'hours' : has(t, /minute/) ? 'minutes' : 'days' };
   if (has(t, /\bsms\b/)) return { type: 'send_sms', body: t };
-  if (has(t, /e-?mail|newsletter|mail\b/)) return { type: 'send_email', subject: t, body: `Hallo {{contact.first_name|du}},\n\n${t}` };
+  if (has(t, /e-?mail|newsletter|mail\b/)) return { type: 'send_email', subject: t, body: tr('Hallo {{contact.first_name|du}},\n\n{text}', { text: t }) };
   if (has(t, /\btag\b|taggen|markier/)) return { type: 'add_tag', tags: [t.replace(/^.*?tag\s*:?\s*/i, '').slice(0, 40) || 'canvas'] };
   if (has(t, /notiz|note/)) return { type: 'add_note', body: t };
-  if (has(t, /benachrichtig|informier|notify/)) return { type: 'notify', subject: t, body: 'Aus einem Canvas-Flussdiagramm' };
+  if (has(t, /benachrichtig|informier|notify/)) return { type: 'notify', subject: t, body: tr('Aus einem Canvas-Flussdiagramm') };
   if (has(t, /^(ende|end|fertig|abschluss)$/)) return { type: 'end' };
-  return { type: 'create_task', title: t.slice(0, 200), description: 'Aus einem Canvas-Flussdiagramm' };
+  return { type: 'create_task', title: t.slice(0, 200), description: tr('Aus einem Canvas-Flussdiagramm') };
 }
 
 function triggerFor(text: string): { type: string; config: Record<string, unknown> } {
@@ -126,7 +127,7 @@ function triggerFor(text: string): { type: string; config: Record<string, unknow
 }
 
 /** Flowchart elements → {trigger, steps} (depth-first from the start node; loops are left out). */
-export function flowchartToWorkflow(els: CanvasElement[]): { trigger: { type: string; config: Record<string, unknown> }; steps: any[]; notes: string[] } {
+export function flowchartToWorkflow(els: CanvasElement[], tr: STFn = tApp(), tl: STFn = tr): { trigger: { type: string; config: Record<string, unknown> }; steps: any[]; notes: string[] } {
   const notes: string[] = [];
   const g = graphOfElements(els);
   const byId = new Map(els.map((e) => [e.id, e]));
@@ -151,7 +152,7 @@ export function flowchartToWorkflow(els: CanvasElement[]): { trigger: { type: st
       if (el?.type === 'diamond' && next.length > 1 && cur !== from) break;
       const target = next[0].to;
       if (seen.has(target)) {
-        notes.push(`Schleife zu „${label(target) || target}“ ausgelassen`);
+        notes.push(tr('Schleife zu „{step}“ ausgelassen', { step: label(target) || target }));
         break;
       }
       seen.add(target);
@@ -163,13 +164,13 @@ export function flowchartToWorkflow(els: CanvasElement[]): { trigger: { type: st
         const branch = (o?: { to: string }) => {
           if (!o || seen.has(o.to)) return [];
           seen.add(o.to);
-          return [stepFor(label(o.to)), ...chain(o.to, depth + 1)];
+          return [stepFor(label(o.to), tl), ...chain(o.to, depth + 1)];
         };
         steps.push({ type: 'if', conditions: [], match: 'all', note: label(target), then: branch(yes), else: branch(no) });
-        notes.push(`Bedingung „${label(target) || 'Entscheidung'}“ bitte im Workflow festlegen`);
+        notes.push(tr('Bedingung „{condition}“ bitte im Workflow festlegen', { condition: label(target) || tr('Entscheidung') }));
         break;
       }
-      steps.push(stepFor(label(target)));
+      steps.push(stepFor(label(target), tl));
       cur = target;
     }
     return steps;
@@ -180,7 +181,7 @@ export function flowchartToWorkflow(els: CanvasElement[]): { trigger: { type: st
 }
 
 /** Funnel blocks from a frame's content (top to bottom). */
-function frameBlocks(frame: CanvasElement, els: CanvasElement[], base: string): any[] {
+function frameBlocks(frame: CanvasElement, els: CanvasElement[], base: string, t: STFn = tApp()): any[] {
   const kids = els.filter((e) => e.frameId === frame.id && !e.hidden).sort((a, b) => a.y - b.y || a.x - b.x);
   const blocks: any[] = [];
   for (const e of kids) {
@@ -193,7 +194,7 @@ function frameBlocks(frame: CanvasElement, els: CanvasElement[], base: string): 
     } else if ((e.type === 'rect' || e.type === 'ellipse') && text && e.h <= 100 && e.fill && e.fill !== 'transparent' && e.fill !== '#ffffff') blocks.push({ type: 'button', text, url: '' });
     else if ((e.type === 'sticky' || e.type === 'rect') && text) blocks.push({ type: 'text', text });
   }
-  return blocks.length ? blocks : [{ type: 'hero', heading: frame.name ?? 'Seite', subheading: '', align: 'center' }];
+  return blocks.length ? blocks : [{ type: 'hero', heading: frame.name ?? t('Seite'), subheading: '', align: 'center' }];
 }
 
 export const canvasIntegrationsModule: Module = {
@@ -228,7 +229,7 @@ export const canvasIntegrationsModule: Module = {
         const title = first.trim().slice(0, 200);
         const description = rest.join('\n').trim().slice(0, 5000);
         let rec: any;
-        if (to === 'task') rec = await callRoute(app, ctx, 'POST', '/api/tasks', { title, description: description || `Aus dem Canvas „${board.name}“`, due_at: b.due_at ?? null, contact_id: b.contact_id ?? null });
+        if (to === 'task') rec = await callRoute(app, ctx, 'POST', '/api/tasks', { title, description: description || tLoc(app, ctx.locationId)('Aus dem Canvas „{name}“', { name: board.name }), due_at: b.due_at ?? null, contact_id: b.contact_id ?? null });
         else {
           const value = Number((e.text ?? '').match(/(\d[\d.]*)\s*(?:€|eur)/i)?.[1]?.replace(/\./g, '') ?? b.value ?? 0) || 0;
           rec = await callRoute(app, ctx, 'POST', '/api/opportunities', { pipeline_id: b.pipeline_id, stage_id: b.stage_id, name: title, value, contact_id: b.contact_id, contact: b.contact_id ? undefined : b.contact ?? (b.create_contact ? { company: title, first_name: title.slice(0, 80) } : undefined), source: 'Canvas' });
@@ -249,7 +250,7 @@ export const canvasIntegrationsModule: Module = {
       const wfId = str(ctx.body?.workflow_id, 'workflow_id', { required: true, max: 64 });
       const wf = await callRoute(app, ctx, 'GET', `/api/workflows/${encodeURIComponent(wfId)}`);
       const els = boardElements(app, board.id);
-      const g = workflowGraph(wf);
+      const g = workflowGraph(wf, tLoc(app, ctx.locationId));
       const origin = ctx.body?.x !== undefined ? { x: Number(ctx.body.x) || 0, y: Number(ctx.body.y) || 0 } : freeSpot(els);
       const built = buildGraph({ nodes: g.nodes.map((n) => ({ ...n, group: 'wf' })), edges: g.edges, groups: [{ id: 'wf', title: `Workflow: ${wf.name}` }], layout: 'flow', direction: 'down', style: 'flowchart' }, () => id(12), origin);
       const frame = built.elements.find((e) => e.type === 'frame');
@@ -269,8 +270,8 @@ export const canvasIntegrationsModule: Module = {
       const els = boardElements(app, board.id);
       let scope = Array.isArray(b.element_ids) && b.element_ids.length ? pick(els, b.element_ids) : els;
       if (isId(b.frame_id)) scope = els.filter((e) => e.frameId === b.frame_id);
-      const { trigger, steps, notes } = flowchartToWorkflow(scope);
-      const name = str(b.name, 'Name', { max: 120 }) || `${board.name} (aus Canvas)`;
+      const { trigger, steps, notes } = flowchartToWorkflow(scope, tCtx(ctx), tLoc(app, ctx.locationId));
+      const name = str(b.name, 'Name', { max: 120 }) || tLoc(app, ctx.locationId)('{name} (aus Canvas)', { name: board.name });
       let wf: any;
       try {
         wf = await callRoute(app, ctx, 'POST', '/api/workflows', { name, trigger, steps });
@@ -301,8 +302,9 @@ export const canvasIntegrationsModule: Module = {
       }
       const pages: { frame_id: string; page_id: string; name: string; url?: string }[] = [];
       for (const [i, fr] of frames.entries()) {
-        const blocks = frameBlocks(fr, els, base);
-        const name = (fr.name ?? `Seite ${i + 1}`).slice(0, 120);
+        const tl = tLoc(app, ctx.locationId);
+        const blocks = frameBlocks(fr, els, base, tl);
+        const name = (fr.name ?? tl('Seite {n}', { n: i + 1 })).slice(0, 120);
         let p: any;
         if (i === 0 && firstPage) p = await callRoute(app, ctx, 'PATCH', `/api/funnel-pages/${firstPage}`, { name, blocks });
         else p = await callRoute(app, ctx, 'POST', `/api/funnels/${funnelId}/pages`, { name, blocks });
@@ -321,6 +323,8 @@ export const canvasIntegrationsModule: Module = {
       const els = boardElements(app, board.id);
       const sel = pick(els, b.ids);
       const userId = ctx.user?.id ?? null;
+      const tu = tCtx(ctx);
+      const userLanguage = tu.locale === 'de' ? 'German' : 'English'; // i18n-ignore – language name for the model
       const run = async (user: string, schema: Record<string, unknown>, maxTokens = 4000): Promise<any> => {
         if (!app.services.aiRun) throw new HttpError(409, 'Der KI-Assistent ist nicht verfügbar');
         const r = await app.services.aiRun({ locationId: ctx.locationId, purpose: 'canvas', user, system: [{ text: SYSTEM }], schema, maxTokens, userId, timeoutMs: 120_000 });
@@ -338,14 +342,14 @@ export const canvasIntegrationsModule: Module = {
         const tree = g.edges.length > 0 && [...indeg.values()].every((v) => v <= 1);
         const kind = b.kind && ['flow', 'tree', 'mindmap', 'radial', 'grid'].includes(b.kind) ? b.kind : !g.edges.length ? 'grid' : tree ? 'tree' : 'flow';
         const r = applyOps(app, ctx, board, relayoutOps(els, sel.length > 1 ? sel.map((e) => e.id) : undefined, { kind, direction: kind === 'flow' ? 'right' : undefined }), { clientId: b.clientId });
-        return result(board, { mode, kind, seq: r.seq, changed: r.elements.length, summary: `Layout aufgeräumt (${kind === 'grid' ? 'Raster' : kind === 'tree' ? 'Baum' : 'Fluss'})` });
+        return result(board, { mode, kind, seq: r.seq, changed: r.elements.length, summary: tCtx(ctx)('Layout aufgeräumt ({kind})', { kind: tCtx(ctx)(kind === 'grid' ? 'Raster' : kind === 'tree' ? 'Baum' : 'Fluss') }) });
       }
       if (mode === 'explain' || mode === 'tasks') {
         const scope = sel.length ? sel : els;
         if (!scope.length) throw bad('Das Board ist leer');
         const outline = sceneOutline(scope, board.name).slice(0, 30_000);
         if (mode === 'explain') {
-          const d = await run(`Erkläre und fasse diese Auswahl eines Whiteboards zusammen (2–3 Sätze Zusammenfassung, dann 3–6 Stichpunkte mit den wichtigsten Aussagen oder nächsten Schritten).${b.prompt ? `\nHinweis: ${cleanText(b.prompt, 1000)}` : ''}\n\n${outline}`, EXPLAIN_SCHEMA, 1500);
+          const d = await run(`Explain and summarise this selection from a whiteboard (a 2–3 sentence summary, then 3–6 bullet points with the key points or next steps). Write in the language of the board's content (if unclear: ${userLanguage}).${b.prompt ? `\nNote: ${cleanText(b.prompt, 1000)}` : ''}\n\n${outline}`, EXPLAIN_SCHEMA, 1500);
           const text = [String(d.summary ?? ''), ...(Array.isArray(d.bullets) ? d.bullets.map((x: unknown) => `• ${String(x)}`) : [])].filter(Boolean).join('\n');
           let seq = board.seq;
           let created: string[] = [];
@@ -360,7 +364,7 @@ export const canvasIntegrationsModule: Module = {
           }
           return result(board, { mode, summary: String(d.summary ?? ''), bullets: d.bullets ?? [], text, seq, created });
         }
-        const d = await run(`Leite aus dieser Auswahl eines Whiteboards konkrete Aufgaben ab (höchstens 15, jede mit klarem Titel, kurzer Beschreibung und realistischer Fälligkeit in Tagen).${b.prompt ? `\nHinweis: ${cleanText(b.prompt, 1000)}` : ''}\n\n${outline}`, TASKS_SCHEMA, 2500);
+        const d = await run(`Derive concrete tasks from this selection from a whiteboard (at most 15, each with a clear title, a short description and a realistic due date in days). Write in the language of the board's content (if unclear: ${userLanguage}).${b.prompt ? `\nNote: ${cleanText(b.prompt, 1000)}` : ''}\n\n${outline}`, TASKS_SCHEMA, 2500);
         const tasks: any[] = (Array.isArray(d.tasks) ? d.tasks : []).slice(0, 15);
         const created: { id: string; title: string }[] = [];
         const list: OpIn[] = [];
@@ -369,23 +373,23 @@ export const canvasIntegrationsModule: Module = {
         const today = ymdInTz(new Date(), app.location(ctx.locationId)?.timezone || 'Europe/Berlin');
         for (const [i, t] of tasks.entries()) {
           const due = Number(t.due_in_days) >= 0 ? `${addDaysYmd(today, Math.trunc(Number(t.due_in_days)))}T00:00:00.000Z` : null;
-          const rec = await callRoute(app, ctx, 'POST', '/api/tasks', { title: String(t.title ?? '').slice(0, 200) || 'Aufgabe', description: String(t.description ?? '').slice(0, 5000), due_at: due });
+          const rec = await callRoute(app, ctx, 'POST', '/api/tasks', { title: String(t.title ?? '').slice(0, 200) || tLoc(app, ctx.locationId)('Aufgabe'), description: String(t.description ?? '').slice(0, 5000), due_at: due });
           created.push({ id: rec.id, title: rec.title });
           const [w, h] = CARD_SIZE.task;
           list.push({ op: 'add', element: { type: 'card', card: { kind: 'task', id: rec.id }, x: pos.x + (i % 3) * (w + 24), y: pos.y + Math.floor(i / 3) * (h + 24), w, h, name: rec.title } });
         }
         const r = list.length ? applyOps(app, ctx, board, list, { clientId: b.clientId }) : null;
-        return result(board, { mode, tasks: created, seq: r?.seq ?? board.seq, summary: `${created.length} Aufgaben angelegt` });
+        return result(board, { mode, tasks: created, seq: r?.seq ?? board.seq, summary: tu.plural(created.length, { one: '{n} Aufgabe angelegt', other: '{n} Aufgaben angelegt' }) });
       }
       // draw
       const prompt = str(b.prompt, 'Beschreibung', { required: true, max: 4000 });
       const kind = (DRAW_KINDS as readonly string[]).includes(b.kind) ? b.kind : 'auto';
-      const context = sel.length ? `\n\nBezug (ausgewählte Elemente):\n${sceneOutline(sel, board.name).slice(0, 8000)}` : '';
-      const d = await run(`Zeichne: ${prompt}\nArt: ${kind === 'auto' ? 'wähle die passendste (flowchart, mindmap, orgchart, diagram oder wireframe)' : kind}${context}`, DRAW_SCHEMA, 6000);
+      const context = sel.length ? `\n\nContext (selected elements):\n${sceneOutline(sel, board.name).slice(0, 8000)}` : '';
+      const d = await run(`Draw: ${prompt}\nKind: ${kind === 'auto' ? 'choose the most fitting (flowchart, mindmap, orgchart, diagram or wireframe)' : kind}\nLanguage of all labels: the language of the request above (if unclear: ${userLanguage}).${context}`, DRAW_SCHEMA, 6000);
       const origin = b.x !== undefined && b.y !== undefined ? { x: Number(b.x) || 0, y: Number(b.y) || 0 } : freeSpot(els);
       let list: OpIn[];
       if (d.kind === 'wireframe' || kind === 'wireframe') {
-        const w = wireframeElements(d.screens ?? [], () => id(12), { x: origin.x, y: origin.y + 70 });
+        const w = wireframeElements(d.screens ?? [], () => id(12), { x: origin.x, y: origin.y + 70 }, tLoc(app, ctx.locationId));
         if (!w.length) throw new HttpError(502, 'Die KI hat keinen Bildschirm geliefert – bitte genauer beschreiben');
         list = liftZ(els, w).map((e) => ({ op: 'add', element: e }));
       } else {

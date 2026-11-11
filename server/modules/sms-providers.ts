@@ -2,6 +2,7 @@ import type { App, LocationRow, Module } from '../core/app.js';
 import { HttpError, bad, notFound, str, text, type Ctx } from '../core/http.js';
 import { applyDelivery, channelFetch, deleteAccount, firstSeen, getAccount, header, noteError, noteWebhook, publicUrl, safeEqual, saveAccount, secretsSet, type ChannelAccount } from '../services/channel-kit.js';
 import { receiveMessage } from '../services/messaging.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 import { SMS_PROVIDERS, isSmsProvider, parseBird, parsePlivo, parseSeven, parseVonage, sendSms, testSms, verifyBird, verifyPlivo, verifySeven, verifyVonageJwt, type SmsProvider, type SmsWebhook } from '../services/sms-providers.js';
 
 /**
@@ -30,17 +31,18 @@ export const smsProvidersModule: Module = {
     };
     const path = (p: SmsProvider, loc: string, a: ChannelAccount) => `/hooks/sms/${p}/${loc}/${a.hook_key}`;
 
-    const out = (p: SmsProvider, loc: string, a: ChannelAccount | undefined) => {
+    const out = (p: SmsProvider, loc: string, a: ChannelAccount | undefined, t: STFn = tApp()) => {
       const spec = SMS_PROVIDERS[p];
+      const field = ({ pattern: _p, ...f }: (typeof spec.secrets)[number]) => ({ ...f, label: t(f.label), ...(f.hint ? { hint: t(f.hint) } : {}) });
       return {
         provider: p,
         label: spec.label,
         configured: smsConfigured(p, a),
         config: Object.fromEntries(spec.config.map((f) => [f.key, a?.config[f.key] ?? ''])),
         secrets_set: secretsSet(a, spec.secrets.map((f) => f.key)),
-        fields: { secrets: spec.secrets.map(({ pattern: _p, ...f }) => f), config: spec.config.map(({ pattern: _p, ...f }) => f) },
+        fields: { secrets: spec.secrets.map(field), config: spec.config.map(field) },
         webhook_url: a ? `${app.baseUrl()}${path(p, loc, a)}` : '',
-        signed: spec.signed,
+        signed: t(spec.signed),
         last_webhook_at: a?.last_webhook_at ?? null,
         last_error: a?.last_error ?? null,
       };
@@ -54,19 +56,20 @@ export const smsProvidersModule: Module = {
     // --- settings ----------------------------------------------------------------------------
     router.get('/api/settings/channels/sms', 'location', (ctx) => ({
       active: String(settingsOf(ctx.locationId).sms?.provider ?? 'log'),
-      providers: Object.fromEntries((Object.keys(SMS_PROVIDERS) as SmsProvider[]).map((p) => [p, out(p, ctx.locationId, getAccount(app, ctx.locationId, chan(p)))])),
+      providers: Object.fromEntries((Object.keys(SMS_PROVIDERS) as SmsProvider[]).map((p) => [p, out(p, ctx.locationId, getAccount(app, ctx.locationId, chan(p)), tCtx(ctx))])),
     }));
 
     router.put('/api/settings/channels/sms/:provider', 'location', (ctx) => {
       const p = providerOf(ctx);
       const spec = SMS_PROVIDERS[p];
       const b = ctx.body ?? {};
+      const t = tCtx(ctx);
       const secrets: Record<string, string | null> = {};
       for (const f of spec.secrets) {
         if (b[f.key] === null) secrets[f.key] = null;
         else if (b[f.key] !== undefined && b[f.key] !== '' && b[f.key] !== '••••••') {
           const v = str(b[f.key], f.label, { max: 300 }).replace(/\s+/g, '');
-          if (f.pattern && !f.pattern.test(v)) throw bad(`${f.label} sieht ungültig aus`);
+          if (f.pattern && !f.pattern.test(v)) throw bad(t('{field} sieht ungültig aus', { field: t(f.label) }));
           secrets[f.key] = v;
         }
       }
@@ -74,15 +77,15 @@ export const smsProvidersModule: Module = {
       for (const f of spec.config) {
         if (b[f.key] === undefined) continue;
         const v = str(b[f.key], f.label, { max: 100 });
-        if (v && f.pattern && !f.pattern.test(v)) throw bad(`${f.label} sieht ungültig aus${f.hint ? ` (z. B. ${f.hint})` : ''}`);
+        if (v && f.pattern && !f.pattern.test(v)) throw bad(f.hint ? t('{field} sieht ungültig aus (z. B. {hint})', { field: t(f.label), hint: t(f.hint) }) : t('{field} sieht ungültig aus', { field: t(f.label) }));
         config[f.key] = v;
       }
       const a = saveAccount(app, ctx.locationId, chan(p), { config, secrets, regenerateKey: !!b.regenerate_webhook });
       if (b.activate) {
-        if (!smsConfigured(p, a)) throw bad(`${spec.label}: bitte alle Pflichtfelder ausfüllen`);
+        if (!smsConfigured(p, a)) throw bad(t('{provider}: bitte alle Pflichtfelder ausfüllen', { provider: spec.label }));
         writeSmsSettings(ctx.locationId, { provider: p });
       }
-      return out(p, ctx.locationId, a);
+      return out(p, ctx.locationId, a, t);
     });
 
     router.delete('/api/settings/channels/sms/:provider', 'location', (ctx) => {
@@ -95,7 +98,10 @@ export const smsProvidersModule: Module = {
     router.post('/api/settings/channels/sms/:provider/test', 'location', async (ctx) => {
       const p = providerOf(ctx);
       const a = getAccount(app, ctx.locationId, chan(p));
-      if (!smsConfigured(p, a)) throw bad(`${SMS_PROVIDERS[p].label} ist noch nicht vollständig eingerichtet`);
+      if (!smsConfigured(p, a)) {
+        const t = tCtx(ctx);
+        throw bad(t('{provider} ist noch nicht vollständig eingerichtet', { provider: SMS_PROVIDERS[p].label }));
+      }
       try {
         const info = await testSms(p, { secrets: a.secrets, config: a.config }, fetcher());
         noteError(app, ctx.locationId, chan(p), null);
@@ -108,7 +114,10 @@ export const smsProvidersModule: Module = {
     // --- sending: plugs into deliverSms -----------------------------------------------------------
     const transport = (p: SmsProvider) => async (loc: LocationRow, to: string, body: string) => {
       const a = getAccount(app, loc.id, chan(p));
-      if (!smsConfigured(p, a)) throw new Error(`${SMS_PROVIDERS[p].label} ist nicht eingerichtet (Einstellungen → E-Mail & SMS)`);
+      if (!smsConfigured(p, a)) {
+        const t = tApp();
+        throw new Error(t('{provider} ist nicht eingerichtet (Einstellungen → E-Mail & SMS)', { provider: SMS_PROVIDERS[p].label }));
+      }
       const r = await sendSms(p, { secrets: a.secrets, config: a.config }, to, body, fetcher(), `${app.baseUrl()}${path(p, loc.id, a)}`);
       return { status: 'sent' as const, providerId: r.providerId || undefined };
     };
@@ -173,17 +182,17 @@ export const smsProvidersModule: Module = {
           credentials: 'API-Zugang des Anbieters und Absender unter Einstellungen → E-Mail & SMS; Webhook-Adresse beim Anbieter eintragen.',
           docs: 'docs/channels.md#sms-providers',
         },
-        location: (_ctx: Ctx, loc: string) => probe(app, loc),
+        location: (ctx: Ctx, loc: string) => probe(app, loc, tCtx(ctx)),
       },
     ];
   },
 };
 
-function probe(app: App, loc: string) {
+function probe(app: App, loc: string, t: STFn) {
   const p = app.location(loc)?.settings.sms?.provider;
-  if (!isSmsProvider(p)) return { status: 'info' as const, detail: p === 'twilio' ? 'Twilio aktiv' : p === 'http' ? 'HTTP-Gateway aktiv' : 'Kein API-Anbieter gewählt' };
+  if (!isSmsProvider(p)) return { status: 'info' as const, detail: p === 'twilio' ? t('Twilio aktiv') : p === 'http' ? t('HTTP-Gateway aktiv') : t('Kein API-Anbieter gewählt') };
   const a = getAccount(app, loc, chan(p));
-  if (!smsConfigured(p, a)) return { status: 'partial' as const, detail: `${SMS_PROVIDERS[p].label} unvollständig` };
+  if (!smsConfigured(p, a)) return { status: 'partial' as const, detail: t('{provider} unvollständig', { provider: SMS_PROVIDERS[p].label }) };
   if (a.last_error) return { status: 'partial' as const, detail: `${SMS_PROVIDERS[p].label}: ${a.last_error.slice(0, 80)}` };
   return { status: 'ok' as const, detail: SMS_PROVIDERS[p].label };
 }

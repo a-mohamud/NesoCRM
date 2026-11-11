@@ -3,6 +3,7 @@ import { AgentError, effortPlanOf, estimateUsage, extraWires, retry, sseEvents, 
 import { effortFields, isEffortRejection } from './ai-effort.js';
 import type { FetchLike } from './ai-presets.js';
 import { RESOURCE, USAGE_URL } from './chatgpt-oauth.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Chat with tool use over OpenAI's Responses API for the personal "Mit ChatGPT anmelden" connection. The rules of this
@@ -37,7 +38,7 @@ export function toResponsesInput(messages: Msg[], vision: boolean): any[] {
     for (const p of m.content) {
       if (p.type === 'text' && p.text) parts.push({ type: 'input_text', text: p.text });
       else if (p.type === 'file') parts.push({ type: 'input_text', text: textOfFile(p) });
-      else if (p.type === 'image') parts.push(vision ? { type: 'input_image', image_url: `data:${p.mediaType};base64,${p.data}` } : { type: 'input_text', text: `[Bild „${p.name ?? 'Bild'}“ – dieses Modell kann keine Bilder sehen]` });
+      else if (p.type === 'image') parts.push(vision ? { type: 'input_image', image_url: `data:${p.mediaType};base64,${p.data}` } : { type: 'input_text', text: tApp()('[Bild „{name}“ – dieses Modell kann keine Bilder sehen]', { name: p.name ?? tApp()('Bild') }) });
       else if (p.type === 'document') parts.push({ type: 'input_file', filename: p.name || 'beleg.pdf', file_data: `data:${p.mediaType};base64,${p.data}` });
     }
     if (!parts.length) continue;
@@ -68,21 +69,22 @@ function usageOf(u: any): Usage | null {
   return { input_tokens: Math.max(0, n(u.input_tokens) - cached), output_tokens: n(u.output_tokens), cache_read_tokens: cached, cache_write_tokens: 0 };
 }
 
-const LIMIT = `Das Nutzungslimit deines ChatGPT-Plans (oder das für diese App eingestellte Limit) ist erreicht. Unter ${USAGE_URL} kannst du es prüfen und anpassen.`;
+const LIMIT = () => tApp()('Das Nutzungslimit deines ChatGPT-Plans (oder das für diese App eingestellte Limit) ist erreicht. Unter {url} kannst du es prüfen und anpassen.', { url: USAGE_URL });
 
 /** A structured Responses error (HTTP body or stream event) → German message with the right status. */
 export function planError(status: number, code: string, message: string, param?: string, usage: Usage = ZERO_USAGE): AgentError {
-  const e = (msg: string, st = status, c = code || 'api_error') => new AgentError(`ChatGPT-Abo: ${msg}`, st, c, usage);
+  const t = tApp();
+  const e = (msg: string, st = status, c = code || 'api_error') => new AgentError(`${t('ChatGPT-Abo')}: ${t(msg)}`, st, c, usage);
   switch (code) {
     case 'subscription_sharing_usage_limit_exceeded':
-      return e(LIMIT, 429, 'rate_limit');
+      return e(LIMIT(), 429, 'rate_limit');
     case 'subscription_sharing_user_not_eligible':
       return e('Dein ChatGPT-Plan, Workspace oder eine Richtlinie erlaubt die Nutzung in Apps nicht. Nimm stattdessen einen API-Schlüssel (Einstellungen → KI-Anbieter).', 403, 'permission');
     case 'subscription_sharing_usage_unavailable':
     case 'subscription_sharing_user_unavailable':
       return e('Die Nutzung konnte gerade nicht geprüft werden – bitte gleich noch einmal versuchen.', 503, 'overloaded');
     case 'subscription_sharing_unsupported_capability':
-      return e(`Das Modell oder die Anfrage nutzt etwas, das ChatGPT-Pläne in Apps nicht unterstützen${param ? ` (${param})` : ''}.`, 400, 'invalid_request');
+      return e(param ? t('Das Modell oder die Anfrage nutzt etwas, das ChatGPT-Pläne in Apps nicht unterstützen ({param}).', { param }) : t('Das Modell oder die Anfrage nutzt etwas, das ChatGPT-Pläne in Apps nicht unterstützen.'), 400, 'invalid_request');
     case 'subscription_sharing_route_not_supported':
       return e('Diese Schnittstelle ist für ChatGPT-Pläne nicht freigegeben.', 403, 'permission');
     case 'subscription_sharing_invalid_user':
@@ -91,11 +93,11 @@ export function planError(status: number, code: string, message: string, param?:
       return e('Die Anmeldung wurde nicht akzeptiert. Bitte trenne die Verbindung und melde dich neu an.', status === 401 ? 401 : 403, 'auth');
   }
   if (status === 401) return e('Die Anmeldung wurde nicht akzeptiert. Bitte unter Einstellungen → KI-Anbieter neu anmelden.', 401, 'auth');
-  if (status === 403) return e(`Eine Richtlinie hat die Anfrage abgelehnt${message ? `: ${message.slice(0, 200)}` : ' (z. B. die erlaubte Region)'}.`, 403, 'permission');
-  if (status === 429) return e(LIMIT, 429, 'rate_limit');
+  if (status === 403) return e(message ? `${t('Eine Richtlinie hat die Anfrage abgelehnt')}: ${message.slice(0, 200)}.` : t('Eine Richtlinie hat die Anfrage abgelehnt (z. B. die erlaubte Region).'), 403, 'permission');
+  if (status === 429) return e(LIMIT(), 429, 'rate_limit');
   if (status === 503 || status === 502) return e('ChatGPT ist gerade nicht erreichbar – bitte gleich noch einmal versuchen.', 503, 'overloaded');
   if (status >= 500) return e('ChatGPT hat gerade ein Problem – bitte später erneut versuchen.', 503, 'server');
-  return e(`Die Anfrage wurde abgelehnt (${status})${message ? `: ${message.slice(0, 240)}` : ''}`, 502, code || 'invalid_request');
+  return e(t('Die Anfrage wurde abgelehnt ({status})', { status }) + (message ? `: ${message.slice(0, 240)}` : ''), 502, code || 'invalid_request');
 }
 
 const errFields = (data: any) => {
@@ -131,7 +133,7 @@ export async function chatResponses(req: ChatRequest, fetchImpl: FetchLike): Pro
       const name = (e as Error)?.name;
       if (name === 'TimeoutError' || name === 'AbortError') throw new AgentError('Das Modell hat nicht rechtzeitig geantwortet – bitte erneut versuchen.', 504, 'timeout');
       if (e instanceof AgentError) throw e;
-      throw new AgentError(`ChatGPT-Abo: ChatGPT ist nicht erreichbar (${(e as Error).message}).`, 504, 'network');
+      throw new AgentError(tApp()('ChatGPT-Abo: ChatGPT ist nicht erreichbar ({reason}).', { reason: (e as Error).message }), 504, 'network');
     }
     if (res.ok) break;
     const raw = await res.text().catch(() => '');

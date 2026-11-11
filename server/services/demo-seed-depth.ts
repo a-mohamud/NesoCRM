@@ -23,8 +23,18 @@ const nameOf = (c: any) => `${c.first_name} ${c.last_name}`.trim();
 /** Course members and how far they got: from "not started" to "finished". */
 const PROGRESS = [1, 0.8, 0.5, 0.25, 0.65, 0, 0.9, 0.4];
 
-async function seedCourse(k: Kit, cp: CoursePlan, index: number) {
+async function seedCourse(k: Kit, raw: CoursePlan, index: number) {
   const db = k.app.db;
+  const t = k.t;
+  // the course in the sub-account's language
+  const cp: CoursePlan = {
+    ...raw,
+    title: t(raw.title),
+    description: t(raw.description),
+    modules: raw.modules.map(([mt, ls]) => [t(mt), ls.map(([title, text, minutes]): [string, string, number] => [t(title), t(text), minutes])]),
+    ...(raw.quiz ? { quiz: { title: t(raw.quiz.title), questions: raw.quiz.questions.map((q) => ({ text: t(q.text), options: q.options.map(([o, ok]): [string, boolean] => [t(o), ok]) })) } } : {}),
+    ...(raw.reviews ? { reviews: raw.reviews.map(([rating, title, text]): [number, string, string] => [rating, t(title), t(text)]) } : {}),
+  };
   const course = await k.call('POST', '/api/courses', { title: cp.title, description: cp.description, empty: true });
   if (!course?.id) return undefined;
   const lessons: { id: string; module: number }[] = [];
@@ -32,7 +42,7 @@ async function seedCourse(k: Kit, cp: CoursePlan, index: number) {
     const mod = await k.call('POST', `/api/courses/${course.id}/modules`, { title: mt });
     if (!mod?.id) continue;
     for (const [title, text, minutes] of ls) {
-      const l = await k.call('POST', `/api/courses/${course.id}/lessons`, { module_id: mod.id, title, body: `## ${title}\n\n${text}\n\n- Erfundener Demo-Inhalt\n- Du kannst ihn im Kurs-Editor frei bearbeiten`, duration_min: minutes, published: true });
+      const l = await k.call('POST', `/api/courses/${course.id}/lessons`, { module_id: mod.id, title, body: `## ${title}\n\n${text}\n\n${t('- Erfundener Demo-Inhalt\n- Du kannst ihn im Kurs-Editor frei bearbeiten')}`, duration_min: minutes, published: true });
       if (l?.id) lessons.push({ id: l.id, module: mi });
     }
   }
@@ -41,7 +51,7 @@ async function seedCourse(k: Kit, cp: CoursePlan, index: number) {
       course_id: course.id,
       lesson_id: lessons[Math.min(2, lessons.length - 1)].id,
       title: cp.quiz.title,
-      intro: 'Kurzer Check – du darfst es so oft versuchen, wie du möchtest.',
+      intro: t('Kurzer Check – du darfst es so oft versuchen, wie du möchtest.'),
       pass_percent: 70,
       questions: cp.quiz.questions.map((q) => ({ kind: q.options.filter((o) => o[1]).length > 1 ? 'multiple' : 'single', text: q.text, points: 1, explanation: '', options: q.options.map(([text, correct]) => ({ text, correct })) })),
     });
@@ -63,11 +73,11 @@ async function seedCourse(k: Kit, cp: CoursePlan, index: number) {
         const share = PROGRESS[(m.i + index) % PROGRESS.length];
         const done = Math.round(ordered.length * share);
         const touched = done > 0 || m.i % 7 === 5;
-        let t = enrolled + DAY;
+        let when = enrolled + DAY;
         for (const [li, l] of ordered.slice(0, done).entries()) {
-          t += (0.3 + k.rand() * 2.5) * DAY;
-          db.insert('course_progress', { enrollment_id: m.enrollment, lesson_id: l.id, completed_at: iso(Math.min(t, todayMs(k))), last_viewed_at: iso(Math.min(t, todayMs(k))) });
-          if (li === done - 1) m.last = { lesson: l.id, at: Math.min(t, todayMs(k)) };
+          when += (0.3 + k.rand() * 2.5) * DAY;
+          db.insert('course_progress', { enrollment_id: m.enrollment, lesson_id: l.id, completed_at: iso(Math.min(when, todayMs(k))), last_viewed_at: iso(Math.min(when, todayMs(k))) });
+          if (li === done - 1) m.last = { lesson: l.id, at: Math.min(when, todayMs(k)) };
         }
         db.run(
           'UPDATE course_enrollments SET enrolled_at = ?, created_at = ?, started_at = ?, completed_at = ?, last_lesson_id = ?, last_seen_at = ? WHERE id = ?',
@@ -101,7 +111,7 @@ export async function seedCourses(k: Kit) {
     if (c) made.push(c);
   }
   if (made.length < 2) return;
-  const path = await k.call('POST', '/api/courses/paths', { title: `${k.plan.name}: Komplettprogramm`, description: 'Alle Kurse in einer sinnvollen Reihenfolge – der nächste öffnet sich, wenn der vorige geschafft ist.', items: made.map((m) => m.id) });
+  const path = await k.call('POST', '/api/courses/paths', { title: k.t('{name}: Komplettprogramm', { name: k.plan.name }), description: k.t('Alle Kurse in einer sinnvollen Reihenfolge – der nächste öffnet sich, wenn der vorige geschafft ist.'), items: made.map((m) => m.id) });
   if (!path?.id) return;
   await k.call('PATCH', `/api/courses/paths/${path.id}`, { status: 'published' });
   for (let i = 0; i < 14; i++) await k.call('POST', `/api/courses/paths/${path.id}/members`, { contact_id: k.contact(i * 3).id });
@@ -127,7 +137,7 @@ function seedTraffic(k: Kit, funnelId: string, daily: number, flow: number[], co
         const visitor = hex(k, 16);
         const roll = k.rand();
         const device = roll < 0.56 ? 'phone' : roll < 0.93 ? 'desktop' : 'tablet';
-        const source = pickOf(k, SOURCES);
+        const source = k.t(pickOf(k, SOURCES));
         const first = new Date(k.inDays(-back, int(k, 7, 21), int(k, 0, 59))).toISOString();
         let reached = 0;
         for (let p = 0; p < pages.length; p++) {
@@ -153,7 +163,11 @@ export async function seedSites(k: Kit) {
   const formId = k.app.db.get<{ id: string }>('SELECT id FROM forms WHERE location_id = ? ORDER BY created_at LIMIT 1', k.L)?.id ?? '';
   const calendar = k.app.db.get<{ slug: string }>('SELECT slug FROM calendars WHERE location_id = ? ORDER BY created_at LIMIT 1', k.L)?.slug ?? '';
   const traffic = new Map<string, { daily: number; flow: number[]; conversion: 'form' | 'booking' | 'purchase' }>();
-  for (const sp of SITE_PLANS[k.plan.key] ?? []) {
+  const t = k.t;
+  // the visible texts of the pages in the sub-account's language (slugs too: the catalog has them)
+  const block = (b: Record<string, any>) => ({ ...b, ...Object.fromEntries(['heading', 'subheading', 'button_text'].filter((f) => typeof b[f] === 'string').map((f) => [f, t(b[f])])) });
+  for (const raw of SITE_PLANS[k.plan.key] ?? []) {
+    const sp = { ...raw, name: t(raw.name), pages: raw.pages?.map((p) => ({ ...p, name: t(p.name), slug: t(p.slug), blocks: p.blocks.map(block) })) };
     const f = await k.call('POST', '/api/funnels', { name: sp.name, template: sp.template });
     if (!f?.id) continue;
     if (sp.pages) {
@@ -187,19 +201,21 @@ export async function seedSites(k: Kit) {
 /** Sent campaigns over the year with opens and clicks, one scheduled, one draft. */
 export async function seedCampaigns(k: Kit) {
   const db = k.app.db;
+  const t = k.t;
   const tags = k.plan.tags.map(([n]) => n);
+  const newsletter = t('Newsletter');
   const specs: { name: string; subject: string; back: number; filter: Record<string, any>; open: number; click: number }[] = [
-    { name: 'Newsletter Herbst', subject: `Neuigkeiten von ${k.plan.name}`, back: 6, filter: { tags: [tags.includes('Newsletter') ? 'Newsletter' : tags[2]] }, open: 0.46, click: 0.12 },
-    { name: 'Aktion zum Saisonstart', subject: 'Zum Start: unser Angebot für dich', back: 29, filter: { tags: [tags[0]] }, open: 0.41, click: 0.09 },
-    { name: 'Neukunden-Willkommen', subject: 'Schön, dass du da bist', back: 63, filter: { tags: [tags[1]] }, open: 0.58, click: 0.17 },
-    { name: 'Sommer-Update', subject: 'Das war los im Sommer', back: 125, filter: { tags: [tags[tags.length - 1]] }, open: 0.39, click: 0.08 },
+    { name: t('Newsletter Herbst'), subject: t('Neuigkeiten von {name}', { name: k.plan.name }), back: 6, filter: { tags: [tags.includes(newsletter) ? newsletter : tags[2]] }, open: 0.46, click: 0.12 },
+    { name: t('Aktion zum Saisonstart'), subject: t('Zum Start: unser Angebot für dich'), back: 29, filter: { tags: [tags[0]] }, open: 0.41, click: 0.09 },
+    { name: t('Neukunden-Willkommen'), subject: t('Schön, dass du da bist'), back: 63, filter: { tags: [tags[1]] }, open: 0.58, click: 0.17 },
+    { name: t('Sommer-Update'), subject: t('Das war los im Sommer'), back: 125, filter: { tags: [tags[tags.length - 1]] }, open: 0.39, click: 0.08 },
   ];
   for (const sp of specs) {
     const c = await k.call('POST', '/api/campaigns', {
       name: sp.name,
       channel: 'email',
       subject: sp.subject,
-      body: `Hallo {{contact.first_name|du}},\n\nhier sind die Neuigkeiten von ${k.plan.name}: ein kurzer Überblick, was sich getan hat – und ein kleines Dankeschön für dich.\n\nBis bald!`,
+      body: t('Hallo {{contact.first_name|du}},\n\nhier sind die Neuigkeiten von {name}: ein kurzer Überblick, was sich getan hat – und ein kleines Dankeschön für dich.\n\nBis bald!', { name: k.plan.name }),
       filter: sp.filter,
     });
     if (!c?.id) continue;
@@ -219,7 +235,7 @@ export async function seedCampaigns(k: Kit) {
       }),
     );
   }
-  const scheduled = await k.call('POST', '/api/campaigns', { name: 'Adventsaktion', channel: 'email', subject: 'Unser Advents-Angebot', body: 'Hallo {{contact.first_name|du}},\n\nnur bis Weihnachten: unser Advents-Angebot …', filter: { tags: [tags[0]] } });
+  const scheduled = await k.call('POST', '/api/campaigns', { name: t('Adventsaktion'), channel: 'email', subject: t('Unser Advents-Angebot'), body: t('Hallo {{contact.first_name|du}},\n\nnur bis Weihnachten: unser Advents-Angebot …'), filter: { tags: [tags[0]] } });
   if (scheduled?.id) await k.call('POST', `/api/campaigns/${scheduled.id}/send`, { scheduled_at: k.inDays(6, 9) });
 }
 
@@ -328,7 +344,7 @@ function dateTicket(k: Kit, ticketId: string, back: number, mode: 'open' | 'answ
     '',
     resolvedAt ? iso(resolvedAt + 3600e3) : null,
     score,
-    score ? pickOf(k, CSAT_COMMENTS[score] ?? ['']) : '',
+    score ? k.t(pickOf(k, CSAT_COMMENTS[score] ?? [''])) : '',
     score && resolvedAt ? iso(Math.min(resolvedAt + int(k, 2, 40) * 3600e3, todayMs(k))) : null,
     ticketId,
   );
@@ -341,7 +357,7 @@ export async function seedSupportHistory(k: Kit) {
   // the few tickets the main seed made are the newest ones: answered and in progress, or just arrived
   for (const [i, t] of k.app.db.all<{ id: string }>('SELECT id FROM tickets WHERE location_id = ? ORDER BY created_at', k.L).entries()) {
     const answered = i % 2 === 0;
-    if (answered) await k.call('POST', `/api/tickets/${t.id}/reply`, { body: 'Danke für deine Nachricht – ich kümmere mich darum und melde mich heute noch mit dem Ergebnis.', status: 'in_bearbeitung' });
+    if (answered) await k.call('POST', `/api/tickets/${t.id}/reply`, { body: k.t('Danke für deine Nachricht – ich kümmere mich darum und melde mich heute noch mit dem Ergebnis.'), status: 'in_bearbeitung' });
     await k.step('ticket dates', () => dateTicket(k, t.id, answered ? 1 + (i % 3) : 0, answered ? 'answered' : 'open', false));
   }
   const pool = k.plan.key === 'saas' ? SAAS_TICKETS : TICKETS;
@@ -349,18 +365,14 @@ export async function seedSupportHistory(k: Kit) {
   for (let i = 0; i < n; i++) {
     const [subject, text, category] = pool[i % pool.length];
     const c = k.contact(i * 3 + 5);
-    const t = await k.call('POST', '/api/tickets', { subject, description: text, contact_id: c.id, priority: pickOf(k, ['normal', 'normal', 'normal', 'hoch', 'niedrig', 'dringend']), category, source: pickOf(k, ['E-Mail', 'E-Mail', 'E-Mail', 'Telefon']) });
+    const tk = k.t;
+    const t = await k.call('POST', '/api/tickets', { subject: tk(subject), description: tk(text), contact_id: c.id, priority: pickOf(k, ['normal', 'normal', 'normal', 'hoch', 'niedrig', 'dringend']), category: tk(category), source: pickOf(k, ['E-Mail', 'E-Mail', 'E-Mail', 'Telefon']) });
     if (!t?.id) continue;
     const back = Math.floor(Math.pow(k.rand(), 1.4) * 88) + 1;
     const open = back <= 4 && i % 3 === 0;
     if (!open) {
-      await k.call('POST', `/api/tickets/${t.id}/reply`, { body: `Hallo ${c.first_name},
-
-danke für deine Nachricht! Ich habe mir das angesehen und kümmere mich darum – du bekommst gleich eine Rückmeldung.
-
-Viele Grüße
-${k.plan.name}`, status: 'in_bearbeitung' });
-      await k.call('POST', `/api/tickets/${t.id}/reply`, { body: 'So, erledigt: Alles ist umgesetzt. Melde dich gern, falls noch etwas hakt.', status: i % 4 === 0 ? 'geschlossen' : 'geloest' });
+      await k.call('POST', `/api/tickets/${t.id}/reply`, { body: tk('Hallo {first_name},\n\ndanke für deine Nachricht! Ich habe mir das angesehen und kümmere mich darum – du bekommst gleich eine Rückmeldung.\n\nViele Grüße\n{name}', { first_name: c.first_name, name: k.plan.name }), status: 'in_bearbeitung' }); // i18n-ignore – multi-line text: its catalog key is the exact text
+      await k.call('POST', `/api/tickets/${t.id}/reply`, { body: tk('So, erledigt: Alles ist umgesetzt. Melde dich gern, falls noch etwas hakt.'), status: i % 4 === 0 ? 'geschlossen' : 'geloest' });
     }
     await k.step('ticket dates', () => dateTicket(k, t.id, back, open ? 'open' : 'done', i % 4 === 0));
   }
@@ -369,12 +381,12 @@ ${k.plan.name}`, status: 'in_bearbeitung' });
 // --- knowledge: wiki, team chat, community ----------------------------------------------------------------------------------------------
 
 const WIKI: [title: string, body: string][] = [
-  ['Willkommen im Team-Handbuch', '# Willkommen\n\nHier steht alles, was neue Kolleginnen und Kollegen in der ersten Woche brauchen: Abläufe, Ansprechpartner und Checklisten.\n\n- Erfundener Demo-Inhalt\n- Du kannst alles frei bearbeiten'],
-  ['Erster Arbeitstag', '## Checkliste\n\n1. Zugang zu E-Mail und Postfach einrichten\n2. Team vorstellen\n3. Erste Aufgaben mit der Patin oder dem Paten durchgehen\n4. Feedback-Gespräch am Freitag'],
-  ['So gehen wir mit Anfragen um', '## Antwortzeiten\n\nJede Anfrage bekommt innerhalb eines Werktags eine Antwort. Dringende Fälle (Ausfall, Störung) rufen wir innerhalb von zwei Stunden zurück.\n\n## Ablauf\n\n1. Anfrage im Posteingang prüfen\n2. Kontakt anlegen oder ergänzen\n3. Angebot oder Termin anbieten'],
-  ['Preisliste und Angebote', '## Grundsätze\n\n- Angebote sind 30 Tage gültig.\n- Rabatte über 10 % nur nach Rücksprache.\n- Jede Rechnung nennt Leistungsdatum und Zahlungsziel.'],
-  ['Checkliste Monatsabschluss', '- Offene Rechnungen prüfen und nachfassen\n- Zahlungseingänge abgleichen\n- Bewertungen anfragen\n- Monatsbericht verschicken'],
-  ['Datenschutz im Alltag', '## Regeln\n\n- Kein Versand personenbezogener Daten per Messenger.\n- Bildschirm sperren beim Verlassen des Platzes.\n- Auskunftsanfragen sofort an die Leitung weitergeben.'],
+  ['Willkommen im Team-Handbuch', '# Willkommen\n\nHier steht alles, was neue Kolleginnen und Kollegen in der ersten Woche brauchen: Abläufe, Ansprechpartner und Checklisten.\n\n- Erfundener Demo-Inhalt\n- Du kannst alles frei bearbeiten'], // i18n-ignore – multi-line text: its catalog key is the exact text
+  ['Erster Arbeitstag', '## Checkliste\n\n1. Zugang zu E-Mail und Postfach einrichten\n2. Team vorstellen\n3. Erste Aufgaben mit der Patin oder dem Paten durchgehen\n4. Feedback-Gespräch am Freitag'], // i18n-ignore – multi-line text: its catalog key is the exact text
+  ['So gehen wir mit Anfragen um', '## Antwortzeiten\n\nJede Anfrage bekommt innerhalb eines Werktags eine Antwort. Dringende Fälle (Ausfall, Störung) rufen wir innerhalb von zwei Stunden zurück.\n\n## Ablauf\n\n1. Anfrage im Posteingang prüfen\n2. Kontakt anlegen oder ergänzen\n3. Angebot oder Termin anbieten'], // i18n-ignore – multi-line text: its catalog key is the exact text
+  ['Preisliste und Angebote', '## Grundsätze\n\n- Angebote sind 30 Tage gültig.\n- Rabatte über 10 % nur nach Rücksprache.\n- Jede Rechnung nennt Leistungsdatum und Zahlungsziel.'], // i18n-ignore – multi-line text: its catalog key is the exact text
+  ['Checkliste Monatsabschluss', '- Offene Rechnungen prüfen und nachfassen\n- Zahlungseingänge abgleichen\n- Bewertungen anfragen\n- Monatsbericht verschicken'], // i18n-ignore – multi-line text: its catalog key is the exact text
+  ['Datenschutz im Alltag', '## Regeln\n\n- Kein Versand personenbezogener Daten per Messenger.\n- Bildschirm sperren beim Verlassen des Platzes.\n- Auskunftsanfragen sofort an die Leitung weitergeben.'], // i18n-ignore – multi-line text: its catalog key is the exact text
 ];
 const CHAT: [channel: string, topic: string, messages: string[]][] = [
   ['allgemein', 'Alles fürs ganze Team', ['Guten Morgen zusammen! ☕', 'Heute Nachmittag ist Teamrunde um 15 Uhr.', 'Neue Bewertung eingegangen – 5 Sterne 🎉', 'Bitte denkt an die Zeiterfassung vor dem Wochenende.', 'Danke an alle für den starken Monat!']],
@@ -384,10 +396,11 @@ const CHAT: [channel: string, topic: string, messages: string[]][] = [
 
 /** A team wiki with pages, team chat channels with a conversation each. */
 export async function seedKnowledge(k: Kit) {
-  const space = await k.call('POST', '/api/wiki/spaces', { name: 'Team-Handbuch', icon: '📘', description: 'Abläufe, Checklisten und Wissen des Teams' });
+  const t = k.t;
+  const space = await k.call('POST', '/api/wiki/spaces', { name: t('Team-Handbuch'), icon: '📘', description: t('Abläufe, Checklisten und Wissen des Teams') });
   if (space?.id) {
-    const home = await k.call('POST', '/api/wiki/pages', { space_id: space.id, title: WIKI[0][0], body: WIKI[0][1], icon: '👋' });
-    for (const [title, body] of WIKI.slice(1)) await k.call('POST', '/api/wiki/pages', { space_id: space.id, parent_id: home?.id, title, body });
+    const home = await k.call('POST', '/api/wiki/pages', { space_id: space.id, title: t(WIKI[0][0]), body: t(WIKI[0][1]), icon: '👋' });
+    for (const [title, body] of WIKI.slice(1)) await k.call('POST', '/api/wiki/pages', { space_id: space.id, parent_id: home?.id, title: t(title), body: t(body) });
   }
   // The chat allows 20 messages per ten seconds per sender; the seed writes a conversation per business within a second.
   const services = k.app.services as Record<string, any>;
@@ -395,9 +408,9 @@ export async function seedKnowledge(k: Kit) {
   services.chatRate = { max: 100_000, windowMs: 1 };
   try {
     for (const [name, topic, messages] of CHAT) {
-      const ch = await k.call('POST', '/api/team-chat/channels', { name, topic, kind: 'public' });
+      const ch = await k.call('POST', '/api/team-chat/channels', { name: t(name), topic: t(topic), kind: 'public' });
       if (!ch?.id) continue;
-      for (const body of messages) await k.call('POST', `/api/team-chat/channels/${ch.id}/messages`, { body });
+      for (const body of messages) await k.call('POST', `/api/team-chat/channels/${ch.id}/messages`, { body: t(body) });
     }
   } finally {
     if (rate === undefined) delete services.chatRate;
@@ -431,10 +444,11 @@ export async function seedCommunity(k: Kit) {
     agency: [['Willkommen im Kunden-Club', 'Der Treffpunkt für alle Kundinnen und Kunden von Nordlicht Digital: Tipps, Neuigkeiten und Fragen.'], ['Neu: SEO-Check zum Mitmachen', 'Jeden Monat prüfen wir live eine Kunden-Website – meldet euch gern für den nächsten Termin.'], ['Beispiel: Newsletter mit 52 % Öffnungsrate', 'Was hinter einem einfachen Betreff steckt – und wie ihr ihn selbst testet.']],
     shop: [['Willkommen bei den Bohnenfreunden', 'Hier gibt es Brüh-Tipps, Röstkalender und Verkostungen für alle Stammkundinnen und Stammkunden.'], ['Rösttag am Donnerstag', 'Frisch geröstet: der neue Espresso aus Brasilien mit Noten von Schokolade und Haselnuss.'], ['Welche Mühle nutzt ihr?', 'Handmühle oder elektrisch? Wir sammeln eure Erfahrungen für den nächsten Newsletter.']],
   };
-  const group = await k.call('POST', '/api/community/groups', { name: k.plan.key === 'saas' ? 'Taktwerk-Community' : k.plan.key === 'agency' ? 'Kunden-Club' : 'Bohnenfreunde', description: 'Austausch, Fragen und Neuigkeiten.' });
+  const t = k.t;
+  const group = await k.call('POST', '/api/community/groups', { name: t(k.plan.key === 'saas' ? 'Taktwerk-Community' : k.plan.key === 'agency' ? 'Kunden-Club' : 'Bohnenfreunde'), description: t('Austausch, Fragen und Neuigkeiten.') });
   if (!group?.id) return;
   for (const [i, [title, body]] of (posts[k.plan.key] ?? []).entries()) {
-    const p = await k.call('POST', `/api/community/groups/${group.id}/posts`, { title, body, pinned: i === 0 });
-    if (p?.id && i > 0) await k.call('POST', `/api/community/posts/${p.id}/comments`, { body: pickOf(k, ['Danke fürs Teilen – das hilft uns direkt weiter!', 'Machen wir genauso, funktioniert gut.', 'Spannend, mehr davon bitte 👍']) });
+    const p = await k.call('POST', `/api/community/groups/${group.id}/posts`, { title: t(title), body: t(body), pinned: i === 0 });
+    if (p?.id && i > 0) await k.call('POST', `/api/community/posts/${p.id}/comments`, { body: t(pickOf(k, ['Danke fürs Teilen – das hilft uns direkt weiter!', 'Machen wir genauso, funktioniert gut.', 'Spannend, mehr davon bitte 👍'])) });
   }
 }

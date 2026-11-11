@@ -1,5 +1,6 @@
 import { MODEL_RE } from './ai-presets.js';
 import { MODES, type Mode } from './agent-safety.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * "KI-Agent mit KI erstellen" (pure), like HighLevel's Agent Studio "Build with AI": a description in plain words becomes the
@@ -32,14 +33,15 @@ export interface AgentDraft {
   schedule: { cadence: string; weekday: number; day: number; time: string; prompt: string; deliver: string } | null;
 }
 
-export const RULES = `Du entwirfst einen eigenen KI-Agenten („KI-Mitarbeiter“) für HyperLevel, ein CRM. Antworte ausschließlich mit EINEM JSON-Objekt:
-{"name": "≤ 60 Zeichen", "emoji": "ein Emoji", "description": "Rolle in einem Satz", "instructions": "Anweisungen in Du-Form: Aufgabe, Vorgehen, Ton, Grenzen", "model": "", "tools": ["werkzeug_name", …], "knowledge": {"sources": [${KNOWLEDGE.map((k) => `"${k}"`).join(', ')}], "text": "festes Wissen, optional"}, "mode": "read|ask|auto", "max_steps": 1–30, "starters": ["Startfrage", …], "web_fetch": false, "schedule": null oder {"cadence": "${CADENCE.join('|')}", "weekday": 0–6, "day": 1–28, "time": "HH:MM", "prompt": "Auftrag für den Lauf", "deliver": "${DELIVER.join('|')}"}, "summary": "ein Satz", "notes": ["was die Person noch tun muss"]}
-- tools: nur Namen aus dem WERKZEUG-KATALOG, nur was der Agent wirklich braucht (meist 4–15). Lesende Werkzeuge reichen für Berichte.
-- mode: "read" nur lesen, "ask" fragt vor jeder Änderung (Standard), "auto" nur, wenn der Auftrag es ausdrücklich verlangt. Werkzeuge, die versenden, löschen oder bezahlen, fragen ohnehin nach.
-- knowledge.sources: agent = Agent-Wissen, ai = Wissen des KI-Assistenten, kb = Hilfe-Artikel, docs = Dokumente, project = Projektprofil.
-- schedule nur, wenn die Beschreibung einen wiederkehrenden Lauf nennt (z. B. „jeden Montag um 8 Uhr“); weekday 0 = Montag.
-- model leer lassen (Standard der Verbindung), außer die Beschreibung nennt eine Modell-ID.
-- Keine erfundenen Fakten über das Unternehmen; Unbekanntes als [Platzhalter] in den Anweisungen.`;
+export const RULES = `You design a custom AI agent (an "AI team member") for HyperLevel, a CRM. Reply with exactly ONE JSON object:
+{"name": "≤ 60 characters", "emoji": "one emoji", "description": "role in one sentence", "instructions": "instructions addressed to the agent as “you”: task, approach, tone, limits", "model": "", "tools": ["tool_name", …], "knowledge": {"sources": [${KNOWLEDGE.map((k) => `"${k}"`).join(', ')}], "text": "fixed knowledge, optional"}, "mode": "read|ask|auto", "max_steps": 1–30, "starters": ["starter prompt", …], "web_fetch": false, "schedule": null or {"cadence": "${CADENCE.join('|')}", "weekday": 0–6, "day": 1–28, "time": "HH:MM", "prompt": "task for the run", "deliver": "${DELIVER.join('|')}"}, "summary": "one sentence", "notes": ["what the person still needs to do"]}
+- Write name, description, instructions, starters, summary and notes in the language of the description.
+- tools: only names from the TOOL CATALOGUE, only what the agent really needs (usually 4–15). Read tools are enough for reports.
+- mode: "read" read-only, "ask" asks before every change (default), "auto" only if the task explicitly requires it. Tools that send, delete or pay ask anyway.
+- knowledge.sources: agent = agent knowledge, ai = AI assistant knowledge, kb = help articles, docs = documents, project = project profile.
+- schedule only if the description mentions a recurring run (e.g. "every Monday at 8am"); weekday 0 = Monday.
+- leave model empty (the connection's default) unless the description names a model ID.
+- No invented facts about the business; put unknowns as [placeholders] in the instructions.`;
 
 /** The tool catalogue for the prompt, grouped, one line per tool: `name · title (klass)`. */
 export function catalogText(tools: CatalogTool[]): string {
@@ -53,26 +55,26 @@ const txt = (v: unknown, max: number) => (typeof v === 'string' ? v.trim() : '')
 export function checkAgent(raw: any, catalog: Map<string, CatalogTool>): { draft?: AgentDraft; summary: string; notes: string[]; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (!raw || typeof raw !== 'object') return { errors: ['Die Antwort war kein JSON-Objekt.'], warnings, summary: '', notes: [] };
+  if (!raw || typeof raw !== 'object') return { errors: ['The answer was not a JSON object.'], warnings, summary: '', notes: [] };
   const name = txt(raw.name, 200);
-  if (!name) errors.push('„name“ fehlt');
-  else if (name.length > 60) errors.push(`„name“ ist ${name.length} Zeichen lang, höchstens 60`);
+  if (!name) errors.push('“name” is missing');
+  else if (name.length > 60) errors.push(`“name” is ${name.length} characters long, at most 60`);
   const instructions = txt(raw.instructions, 30_000);
-  if (instructions.length < 40) errors.push('„instructions“ fehlt oder ist zu kurz – beschreibe Aufgabe, Vorgehen und Grenzen');
-  if (instructions.length > 20_000) errors.push('„instructions“ ist zu lang (höchstens 20 000 Zeichen)');
+  if (instructions.length < 40) errors.push('“instructions” is missing or too short – describe the task, approach and limits');
+  if (instructions.length > 20_000) errors.push('“instructions” is too long (at most 20,000 characters)');
   const toolList = Array.isArray(raw.tools) ? raw.tools.map(String) : null;
-  if (!toolList) errors.push('„tools“ muss eine Liste von Werkzeug-Namen sein');
+  if (!toolList) errors.push('“tools” must be a list of tool names');
   const unknown = (toolList ?? []).filter((t: string) => !catalog.has(t));
-  if (unknown.length) errors.push(`Unbekannte Werkzeuge: ${unknown.slice(0, 10).join(', ')} – nur Namen aus dem WERKZEUG-KATALOG`);
+  if (unknown.length) errors.push(`Unknown tools: ${unknown.slice(0, 10).join(', ')} – only names from the TOOL CATALOGUE`);
   const tools = [...new Set((toolList ?? []).filter((t: string) => catalog.has(t)))] as string[];
-  if (toolList && !tools.length && !unknown.length) errors.push('Mindestens ein Werkzeug wählen');
-  if (tools.length > 60) errors.push('Höchstens 60 Werkzeuge – nur was der Agent braucht');
-  const mode = (MODES as readonly string[]).includes(raw.mode) ? (raw.mode as Mode) : (errors.push('„mode“ muss read, ask oder auto sein'), 'ask' as Mode);
-  if (mode === 'read' && tools.some((t) => catalog.get(t)!.klass !== 'read' && catalog.get(t)!.klass !== 'internal')) warnings.push('Modus „nur lesen“: schreibende Werkzeuge werden blockiert');
+  if (toolList && !tools.length && !unknown.length) errors.push('Choose at least one tool');
+  if (tools.length > 60) errors.push('At most 60 tools – only what the agent needs');
+  const mode = (MODES as readonly string[]).includes(raw.mode) ? (raw.mode as Mode) : (errors.push('“mode” must be read, ask or auto'), 'ask' as Mode);
+  if (mode === 'read' && tools.some((t) => catalog.get(t)!.klass !== 'read' && catalog.get(t)!.klass !== 'internal')) warnings.push(tApp()('Modus „nur lesen“: schreibende Werkzeuge werden blockiert'));
   const steps = Number(raw.max_steps ?? 12);
-  if (!Number.isInteger(steps) || steps < 1 || steps > 30) errors.push('„max_steps“ muss eine ganze Zahl von 1 bis 30 sein');
+  if (!Number.isInteger(steps) || steps < 1 || steps > 30) errors.push('“max_steps” must be a whole number from 1 to 30');
   const model = txt(raw.model, 160);
-  if (model && !MODEL_RE.test(model)) warnings.push(`Modell „${model.slice(0, 40)}“ ist keine gültige Modell-ID – Standard der Verbindung`);
+  if (model && !MODEL_RE.test(model)) warnings.push(tApp()('Modell „{model}“ ist keine gültige Modell-ID – Standard der Verbindung', { model: model.slice(0, 40) }));
   const k = raw.knowledge && typeof raw.knowledge === 'object' ? raw.knowledge : {};
   const sources = (Array.isArray(k.sources) ? k.sources.map(String) : []) as string[];
   const badSources = sources.filter((s) => !(KNOWLEDGE as readonly string[]).includes(s));
@@ -80,10 +82,10 @@ export function checkAgent(raw: any, catalog: Map<string, CatalogTool>): { draft
   let schedule: AgentDraft['schedule'] = null;
   if (raw.schedule) {
     const s = raw.schedule;
-    if (!(CADENCE as readonly string[]).includes(s.cadence)) errors.push(`schedule.cadence muss ${CADENCE.join(', ')} sein`);
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(s.time ?? ''))) errors.push('schedule.time als HH:MM');
-    if (txt(s.prompt, 4000).length < 8) errors.push('schedule.prompt fehlt – was soll der Agent bei jedem Lauf tun?');
-    if (s.deliver !== undefined && !(DELIVER as readonly string[]).includes(s.deliver)) errors.push(`schedule.deliver muss ${DELIVER.join(', ')} sein`);
+    if (!(CADENCE as readonly string[]).includes(s.cadence)) errors.push(`schedule.cadence must be ${CADENCE.join(', ')}`);
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(s.time ?? ''))) errors.push('schedule.time as HH:MM');
+    if (txt(s.prompt, 4000).length < 8) errors.push('schedule.prompt is missing – what should the agent do on each run?');
+    if (s.deliver !== undefined && !(DELIVER as readonly string[]).includes(s.deliver)) errors.push(`schedule.deliver must be ${DELIVER.join(', ')}`);
     schedule = { cadence: String(s.cadence), weekday: Math.min(6, Math.max(0, Number(s.weekday) || 0)), day: Math.min(28, Math.max(1, Number(s.day) || 1)), time: String(s.time), prompt: txt(s.prompt, 4000), deliver: (DELIVER as readonly string[]).includes(s.deliver) ? s.deliver : 'notification' };
   }
   const draft: AgentDraft = {

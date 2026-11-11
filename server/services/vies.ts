@@ -1,5 +1,6 @@
 import type { App } from '../core/app.js';
 import { checkVatId } from './invoice-model.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Looks a VAT ID up at the European Commission's VIES service (qualified confirmation of an EU VAT ID). Only used when the
@@ -29,11 +30,11 @@ export async function viesCheck(app: App, vatId: string): Promise<ViesResult> {
     const r = await f(`${HOST}/${cc}/vat/${encodeURIComponent(num)}`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
     const j: any = await r.json().catch(() => ({}));
     const code = String(j?.userError ?? j?.errorWrappers?.[0]?.error ?? '');
-    if (!r.ok && !('isValid' in j)) return { checked: false, error: UNAVAILABLE.has(code) ? 'VIES ist gerade nicht erreichbar' : `VIES antwortete mit Status ${r.status}` };
-    if (UNAVAILABLE.has(code)) return { checked: false, error: 'VIES ist gerade nicht erreichbar' };
+    if (!r.ok && !('isValid' in j)) return { checked: false, error: UNAVAILABLE.has(code) ? tApp()('VIES ist gerade nicht erreichbar') : tApp()('VIES antwortete mit Status {status}', { status: r.status }) };
+    if (UNAVAILABLE.has(code)) return { checked: false, error: tApp()('VIES ist gerade nicht erreichbar') };
     const clean = (v: unknown) => (typeof v === 'string' && v !== '---' ? v.replace(/\s+/g, ' ').trim().slice(0, 300) : undefined);
     return { checked: true, valid: j?.isValid === true, name: clean(j?.name), address: clean(j?.address) };
   } catch (e) {
-    return { checked: false, error: `VIES nicht erreichbar: ${(e as Error).message}` };
+    return { checked: false, error: tApp()('VIES nicht erreichbar: {error}', { error: (e as Error).message }) };
   }
 }

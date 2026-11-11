@@ -7,6 +7,7 @@ import { activeTypes, CATALOG, TYPES, type CogneeSettings, type CogneeType, type
 import { addCounts, NO_REDACTION, redact, type RedactCounts } from './redact.js';
 import { documentText, kindOf, kindsOf, type Row } from './sources.js';
 import { cancelDeletion, getItem, getSettings, getState, queueDeletion, saveState, type DeletionReason, type StateRow } from './store.js';
+import { tLoc } from '../../i18n/index.js';
 
 /**
  * The sync engine. One cycle per sub-account does a bounded amount of work and keeps its place in the database, so a restart,
@@ -54,7 +55,7 @@ export interface CycleReport {
   more: boolean;
 }
 
-const audit = (app: App, locationId: string, action: string, summary: string) => app.services.audit?.({ action, locationId, actor: 'Wissensgedächtnis', summary: summary.slice(0, 400) });
+const audit = (app: App, locationId: string, action: string, summary: string) => app.services.audit?.({ action, locationId, actor: tLoc(app, locationId)('Wissensgedächtnis'), summary: summary.slice(0, 400) });
 
 const WHY: Record<DeletionReason, string> = {
   erasure: 'DSGVO-Löschung',
@@ -295,7 +296,9 @@ export async function processDeletions(app: App, locationId: string): Promise<nu
   for (const [key, n] of done) {
     const [reason, what, type] = key.split('|') as [DeletionReason, string, CogneeType];
     total += n;
-    audit(app, locationId, 'cognee.delete', what === 'dataset' ? `Alle Daten „${CATALOG[type].label}“ in Cognee gelöscht (${WHY[reason]})` : `${n} ${n === 1 ? 'Eintrag' : 'Einträge'} „${CATALOG[type].label}“ in Cognee gelöscht (${WHY[reason]})`);
+    const t = tLoc(app, locationId);
+    const vars = { type: t(CATALOG[type].label), reason: t(WHY[reason]) };
+    audit(app, locationId, 'cognee.delete', what === 'dataset' ? t('Alle Daten „{type}“ in Cognee gelöscht ({reason})', vars) : t.plural(n, { one: '{n} Eintrag „{type}“ in Cognee gelöscht ({reason})', other: '{n} Einträge „{type}“ in Cognee gelöscht ({reason})' }, vars));
   }
   // A deleted sub-account's own login goes once its data is gone.
   if (!app.db.get('SELECT 1 FROM locations WHERE id = ?', locationId) && !app.db.get('SELECT 1 FROM cognee_deletions WHERE location_id = ?', locationId)) app.db.run('DELETE FROM cognee_accounts WHERE location_id = ?', locationId);
@@ -324,9 +327,10 @@ export async function syncCycle(app: App, locationId: string, opts: { full?: boo
       const rep = await syncType(app, acct, settings, type, !!opts.full, bg, deadline);
       out.types.push(rep);
       out.more ||= rep.more;
-      const parts = [rep.added && `${rep.added} neu`, rep.updated && `${rep.updated} geändert`, rep.removed && `${rep.removed} entfernt`, rep.skipped && `${rep.skipped} abgelehnt`].filter(Boolean);
+      const t = tLoc(app, locationId);
+      const parts = [rep.added && t('{n} neu', { n: rep.added }), rep.updated && t('{n} geändert', { n: rep.updated }), rep.removed && t('{n} entfernt', { n: rep.removed }), rep.skipped && t('{n} abgelehnt', { n: rep.skipped })].filter(Boolean);
       const red = rep.redacted.email + rep.redacted.phone + rep.redacted.iban;
-      if (parts.length) audit(app, locationId, 'cognee.push', `${CATALOG[type].label}: ${parts.join(', ')}${red ? ` – ${red} Angaben (E-Mail/Telefon/IBAN) unkenntlich gemacht` : ''}`);
+      if (parts.length) audit(app, locationId, 'cognee.push', `${t(CATALOG[type].label)}: ${parts.join(', ')}${red ? t(' – {n} Angaben (E-Mail/Telefon/IBAN) unkenntlich gemacht', { n: red }) : ''}`);
     }
   }
   out.deleted = await processDeletions(app, locationId);

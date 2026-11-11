@@ -1,6 +1,7 @@
 import type { App } from '../core/app.js';
 import { addDaysYmd, ymdInTz, zonedToUtc } from '../core/time.js';
 import { defaultStageProbability } from './report-sources.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Sales quotas: a target per person or team for a month or a quarter, measured in won deal value or won deals, with how far along the
@@ -41,15 +42,15 @@ export function shiftPeriod(kind: PeriodKind, start: string, by: number): string
   return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}-01`;
 }
 
-export function periodRange(kind: PeriodKind, start: string, tz: string): PeriodRange {
+export function periodRange(kind: PeriodKind, start: string, tz: string, t: STFn = tApp()): PeriodRange {
   const end = shiftPeriod(kind, start, 1);
   const [y, m] = start.split('-').map(Number);
-  const label = kind === 'quarter' ? `Q${Math.floor((m - 1) / 3) + 1} ${y}` : `${MONTHS[m - 1]} ${y}`;
+  const label = kind === 'quarter' ? `Q${Math.floor((m - 1) / 3) + 1} ${y}` : `${t(MONTHS[m - 1])} ${y}`;
   return { kind, start, end, label, startUtc: zonedToUtc(start, '00:00', tz).toISOString(), endUtc: zonedToUtc(end, '00:00', tz).toISOString() };
 }
 
 /** The period that contains `at`, in the sub-account's calendar. */
-export const currentPeriod = (kind: PeriodKind, at: Date, tz: string): PeriodRange => periodRange(kind, periodStart(kind, ymdInTz(at, tz)), tz);
+export const currentPeriod = (kind: PeriodKind, at: Date, tz: string, t: STFn = tApp()): PeriodRange => periodRange(kind, periodStart(kind, ymdInTz(at, tz)), tz, t);
 
 /** How much of the period has passed (0–100) and how many days are left. */
 export function progress(range: PeriodRange, at: Date): { elapsed_pct: number; days_left: number; days_total: number } {
@@ -60,7 +61,7 @@ export function progress(range: PeriodRange, at: Date): { elapsed_pct: number; d
 }
 
 export type Pace = 'reached' | 'ahead' | 'on_track' | 'behind' | 'closed' | 'none';
-export const PACE_LABEL: Record<Pace, string> = { reached: 'Quote erreicht', ahead: 'Vorn', on_track: 'Im Plan', behind: 'Im Rückstand', closed: 'Nicht erreicht', none: 'Keine Quote' };
+export const PACE_LABEL: Record<Pace, string> = { reached: 'Quote erreicht', ahead: 'Vorn', on_track: 'Im Plan', behind: 'Im Rückstand', closed: 'Quote nicht erreicht', none: 'Keine Quote' };
 
 /** Where a person stands: a pace of 100 % means exactly the share of the target that the elapsed time asks for. */
 export function paceOf(attainmentPct: number | null, elapsedPct: number): Pace {
@@ -161,10 +162,11 @@ export interface Standing {
 export function standings(
   app: App,
   loc: string,
-  o: { kind: PeriodKind; start: string; metric: Metric; currency: string; tz: string; at?: Date; people: { id: string; name: string }[]; teams: { id: string; name: string; members: string[] }[] },
+  o: { kind: PeriodKind; start: string; metric: Metric; currency: string; tz: string; at?: Date; people: { id: string; name: string }[]; teams: { id: string; name: string; members: string[] }[]; t?: STFn },
 ): { range: PeriodRange; elapsed_pct: number; days_left: number; rows: Standing[] } {
   const at = o.at ?? new Date();
-  const range = periodRange(o.kind, o.start, o.tz);
+  const t = o.t ?? tApp();
+  const range = periodRange(o.kind, o.start, o.tz, t);
   const prog = progress(range, at);
   const won = wonByOwner(app, loc, range, o.currency);
   const pipe = pipelineByOwner(app, loc, range, o.currency);
@@ -201,7 +203,7 @@ export function standings(
       achieved,
       attainment_pct: attainment,
       pace,
-      pace_label: PACE_LABEL[pace],
+      pace_label: t(PACE_LABEL[pace]),
       gap,
       open_value: p.value,
       weighted_pipeline: Math.round(p.weighted),
@@ -215,7 +217,7 @@ export function standings(
     if (has) rows.push(make('user', person.id, person.name, [person.id]));
   }
   // Somebody who left but won deals: still part of the picture (and of the team sums).
-  for (const id of won.keys()) if (id && !known.has(id)) rows.push(make('user', id, 'Ehemalige Person', [id]));
+  for (const id of won.keys()) if (id && !known.has(id)) rows.push(make('user', id, t('Ehemalige Person'), [id]));
   for (const team of o.teams) if (quotaOf('team', team.id) || team.members.some((m) => won.has(m))) rows.push(make('team', team.id, team.name, team.members, team.members));
   return { range, elapsed_pct: prog.elapsed_pct, days_left: prog.days_left, rows };
 }

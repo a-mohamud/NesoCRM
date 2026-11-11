@@ -4,6 +4,8 @@
  * from the module's probes, which read the existing status endpoints.
  */
 
+import { tApp, type STFn } from '../i18n/index.js';
+
 export type CatalogStatus = 'ok' | 'partial' | 'missing' | 'info' | 'unavailable';
 
 export interface CatalogEntry {
@@ -120,13 +122,13 @@ export interface ProbeResult {
 }
 
 /** Agency view of a per-sub-account integration: "3 von 5 Sub-Accounts". */
-export function aggregate(results: ProbeResult[]): ProbeResult {
+export function aggregate(results: ProbeResult[], t: STFn = tApp()): ProbeResult {
   const real = results.filter((r) => r.status !== 'unavailable');
-  if (!real.length) return results[0] ?? { status: 'unavailable', detail: 'Modul nicht installiert' };
+  if (!real.length) return results[0] ?? { status: 'unavailable', detail: t('Modul nicht installiert') };
   const ok = real.filter((r) => r.status === 'ok').length;
   const partial = real.filter((r) => r.status === 'partial').length;
   const info = real.every((r) => r.status === 'info');
   if (info) return real[0];
-  const detail = `${ok} von ${real.length} Sub-Account${real.length === 1 ? '' : 's'} eingerichtet${partial ? `, ${partial} unvollständig` : ''}`;
+  const detail = `${t.plural(real.length, { one: '{ok} von {n} Sub-Account eingerichtet', other: '{ok} von {n} Sub-Accounts eingerichtet' }, { ok })}${partial ? `, ${t('{n} unvollständig', { n: partial })}` : ''}`;
   return { status: ok ? 'ok' : partial ? 'partial' : 'missing', detail };
 }

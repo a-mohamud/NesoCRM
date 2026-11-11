@@ -21,6 +21,7 @@ import {
   type SyncInput,
   type SyncOutput,
 } from './mailbox-kit.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Gmail API v1 (users.messages, users.history, users.drafts, users.labels, users.watch) behind the
@@ -108,7 +109,7 @@ export function gmailApi(fetcher: typeof fetch, token: TokenFn): MailApi {
     return s ? `?${s}` : '';
   };
   const getMessage = async (id: string, format: 'full' | 'minimal' | 'metadata' = 'full'): Promise<RemoteMessage | null> => {
-    const r = await req(`/messages/${encodeURIComponent(id)}${q({ format, ...(format === 'metadata' ? { metadataHeaders: ['From', 'To', 'Cc', 'Subject', 'Date', 'Message-ID'] } : {}) })}`, { allow: [404] });
+    const r = await req(`/messages/${encodeURIComponent(id)}${q({ format, ...(format === 'metadata' ? { metadataHeaders: ['From', 'To', 'Cc', 'Subject', 'Date', 'Message-ID'] } : {}) })}`, { allow: [404] }); // i18n-ignore
     return r.status === 404 ? null : gmailToRemote(r.json);
   };
   const sentRef = (j: Json, internetId: string, draftId = ''): SentRef => ({ id: String(j.message?.id ?? j.id), draftId, threadId: String(j.message?.threadId ?? j.threadId ?? ''), internetId });
@@ -131,10 +132,10 @@ export function gmailApi(fetcher: typeof fetch, token: TokenFn): MailApi {
       const labels: Json[] = r.json.labels ?? [];
       // Spam and Trash are never imported, so they are not offered.
       const folders: MailFolder[] = [
-        { id: 'INBOX', name: 'Posteingang', kind: 'inbox', system: true },
-        { id: 'SENT', name: 'Gesendet', kind: 'sent', system: true },
-        { id: 'DRAFT', name: 'Entwürfe', kind: 'drafts', system: true },
-        { id: '*', name: 'Alle E-Mails (außer Spam und Papierkorb)', kind: 'other', system: true },
+        { id: 'INBOX', name: tApp()('Posteingang'), kind: 'inbox', system: true },
+        { id: 'SENT', name: tApp()('Gesendet'), kind: 'sent', system: true },
+        { id: 'DRAFT', name: tApp()('Entwürfe'), kind: 'drafts', system: true },
+        { id: '*', name: tApp()('Alle E-Mails (außer Spam und Papierkorb)'), kind: 'other', system: true },
       ];
       for (const l of labels) if (l.type === 'user') folders.push({ id: String(l.id), name: String(l.name), kind: 'other', system: false });
       return { folders, state: {} };

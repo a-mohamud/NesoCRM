@@ -5,6 +5,7 @@ import { isValidTz } from '../core/time.js';
 import { slugify } from '../core/util.js';
 import { DAY_KEYS, defaultHours, type BusinessHours, type SlaPolicy } from './helpdesk-sla.js';
 import { cleanHealthConfig, defaultHealthConfig, type HealthConfig } from './health-score.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Pure building blocks of the helpdesk (Service): priorities, sources, ticket pipelines, settings,
@@ -37,12 +38,13 @@ export interface Stage {
   pause_sla?: boolean;
 }
 
-export const defaultStages = (): Stage[] => [
-  { id: 'neu', name: 'Neu', kind: 'new' },
-  { id: 'in_bearbeitung', name: 'In Bearbeitung', kind: 'open' },
-  { id: 'wartet', name: 'Wartet auf Kunde', kind: 'waiting', pause_sla: true },
-  { id: 'geloest', name: 'Gelöst', kind: 'resolved' },
-  { id: 'geschlossen', name: 'Geschlossen', kind: 'closed' },
+/** The stages of a new ticket pipeline; names in the sub-account's language (pass tLoc(app, locationId)), ids stay fixed. */
+export const defaultStages = (t: STFn = tApp()): Stage[] => [
+  { id: 'neu', name: t('Neu'), kind: 'new' },
+  { id: 'in_bearbeitung', name: t('In Bearbeitung'), kind: 'open' },
+  { id: 'wartet', name: t('Wartet auf Kunde'), kind: 'waiting', pause_sla: true },
+  { id: 'geloest', name: t('Gelöst'), kind: 'resolved' },
+  { id: 'geschlossen', name: t('Geschlossen'), kind: 'closed' },
 ];
 
 export function cleanStages(input: unknown): Stage[] {
@@ -90,9 +92,10 @@ export interface HelpdeskSettings {
 
 const policy = (first: number, resolution: number): SlaPolicy => ({ first_response_min: first, resolution_min: resolution, business_hours: true });
 
-export function defaultHelpdeskSettings(): HelpdeskSettings {
+/** Defaults in the sub-account's language (pass tLoc(app, locationId)); stored settings override them. */
+export function defaultHelpdeskSettings(t: STFn = tApp()): HelpdeskSettings {
   return {
-    categories: ['Allgemein', 'Technik', 'Rechnung', 'Reklamation'],
+    categories: [t('Allgemein'), t('Technik'), t('Rechnung'), t('Reklamation')],
     business_hours: defaultHours(),
     holidays: [],
     sla: {
@@ -108,25 +111,25 @@ export function defaultHelpdeskSettings(): HelpdeskSettings {
     email_to_ticket: { mode: 'off', addresses: [], keywords: [], domains: [], include_imported: false, priority: 'normal', category: '' },
     auto_reply: {
       enabled: false,
-      subject: 'Wir haben deine Anfrage erhalten [Ticket #{{ticket.number}}]',
-      body: 'Hallo {{contact.first_name|}},\n\ndanke für deine Nachricht. Wir haben dein Anliegen als Ticket #{{ticket.number}} aufgenommen und melden uns so schnell wie möglich.\n\nViele Grüße\n{{location.name}}',
+      subject: t('Wir haben deine Anfrage erhalten [Ticket #{{ticket.number}}]'),
+      body: t('Hallo {{contact.first_name|}},\n\ndanke für deine Nachricht. Wir haben dein Anliegen als Ticket #{{ticket.number}} aufgenommen und melden uns so schnell wie möglich.\n\nViele Grüße\n{{location.name}}'),
     },
     csat: {
       enabled: true,
       delay_min: 0,
       channel: 'auto',
-      subject: 'Wie zufrieden warst du? [Ticket #{{ticket.number}}]',
-      body: 'Hallo {{contact.first_name|}},\n\nwir haben dein Anliegen „{{ticket.subject}}“ gelöst. Wie zufrieden warst du mit unserer Hilfe? Ein Klick genügt:\n\n{{csat_link}}\n\nDanke!\n{{location.name}}',
+      subject: t('Wie zufrieden warst du? [Ticket #{{ticket.number}}]'),
+      body: t('Hallo {{contact.first_name|}},\n\nwir haben dein Anliegen „{{ticket.subject}}“ gelöst. Wie zufrieden warst du mit unserer Hilfe? Ein Klick genügt:\n\n{{csat_link}}\n\nDanke!\n{{location.name}}'),
     },
     portal: { enabled: true, any_contact: false },
-    help_center: { enabled: false, slug: '', title: '', intro: 'Wie können wir helfen?', color: '', domain: '', seo_title: '', seo_description: '', contact_text: '' },
+    help_center: { enabled: false, slug: '', title: '', intro: t('Wie können wir helfen?'), color: '', domain: '', seo_title: '', seo_description: '', contact_text: '' },
     health: defaultHealthConfig(),
   };
 }
 
 /** Stored settings over the defaults (nested objects merged, unknown keys dropped). */
-export function withHelpdeskDefaults(stored: any): HelpdeskSettings {
-  const d = defaultHelpdeskSettings();
+export function withHelpdeskDefaults(stored: any, t?: STFn): HelpdeskSettings {
+  const d = defaultHelpdeskSettings(t);
   const s = stored && typeof stored === 'object' ? stored : {};
   const merge = <T extends object>(base: T, v: any): T => ({ ...base, ...(v && typeof v === 'object' && !Array.isArray(v) ? pick(v, Object.keys(base)) : {}) });
   return {
@@ -155,12 +158,12 @@ const bool = (v: unknown) => v === true || v === 'true' || v === 1 || v === '1';
 function list(v: unknown, label: string, max = 50, len = 120): string[] {
   if (v === undefined) return [];
   const arr = Array.isArray(v) ? v : String(v).split(/[,\n]/);
-  if (arr.length > max) throw bad(`${label}: höchstens ${max}`);
+  if (arr.length > max) throw bad(tApp()('{label}: höchstens {max}', { label: tApp()(label), max }));
   return [...new Set(arr.map((x) => String(x ?? '').trim()).filter(Boolean).map((x) => x.slice(0, len)))];
 }
 function minutes(v: unknown, label: string): number {
   const n = Math.round(num(v, NaN));
-  if (!Number.isFinite(n) || n < 0 || n > 525_600) throw bad(`${label}: 0 bis 525600 Minuten`);
+  if (!Number.isFinite(n) || n < 0 || n > 525_600) throw bad(tApp()('{label}: 0 bis 525600 Minuten', { label: tApp()(label) }));
   return n;
 }
 
@@ -311,7 +314,7 @@ export function parseTicketTag(subject: unknown): number | null {
 /** Subject for an outgoing reply: "Re: <subject> [Ticket #n]" (no double prefixes or tags). */
 export function replySubject(subject: string, n: number): string {
   const base = String(subject ?? '').replace(/\[(?:Ticket|Anfrage)\s*#\d+\]/gi, '').replace(/\s+/g, ' ').trim();
-  const re = /^(re|aw|antw):/i.test(base) ? base : `Re: ${base || 'Deine Anfrage'}`;
+  const re = /^(re|aw|antw):/i.test(base) ? base : `Re: ${base || tApp()('Deine Anfrage')}`;
   return `${re} ${ticketTag(n)}`;
 }
 
@@ -324,6 +327,7 @@ export function nextRoundRobin(members: string[], last: string | null | undefine
 
 // --- knowledge-base search -------------------------------------------------------------------
 
+// i18n-ignore – search stop words, not text
 const STOP = new Set(['der', 'die', 'das', 'und', 'oder', 'ein', 'eine', 'einen', 'ist', 'wie', 'was', 'ich', 'mit', 'für', 'von', 'zu', 'im', 'in', 'an', 'auf', 'den', 'dem', 'des', 'bei', 'kann', 'man', 'mein', 'meine', 'nicht', 'the', 'and', 'how', 'to', 'is', 'es', 'wo', 'wann']);
 export function searchTerms(q: string): string[] {
   return [

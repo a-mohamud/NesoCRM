@@ -12,6 +12,7 @@ import { callRoute } from '../services/route-call.js';
 import { DEVICES, beaconScript, beatToken, buildSteps, deviceOf, rangeOf, readBeat, sourceWord, totalsOf, visitorKey, type ConvRow, type StepRow } from '../services/site-analytics.js';
 import { pageUrl } from '../services/site-url.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Funnel step analytics: for every page of a funnel the visitors, views, how many went on to a later step (and so how many dropped
@@ -286,9 +287,11 @@ export const siteAnalyticsModule: Module = {
       const f = funnelOr404(ctx);
       const { from, to } = rangeFrom(ctx, f.location_id);
       const { steps } = report(f, from, to);
+      const t = tCtx(ctx);
+      const dec = (n: number, d: number) => (t.locale === 'de' ? n.toFixed(d).replace('.', ',') : n.toFixed(d));
       const csv = toCsv([
-        ['Schritt', 'Seite', 'Aufrufe', 'Besucher', 'Weiter zum nächsten Schritt', 'Absprung', 'Formulare', 'Termine', 'Käufe', 'Conversion', 'Umsatz (EUR)', 'Ø Sekunden', 'Ø Scroll %'],
-        ...steps.map((s, i) => [i + 1, s.name, s.views, s.visitors, s.continued, `${Math.round(s.drop_off * 100)} %`, s.conversions.form, s.conversions.booking, s.conversions.purchase, `${(s.conv_rate * 100).toFixed(1).replace('.', ',')} %`, (s.revenue_cents / 100).toFixed(2).replace('.', ','), s.avg_seconds, s.avg_scroll]),
+        [t('Schritt'), t('Seite'), t('Aufrufe'), t('Besucher'), t('Weiter zum nächsten Schritt'), t('Absprung'), t('Formulare'), t('Termine'), t('Käufe'), t('Conversion'), t('Umsatz (EUR)'), t('Ø Sekunden'), t('Ø Scroll %')],
+        ...steps.map((s, i) => [i + 1, s.name, s.views, s.visitors, s.continued, `${Math.round(s.drop_off * 100)} %`, s.conversions.form, s.conversions.booking, s.conversions.purchase, `${dec(s.conv_rate * 100, 1)} %`, dec(s.revenue_cents / 100, 2), s.avg_seconds, s.avg_scroll]),
       ]);
       const r = text(`﻿${csv}`, 'text/csv; charset=utf-8');
       r.headers['content-disposition'] = `attachment; filename="funnel-${f.slug}-${from}-${to}.csv"`;
@@ -332,8 +335,8 @@ export const siteAnalyticsModule: Module = {
     });
 
     // --- board widget -----------------------------------------------------------------------------------------------------------
-    const euro = (c: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(c / 100);
-    const rate = (v: number) => `${(v * 100).toFixed(1).replace('.', ',')} %`;
+    const euro = (c: number) => new Intl.NumberFormat(tApp().locale === 'de' ? 'de-DE' : 'en-GB', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(c / 100);
+    const rate = (v: number) => (tApp().locale === 'de' ? `${(v * 100).toFixed(1).replace('.', ',')} %` : `${(v * 100).toFixed(1)}%`);
     try {
       boardWidgets(app).register({
         type: 'funnel_overview',
@@ -350,18 +353,19 @@ export const siteAnalyticsModule: Module = {
         data: (w, config): View => {
           const days = Number(config.range) || 30;
           const rows = overview(w.locationId, days).filter((r) => r.views > 0 || r.conversions > 0);
+          const t = tApp();
           return {
             kind: 'table',
-            title: 'Funnel-Auswertung',
+            title: t('Funnel-Auswertung'),
             columns: [
-              { key: 'name', label: 'Funnel' },
-              { key: 'visitors', label: 'Besucher', align: 'right' },
-              { key: 'reach', label: 'Bis zum Ende', align: 'right' },
-              { key: 'conv', label: 'Conversion', align: 'right' },
-              { key: 'revenue', label: 'Umsatz', align: 'right' },
+              { key: 'name', label: t('Funnel') },
+              { key: 'visitors', label: t('Besucher'), align: 'right' },
+              { key: 'reach', label: t('Bis zum Ende'), align: 'right' },
+              { key: 'conv', label: t('Conversion'), align: 'right' },
+              { key: 'revenue', label: t('Umsatz'), align: 'right' },
             ],
             rows: rows.map((r) => ({ name: r.name, visitors: r.visitors, reach: r.pages > 1 ? rate(r.reach_last) : '–', conv: rate(r.conv_rate), revenue: euro(r.revenue_cents) })),
-            empty: 'Noch keine Besucher gezählt – sobald deine Seiten aufgerufen werden, erscheinen sie hier.',
+            empty: t('Noch keine Besucher gezählt – sobald deine Seiten aufgerufen werden, erscheinen sie hier.'),
             url: 'funnels',
           };
         },

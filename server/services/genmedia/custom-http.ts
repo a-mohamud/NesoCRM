@@ -1,5 +1,6 @@
 import { authFor, baseOf, ensureOk, pathGet, urlsIn, withQuery } from './http.js';
 import { sniff } from './media.js';
+import { tApp } from '../../i18n/index.js';
 import { ProviderError, type Adapter, type AdapterCtx, type HttpTemplate, type Output, type Step } from './types.js';
 
 /**
@@ -60,7 +61,7 @@ export function renderJson(tpl: string, vars: Record<string, any>): any {
       const end = tpl.indexOf('}}', i + 2);
       if (end < 0) throw new ProviderError('Vorlage: „}}“ fehlt');
       const path = tpl.slice(i + 2, end).trim();
-      if (!/^[\w.[\]*]+$/.test(path)) throw new ProviderError(`Vorlage: Platzhalter „${path}“ ungültig`);
+      if (!/^[\w.[\]*]+$/.test(path)) throw new ProviderError(tApp()('Vorlage: Platzhalter „{path}“ ungültig', { path }));
       if (path === 'api_key') throw new ProviderError('{{api_key}} geht nur in Adresse und Kopfzeilen');
       const v = lookup(vars, path);
       const wholeString = inStr && strStart === out.length - 1 && tpl[end + 2] === '"';
@@ -99,7 +100,7 @@ const ok = (v: any, list: string[]) => list.some((x) => String(x).toLowerCase() 
 function extract(ctx: AdapterCtx, tpl: HttpTemplate, data: any, path?: string): Step {
   if (ctx.capability === 'stt') {
     const text = pathGet(data, tpl.text_path || 'text')[0];
-    return typeof text === 'string' ? { status: 'done', outputs: [], text } : { status: 'failed', error: `Kein Text unter „${tpl.text_path || 'text'}“ in der Antwort` };
+    return typeof text === 'string' ? { status: 'done', outputs: [], text } : { status: 'failed', error: tApp()('Kein Text unter „{path}“ in der Antwort', { path: tpl.text_path || 'text' }) };
   }
   const p = path || tpl.result_path || '';
   if (!p) return { status: 'failed', error: 'In der Vorlage fehlt der Ergebnis-Pfad' };
@@ -110,7 +111,7 @@ function extract(ctx: AdapterCtx, tpl: HttpTemplate, data: any, path?: string): 
       .filter((v) => typeof v === 'string' && v.length > 16)
       .map((v: string) => ({ data: Buffer.from(v.replace(/^data:[\w/+.-]+;base64,/, ''), 'base64'), mime: tpl.result_mime }));
   } else outputs = urlsIn(found).map((url) => ({ url }));
-  return outputs.length ? { status: 'done', outputs } : { status: 'failed', error: `Keine Datei unter „${p}“ in der Antwort` };
+  return outputs.length ? { status: 'done', outputs } : { status: 'failed', error: tApp()('Keine Datei unter „{path}“ in der Antwort', { path: p }) };
 }
 
 function target(ctx: AdapterCtx, tplUrl: string, vars: Record<string, any>): string {
@@ -194,11 +195,12 @@ export function cleanTemplate(raw: any): HttpTemplate {
   const method = ['GET', 'POST', 'PUT'].includes(String(t.method).toUpperCase()) ? (String(t.method).toUpperCase() as HttpTemplate['method']) : 'POST';
   const headers: Record<string, string> = {};
   for (const [k, v] of Object.entries(t.headers && typeof t.headers === 'object' ? t.headers : {}).slice(0, 20)) {
-    if (!/^[A-Za-z0-9-]{1,60}$/.test(k)) throw new ProviderError(`Kopfzeile „${k}“ ungültig`);
-    if (/^(host|content-length|cookie)$/i.test(k)) throw new ProviderError(`Kopfzeile „${k}“ ist nicht erlaubt`);
+    if (!/^[A-Za-z0-9-]{1,60}$/.test(k)) throw new ProviderError(tApp()('Kopfzeile „{name}“ ungültig', { name: k }));
+    if (/^(host|content-length|cookie)$/i.test(k)) throw new ProviderError(tApp()('Kopfzeile „{name}“ ist nicht erlaubt', { name: k }));
     headers[k] = str(v, 2000);
   }
   const body = typeof t.body === 'string' ? t.body.slice(0, MAX_BODY) : t.body && typeof t.body === 'object' ? JSON.stringify(t.body, null, 2) : '';
+  // i18n-ignore – a test value for the JSON check, never shown
   const sample = { prompt: 'Test "mit" Anführungszeichen', negative_prompt: '', aspect_ratio: '1:1', duration: 5, seed: 1, voice: 'v', language: 'de', model: 'm', image_url: 'https://example.com/a.png', audio_url: 'https://example.com/a.mp3', video_url: '', params: { a: 1 }, response: { id: 'x' } };
   if (body.trim()) renderJson(body, sample);
   const out: HttpTemplate = { url, method, headers, body, result_path: str(t.result_path, 200), result_type: t.result_type === 'base64' ? 'base64' : 'url', result_mime: str(t.result_mime, 60) || undefined, text_path: str(t.text_path, 200) || undefined };

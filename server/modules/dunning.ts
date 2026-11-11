@@ -8,6 +8,7 @@ import { cleanSettings, defaults, type DunningSettings } from '../services/dunni
 import { sendToContact } from '../services/messaging.js';
 import { registerActions, registerTriggers, requireText, text as fill } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Mahnwesen for subscriptions and instalments: a failed payment (Stripe `invoice.payment_failed`) opens a case. The buyer gets
@@ -137,19 +138,19 @@ export const dunningModule: Module = {
     const settings = (loc: string): DunningSettings => {
       const row = db.get<{ data: string }>('SELECT data FROM dunning_settings WHERE location_id = ?', loc);
       try {
-        return cleanSettings(row ? JSON.parse(row.data) : {}, defaults());
+        return cleanSettings(row ? JSON.parse(row.data) : {}, defaults(tLoc(app, loc)), tLoc(app, loc));
       } catch {
-        return defaults();
+        return defaults(tLoc(app, loc));
       }
     };
     const saveSettings = (loc: string, patch: unknown) => {
-      const next = cleanSettings(patch, settings(loc));
+      const next = cleanSettings(patch, settings(loc), tLoc(app, loc));
       db.run('INSERT INTO dunning_settings (location_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(location_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at', loc, JSON.stringify(next), now());
       return next;
     };
 
-    router.get('/api/dunning/settings', 'location', (ctx) => ({ settings: settings(ctx.locationId), defaults: defaults() }));
-    router.put('/api/dunning/settings', 'location', (ctx) => ({ settings: saveSettings(ctx.locationId, ctx.body ?? {}), defaults: defaults() }));
+    router.get('/api/dunning/settings', 'location', (ctx) => ({ settings: settings(ctx.locationId), defaults: defaults(tLoc(app, ctx.locationId)) }));
+    router.put('/api/dunning/settings', 'location', (ctx) => ({ settings: saveSettings(ctx.locationId, ctx.body ?? {}), defaults: defaults(tLoc(app, ctx.locationId)) }));
 
     // --- links and messages --------------------------------------------------------------------------------
     const billingUrl = (loc: string, contactId: string, days?: number) => {
@@ -163,17 +164,18 @@ export const dunningModule: Module = {
       const firstAt = new Date(c.first_failed_at).getTime();
       const s = settings(c.location_id).sub;
       const left = s.final_after_days ? Math.max(0, Math.ceil((firstAt + s.final_after_days * DAY - Date.now()) / DAY)) : 0;
-      return { contact: contactVars(contact), location: app.location(c.location_id), dunning: { url, amount: money(c.amount_cents, c.currency), product: c.product_name || 'dein Abo', days_left: left } };
+      return { contact: contactVars(contact), location: app.location(c.location_id), dunning: { url, amount: money(c.amount_cents, c.currency), product: c.product_name || tLoc(app, c.location_id)('dein Abo'), days_left: left } };
     };
 
     /** Sends one of the three messages of a case (first, reminder, final) by e-mail and – if switched on – SMS. */
     async function notify(c: Case, kind: 'first' | 'reminder' | 'final', by = 'auto') {
-      if (!c.contact_id) return { sent: false, why: 'Kein Kontakt zugeordnet' };
+      const tl = tLoc(app, c.location_id);
+      if (!c.contact_id) return { sent: false, why: tl('Kein Kontakt zugeordnet') };
       const s = settings(c.location_id).sub;
       const url = billingUrl(c.location_id, c.contact_id);
       const vars = varsOf(c, url);
       const contact = getContact(app, c.location_id, c.contact_id);
-      if (!contact) return { sent: false, why: 'Kontakt nicht gefunden' };
+      if (!contact) return { sent: false, why: tl('Kontakt nicht gefunden') };
       const subject = render(kind === 'first' ? s.email_subject : kind === 'reminder' ? s.reminder_subject : s.final_subject, vars as any);
       const body = render(kind === 'first' ? s.email_body : kind === 'reminder' ? s.reminder_body : s.final_body, vars as any);
       // Noted before anything is sent (read fresh, not from the case the caller holds): the sweep or a webhook working on the
@@ -192,21 +194,21 @@ export const dunningModule: Module = {
       let ok = false;
       let error = '';
       if (contact.email) {
-        const m = await sendToContact(app, c.location_id, { contactId: c.contact_id, channel: 'email', subject, body, source: 'Mahnwesen', ignoreDnd: true });
+        const m = await sendToContact(app, c.location_id, { contactId: c.contact_id, channel: 'email', subject, body, source: tl('Mahnwesen'), ignoreDnd: true });
         channels.push('email');
         ok = m.status !== 'failed';
         if (!ok) error = String(m.error ?? '');
       }
       if (s.send_sms && contact.phone) {
-        const m = await sendToContact(app, c.location_id, { contactId: c.contact_id, channel: 'sms', body: render(s.sms_body, vars as any), source: 'Mahnwesen', ignoreDnd: true });
+        const m = await sendToContact(app, c.location_id, { contactId: c.contact_id, channel: 'sms', body: render(s.sms_body, vars as any), source: tl('Mahnwesen'), ignoreDnd: true });
         channels.push('sms');
         ok = ok || m.status !== 'failed';
         if (m.status === 'failed' && !error) error = String(m.error ?? '');
       }
       writeEntry({ kind, at, channels, ok, by });
-      caseEvent(c, ok ? `message_${kind}` : 'message_failed', ok ? `${channels.join(' + ')}${by === 'auto' ? '' : ` (${by})`}` : error || 'Kein Kanal erreichbar');
-      auditLog(app, undefined, c.location_id, 'dunning.message', `${kind === 'final' ? 'Letzte Nachricht' : kind === 'first' ? 'Karten-Update-Mail' : 'Erinnerung'} an ${contact.email || contact.phone} (${channels.join(', ') || 'kein Kanal'})`, c.id, by === 'auto' ? 'System' : by);
-      return { sent: ok, channels, why: ok ? '' : error || 'Kein Kanal erreichbar (E-Mail oder Telefon fehlt)' };
+      caseEvent(c, ok ? `message_${kind}` : 'message_failed', ok ? `${channels.join(' + ')}${by === 'auto' ? '' : ` (${by})`}` : error || tl('Kein Kanal erreichbar'));
+      auditLog(app, undefined, c.location_id, 'dunning.message', tl('{what} an {to} ({channels})', { what: tl(kind === 'final' ? 'Letzte Nachricht' : kind === 'first' ? 'Karten-Update-Mail' : 'Erinnerung'), to: contact.email || contact.phone, channels: channels.join(', ') || tl('kein Kanal') }), c.id, by === 'auto' ? 'System' : by);
+      return { sent: ok, channels, why: ok ? '' : error || tl('Kein Kanal erreichbar (E-Mail oder Telefon fehlt)') };
     }
 
     // --- which purchase a failed payment belongs to ---------------------------------------------------------
@@ -250,6 +252,8 @@ export const dunningModule: Module = {
       if (!found) return;
       const amount = Number(inv.amount_due ?? inv.amount_remaining ?? 0);
       const next = inv.next_payment_attempt ? new Date(Number(inv.next_payment_attempt) * 1000).toISOString() : null;
+      const tl = tLoc(app, loc);
+      const day = (iso: string) => new Date(iso).toLocaleDateString(tl.locale === 'de' ? 'de-DE' : 'en-GB');
       let c = openCase(loc, subId);
       const created = !c;
       if (!c) {
@@ -259,13 +263,13 @@ export const dunningModule: Module = {
           next_attempt_at: next, first_failed_at: now(), last_failed_at: now(), reminders: [], own_retries: [], access_paused: 0, reason: action ? 'action_required' : String(inv.last_finalization_error?.code ?? 'payment_failed'), tag: found.tag, created_at: now(), updated_at: now(),
         });
         c = openCase(loc, subId)!;
-        caseEvent(c, 'started', action ? 'Zahlung braucht eine Bestätigung (z. B. 3-D Secure)' : `Versuch ${c.attempts}${next ? `, nächster ${new Date(next).toLocaleDateString('de-DE')}` : ', Stripe versucht es nicht mehr'}`);
-        if (found.contactId) logActivity(app, loc, found.contactId, 'dunning.started', `Zahlung für „${found.productName}“ fehlgeschlagen (${money(amount, c.currency)}) – Mahnwesen gestartet`);
+        caseEvent(c, 'started', action ? tl('Zahlung braucht eine Bestätigung (z. B. 3-D Secure)') : next ? tl('Versuch {n}, nächster {date}', { n: c.attempts, date: day(next) }) : tl('Versuch {n}, Stripe versucht es nicht mehr', { n: c.attempts }));
+        if (found.contactId) logActivity(app, loc, found.contactId, 'dunning.started', tl('Zahlung für „{product}“ fehlgeschlagen ({amount}) – Mahnwesen gestartet', { product: found.productName, amount: money(amount, c.currency) }));
         app.events.emit(loc, 'dunning.started', eventData(c, { reason: c.reason }));
-        auditLog(app, undefined, loc, 'dunning.started', `Fall eröffnet: ${found.productName} (${money(amount, c.currency)})`, c.id);
+        auditLog(app, undefined, loc, 'dunning.started', tl('Fall eröffnet: {product} ({amount})', { product: found.productName, amount: money(amount, c.currency) }), c.id);
       } else {
         db.run('UPDATE dunning_cases SET attempts = ?, next_attempt_at = ?, last_failed_at = ?, amount_cents = ?, stripe_invoice = ?, updated_at = ? WHERE id = ?', Math.max(c.attempts, Number(inv.attempt_count) || c.attempts), next, now(), amount || c.amount_cents, String(inv.id ?? c.stripe_invoice), now(), c.id);
-        caseEvent(c, 'failed_again', `Versuch ${inv.attempt_count ?? c.attempts + 1}${next ? `, nächster ${new Date(next).toLocaleDateString('de-DE')}` : ''}`);
+        caseEvent(c, 'failed_again', next ? tl('Versuch {n}, nächster {date}', { n: inv.attempt_count ?? c.attempts + 1, date: day(next) }) : tl('Versuch {n}', { n: inv.attempt_count ?? c.attempts + 1 }));
       }
       const fresh = db.get<Case>('SELECT * FROM dunning_cases WHERE id = ?', c.id)!;
       if (created && s.reminder_days.includes(0)) void notify(fresh, 'first').catch((e) => console.error('[dunning]', (e as Error).message));
@@ -273,8 +277,11 @@ export const dunningModule: Module = {
       if (!action && !next && Number(inv.attempt_count) >= 1 && s.retry_mode === 'stripe') finalize(fresh, 'Stripe versucht es nicht mehr');
     }
 
-    function finalize(c: Case, why: string) {
+    /** `why` is a message id (German) or an already translated text; it is stored in the sub-account's language. */
+    function finalize(c: Case, whyId: string) {
       if (c.status !== 'open') return;
+      const tl = tLoc(app, c.location_id);
+      const why = tl(whyId);
       db.run(`UPDATE dunning_cases SET status = 'failed', final_at = ?, closed_reason = ?, updated_at = ? WHERE id = ? AND status = 'open'`, now(), why.slice(0, 200), now(), c.id);
       const s = settings(c.location_id).sub;
       let access = 'active';
@@ -284,33 +291,35 @@ export const dunningModule: Module = {
         access = app.services.creatorPlans.subscriptionOf(c.location_id, c.stripe_subscription)?.access ?? 'active';
         if (access !== 'active') db.run('UPDATE dunning_cases SET access_paused = 1 WHERE id = ?', c.id);
       } else if (s.access_on_final === 'pause' && c.contact_id && c.product_id) {
-        const done = setPurchaseAccess(app, c.location_id, c.contact_id, c.product_id, c.tag || purchaseTag(app, c.location_id, c.product_id), false, 'Zahlung fehlgeschlagen');
+        const done = setPurchaseAccess(app, c.location_id, c.contact_id, c.product_id, c.tag || purchaseTag(app, c.location_id, c.product_id), false, tl('Zahlung fehlgeschlagen'));
         db.run('UPDATE dunning_cases SET access_paused = 1 WHERE id = ?', c.id);
         access = 'paused';
-        logActivity(app, c.location_id, c.contact_id, 'dunning.access_paused', `Zugang pausiert (Zahlung für „${c.product_name}“ fehlgeschlagen)${done.length ? `: ${done.join(', ')}` : ''}`);
+        logActivity(app, c.location_id, c.contact_id, 'dunning.access_paused', `${tl('Zugang pausiert (Zahlung für „{product}“ fehlgeschlagen)', { product: c.product_name })}${done.length ? `: ${done.join(', ')}` : ''}`);
       }
       const fresh = db.get<Case>('SELECT * FROM dunning_cases WHERE id = ?', c.id)!;
-      caseEvent(fresh, 'final', `${why}; Zugang: ${access}`);
-      auditLog(app, undefined, c.location_id, 'dunning.final', `Fall endgültig fehlgeschlagen (${why}), Zugang ${access}`, c.id);
+      caseEvent(fresh, 'final', tl('{why}; Zugang: {access}', { why, access }));
+      auditLog(app, undefined, c.location_id, 'dunning.final', tl('Fall endgültig fehlgeschlagen ({why}), Zugang {access}', { why, access }), c.id);
       app.events.emit(c.location_id, 'dunning.final_failed', eventData(fresh, { access, why }));
       void notify(fresh, 'final').catch((e) => console.error('[dunning]', (e as Error).message));
     }
 
-    function recover(c: Case, via: string) {
+    function recover(c: Case, viaId: string) {
+      const tl = tLoc(app, c.location_id);
+      const via = tl(viaId);
       if (!db.run(`UPDATE dunning_cases SET status = 'recovered', recovered_at = ?, updated_at = ? WHERE id = ? AND status IN ('open', 'failed')`, now(), now(), c.id).changes) return;
       let restored = false;
       if (c.access_paused) {
         if (app.services.creatorPlans?.subscriptionOf(c.location_id, c.stripe_subscription)) restored = app.services.creatorPlans.recovered(c.location_id, c.stripe_subscription);
         else if (c.contact_id && c.product_id) {
-          setPurchaseAccess(app, c.location_id, c.contact_id, c.product_id, c.tag || purchaseTag(app, c.location_id, c.product_id), true, 'Zahlung eingegangen');
+          setPurchaseAccess(app, c.location_id, c.contact_id, c.product_id, c.tag || purchaseTag(app, c.location_id, c.product_id), true, tl('Zahlung eingegangen'));
           restored = true;
         }
         db.run('UPDATE dunning_cases SET access_paused = 0 WHERE id = ?', c.id);
       }
       const fresh = db.get<Case>('SELECT * FROM dunning_cases WHERE id = ?', c.id)!;
-      caseEvent(fresh, 'recovered', `${via}${restored ? ', Zugang wieder aktiv' : ''}`);
-      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'dunning.recovered', `Zahlung für „${c.product_name}“ ist eingegangen${restored ? ' – Zugang wieder aktiv' : ''}`);
-      auditLog(app, undefined, c.location_id, 'dunning.recovered', `Fall gelöst (${via})`, c.id);
+      caseEvent(fresh, 'recovered', restored ? tl('{via}, Zugang wieder aktiv', { via }) : via);
+      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'dunning.recovered', tl(restored ? 'Zahlung für „{product}“ ist eingegangen – Zugang wieder aktiv' : 'Zahlung für „{product}“ ist eingegangen', { product: c.product_name }));
+      auditLog(app, undefined, c.location_id, 'dunning.recovered', tl('Fall gelöst ({via})', { via }), c.id);
       app.events.emit(c.location_id, 'dunning.recovered', eventData(fresh, { access_restored: restored }));
     }
 
@@ -334,7 +343,7 @@ export const dunningModule: Module = {
           }
           case 'customer.subscription.updated': {
             const c = o.id ? openCase(loc, String(o.id)) : undefined;
-            if (c && (o.status === 'unpaid' || o.status === 'canceled')) finalize(c, `Abo ${o.status === 'unpaid' ? 'unbezahlt' : 'beendet'}`);
+            if (c && (o.status === 'unpaid' || o.status === 'canceled')) finalize(c, o.status === 'unpaid' ? 'Abo unbezahlt' : 'Abo beendet');
             else if (c && o.status === 'active' && !o.pause_collection) recover(c, 'Abo wieder aktiv');
             break;
           }
@@ -342,7 +351,7 @@ export const dunningModule: Module = {
             const c = o.id ? openCase(loc, String(o.id)) : undefined;
             if (c) {
               if (String(o.cancellation_details?.reason ?? '') === 'payment_failed') finalize(c, 'Stripe hat das Abo beendet');
-              else db.run(`UPDATE dunning_cases SET status = 'closed', closed_reason = 'Abo gekündigt', updated_at = ? WHERE id = ?`, now(), c.id);
+              else db.run(`UPDATE dunning_cases SET status = 'closed', closed_reason = ?, updated_at = ? WHERE id = ?`, tLoc(app, loc)('Abo gekündigt'), now(), c.id);
             }
             break;
           }
@@ -385,14 +394,14 @@ export const dunningModule: Module = {
           const day = s.retry_days.find((d) => age >= d && !tried.includes(d));
           if (day !== undefined) await retryNow(c, day).catch(() => undefined);
         }
-        if (s.final_after_days && age >= s.final_after_days) finalize(db.get<Case>('SELECT * FROM dunning_cases WHERE id = ?', c.id)!, `${s.final_after_days} Tage nach dem ersten Fehlschlag`);
+        if (s.final_after_days && age >= s.final_after_days) finalize(db.get<Case>('SELECT * FROM dunning_cases WHERE id = ?', c.id)!, tLoc(app, c.location_id)('{n} Tage nach dem ersten Fehlschlag', { n: s.final_after_days }));
       }
       // optional: end the subscription after the final failure
       for (const c of db.all<Case>(`SELECT * FROM dunning_cases WHERE status = 'failed' AND cancel_done = 0 LIMIT 20`)) {
         if (!settings(c.location_id).sub.cancel_on_final) continue;
         db.run('UPDATE dunning_cases SET cancel_done = 1 WHERE id = ?', c.id);
         await stripeCall(app, c.location_id, 'DELETE', `/v1/subscriptions/${encodeURIComponent(c.stripe_subscription)}`).then(
-          () => caseEvent(c, 'subscription_canceled', 'Abo bei Stripe beendet'),
+          () => caseEvent(c, 'subscription_canceled', tLoc(app, c.location_id)('Abo bei Stripe beendet')),
           (e) => caseEvent(c, 'cancel_failed', (e as Error).message),
         );
       }
@@ -408,7 +417,7 @@ export const dunningModule: Module = {
       }
       try {
         await stripeCall(app, c.location_id, 'POST', `/v1/invoices/${encodeURIComponent(c.stripe_invoice)}/pay`, {}, { idempotencyKey: `dunning-pay-${c.id}-${day ?? Date.now()}` });
-        caseEvent(c, 'retry_ok', day === undefined ? 'Von Hand erneut versucht' : `Eigener Versuch an Tag ${day}`);
+        caseEvent(c, 'retry_ok', day === undefined ? tLoc(app, c.location_id)('Von Hand erneut versucht') : tLoc(app, c.location_id)('Eigener Versuch an Tag {day}', { day }));
         return { ok: true };
       } catch (e) {
         caseEvent(c, 'retry_failed', (e as Error).message);
@@ -450,34 +459,36 @@ export const dunningModule: Module = {
     router.post('/api/dunning/cases/:id/remind', 'location', async (ctx) => {
       const c = mustCase(ctx);
       if (!['open', 'failed'].includes(c.status)) throw bad('Dieser Fall ist abgeschlossen');
-      const r = await notify(c, c.status === 'failed' ? 'final' : 'reminder', ctx.user?.name ?? 'manuell');
+      const r = await notify(c, c.status === 'failed' ? 'final' : 'reminder', ctx.user?.name ?? tLoc(app, c.location_id)('manuell'));
       if (!r.sent) throw bad(r.why || 'Nachricht konnte nicht gesendet werden');
-      auditLog(app, ctx, c.location_id, 'dunning.remind', `Erinnerung manuell gesendet (${c.product_name})`, c.id);
+      auditLog(app, ctx, c.location_id, 'dunning.remind', tLoc(app, c.location_id)('Erinnerung manuell gesendet ({product})', { product: c.product_name }), c.id);
       return { ok: true, channels: r.channels };
     });
     router.post('/api/dunning/cases/:id/retry', 'location', async (ctx) => {
       const c = mustCase(ctx);
       if (!['open', 'failed'].includes(c.status) || !c.stripe_invoice) throw bad('Dieser Fall lässt sich nicht erneut versuchen');
       const r = await retryNow(c);
-      auditLog(app, ctx, c.location_id, 'dunning.retry', `Zahlung erneut versucht (${r.ok ? 'ok' : 'fehlgeschlagen'})`, c.id);
+      auditLog(app, ctx, c.location_id, 'dunning.retry', tLoc(app, c.location_id)(r.ok ? 'Zahlung erneut versucht (ok)' : 'Zahlung erneut versucht (fehlgeschlagen)'), c.id);
       if (!r.ok) throw bad(`Stripe: ${r.error}`);
       return { ok: true };
     });
     router.post('/api/dunning/cases/:id/close', 'location', (ctx) => {
       const c = mustCase(ctx);
       if (!['open', 'failed'].includes(c.status)) throw bad('Dieser Fall ist schon abgeschlossen');
-      db.run(`UPDATE dunning_cases SET status = 'closed', closed_reason = ?, updated_at = ? WHERE id = ?`, clip(ctx.body?.reason, 200) || 'von Hand geschlossen', now(), c.id);
-      caseEvent(c, 'closed', clip(ctx.body?.reason, 200) || 'von Hand geschlossen');
+      const reason = clip(ctx.body?.reason, 200) || tLoc(app, c.location_id)('von Hand geschlossen');
+      db.run(`UPDATE dunning_cases SET status = 'closed', closed_reason = ?, updated_at = ? WHERE id = ?`, reason, now(), c.id);
+      caseEvent(c, 'closed', reason);
       return caseOut(db.get('SELECT d.*, c.first_name, c.last_name, c.email FROM dunning_cases d LEFT JOIN contacts c ON c.id = d.contact_id WHERE d.id = ?', c.id));
     });
     router.post('/api/dunning/cases/:id/access', 'location', (ctx) => {
       const c = mustCase(ctx);
       if (!c.contact_id || !c.product_id) throw bad('Dem Fall fehlt Kontakt oder Produkt');
       const on = ctx.body?.on !== false;
-      setPurchaseAccess(app, c.location_id, c.contact_id, c.product_id, c.tag || purchaseTag(app, c.location_id, c.product_id), on, on ? 'manuell fortgesetzt' : 'manuell pausiert');
+      const tl = tLoc(app, c.location_id);
+      setPurchaseAccess(app, c.location_id, c.contact_id, c.product_id, c.tag || purchaseTag(app, c.location_id, c.product_id), on, tl(on ? 'manuell fortgesetzt' : 'manuell pausiert'));
       db.run('UPDATE dunning_cases SET access_paused = ?, updated_at = ? WHERE id = ?', on ? 0 : 1, now(), c.id);
       caseEvent(c, on ? 'access_on' : 'access_off', ctx.user?.name ?? '');
-      auditLog(app, ctx, c.location_id, 'dunning.access', `Zugang ${on ? 'fortgesetzt' : 'pausiert'} (${c.product_name})`, c.id);
+      auditLog(app, ctx, c.location_id, 'dunning.access', tl(on ? 'Zugang fortgesetzt ({product})' : 'Zugang pausiert ({product})', { product: c.product_name }), c.id);
       return { ok: true, access_paused: !on };
     });
 
@@ -489,14 +500,15 @@ export const dunningModule: Module = {
       const url = billingUrl(ctx.locationId, contact.id);
       const out: Record<string, unknown> = { url, expires_at: new Date(Date.now() + s.link_days * DAY).toISOString() };
       const send = ctx.body?.send;
+      const tl = tLoc(app, ctx.locationId);
       if (send === 'email' || send === 'sms') {
-        const vars = { contact: contactVars(contact), location: app.location(ctx.locationId), dunning: { url, amount: '', product: 'dein Abo', days_left: 0 } };
-        const body = send === 'email' ? `Hallo {{contact.first_name|}},\n\nhier kannst du deine Zahlungsmethode ändern, deine Rechnungen ansehen und dein Abo verwalten:\n{{dunning.url}}${'\n\nViele Grüße\n{{location.name}}'}` : 'Dein Abo verwalten: {{dunning.url}}';
-        const m = await sendToContact(app, ctx.locationId, { contactId: contact.id, channel: send, subject: send === 'email' ? 'Dein Abo verwalten' : undefined, body: render(body, vars as any), source: 'Mahnwesen', ignoreDnd: true, userId: ctx.user?.id });
+        const vars = { contact: contactVars(contact), location: app.location(ctx.locationId), dunning: { url, amount: '', product: tl('dein Abo'), days_left: 0 } };
+        const body = send === 'email' ? tl('Hallo {{contact.first_name|}},\n\nhier kannst du deine Zahlungsmethode ändern, deine Rechnungen ansehen und dein Abo verwalten:\n{{dunning.url}}\n\nViele Grüße\n{{location.name}}') : tl('Dein Abo verwalten: {{dunning.url}}');
+        const m = await sendToContact(app, ctx.locationId, { contactId: contact.id, channel: send, subject: send === 'email' ? tl('Dein Abo verwalten') : undefined, body: render(body, vars as any), source: tl('Mahnwesen'), ignoreDnd: true, userId: ctx.user?.id });
         if (m.status === 'failed') throw bad(String(m.error));
         out.sent = send;
       }
-      auditLog(app, ctx, ctx.locationId, 'dunning.billing_link', `Link zur Abo-Verwaltung erzeugt${send ? ` und per ${send} gesendet` : ''}`, contact.id);
+      auditLog(app, ctx, ctx.locationId, 'dunning.billing_link', send ? tl('Link zur Abo-Verwaltung erzeugt und per {channel} gesendet', { channel: send }) : tl('Link zur Abo-Verwaltung erzeugt'), contact.id);
       return out;
     });
 
@@ -569,19 +581,20 @@ export const dunningModule: Module = {
           fields: [
             { key: 'channel', label: 'Kanal', type: 'select', options: [['email', 'E-Mail'], ['sms', 'SMS']], default: 'email' },
             { key: 'subject', label: 'Betreff (E-Mail)', type: 'text', default: 'Bitte aktualisiere deine Zahlungsmethode' },
+            // i18n-ignore – multi-line catalog key (the workflow editor translates action defaults)
             { key: 'body', label: 'Text', type: 'textarea', default: 'Hallo {{contact.first_name|}},\n\nbitte prüfe deine Zahlungsmethode:\n{{dunning.url}}\n\nViele Grüße\n{{location.name}}' },
           ],
           provides: ['var.billing_url'],
           sample: { channel: 'email' },
         },
         run: async (run, step, vars) => {
-          if (!run.contact_id) throw new Error('Kein Kontakt');
+          if (!run.contact_id) throw new Error(tLoc(app, run.location_id)('Kein Kontakt'));
           const url = billingUrl(run.location_id, run.contact_id);
           const channel = step.channel === 'sms' ? 'sms' : 'email';
           const full = { ...vars, dunning: { url, product: vars.event?.product?.name ?? '', amount: vars.event?.amount_cents ? money(Number(vars.event.amount_cents), String(vars.event.currency ?? 'EUR')) : '', days_left: 0 } };
           const m = await sendToContact(app, run.location_id, { contactId: run.contact_id, channel, subject: channel === 'email' ? fill(requireText(step.subject, 'Betreff'), full) : undefined, body: fill(requireText(step.body, 'Text'), full), source: 'Workflow', ignoreDnd: true, purpose: 'transactional' });
           if (m.status === 'failed') throw new Error(String(m.error));
-          return { result: `Link per ${channel === 'sms' ? 'SMS' : 'E-Mail'} gesendet`, vars: { billing_url: url } };
+          return { result: tLoc(app, run.location_id)(channel === 'sms' ? 'Link per SMS gesendet' : 'Link per E-Mail gesendet'), vars: { billing_url: url } };
         },
       },
     ]);

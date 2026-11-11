@@ -12,6 +12,7 @@ import { getCourse } from '../services/courses.js';
 import { sendToContact } from '../services/messaging.js';
 import { registerActions, registerTriggers, requireText, text as fill } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Certificates for courses: a template per course (logo, colours, wording, signature image), the PDF built on the server
@@ -171,7 +172,7 @@ export const quizCertificatesModule: Module = {
     router.get('/api/certificates/templates', 'location', (ctx) => db.all<any>('SELECT * FROM certificate_templates WHERE location_id = ? ORDER BY created_at', ctx.locationId).map((r) => templateOut({ ...r, config: cleanCertConfig(json(r.config, {})) })));
     router.post('/api/certificates/templates', 'location', (ctx) => {
       const f = fieldsOf(ctx);
-      const row = { id: id(), location_id: ctx.locationId, name: str(ctx.body?.name, 'Name', { max: 120 }) || 'Zertifikat', enabled: ctx.body?.enabled === false ? 0 : 1, ...f, created_at: now(), updated_at: now() };
+      const row = { id: id(), location_id: ctx.locationId, name: str(ctx.body?.name, 'Name', { max: 120 }) || tLoc(app, ctx.locationId)('Zertifikat'), enabled: ctx.body?.enabled === false ? 0 : 1, ...f, created_at: now(), updated_at: now() };
       db.insert('certificate_templates', row);
       return templateOut(templateOf(ctx.locationId, row.id)!);
     });
@@ -179,7 +180,8 @@ export const quizCertificatesModule: Module = {
     router.post('/api/certificates/templates/preview', 'location', (ctx) => {
       const config = cleanCertConfig(ctx.body?.config, { ...DEFAULT_CERT, issuer: brand(ctx.locationId).name });
       for (const k of ['logo_upload_id', 'signature_upload_id'] as const) if (config[k] && !db.get('SELECT 1 FROM uploads WHERE id = ? AND location_id = ?', config[k], ctx.locationId)) config[k] = '';
-      const pdf = renderPdf(ctx.locationId, config, { name: 'Erika Musterfrau', course: clip(ctx.body?.course, 120) || 'Beispiel-Kurs', date: deDate(new Date(), app.location(ctx.locationId)?.timezone), number: `${config.number_prefix}-2026-0001`, score: 92, id: 'vorschau' });
+      const t = tLoc(app, ctx.locationId);
+      const pdf = renderPdf(ctx.locationId, config, { name: t('Erika Musterfrau'), course: clip(ctx.body?.course, 120) || t('Beispiel-Kurs'), date: dateOf(new Date(), app.location(ctx.locationId)?.timezone, t.locale), number: `${config.number_prefix}-2026-0001`, score: 92, id: 'vorschau' });
       return { pdf_base64: pdf.toString('base64') };
     });
     router.patch('/api/certificates/templates/:id', 'location', (ctx) => {
@@ -203,6 +205,15 @@ export const quizCertificatesModule: Module = {
       const path = u && join(uploads, u.file);
       return path && existsSync(path) ? readFileSync(path) : null;
     };
+    /** The date on certificates in the sub-account's language (German keeps DD.MM.YYYY). */
+    const dateOf = (iso: string | Date | null | undefined, tz: string | undefined, locale: string) => {
+      if (locale === 'de' || !iso) return deDate(iso, tz);
+      try {
+        return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: tz || 'Europe/Berlin' }).format(iso instanceof Date ? iso : new Date(iso));
+      } catch {
+        return deDate(iso, tz);
+      }
+    };
     function renderPdf(loc: string, config: CertConfig, o: { name: string; course: string; date: string; number: string; score?: number | null; id: string }): Buffer {
       return certificatePdf({ cfg: config, name: o.name, course: o.course, date: o.date, number: o.number, verifyUrl: `${app.baseUrl()}/zertifikat/${o.id}`, score: o.score, logo: imageOf(loc, config.logo_upload_id), signature: imageOf(loc, config.signature_upload_id) });
     }
@@ -210,7 +221,7 @@ export const quizCertificatesModule: Module = {
       const file = join(dir, `${c.id}.pdf`);
       if (existsSync(file)) return readFileSync(file);
       const tz = app.location(c.location_id)?.timezone;
-      const pdf = renderPdf(c.location_id, c.config, { name: c.recipient_name, course: c.course_title, date: deDate(c.issued_at, tz), number: c.number, score: c.score_percent, id: c.id });
+      const pdf = renderPdf(c.location_id, c.config, { name: c.recipient_name, course: c.course_title, date: dateOf(c.issued_at, tz, tLoc(app, c.location_id).locale), number: c.number, score: c.score_percent, id: c.id });
       mkdirSync(dir, { recursive: true });
       writeFileSync(file, pdf);
       return pdf;
@@ -256,15 +267,16 @@ export const quizCertificatesModule: Module = {
       const cid = id(22);
       const number = nextNumber(loc, config.number_prefix);
       const enrollment = db.get<any>('SELECT id FROM course_enrollments WHERE course_id = ? AND contact_id = ?', course.id, contact.id);
-      const row = { id: cid, location_id: loc, template_id: template?.id ?? null, course_id: course.id, contact_id: contact.id, enrollment_id: enrollment?.id ?? null, number, recipient_name: contactName(contact).trim() || (contact.email ? contact.email.split('@')[0] : 'Teilnehmer:in'), course_title: course.title, score_percent: o.score ?? null, issued_at: now(), config, source: o.source, revoked_at: null, revoked_reason: '', created_at: now() };
+      const row = { id: cid, location_id: loc, template_id: template?.id ?? null, course_id: course.id, contact_id: contact.id, enrollment_id: enrollment?.id ?? null, number, recipient_name: contactName(contact).trim() || (contact.email ? contact.email.split('@')[0] : tLoc(app, loc)('Teilnehmer:in')), course_title: course.title, score_percent: o.score ?? null, issued_at: now(), config, source: o.source, revoked_at: null, revoked_reason: '', created_at: now() };
       db.insert('certificates', row);
       const cert = certOf(loc, cid)!;
       pdfOf(cert);
-      logActivity(app, loc, contact.id, 'certificate.issued', `Zertifikat ${number} für „${course.title}“ ausgestellt`);
-      auditLog(app, o.ctx, loc, 'certificate.issue', `Zertifikat ${number} für ${row.recipient_name} (${course.title}, ${o.source})`, cid, o.ctx ? undefined : (o.by ?? 'System'));
+      const t = tLoc(app, loc);
+      logActivity(app, loc, contact.id, 'certificate.issued', t('Zertifikat {number} für „{course}“ ausgestellt', { number, course: course.title }));
+      auditLog(app, o.ctx, loc, 'certificate.issue', t('Zertifikat {number} für {name} ({course}, {source})', { number, name: row.recipient_name, course: course.title, source: o.source }), cid, o.ctx ? undefined : (o.by ?? 'System'));
       app.events.emit(loc, 'certificate.issued', { contactId: contact.id, certificateId: cid, courseId: course.id, course: { id: course.id, title: course.title }, certificate: { id: cid, number, ...urls({ id: cid }) }, percent: o.score ?? null, source: o.source });
       if (config.send_email && contact.email) {
-        void sendToContact(app, loc, { contactId: contact.id, channel: 'email', subject: `Dein Zertifikat für „${course.title}“`, body: `Hallo ${contact.first_name || ''},\n\nglückwunsch! Dein Zertifikat für „${course.title}“ ist fertig.\n\nPDF: ${urls({ id: cid }).pdf_url}\nPrüfseite (zum Teilen): ${urls({ id: cid }).url}\n\n${app.location(loc)?.name ?? ''}`, source: 'Kurse', ignoreDnd: true }).catch(() => undefined);
+        void sendToContact(app, loc, { contactId: contact.id, channel: 'email', subject: t('Dein Zertifikat für „{course}“', { course: course.title }), body: `${t('Hallo {name}', { name: contact.first_name || '' }).trim()},\n\n${t('glückwunsch! Dein Zertifikat für „{course}“ ist fertig.', { course: course.title })}\n\nPDF: ${urls({ id: cid }).pdf_url}\n${t('Prüfseite (zum Teilen):')} ${urls({ id: cid }).url}\n\n${app.location(loc)?.name ?? ''}`, source: t('Kurse'), ignoreDnd: true }).catch(() => undefined);
       }
       return { certificate: cert, created: true };
     }
@@ -332,7 +344,8 @@ export const quizCertificatesModule: Module = {
     router.post('/api/certificates/:id/resend', 'location', async (ctx) => {
       const c = certOf(ctx.locationId, ctx.params.id);
       if (!c || c.revoked_at) throw notFound('Zertifikat nicht gefunden');
-      const m = await sendToContact(app, c.location_id, { contactId: c.contact_id, channel: 'email', subject: `Dein Zertifikat für „${c.course_title}“`, body: `Hallo,\n\nhier noch einmal dein Zertifikat für „${c.course_title}“:\nPDF: ${urls(c).pdf_url}\nPrüfseite: ${urls(c).url}\n\n${app.location(c.location_id)?.name ?? ''}`, source: 'Kurse', ignoreDnd: true, userId: ctx.user?.id });
+      const t = tLoc(app, c.location_id);
+      const m = await sendToContact(app, c.location_id, { contactId: c.contact_id, channel: 'email', subject: t('Dein Zertifikat für „{course}“', { course: c.course_title }), body: `${t('Hallo')},\n\n${t('hier noch einmal dein Zertifikat für „{course}“:', { course: c.course_title })}\nPDF: ${urls(c).pdf_url}\n${t('Prüfseite:')} ${urls(c).url}\n\n${app.location(c.location_id)?.name ?? ''}`, source: t('Kurse'), ignoreDnd: true, userId: ctx.user?.id });
       if (m.status === 'failed') throw bad(String(m.error));
       return { ok: true };
     });
@@ -350,28 +363,30 @@ export const quizCertificatesModule: Module = {
       return r ? { ...r, config: cleanCertConfig(json(r.config, {})) } : undefined;
     };
     router.get('/zertifikat/:id', 'public', (ctx) => {
-      if (VERIFY_LIMIT(ctx.ip)) return page('Zu viele Anfragen', '<h1>Zu viele Anfragen</h1><p class="muted">Bitte in ein paar Minuten noch einmal.</p>', 429);
+      const ta = tApp();
+      if (VERIFY_LIMIT(ctx.ip)) return page(ta('Zu viele Anfragen'), `<h1>${ta('Zu viele Anfragen')}</h1><p class="muted">${ta('Bitte in ein paar Minuten noch einmal.')}</p>`, 429);
       const c = publicCert(ctx.params.id);
-      if (!c) return page('Zertifikat nicht gefunden', '<h1>Kein Zertifikat gefunden</h1><p class="muted">Zu dieser Adresse gibt es kein Zertifikat. Bitte prüfe den Link oder die Nummer.</p>', 404);
+      if (!c) return page(ta('Zertifikat nicht gefunden'), `<h1>${ta('Kein Zertifikat gefunden')}</h1><p class="muted">${ta('Zu dieser Adresse gibt es kein Zertifikat. Bitte prüfe den Link oder die Nummer.')}</p>`, 404);
       const loc = app.location(c.location_id);
+      const t = tLoc(app, c.location_id);
       const issuer = c.config.issuer || loc?.settings?.branding?.name || loc?.name || '';
-      const date = deDate(c.issued_at, loc?.timezone);
+      const date = dateOf(c.issued_at, loc?.timezone, t.locale);
       const color = /^#[0-9a-f]{6}$/i.test(c.config.color) ? c.config.color : undefined;
       if (c.revoked_at) {
-        return page(`Zertifikat ${c.number} (widerrufen)`, `<h1 style="color:#b91c1c">Dieses Zertifikat wurde widerrufen</h1><p>Das Zertifikat <b>${escapeHtml(c.number)}</b> von ${escapeHtml(issuer)} ist nicht mehr gültig.</p><p class="muted">Widerrufen am ${escapeHtml(deDate(c.revoked_at, loc?.timezone))}</p>`, 200, color);
+        return page(t('Zertifikat {number} (widerrufen)', { number: c.number }), `<h1 style="color:#b91c1c">${t('Dieses Zertifikat wurde widerrufen')}</h1><p>${t('Das Zertifikat {number} von {issuer} ist nicht mehr gültig.', { number: `<b>${escapeHtml(c.number)}</b>`, issuer: escapeHtml(issuer) })}</p><p class="muted">${t('Widerrufen am {date}', { date: escapeHtml(dateOf(c.revoked_at, loc?.timezone, t.locale)) })}</p>`, 200, color);
       }
       return page(
-        `Zertifikat ${c.number}`,
-        `<p class="ok" style="display:inline-block;font-weight:700;margin:0 0 14px">✓ Echtes Zertifikat</p>
-<h1 style="margin:0 0 6px">${escapeHtml(c.config.title || 'Zertifikat')}</h1>
+        t('Zertifikat {number}', { number: c.number }),
+        `<p class="ok" style="display:inline-block;font-weight:700;margin:0 0 14px">✓ ${t('Echtes Zertifikat')}</p>
+<h1 style="margin:0 0 6px">${escapeHtml(c.config.title || t('Zertifikat'))}</h1>
 <p style="font-size:22px;margin:8px 0 2px"><b>${escapeHtml(c.recipient_name)}</b></p>
 <p class="muted" style="margin:0 0 16px">${escapeHtml(c.course_title)}</p>
-<table><tbody><tr><td class="muted">Kurs</td><td>${escapeHtml(c.course_title)}</td></tr>
-<tr><td class="muted">Ausgestellt am</td><td>${escapeHtml(date)}</td></tr>
-<tr><td class="muted">Ausgestellt von</td><td>${escapeHtml(issuer)}</td></tr>
-<tr><td class="muted">Zertifikat-Nr.</td><td>${escapeHtml(c.number)}</td></tr>
-${c.config.show_score && c.score_percent !== null ? `<tr><td class="muted">Ergebnis</td><td>${c.score_percent} %</td></tr>` : ''}</tbody></table>
-<p style="margin-top:20px"><a class="btn" href="/zertifikat/${escapeHtml(c.id)}/pdf">Zertifikat als PDF</a></p>`,
+<table><tbody><tr><td class="muted">${t('Kurs')}</td><td>${escapeHtml(c.course_title)}</td></tr>
+<tr><td class="muted">${t('Ausgestellt am')}</td><td>${escapeHtml(date)}</td></tr>
+<tr><td class="muted">${t('Ausgestellt von')}</td><td>${escapeHtml(issuer)}</td></tr>
+<tr><td class="muted">${t('Zertifikat-Nr.')}</td><td>${escapeHtml(c.number)}</td></tr>
+${c.config.show_score && c.score_percent !== null ? `<tr><td class="muted">${t('Ergebnis')}</td><td>${c.score_percent} %</td></tr>` : ''}</tbody></table>
+<p style="margin-top:20px"><a class="btn" href="/zertifikat/${escapeHtml(c.id)}/pdf">${t('Zertifikat als PDF')}</a></p>`,
         200,
         color,
       );
@@ -389,8 +404,9 @@ ${c.config.show_score && c.score_percent !== null ? `<tr><td class="muted">Ergeb
       (p: any, m: any) => {
         const list = db.all<Certificate>('SELECT * FROM certificates WHERE location_id = ? AND contact_id = ? AND revoked_at IS NULL ORDER BY issued_at DESC LIMIT 50', p.locationId, m.contact.id);
         if (!list.length) return '';
-        return `<h2 style="margin:34px 0 12px" id="zertifikate">Meine Zertifikate</h2><div class="grid">${list
-          .map((c) => `<div class="panel"><b>${escapeHtml(c.course_title)}</b><div class="muted small">${escapeHtml(c.number)} · ${escapeHtml(deDate(c.issued_at, p.loc.timezone))}</div><p style="margin:12px 0 0"><a class="btn" href="/zertifikat/${escapeHtml(c.id)}/pdf">PDF öffnen</a> <a class="btn ghost" href="/zertifikat/${escapeHtml(c.id)}">Prüfseite</a></p></div>`)
+        const t = tLoc(app, p.locationId);
+        return `<h2 style="margin:34px 0 12px" id="zertifikate">${t('Meine Zertifikate')}</h2><div class="grid">${list
+          .map((c) => `<div class="panel"><b>${escapeHtml(c.course_title)}</b><div class="muted small">${escapeHtml(c.number)} · ${escapeHtml(dateOf(c.issued_at, p.loc.timezone, t.locale))}</div><p style="margin:12px 0 0"><a class="btn" href="/zertifikat/${escapeHtml(c.id)}/pdf">${t('PDF öffnen')}</a> <a class="btn ghost" href="/zertifikat/${escapeHtml(c.id)}">${t('Prüfseite')}</a></p></div>`)
           .join('')}</div>`;
       },
     ];
@@ -417,7 +433,8 @@ ${c.config.show_score && c.score_percent !== null ? `<tr><td class="muted">Ergeb
           requireText(courseId, 'Kurs');
           const r = await issue(run.location_id, { courseId, contactId: run.contact_id, templateId: clip(fill(step.template_id ?? '', vars), 40) || undefined, source: 'workflow', by: 'Workflow', fallback: true });
           const c = r!.certificate;
-          return { result: r!.created ? `Zertifikat ${c.number} ausgestellt` : `Zertifikat ${c.number} gab es schon`, vars: { certificate_url: urls(c).url, certificate_pdf_url: urls(c).pdf_url, certificate_number: c.number } };
+          const t = tLoc(app, run.location_id);
+          return { result: r!.created ? t('Zertifikat {number} ausgestellt', { number: c.number }) : t('Zertifikat {number} gab es schon', { number: c.number }), vars: { certificate_url: urls(c).url, certificate_pdf_url: urls(c).pdf_url, certificate_number: c.number } };
         },
       },
     ]);

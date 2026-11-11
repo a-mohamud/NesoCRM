@@ -11,6 +11,7 @@ import { grantAccess } from './courses.js';
 import { deliverEmail, type OutMail } from './messaging.js';
 import { applyWordFilter, decodeImage, groupAccess, groupSettings, levelFor, memberPoints, mentionHandles, MAX_POST_IMAGES } from './community.js';
 import { communityUi } from './community-ui.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Everything that changes community data, shared by the member pages and the admin API:
@@ -141,7 +142,7 @@ export function joinGroup(app: App, g: any, contact: Contact): boolean {
     return false;
   }
   ensureProfile(app, g.location_id, contact);
-  logActivity(app, g.location_id, contact.id, 'community.joined', `Community-Gruppe „${g.name}“ beigetreten`);
+  logActivity(app, g.location_id, contact.id, 'community.joined', tLoc(app, g.location_id)('Community-Gruppe „{group}“ beigetreten', { group: g.name }));
   app.events.emit(g.location_id, 'community.member_joined', { contactId: contact.id, groupId: g.id, group: { id: g.id, name: g.name } });
   return true;
 }
@@ -160,11 +161,12 @@ export function checkLevel(app: App, g: any, contactId: string) {
   const lvl = levelFor(memberPoints(app, g.id, contactId), s.levels);
   if (lvl <= member.level) return;
   app.db.run('UPDATE community_members SET level = ? WHERE group_id = ? AND contact_id = ?', lvl, g.id, contactId);
+  const t = tLoc(app, g.location_id);
   for (let l = member.level + 1; l <= lvl; l++) {
-    const name = s.levels[l - 1]?.name ?? `Level ${l}`;
-    logActivity(app, g.location_id, contactId, 'community.level', `Community „${g.name}“: ${name} erreicht`);
+    const name = s.levels[l - 1]?.name ?? t('Level {level}', { level: l });
+    logActivity(app, g.location_id, contactId, 'community.level', t('Community „{group}“: {level} erreicht', { group: g.name, level: name }));
     app.events.emit(g.location_id, 'community.level_reached', { contactId, groupId: g.id, level: l, level_name: name, group: { id: g.id, name: g.name } });
-    notify(app, g, [contactId], { kind: 'level', text: `Glückwunsch! Du hast ${name} erreicht.` });
+    notify(app, g, [contactId], { kind: 'level', text: t('Glückwunsch! Du hast {level} erreicht.', { level: name }) });
     for (const u of s.level_unlocks.filter((x) => x.level === l)) {
       try {
         grantAccess(app, g.location_id, u.course_id, contactId, 'community', g.id);
@@ -182,7 +184,7 @@ export function checkRate(app: App, g: any, contactId: string, kind: 'post' | 'c
   if (!max) return;
   const table = kind === 'post' ? 'community_posts' : 'community_comments';
   const n = app.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table} WHERE group_id = ? AND contact_id = ? AND created_at > ?`, g.id, contactId, new Date(Date.now() - 36e5).toISOString())!.n;
-  if (n >= max) throw new HttpError(429, kind === 'post' ? `Du kannst höchstens ${max} Beiträge pro Stunde schreiben – bitte später noch einmal.` : `Du kannst höchstens ${max} Kommentare pro Stunde schreiben – bitte später noch einmal.`);
+  if (n >= max) throw new HttpError(429, kind === 'post' ? tApp()('Du kannst höchstens {max} Beiträge pro Stunde schreiben – bitte später noch einmal.', { max }) : tApp()('Du kannst höchstens {max} Kommentare pro Stunde schreiben – bitte später noch einmal.', { max }));
 }
 
 // --- notifications ---------------------------------------------------------------------------
@@ -226,8 +228,8 @@ export function markRead(app: App, contactId: string, postId: string) {
 
 function cleanText(g: any, text: string, field: string, max: number, required: boolean, filter: boolean): string {
   const s = String(text ?? '').replace(/\r\n?/g, '\n').trim();
-  if (!s && required) throw bad(`${field} fehlt`);
-  if (s.length > max) throw bad(`${field} ist zu lang (höchstens ${max} Zeichen)`);
+  if (!s && required) throw bad(tApp()('{field} fehlt', { field: tApp()(field) }));
+  if (s.length > max) throw bad(tApp()('{field} ist zu lang (höchstens {max} Zeichen)', { field: tApp()(field), max }));
   if (!filter) return s;
   const st = groupSettings(g);
   const r = applyWordFilter(s, st.word_filter, st.filter_mode);
@@ -248,7 +250,7 @@ export function createPost(app: App, g: any, channel: any, author: Author, input
   const title = cleanText(g, String(input.title ?? ''), 'Titel', TITLE_MAX, true, member);
   const body = cleanText(g, String(input.body ?? ''), 'Text', BODY_MAX, false, member);
   const images = (input.images ?? []).slice(0, MAX_POST_IMAGES + 1);
-  if (images.length > MAX_POST_IMAGES) throw bad(`Höchstens ${MAX_POST_IMAGES} Bilder pro Beitrag`);
+  if (images.length > MAX_POST_IMAGES) throw bad(tApp()('Höchstens {n} Bilder pro Beitrag', { n: MAX_POST_IMAGES }));
   const name = authorName(app, g.location_id, author);
   const post = {
     id: id(),
@@ -276,11 +278,11 @@ export function createPost(app: App, g: any, channel: any, author: Author, input
   });
   if (member) {
     award(app, g, author.contact.id, groupSettings(g).points.post, 'post', post.id);
-    logActivity(app, g.location_id, author.contact.id, 'community.post', `Community-Beitrag „${title}“ in „${g.name}“`);
+    logActivity(app, g.location_id, author.contact.id, 'community.post', tLoc(app, g.location_id)('Community-Beitrag „{title}“ in „{group}“', { title, group: g.name }));
   }
   const short = title.length > 60 ? `${title.slice(0, 60)}…` : title;
   const tagged = mentioned(app, g, `${title}\n${body}`).filter((c) => c !== post.contact_id);
-  notify(app, g, tagged, { kind: 'mention', postId: post.id, actor: name, text: `${name} hat dich in „${short}“ erwähnt` });
+  notify(app, g, tagged, { kind: 'mention', postId: post.id, actor: name, text: tLoc(app, g.location_id)('{name} hat dich in „{title}“ erwähnt', { name, title: short }) });
   if (opts.notifyAll && !member) {
     const all = app.db.all<{ contact_id: string }>('SELECT contact_id FROM community_members WHERE group_id = ? AND banned_at IS NULL', g.id).map((r) => r.contact_id);
     notify(app, g, stillMembers(app, g, all).filter((c) => !tagged.includes(c)), { kind: 'announcement', postId: post.id, actor: name, text: `${name}: „${short}“` });
@@ -340,13 +342,14 @@ export function addComment(app: App, g: any, post: any, author: Author, input: {
   const me = member ? author.contact.id : '';
   const short = post.title.length > 50 ? `${post.title.slice(0, 50)}…` : post.title;
   const tagged = new Set(mentioned(app, g, body).filter((x) => x !== me));
-  notify(app, g, tagged, { kind: 'mention', postId: post.id, commentId: c.id, actor: name, text: `${name} hat dich in einem Kommentar zu „${short}“ erwähnt` });
+  const t = tLoc(app, g.location_id);
+  notify(app, g, tagged, { kind: 'mention', postId: post.id, commentId: c.id, actor: name, text: t('{name} hat dich in einem Kommentar zu „{title}“ erwähnt', { name, title: short }) });
   // The author of the comment that was answered (before flattening) hears about the reply.
   const replyTo = direct?.contact_id && direct.contact_id !== me && !tagged.has(direct.contact_id) ? stillMembers(app, g, [direct.contact_id]) : [];
-  notify(app, g, replyTo, { kind: 'reply', postId: post.id, commentId: c.id, actor: name, text: `${name} hat auf deinen Kommentar zu „${short}“ geantwortet` });
+  notify(app, g, replyTo, { kind: 'reply', postId: post.id, commentId: c.id, actor: name, text: t('{name} hat auf deinen Kommentar zu „{title}“ geantwortet', { name, title: short }) });
   const followers = app.db.all<{ contact_id: string }>('SELECT contact_id FROM community_follows WHERE post_id = ?', post.id).map((r) => r.contact_id);
   const rest = followers.filter((x) => x !== me && !tagged.has(x) && !replyTo.includes(x));
-  notify(app, g, stillMembers(app, g, rest), { kind: 'comment', postId: post.id, commentId: c.id, actor: name, text: `${name} hat „${short}“ kommentiert` });
+  notify(app, g, stillMembers(app, g, rest), { kind: 'comment', postId: post.id, commentId: c.id, actor: name, text: t('{name} hat „{title}“ kommentiert', { name, title: short }) });
   return c;
 }
 
@@ -368,7 +371,7 @@ export function toggleLike(app: App, g: any, kind: 'post' | 'comment', target: a
       const name = ensureProfile(app, g.location_id, contact).display_name;
       const post = kind === 'post' ? target : app.db.get('SELECT id, title FROM community_posts WHERE id = ?', target.post_id);
       const short = post.title.length > 50 ? `${post.title.slice(0, 50)}…` : post.title;
-      notify(app, g, stillMembers(app, g, [target.contact_id]), { kind: 'like', postId: post.id, commentId: kind === 'comment' ? target.id : undefined, actor: name, text: kind === 'post' ? `${name} gefällt dein Beitrag „${short}“` : `${name} gefällt dein Kommentar zu „${short}“` });
+      notify(app, g, stillMembers(app, g, [target.contact_id]), { kind: 'like', postId: post.id, commentId: kind === 'comment' ? target.id : undefined, actor: name, text: kind === 'post' ? tLoc(app, g.location_id)('{name} gefällt dein Beitrag „{title}“', { name, title: short }) : tLoc(app, g.location_id)('{name} gefällt dein Kommentar zu „{title}“', { name, title: short }) });
     }
   }
   const count = app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM community_likes WHERE target_id = ?', target.id)!.n;
@@ -459,15 +462,15 @@ export function setBan(app: App, g: any, contactId: string, ban: boolean, opts: 
       opts.by ?? '',
     );
     if (opts.hideContent) {
-      app.db.run(`UPDATE community_posts SET status = 'hidden', hidden_reason = 'Mitglied gesperrt', pinned = 0 WHERE group_id = ? AND contact_id = ?`, g.id, contactId);
+      app.db.run(`UPDATE community_posts SET status = 'hidden', hidden_reason = ?, pinned = 0 WHERE group_id = ? AND contact_id = ?`, tLoc(app, g.location_id)('Mitglied gesperrt'), g.id, contactId);
       const posts = app.db.all<{ post_id: string }>(`SELECT DISTINCT post_id FROM community_comments WHERE group_id = ? AND contact_id = ?`, g.id, contactId);
       app.db.run(`UPDATE community_comments SET status = 'hidden' WHERE group_id = ? AND contact_id = ?`, g.id, contactId);
       for (const p of posts) recount(app, p.post_id);
     }
-    logActivity(app, g.location_id, contactId, 'community.banned', `Aus Community-Gruppe „${g.name}“ ausgeschlossen${opts.reason ? ` (${opts.reason})` : ''}`);
+    logActivity(app, g.location_id, contactId, 'community.banned', opts.reason ? tLoc(app, g.location_id)('Aus Community-Gruppe „{group}“ ausgeschlossen ({reason})', { group: g.name, reason: opts.reason }) : tLoc(app, g.location_id)('Aus Community-Gruppe „{group}“ ausgeschlossen', { group: g.name }));
   } else {
     app.db.run(`UPDATE community_members SET banned_at = NULL, ban_reason = '', banned_by = '' WHERE group_id = ? AND contact_id = ?`, g.id, contactId);
-    logActivity(app, g.location_id, contactId, 'community.unbanned', `Sperre in Community-Gruppe „${g.name}“ aufgehoben`);
+    logActivity(app, g.location_id, contactId, 'community.unbanned', tLoc(app, g.location_id)('Sperre in Community-Gruppe „{group}“ aufgehoben', { group: g.name }));
   }
 }
 
@@ -530,16 +533,18 @@ export async function runDigest(app: App, at = new Date(), portalUrl: (locationI
       if (!items.length) continue;
       const link = (n: any) => `${base}/community/notifications/${encodeURIComponent(n.id)}`;
       const shown = items.slice(0, 20);
-      const hello = contact.first_name ? `Hallo ${contact.first_name}` : 'Hallo';
-      const text = `${hello},\n\ndas ist neu in der Community:\n\n${shown.map((n) => `• ${n.text}${n.group_name ? ` (${n.group_name})` : ''}\n  ${link(n)}`).join('\n')}${items.length > shown.length ? `\n…und ${items.length - shown.length} weitere.` : ''}\n\nAlle Benachrichtigungen: ${base}/community/notifications\nDiese Zusammenfassung abbestellen: ${base}/community/profile\n\n${brand}`;
+      const t = tLoc(app, location_id);
+      const hello = contact.first_name ? t('Hallo {name}', { name: contact.first_name }) : t('Hallo');
+      const more = items.length > shown.length ? t('…und {n} weitere.', { n: items.length - shown.length }) : '';
+      const text = `${hello},\n\n${t('das ist neu in der Community:')}\n\n${shown.map((n) => `• ${n.text}${n.group_name ? ` (${n.group_name})` : ''}\n  ${link(n)}`).join('\n')}${more ? `\n${more}` : ''}\n\n${t('Alle Benachrichtigungen:')} ${base}/community/notifications\n${t('Diese Zusammenfassung abbestellen:')} ${base}/community/profile\n\n${brand}`;
       const htmlMail = `<!doctype html><html><body style="margin:0;background:#f6f7fb;font-family:Arial,sans-serif;color:#0f172a"><div style="max-width:560px;margin:0 auto;padding:28px 18px"><div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:26px">
-<h2 style="margin:0 0 6px;font-size:20px">Neu in der Community</h2><p style="margin:0 0 18px;color:#64748b">${escapeHtml(hello)}, das ist seit gestern passiert:</p>
+<h2 style="margin:0 0 6px;font-size:20px">${t('Neu in der Community')}</h2><p style="margin:0 0 18px;color:#64748b">${escapeHtml(hello)}, ${t('das ist seit gestern passiert:')}</p>
 ${shown.map((n) => `<p style="margin:0 0 12px;line-height:1.45"><a href="${escapeHtml(link(n))}" style="color:#0f172a;text-decoration:none"><strong>${escapeHtml(n.text)}</strong></a>${n.group_name ? `<br><span style="font-size:13px;color:#64748b">${escapeHtml(n.group_name)}</span>` : ''}</p>`).join('')}
-${items.length > shown.length ? `<p style="color:#64748b">…und ${items.length - shown.length} weitere.</p>` : ''}
-<p style="margin:22px 0 0"><a href="${escapeHtml(`${base}/community/notifications`)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:10px">Zur Community</a></p>
-</div><p style="font-size:12px;color:#94a3b8;text-align:center">${escapeHtml(brand)} · <a href="${escapeHtml(`${base}/community/profile`)}" style="color:#94a3b8">Zusammenfassung abbestellen</a></p></div></body></html>`;
+${more ? `<p style="color:#64748b">${more}</p>` : ''}
+<p style="margin:22px 0 0"><a href="${escapeHtml(`${base}/community/notifications`)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:10px">${t('Zur Community')}</a></p>
+</div><p style="font-size:12px;color:#94a3b8;text-align:center">${escapeHtml(brand)} · <a href="${escapeHtml(`${base}/community/profile`)}" style="color:#94a3b8">${t('Zusammenfassung abbestellen')}</a></p></div></body></html>`;
       try {
-        await mailer(loc, { to: contact.email, subject: `${items.length} ${items.length === 1 ? 'Neuigkeit' : 'Neuigkeiten'} in der Community`, text, html: htmlMail });
+        await mailer(loc, { to: contact.email, subject: t.plural(items.length, { one: '{n} Neuigkeit in der Community', other: '{n} Neuigkeiten in der Community' }), text, html: htmlMail });
       } catch (e) {
         console.error('[community] digest', (e as Error).message);
         continue;

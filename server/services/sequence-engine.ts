@@ -10,6 +10,7 @@ import { sendMail, type MailInput, type SendResult } from './mailbox-send.js';
 import { getMailbox, ownerMayUse, type MailboxRow } from './mailbox-sync.js';
 import { unsubscribeToken } from './messaging.js';
 import { DEFAULT_SETTINGS, STOP_LABEL, cleanSettings, dueAt, footerText, inWindow, nextSlot, pickVariant, type SequenceSettings, type Step, type StopReason } from './sequence-model.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Sequences at work: enrolling people, sending the mails from the sender's own mailbox inside the business hours, creating the tasks
@@ -132,9 +133,10 @@ function event(app: App, e: EnrollRow, kind: EventKind, o: { step?: Step; varian
 
 /** Ends an enrolment (once): the reason is kept, the sequence goes on for nobody else. */
 export function stopEnrollment(app: App, e: EnrollRow, reason: StopReason, detail = '', at = new Date()): boolean {
-  const r = app.db.run(`UPDATE sequence_enrollments SET status = 'stopped', stop_reason = ?, note = ?, next_at = NULL, finished_at = ?, updated_at = ? WHERE id = ? AND status IN ('active', 'waiting')`, reason, (detail || STOP_LABEL[reason]).slice(0, 300), at.toISOString(), at.toISOString(), e.id);
+  const t = tLoc(app, e.location_id);
+  const r = app.db.run(`UPDATE sequence_enrollments SET status = 'stopped', stop_reason = ?, note = ?, next_at = NULL, finished_at = ?, updated_at = ? WHERE id = ? AND status IN ('active', 'waiting')`, reason, (detail || t(STOP_LABEL[reason])).slice(0, 300), at.toISOString(), at.toISOString(), e.id);
   if (!r.changes) return false;
-  event(app, e, 'stopped', { detail: `${STOP_LABEL[reason]}${detail ? `: ${detail}` : ''}`, at });
+  event(app, e, 'stopped', { detail: `${t(STOP_LABEL[reason])}${detail ? `: ${detail}` : ''}`, at });
   app.events.emit(e.location_id, 'sequence.stopped', { contactId: e.contact_id, sequenceId: e.sequence_id, enrollmentId: e.id, reason });
   return true;
 }
@@ -228,7 +230,7 @@ export function meetingBooked(app: App, loc: string, contactId: string, at = new
   for (const raw of rows) {
     const { seq_settings, ...rest } = raw as any;
     const e = enrollment(rest);
-    if (!app.db.get(`SELECT 1 AS x FROM sequence_events WHERE enrollment_id = ? AND kind = 'meeting'`, e.id)) event(app, e, 'meeting', { detail: 'Termin gebucht', ...lastSent(app, e), at });
+    if (!app.db.get(`SELECT 1 AS x FROM sequence_events WHERE enrollment_id = ? AND kind = 'meeting'`, e.id)) event(app, e, 'meeting', { detail: tLoc(app, e.location_id)('Termin gebucht'), ...lastSent(app, e), at });
     if (cleanSettings(JSON.parse(seq_settings || '{}'), isValidTz, DEFAULT_SETTINGS).stop_on.meeting) stopEnrollment(app, e, 'meeting', '', at);
   }
 }
@@ -248,13 +250,14 @@ export interface EnrollResult {
 
 /** A person is "gate-checked" for a sequence: the reason they must not get its mails, or '' when they may. */
 export function whyNot(app: App, seq: SeqRow, contact: Contact): string {
-  if (contact.dnd) return 'Nicht stören ist aktiv';
-  if (hasEmailStep(seq) && !contact.email) return 'Keine E-Mail-Adresse';
+  const t = tLoc(app, seq.location_id);
+  if (contact.dnd) return t('Nicht stören ist aktiv');
+  if (hasEmailStep(seq) && !contact.email) return t('Keine E-Mail-Adresse');
   const dnd = app.services.channelDnd?.(seq.location_id, contact.id, 'email') as string | undefined;
   if (dnd) return dnd;
   if (hasEmailStep(seq) && seq.mode === 'marketing') {
     const v = app.services.consent?.judge?.({ locationId: seq.location_id, contact, channel: 'email', purpose: 'marketing', bulk: true }) as { allow: boolean; reason: string } | undefined;
-    if (v && !v.allow) return v.reason || 'Keine Einwilligung';
+    if (v && !v.allow) return v.reason || t('Keine Einwilligung');
   }
   return '';
 }
@@ -263,19 +266,20 @@ export function enroll(app: App, seq: SeqRow, contactIds: string[], o: { userId:
   if (seq.status !== 'active') throw new HttpError(409, 'Die Sequenz ist nicht aktiv – erst aktivieren');
   const at = o.at ?? new Date();
   if (hasEmailStep(seq) && !senderMailbox(app, seq.location_id, o.userId, seq.settings.shared_mailbox)) {
-    const who = o.userId ? (app.db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', o.userId)?.name ?? 'Die Person') : 'Ohne Person';
-    throw new HttpError(409, `${who} hat kein Postfach zum Senden verbunden (Einstellungen → E-Mail & SMS → Postfach verbinden) – die Sequenz sendet E-Mails aus dem eigenen Postfach`);
+    const t = tApp();
+    const who = o.userId ? (app.db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', o.userId)?.name ?? t('Die Person')) : t('Ohne Person');
+    throw new HttpError(409, t('{who} hat kein Postfach zum Senden verbunden (Einstellungen → E-Mail & SMS → Postfach verbinden) – die Sequenz sendet E-Mails aus dem eigenen Postfach', { who }));
   }
   const tz = tzOf(app, seq.location_id, seq.settings);
   const out: EnrollResult = { enrolled: [], skipped: [] };
   for (const cid of [...new Set(contactIds)].slice(0, 1000)) {
     const c = getContact(app, seq.location_id, cid);
     if (!c) {
-      out.skipped.push({ contact_id: cid, reason: 'Kontakt nicht gefunden' });
+      out.skipped.push({ contact_id: cid, reason: tApp()('Kontakt nicht gefunden') });
       continue;
     }
     if (app.db.get(`SELECT 1 AS x FROM sequence_enrollments WHERE sequence_id = ? AND contact_id = ? AND status IN ('active', 'waiting')`, seq.id, cid)) {
-      out.skipped.push({ contact_id: cid, reason: 'Ist schon in dieser Sequenz' });
+      out.skipped.push({ contact_id: cid, reason: tApp()('Ist schon in dieser Sequenz') });
       continue;
     }
     const why = whyNot(app, seq, c);
@@ -330,7 +334,7 @@ export async function runDue(app: App, at = new Date(), limit = BATCH): Promise<
       const e = enrollment(raw);
       const seq = getSequence(app, e.location_id, e.sequence_id);
       if (!seq || seq.status !== 'active') continue;
-      event(app, e, 'skipped', { detail: 'Aufgabe nicht erledigt – die Sequenz geht weiter', at });
+      event(app, e, 'skipped', { detail: tLoc(app, e.location_id)('Aufgabe nicht erledigt – die Sequenz geht weiter'), at });
       resume(app, e, seq, at);
       out.resumed++;
     }
@@ -387,8 +391,9 @@ async function processOne(app: App, e: EnrollRow, seq: SeqRow, at: Date): Promis
     return 'stopped';
   }
   // Business hours: outside them nothing leaves – the step waits for the window to open.
-  if (!inWindow(at, s.window, tz)) return defer(nextSlot(at, s.window, tz, e.id), 'Außerhalb der Sendezeiten – geht im nächsten Zeitfenster raus');
-  const dnd = contact.dnd ? 'Nicht stören ist aktiv' : ((app.services.channelDnd?.(loc, contact.id, 'email') as string | undefined) ?? '');
+  const tl = tLoc(app, loc);
+  if (!inWindow(at, s.window, tz)) return defer(nextSlot(at, s.window, tz, e.id), tl('Außerhalb der Sendezeiten – geht im nächsten Zeitfenster raus'));
+  const dnd = contact.dnd ? tl('Nicht stören ist aktiv') : ((app.services.channelDnd?.(loc, contact.id, 'email') as string | undefined) ?? '');
   if (step.type === 'email' && dnd) {
     event(app, e, 'blocked', { step, detail: dnd, at });
     stopEnrollment(app, e, 'unsubscribed', dnd, at);
@@ -399,7 +404,7 @@ async function processOne(app: App, e: EnrollRow, seq: SeqRow, at: Date): Promis
   if (step.type !== 'email') return task(app, e, seq, step, contact, vars, at);
 
   if (!contact.email) {
-    event(app, e, 'skipped', { step, detail: 'Keine E-Mail-Adresse', at });
+    event(app, e, 'skipped', { step, detail: tl('Keine E-Mail-Adresse'), at });
     advance(app, e, seq, at);
     return 'resumed';
   }
@@ -418,16 +423,16 @@ async function processOne(app: App, e: EnrollRow, seq: SeqRow, at: Date): Promis
   const limit = dailyLimit(app, loc, e.user_id);
   if (sentToday(app, loc, e.user_id, at) >= limit) {
     const tomorrow = nextSlot(new Date(zonedToUtc(ymdInTz(at, app.location(loc)?.timezone || 'Europe/Berlin'), '23:59', app.location(loc)?.timezone || 'Europe/Berlin').getTime() + 2 * 60_000), s.window, tz, e.id);
-    return defer(tomorrow, `Tageslimit von ${limit} E-Mails erreicht – morgen geht es weiter`, 'limit');
+    return defer(tomorrow, tl('Tageslimit von {limit} E-Mails erreicht – morgen geht es weiter', { limit }), 'limit');
   }
   const mb = senderMailbox(app, loc, e.user_id, s.shared_mailbox);
-  if (!mb) return defer(delay(at, 6 * 3_600_000), 'Kein Postfach zum Senden verbunden', 'blocked');
+  if (!mb) return defer(delay(at, 6 * 3_600_000), tl('Kein Postfach zum Senden verbunden'), 'blocked');
 
   const variant = pickVariant(step, e.id);
   const subject = render(variant.subject || step.subject, vars).replace(/[\r\n]+/g, ' ').trim();
   let body = render(variant.body || step.body, vars);
   // A series (marketing mode) always carries the unsubscribe link; only personal correspondence may leave it out.
-  if (s.footer || seq.mode === 'marketing') body += footerText(`${app.baseUrl()}/u/${contact.id}/${unsubscribeToken(app, contact.id)}`);
+  if (s.footer || seq.mode === 'marketing') body += footerText(`${app.baseUrl()}/u/${contact.id}/${unsubscribeToken(app, contact.id)}`, tl);
   const input: MailInput = { to: contact.email, subject, body, contact_id: contact.id };
   if (step.reply_in_thread && e.last_message_id) input.reply_to_message_id = e.last_message_id;
   let sent: SendResult;
@@ -484,14 +489,15 @@ function varsFor(app: App, seq: SeqRow, e: EnrollRow, contact: Contact) {
 
 function task(app: App, e: EnrollRow, seq: SeqRow, step: Step, contact: Contact, vars: Record<string, unknown>, at: Date): Outcome {
   const title = render(step.title, vars).slice(0, 300);
-  const prefix = step.type === 'call' ? 'Anrufen: ' : step.type === 'linkedin' ? 'LinkedIn: ' : '';
+  const tl = tLoc(app, e.location_id);
+  const prefix = step.type === 'call' ? tl('Anrufen: ') : step.type === 'linkedin' ? 'LinkedIn: ' : '';
   const t = { id: id(), location_id: e.location_id, contact_id: contact.id, title: `${prefix}${title}`.slice(0, 300), description: render(step.note, vars).slice(0, 5000), due_at: at.toISOString(), assigned_to: e.user_id, done: 0, created_at: at.toISOString() };
   app.db.insert('tasks', t);
   event(app, e, 'task', { step, detail: t.title, at });
-  logActivity(app, e.location_id, contact.id, 'sequence.task', `Sequenz „${seq.name}“: Aufgabe „${t.title}“`.slice(0, 200), { sequence_id: seq.id, task_id: t.id });
+  logActivity(app, e.location_id, contact.id, 'sequence.task', tl('Sequenz „{sequence}“: Aufgabe „{task}“', { sequence: seq.name, task: t.title }).slice(0, 200), { sequence_id: seq.id, task_id: t.id });
   if (step.wait) {
     // The sequence rests until the task is done; the next step is planned from that moment.
-    app.db.run(`UPDATE sequence_enrollments SET status = 'waiting', task_id = ?, step_index = ?, next_at = ?, note = ?, updated_at = ? WHERE id = ?`, t.id, e.step_index + 1, delay(at, step.max_wait_days * 864e5).toISOString(), 'Wartet auf die Aufgabe', at.toISOString(), e.id);
+    app.db.run(`UPDATE sequence_enrollments SET status = 'waiting', task_id = ?, step_index = ?, next_at = ?, note = ?, updated_at = ? WHERE id = ?`, t.id, e.step_index + 1, delay(at, step.max_wait_days * 864e5).toISOString(), tl('Wartet auf die Aufgabe'), at.toISOString(), e.id);
     return 'task';
   }
   advance(app, e, seq, at);
@@ -565,7 +571,7 @@ export function sequenceStats(app: App, loc: string, seq: SeqRow) {
       st.id,
     );
     const repliesBy = new Map(db.all<{ variant_id: string; n: number }>(`SELECT COALESCE(variant_id, '') AS variant_id, COUNT(DISTINCT enrollment_id) AS n FROM sequence_events WHERE sequence_id = ? AND step_id = ? AND kind = 'reply' GROUP BY COALESCE(variant_id, '')`, seq.id, st.id).map((r) => [r.variant_id, r.n]));
-    const variants = [{ id: '', label: 'Original' }, ...st.variants].map((v) => {
+    const variants = [{ id: '', label: tApp()('Original') }, ...st.variants].map((v) => {
       const r = rows.find((x) => x.variant_id === v.id);
       const s = Number(r?.sent ?? 0);
       return { id: v.id, label: v.label, sent: s, opened: Number(r?.opened ?? 0), clicked: Number(r?.clicked ?? 0), replied: repliesBy.get(v.id) ?? 0, open_rate: pct(Number(r?.opened ?? 0), s), reply_rate: pct(repliesBy.get(v.id) ?? 0, s) };
@@ -611,12 +617,12 @@ export function previewStep(app: App, seq: SeqRow, stepId: string, contactId: st
   if (!step || !contact) return undefined;
   const fake = { id: 'preview', user_id: userId, deal_id: dealId ?? null } as EnrollRow;
   const vars = varsFor(app, seq, fake, contact);
-  const variants = step.type === 'email' ? [{ id: '', label: 'Original', subject: step.subject, body: step.body }, ...step.variants] : [];
+  const variants = step.type === 'email' ? [{ id: '', label: tApp()('Original'), subject: step.subject, body: step.body }, ...step.variants] : [];
   return {
     step_id: step.id,
     type: step.type,
     title: render(step.title, vars),
     note: render(step.note, vars),
-    variants: variants.map((v) => ({ id: v.id, label: v.label, subject: render(v.subject || step.subject, vars), body: render(v.body || step.body, vars) + (seq.settings.footer || seq.mode === 'marketing' ? footerText('https://…/u/…') : '') })),
+    variants: variants.map((v) => ({ id: v.id, label: v.label, subject: render(v.subject || step.subject, vars), body: render(v.body || step.body, vars) + (seq.settings.footer || seq.mode === 'marketing' ? footerText('https://…/u/…', tLoc(app, seq.location_id)) : '') })),
   };
 }

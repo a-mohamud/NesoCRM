@@ -10,6 +10,7 @@ import { completeLesson } from '../services/creator-quiz.js';
 import { getCourse, portalUrl } from '../services/courses.js';
 import { sendToContact } from '../services/messaging.js';
 import { registerTriggers } from '../services/wfx-kit.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Assignments in courses: a lesson asks for a text and/or a file, the learner hands it in from the member area, the
@@ -236,9 +237,10 @@ export const quizAssignmentsModule: Module = {
       const row = { id: id(), location_id: a.location_id, assignment_id: a.id, enrollment_id: enrollmentId, contact_id: contactId, attempt_no: st.list.length + 1, text: a.kind === 'file' ? '' : text, file_name: f?.name ?? '', file_mime: f?.mime ?? '', file_path: f?.file ?? '', status: 'submitted', feedback: '', reviewer: '', submitted_at: now(), reviewed_at: null };
       db.insert('assignment_submissions', row);
       const course = getCourse(app, a.location_id, a.course_id);
-      logActivity(app, a.location_id, contactId, 'assignment.submitted', `Aufgabe „${a.title}“ abgegeben (${course?.title ?? ''}, Abgabe ${row.attempt_no})`);
+      const t = tLoc(app, a.location_id);
+      logActivity(app, a.location_id, contactId, 'assignment.submitted', t('Aufgabe „{assignment}“ abgegeben ({course}, Abgabe {attempt})', { assignment: a.title, course: course?.title ?? '', attempt: row.attempt_no }));
       app.events.emit(a.location_id, 'assignment.submitted', { contactId, assignmentId: a.id, courseId: a.course_id, assignment: { id: a.id, title: a.title }, course: { id: a.course_id, title: course?.title ?? '' }, attempt: row.attempt_no, submissionId: row.id });
-      void Promise.resolve(app.services.pushNotify?.({ locationId: a.location_id, kind: 'courses', title: 'Aufgabe wartet auf Prüfung', body: a.title, url: '/app/quizzes/reviews', tag: `assignment-${row.id}` })).catch(() => undefined);
+      void Promise.resolve(app.services.pushNotify?.({ locationId: a.location_id, kind: 'courses', title: t('Aufgabe wartet auf Prüfung'), body: a.title, url: '/app/quizzes/reviews', tag: `assignment-${row.id}` })).catch(() => undefined);
       return row as SubmissionRow;
     }
 
@@ -247,15 +249,16 @@ export const quizAssignmentsModule: Module = {
       db.run('UPDATE assignment_submissions SET status = ?, feedback = ?, reviewer = ?, reviewed_at = ? WHERE id = ?', status, feedback, by, now(), s.id);
       const course = getCourse(app, a.location_id, a.course_id);
       if (status === 'passed') completeLesson(app, s.enrollment_id, a.lesson_id);
-      logActivity(app, a.location_id, s.contact_id, 'assignment.reviewed', `Aufgabe „${a.title}“: ${status === 'passed' ? 'bestanden' : status === 'failed' ? 'nicht bestanden' : 'bitte überarbeiten'}`);
+      const t = tLoc(app, a.location_id);
+      logActivity(app, a.location_id, s.contact_id, 'assignment.reviewed', t('Aufgabe „{assignment}“: {result}', { assignment: a.title, result: status === 'passed' ? t('bestanden') : status === 'failed' ? t('nicht bestanden') : t('bitte überarbeiten') }));
       app.events.emit(a.location_id, 'assignment.reviewed', { contactId: s.contact_id, assignmentId: a.id, courseId: a.course_id, assignment: { id: a.id, title: a.title }, course: { id: a.course_id, title: course?.title ?? '' }, status, feedback, attempt: s.attempt_no, submissionId: s.id });
-      auditLog(app, ctx, a.location_id, 'assignment.review', `Aufgabe „${a.title}“ bewertet: ${status}`, s.id, ctx ? undefined : by);
+      auditLog(app, ctx, a.location_id, 'assignment.review', t('Aufgabe „{assignment}“ bewertet: {status}', { assignment: a.title, status }), s.id, ctx ? undefined : by);
       void sendToContact(app, a.location_id, {
         contactId: s.contact_id,
         channel: 'email',
-        subject: `Rückmeldung zu deiner Aufgabe „${a.title}“`,
-        body: `Hallo ${getContact(app, a.location_id, s.contact_id)?.first_name || ''},\n\ndeine Abgabe zu „${a.title}“ wurde geprüft: ${status === 'passed' ? 'bestanden – glückwunsch!' : status === 'failed' ? 'leider nicht bestanden.' : 'bitte überarbeite sie noch einmal.'}${feedback ? `\n\nRückmeldung:\n${feedback}` : ''}\n\nZur Lektion: ${portalUrl(app, a.location_id)}/c/${encodeURIComponent(course?.slug ?? '')}/${encodeURIComponent(a.lesson_id)}\n\n${app.location(a.location_id)?.name ?? ''}`,
-        source: 'Kurse',
+        subject: t('Rückmeldung zu deiner Aufgabe „{assignment}“', { assignment: a.title }),
+        body: `${t('Hallo {name}', { name: getContact(app, a.location_id, s.contact_id)?.first_name || '' }).trim()},\n\n${t('deine Abgabe zu „{assignment}“ wurde geprüft:', { assignment: a.title })} ${status === 'passed' ? t('bestanden – glückwunsch!') : status === 'failed' ? t('leider nicht bestanden.') : t('bitte überarbeite sie noch einmal.')}${feedback ? `\n\n${t('Rückmeldung:')}\n${feedback}` : ''}\n\n${t('Zur Lektion:')} ${portalUrl(app, a.location_id)}/c/${encodeURIComponent(course?.slug ?? '')}/${encodeURIComponent(a.lesson_id)}\n\n${app.location(a.location_id)?.name ?? ''}`,
+        source: t('Kurse'),
         ignoreDnd: true,
       }).catch(() => undefined);
       return db.get('SELECT * FROM assignment_submissions WHERE id = ?', s.id);

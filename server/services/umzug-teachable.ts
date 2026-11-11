@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Account, Batch, CountRow, PartKey, RContact, RCourse, REnrollment, RLesson, RModule, RProduct, SourceDef, SourceField, StepCtx, StepDef } from './umzug-core.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { stripHtml, toIso } from './umzug-text.js';
+import { translator, tApp } from '../i18n/index.js';
 
 /**
  * Teachable (public API v1, https://developers.teachable.com/v1, header `apiKey`): students → contacts,
@@ -63,6 +64,7 @@ const nameParts = (n: unknown) => {
 
 /** Text, video link and downloads of one lecture → lesson fields. */
 export function lectureLesson(l: any, attachments: any[]): RLesson {
+  const t = tApp();
   const parts: string[] = [];
   let video: string | undefined;
   for (const a of attachments) {
@@ -70,11 +72,11 @@ export function lectureLesson(l: any, attachments: any[]): RLesson {
     const url = a.url ?? a.file_url ?? a.embed_url;
     if (/video/.test(kind) && !video && typeof url === 'string' && /^https?:\/\//i.test(url)) video = url;
     else if (/text|rich|html/.test(kind)) parts.push(String(a.text ?? a.body ?? a.content ?? ''));
-    else if (/pdf|file|image|audio|download|code/.test(kind) && typeof url === 'string') parts.push(`[${a.name ?? 'Datei'}](${url})`);
-    else if (/quiz/.test(kind)) parts.push(`*Quiz „${a.name ?? 'Quiz'}“ – in Teachable angelegt, Fragen bitte neu erstellen.*`);
-    else if (/video/.test(kind)) parts.push(`*Video „${a.name ?? 'Video'}“ liegt bei Teachable – Link bitte ergänzen.*`);
+    else if (/pdf|file|image|audio|download|code/.test(kind) && typeof url === 'string') parts.push(`[${a.name ?? t('Datei')}](${url})`);
+    else if (/quiz/.test(kind)) parts.push(t('*Quiz „{name}“ – in Teachable angelegt, Fragen bitte neu erstellen.*', { name: a.name ?? 'Quiz' }));
+    else if (/video/.test(kind)) parts.push(t('*Video „{name}“ liegt bei Teachable – Link bitte ergänzen.*', { name: a.name ?? 'Video' }));
   }
-  return { ext: `l:${l.id}`, title: String(l.name ?? `Lektion ${l.id}`), video_url: video, body: parts.filter(Boolean).join('\n\n'), published: l.is_published !== false };
+  return { ext: `l:${l.id}`, title: String(l.name ?? t('Lektion {id}', { id: l.id })), video_url: video, body: parts.filter(Boolean).join('\n\n'), published: l.is_published !== false };
 }
 
 const steps = (): StepDef[] => [
@@ -97,6 +99,7 @@ const steps = (): StepDef[] => [
     label: 'Kurse und Lektionen',
     part: 'courses',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const list = await everything(ctx.http, '/courses', 'courses', ctx);
       for (let i = Number(ctx.cursor ?? 0); i < list.length; i++) {
         const c = list[i];
@@ -112,13 +115,13 @@ const steps = (): StepDef[] => [
               attachments = lecture.attachments ?? [];
             } catch (e) {
               if (!(e instanceof UmzugError && e.skippable)) throw e;
-              ctx.warn(`Lektion ${l.id} in „${c.name}“ nicht lesbar: ${e.message}`);
+              ctx.warn(t('Lektion {id} in „{name}“ nicht lesbar: {reason}', { id: l.id, name: c.name, reason: e.message }));
             }
             lessons.push(lectureLesson({ ...l, ...lecture }, attachments));
           }
-          modules.push({ ext: `s:${s.id}`, title: String(s.name ?? `Abschnitt ${s.id}`), lessons });
+          modules.push({ ext: `s:${s.id}`, title: String(s.name ?? t('Abschnitt {id}', { id: s.id })), lessons });
         }
-        const rec: RCourse = { kind: 'course', ext: `c:${c.id}`, title: String(detail.name ?? c.name ?? `Kurs ${c.id}`), description: stripHtml([detail.heading, detail.description].filter(Boolean).join('\n\n')), cover: detail.image_url ?? c.image_url, modules };
+        const rec: RCourse = { kind: 'course', ext: `c:${c.id}`, title: String(detail.name ?? c.name ?? t('Kurs {id}', { id: c.id })), description: stripHtml([detail.heading, detail.description].filter(Boolean).join('\n\n')), cover: detail.image_url ?? c.image_url, modules };
         yield { records: [rec], cursor: i + 1 < list.length ? i + 1 : undefined, total: list.length };
       }
     },
@@ -128,12 +131,13 @@ const steps = (): StepDef[] => [
     label: 'Preispläne → Produkte',
     part: 'products',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const plans = await everything(ctx.http, '/pricing_plans', 'pricing_plans', ctx);
       const records: RProduct[] = plans.map((p) => {
         const type = String(p.billing_type ?? p.plan_type ?? p.type ?? '');
         const recurring = /subscription|recurring/i.test(type);
-        if (/payment_?plan|installment/i.test(type)) ctx.warn(`Preisplan „${p.name}“ ist ein Zahlungsplan – als Einmalpreis übernommen, Raten bitte prüfen`);
-        return { kind: 'product', ext: `pp:${p.id}`, name: String(p.name ?? `Preisplan ${p.id}`), price_cents: Math.round(Number(p.price ?? 0)), currency: p.currency ? String(p.currency).toUpperCase() : undefined, recurring: recurring ? { interval: /year|annual/i.test(String(p.interval ?? p.billing_interval ?? '')) ? 'year' : 'month' } : undefined, description: p.course_id ? `Gehört zu Teachable-Kurs ${p.course_id}` : '' };
+        if (/payment_?plan|installment/i.test(type)) ctx.warn(t('Preisplan „{name}“ ist ein Zahlungsplan – als Einmalpreis übernommen, Raten bitte prüfen', { name: p.name }));
+        return { kind: 'product', ext: `pp:${p.id}`, name: String(p.name ?? t('Preisplan {id}', { id: p.id })), price_cents: Math.round(Number(p.price ?? 0)), currency: p.currency ? String(p.currency).toUpperCase() : undefined, recurring: recurring ? { interval: /year|annual/i.test(String(p.interval ?? p.billing_interval ?? '')) ? 'year' : 'month' } : undefined, description: p.course_id ? t('Gehört zu Teachable-Kurs {course_id}', { course_id: p.course_id }) : '' };
       });
       yield { records, cursor: undefined };
     },

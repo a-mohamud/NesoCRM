@@ -1,8 +1,13 @@
+import type { STFn } from '../i18n/index.js';
+
 /**
  * The fictional companies of the demo (services/demo-seed.ts): the agency „Nordlicht Digital“ and five client sub-accounts
  * it looks after – a physiotherapy practice, an electrician, an online coach, a small SaaS start-up and a local shop with an
  * online store. Pure data. Names are invented; e-mail addresses use example.com/.org/.net or a `.example` domain, phone
  * numbers the test range +49 30 1234 xxx.
+ *
+ * The texts are German and are the message ids of the server catalogs: `localisePlan` puts a plan into the sub-account's
+ * language when the demo is seeded (the English catalog turns it into small businesses in Kenya).
  *
  * Keep the contacts of all sub-accounts (plans plus the form senders) under 400: the background job that scores contacts
  * handles 200 per tick and tests/scheduler-sweep.test.ts gives the demo data two ticks.
@@ -53,11 +58,42 @@ export interface LocPlan {
 
 export const AGENCY_NAME = 'Nordlicht Digital';
 
-export const FIRST = ['Lena', 'Jonas', 'Mia', 'Felix', 'Hannah', 'Lukas', 'Emma', 'Paul', 'Sophie', 'Leon', 'Marie', 'Finn', 'Clara', 'Elias', 'Lea', 'Noah', 'Anna', 'Ben', 'Laura', 'Tim', 'Julia', 'David', 'Nora', 'Moritz', 'Sarah', 'Jan', 'Ida', 'Max', 'Frieda', 'Oskar', 'Greta', 'Emil', 'Romy', 'Theo', 'Pia', 'Karl', 'Merle'];
+export const FIRST = ['Lena', 'Jonas', 'Mia', 'Felix', 'Hannah', 'Lukas', 'Emma', 'Paul', 'Sophie', 'Leon', 'Marie', 'Finn', 'Clara', 'Elias', 'Lea', 'Noah', 'Anna', 'Ben', 'Laura', 'Tim', 'Julia', 'David', 'Nora', 'Moritz', 'Sarah', 'Jakob', 'Ida', 'Max', 'Frieda', 'Oskar', 'Greta', 'Emil', 'Romy', 'Theo', 'Pia', 'Karl', 'Merle'];
 export const LAST = ['Hoffmann', 'Becker', 'Schulte', 'Wagner', 'Krämer', 'Lindner', 'Vogel', 'Brandt', 'Seidel', 'Kühn', 'Albrecht', 'Hartmann', 'Busch', 'Franke', 'Roth', 'Winkler', 'Lorenz', 'Haas', 'Pohl', 'Engel', 'Sommer', 'Frank', 'Graf', 'Kraus', 'Jung', 'Böhm', 'Ludwig', 'Simon', 'Arnold', 'Ernst', 'Lang', 'Thiel', 'Marx', 'Kessler', 'Brück', 'Wolff', 'Ritter'];
 
-/** A demo phone number in the test range: +49 30 1234 000 … 999. */
-export const demoPhone = (n: number) => `+49 30 1234 ${String(n % 1000).padStart(3, '0')}`;
+/** A demo phone number in the test range: +49 30 1234 000 … 999 (the catalog gives the format of the sub-account's country). */
+export const demoPhone = (n: number, t: STFn) => t('+49 30 1234 {n}', { n: String(n % 1000).padStart(3, '0') });
+
+/** A plan with every visible text in the language of `t`; keys, colours, numbers, ids and template keys stay as they are. */
+export function localisePlan(p: LocPlan, t: STFn): LocPlan {
+  const tr = (s: string) => t(s);
+  return {
+    ...p,
+    name: t(p.name),
+    email: t(p.email),
+    address: t(p.address),
+    website: t(p.website),
+    project: { ...p.project, category: t(p.project.category), tagline: t(p.project.tagline), description: t(p.project.description) },
+    companies: p.companies.map(([name, industry, city]) => [t(name), t(industry), t(city)]),
+    sources: p.sources.map(tr),
+    tags: p.tags.map(([name, color]) => [t(name), color]),
+    fields: p.fields.map((f) => ({ ...f, label: t(f.label), ...(f.options ? { options: f.options.map(tr) } : {}) })),
+    values: p.values.map(([name, value]) => [t(name), t(value)]),
+    ...(p.pipeline ? { pipeline: t(p.pipeline) } : {}),
+    deals: p.deals.map(([name, euros]) => [t(name), euros]),
+    calendars: p.calendars.map(([name, minutes, description]) => [t(name), minutes, t(description)]),
+    series: [t(p.series[0]), p.series[1]],
+    form: t(p.form),
+    funnel: t(p.funnel),
+    posts: p.posts.map(([title, intro]) => [t(title), t(intro)]),
+    products: p.products.map(([name, description, cents]) => [t(name), t(description), cents]),
+    platforms: p.platforms.map(tr),
+    ...(p.script ? { script: t(p.script) } : {}),
+    ...(p.pm ? { pm: { ...p.pm, name: t(p.pm.name), ...(p.pm.tasks ? { tasks: p.pm.tasks.map(([title, start, days, milestone]): [string, number, number, boolean?] => [t(title), start, days, milestone]) } : {}) } } : {}),
+    ...(p.office ? { office: p.office.map(([kind, name]) => [kind, t(name)]) } : {}),
+    ...(p.webinar ? { webinar: t(p.webinar) } : {}),
+  };
+}
 
 export const PLANS: LocPlan[] = [
   {
@@ -347,7 +383,7 @@ export const PLANS: LocPlan[] = [
       ['Bürogemeinschaft Förde', 'Büro', 'Kiel'],
     ],
     sources: ['Laden', 'Online-Shop', 'Instagram', 'Google', 'Markt'],
-    tags: [['Stammkunde', '#16a34a'], ['Abo', '#2563eb'], ['Gastro', '#a16207'], ['Newsletter', '#0ea5e9'], ['Barista-Kurs', '#db2777']],
+    tags: [['Stammkunde', '#16a34a'], ['Abonnent', '#2563eb'], ['Gastro', '#a16207'], ['Newsletter', '#0ea5e9'], ['Barista-Kurs', '#db2777']],
     contacts: 50,
     fields: [
       { key: 'lieblingsroestung', label: 'Lieblingsröstung', type: 'select', options: ['Espresso', 'Filter', 'Entkoffeiniert'] },

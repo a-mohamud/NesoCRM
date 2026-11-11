@@ -1,5 +1,6 @@
 import type { Module } from '../core/app.js';
 import { headOf } from '../services/community-pwa.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * The installable member app (docs/courses.md): the community's manifest, service worker and install banner (modules/community-pwa.ts) also
@@ -26,11 +27,12 @@ export const coursePwaModule: Module = {
       ...((app.services.memberAppManifest as unknown[] | undefined) ?? []),
       (m: any, p: { locationId: string; base: string; name?: string; title?: string }) => {
         if (!hasCourses(p.locationId)) return;
-        const name = String(p.name ?? p.title ?? '').trim() || 'Mitgliederbereich';
+        const t = tLoc(app, p.locationId);
+        const name = String(p.name ?? p.title ?? '').trim() || t('Mitgliederbereich');
         m.start_url = `${p.base}/?source=app`;
-        m.description = `Kurse und Community von ${name}`;
+        m.description = t('Kurse und Community von {name}', { name });
         m.categories = ['education', 'social'];
-        m.shortcuts = [{ name: 'Meine Kurse', url: `${p.base}/`, icons: [{ src: `${p.base}/icon/192.png`, sizes: '192x192', type: 'image/png' }] }, ...(m.shortcuts ?? [])];
+        m.shortcuts = [{ name: t('Meine Kurse'), url: `${p.base}/`, icons: [{ src: `${p.base}/icon/192.png`, sizes: '192x192', type: 'image/png' }] }, ...(m.shortcuts ?? [])];
       },
     ];
 

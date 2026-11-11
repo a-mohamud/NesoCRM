@@ -3,7 +3,7 @@ import { parseJson } from '../core/db.js';
 import { HttpError, bad, notFound } from '../core/http.js';
 import { render } from '../core/template.js';
 import { ymdInTz } from '../core/time.js';
-import { centsToMoney, id, now, token } from '../core/util.js';
+import { id, now, token } from '../core/util.js';
 import { createSignedContract, isSignatureImage } from '../modules/contracts.js';
 import { createInvoice, invoiceSettings, sendInvoice } from '../modules/payments.js';
 import { contactName, contactVars, getContact, logActivity } from './contacts.js';
@@ -11,9 +11,10 @@ import { setDealLines } from './deal-lines.js';
 import { SYSTEM, allocateNumber, convertEstimate, invAudit, loadInvoice, mustInvoice, stripSnapshot, type Actor } from './invoice-flow.js';
 import { isTaxMode, type TaxMode } from './invoice-model.js';
 import { notifyTeam, sendToContact } from './messaging.js';
-import { OPEN_STATUSES, QUOTE_STATUS_LABEL, DEFAULT_VALID_DAYS, cleanQuoteDoc, isExpired, optionTotals, quoteContractText, quoteDocItems, quoteTotals, resolveSelection, selectedItems, validUntilFrom, type QuoteDoc, type QuoteStatus, type Selection } from './quote-model.js';
+import { OPEN_STATUSES, QUOTE_STATUS_LABEL, DEFAULT_VALID_DAYS, dateIn, moneyIn, tq, cleanQuoteDoc, isExpired, optionTotals, quoteContractText, quoteDocItems, quoteTotals, resolveSelection, selectedItems, validUntilFrom, type QuoteDoc, type QuoteStatus, type Selection } from './quote-model.js';
 import { getOpportunity, updateOpportunity } from './opportunities.js';
 import { LineError, NO_DEPOSIT, cleanDeposit, depositLines, type DepositSpec, type SalesTotals } from './sales-lines.js';
+import { tApp, tLoc, translator, type STFn } from '../i18n/index.js';
 
 /**
  * Quotes at work: building one from a deal, sending it, the customer opening, choosing and signing it on its own page, what follows
@@ -106,10 +107,11 @@ export function createQuote(app: App, loc: string, dealId: string, o: { userId?:
   const deal = getOpportunity(app, loc, dealId) as { id: string; name: string; value: number; currency: string; contact_id: string } | undefined;
   if (!deal) throw notFound('Deal nicht gefunden');
   const settings = invoiceSettings(app, loc);
+  const t = tLoc(app, loc);
   let source: unknown = o.items;
   if (source === undefined) {
     const lines = (app.services.dealLines?.get(loc, deal.id) ?? []) as any[];
-    source = lines.length ? lines : [{ name: deal.name || 'Leistung', qty: 1, price_cents: Math.round(Number(deal.value) || 0) * 100, tax_rate: settings.tax_rate }];
+    source = lines.length ? lines : [{ name: deal.name || t('Leistung'), qty: 1, price_cents: Math.round(Number(deal.value) || 0) * 100, tax_rate: settings.tax_rate }];
   }
   const doc = asHttp(() => cleanQuoteDoc({ items: source, options: o.options }, lineOpts(app, loc)));
   const days = Number.isFinite(Number(o.valid_days)) && Number(o.valid_days) >= 0 ? Math.min(365, Math.round(Number(o.valid_days))) : DEFAULT_VALID_DAYS;
@@ -119,7 +121,7 @@ export function createQuote(app: App, loc: string, dealId: string, o: { userId?:
     deal_id: deal.id,
     contact_id: deal.contact_id,
     number: '',
-    title: String(o.title ?? '').trim().slice(0, 200) || deal.name || 'Angebot',
+    title: String(o.title ?? '').trim().slice(0, 200) || deal.name || tq(t, 'Angebot'),
     status: 'draft',
     currency: deal.currency || 'EUR',
     tax_mode: settings.tax_mode,
@@ -137,7 +139,7 @@ export function createQuote(app: App, loc: string, dealId: string, o: { userId?:
     updated_at: now(),
   };
   app.db.insert('deal_quotes', row);
-  logActivity(app, loc, deal.contact_id, 'quote.created', `Angebot „${row.title}“ für „${deal.name}“ angelegt`, { quote_id: row.id });
+  logActivity(app, loc, deal.contact_id, 'quote.created', t('Angebot „{title}“ für „{deal}“ angelegt', { title: row.title, deal: deal.name }), { quote_id: row.id });
   return getQuote(app, loc, row.id)!;
 }
 
@@ -173,7 +175,7 @@ export function updateQuote(app: App, loc: string, q: QuoteRow, b: Record<string
     if (dep.mode === 'deposit') {
       for (const ot of doc.options.length ? optionTotals(doc, mode) : [{ option_id: '', totals: quoteTotals(doc, resolveSelection(doc), mode) }]) {
         if (ot.totals.subtotal_cents <= 0) throw bad('Für eine Anzahlung braucht jede Variante einen Betrag');
-        asHttp(() => depositLines(ot.totals, dep, 'Anzahlung', mode));
+        asHttp(() => depositLines(ot.totals, dep, tLoc(app, loc)('Anzahlung'), mode));
       }
     }
   }
@@ -212,7 +214,7 @@ export function duplicateQuote(app: App, loc: string, q: QuoteRow, userId: strin
     updated_at: now(),
   };
   app.db.insert('deal_quotes', copy);
-  logActivity(app, loc, q.contact_id, 'quote.created', `Angebot „${q.title}“: Version ${copy.revision} angelegt`, { quote_id: copy.id });
+  logActivity(app, loc, q.contact_id, 'quote.created', tLoc(app, loc)('Angebot „{title}“: Version {n} angelegt', { title: q.title, n: copy.revision }), { quote_id: copy.id });
   return getQuote(app, loc, copy.id)!;
 }
 
@@ -221,10 +223,10 @@ export function duplicateQuote(app: App, loc: string, q: QuoteRow, userId: strin
 const totalsOut = (t: SalesTotals) => ({ list_cents: t.list_cents, discount_cents: t.discount_cents, net_cents: t.subtotal_cents, tax_cents: t.tax_cents, total_cents: t.total_cents, groups: t.groups });
 
 /** What the customer owes at acceptance for a choice (null when nothing is due then). */
-export function dueOnAccept(q: Pick<QuoteRow, 'payment' | 'tax_mode' | 'doc'>, totals: SalesTotals): { kind: 'deposit' | 'full'; label: string; total_cents: number; net_cents: number } | null {
-  if (q.payment.mode === 'full') return { kind: 'full', label: 'Gesamtbetrag', total_cents: totals.total_cents, net_cents: totals.subtotal_cents };
+export function dueOnAccept(q: Pick<QuoteRow, 'payment' | 'tax_mode' | 'doc'>, totals: SalesTotals, t: STFn = translator()): { kind: 'deposit' | 'full'; label: string; total_cents: number; net_cents: number } | null {
+  if (q.payment.mode === 'full') return { kind: 'full', label: t('Gesamtbetrag'), total_cents: totals.total_cents, net_cents: totals.subtotal_cents };
   if (q.payment.mode !== 'deposit') return null;
-  const label = q.payment.type === 'percent' ? `Anzahlung ${String(q.payment.value).replace('.', ',')} %` : 'Anzahlung';
+  const label = q.payment.type === 'percent' ? t('Anzahlung {rate} %', { rate: t.locale === 'de' ? String(q.payment.value).replace('.', ',') : String(q.payment.value) }) : t('Anzahlung');
   const d = depositLines(totals, q.payment, label, q.tax_mode);
   return { kind: 'deposit', label, total_cents: d.totals.total_cents, net_cents: d.totals.subtotal_cents };
 }
@@ -242,7 +244,7 @@ export function quoteOut(app: App, q: QuoteRow, sel?: Selection | null) {
   return {
     ...rest,
     url: quoteUrl(app, q),
-    status_label: QUOTE_STATUS_LABEL[q.status],
+    status_label: tApp()(QUOTE_STATUS_LABEL[q.status]),
     expired: q.status === 'expired' || (OPEN_STATUSES.includes(q.status) && isExpired(q.valid_until, todayOf(app, q.location_id))),
     deal: deal ? { id: q.deal_id, name: deal.name, status: deal.status, value: deal.value } : null,
     contact: contact ? { id: contact.id, name: contactName(contact), email: contact.email } : null,
@@ -251,7 +253,7 @@ export function quoteOut(app: App, q: QuoteRow, sel?: Selection | null) {
     options: q.doc.options.map((o) => ({ option_id: o.id, totals: totalsOut(optionTotals(q.doc, q.tax_mode).find((x) => x.option_id === o.id)!.totals) })),
     due_on_accept: (() => {
       try {
-        return dueOnAccept(q, totals);
+        return dueOnAccept(q, totals, tLoc(app, q.location_id));
       } catch {
         return null;
       }
@@ -316,20 +318,22 @@ async function sendQuoteNow(app: App, loc: string, q0: QuoteRow, o: SendOpts): P
   const url = quoteUrl(app, q);
   const location = app.location(loc)!;
   const totals = quoteTotals(q.doc, selection, q.tax_mode);
+  // Neso fork: the mail and the trail in the sub-account's customer language.
+  const t = tLoc(app, loc);
   let message: { status: string; error?: string | null } | undefined;
   if (deliver) {
-    const vars = { contact: contactVars(contact), location, quote: { number: q.number, title: q.title, url, total: centsToMoney(totals.total_cents, q.currency), valid_until: (patch.valid_until ?? q.valid_until ?? '').split('-').reverse().join('.') } };
+    const vars = { contact: contactVars(contact), location, quote: { number: q.number, title: q.title, url, total: moneyIn(t, q.currency)(totals.total_cents), valid_until: dateIn(t, patch.valid_until ?? q.valid_until ?? '') } };
     const m = await sendToContact(app, loc, {
       contactId: contact.id,
       channel,
-      subject: render(String(o.subject ?? '').trim() || 'Ihr Angebot {{quote.number}} von {{location.name}}', vars),
-      body: render(String(o.body ?? '').trim() || 'Hallo {{contact.first_name|}},\n\nvielen Dank für Ihr Interesse. Hier ist unser Angebot „{{quote.title}}“ – Sie können es online ansehen, eine Variante wählen und direkt annehmen:\n{{quote.url}}\n\nGültig bis {{quote.valid_until}}.\n\nViele Grüße\n{{location.name}}', vars),
+      subject: render(String(o.subject ?? '').trim() || t('Ihr Angebot {{quote.number}} von {{location.name}}'), vars),
+      body: render(String(o.body ?? '').trim() || t('Hallo {{contact.first_name|}},\n\nvielen Dank für Ihr Interesse. Hier ist unser Angebot „{{quote.title}}“ – Sie können es online ansehen, eine Variante wählen und direkt annehmen:\n{{quote.url}}\n\nGültig bis {{quote.valid_until}}.\n\nViele Grüße\n{{location.name}}'), vars),
       userId: o.userId,
-      source: 'Angebot',
+      source: tq(t, 'Angebot'),
       ignoreDnd: true,
     });
     message = { status: m.status, error: m.error };
-    if (m.status === 'failed') throw bad(`Der Versand ist fehlgeschlagen: ${m.error}`);
+    if (m.status === 'failed') throw bad(tApp()('Der Versand ist fehlgeschlagen: {error}', { error: m.error ?? '' }));
   }
   const first = !q.sent_at;
   app.db.run(`UPDATE deal_quotes SET status = CASE WHEN status IN ('draft', 'expired') THEN 'sent' ELSE status END, sent_at = COALESCE(sent_at, ?), valid_until = COALESCE(?, valid_until), updated_at = ? WHERE id = ?`, now(), patch.valid_until ?? null, now(), q.id);
@@ -337,12 +341,12 @@ async function sendQuoteNow(app: App, loc: string, q0: QuoteRow, o: SendOpts): P
   if (q.parent_id) {
     const old = getQuote(app, loc, q.parent_id);
     if (old && OPEN_STATUSES.includes(old.status)) {
-      app.db.run(`UPDATE deal_quotes SET status = 'void', note = ?, updated_at = ? WHERE id = ?`, `Ersetzt durch Version ${q.revision}`, now(), old.id);
+      app.db.run(`UPDATE deal_quotes SET status = 'void', note = ?, updated_at = ? WHERE id = ?`, t('Ersetzt durch Version {n}', { n: q.revision }), now(), old.id);
     }
   }
   const out = getQuote(app, loc, q.id)!;
   if (first) {
-    logActivity(app, loc, q.contact_id, 'quote.sent', `Angebot ${out.number} „${out.title}“ ${deliver ? 'gesendet' : 'freigegeben'} (${centsToMoney(totals.total_cents, out.currency)})`, { quote_id: out.id });
+    logActivity(app, loc, q.contact_id, 'quote.sent', t(deliver ? 'Angebot {number} „{title}“ gesendet ({amount})' : 'Angebot {number} „{title}“ freigegeben ({amount})', { number: out.number, title: out.title, amount: moneyIn(t, out.currency)(totals.total_cents) }), { quote_id: out.id });
     app.events.emit(loc, 'quote.sent', { contactId: q.contact_id, quote: eventQuote(out) });
   }
   return { quote: out, message };
@@ -355,7 +359,7 @@ export function markViewed(app: App, q: QuoteRow): void {
   if (q.status !== 'sent') return;
   const r = app.db.run(`UPDATE deal_quotes SET status = 'viewed', viewed_at = ?, updated_at = ? WHERE id = ? AND status = 'sent'`, now(), now(), q.id);
   if (!r.changes) return;
-  logActivity(app, q.location_id, q.contact_id, 'quote.viewed', `Angebot ${q.number} geöffnet`, { quote_id: q.id });
+  logActivity(app, q.location_id, q.contact_id, 'quote.viewed', tLoc(app, q.location_id)('Angebot {number} geöffnet', { number: q.number }), { quote_id: q.id });
   app.events.emit(q.location_id, 'quote.viewed', { contactId: q.contact_id, quote: eventQuote({ ...q, status: 'viewed' }) });
 }
 
@@ -363,7 +367,7 @@ export function voidQuote(app: App, loc: string, q: QuoteRow, reason = ''): Quot
   if (q.status === 'accepted') throw new HttpError(409, 'Ein angenommenes Angebot bleibt bestehen – es gibt schon eine Unterschrift');
   if (q.status === 'void') return q;
   app.db.run(`UPDATE deal_quotes SET status = 'void', note = ?, updated_at = ? WHERE id = ?`, reason.slice(0, 300), now(), q.id);
-  logActivity(app, loc, q.contact_id, 'quote.void', `Angebot ${q.number || q.title} zurückgezogen`, { quote_id: q.id });
+  logActivity(app, loc, q.contact_id, 'quote.void', tLoc(app, loc)('Angebot {number} zurückgezogen', { number: q.number || q.title }), { quote_id: q.id });
   return getQuote(app, loc, q.id)!;
 }
 
@@ -373,8 +377,9 @@ export function declineQuote(app: App, q: QuoteRow, reason: string): void {
   if (!OPEN_STATUSES.includes(q.status)) throw new HttpError(409, 'Dieses Angebot kann nicht mehr beantwortet werden');
   const r = app.db.run(`UPDATE deal_quotes SET status = 'declined', declined_at = ?, decline_reason = ?, updated_at = ? WHERE id = ? AND status IN ('sent', 'viewed')`, now(), reason.slice(0, 1000), now(), q.id);
   if (!r.changes) throw new HttpError(409, 'Dieses Angebot kann nicht mehr beantwortet werden');
-  logActivity(app, q.location_id, q.contact_id, 'quote.declined', `Angebot ${q.number} abgelehnt${reason ? `: ${reason.slice(0, 120)}` : ''}`, { quote_id: q.id });
-  void notifyTeam(app, q.location_id, `Angebot abgelehnt: ${q.number}`, `${q.title}\nGrund: ${reason || '–'}`);
+  const t = tLoc(app, q.location_id);
+  logActivity(app, q.location_id, q.contact_id, 'quote.declined', `${t('Angebot {number} abgelehnt', { number: q.number })}${reason ? `: ${reason.slice(0, 120)}` : ''}`, { quote_id: q.id });
+  void notifyTeam(app, q.location_id, t('Angebot abgelehnt: {number}', { number: q.number }), `${q.title}\n${t('Grund: {reason}', { reason: reason || '–' })}`);
   app.events.emit(q.location_id, 'quote.declined', { contactId: q.contact_id, quote: eventQuote({ ...q, status: 'declined' }), reason });
 }
 
@@ -419,7 +424,10 @@ export async function acceptQuote(app: App, tok: string, input: AcceptInput): Pr
   if (!items.length || totals.total_cents <= 0) throw bad('Das Angebot hat keinen Betrag');
   const contact = getContact(app, loc, q.contact_id);
   const location = app.location(loc)!;
-  const due = dueOnAccept(q, totals);
+  // Neso fork: everything the customer and the records get, in the sub-account's customer language.
+  const t = tLoc(app, loc);
+  const money = moneyIn(t, q.currency);
+  const due = dueOnAccept(q, totals, t);
   const text = quoteContractText({
     number: q.number,
     title: q.title,
@@ -433,7 +441,7 @@ export async function acceptQuote(app: App, tok: string, input: AcceptInput): Pr
     selection,
     totals,
     deposit: due ? { label: due.label, total_cents: due.total_cents } : null,
-  });
+  }, t);
 
   // 1. signature, estimate and the quote itself in one go
   const done = app.db.tx(() => {
@@ -447,16 +455,16 @@ export async function acceptQuote(app: App, tok: string, input: AcceptInput): Pr
       items: quoteDocItems(q.doc, selection),
       currency: q.currency,
       tax_mode: q.tax_mode,
-      notes: [q.terms.trim(), `Angenommen am ${new Date().toLocaleDateString('de-DE', { timeZone: location.timezone })} von ${name}.`].filter(Boolean).join('\n\n'),
+      notes: [q.terms.trim(), t('Angenommen am {date} von {name}.', { date: dateIn(t, ymdInTz(new Date(), location.timezone || 'Europe/Berlin')), name })].filter(Boolean).join('\n\n'),
     });
-    const contract = createSignedContract(app, { locationId: loc, contactId: q.contact_id, title: `Angebot ${q.number}: ${q.title}`, content: text, signerName: name, signature: input.signature, ip: input.ip, userAgent: input.userAgent });
+    const contract = createSignedContract(app, { locationId: loc, contactId: q.contact_id, title: t('Angebot {number}: {title}', { number: q.number, title: q.title }), content: text, signerName: name, signature: input.signature, ip: input.ip, userAgent: input.userAgent });
     app.db.run(`UPDATE invoices SET status = 'accepted', sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE id = ?`, now(), now(), estimate.id);
-    invAudit(app, loc, estimate.id, 'quote.accepted', `online angenommen und unterschrieben (${name})`, SYSTEM);
+    invAudit(app, loc, estimate.id, 'quote.accepted', t('online angenommen und unterschrieben ({name})', { name }), SYSTEM);
     app.db.run(`UPDATE deal_quotes SET selection = ?, accepted_total_cents = ?, signer_name = ?, contract_id = ?, estimate_id = ?, updated_at = ? WHERE id = ?`, JSON.stringify(selection), totals.total_cents, name, contract.id, estimate.id, now(), q.id);
     return { contract, estimateId: estimate.id };
   });
   let cur = getQuote(app, loc, q.id)!;
-  logActivity(app, loc, q.contact_id, 'quote.accepted', `Angebot ${q.number} angenommen und unterschrieben (${centsToMoney(totals.total_cents, q.currency)})`, { quote_id: q.id, contract_id: done.contract.id, estimate_id: done.estimateId });
+  logActivity(app, loc, q.contact_id, 'quote.accepted', t('Angebot {number} angenommen und unterschrieben ({amount})', { number: q.number, amount: money(totals.total_cents) }), { quote_id: q.id, contract_id: done.contract.id, estimate_id: done.estimateId });
   const est = loadInvoice(app, loc, done.estimateId);
   if (est) app.events.emit(loc, 'estimate.accepted', { contactId: q.contact_id, invoice: stripSnapshot(est) });
   app.events.emit(loc, 'quote.accepted', { contactId: q.contact_id, quote: eventQuote(cur), total_cents: totals.total_cents });
@@ -477,27 +485,27 @@ export async function acceptQuote(app: App, tok: string, input: AcceptInput): Pr
   let problem = '';
   if (due) {
     try {
-      const actor: Actor = { id: null, name: `Angebot ${q.number}` };
+      const actor: Actor = { id: null, name: t('Angebot {number}', { number: q.number }) };
       let inv;
       if (due.kind === 'full') inv = convertEstimate(app, loc, done.estimateId, actor, { inv_type: 'standard' });
       else {
         const dep = depositLines(totals, q.payment, due.label, q.tax_mode);
-        inv = createInvoice(app, loc, { kind: 'invoice', inv_type: 'partial', contact_id: q.contact_id, title: `${due.label} zu Angebot ${q.number}`, items: dep.items.map((i) => ({ ...i, name: `${i.name} – Angebot ${q.number}`.slice(0, 300) })), currency: q.currency, tax_mode: q.tax_mode, notes: q.terms.trim() });
+        inv = createInvoice(app, loc, { kind: 'invoice', inv_type: 'partial', contact_id: q.contact_id, title: t('{label} zu Angebot {number}', { label: due.label, number: q.number }), items: dep.items.map((i) => ({ ...i, name: `${i.name} – ${t('Angebot {number}', { number: q.number })}`.slice(0, 300) })), currency: q.currency, tax_mode: q.tax_mode, notes: q.terms.trim() });
         app.db.run('UPDATE invoices SET ref_id = ? WHERE id = ?', done.estimateId, inv.id);
       }
       let sent = false;
       try {
-        const out = await sendInvoice(app, loc, { id: inv.id }, { actor, subject: `${due.kind === 'full' ? 'Rechnung' : 'Anzahlungsrechnung'} zu Ihrem Angebot ${q.number}` });
+        const out = await sendInvoice(app, loc, { id: inv.id }, { actor, subject: due.kind === 'full' ? t('Rechnung zu Ihrem Angebot {number}', { number: q.number }) : t('Anzahlungsrechnung zu Ihrem Angebot {number}', { number: q.number }) });
         inv = out;
         sent = true;
       } catch (e) {
-        problem = `Die Rechnung zu Angebot ${q.number} liegt als Entwurf bereit, wurde aber nicht gesendet: ${(e as Error).message}`;
+        problem = t('Die Rechnung zu Angebot {number} liegt als Entwurf bereit, wurde aber nicht gesendet: {error}', { number: q.number, error: (e as Error).message });
       }
       const fresh = mustInvoice(app, loc, inv.id);
       app.db.run('UPDATE deal_quotes SET invoice_id = ?, invoice_kind = ?, updated_at = ? WHERE id = ?', fresh.id, due.kind === 'full' ? 'standard' : 'partial', now(), q.id);
       result = { id: fresh.id, number: fresh.number, url: `${app.baseUrl()}/i/${fresh.public_token}`, kind: due.kind, total_cents: fresh.total_cents, sent };
     } catch (e) {
-      problem = `Die Rechnung zu Angebot ${q.number} konnte nicht angelegt werden: ${(e as Error).message}`;
+      problem = t('Die Rechnung zu Angebot {number} konnte nicht angelegt werden: {error}', { number: q.number, error: (e as Error).message });
     }
   }
   if (problem) {
@@ -505,10 +513,16 @@ export async function acceptQuote(app: App, tok: string, input: AcceptInput): Pr
     logActivity(app, loc, q.contact_id, 'quote.problem', problem.slice(0, 200), { quote_id: q.id });
   }
   cur = getQuote(app, loc, q.id)!;
-  void notifyTeam(app, loc, `Angebot angenommen: ${q.number}`, `${name} hat „${q.title}“ angenommen und unterschrieben (${centsToMoney(totals.total_cents, q.currency)}).${problem ? `\n\nAchtung: ${problem}` : ''}\n\n${quoteUrl(app, q)}`);
+  void notifyTeam(
+    app,
+    loc,
+    t('Angebot angenommen: {number}', { number: q.number }),
+    `${t('{name} hat „{title}“ angenommen und unterschrieben ({amount}).', { name, title: q.title, amount: money(totals.total_cents) })}${problem ? `\n\n${t('Achtung: {problem}', { problem })}` : ''}\n\n${quoteUrl(app, q)}`,
+  );
   // A short confirmation with the signed copy; the invoice mail (if any) came separately.
   if (contact?.email && !result?.sent) {
-    void sendToContact(app, loc, { contactId: contact.id, channel: 'email', subject: `Danke – Ihr Angebot ${q.number} ist angenommen`, body: `Hallo ${contact.first_name || ''},\n\nvielen Dank für Ihren Auftrag. Ihre unterschriebene Kopie finden Sie hier:\n${done.contract.url}\n\nViele Grüße\n${location.name}`, source: 'Angebot', ignoreDnd: true });
+    const hello = contact.first_name ? t('Hallo {name},', { name: contact.first_name }) : t('Hallo,');
+    void sendToContact(app, loc, { contactId: contact.id, channel: 'email', subject: t('Danke – Ihr Angebot {number} ist angenommen', { number: q.number }), body: `${hello}\n\n${t('vielen Dank für Ihren Auftrag. Ihre unterschriebene Kopie finden Sie hier:')}\n${done.contract.url}\n\n${t('Viele Grüße')}\n${location.name}`, source: tq(t, 'Angebot'), ignoreDnd: true });
   }
   return { quote: cur, invoice: result };
 }
@@ -523,7 +537,7 @@ export function expireQuotes(app: App, at = new Date()): number {
     if (!q || !isExpired(q.valid_until, ymdInTz(at, tzOf(app, q.location_id)))) continue;
     if (!app.db.run(`UPDATE deal_quotes SET status = 'expired', updated_at = ? WHERE id = ? AND status IN ('sent', 'viewed')`, now(), q.id).changes) continue;
     n++;
-    logActivity(app, q.location_id, q.contact_id, 'quote.expired', `Angebot ${q.number} ist abgelaufen`, { quote_id: q.id });
+    logActivity(app, q.location_id, q.contact_id, 'quote.expired', tLoc(app, q.location_id)('Angebot {number} ist abgelaufen', { number: q.number }), { quote_id: q.id });
     app.events.emit(q.location_id, 'quote.expired', { contactId: q.contact_id, quote: eventQuote({ ...q, status: 'expired' }) });
   }
   return n;
@@ -534,7 +548,7 @@ export function invoicePaid(app: App, loc: string, invoiceId: string): void {
   const q = parse(app.db.get('SELECT * FROM deal_quotes WHERE location_id = ? AND invoice_id = ? AND paid_at IS NULL', loc, invoiceId));
   if (!q) return;
   app.db.run('UPDATE deal_quotes SET paid_at = ?, updated_at = ? WHERE id = ?', now(), now(), q.id);
-  logActivity(app, loc, q.contact_id, 'quote.paid', `${q.invoice_kind === 'partial' ? 'Anzahlung' : 'Rechnung'} zu Angebot ${q.number} bezahlt`, { quote_id: q.id });
+  logActivity(app, loc, q.contact_id, 'quote.paid', tLoc(app, loc)(q.invoice_kind === 'partial' ? 'Anzahlung zu Angebot {number} bezahlt' : 'Rechnung zu Angebot {number} bezahlt', { number: q.number }), { quote_id: q.id });
   app.events.emit(loc, 'quote.paid', { contactId: q.contact_id, quote: eventQuote(q) });
 }
 

@@ -3,6 +3,7 @@ import { addDaysYmd, isValidTz, ymdInTz, zonedToUtc } from '../core/time.js';
 import { teamUsers, userFromRow, type TeamUser } from './collab-actor.js';
 import { isAwayAt } from './teaminbox-model.js';
 import { hiddenUser } from '../core/permissions.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Who is around: each person of a sub-account can pause their share of the work, keep weekly working hours and enter
@@ -76,7 +77,7 @@ function hrAbsences(app: App, locationId: string, userId: string, from: string, 
       // A half day at the start/end still blocks the whole day here: people on leave are not assigned new work.
       start_at: zonedToUtc(r.start_date, '00:00', tz).toISOString(),
       end_at: zonedToUtc(addDaysYmd(r.end_date, 1), '00:00', tz).toISOString(),
-      note: r.label || 'Abwesenheit',
+      note: r.label || tApp()('Abwesenheit'),
       source: 'hr' as const,
     }));
   } catch {

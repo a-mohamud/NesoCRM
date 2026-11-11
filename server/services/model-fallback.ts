@@ -1,6 +1,7 @@
 import { ZERO_USAGE, type Usage } from './anthropic.js';
 import { AgentError, chatWithTools, type ChatRequest, type ChatResult } from './agent-llm.js';
 import type { FetchLike, Resolved } from './ai-presets.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Ersatzmodelle – the intelligence must not collapse when one model fails (docs/agent.md#ersatzmodelle). A failing provider
@@ -45,8 +46,9 @@ const skippable = (e: unknown) => isRetryable(e) || ['not_found', 'permission', 
 /** Clean model ids for a routing's `fallbacks` (array or comma separated), at most MAX_ROUTING_FALLBACKS, unique. Pure. */
 export function cleanFallbacks(v: unknown, modelRe: RegExp): string[] {
   const list = (Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,\n]/) : []).map((x) => String(x ?? '').trim()).filter(Boolean);
-  for (const m of list) if (!modelRe.test(m)) throw new Error(`Ersatzmodell „${m.slice(0, 60)}“: bitte die Modell-ID des Anbieters.`);
-  if (list.length > MAX_ROUTING_FALLBACKS) throw new Error(`Höchstens ${MAX_ROUTING_FALLBACKS} Ersatzmodelle`);
+  const t = tApp();
+  for (const m of list) if (!modelRe.test(m)) throw new Error(t('Ersatzmodell „{model}“: bitte die Modell-ID des Anbieters.', { model: m.slice(0, 60) }));
+  if (list.length > MAX_ROUTING_FALLBACKS) throw new Error(t('Höchstens {n} Ersatzmodelle', { n: MAX_ROUTING_FALLBACKS }));
   return [...new Set(list)];
 }
 
@@ -136,5 +138,6 @@ export async function chatWithFallback(
   }
   const tried = [...new Set(attempts.map((a) => a.model))].join(', ');
   const f = first!;
-  throw new AgentError(targets.length > 1 ? `${f.message} Auch die Ersatzmodelle haben nicht geantwortet (versucht: ${tried}).` : f.message, f.status, 'all_failed', f.usage);
+  const t = tApp();
+  throw new AgentError(targets.length > 1 ? t('{error} Auch die Ersatzmodelle haben nicht geantwortet (versucht: {tried}).', { error: t(f.message), tried }) : f.message, f.status, 'all_failed', f.usage);
 }

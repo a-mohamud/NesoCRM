@@ -12,6 +12,7 @@ import { notifyTeam, sendToContact } from './messaging.js';
 import { AUTO_LOST_REASON, createOpportunity, getPipeline, updateOpportunity } from './opportunities.js';
 import { sendReviewRequest } from './reviews.js';
 import { reportStepError } from './workflow-errors.js';
+import { tLoc } from '../i18n/index.js';
 
 export interface Step {
   id: string;
@@ -451,8 +452,9 @@ function varsFor(app: App, run: RunState, contactOverride?: Record<string, any>)
  */
 export function applyContactFields(app: App, run: { location_id: string; contact_id: string; workflow_id?: string; event?: Record<string, any> }, fields: Record<string, unknown>): string[] {
   const loc = run.location_id;
+  const tr = tLoc(app, loc);
   const c = getContact(app, loc, run.contact_id);
-  if (!c) throw new Error('Kontakt nicht gefunden');
+  if (!c) throw new Error(tr('Kontakt nicht gefunden'));
   const patch: Record<string, any> = {};
   let custom: Record<string, any> | undefined;
   const changed: string[] = [];
@@ -460,7 +462,7 @@ export function applyContactFields(app: App, run: { location_id: string; contact
   for (const [field, raw] of Object.entries(fields)) {
     if (field.startsWith('custom.') && field.length > 7) {
       const key = field.slice(7);
-      if (!/^[\w.-]{1,80}$/.test(key) || /^(__proto__|constructor|prototype)$/.test(key)) throw new Error(`Ungültiges Feld ${field}`);
+      if (!/^[\w.-]{1,80}$/.test(key) || /^(__proto__|constructor|prototype)$/.test(key)) throw new Error(tr('Ungültiges Feld {field}', { field }));
       custom ??= { ...c.custom };
       const v = asText(raw).slice(0, 10_000);
       if (asText(custom[key]) !== v) changed.push(field);
@@ -474,7 +476,7 @@ export function applyContactFields(app: App, run: { location_id: string; contact
       const v = asText(raw).slice(0, 500);
       if (asText((c as any)[field]) !== v) changed.push(field);
       patch[field] = field === 'assigned_to' || field === 'date_of_birth' ? v || null : v;
-    } else throw new Error(field ? `Unbekanntes Feld ${field}` : 'Kein Feld gewählt');
+    } else throw new Error(field ? tr('Unbekanntes Feld {field}', { field }) : tr('Kein Feld gewählt'));
   }
   if (!changed.length) return [];
   app.db.update('contacts', c.id, { ...patch, ...(custom ? { custom } : {}), updated_at: now() });
@@ -505,7 +507,7 @@ export function startWorkflow(app: App, wf: any, contactId: string, event: Recor
     updated_at: now(),
   };
   app.db.insert('workflow_runs', run);
-  logActivity(app, wf.location_id, contactId, 'workflow.started', `Workflow „${wf.name}“ gestartet`);
+  logActivity(app, wf.location_id, contactId, 'workflow.started', tLoc(app, wf.location_id)('Workflow „{name}“ gestartet', { name: wf.name }));
   return run.id;
 }
 
@@ -617,6 +619,8 @@ export async function execute(app: App, run: RunState, wf: any, opts: ExecOption
   let cursor: Cursor | null = run.cursor;
   const log = run.log;
   const tz = app.location(run.location_id)?.timezone || 'Europe/Berlin';
+  // Log texts are part of the sub-account's records: written in its language.
+  const tr = tLoc(app, run.location_id);
   // Tests move the clock with app.services.wfxNow.
   const clock = () => opts.now ?? (app.services.wfxNow ? new Date(Number(app.services.wfxNow())) : new Date());
   const done = (status: ExecResult['status'], next: string | null = null): ExecResult => {
@@ -640,7 +644,7 @@ export async function execute(app: App, run: RunState, wf: any, opts: ExecOption
     const total = Number(run.vars._steps ?? 0) + 1;
     run.vars._steps = total;
     if (total > cap) {
-      log.push({ at: now(), step: step.id, type: step.type, error: `Grenze von ${cap} Schritten je Lauf erreicht (Endlosschleife?) – Lauf gestoppt` });
+      log.push({ at: now(), step: step.id, type: step.type, error: tr('Grenze von {n} Schritten je Lauf erreicht (Endlosschleife?) – Lauf gestoppt', { n: cap }) });
       return done('failed');
     }
     const skipped = skipReason(app, step);
@@ -657,14 +661,14 @@ export async function execute(app: App, run: RunState, wf: any, opts: ExecOption
         const at = resumeAt(step, vars, tz, clock());
         cursor = advance(steps, cursor);
         if (at) {
-          log.push({ at: now(), step: step.id, type: 'wait', result: dry ? `Trockenlauf: würde bis ${at.toISOString()} warten` : `bis ${at.toISOString()}`, ...(dry ? { dry: true } : {}) });
+          log.push({ at: now(), step: step.id, type: 'wait', result: dry ? tr('Trockenlauf: würde bis {at} warten', { at: at.toISOString() }) : tr('bis {at}', { at: at.toISOString() }), ...(dry ? { dry: true } : {}) });
           if (!dry) return done('waiting', at.toISOString());
         }
         continue;
       }
       if (step.type === 'if') {
         const ok = evalConditions(step, vars);
-        log.push({ at: now(), step: step.id, type: 'if', result: ok ? 'ja' : 'nein', ...(step.expression ? { input: { expression: String(step.expression).slice(0, 300) } } : {}) });
+        log.push({ at: now(), step: step.id, type: 'if', result: ok ? tr('ja') : tr('nein'), ...(step.expression ? { input: { expression: String(step.expression).slice(0, 300) } } : {}) });
         const branch = ok ? 'then' : 'else';
         cursor = (step[branch] ?? []).length ? [...cursor, branch, 0] : advance(steps, cursor);
         continue;
@@ -677,7 +681,7 @@ export async function execute(app: App, run: RunState, wf: any, opts: ExecOption
       if (step.type === 'goal') {
         // "Goal event": jump out early when the contact already reached it (e.g. booked a call).
         if (evalConditions(step, vars)) {
-          log.push({ at: now(), step: step.id, type: 'goal', result: 'erreicht' });
+          log.push({ at: now(), step: step.id, type: 'goal', result: tr('erreicht') });
           cursor = null;
           continue;
         }
@@ -686,7 +690,7 @@ export async function execute(app: App, run: RunState, wf: any, opts: ExecOption
       }
       input = stepInput(step, vars);
       if (dry && !isPure(app, step.type)) {
-        log.push({ at: now(), step: step.id, type: step.type, result: 'Trockenlauf: nicht ausgeführt', input: clipLog(input), dry: true });
+        log.push({ at: now(), step: step.id, type: step.type, result: tr('Trockenlauf: nicht ausgeführt'), input: clipLog(input), dry: true });
         cursor = advance(steps, cursor);
         continue;
       }
@@ -714,7 +718,7 @@ export async function execute(app: App, run: RunState, wf: any, opts: ExecOption
       }
       if (out.goto) {
         const target = locate(steps, out.goto);
-        if (!target) throw new Error('Sprungziel nicht gefunden – bitte den Schritt neu wählen');
+        if (!target) throw new Error(tr('Sprungziel nicht gefunden – bitte den Schritt neu wählen'));
         cursor = target;
         continue;
       }
@@ -748,20 +752,22 @@ async function runAction(app: App, run: RunState, step: Step, vars: Record<strin
   const loc = run.location_id;
   const cid = run.contact_id;
   const t = (s: unknown) => render(String(s ?? ''), vars);
+  // Results and errors land in the run log of the sub-account: written in its language.
+  const tr = tLoc(app, loc);
   switch (step.type) {
     case 'send_email': {
       // Merge fields inside HTML are escaped (contact data must not inject markup).
       const body = step.isHtml ? render(String(step.body ?? ''), vars, { escape: true }) : t(step.body);
       const subject = t(step.subject);
       // A step saved without content would send a blank mail to the customer.
-      if (!subject.trim() && !String(body).trim()) throw new Error('E-Mail ohne Betreff und Text – nichts gesendet');
+      if (!subject.trim() && !String(body).trim()) throw new Error(tr('E-Mail ohne Betreff und Text – nichts gesendet'));
       const m = await sendToContact(app, loc, { contactId: cid, channel: 'email', subject, body, text: step.text ? t(step.text) : undefined, isHtml: !!step.isHtml, source: 'Workflow', ...(step.purpose === 'transactional' ? { purpose: 'transactional' as const } : {}) });
       if (m.status === 'failed') throw new Error(m.error);
       return m.status;
     }
     case 'send_sms': {
       const smsBody = t(step.body);
-      if (!smsBody.trim()) throw new Error('SMS ohne Text – nichts gesendet');
+      if (!smsBody.trim()) throw new Error(tr('SMS ohne Text – nichts gesendet'));
       const m = await sendToContact(app, loc, { contactId: cid, channel: 'sms', body: smsBody, source: 'Workflow', ...(step.purpose === 'transactional' ? { purpose: 'transactional' as const } : {}) });
       if (m.status === 'failed') throw new Error(m.error);
       return m.status;
@@ -780,17 +786,17 @@ async function runAction(app: App, run: RunState, step: Step, vars: Record<strin
     }
     case 'set_dnd':
       app.db.update('contacts', cid, { dnd: step.value ? 1 : 0, updated_at: now() });
-      return step.value ? 'DND an' : 'DND aus';
+      return step.value ? tr('DND an') : tr('DND aus');
     case 'create_opportunity': {
       const o = createOpportunity(app, loc, { pipeline_id: step.pipeline_id, stage_id: step.stage_id, contact_id: cid, name: t(step.name) || undefined, value: Number(t(step.value)) || 0, expected_close_date: t(step.expected_close_in_days) ? addDaysYmd(ymdInTz(new Date(), app.location(loc)?.timezone ?? 'Europe/Berlin'), Math.round(Number(t(step.expected_close_in_days)) || 0)) : undefined, currency: step.currency || undefined, source: 'Workflow' });
       return o.id;
     }
     case 'move_opportunity': {
       const p = getPipeline(app, loc, step.pipeline_id);
-      if (!p) throw new Error('Pipeline nicht gefunden');
+      if (!p) throw new Error(tr('Pipeline nicht gefunden'));
       const opp = app.db.get(`SELECT * FROM opportunities WHERE contact_id = ? AND pipeline_id = ? AND status = 'open' ORDER BY updated_at DESC`, cid, p.id);
       if (!opp) {
-        if (step.create_if_missing === false) return 'keine Opportunity';
+        if (step.create_if_missing === false) return tr('keine Opportunity');
         return createOpportunity(app, loc, { pipeline_id: p.id, stage_id: step.stage_id, contact_id: cid, source: 'Workflow' }).id;
       }
       updateOpportunity(app, loc, opp.id, { stage_id: step.stage_id });
@@ -798,53 +804,53 @@ async function runAction(app: App, run: RunState, step: Step, vars: Record<strin
     }
     case 'set_opportunity_status': {
       const opp = app.db.get(`SELECT * FROM opportunities WHERE contact_id = ? ${step.pipeline_id ? 'AND pipeline_id = ?' : ''} ORDER BY updated_at DESC`, cid, ...(step.pipeline_id ? [step.pipeline_id] : []));
-      if (!opp) return 'keine Opportunity';
+      if (!opp) return tr('keine Opportunity');
       // A lost deal needs a reason: the step's own (it may use variables), otherwise one that says "automation".
       updateOpportunity(app, loc, opp.id, { status: step.status, ...(step.status === 'lost' ? { lost_reason: t(step.lost_reason) || AUTO_LOST_REASON } : {}) });
       return step.status;
     }
     case 'create_task': {
       const due = step.due_in_days !== undefined && step.due_in_days !== '' ? new Date(Date.now() + Number(step.due_in_days) * 864e5).toISOString() : null;
-      app.db.insert('tasks', { id: id(), location_id: loc, contact_id: cid, title: t(step.title) || 'Aufgabe', description: t(step.description), due_at: due, assigned_to: step.assigned_to || null, done: 0, created_at: now() });
-      return 'Aufgabe angelegt';
+      app.db.insert('tasks', { id: id(), location_id: loc, contact_id: cid, title: t(step.title) || tr('Aufgabe'), description: t(step.description), due_at: due, assigned_to: step.assigned_to || null, done: 0, created_at: now() });
+      return tr('Aufgabe angelegt');
     }
     case 'add_note':
       // Modules add columns to the note (notes-plus: title, colour, pinned) through app.services.noteExtras.
       app.db.insert('notes', { id: id(), location_id: loc, contact_id: cid, body: t(step.body), user_id: null, created_at: now(), ...(app.services.noteExtras?.(step, t) ?? {}) });
-      return 'Notiz angelegt';
+      return tr('Notiz angelegt');
     case 'notify':
-      await notifyTeam(app, loc, t(step.subject) || 'Benachrichtigung', t(step.body), t(step.to) || undefined);
-      return 'Team benachrichtigt';
+      await notifyTeam(app, loc, t(step.subject) || tr('Benachrichtigung'), t(step.body), t(step.to) || undefined);
+      return tr('Team benachrichtigt');
     case 'webhook': {
       const url = String(step.url ?? '');
-      if (!/^https?:\/\//.test(url)) throw new Error('Webhook-URL fehlt');
+      if (!/^https?:\/\//.test(url)) throw new Error(tr('Webhook-URL fehlt'));
       const r = await safeFetch(url, {
         method: step.method === 'GET' ? 'GET' : 'POST',
         headers: { 'content-type': 'application/json' },
         body: step.method === 'GET' ? undefined : JSON.stringify({ contact: vars.contact, event: vars.event, location: { id: loc, name: vars.location?.name } }),
         timeoutMs: 15_000,
       });
-      if (!r.ok) throw new Error(`Webhook ${r.status}`);
+      if (!r.ok) throw new Error(tr('Webhook {status}', { status: r.status }));
       return `HTTP ${r.status}`;
     }
     case 'review_request':
       await sendReviewRequest(app, loc, cid, step.channel === 'sms' ? 'sms' : 'email');
-      return 'Bewertungsanfrage gesendet';
+      return tr('Bewertungsanfrage gesendet');
     case 'add_to_workflow': {
       const other = parseJson(app.db.get('SELECT * FROM workflows WHERE id = ? AND location_id = ?', step.workflow_id, loc), ['steps', 'trigger', 'settings']);
-      if (!other || other.status !== 'active') throw new Error('Ziel-Workflow nicht aktiv');
+      if (!other || other.status !== 'active') throw new Error(tr('Ziel-Workflow nicht aktiv'));
       const rid = startWorkflow(app, other, cid, run.event ?? {});
       if (rid) setImmediate(() => void processRun(app, rid));
-      return rid ? 'gestartet' : 'schon drin';
+      return rid ? tr('gestartet') : tr('schon drin');
     }
     case 'remove_from_workflow':
       app.db.run(`UPDATE workflow_runs SET status = 'stopped', updated_at = ? WHERE workflow_id = ? AND contact_id = ? AND status IN ('active','waiting')`, now(), step.workflow_id, cid);
-      return 'entfernt';
+      return tr('entfernt');
     default: {
       // Actions contributed by other modules (e.g. social_post from the social planner).
       const ext = app.services.workflowActions?.[step.type];
       if (ext) return await ext(run, step, vars, fc);
-      throw new Error(`Unbekannte Aktion ${step.type}`);
+      throw new Error(tr('Unbekannte Aktion {type}', { type: step.type }));
     }
   }
 }

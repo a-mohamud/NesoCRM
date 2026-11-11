@@ -6,6 +6,10 @@ import { pageUrl, renderPage } from '../services/site-render.js';
 import { buildSchema, checkSeo, externalSeoIssues, faqOf, SCHEMA_TYPES, schemaScript, seoScore, siteSeoIssues } from '../services/site-seo.js';
 import { safeFetch } from '../services/net.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
+
+/** The schema types with their labels in the reader's language. */
+const localTypes = (t: STFn) => Object.fromEntries(Object.entries(SCHEMA_TYPES).map(([k, v]) => [k, { ...v, label: t(v.label), fields: v.fields.map((f) => ({ ...f, label: t(f.label) })) }]));
 
 /**
  * SEO-Check and structured data (schema.org JSON-LD) for the pages of a site – docs/sites.md#seo-check.
@@ -77,7 +81,7 @@ export const siteSeoModule: Module = {
       try {
         res = await safeFetch(url, { headers: { 'user-agent': 'Mozilla/5.0 (compatible; HyperLevel-SEO-Check)', accept: 'text/html' }, timeoutMs: 12_000, maxBytes: 3 * 1024 * 1024 });
       } catch (e) {
-        throw bad(`Seite nicht erreichbar: ${(e as Error).message}`);
+        throw bad(tApp()('Seite nicht erreichbar: {error}', { error: (e as Error).message }));
       }
       const html = await res.text();
       const ms = Date.now() - started;
@@ -98,15 +102,15 @@ export const siteSeoModule: Module = {
     /** What the form starts with when nothing is saved: the company data for a business, FAQ when the page has FAQ blocks. */
     const suggestion = (ctx: Ctx, p: any) => {
       const prof = (app.services.legalTexts?.profile?.(ctx.locationId) ?? {}) as Record<string, string>;
-      if (faqOf(p.blocks).length) return { type: 'FAQPage', data: {} };
-      return { type: 'LocalBusiness', data: { name: prof.company ?? '', telephone: prof.phone ?? '', email: prof.email ?? '', street: prof.street ?? '', zip: prof.zip ?? '', city: prof.city ?? '', country: 'DE' } };
+      if (faqOf(p.blocks).length) return { type: 'FAQPage', data: {} }; // i18n-ignore – schema.org types
+      return { type: 'LocalBusiness', data: { name: prof.company ?? '', telephone: prof.phone ?? '', email: prof.email ?? '', street: prof.street ?? '', zip: prof.zip ?? '', city: prof.city ?? '', country: 'DE' } }; // i18n-ignore – schema.org types
     };
     router.get('/api/funnel-pages/:id/schema', 'location', (ctx) => {
       const p = pageOr404(ctx);
       const f = funnelOr404(ctx, p.funnel_id);
       const row = schemaRow(p.id);
       const first = isFirst(p);
-      return { saved: !!row, type: row?.type ?? '', data: row?.data ?? {}, suggestion: row ? undefined : suggestion(ctx, p), json: jsonFor(f, p, first, row), faq: faqOf(p.blocks).length, types: SCHEMA_TYPES };
+      return { saved: !!row, type: row?.type ?? '', data: row?.data ?? {}, suggestion: row ? undefined : suggestion(ctx, p), json: jsonFor(f, p, first, row), faq: faqOf(p.blocks).length, types: localTypes(tCtx(ctx)) };
     });
     router.put('/api/funnel-pages/:id/schema', 'location', (ctx) => {
       if (ctx.scope === 'read') throw new HttpError(403, 'Dieser Schlüssel darf nur lesen');
@@ -164,7 +168,7 @@ export const siteSeoModule: Module = {
       {
         name: 'ghl_site_schema_set',
         title: 'Strukturierte Daten einer Seite setzen',
-        description: `Setzt die schema.org-Auszeichnung (JSON-LD) einer Seite. type: ${Object.keys(SCHEMA_TYPES).join(', ')} – leer entfernt sie. FAQPage liest die FAQ-Blöcke der Seite. Felder je Typ: GET /api/funnel-pages/<id>/schema → types.`,
+        description: tApp()('Setzt die schema.org-Auszeichnung (JSON-LD) einer Seite. type: {types} – leer entfernt sie. FAQPage liest die FAQ-Blöcke der Seite. Felder je Typ: GET /api/funnel-pages/<id>/schema → types.', { types: Object.keys(SCHEMA_TYPES).join(', ') }),
         inputSchema: { type: 'object', properties: { ...loc, page_id: { type: 'string' }, type: { type: 'string' }, data: { type: 'object', additionalProperties: { type: 'string' } } }, required: ['location_id', 'page_id', 'type'], additionalProperties: false },
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         run: (call, a) => call.api('PUT', `/api/funnel-pages/${encodeURIComponent(a.page_id)}/schema`, { location: a.location_id, body: { type: a.type, data: a.data ?? {} } }),

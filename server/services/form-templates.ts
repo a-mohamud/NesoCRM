@@ -1,3 +1,4 @@
+import type { STFn } from '../i18n/index.js';
 import type { FieldType, FormField, FormSettings } from './form-fields.js';
 
 /**
@@ -28,15 +29,15 @@ export interface Template {
   settings: FormSettings;
 }
 
-const t = (type: FieldType, label: string, extra: Partial<Draft> = {}): Draft => ({ type, label, ...extra });
-const text = (label: string, extra: Partial<Draft> = {}) => t('text', label, extra);
-const first = () => t('text', 'Vorname', { name: 'first_name', required: true, key: 'vorname' });
-const last = () => t('text', 'Nachname', { name: 'last_name', key: 'nachname' });
-const email = () => t('email', 'E-Mail', { name: 'email', required: true, key: 'email' });
-const phone = (req = false) => t('phone', 'Telefon', { name: 'phone', required: req, key: 'telefon' });
-const consent = (label = 'Ich stimme der Verarbeitung meiner Daten gemäß Datenschutzerklärung zu.') => t('consent', label, { name: 'consent', required: true, key: 'consent' });
+const q = (type: FieldType, label: string, extra: Partial<Draft> = {}): Draft => ({ type, label, ...extra });
+const text = (label: string, extra: Partial<Draft> = {}) => q('text', label, extra);
+const first = () => q('text', 'Vorname', { name: 'first_name', required: true, key: 'vorname' });
+const last = () => q('text', 'Nachname', { name: 'last_name', key: 'nachname' });
+const email = () => q('email', 'E-Mail', { name: 'email', required: true, key: 'email' });
+const phone = (req = false) => q('phone', 'Telefon', { name: 'phone', required: req, key: 'telefon' });
+const consent = (label = 'Ich stimme der Verarbeitung meiner Daten gemäß Datenschutzerklärung zu.') => q('consent', label, { name: 'consent', required: true, key: 'consent' });
 const contact = (withPhone = true, req = false): Draft[] => [first(), last(), email(), ...(withPhone ? [phone(req)] : []), consent()];
-const choice = (type: 'radio' | 'select' | 'checkbox', label: string, options: string[], extra: Partial<Draft> = {}) => t(type, label, { options, ...extra });
+const choice = (type: 'radio' | 'select' | 'checkbox', label: string, options: string[], extra: Partial<Draft> = {}) => q(type, label, { options, ...extra });
 const pts = (options: string[], points: number[]) => Object.fromEntries(options.map((o, i) => [o, points[i] ?? 0]));
 
 /** Drafts → fields: ids f1…, names from keys, `@key` references turned into ids (jumps) and names (show_if). */
@@ -72,7 +73,7 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     kind: 'form',
     mode: 'classic',
     settings: { title: 'Schreib uns', thank_you: THANKS, submit_text: 'Nachricht senden', theme: { preset: 'standard' } },
-    drafts: [first(), last(), email(), phone(), t('textarea', 'Deine Nachricht', { name: 'message', required: true, key: 'nachricht' }), consent()],
+    drafts: [first(), last(), email(), phone(), q('textarea', 'Deine Nachricht', { name: 'message', required: true, key: 'nachricht' }), consent()],
   },
   {
     id: 'lead-qualifizierung',
@@ -105,7 +106,7 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
       }),
       choice('radio', 'Wann möchtest du starten?', ['Sofort', 'In 1 bis 3 Monaten', 'Später', 'Weiß ich noch nicht'], { key: 'start', required: true, points: pts(['Sofort', 'In 1 bis 3 Monaten', 'Später', 'Weiß ich noch nicht'], [3, 2, 1, 0]) }),
       choice('radio', 'Entscheidest du selbst?', ['Ja, allein', 'Gemeinsam mit anderen', 'Ich sammle Informationen für andere'], { key: 'entscheider', required: true, points: pts(['Ja, allein', 'Gemeinsam mit anderen', 'Ich sammle Informationen für andere'], [3, 2, 0]) }),
-      t('heading', 'Fast geschafft – wie erreichen wir dich?', { key: 'ueberschrift' }),
+      q('heading', 'Fast geschafft – wie erreichen wir dich?', { key: 'ueberschrift' }),
       ...contact(true, false),
     ],
   },
@@ -118,11 +119,11 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     mode: 'typeform',
     settings: { title: 'Wie zufrieden bist du?', thank_you: 'Vielen Dank für dein Feedback!', theme: { preset: 'ozean' }, auto_advance: true, tags: ['umfrage:nps'] },
     drafts: [
-      t('nps', 'Wie wahrscheinlich ist es, dass du uns weiterempfiehlst?', { name: 'nps', key: 'nps', required: true }),
-      t('textarea', 'Was gefällt dir besonders gut?', { name: 'gut', key: 'gut', show_if: { field: '@nps', op: 'gte', value: '9' } }),
-      t('textarea', 'Was können wir besser machen?', { name: 'besser', key: 'besser', show_if: { field: '@nps', op: 'lte', value: '6' } }),
-      t('textarea', 'Möchtest du uns noch etwas mitgeben?', { name: 'sonstiges', key: 'sonstiges', show_if: { field: '@nps', op: 'filled' } }),
-      t('email', 'Dürfen wir uns bei dir melden? Dann trag hier deine E-Mail ein.', { name: 'email', key: 'email' }),
+      q('nps', 'Wie wahrscheinlich ist es, dass du uns weiterempfiehlst?', { name: 'nps', key: 'nps', required: true }),
+      q('textarea', 'Was gefällt dir besonders gut?', { name: 'gut', key: 'gut', show_if: { field: '@nps', op: 'gte', value: '9' } }),
+      q('textarea', 'Was können wir besser machen?', { name: 'besser', key: 'besser', show_if: { field: '@nps', op: 'lte', value: '6' } }),
+      q('textarea', 'Möchtest du uns noch etwas mitgeben?', { name: 'sonstiges', key: 'sonstiges', show_if: { field: '@nps', op: 'filled' } }),
+      q('email', 'Dürfen wir uns bei dir melden? Dann trag hier deine E-Mail ein.', { name: 'email', key: 'email' }),
     ],
   },
   {
@@ -134,19 +135,19 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     mode: 'classic',
     settings: { title: 'Bewirb dich bei uns', thank_you: 'Danke für deine Bewerbung! Wir melden uns innerhalb von zwei Wochen.', submit_text: 'Bewerbung abschicken', theme: { preset: 'wald' }, tags: ['bewerbung'] },
     drafts: [
-      t('heading', 'Zu dir', { key: 'h1' }),
+      q('heading', 'Zu dir', { key: 'h1' }),
       first(),
       last(),
       email(),
       phone(),
-      t('page_break', '', { key: 'p1' }),
-      t('heading', 'Zu deiner Bewerbung', { key: 'h2' }),
+      q('page_break', '', { key: 'p1' }),
+      q('heading', 'Zu deiner Bewerbung', { key: 'h2' }),
       choice('select', 'Auf welche Stelle bewirbst du dich?', ['Kundenberatung', 'Vertrieb', 'Marketing', 'Buchhaltung', 'Initiativbewerbung'], { name: 'stelle', key: 'stelle', required: true }),
-      t('date', 'Frühester Eintrittstermin', { name: 'start', key: 'start' }),
-      t('number', 'Gehaltsvorstellung (brutto pro Jahr, in €)', { name: 'gehalt', key: 'gehalt', min: 0 }),
-      t('file', 'Lebenslauf (PDF)', { name: 'lebenslauf', key: 'cv', required: true }),
-      t('file', 'Anschreiben und Zeugnisse (optional)', { name: 'unterlagen', key: 'unterlagen' }),
-      t('textarea', 'Warum möchtest du bei uns arbeiten?', { name: 'motivation', key: 'motivation' }),
+      q('date', 'Frühester Eintrittstermin', { name: 'start', key: 'start' }),
+      q('number', 'Gehaltsvorstellung (brutto pro Jahr, in €)', { name: 'gehalt', key: 'gehalt', min: 0 }),
+      q('file', 'Lebenslauf (PDF)', { name: 'lebenslauf', key: 'cv', required: true }),
+      q('file', 'Anschreiben und Zeugnisse (optional)', { name: 'unterlagen', key: 'unterlagen' }),
+      q('textarea', 'Warum möchtest du bei uns arbeiten?', { name: 'motivation', key: 'motivation' }),
       consent('Ich willige ein, dass meine Bewerbungsdaten zum Zweck des Auswahlverfahrens gespeichert werden.'),
     ],
   },
@@ -163,9 +164,9 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
       last(),
       email(),
       phone(),
-      t('number', 'Wie viele Personen kommen mit dir (inklusive dir)?', { name: 'personen', key: 'personen', required: true, min: 1, max: 10, value: '1' }),
+      q('number', 'Wie viele Personen kommen mit dir (inklusive dir)?', { name: 'personen', key: 'personen', required: true, min: 1, max: 10, value: '1' }),
       choice('checkbox', 'Essenswünsche', ['Vegetarisch', 'Vegan', 'Glutenfrei', 'Laktosefrei', 'Keine'], { name: 'essen', key: 'essen' }),
-      t('textarea', 'Welche Frage soll das Event unbedingt beantworten?', { name: 'frage', key: 'frage' }),
+      q('textarea', 'Welche Frage soll das Event unbedingt beantworten?', { name: 'frage', key: 'frage' }),
       consent(),
     ],
   },
@@ -195,7 +196,7 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
       choice('radio', 'Wie oft sollte ein Newsletter mindestens getestet werden, bevor man Ergebnisse vergleicht?', ['Gar nicht', 'Mit einer Variante', 'Mit mindestens zwei Varianten (A/B-Test)'], { key: 'q3', required: true, points: { 'Mit mindestens zwei Varianten (A/B-Test)': 1 } }),
       choice('radio', 'Was gehört zu einem guten Call-to-Action?', ['Ein klares, einzelnes Ziel', 'Möglichst viele Buttons', 'Kleine, graue Schrift'], { key: 'q4', required: true, points: { 'Ein klares, einzelnes Ziel': 1 } }),
       choice('radio', 'Wann ist eine E-Mail-Adresse für Werbung nutzbar?', ['Immer, wenn sie öffentlich ist', 'Nur mit gültiger Einwilligung', 'Wenn man den Namen kennt'], { key: 'q5', required: true, points: { 'Nur mit gültiger Einwilligung': 1 } }),
-      t('heading', 'Wohin dürfen wir deine Auswertung schicken?', { key: 'ueb' }),
+      q('heading', 'Wohin dürfen wir deine Auswertung schicken?', { key: 'ueb' }),
       first(),
       email(),
       consent(),
@@ -212,11 +213,11 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     drafts: [
       choice('radio', 'Welches Gewerk brauchst du?', ['Malerarbeiten', 'Elektro', 'Sanitär und Heizung', 'Tischler', 'Garten und Landschaft', 'Sonstiges'], { name: 'gewerk', key: 'gewerk', required: true }),
       choice('radio', 'Um was für ein Objekt geht es?', ['Wohnung', 'Einfamilienhaus', 'Mehrfamilienhaus', 'Gewerbe'], { name: 'objekt', key: 'objekt', required: true }),
-      t('textarea', 'Beschreibe kurz, was gemacht werden soll', { name: 'beschreibung', key: 'beschreibung', required: true, placeholder: 'z. B. Wohnzimmer und Flur streichen, Decken sind weiß' }),
-      t('file', 'Hast du Fotos? Das hilft uns sehr.', { name: 'fotos', key: 'fotos' }),
+      q('textarea', 'Beschreibe kurz, was gemacht werden soll', { name: 'beschreibung', key: 'beschreibung', required: true, placeholder: 'z. B. Wohnzimmer und Flur streichen, Decken sind weiß' }),
+      q('file', 'Hast du Fotos? Das hilft uns sehr.', { name: 'fotos', key: 'fotos' }),
       choice('radio', 'Wann soll es losgehen?', ['So schnell wie möglich', 'In 1 bis 2 Monaten', 'Später im Jahr', 'Ich plane erst'], { name: 'zeitraum', key: 'zeitraum', required: true }),
       text('Postleitzahl des Objekts', { name: 'plz', key: 'plz', required: true }),
-      t('heading', 'Wohin schicken wir das Angebot?', { key: 'ueb' }),
+      q('heading', 'Wohin schicken wir das Angebot?', { key: 'ueb' }),
       ...contact(true, true),
     ],
   },
@@ -229,11 +230,11 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     mode: 'typeform',
     settings: { title: 'Erstgespräch vereinbaren', thank_you: 'Danke! Ich melde mich innerhalb von 24 Stunden mit Terminvorschlägen.', theme: { preset: 'pastell' }, welcome: { title: 'Schön, dass du da bist', text: 'Erzähl mir kurz, wo du stehst – dann nutzen wir unser Gespräch richtig gut.', button: 'Weiter' }, tags: ['coaching:erstgespraech'] },
     drafts: [
-      t('textarea', 'Was ist dein wichtigstes Ziel für die nächsten 6 Monate?', { name: 'ziel', key: 'ziel', required: true }),
-      t('textarea', 'Was hält dich bisher davon ab?', { name: 'hindernis', key: 'hindernis' }),
-      t('scale', 'Wie dringend ist dir das?', { name: 'dringlichkeit', key: 'dringlichkeit', required: true, min: 1, max: 10, labels: ['nicht eilig', 'sehr dringend'] }),
+      q('textarea', 'Was ist dein wichtigstes Ziel für die nächsten 6 Monate?', { name: 'ziel', key: 'ziel', required: true }),
+      q('textarea', 'Was hält dich bisher davon ab?', { name: 'hindernis', key: 'hindernis' }),
+      q('scale', 'Wie dringend ist dir das?', { name: 'dringlichkeit', key: 'dringlichkeit', required: true, min: 1, max: 10, labels: ['nicht eilig', 'sehr dringend'] }),
       choice('radio', 'Wie viel Zeit kannst du pro Woche einplanen?', ['Bis 1 Stunde', '1 bis 3 Stunden', 'Mehr als 3 Stunden'], { name: 'zeit', key: 'zeit', required: true }),
-      t('date_range', 'In welchem Zeitraum passt dir ein Gespräch?', { name: 'zeitraum', key: 'zeitraum', required: true }),
+      q('date_range', 'In welchem Zeitraum passt dir ein Gespräch?', { name: 'zeitraum', key: 'zeitraum', required: true }),
       ...contact(true, false),
     ],
   },
@@ -257,7 +258,7 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     settings: { title: 'Termin anfragen', thank_you: 'Danke! Wir bestätigen deinen Wunschtermin so schnell wie möglich.', submit_text: 'Termin anfragen', theme: { preset: 'ozean' } },
     drafts: [
       choice('select', 'Worum geht es?', ['Beratung', 'Behandlung / Leistung', 'Rückfrage zu einem Auftrag', 'Sonstiges'], { name: 'anliegen', key: 'anliegen', required: true }),
-      t('date_range', 'Wann passt es dir? (Zeitraum)', { name: 'wunschzeitraum', key: 'zeitraum', required: true }),
+      q('date_range', 'Wann passt es dir? (Zeitraum)', { name: 'wunschzeitraum', key: 'zeitraum', required: true }),
       choice('radio', 'Tageszeit', ['Vormittags', 'Mittags', 'Nachmittags', 'Abends'], { name: 'tageszeit', key: 'tageszeit' }),
       ...contact(true, true),
     ],
@@ -271,11 +272,11 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     mode: 'typeform',
     settings: { title: 'Wie war dein Erlebnis?', thank_you: 'Danke – dein Feedback hilft uns!', theme: { preset: 'warm' }, auto_advance: true },
     drafts: [
-      t('rating', 'Wie zufrieden bist du insgesamt?', { name: 'gesamt', key: 'gesamt', required: true }),
-      t('rating', 'Wie bewertest du unseren Service?', { name: 'service', key: 'service', required: true }),
-      t('rating', 'Wie bewertest du das Produkt?', { name: 'produkt', key: 'produkt' }),
-      t('textarea', 'Was können wir besser machen?', { name: 'besser', key: 'besser', show_if: { field: '@gesamt', op: 'lte', value: '3' } }),
-      t('textarea', 'Was hat dir gefallen?', { name: 'gefallen', key: 'gefallen', show_if: { field: '@gesamt', op: 'gte', value: '4' } }),
+      q('rating', 'Wie zufrieden bist du insgesamt?', { name: 'gesamt', key: 'gesamt', required: true }),
+      q('rating', 'Wie bewertest du unseren Service?', { name: 'service', key: 'service', required: true }),
+      q('rating', 'Wie bewertest du das Produkt?', { name: 'produkt', key: 'produkt' }),
+      q('textarea', 'Was können wir besser machen?', { name: 'besser', key: 'besser', show_if: { field: '@gesamt', op: 'lte', value: '3' } }),
+      q('textarea', 'Was hat dir gefallen?', { name: 'gefallen', key: 'gefallen', show_if: { field: '@gesamt', op: 'gte', value: '4' } }),
     ],
   },
   {
@@ -287,12 +288,12 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     mode: 'classic',
     settings: { title: 'Wie geht es dir im Team?', description: 'Die Umfrage ist anonym. Wir speichern keine Namen.', thank_you: 'Danke für deine Offenheit!', submit_text: 'Abschicken', theme: { preset: 'wald' }, notify_team: false },
     drafts: [
-      t('scale', 'Ich arbeite gern bei uns.', { name: 'zufriedenheit', key: 'a', required: true, min: 1, max: 5, labels: ['stimme nicht zu', 'stimme voll zu'] }),
-      t('scale', 'Die Zusammenarbeit im Team funktioniert gut.', { name: 'team', key: 'b', required: true, min: 1, max: 5, labels: ['stimme nicht zu', 'stimme voll zu'] }),
-      t('scale', 'Ich bekomme das Feedback, das ich brauche.', { name: 'feedback', key: 'c', required: true, min: 1, max: 5, labels: ['stimme nicht zu', 'stimme voll zu'] }),
-      t('scale', 'Meine Arbeitsbelastung ist angemessen.', { name: 'belastung', key: 'd', required: true, min: 1, max: 5, labels: ['stimme nicht zu', 'stimme voll zu'] }),
-      t('ranking', 'Was wäre dir wichtiger? Bringe in eine Reihenfolge.', { name: 'prioritaeten', key: 'prio', options: ['Mehr Gehalt', 'Flexiblere Arbeitszeiten', 'Weiterbildung', 'Bessere Ausstattung', 'Mehr Teamevents'] }),
-      t('textarea', 'Was sollten wir unbedingt ändern – oder beibehalten?', { name: 'freitext', key: 'frei' }),
+      q('scale', 'Ich arbeite gern bei uns.', { name: 'zufriedenheit', key: 'a', required: true, min: 1, max: 5, labels: ['stimme nicht zu', 'stimme voll zu'] }),
+      q('scale', 'Die Zusammenarbeit im Team funktioniert gut.', { name: 'team', key: 'b', required: true, min: 1, max: 5, labels: ['stimme nicht zu', 'stimme voll zu'] }),
+      q('scale', 'Ich bekomme das Feedback, das ich brauche.', { name: 'feedback', key: 'c', required: true, min: 1, max: 5, labels: ['stimme nicht zu', 'stimme voll zu'] }),
+      q('scale', 'Meine Arbeitsbelastung ist angemessen.', { name: 'belastung', key: 'd', required: true, min: 1, max: 5, labels: ['stimme nicht zu', 'stimme voll zu'] }),
+      q('ranking', 'Was wäre dir wichtiger? Bringe in eine Reihenfolge.', { name: 'prioritaeten', key: 'prio', options: ['Mehr Gehalt', 'Flexiblere Arbeitszeiten', 'Weiterbildung', 'Bessere Ausstattung', 'Mehr Teamevents'] }),
+      q('textarea', 'Was sollten wir unbedingt ändern – oder beibehalten?', { name: 'freitext', key: 'frei' }),
     ],
   },
   {
@@ -304,10 +305,10 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     mode: 'typeform',
     settings: { title: 'Dein Feedback zum Produkt', thank_you: 'Danke! Wir lesen jedes Feedback.', theme: { preset: 'dunkel' } },
     drafts: [
-      t('rating', 'Wie gut gefällt dir das Produkt?', { name: 'sterne', key: 'sterne', required: true, max: 5 }),
-      t('ranking', 'Welche Funktionen sind dir am wichtigsten?', { name: 'funktionen', key: 'fk', required: true, options: ['Einfache Bedienung', 'Geschwindigkeit', 'Auswertungen', 'Schnittstellen', 'Support'] }),
-      t('textarea', 'Was fehlt dir noch?', { name: 'fehlt', key: 'fehlt' }),
-      t('email', 'Deine E-Mail (nur wenn wir nachfragen dürfen)', { name: 'email', key: 'email' }),
+      q('rating', 'Wie gut gefällt dir das Produkt?', { name: 'sterne', key: 'sterne', required: true, max: 5 }),
+      q('ranking', 'Welche Funktionen sind dir am wichtigsten?', { name: 'funktionen', key: 'fk', required: true, options: ['Einfache Bedienung', 'Geschwindigkeit', 'Auswertungen', 'Schnittstellen', 'Support'] }),
+      q('textarea', 'Was fehlt dir noch?', { name: 'fehlt', key: 'fehlt' }),
+      q('email', 'Deine E-Mail (nur wenn wir nachfragen dürfen)', { name: 'email', key: 'email' }),
     ],
   },
   {
@@ -331,8 +332,8 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     drafts: [
       text('Bestell- oder Rechnungsnummer', { name: 'bestellnummer', key: 'nr' }),
       choice('select', 'Was ist passiert?', ['Ware beschädigt', 'Falsche Lieferung', 'Funktioniert nicht', 'Rechnung stimmt nicht', 'Sonstiges'], { name: 'problem', key: 'problem', required: true }),
-      t('textarea', 'Beschreibe das Problem', { name: 'beschreibung', key: 'beschreibung', required: true }),
-      t('file', 'Foto oder Screenshot', { name: 'foto', key: 'foto' }),
+      q('textarea', 'Beschreibe das Problem', { name: 'beschreibung', key: 'beschreibung', required: true }),
+      q('file', 'Foto oder Screenshot', { name: 'foto', key: 'foto' }),
       choice('radio', 'Wie dringend ist es?', ['Hat Zeit', 'Bitte bald', 'Dringend'], { name: 'dringlichkeit', key: 'dringlich', required: true }),
       ...contact(true, false),
     ],
@@ -346,11 +347,11 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     mode: 'typeform',
     settings: { title: 'Dein Richtpreis in 1 Minute', thank_you: 'Danke! Wir melden uns mit einem genauen Angebot.', theme: { preset: 'warm' }, auto_advance: true, tags: ['rechner:maler'] },
     drafts: [
-      t('number', 'Wie groß ist die Fläche in Quadratmetern (Wände)?', { name: 'flaeche', key: 'flaeche', required: true, min: 1, max: 2000, placeholder: 'z. B. 85' }),
-      t('number', 'Wie viele Fenster und Türen müssen lackiert werden?', { name: 'fenster', key: 'fenster', min: 0, max: 100, value: '0' }),
+      q('number', 'Wie groß ist die Fläche in Quadratmetern (Wände)?', { name: 'flaeche', key: 'flaeche', required: true, min: 1, max: 2000, placeholder: 'z. B. 85' }),
+      q('number', 'Wie viele Fenster und Türen müssen lackiert werden?', { name: 'fenster', key: 'fenster', min: 0, max: 100, value: '0' }),
       choice('radio', 'Sollen die Decken mitgestrichen werden?', ['Ja', 'Nein'], { name: 'decke', key: 'decke', required: true, points: { Ja: 5, Nein: 0 } }),
-      t('calculator', 'Dein Richtpreis (netto, ohne Gewähr)', { name: 'richtpreis', key: 'richtpreis', formula: 'flaeche * (12 + decke) + fenster * 25', format: 'currency', hint: 'Wandfläche 12 € pro m², Decke +5 € pro m², Fenster und Türen je 25 €.' }),
-      t('heading', 'Möchtest du ein genaues Angebot?', { key: 'ueb' }),
+      q('calculator', 'Dein Richtpreis (netto, ohne Gewähr)', { name: 'richtpreis', key: 'richtpreis', formula: 'flaeche * (12 + decke) + fenster * 25', format: 'currency', hint: 'Wandfläche 12 € pro m², Decke +5 € pro m², Fenster und Türen je 25 €.' }),
+      q('heading', 'Möchtest du ein genaues Angebot?', { key: 'ueb' }),
       ...contact(true, false),
     ],
   },
@@ -371,7 +372,7 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
       }),
       choice('radio', 'Wie hoch ist dein Kaufpreisrahmen?', ['Bis 250.000 €', '250.000 bis 500.000 €', 'Mehr als 500.000 €'], { name: 'kaufpreis', key: 'kauf', required: true, jumps: [{ op: 'filled', goto: '@zimmer' }] }),
       choice('radio', 'Wie hoch ist deine Kaltmiete pro Monat?', ['Bis 800 €', '800 bis 1.500 €', 'Mehr als 1.500 €'], { name: 'miete', key: 'miete', required: true }),
-      t('scale', 'Wie viele Zimmer brauchst du mindestens?', { name: 'zimmer', key: 'zimmer', required: true, min: 1, max: 8, labels: ['1', '8'] }),
+      q('scale', 'Wie viele Zimmer brauchst du mindestens?', { name: 'zimmer', key: 'zimmer', required: true, min: 1, max: 8, labels: ['1', '8'] }),
       text('In welchem Ort oder Stadtteil suchst du?', { name: 'ort', key: 'ort', required: true }),
       ...contact(true, false),
     ],
@@ -385,10 +386,10 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     mode: 'classic',
     settings: { title: 'Zum Kurs anmelden', thank_you: 'Danke für deine Anmeldung! Du bekommst eine Bestätigung per E-Mail.', submit_text: 'Verbindlich anmelden', theme: { preset: 'wald' }, tags: ['kurs:angemeldet'] },
     drafts: [
-      t('heading', 'Dein Kurs', { key: 'h1' }),
+      q('heading', 'Dein Kurs', { key: 'h1' }),
       choice('select', 'Kurs', ['Grundkurs', 'Aufbaukurs', 'Intensivwochenende'], { name: 'kurs', key: 'kurs', required: true }),
       choice('radio', 'Termin', ['Montagabend', 'Samstagvormittag', 'Online-Live'], { name: 'termin', key: 'termin', required: true }),
-      t('heading', 'Deine Daten', { key: 'h2' }),
+      q('heading', 'Deine Daten', { key: 'h2' }),
       first(),
       last(),
       email(),
@@ -410,9 +411,9 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
       last(),
       email(),
       text('Lieferadresse (Straße, PLZ, Ort)', { name: 'address', key: 'adresse', required: true }),
-      t('textarea', 'Anmerkung zur Bestellung', { name: 'anmerkung', key: 'anmerkung' }),
+      q('textarea', 'Anmerkung zur Bestellung', { name: 'anmerkung', key: 'anmerkung' }),
       consent('Ich habe die AGB und die Widerrufsbelehrung gelesen und akzeptiere sie.'),
-      t('payment', 'Bezahlung', { name: 'zahlung', key: 'zahlung', product_id: '' }),
+      q('payment', 'Bezahlung', { name: 'zahlung', key: 'zahlung', product_id: '' }),
     ],
   },
   {
@@ -427,9 +428,9 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
       first(),
       last(),
       email(),
-      t('text', 'Gewinnfrage: Wie heißt die Hauptstadt von Deutschland?', { name: 'antwort', key: 'antwort', required: true }),
-      t('consent', 'Ich akzeptiere die Teilnahmebedingungen.', { name: 'consent', key: 'consent', required: true }),
-      t('checkbox', 'Ja, ich möchte künftig Neuigkeiten per E-Mail erhalten (jederzeit widerrufbar).', { name: 'newsletter', key: 'newsletter' }),
+      q('text', 'Gewinnfrage: Wie heißt die Hauptstadt von Deutschland?', { name: 'antwort', key: 'antwort', required: true }),
+      q('consent', 'Ich akzeptiere die Teilnahmebedingungen.', { name: 'consent', key: 'consent', required: true }),
+      q('checkbox', 'Ja, ich möchte künftig Neuigkeiten per E-Mail erhalten (jederzeit widerrufbar).', { name: 'newsletter', key: 'newsletter' }),
     ],
   },
   {
@@ -443,11 +444,11 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     drafts: [
       text('Von welcher Postleitzahl ziehst du um?', { name: 'plz_von', key: 'von', required: true }),
       text('Und nach welcher Postleitzahl?', { name: 'plz_nach', key: 'nach', required: true }),
-      t('date', 'Wann soll der Umzug stattfinden?', { name: 'datum', key: 'datum' }),
-      t('number', 'Wie viele Quadratmeter Wohnfläche hast du?', { name: 'flaeche', key: 'flaeche', required: true, min: 10, max: 500 }),
+      q('date', 'Wann soll der Umzug stattfinden?', { name: 'datum', key: 'datum' }),
+      q('number', 'Wie viele Quadratmeter Wohnfläche hast du?', { name: 'flaeche', key: 'flaeche', required: true, min: 10, max: 500 }),
       choice('radio', 'In welcher Etage wohnst du (ohne Aufzug)?', ['Erdgeschoss', '1. bis 2. Etage', '3. Etage oder höher'], { name: 'etage', key: 'etage', required: true, points: pts(['Erdgeschoss', '1. bis 2. Etage', '3. Etage oder höher'], [0, 3, 6]) }),
       choice('checkbox', 'Brauchst du zusätzliche Leistungen?', ['Verpackungsservice', 'Möbelmontage', 'Halteverbotszone', 'Einlagerung'], { name: 'extras', key: 'extras', points: pts(['Verpackungsservice', 'Möbelmontage', 'Halteverbotszone', 'Einlagerung'], [250, 150, 90, 120]) }),
-      t('calculator', 'Richtpreis (netto, unverbindlich)', { name: 'richtpreis', key: 'richtpreis', formula: '350 + flaeche * 6 + etage * flaeche * 0.4 + extras', format: 'currency' }),
+      q('calculator', 'Richtpreis (netto, unverbindlich)', { name: 'richtpreis', key: 'richtpreis', formula: '350 + flaeche * 6 + etage * flaeche * 0.4 + extras', format: 'currency' }),
       ...contact(true, true),
     ],
   },
@@ -460,9 +461,9 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     mode: 'classic',
     settings: { title: 'Tisch reservieren', thank_you: 'Danke! Wir bestätigen deine Reservierung per E-Mail oder Anruf.', submit_text: 'Reservieren', theme: { preset: 'elegant' } },
     drafts: [
-      t('date', 'Datum', { name: 'datum', key: 'datum', required: true }),
+      q('date', 'Datum', { name: 'datum', key: 'datum', required: true }),
       choice('select', 'Uhrzeit', ['12:00', '12:30', '13:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'], { name: 'uhrzeit', key: 'uhrzeit', required: true }),
-      t('number', 'Anzahl Personen', { name: 'personen', key: 'personen', required: true, min: 1, max: 20, value: '2' }),
+      q('number', 'Anzahl Personen', { name: 'personen', key: 'personen', required: true, min: 1, max: 20, value: '2' }),
       choice('select', 'Anlass', ['Kein besonderer Anlass', 'Geburtstag', 'Jubiläum', 'Geschäftsessen', 'Sonstiges'], { name: 'anlass', key: 'anlass' }),
       first(),
       phone(true),
@@ -480,8 +481,8 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     settings: { title: 'Kostenloses Probetraining', thank_you: 'Danke! Wir melden uns und planen dein Probetraining.', theme: { preset: 'knallig' }, auto_advance: true, tags: ['probetraining'] },
     drafts: [
       choice('radio', 'Was ist dein Ziel?', ['Abnehmen', 'Muskeln aufbauen', 'Fitter werden', 'Rücken und Beweglichkeit', 'Ausgleich zum Alltag'], { name: 'ziel', key: 'ziel', required: true }),
-      t('scale', 'Wie viel Trainingserfahrung hast du?', { name: 'erfahrung', key: 'erfahrung', required: true, min: 1, max: 10, style: 'slider', labels: ['Anfänger', 'Profi'] }),
-      t('date_range', 'In welchem Zeitraum kannst du zum Probetraining kommen?', { name: 'zeitraum', key: 'zeitraum', required: true }),
+      q('scale', 'Wie viel Trainingserfahrung hast du?', { name: 'erfahrung', key: 'erfahrung', required: true, min: 1, max: 10, style: 'slider', labels: ['Anfänger', 'Profi'] }),
+      q('date_range', 'In welchem Zeitraum kannst du zum Probetraining kommen?', { name: 'zeitraum', key: 'zeitraum', required: true }),
       ...contact(true, true),
     ],
   },
@@ -510,10 +511,10 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
     mode: 'typeform',
     settings: { title: 'Dein Fotoshooting', thank_you: 'Danke! Ich melde mich mit Ideen und einem Angebot.', theme: { preset: 'elegant' }, auto_advance: true, tags: ['anfrage:foto'] },
     drafts: [
-      t('picture_choice', 'Welcher Stil gefällt dir am besten?', { name: 'stil', key: 'stil', required: true, options: ['Natürlich und hell', 'Dunkel und dramatisch', 'Verspielt und bunt', 'Schwarz-Weiß'], images: ['', '', '', ''] }),
+      q('picture_choice', 'Welcher Stil gefällt dir am besten?', { name: 'stil', key: 'stil', required: true, options: ['Natürlich und hell', 'Dunkel und dramatisch', 'Verspielt und bunt', 'Schwarz-Weiß'], images: ['', '', '', ''] }),
       choice('radio', 'Wofür brauchst du die Fotos?', ['Bewerbung / Business', 'Familie und Paare', 'Hochzeit', 'Produkte', 'Sonstiges'], { name: 'anlass', key: 'anlass', required: true }),
-      t('date_range', 'In welchem Zeitraum soll das Shooting stattfinden?', { name: 'zeitraum', key: 'zeitraum' }),
-      t('textarea', 'Gibt es etwas, das uns wichtig sein sollte?', { name: 'wunsch', key: 'wunsch' }),
+      q('date_range', 'In welchem Zeitraum soll das Shooting stattfinden?', { name: 'zeitraum', key: 'zeitraum' }),
+      q('textarea', 'Gibt es etwas, das uns wichtig sein sollte?', { name: 'wunsch', key: 'wunsch' }),
       ...contact(true, false),
     ],
   },
@@ -529,9 +530,9 @@ const defs: (Omit<Template, 'fields'> & { drafts: Draft[] })[] = [
       first(),
       last(),
       email(),
-      t('heading', 'Ich bin damit einverstanden, dass Fotos und Videos, auf denen ich zu sehen bin, für die Öffentlichkeitsarbeit verwendet werden dürfen.', { key: 'text' }),
-      t('date', 'Datum', { name: 'datum', key: 'datum', required: true }),
-      t('signature', 'Unterschrift', { name: 'unterschrift', key: 'unterschrift', required: true }),
+      q('heading', 'Ich bin damit einverstanden, dass Fotos und Videos, auf denen ich zu sehen bin, für die Öffentlichkeitsarbeit verwendet werden dürfen.', { key: 'text' }),
+      q('date', 'Datum', { name: 'datum', key: 'datum', required: true }),
+      q('signature', 'Unterschrift', { name: 'unterschrift', key: 'unterschrift', required: true }),
       consent(),
     ],
   },
@@ -542,8 +543,38 @@ export const TEMPLATES: Template[] = defs.map(({ drafts, ...rest }) => ({ ...res
 export const templateById = (id: string) => TEMPLATES.find((x) => x.id === id);
 export const TEMPLATE_CATEGORIES = [...new Set(TEMPLATES.map((x) => x.category))];
 
+/**
+ * A template in the sub-account's language: every visible text goes through the translator. Options, the point keys and the
+ * values of jumps and conditions are translated with the same function, so they keep matching each other.
+ */
+export function localizeTemplate(x: Template, t: STFn): Template {
+  const tx = (v: string | undefined) => (v ? t(v) : v);
+  const s = x.settings as FormSettings & Record<string, any>;
+  const settings: FormSettings = {
+    ...s,
+    ...(s.title ? { title: t(s.title) } : {}),
+    ...(s.description ? { description: t(s.description) } : {}),
+    ...(s.thank_you ? { thank_you: t(s.thank_you) } : {}),
+    ...(s.submit_text ? { submit_text: t(s.submit_text) } : {}),
+    ...(s.welcome ? { welcome: { title: t(s.welcome.title), text: t(s.welcome.text), button: t(s.welcome.button) } } : {}),
+    ...(Array.isArray(s.endings) ? { endings: s.endings.map((e: any) => ({ ...e, title: tx(e.title), text: tx(e.text) })) } : {}),
+  };
+  const fields = x.fields.map((f) => ({
+    ...f,
+    label: tx(f.label) ?? '',
+    ...(f.placeholder ? { placeholder: t(f.placeholder) } : {}),
+    ...(f.hint ? { hint: t(f.hint) } : {}),
+    ...(f.options ? { options: f.options.map((o) => t(o)) } : {}),
+    ...(f.labels ? { labels: [t(f.labels[0]), t(f.labels[1])] as [string, string] } : {}),
+    ...(f.points ? { points: Object.fromEntries(Object.entries(f.points).map(([k, v]) => [t(k), v])) } : {}),
+    ...(f.jumps ? { jumps: f.jumps.map((j) => ({ ...j, value: j.value ? t(j.value) : j.value })) } : {}),
+    ...(f.show_if ? { show_if: { ...f.show_if, value: f.show_if.value ? t(f.show_if.value) : f.show_if.value } } : {}),
+  }));
+  return { ...x, name: t(x.name), category: t(x.category), description: t(x.description), settings, fields };
+}
+
 /** A short list for the gallery (no fields). */
-export const templateCard = (x: Template) => ({ id: x.id, name: x.name, category: x.category, description: x.description, kind: x.kind, mode: x.mode, needs_product: !!x.needs_product, fields: x.fields.filter((f) => !['heading', 'page_break', 'hidden'].includes(f.type)).length, features: featuresOf(x) });
+export const templateCard = (x: Template, t: STFn) => ({ id: x.id, name: t(x.name), category: t(x.category), description: t(x.description), kind: x.kind, mode: x.mode, needs_product: !!x.needs_product, fields: x.fields.filter((f) => !['heading', 'page_break', 'hidden'].includes(f.type)).length, features: featuresOf(x).map((f) => t(f)) });
 
 function featuresOf(x: Template): string[] {
   const out: string[] = [];

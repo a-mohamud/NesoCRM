@@ -7,13 +7,14 @@ import { boardData, denial } from '../services/boards-data.js';
 import { BoardsHub, type BoardSub } from '../services/boards-hub.js';
 import { applyPatch, type PatchResult } from '../services/boards-patch.js';
 import { boardOut, canRedo, canUndo, createBoard, deleteBoard, listVersions, loadBoard, redoBoard, restoreVersion, saveState, stateOf, undoBoard, versionOut, versionRow, visibleBoards, actorOf, type Access, type BoardRow, type VersionKind } from '../services/boards-store.js';
-import { starterByKey, stateFromTemplate } from '../services/boards-templates.js';
+import { localizeStarter, starterByKey, stateFromTemplate } from '../services/boards-templates.js';
 import { CATEGORIES, boardWidgets } from '../services/boards-widgets.js';
 import { registerCoreWidgets } from '../services/boards-widgets-core.js';
 import { callRoute } from '../services/route-call.js';
 import { loginOf, sweepOnLoginChange } from '../services/stream-login.js';
 import { accessibleSpaces } from '../services/wiki-store.js';
 import { PURPOSES } from './ai-assistant.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Living Boards: workspaces a person composes from widgets – by dragging, or by saying what they want to see (the
@@ -154,7 +155,7 @@ export const boardsModule: Module = {
     // --- the service other modules use ------------------------------------------------------------------------------------
     /** Applies a patch to a board for a caller and saves it as a version (or just checks it with dryRun). */
     const apply = (ctx: Ctx, board: BoardRow, ops: unknown, o: { dryRun?: boolean; expectedVersion?: number; strict?: boolean; summary?: string; prompt?: string; clientId?: string; kind?: VersionKind } = {}) => {
-      if (o.expectedVersion !== undefined && o.expectedVersion !== board.head) throw new HttpError(409, `Das Board hat sich inzwischen geändert (jetzt Version ${board.head}) – bitte lade es neu und versuche es noch einmal.`);
+      if (o.expectedVersion !== undefined && o.expectedVersion !== board.head) throw new HttpError(409, tCtx(ctx)('Das Board hat sich inzwischen geändert (jetzt Version {n}) – bitte lade es neu und versuche es noch einmal.', { n: board.head }));
       const strict = o.strict ?? actorOf(app, ctx).via !== 'session';
       const r: PatchResult = applyPatch(stateOf(board), ops, { ...env(board.location_id), strict });
       if (o.dryRun || !r.ok) return { result: r, saved: null as null | ReturnType<typeof saveState> };
@@ -181,11 +182,14 @@ export const boardsModule: Module = {
     };
 
     // --- catalogue, options, preferences (static paths first: they must win over /api/boards/:id) -----------------------------
-    router.get('/api/boards/widgets', 'location', () => ({
-      widgets: reg.catalogue(),
-      categories: CATEGORIES.map(([key, label]) => ({ key, label })),
-      limits: { widgets: LIMITS.widgets, ops: LIMITS.ops },
-    }));
+    router.get('/api/boards/widgets', 'location', (ctx) => {
+      const t = tCtx(ctx);
+      return {
+        widgets: reg.catalogue(t),
+        categories: CATEGORIES.map(([key, label]) => ({ key, label: t(label) })),
+        limits: { widgets: LIMITS.widgets, ops: LIMITS.ops },
+      };
+    });
 
     /** Choices for the id fields of the settings panel, from the viewer's own data (guards apply). */
     router.get('/api/boards/options/:source', 'location', async (ctx) => {
@@ -208,7 +212,7 @@ export const boardsModule: Module = {
           return { options: list(r?.reports ?? r, (x) => x.id, (x) => x.name, (x) => String(x.config?.viz ?? '')) };
         }
         case 'workflows':
-          return { options: list(await call('/api/workflows'), (r) => r.id, (r) => r.name, (r) => (r.status === 'active' ? 'aktiv' : 'Entwurf')) };
+          return { options: list(await call('/api/workflows'), (r) => r.id, (r) => r.name, (r) => tCtx(ctx)(r.status === 'active' ? 'aktiv' : 'Entwurf')) };
         case 'forms':
           return { options: list(await call('/api/forms'), (r) => r.id, (r) => r.name) };
         case 'smart_lists':
@@ -255,7 +259,7 @@ export const boardsModule: Module = {
       const hosts: string[] = [];
       for (const h of raw.slice(0, 40)) {
         const c = cleanHost(h);
-        if (!c) throw bad(`„${String(h).slice(0, 60)}“ ist kein gültiger Host-Name (z. B. berichte.example.org)`);
+        if (!c) throw bad(tCtx(ctx)('„{host}“ ist kein gültiger Host-Name (z. B. berichte.example.org)', { host: String(h).slice(0, 60) }));
         if (!DEFAULT_EMBED_HOSTS.includes(c) && !hosts.includes(c)) hosts.push(c);
       }
       db.run('INSERT INTO agency_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', HOSTS_KEY, JSON.stringify(hosts));
@@ -322,25 +326,26 @@ export const boardsModule: Module = {
 
     /** What a new board starts from: nothing, a starter, a saved template of the sub-account / the Marktplatz, or a copy of a board. */
     const startFor = (ctx: Ctx, b: Record<string, any>, name: string): { state: BoardState; template: string; summary: string } => {
+      const t = tLoc(app, ctx.locationId);
       const blank: BoardState = { name, icon: cleanIcon(b.icon), accent: cleanAccent(b.accent) ?? '', spec: emptySpec() };
       if (b.copy_of) {
         const { board } = loadBoard(app, ctx, String(b.copy_of));
         const st = stateOf(board);
         const r = stateFromTemplate({ name, icon: st.icon, accent: st.accent, widgets: st.spec.widgets.map((w) => ({ type: w.type, title: w.title, config: w.config, x: w.layout.lg.x, y: w.layout.lg.y, w: w.layout.lg.w, h: w.layout.lg.h })) }, { ...env(ctx.locationId), strict: false });
         if (r.errors.length) throw bad(r.errors[0]);
-        return { state: r.state, template: '', summary: `Kopie von „${board.name}“` };
+        return { state: r.state, template: '', summary: t('Kopie von „{name}“', { name: board.name }) };
       }
       const key = String(b.template ?? '');
-      if (!key) return { state: blank, template: '', summary: 'Board angelegt' };
+      if (!key) return { state: blank, template: '', summary: t('Board angelegt') };
       const starter = starterByKey(key);
       const saved = starter ? undefined : db.get<{ id: string; name: string; icon: string; accent: string; widgets: string; scope: string; location_id: string }>('SELECT id, name, icon, accent, widgets, scope, location_id FROM board_templates WHERE id = ?', key);
       if (!starter && !saved) throw notFound('Vorlage nicht gefunden');
       // A saved template belongs to its sub-account; only marketplace templates travel (and those need the consent route).
       if (saved && saved.location_id !== ctx.locationId) throw notFound('Vorlage nicht gefunden');
-      const src = starter ?? { name: saved!.name, icon: saved!.icon, accent: saved!.accent, widgets: JSON.parse(saved!.widgets) };
+      const src = starter ? localizeStarter(starter, t) : { name: saved!.name, icon: saved!.icon, accent: saved!.accent, widgets: JSON.parse(saved!.widgets) };
       const r = stateFromTemplate({ name, icon: src.icon, accent: src.accent, widgets: src.widgets }, { ...env(ctx.locationId), strict: false });
-      if (r.errors.length) throw bad(`Die Vorlage lässt sich hier nicht anlegen: ${r.errors[0]}`);
-      return { state: r.state, template: key, summary: `Aus Vorlage „${src.name}“ angelegt` };
+      if (r.errors.length) throw bad(tCtx(ctx)('Die Vorlage lässt sich hier nicht anlegen: {reason}', { reason: tCtx(ctx)(r.errors[0]) }));
+      return { state: r.state, template: key, summary: t('Aus Vorlage „{name}“ angelegt', { name: src.name }) };
     };
     app.services.boardsStart = startFor;
 
@@ -349,12 +354,13 @@ export const boardsModule: Module = {
       const scope = b.scope === 'shared' ? 'shared' : 'personal';
       if (ctx.viaApiKey && !ctx.user && scope === 'personal') throw bad('Mit einem Schlüssel lassen sich nur geteilte Boards anlegen (scope: shared)');
       const starter = b.template ? starterByKey(String(b.template)) : undefined;
-      const name = cleanLine(str(b.name, 'Name', { max: LIMITS.name * 2 }), LIMITS.name) || starter?.name || 'Neues Board';
+      const tl = tLoc(app, ctx.locationId);
+      const name = cleanLine(str(b.name, 'Name', { max: LIMITS.name * 2 }), LIMITS.name) || (starter ? tl(starter.name) : '') || tl('Neues Board');
       const total = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM boards WHERE location_id = ?', ctx.locationId)!.n;
-      if (total >= LIMITS.boardsPerLocation) throw bad(`Ein Sub-Account hat höchstens ${LIMITS.boardsPerLocation} Boards`);
+      if (total >= LIMITS.boardsPerLocation) throw bad(tCtx(ctx)('Ein Sub-Account hat höchstens {n} Boards', { n: LIMITS.boardsPerLocation }));
       if (ctx.user) {
         const mine = db.get<{ n: number }>("SELECT COUNT(*) AS n FROM boards WHERE location_id = ? AND owner_id = ? AND scope = 'personal'", ctx.locationId, ctx.user.id)!.n;
-        if (scope === 'personal' && mine >= LIMITS.personalPerUser) throw bad(`Du kannst höchstens ${LIMITS.personalPerUser} persönliche Boards haben`);
+        if (scope === 'personal' && mine >= LIMITS.personalPerUser) throw bad(tCtx(ctx)('Du kannst höchstens {n} persönliche Boards haben', { n: LIMITS.personalPerUser }));
       }
       const start = startFor(ctx, b, name);
       const { board } = createBoard(app, ctx, { name, scope, team_access: b.team_access === 'edit' ? 'edit' : 'view', state: { ...start.state, name }, template_key: start.template, kind: start.template ? 'template' : 'create', summary: start.summary });
@@ -406,9 +412,9 @@ export const boardsModule: Module = {
 
     router.post('/api/boards/:id/duplicate', 'location', (ctx) => {
       const { board } = loadBoard(app, ctx, ctx.params.id);
-      const name = cleanLine(str(ctx.body?.name, 'Name', { max: 200 }), LIMITS.name) || `${board.name} (Kopie)`.slice(0, LIMITS.name);
+      const name = cleanLine(str(ctx.body?.name, 'Name', { max: 200 }), LIMITS.name) || tLoc(app, ctx.locationId)('{name} (Kopie)', { name: board.name }).slice(0, LIMITS.name);
       const total = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM boards WHERE location_id = ?', ctx.locationId)!.n;
-      if (total >= LIMITS.boardsPerLocation) throw bad(`Ein Sub-Account hat höchstens ${LIMITS.boardsPerLocation} Boards`);
+      if (total >= LIMITS.boardsPerLocation) throw bad(tCtx(ctx)('Ein Sub-Account hat höchstens {n} Boards', { n: LIMITS.boardsPerLocation }));
       const scope = ctx.body?.scope === 'shared' ? 'shared' : 'personal';
       if (!ctx.user && scope === 'personal') throw bad('Mit einem Schlüssel lassen sich nur geteilte Boards anlegen (scope: shared)');
       const start = startFor(ctx, { copy_of: board.id }, name);
@@ -452,15 +458,17 @@ export const boardsModule: Module = {
     router.post('/api/boards/:id/undo', 'location', (ctx) => {
       const { board, access } = loadBoard(app, ctx, ctx.params.id, 'edit');
       const r = undoBoard(app, ctx, board);
-      publish(r.board, ctx, 'undo', `Rückgängig: ${r.from.summary}`, String(ctx.body?.client_id ?? ''));
-      audit(ctx, 'boards.undo', r.board, `Rückgängig: ${r.from.summary}`);
+      const undone = tLoc(app, ctx.locationId)('Rückgängig: {summary}', { summary: r.from.summary });
+      publish(r.board, ctx, 'undo', undone, String(ctx.body?.client_id ?? ''));
+      audit(ctx, 'boards.undo', r.board, undone);
       return full(ctx, r.board, access);
     });
     router.post('/api/boards/:id/redo', 'location', (ctx) => {
       const { board, access } = loadBoard(app, ctx, ctx.params.id, 'edit');
       const r = redoBoard(app, ctx, board);
-      publish(r.board, ctx, 'redo', `Wiederhergestellt: ${r.to.summary}`, String(ctx.body?.client_id ?? ''));
-      audit(ctx, 'boards.redo', r.board, `Wiederhergestellt: ${r.to.summary}`);
+      const redone = tLoc(app, ctx.locationId)('Wiederhergestellt: {summary}', { summary: r.to.summary });
+      publish(r.board, ctx, 'redo', redone, String(ctx.body?.client_id ?? ''));
+      audit(ctx, 'boards.redo', r.board, redone);
       return full(ctx, r.board, access);
     });
 
@@ -480,7 +488,8 @@ export const boardsModule: Module = {
         return { ...w, layout };
       });
       const spec = normalizeSpec({ ...st.spec, widgets, ...(Object.keys(custom).length ? { custom } : { custom: undefined }) }, (t) => reg.limits(t));
-      const summary = `Anordnung für ${bp === 'md' ? 'Tablet' : 'Handy'} zurückgesetzt`;
+      const tl = tLoc(app, ctx.locationId);
+      const summary = bp === 'md' ? tl('Anordnung für Tablet zurückgesetzt') : tl('Anordnung für Handy zurückgesetzt');
       const saved = saveState(app, ctx, board, { ...st, spec }, { kind: kindOf(ctx), summary, ops: [] });
       publish(saved.board, ctx, saved.version.kind, summary, String(ctx.body?.client_id ?? ''));
       audit(ctx, 'boards.patch', saved.board, summary);

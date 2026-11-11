@@ -4,6 +4,7 @@ import MailComposer from 'nodemailer/lib/mail-composer';
 import { escapeHtml, textToHtml } from '../core/template.js';
 import { htmlToText } from './email-render.js';
 import type { Provider } from './oauth.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Building blocks of the native mailbox sync (Gmail API and Microsoft Graph): the provider-neutral
@@ -336,7 +337,7 @@ export function buildMime(m: OutgoingMail): Promise<Buffer> {
     messageId: m.messageId ? `<${stripBrackets(m.messageId)}>` : undefined,
     inReplyTo: m.inReplyTo ? `<${stripBrackets(m.inReplyTo)}>` : undefined,
     references: m.references ? (m.references.match(/<[^>]+>/g) ?? undefined) : undefined,
-    attachments: m.attachments.map((a) => ({ filename: oneLine(a.filename).replace(/[\\/"]/g, '_') || 'Anhang', content: a.content, contentType: a.contentType || 'application/octet-stream' })),
+    attachments: m.attachments.map((a) => ({ filename: oneLine(a.filename).replace(/[\\/"]/g, '_') || tApp()('Anhang'), content: a.content, contentType: a.contentType || 'application/octet-stream' })),
   } as any);
   const node: any = composer.compile();
   // Gmail reads the recipients of the mail from its headers (Bcc included) and removes Bcc itself.

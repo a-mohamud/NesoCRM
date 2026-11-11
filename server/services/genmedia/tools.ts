@@ -3,6 +3,7 @@ import { render } from '../../core/template.js';
 import type { Caller, Tool } from '../../modules/mcp.js';
 import { createJob, kick } from './engine.js';
 import { sleep } from './http.js';
+import { tApp, tLoc } from '../../i18n/index.js';
 
 /**
  * MCP tools (thin relays onto /api/genmedia – same scoping, checks and audit log as the UI; the
@@ -47,7 +48,7 @@ function summary(j: any) {
     text: j.text ?? undefined,
     cost: j.cost ?? undefined,
     error: j.error ?? undefined,
-    hint: j.status === 'queued' || j.status === 'running' ? 'Läuft noch – später mit ghl_get_media_job abfragen.' : undefined,
+    hint: j.status === 'queued' || j.status === 'running' ? tApp()('Läuft noch – später mit ghl_get_media_job abfragen.') : undefined,
   };
 }
 
@@ -130,7 +131,8 @@ function action(app: App, capability: 'image' | 'video' | 'audio_tts') {
       body: { capability, prompt, connection_id: step.connection_id || undefined, model: step.model || undefined, aspect_ratio: step.aspect_ratio || undefined, duration: step.duration || undefined, voice: step.voice || undefined, params: step.params || undefined, library: true },
     });
     kick(app, job.id);
-    return `gestartet (${job.model || job.provider}) – Ergebnis kommt in: ${TARGET_TEXT[kind]}`;
+    const t = tLoc(app, run.location_id);
+    return t('gestartet ({model}) – Ergebnis kommt in: {target}', { model: job.model || job.provider, target: t(TARGET_TEXT[kind]) });
   };
 }
 

@@ -3,6 +3,7 @@ import { UmzugError, VendorHttp } from './umzug-http.js';
 import { counter, nameParts, stubCtx } from './umzug-lib.js';
 import type { Json } from './umzug-flow.js';
 import { stripHtml, toIso } from './umzug-text.js';
+import { translator, type ServerLocale } from '../i18n/index.js';
 
 /**
  * Zendesk Support and Guide (REST API v2, https://<subdomain>.zendesk.com/api/v2, Basic auth `<e-mail>/token:<API token>`): end users →
@@ -59,7 +60,8 @@ const ufType = (t: string): FieldType => (t === 'integer' || t === 'decimal' ? '
 
 const countOf = async (h: VendorHttp, path: string) => Number((await h.get(path))?.count?.value ?? 0);
 
-async function describe(h: VendorHttp, parts: PartKey[]) {
+async function describe(h: VendorHttp, parts: PartKey[], lang?: ServerLocale) {
+  const t = translator(lang);
   const counts: CountRow[] = [];
   const fields: SourceField[] = [];
   const warnings: string[] = [];
@@ -83,7 +85,7 @@ async function describe(h: VendorHttp, parts: PartKey[]) {
       for (const f of await everything(h, '/user_fields.json', 'user_fields', s)) if (f.active !== false && f.key) fields.push({ ref: `uf:${f.key}`, label: String(f.title ?? f.key), type: ufType(String(f.type)), group: 'custom', options: Array.isArray(f.custom_field_options) ? f.custom_field_options.map((o: Json) => String(o.name)) : undefined });
     } catch (e) {
       if (!(e instanceof UmzugError && e.skippable)) throw e;
-      warnings.push(`Eigene Nutzerfelder nicht lesbar: ${e.message}`);
+      warnings.push(t('Eigene Nutzerfelder nicht lesbar: {reason}', { reason: e.message }));
     }
   }
   if (parts.includes('companies')) await count('companies', 'organizations', 'Organisationen', () => countOf(h, '/organizations/count.json'));
@@ -112,8 +114,9 @@ const steps = (): StepDef[] => [
     label: 'Organisationen',
     part: 'companies',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of pages(ctx.http, '/organizations.json', 'organizations', ctx, {}, ctx.cursor ? String(ctx.cursor) : undefined)) {
-        const records: RCompany[] = pg.items.map((o) => ({ kind: 'company', ext: `o:${o.id}`, name: String(o.name ?? `Organisation ${o.id}`), domain: Array.isArray(o.domain_names) ? o.domain_names[0] : undefined, website: Array.isArray(o.domain_names) && o.domain_names[0] ? `https://${o.domain_names[0]}` : undefined }));
+        const records: RCompany[] = pg.items.map((o) => ({ kind: 'company', ext: `o:${o.id}`, name: String(o.name ?? t('Organisation {id}', { id: o.id })), domain: Array.isArray(o.domain_names) ? o.domain_names[0] : undefined, website: Array.isArray(o.domain_names) && o.domain_names[0] ? `https://${o.domain_names[0]}` : undefined }));
         yield { records, cursor: pg.next };
       }
     },
@@ -135,19 +138,20 @@ const steps = (): StepDef[] => [
     label: 'Tickets mit Kommentaren',
     part: 'tickets',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       let budget = ctx.limit < Infinity ? DRY_COMMENTS : Infinity;
       for await (const pg of pages(ctx.http, '/tickets.json', 'tickets', ctx, { include: 'users', sort: 'id' }, ctx.cursor ? String(ctx.cursor) : undefined)) {
         const people = new Map<string, Json>((Array.isArray(pg.json?.users) ? pg.json.users : []).map((u: Json) => [String(u.id), u]));
         const records: RTicket[] = [];
-        for (const t of pg.items) {
-          const requester = people.get(String(t.requester_id));
-          const assignee = t.assignee_id ? people.get(String(t.assignee_id)) : undefined;
+        for (const tk of pg.items) {
+          const requester = people.get(String(tk.requester_id));
+          const assignee = tk.assignee_id ? people.get(String(tk.assignee_id)) : undefined;
           const comments: RTicketComment[] = [];
-          const description = String(t.description ?? '');
+          const description = String(tk.description ?? '');
           if (budget > 0) {
             budget--;
             const seen = new Set<string>();
-            for await (const cp of pages(ctx.http, `/tickets/${t.id}/comments.json`, 'comments', ctx, { include: 'users' })) {
+            for await (const cp of pages(ctx.http, `/tickets/${tk.id}/comments.json`, 'comments', ctx, { include: 'users' })) {
               const authors = new Map<string, Json>((Array.isArray(cp.json?.users) ? cp.json.users : []).map((u: Json) => [String(u.id), u]));
               for (const c of cp.items) {
                 if (seen.has(String(c.id))) continue;
@@ -156,27 +160,27 @@ const steps = (): StepDef[] => [
                 const body = String(c.plain_body ?? (c.html_body ? stripHtml(c.html_body) : (c.body ?? ''))).trim();
                 // The first comment is the description the ticket already carries.
                 if (!comments.length && body && body === description.trim()) continue;
-                const files = (Array.isArray(c.attachments) ? c.attachments : []).map((a: Json) => String(a.file_name ?? 'Datei'));
-                comments.push({ ext: `c:${c.id}`, from: author && author.role !== 'end-user' ? 'agent' : 'customer', internal: c.public === false, author: author?.name ? String(author.name) : undefined, body: files.length ? `${body}\n\nAnhänge (liegen bei Zendesk): ${files.join(', ')}` : body, at: toIso(c.created_at) });
+                const files = (Array.isArray(c.attachments) ? c.attachments : []).map((a: Json) => String(a.file_name ?? t('Datei')));
+                comments.push({ ext: `c:${c.id}`, from: author && author.role !== 'end-user' ? 'agent' : 'customer', internal: c.public === false, author: author?.name ? String(author.name) : undefined, body: files.length ? t('{body}\n\nAnhänge (liegen bei Zendesk): {files}', { body, files: files.join(', ') }) : body, at: toIso(c.created_at) });
               }
             }
           }
-          const meta = [`Aus Zendesk übernommen (Ticket #${t.id})`, assignee?.name ? `Bearbeiter dort: ${assignee.name}` : '', t.type ? `Art: ${t.type}` : '', t.via?.channel ? `Kanal: ${t.via.channel}` : '', STATUS_TEXT[String(t.status)] ? `Status dort: ${STATUS_TEXT[String(t.status)]}` : ''].filter(Boolean).join(' · ');
-          comments.unshift({ ext: 'meta', from: 'agent', internal: true, body: meta, at: toIso(t.created_at) });
+          const meta = [t('Aus Zendesk übernommen (Ticket #{id})', { id: tk.id }), assignee?.name ? t('Bearbeiter dort: {name}', { name: assignee.name }) : '', tk.type ? t('Art: {kind}', { kind: tk.type }) : '', tk.via?.channel ? t('Kanal: {channel}', { channel: tk.via.channel }) : '', STATUS_TEXT[String(tk.status)] ? t('Status dort: {status}', { status: t(STATUS_TEXT[String(tk.status)]) }) : ''].filter(Boolean).join(' · ');
+          comments.unshift({ ext: 'meta', from: 'agent', internal: true, body: meta, at: toIso(tk.created_at) });
           records.push({
             kind: 'ticket',
-            ext: `t:${t.id}`,
-            subject: String(t.subject || description.split('\n')[0] || `Ticket ${t.id}`).slice(0, 300),
+            ext: `t:${tk.id}`,
+            subject: String(tk.subject || description.split('\n')[0] || t('Ticket {id}', { id: tk.id })).slice(0, 300),
             description,
             // "hold" alone says nothing to the stage mapping; "on hold" means waiting.
-            status: t.status === 'hold' ? 'on hold' : String(t.status ?? ''),
-            priority: t.priority ?? undefined,
-            contact: t.requester_id ? `u:${t.requester_id}` : undefined,
+            status: tk.status === 'hold' ? 'on hold' : String(tk.status ?? ''),
+            priority: tk.priority ?? undefined,
+            contact: tk.requester_id ? `u:${tk.requester_id}` : undefined,
             // A requester who is an agent (an internal ticket) does not become a contact.
             contact_hint: requester?.email && requester.role === 'end-user' ? { name: requester.name, email: requester.email } : undefined,
-            tags: Array.isArray(t.tags) ? t.tags : [],
-            channel: t.via?.channel === 'email' ? 'email' : t.via?.channel === 'sms' ? 'sms' : t.via?.channel === 'chat' ? 'chat' : undefined,
-            created_at: toIso(t.created_at),
+            tags: Array.isArray(tk.tags) ? tk.tags : [],
+            channel: tk.via?.channel === 'email' ? 'email' : tk.via?.channel === 'sms' ? 'sms' : tk.via?.channel === 'chat' ? 'chat' : undefined,
+            created_at: toIso(tk.created_at),
             comments,
           });
         }
@@ -189,6 +193,7 @@ const steps = (): StepDef[] => [
     label: 'Hilfe-Artikel (Entwürfe)',
     part: 'articles',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const cats = new Map<string, Json>((await everything(ctx.http, '/help_center/categories.json', 'categories', ctx)).map((c) => [String(c.id), c]));
       const sections = await everything(ctx.http, '/help_center/sections.json', 'sections', ctx);
       const perCat = new Map<string, number>();
@@ -204,8 +209,8 @@ const steps = (): StepDef[] => [
       }
       const start = (ctx.cursor as { after?: string } | undefined)?.after || undefined;
       for await (const pg of pages(ctx.http, '/help_center/articles.json', 'articles', ctx, {}, start)) {
-        const records: RArticle[] = pg.items.map((a) => ({ kind: 'article', ext: `a:${a.id}`, title: String(a.title ?? `Artikel ${a.id}`), html: String(a.body ?? ''), category: a.section_id ? `s:${a.section_id}` : undefined, tags: Array.isArray(a.label_names) ? a.label_names : [], created_at: toIso(a.created_at) }));
-        for (const a of pg.items) if (/(src|href)="https?:\/\/[^"]*(zdassets|zendesk)\.com/i.test(String(a.body ?? ''))) ctx.warn(`Artikel „${String(a.title).slice(0, 60)}“: Bilder oder Anhänge liegen noch bei Zendesk – vor dem Kündigen herunterladen und neu einfügen`);
+        const records: RArticle[] = pg.items.map((a) => ({ kind: 'article', ext: `a:${a.id}`, title: String(a.title ?? t('Artikel {id}', { id: a.id })), html: String(a.body ?? ''), category: a.section_id ? `s:${a.section_id}` : undefined, tags: Array.isArray(a.label_names) ? a.label_names : [], created_at: toIso(a.created_at) }));
+        for (const a of pg.items) if (/(src|href)="https?:\/\/[^"]*(zdassets|zendesk)\.com/i.test(String(a.body ?? ''))) ctx.warn(t('Artikel „{title}“: Bilder oder Anhänge liegen noch bei Zendesk – vor dem Kündigen herunterladen und neu einfügen', { title: String(a.title).slice(0, 60) }));
         yield { records, cursor: pg.next ? { after: pg.next } : undefined };
       }
     },
@@ -248,6 +253,6 @@ export const ZENDESK: SourceDef = {
     if (u.role === 'end-user') throw new UmzugError(403, 'Zendesk: Dieser Zugang gehört einem Kunden, nicht einem Agenten oder Admin');
     return { account: zendeskBase(creds.subdomain).replace(/^https:\/\//, '').replace(/\.zendesk\.com.*$/, ''), label: `${String(creds.subdomain).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\.zendesk\.com.*$/, '')}.zendesk.com`, meta: {} };
   },
-  describe: (h, parts) => describe(h, parts),
+  describe: (h, parts, c) => describe(h, parts, c.lang),
   steps: (parts) => steps().filter((s) => parts.includes(s.part)),
 };

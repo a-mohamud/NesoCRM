@@ -1,6 +1,7 @@
 import type { Module } from '../core/app.js';
 import { bad, str, type Ctx } from '../core/http.js';
 import { bodyLocation, callRoute } from '../services/mobile.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * "Teilen" from the phone into the CRM (iOS share extension, Android share target – docs/apps.md#share): a link, a text or a
@@ -29,8 +30,9 @@ export const appShareModule: Module = {
       }
       if (!link && !note && !fileUrl) throw bad('Nichts zum Teilen (url, text oder file)');
       const title = str(b.title, 'Titel', { max: 200 }) || fileName || link.replace(/^https?:\/\//, '').slice(0, 120) || note.slice(0, 120);
-      const description = [note, link, fileUrl && `Datei: ${fileUrl}`].filter(Boolean).join('\n\n');
-      const task = await callRoute(app, ctx, 'POST', '/api/tasks', { locationId: loc.id, body: { title: `Geteilt: ${title}`.slice(0, 300), description, contact_id: b.contact_id || null } });
+      const t = tLoc(app, loc.id);
+      const description = [note, link, fileUrl && t('Datei: {url}', { url: fileUrl })].filter(Boolean).join('\n\n');
+      const task = await callRoute(app, ctx, 'POST', '/api/tasks', { locationId: loc.id, body: { title: t('Geteilt: {title}', { title }).slice(0, 300), description, contact_id: b.contact_id || null } });
       return { ok: true, task_id: task.id, file_url: fileUrl || null };
     });
   },

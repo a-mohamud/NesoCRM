@@ -1,5 +1,6 @@
 import { bad, str } from '../core/http.js';
 import { RULE_OPS, buildScreens, formulaVars, parseFormula, FormulaError, resolveTarget, varName, type Ending, type FormMode } from './form-logic.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * The fields of a form: types, what the editor may send (cleaned), what a visitor's answer must look like per type. Pure – the
@@ -179,7 +180,7 @@ export function cleanFields(input: unknown, ctx: CleanContext = {}): FormField[]
 export function checkLogic(fields: FormField[], mode: FormMode): void {
   const ids = new Set<string>();
   for (const f of fields) {
-    if (ids.has(f.id)) throw bad(`Zwei Felder haben dieselbe ID „${f.id}“`);
+    if (ids.has(f.id)) throw bad(tApp()('Zwei Felder haben dieselbe ID „{id}“', { id: f.id }));
     ids.add(f.id);
   }
   if (fields.filter((f) => f.type === 'payment').length > 1) throw bad('Ein Formular kann nur ein Zahlungsfeld haben');
@@ -188,8 +189,8 @@ export function checkLogic(fields: FormField[], mode: FormMode): void {
   for (const f of fields) {
     for (const j of f.jumps ?? []) {
       const t = resolveTarget(j.goto, screens, fields);
-      if (t === undefined) throw bad(`„${f.label || f.name}“: das Sprungziel gibt es nicht`);
-      if (t <= screenOf(f.id)) throw bad(`„${f.label || f.name}“: ein Sprung kann nur vorwärts gehen`);
+      if (t === undefined) throw bad(tApp()('„{field}“: das Sprungziel gibt es nicht', { field: f.label || f.name }));
+      if (t <= screenOf(f.id)) throw bad(tApp()('„{field}“: ein Sprung kann nur vorwärts gehen', { field: f.label || f.name }));
     }
   }
   const known = new Set<string>(['score']);
@@ -199,14 +200,14 @@ export function checkLogic(fields: FormField[], mode: FormMode): void {
   }
   for (const f of fields) {
     if (f.type !== 'calculator') continue;
-    if (!f.formula) throw bad(`„${f.label || f.name}“: die Formel fehlt`);
+    if (!f.formula) throw bad(tApp()('„{field}“: die Formel fehlt', { field: f.label || f.name }));
     checkFormula(f.formula, known, f.label || f.name);
   }
 }
 
 export function checkFormula(formula: string, known: Set<string>, what: string) {
   try {
-    for (const n of formulaVars(parseFormula(formula))) if (!known.has(n)) throw new FormulaError(`Die Variable „${n}“ gibt es nicht`);
+    for (const n of formulaVars(parseFormula(formula))) if (!known.has(n)) throw new FormulaError(tApp()('Die Variable „{name}“ gibt es nicht', { name: n }));
   } catch (e) {
     if (e instanceof FormulaError) throw bad(`${what}: ${e.message}`);
     throw e;
@@ -235,9 +236,9 @@ export function cleanFormSettings(input: Record<string, any>, fields: FormField[
     out.variables = input.variables.slice(0, 20).map((v: any) => {
       const name = String(v?.name ?? '').trim();
       if (!/^[A-Za-z_][A-Za-z0-9_]{0,30}$/.test(name)) throw bad('Variablen-Namen: Buchstaben, Ziffern und „_“, nicht mit einer Ziffer beginnen');
-      if (seen.has(name)) throw bad(`Die Variable „${name}“ gibt es doppelt`);
+      if (seen.has(name)) throw bad(tApp()('Die Variable „{name}“ gibt es doppelt', { name }));
       seen.add(name);
-      checkFormula(String(v?.formula ?? ''), new Set([...known, ...seen]), `Variable „${name}“`);
+      checkFormula(String(v?.formula ?? ''), new Set([...known, ...seen]), tApp()('Variable „{name}“', { name }));
       known.add(name);
       return { name, formula: String(v.formula).trim().slice(0, 300) };
     });
@@ -248,7 +249,7 @@ export function cleanFormSettings(input: Record<string, any>, fields: FormField[
     out.endings = input.endings.slice(0, 20).map((e: any): Ending => {
       const bound = (v: unknown) => (v === '' || v === null || v === undefined ? null : Number.isFinite(Number(v)) ? Number(v) : (() => { throw bad('Ergebnisse: Grenzen müssen Zahlen sein'); })());
       const variable = String(e?.var || 'score').trim();
-      if (!names.has(variable) && !names.has(varName(variable))) throw bad(`Ergebnisse: die Variable „${variable}“ gibt es nicht`);
+      if (!names.has(variable) && !names.has(varName(variable))) throw bad(tApp()('Ergebnisse: die Variable „{name}“ gibt es nicht', { name: variable }));
       const min = bound(e?.min);
       const max = bound(e?.max);
       if (min !== null && max !== null && min > max) throw bad('Ergebnisse: „von“ ist größer als „bis“');
@@ -278,14 +279,14 @@ export function cleanAnswer(f: FormField, v: unknown): string | string[] {
   switch (f.type) {
     case 'email': {
       const s = one(v).slice(0, 320);
-      if (!EMAIL.test(s)) throw bad(`„${label}“: bitte eine gültige E-Mail-Adresse angeben`);
+      if (!EMAIL.test(s)) throw bad(tApp()('„{field}“: bitte eine gültige E-Mail-Adresse angeben', { field: label }));
       return s;
     }
     case 'number': {
       const n = Number(one(v).replace(',', '.'));
-      if (!Number.isFinite(n)) throw bad(`„${label}“: bitte eine Zahl angeben`);
-      if (f.min !== undefined && n < f.min) throw bad(`„${label}“: mindestens ${f.min}`);
-      if (f.max !== undefined && n > f.max) throw bad(`„${label}“: höchstens ${f.max}`);
+      if (!Number.isFinite(n)) throw bad(tApp()('„{field}“: bitte eine Zahl angeben', { field: label }));
+      if (f.min !== undefined && n < f.min) throw bad(tApp()('„{field}“: mindestens {min}', { field: label, min: f.min }));
+      if (f.max !== undefined && n > f.max) throw bad(tApp()('„{field}“: höchstens {max}', { field: label, max: f.max }));
       return String(n);
     }
     case 'rating':
@@ -294,24 +295,24 @@ export function cleanAnswer(f: FormField, v: unknown): string | string[] {
       const lo = f.type === 'rating' ? 1 : f.min ?? (f.type === 'nps' ? 0 : 1);
       const hi = f.type === 'rating' ? f.max ?? 5 : f.max ?? 10;
       const n = Number(one(v));
-      if (!Number.isInteger(n) || n < lo || n > hi) throw bad(`„${label}“: bitte einen Wert von ${lo} bis ${hi} wählen`);
-      if (f.type === 'scale' && f.step && f.step > 1 && (n - lo) % f.step !== 0) throw bad(`„${label}“: ungültiger Wert`);
+      if (!Number.isInteger(n) || n < lo || n > hi) throw bad(tApp()('„{field}“: bitte einen Wert von {min} bis {max} wählen', { field: label, min: lo, max: hi }));
+      if (f.type === 'scale' && f.step && f.step > 1 && (n - lo) % f.step !== 0) throw bad(tApp()('„{field}“: ungültiger Wert', { field: label }));
       return String(n);
     }
     case 'date': {
       const s = one(v);
-      if (!validDate(s)) throw bad(`„${label}“: bitte ein Datum angeben`);
+      if (!validDate(s)) throw bad(tApp()('„{field}“: bitte ein Datum angeben', { field: label }));
       return s;
     }
     case 'date_range': {
       const m = /^(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})$/.exec(one(v));
-      if (!m || !validDate(m[1]) || !validDate(m[2]) || m[1] > m[2]) throw bad(`„${label}“: bitte einen Zeitraum angeben (Von vor Bis)`);
+      if (!m || !validDate(m[1]) || !validDate(m[2]) || m[1] > m[2]) throw bad(tApp()('„{field}“: bitte einen Zeitraum angeben (Von vor Bis)', { field: label }));
       return `${deDate(m[1])} – ${deDate(m[2])}`;
     }
     case 'ranking': {
       const list = (Array.isArray(v) ? v : [v]).map((x) => String(x).trim());
       const opts = f.options ?? [];
-      if (list.length !== opts.length || new Set(list).size !== list.length || !list.every((x) => opts.includes(x))) throw bad(`„${label}“: bitte alle Punkte in eine Reihenfolge bringen`);
+      if (list.length !== opts.length || new Set(list).size !== list.length || !list.every((x) => opts.includes(x))) throw bad(tApp()('„{field}“: bitte alle Punkte in eine Reihenfolge bringen', { field: label }));
       return list;
     }
     case 'picture_choice':
@@ -320,7 +321,7 @@ export function cleanAnswer(f: FormField, v: unknown): string | string[] {
       const list = (Array.isArray(v) ? v : [v]).map((x) => String(x).trim()).filter(Boolean);
       const multi = f.type === 'picture_choice' && f.multiple;
       if (f.type === 'picture_choice') {
-        if (!list.length || (!multi && list.length > 1) || !list.every((x) => (f.options ?? []).includes(x))) throw bad(`„${label}“: bitte eine Auswahl treffen`);
+        if (!list.length || (!multi && list.length > 1) || !list.every((x) => (f.options ?? []).includes(x))) throw bad(tApp()('„{field}“: bitte eine Auswahl treffen', { field: label }));
         return multi ? list : list[0];
       }
       return list.length > 1 ? list.map((x) => x.slice(0, 1000)) : String(list[0] ?? '').slice(0, 10000);

@@ -2,6 +2,7 @@ import { bad } from '../core/http.js';
 import { addDaysYmd, weekdayKey, ymdInTz, zonedToUtc } from '../core/time.js';
 import { id as newId } from '../core/util.js';
 import type { Windows } from './team-people.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Team-Kalender: the types of a booking calendar (single, round robin, collective, group), the booking page's questions,
@@ -110,7 +111,7 @@ export function cleanQuestion(v: unknown): Question {
   const label = String(q.label ?? '').trim().slice(0, 200);
   if (!label) throw bad('Jede Frage braucht einen Text');
   const options = type === 'choice' || type === 'multi' ? [...new Set((Array.isArray(q.options) ? q.options : String(q.options ?? '').split('\n')).map((o: unknown) => String(o ?? '').trim().slice(0, 120)).filter(Boolean))].slice(0, 20) : [];
-  if ((type === 'choice' || type === 'multi') && options.length < 2) throw bad(`Frage „${label}“: mindestens zwei Antwortmöglichkeiten`);
+  if ((type === 'choice' || type === 'multi') && options.length < 2) throw bad(tApp()('Frage „{label}“: mindestens zwei Antwortmöglichkeiten', { label }));
   const cond = obj(q.show_if);
   const values = (Array.isArray(cond.values) ? cond.values : cond.value !== undefined ? [cond.value] : []).map((x: unknown) => String(x ?? '').trim().slice(0, 120)).filter(Boolean).slice(0, 20);
   const show_if = /^[A-Za-z0-9_-]{4,40}$/.test(String(cond.id ?? '')) && values.length ? { id: String(cond.id), values } : undefined;
@@ -122,9 +123,9 @@ export function checkConditions(questions: Question[]): Question[] {
   questions.forEach((q, i) => {
     if (!q.show_if) return;
     const ref = questions.slice(0, i).find((x) => x.id === q.show_if!.id);
-    if (!ref || !['choice', 'multi', 'checkbox'].includes(ref.type)) throw bad(`Frage „${q.label}“: Die Bedingung muss auf eine frühere Auswahl- oder Ja/Nein-Frage zeigen`);
+    if (!ref || !['choice', 'multi', 'checkbox'].includes(ref.type)) throw bad(tApp()('Frage „{label}“: Die Bedingung muss auf eine frühere Auswahl- oder Ja/Nein-Frage zeigen', { label: q.label }));
     const allowed = ref.type === 'checkbox' ? ['Ja', 'Nein'] : ref.options;
-    if (q.show_if.values.some((v) => !allowed.includes(v))) throw bad(`Frage „${q.label}“: Die Bedingung nennt eine Antwort, die es bei „${ref.label}“ nicht gibt`);
+    if (q.show_if.values.some((v) => !allowed.includes(v))) throw bad(tApp()('Frage „{label}“: Die Bedingung nennt eine Antwort, die es bei „{ref}“ nicht gibt', { label: q.label, ref: ref.label }));
   });
   return questions;
 }
@@ -172,7 +173,7 @@ export function cleanConfig(body: unknown, cur: TeamCalConfig): TeamCalConfig {
   const b = obj(body);
   const out: TeamCalConfig = JSON.parse(JSON.stringify(cur));
   if (b.kind !== undefined) {
-    if (!(KINDS as readonly string[]).includes(b.kind)) throw bad(`Unbekannter Kalendertyp – möglich: ${KINDS.join(', ')}`);
+    if (!(KINDS as readonly string[]).includes(b.kind)) throw bad(tApp()('Unbekannter Kalendertyp – möglich: {kinds}', { kinds: KINDS.join(', ') }));
     out.kind = b.kind;
   }
   if (b.strategy !== undefined) {
@@ -259,18 +260,18 @@ export function validateAnswers(questions: Question[], given: unknown, o: { leni
     let value = '';
     if (q.type === 'checkbox') {
       const on = raw === true || raw === 'true' || raw === 'on' || raw === 1 || raw === 'Ja';
-      if (q.required && !on && !o.lenient) throw bad(`Bitte bestätigen: ${q.label}`);
+      if (q.required && !on && !o.lenient) throw bad(tApp()('Bitte bestätigen: {label}', { label: q.label }));
       value = on ? 'Ja' : o.lenient ? '' : 'Nein';
     } else if (q.type === 'multi') {
       const list = (Array.isArray(raw) ? raw : raw ? [raw] : []).map((x: unknown) => String(x));
-      if (list.some((x: string) => !q.options.includes(x))) throw bad(`Ungültige Auswahl bei „${q.label}“`);
-      if (q.required && !list.length && !o.lenient) throw bad(`Bitte beantworten: ${q.label}`);
+      if (list.some((x: string) => !q.options.includes(x))) throw bad(tApp()('Ungültige Auswahl bei „{label}“', { label: q.label }));
+      if (q.required && !list.length && !o.lenient) throw bad(tApp()('Bitte beantworten: {label}', { label: q.label }));
       value = [...new Set(list)].join(', ');
     } else {
       const s = String(raw ?? '').trim();
-      if (s.length > (q.type === 'textarea' ? 5000 : 500)) throw bad(`Die Antwort bei „${q.label}“ ist zu lang`);
-      if (q.type === 'choice' && s && !q.options.includes(s)) throw bad(`Ungültige Auswahl bei „${q.label}“`);
-      if (q.required && !s && !o.lenient) throw bad(`Bitte beantworten: ${q.label}`);
+      if (s.length > (q.type === 'textarea' ? 5000 : 500)) throw bad(tApp()('Die Antwort bei „{label}“ ist zu lang', { label: q.label }));
+      if (q.type === 'choice' && s && !q.options.includes(s)) throw bad(tApp()('Ungültige Auswahl bei „{label}“', { label: q.label }));
+      if (q.required && !s && !o.lenient) throw bad(tApp()('Bitte beantworten: {label}', { label: q.label }));
       value = s;
     }
     if (value !== '') out.push({ id: q.id, label: q.label, value });
@@ -299,7 +300,7 @@ export function itemsForGross(item: { name: string; description: string }, gross
   const net = netFromGross(gross, rate);
   const total = net + Math.round((net * rate) / 100);
   const main = { ...item, qty: 1, price_cents: net, tax_rate: rate };
-  return total === gross ? [main] : [main, { name: 'Rundungsausgleich', description: '', qty: 1, price_cents: gross - total, tax_rate: 0 }];
+  return total === gross ? [main] : [main, { name: tApp()('Rundungsausgleich'), description: '', qty: 1, price_cents: gross - total, tax_rate: 0 }];
 }
 
 /** What is charged when booking: the whole price or the deposit. */

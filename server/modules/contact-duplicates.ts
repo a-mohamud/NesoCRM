@@ -7,6 +7,7 @@ import { MERGE_FIELDS, TABLE_LABEL, compareFields, countsFor, frozenInvoices, li
 import { denyUnless, hiddenFieldsIn, maskRow, permits, resolve, scopeClause } from '../services/record-access.js';
 import { tableEntity } from '../services/undo-table.js';
 import type { Tool } from './mcp.js';
+import { tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * Dubletten-Assistent für Kontakte (docs/sales.md): findet doppelte Kontakte (gleiche E-Mail, gleiche Telefonnummer in anderer
@@ -76,7 +77,7 @@ export const contactDuplicatesModule: Module = {
         targets: (ctx: Ctx) => [{ id: String(ctx.body?.keep_id ?? '') }, { id: String(ctx.body?.from_id ?? '') }],
         deep: true,
         action: (_b: unknown, a: unknown) => (a ? 'merge' : 'delete'),
-        groupLabel: (_ctx: Ctx, rows: { label: string }[]) => `Kontakte zusammengeführt: ${rows.map((r) => r.label.replace(/^Kontakt „|“( zusammengeführt| gelöscht)?$/g, '')).join(' + ')}`,
+        groupLabel: (ctx: Ctx, rows: { label: string }[]) => tCtx(ctx)('Kontakte zusammengeführt: {names}', { names: rows.map((r) => r.label.replace(/^(Kontakt|Contact) [„“"]|[“”"]( zusammengeführt| gelöscht| merged| deleted)?$/g, '')).join(' + ') }),
       });
     }
 
@@ -85,13 +86,14 @@ export const contactDuplicatesModule: Module = {
     const ignored = (loc: string) => new Set(db.all<{ pair: string }>('SELECT pair FROM contact_dupe_ignores WHERE location_id = ?', loc).map((r) => r.pair));
 
     const labelled = () => linkTables(app).move.filter((t) => TABLE_LABEL[t.table]);
-    const brief = (loc: string, id: string, access: ReturnType<typeof resolve>) => {
+    const brief = (loc: string, id: string, access: ReturnType<typeof resolve>, t: STFn) => {
       const c = getContact(app, loc, id);
       if (!c) return undefined;
       const counts: Record<string, number> = {};
+      const tr = t;
       for (const t of labelled()) {
         const n = Number(db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM "${t.table}" WHERE contact_id = ?`, id)?.n ?? 0);
-        if (n) counts[TABLE_LABEL[t.table]] = (counts[TABLE_LABEL[t.table]] ?? 0) + n;
+        if (n) counts[tr(TABLE_LABEL[t.table])] = (counts[tr(TABLE_LABEL[t.table])] ?? 0) + n;
       }
       const owner = c.assigned_to ? (db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', c.assigned_to)?.name ?? null) : null;
       return maskRow(access, 'contacts', { id: c.id, first_name: c.first_name, last_name: c.last_name, name: contactName(c), email: c.email, phone: c.phone, company: c.company, city: c.city, tags: c.tags, assigned_to: c.assigned_to, owner_name: owner, created_at: c.created_at, last_activity_at: (c as any).last_activity_at ?? null, counts });
@@ -105,12 +107,13 @@ export const contactDuplicatesModule: Module = {
       const min = ctx.query.get('min') === 'high' ? 'high' : undefined;
       const groups = findGroups(capped ? rows.slice(0, SCAN_MAX) : rows, { ignored: ignored(ctx.locationId), min });
       const limit = clampLimit(ctx.query.get('limit'), 50, 200);
+      const t = tCtx(ctx);
       return {
         scanned: Math.min(rows.length, SCAN_MAX),
         capped,
         total: groups.length,
-        reasons: REASON_LABEL,
-        groups: groups.slice(0, limit).map((g) => ({ key: g.key, confidence: g.confidence, reasons: g.reasons, keep: g.keep, contacts: g.ids.map((id) => brief(ctx.locationId, id, access)).filter(Boolean) })),
+        reasons: Object.fromEntries(Object.entries(REASON_LABEL).map(([k, v]) => [k, t(v)])),
+        groups: groups.slice(0, limit).map((g) => ({ key: g.key, confidence: g.confidence, reasons: g.reasons, keep: g.keep, contacts: g.ids.map((id) => brief(ctx.locationId, id, access, t)).filter(Boolean) })),
       };
     });
 
@@ -132,10 +135,11 @@ export const contactDuplicatesModule: Module = {
       const pool = db.all<DupRow>(`SELECT ${COLS} FROM contacts c WHERE c.location_id = ? AND c.id != ? AND (${clauses.join(' OR ')})${scope ? ` AND ${scope.sql}` : ''} LIMIT 200`, ctx.locationId, c.id, ...params, ...(scope?.params ?? []));
       const me = db.get<DupRow>(`SELECT ${COLS} FROM contacts c WHERE c.id = ?`, c.id)!;
       const skip = ignored(ctx.locationId);
+      const t = tCtx(ctx);
       return pool
         .map((o) => ({ o, reasons: skip.has(ignoreKey(o.id, c.id)) ? [] : pairReasons(me, o) }))
         .filter((x) => x.reasons.length)
-        .map((x) => ({ ...brief(ctx.locationId, x.o.id, access), reasons: x.reasons, reason_labels: x.reasons.map((r) => REASON_LABEL[r]) }));
+        .map((x) => ({ ...brief(ctx.locationId, x.o.id, access, t), reasons: x.reasons, reason_labels: x.reasons.map((r) => t(REASON_LABEL[r])) }));
     });
 
     // --- merge preview ---------------------------------------------------------------------------------------------------------
@@ -158,24 +162,25 @@ export const contactDuplicatesModule: Module = {
       const frozen = frozenInvoices(app, from.id);
       const k = countsFor(app, keep.id);
       const f = countsFor(app, from.id);
+      const t = tCtx(ctx);
       return {
-        keep: brief(ctx.locationId, keep.id, access),
-        from: brief(ctx.locationId, from.id, access),
-        fields: mask(cmp.fields).map((r) => (r.key === 'assigned_to' ? { ...r, keep_label: owner(r.keep), from_label: owner(r.from) } : r)),
+        keep: brief(ctx.locationId, keep.id, access, t),
+        from: brief(ctx.locationId, from.id, access, t),
+        fields: mask(cmp.fields).map((r) => ({ ...r, label: t(r.label) })).map((r) => (r.key === 'assigned_to' ? { ...r, keep_label: owner(r.keep), from_label: owner(r.from) } : r)),
         custom: mask(cmp.custom),
         tags: cmp.tags,
         reasons: pairReasons(
           db.get<DupRow>(`SELECT ${COLS} FROM contacts c WHERE c.id = ?`, keep.id)!,
           db.get<DupRow>(`SELECT ${COLS} FROM contacts c WHERE c.id = ?`, from.id)!,
-        ).map((r) => ({ key: r, label: REASON_LABEL[r] })),
-        moves: Object.entries(f.labelled).map(([label, n]) => ({ label, from: n, keep: k.labelled[label] ?? 0 })),
+        ).map((r) => ({ key: r, label: t(REASON_LABEL[r]) })),
+        moves: Object.entries(f.labelled).map(([label, n]) => ({ label: t(label), from: n, keep: k.labelled[label] ?? 0 })),
         other_links: f.other,
         dropped: f.dropped,
         frozen_invoices: frozen,
         notes: [
-          ...(from.dnd && !keep.dnd ? ['„Nicht stören“ des zweiten Kontakts gilt für den zusammengeführten.'] : []),
-          ...(f.dropped ? [`${f.dropped} Einträge, die nur zum zweiten Kontakt gehören (z. B. Mitgliedschaften, Kurszugänge, Scores), fallen weg – „Rückgängig“ holt sie zurück.`] : []),
-          ...(frozen ? [`${frozen} festgeschriebene ${frozen === 1 ? 'Rechnung verliert' : 'Rechnungen verlieren'} die Verknüpfung (Rollen tauschen behält sie).`] : []),
+          ...(from.dnd && !keep.dnd ? [t('„Nicht stören“ des zweiten Kontakts gilt für den zusammengeführten.')] : []),
+          ...(f.dropped ? [t.plural(f.dropped, { one: '{n} Eintrag, der nur zum zweiten Kontakt gehört (z. B. Mitgliedschaften, Kurszugänge, Scores), fällt weg – „Rückgängig“ holt ihn zurück.', other: '{n} Einträge, die nur zum zweiten Kontakt gehören (z. B. Mitgliedschaften, Kurszugänge, Scores), fallen weg – „Rückgängig“ holt sie zurück.' })] : []),
+          ...(frozen ? [t.plural(frozen, { one: '{n} festgeschriebene Rechnung verliert die Verknüpfung (Rollen tauschen behält sie).', other: '{n} festgeschriebene Rechnungen verlieren die Verknüpfung (Rollen tauschen behält sie).' })] : []),
         ],
       };
     });
@@ -186,7 +191,7 @@ export const contactDuplicatesModule: Module = {
       const picks = b.picks && typeof b.picks === 'object' ? (b.picks as Record<string, unknown>) : {};
       // A person who may not see a field cannot take it from one contact to the other.
       const blocked = hiddenFieldsIn(access, 'contacts', Object.fromEntries(Object.keys(picks).map((k) => [k, 1])));
-      if (blocked.length) throw new HttpError(403, `Das Feld „${blocked[0]}“ ist für dich ausgeblendet – du kannst es nicht ändern`);
+      if (blocked.length) throw new HttpError(403, tCtx(ctx)('Das Feld „{field}“ ist für dich ausgeblendet – du kannst es nicht ändern', { field: blocked[0] }));
       const r = mergeContacts(app, ctx.locationId, { keepId: keep.id, fromId: from.id, picks, userId: ctx.user?.id ?? null, confirmDetach: b.confirm_detach === true });
       return { contact: maskRow(access, 'contacts', r.contact as unknown as Row), moved: r.moved, other_links: r.other, dropped: r.dropped, detached_invoices: r.detached };
     });

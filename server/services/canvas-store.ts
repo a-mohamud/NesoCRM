@@ -16,6 +16,7 @@ import { HttpError, bad, notFound, type Ctx } from '../core/http.js';
 import { id, now, sha256 } from '../core/util.js';
 import { type Box, type CanvasElement, LIMITS, SceneError, createElement, elementBox, isId, sortByZ, unionBox, updateElement } from './canvas-model.js';
 import { type CanvasHub, colorFor } from './canvas-hub.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 import { type GraphSpec, type LayoutKind, type Direction, buildGraph, graphOfElements, layoutGraph } from './canvas-layout.js';
 
 export interface BoardRow {
@@ -115,7 +116,8 @@ const ELEMENT_BYTES = 256 * 1024;
 /** Applies a batch of operations in one transaction and tells everyone watching. */
 export function applyOps(app: App, ctx: Ctx, board: BoardRow, ops: OpIn[], o: { clientId?: string; strict?: boolean; force?: boolean } = {}): ApplyResult {
   if (!Array.isArray(ops)) throw bad('ops: Liste erwartet');
-  if (ops.length > LIMITS.opsPerRequest) throw bad(`Höchstens ${LIMITS.opsPerRequest} Änderungen je Anfrage`);
+  const t = tCtx(ctx);
+  if (ops.length > LIMITS.opsPerRequest) throw bad(t('Höchstens {n} Änderungen je Anfrage', { n: LIMITS.opsPerRequest }));
   const actor = actorOf(app, ctx);
   const base = app.baseUrl();
   const at = now();
@@ -159,7 +161,7 @@ export function applyOps(app: App, ctx: Ctx, board: BoardRow, ops: OpIn[], o: { 
             results.push({ id: el.id, status: op.baseVersion !== undefined && op.baseVersion !== existing.version ? 'conflict' : 'ok', version: existing.version + 1 });
             continue;
           }
-          if (count >= LIMITS.elements) throw new SceneError(`Ein Board hat höchstens ${LIMITS.elements} Elemente`);
+          if (count >= LIMITS.elements) throw new SceneError('Ein Board hat höchstens {n} Elemente', { n: LIMITS.elements });
           if (op.element?.z === undefined) el.z = ++maxZ;
           else maxZ = Math.max(maxZ, el.z ?? 0);
           save(el, existing ? existing.version + 1 : 1, !existing);
@@ -204,9 +206,11 @@ export function applyOps(app: App, ctx: Ctx, board: BoardRow, ops: OpIn[], o: { 
             }
           }
           results.push({ id: eid, status: 'ok', version: r.version + 1 });
-        } else results.push({ id: eid, status: 'error', error: 'op: add, update oder delete' });
+        } else results.push({ id: eid, status: 'error', error: t('op: add, update oder delete') });
       } catch (e) {
-        if (e instanceof SceneError || e instanceof HttpError) results.push({ id: eid, status: 'error', error: e.message });
+        // per-element errors are part of a normal answer (not translated centrally)
+        if (e instanceof SceneError) results.push({ id: eid, status: 'error', error: t(e.key, e.vars) });
+        else if (e instanceof HttpError) results.push({ id: eid, status: 'error', error: t(e.message) });
         else throw e;
       }
     }
@@ -245,10 +249,10 @@ export function createSnapshot(app: App, boardId: string, name: string, auto: bo
 }
 
 function maybeAutoSnapshot(app: App, boardId: string, actor: Actor) {
-  const b = app.db.get<BoardRow>('SELECT last_snapshot_at, element_count FROM canvas_boards WHERE id = ?', boardId);
+  const b = app.db.get<BoardRow>('SELECT last_snapshot_at, element_count, location_id FROM canvas_boards WHERE id = ?', boardId);
   if (!b || !b.element_count) return;
   if (b.last_snapshot_at && Date.now() - Date.parse(b.last_snapshot_at) < AUTO_SNAPSHOT_MS) return;
-  createSnapshot(app, boardId, 'Automatisch gesichert', true, actor);
+  createSnapshot(app, boardId, tLoc(app, b.location_id)('Automatisch gesichert'), true, actor);
 }
 
 /** Replaces the board's content with a snapshot (as one batch: tombstones + restored elements). */
@@ -256,7 +260,7 @@ export function restoreSnapshot(app: App, ctx: Ctx, board: BoardRow, snapshotId:
   const snap = app.db.get<{ elements: string; name: string }>('SELECT elements, name FROM canvas_snapshots WHERE id = ? AND board_id = ?', snapshotId, board.id);
   if (!snap) throw notFound('Version nicht gefunden');
   const actor = actorOf(app, ctx);
-  createSnapshot(app, board.id, `Vor Wiederherstellung von „${snap.name}“`, false, actor);
+  createSnapshot(app, board.id, tLoc(app, board.location_id)('Vor Wiederherstellung von „{name}“', { name: snap.name }), false, actor);
   const want = JSON.parse(snap.elements) as CanvasElement[];
   const keep = new Set(want.map((e) => e.id));
   const ops: OpIn[] = [
@@ -337,7 +341,7 @@ export function planAdd(existing: CanvasElement[], input: AddInput, newId: () =>
       const k = keys.find((x) => at[x]);
       const targetId = k ? resolve(at[k]) : undefined;
       const t = targetId ? (made.get(targetId) ?? byId.get(targetId)) : undefined;
-      if (!t) throw bad(`at: Element „${String(k ? at[k] : '').slice(0, 40)}“ nicht gefunden`);
+      if (!t) throw bad(tApp()('at: Element „{ref}“ nicht gefunden', { ref: String(k ? at[k] : '').slice(0, 40) }));
       const gap = Number.isFinite(Number(at.gap)) ? Number(at.gap) : 80;
       if (k === 'right_of') (el.x = t.x + t.w + gap), (el.y = t.y + (t.h - el.h) / 2);
       if (k === 'left_of') (el.x = t.x - gap - el.w), (el.y = t.y + (t.h - el.h) / 2);
@@ -365,7 +369,7 @@ export function planAdd(existing: CanvasElement[], input: AddInput, newId: () =>
     if (!isLine(String(rest.type))) continue;
     const a = resolve(from ?? rest.start?.id);
     const b = resolve(to ?? rest.end?.id);
-    if ((from && !a) || (to && !b)) throw bad(`Pfeil: Element „${String(!a ? from : to).slice(0, 40)}“ nicht gefunden`);
+    if ((from && !a) || (to && !b)) throw bad(tApp()('Pfeil: Element „{ref}“ nicht gefunden', { ref: String(!a ? from : to).slice(0, 40) }));
     const A = a ? (made.get(a) ?? byId.get(a)) : undefined;
     const B = b ? (made.get(b) ?? byId.get(b)) : undefined;
     const props: Record<string, any> = { ...rest, id: d.id };

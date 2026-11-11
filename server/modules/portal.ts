@@ -9,6 +9,7 @@ import { getContact, logActivity } from '../services/contacts.js';
 import { courseOutline, flatLessons, computeProgress, completedLessonIds, dripOrigin, isUnlocked, portalUrl, unlockAt, type OutlineLesson, type OutlineModule } from '../services/courses.js';
 import { cssUrl, embedHtml, renderMarkdown, stripMarkdown, excerptOf, videoEmbed } from '../services/markdown.js';
 import { deliverEmail, type OutMail } from '../services/messaging.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * The member portal (/portal/<sub-account id or slug>): passwordless login by email link, the
@@ -161,14 +162,14 @@ h2 { font-size: 20px; margin: 0 0 10px; }
 @media (max-width: 560px) { main { padding: 20px 14px 48px; } .who .name { display: none; } .nav > * { flex: 1 1 100%; } .nav > span { display: none; } .nav form { order: -1; } .nav .btn { width: 100%; } .auth .panel { padding: 24px 20px; } }
 `;
 
-const fmtDate = (d: Date, tz: string) => {
+const fmtDate = (d: Date, tz: string, t: STFn) => {
   try {
-    return new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: tz }).format(d);
+    return new Intl.DateTimeFormat(t.locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: tz }).format(d);
   } catch {
     return d.toISOString().slice(0, 10);
   }
 };
-const duration = (min: number) => (min > 0 ? (min >= 60 ? `${Math.floor(min / 60)} Std. ${min % 60 ? `${min % 60} Min.` : ''}`.trim() : `${min} Min.`) : '');
+const duration = (min: number, t: STFn) => (min > 0 ? (min >= 60 ? (min % 60 ? t('{h} Std. {m} Min.', { h: Math.floor(min / 60), m: min % 60 }) : t('{h} Std.', { h: Math.floor(min / 60) })) : t('{n} Min.', { n: min })) : '');
 
 export const portalModule: Module = {
   name: 'portal',
@@ -217,7 +218,7 @@ export const portalModule: Module = {
         locationId: loc.id,
         loc,
         base: `/portal/${encodeURIComponent(row?.slug || loc.id)}`,
-        title: s.title || `${name} – Mitgliederbereich`,
+        title: s.title || tLoc(app, loc.id)('{name} – Mitgliederbereich', { name }),
         name,
         color: [s.color, brand.color].find((c) => HEX.test(c ?? '')) ?? '#2563eb',
         logo: s.logo_url || brand.logo_url || loc.logo_url || '',
@@ -235,19 +236,21 @@ export const portalModule: Module = {
       return (s.startsWith(`${p.base}/c/`) || s.startsWith(`${p.base}/community`) || extra) && /^[\w\-/%.]+$/.test(s) && !s.includes('..') && !s.includes('//') ? s : '';
     };
 
+    const tp = (p: Portal) => tLoc(app, p.locationId);
     const page = (p: Portal, opts: { title: string; body: string; member?: Member; status?: number; preview?: boolean; head?: string; scripts?: string[] }): RawResult => {
+      const t = tp(p);
       const links = opts.member ? (app.services.portalHeader ?? []).map((fn: (p: Portal, m: Member) => string) => fn(p, opts.member!)).join('') : '';
       const who = opts.member
-        ? `<div class="who">${links}<span class="name">${escapeHtml(opts.member.contact.first_name || opts.member.contact.email)}</span><form method="post" action="${p.base}/logout"><button class="linkbtn">Abmelden</button></form></div>`
+        ? `<div class="who">${links}<span class="name">${escapeHtml(opts.member.contact.first_name || opts.member.contact.email)}</span><form method="post" action="${p.base}/logout"><button class="linkbtn">${escapeHtml(t('Abmelden'))}</button></form></div>`
         : '';
       const brand = p.logo ? `<img src="${escapeHtml(p.logo)}" alt="${escapeHtml(p.name)}">` : `<span class="mark">${escapeHtml(p.name.slice(0, 1).toUpperCase())}</span><span>${escapeHtml(p.name)}</span>`;
       const doc = `<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="${t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(opts.title === p.title ? p.title : `${opts.title} · ${p.title}`)}</title>
 <meta name="robots" content="noindex, nofollow"><meta name="referrer" content="same-origin"><meta name="theme-color" content="${p.color}">
 ${p.favicon ? `<link rel="icon" href="${escapeHtml(p.favicon)}">` : ''}
 <style>:root{--brand:${p.color};--soft:${p.color}1f}@media (prefers-color-scheme: dark){:root{--soft:${p.color}33}}${CSS}</style>${(app.services.portalHead ?? []).map((fn: (p: Portal) => string) => fn(p)).join('')}${opts.head ?? ''}${(opts.scripts ?? []).map((src) => `<script src="${escapeHtml(src)}" defer></script>`).join('')}</head>
-<body>${opts.preview ? '<div class="preview-flag">Vorschau – so sehen Mitglieder diese Lektion</div>' : ''}
+<body>${opts.preview ? `<div class="preview-flag">${escapeHtml(t('Vorschau – so sehen Mitglieder diese Lektion'))}</div>` : ''}
 <header class="top"><div class="in"><a class="brand" href="${opts.preview ? '#' : p.base}">${brand}</a>${who}</div></header>
 <main>${opts.body}</main></body></html>`;
       const r = html(doc, opts.status ?? 200);
@@ -261,9 +264,14 @@ ${p.favicon ? `<link rel="icon" href="${escapeHtml(p.favicon)}">` : ''}
       if (opts.scripts?.length) r.headers['content-security-policy'] = r.headers['content-security-policy'].replace("default-src 'none';", "default-src 'none'; script-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self';");
       return r;
     };
-    const notFoundPage = (p: Portal, member?: Member) =>
-      page(p, { title: 'Nicht gefunden', member, status: 404, body: `<div class="panel empty"><h1>Nicht gefunden</h1><p class="muted">Diese Seite gibt es nicht oder du hast keinen Zugang.</p><a class="btn" href="${p.base}">Zu meinen Kursen</a></div>` });
-    const unknownPortal = () => html('<!doctype html><meta charset="utf-8"><title>Nicht gefunden</title><p style="font-family:system-ui;padding:40px;text-align:center">Diesen Mitgliederbereich gibt es nicht.</p>', 404);
+    const notFoundPage = (p: Portal, member?: Member) => {
+      const t = tp(p);
+      return page(p, { title: t('Nicht gefunden'), member, status: 404, body: `<div class="panel empty"><h1>${escapeHtml(t('Nicht gefunden'))}</h1><p class="muted">${escapeHtml(t('Diese Seite gibt es nicht oder du hast keinen Zugang.'))}</p><a class="btn" href="${p.base}">${escapeHtml(t('Zu meinen Kursen'))}</a></div>` });
+    };
+    const unknownPortal = (ctx?: Ctx) => {
+      const t = ctx ? tCtx(ctx) : tLoc(app);
+      return html(`<!doctype html><meta charset="utf-8"><title>${escapeHtml(t('Nicht gefunden'))}</title><p style="font-family:system-ui;padding:40px;text-align:center">${escapeHtml(t('Diesen Mitgliederbereich gibt es nicht.'))}</p>`, 404);
+    };
 
     // --- sessions ----------------------------------------------------------------------
     const memberOf = (ctx: Ctx, p: Portal): Member | undefined => {
@@ -297,17 +305,18 @@ ${p.favicon ? `<link rel="icon" href="${escapeHtml(p.favicon)}">` : ''}
       const raw = token(32);
       db.insert('member_login_tokens', { token_hash: sha256(raw), location_id: locationId, contact_id: contactId, email: contact.email, created_at: now(), expires_at: new Date(Date.now() + LINK_TTL_MS).toISOString(), ip, next });
       const link = `${portalUrl(app, locationId)}/auth?token=${encodeURIComponent(raw)}`;
-      const hello = contact.first_name ? `Hallo ${contact.first_name}` : 'Hallo';
-      const text = `${hello},\n\nhier ist dein Login-Link für „${p.title}“:\n${link}\n\nDer Link gilt 30 Minuten und funktioniert genau einmal. Wenn du ihn nicht angefordert hast, kannst du diese E-Mail ignorieren.\n\n${p.name}`;
+      const t = tp(p);
+      const hello = contact.first_name ? t('Hallo {name}', { name: contact.first_name }) : t('Hallo');
+      const text = t('{hello},\n\nhier ist dein Login-Link für „{title}“:\n{link}\n\nDer Link gilt 30 Minuten und funktioniert genau einmal. Wenn du ihn nicht angefordert hast, kannst du diese E-Mail ignorieren.\n\n{sender}', { hello, title: p.title, link, sender: p.name });
       const htmlMail = `<!doctype html><html><body style="margin:0;background:#f6f7fb;font-family:Arial,sans-serif;color:#0f172a">
 <div style="max-width:520px;margin:0 auto;padding:32px 20px"><div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:28px">
 <h2 style="margin:0 0 12px;font-size:20px">${escapeHtml(p.title)}</h2>
-<p style="margin:0 0 20px;line-height:1.5">Hallo${contact.first_name ? ` ${escapeHtml(contact.first_name)}` : ''}, mit diesem Knopf meldest du dich an:</p>
-<p style="margin:0 0 22px"><a href="${escapeHtml(link)}" style="display:inline-block;background:${p.color};color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:10px">Jetzt anmelden</a></p>
-<p style="margin:0;font-size:13px;color:#64748b;line-height:1.5">Der Link gilt 30 Minuten und funktioniert genau einmal. Wenn du ihn nicht angefordert hast, ignoriere diese E-Mail einfach.</p>
+<p style="margin:0 0 20px;line-height:1.5">${escapeHtml(t('{hello}, mit diesem Knopf meldest du dich an:', { hello }))}</p>
+<p style="margin:0 0 22px"><a href="${escapeHtml(link)}" style="display:inline-block;background:${p.color};color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:10px">${escapeHtml(t('Jetzt einloggen'))}</a></p>
+<p style="margin:0;font-size:13px;color:#64748b;line-height:1.5">${escapeHtml(t('Der Link gilt 30 Minuten und funktioniert genau einmal. Wenn du ihn nicht angefordert hast, ignoriere diese E-Mail einfach.'))}</p>
 </div><p style="font-size:12px;color:#94a3b8;text-align:center">${escapeHtml(p.name)}</p></div></body></html>`;
-      const r = await mailer(p.loc, { to: contact.email, subject: `Dein Login-Link für ${p.title}`, text, html: htmlMail });
-      logActivity(app, locationId, contactId, 'portal.login_link', 'Login-Link für den Mitgliederbereich gesendet');
+      const r = await mailer(p.loc, { to: contact.email, subject: t('Dein Login-Link für {title}', { title: p.title }), text, html: htmlMail });
+      logActivity(app, locationId, contactId, 'portal.login_link', t('Login-Link für den Mitgliederbereich gesendet'));
       return { status: r.status, link };
     };
     app.services.sendMemberLoginLink = (locationId: string, contactId: string) => sendLoginLink(locationId, contactId);
@@ -357,44 +366,48 @@ ${p.favicon ? `<link rel="icon" href="${escapeHtml(p.favicon)}">` : ''}
       const done = s.done.has(l.id);
       const cls = ['li', done ? 'done' : '', unlocked ? '' : 'locked', l.id === current ? 'current' : ''].filter(Boolean).join(' ');
       const st = done ? ICON.check : unlocked ? (l.id === current ? ICON.play : ICON.dot) : ICON.lock;
-      const right = unlocked ? duration(l.duration_min) : gateOf(s, l) ? 'gesperrt' : `ab ${fmtDate(unlockAt(s.origin, l.module.drip_days, l.drip_days), p.loc.timezone)}`;
+      const t = tp(p);
+      const right = unlocked ? duration(l.duration_min, t) : gateOf(s, l) ? t('gesperrt') : t('ab {date}', { date: fmtDate(unlockAt(s.origin, l.module.drip_days, l.drip_days), p.loc.timezone, t) });
       return `<a class="${cls}" href="${lessonHref(p, s.course, l)}"><span class="st">${st}</span><span class="t">${escapeHtml(l.title)}</span><span class="d">${escapeHtml(right)}</span></a>`;
     };
 
     // --- pages ------------------------------------------------------------------------
-    const loginPage = (p: Portal, opts: { error?: string; email?: string; status?: number; next?: string } = {}) =>
-      page(p, {
-        title: 'Anmelden',
+    const loginPage = (p: Portal, opts: { error?: string; email?: string; status?: number; next?: string } = {}) => {
+      const t = tp(p);
+      return page(p, {
+        title: t('Anmelden'),
         status: opts.status,
         body: `<div class="auth"><div class="panel">
   ${p.logo ? `<img class="logo" src="${escapeHtml(p.logo)}" alt="">` : ''}
   <h1>${escapeHtml(p.title)}</h1>
-  <p class="muted">${p.welcome ? escapeHtml(p.welcome) : 'Melde dich mit deiner E-Mail-Adresse an. Du bekommst einen Link, mit dem du ohne Passwort hineinkommst.'}</p>
+  <p class="muted">${escapeHtml(p.welcome || t('Melde dich mit deiner E-Mail-Adresse an. Du bekommst einen Link, mit dem du ohne Passwort hineinkommst.'))}</p>
   <form method="post" action="${p.base}/login">
-    <label for="email">E-Mail-Adresse</label>
-    <input id="email" name="email" type="email" required autocomplete="email" value="${escapeHtml(opts.email ?? '')}" placeholder="du@beispiel.de" autofocus>
+    <label for="email">${escapeHtml(t('E-Mail-Adresse'))}</label>
+    <input id="email" name="email" type="email" required autocomplete="email" value="${escapeHtml(opts.email ?? '')}" placeholder="${escapeHtml(t('du@beispiel.de'))}" autofocus>
     ${opts.error ? `<p class="err">${escapeHtml(opts.error)}</p>` : ''}
     ${opts.next ? `<input type="hidden" name="next" value="${escapeHtml(opts.next)}">` : ''}
-    <button class="btn wide">Login-Link senden</button>
+    <button class="btn wide">${escapeHtml(t('Login-Link senden'))}</button>
   </form>
-  ${p.support ? `<p class="muted small" style="margin:18px 0 0">Fragen? <a href="mailto:${escapeHtml(p.support)}">${escapeHtml(p.support)}</a></p>` : ''}
+  ${p.support ? `<p class="muted small" style="margin:18px 0 0">${escapeHtml(t('Fragen?'))} <a href="mailto:${escapeHtml(p.support)}">${escapeHtml(p.support)}</a></p>` : ''}
 </div></div>`,
       });
+    };
 
     const dashboard = (p: Portal, m: Member) => {
+      const t = tp(p);
       const list = seats(p, m.contact.id);
       const cards = list
         .map((s) => {
           const started = !!(s.progress.done || s.enrollment.started_at);
-          const label = s.progress.percent >= 100 ? 'Ansehen' : started ? 'Weiter' : 'Starten';
+          const label = t(s.progress.percent >= 100 ? 'Ansehen' : started ? 'Weiter' : 'Starten');
           // Started courses open right where the member left off.
           const resume = started && s.progress.percent < 100 ? resumeLesson(s) : undefined;
           return `<a class="ccard" href="${resume ? lessonHref(p, s.course, resume) : courseHref(p, s.course)}">${cover(s.course)}<div class="body">
   <h2>${escapeHtml(s.course.title)}</h2>
   ${s.course.description ? `<p class="muted small" style="margin:0">${escapeHtml(excerptOf(stripMarkdown(s.course.description), 140))}</p>` : ''}
   ${bar(s.progress.percent)}
-  <div class="meta"><span>${s.progress.done} von ${s.progress.total} Lektionen</span>${s.progress.percent >= 100 ? `<span class="pill ok">${ICON.check} Abgeschlossen</span>` : `<span>${s.progress.percent} %</span>`}</div>
-  <span class="go">${label} ${ICON.right}</span>
+  <div class="meta"><span>${escapeHtml(t('{done} von {total} Lektionen', { done: s.progress.done, total: s.progress.total }))}</span>${s.progress.percent >= 100 ? `<span class="pill ok">${ICON.check} ${escapeHtml(t('Abgeschlossen'))}</span>` : `<span>${s.progress.percent}%</span>`}</div>
+  <span class="go">${escapeHtml(label)} ${ICON.right}</span>
 </div></a>`;
         })
         .join('');
@@ -404,12 +417,13 @@ ${p.favicon ? `<link rel="icon" href="${escapeHtml(p.favicon)}">` : ''}
         ...courseAssets(p),
         title: p.title,
         member: m,
-        body: `<div class="hello"><h1>Hallo${first} 👋</h1>${p.welcome ? `<p class="muted">${escapeHtml(p.welcome)}</p>` : '<p class="muted">Hier findest du alle deine Kurse.</p>'}</div>
-${list.length ? `<div class="grid">${cards}</div>` : extras ? '' : `<div class="panel empty"><h2>Noch kein Kurs freigeschaltet</h2><p class="muted">Sobald du Zugang zu einem Kurs hast, erscheint er hier.${p.support ? ` Fragen? <a href="mailto:${escapeHtml(p.support)}">${escapeHtml(p.support)}</a>` : ''}</p></div>`}${extras}`,
+        body: `<div class="hello"><h1>${escapeHtml(t('Hallo'))}${first} 👋</h1><p class="muted">${escapeHtml(p.welcome || t('Hier findest du alle deine Kurse.'))}</p></div>
+${list.length ? `<div class="grid">${cards}</div>` : extras ? '' : `<div class="panel empty"><h2>${escapeHtml(t('Noch kein Kurs freigeschaltet'))}</h2><p class="muted">${escapeHtml(t('Sobald du Zugang zu einem Kurs hast, erscheint er hier.'))}${p.support ? ` ${escapeHtml(t('Fragen?'))} <a href="mailto:${escapeHtml(p.support)}">${escapeHtml(p.support)}</a>` : ''}</p></div>`}${extras}`,
       });
     };
 
     const coursePage = (p: Portal, m: Member, s: Seat, notice = '', query = new URLSearchParams()) => {
+      const t = tp(p);
       const next = resumeLesson(s);
       const totalMin = s.lessons.reduce((n, l) => n + (Number(l.duration_min) || 0), 0);
       const modules = s.outline
@@ -421,35 +435,37 @@ ${list.length ? `<div class="grid">${cards}</div>` : extras ? '' : `<div class="
         .join('');
       const more = ((app.services.courseExtras ?? []) as ((p: Portal, m: Member, s: Seat, q: URLSearchParams) => { top?: string; bottom?: string } | undefined)[]).map((fn) => fn(p, m, s, query)).filter(Boolean) as { top?: string; bottom?: string }[];
       const cta = next
-        ? `<a class="btn" href="${lessonHref(p, s.course, next)}">${s.progress.percent >= 100 ? 'Noch einmal ansehen' : s.progress.done || s.enrollment.started_at ? 'Weiter lernen' : 'Kurs starten'} ${ICON.right}</a>`
+        ? `<a class="btn" href="${lessonHref(p, s.course, next)}">${escapeHtml(t(s.progress.percent >= 100 ? 'Noch einmal ansehen' : s.progress.done || s.enrollment.started_at ? 'Weiter lernen' : 'Kurs starten'))} ${ICON.right}</a>`
         : '';
       return page(p, {
         ...courseAssets(p),
         title: s.course.title,
         member: m,
         body: `${notice ? `<div class="notice">${escapeHtml(notice)}</div>` : ''}
-<div class="crumb"><a href="${p.base}">Meine Kurse</a></div>
+<div class="crumb"><a href="${p.base}">${escapeHtml(t('Meine Kurse'))}</a></div>
 <div class="chead"><div>
   <h1>${escapeHtml(s.course.title)}</h1>
   ${s.course.description ? `<div class="prose muted">${renderMarkdown(s.course.description)}</div>` : ''}
-  <div class="stat">${bar(s.progress.percent)}<span>${s.progress.percent} % · ${s.progress.done} von ${s.progress.total} Lektionen${totalMin ? ` · ${duration(totalMin)}` : ''}</span></div>
+  <div class="stat">${bar(s.progress.percent)}<span>${s.progress.percent}% · ${escapeHtml(t('{done} von {total} Lektionen', { done: s.progress.done, total: s.progress.total }))}${totalMin ? ` · ${escapeHtml(duration(totalMin, t))}` : ''}</span></div>
   ${cta}
 </div>${cover(s.course)}</div>
 ${more.map((x) => x.top ?? '').join('')}
-${modules || '<div class="panel empty"><p class="muted">Dieser Kurs hat noch keine Lektionen.</p></div>'}${more.map((x) => x.bottom ?? '').join('')}`,
+${modules || `<div class="panel empty"><p class="muted">${escapeHtml(t('Dieser Kurs hat noch keine Lektionen.'))}</p></div>`}${more.map((x) => x.bottom ?? '').join('')}`,
       });
     };
 
     const lessonBody = (p: Portal, l: any, fileHref: (d: any) => string, hosted = '') => {
+      const t = tp(p);
       const embed = l.video_url ? videoEmbed(l.video_url) : null;
-      const video = hosted ? hosted : embed ? `<div class="player">${embedHtml(embed, l.title)}</div>` : l.video_url ? `<p><a class="btn ghost" href="${escapeHtml(l.video_url)}" target="_blank" rel="noopener">Video öffnen ${ICON.right}</a></p>` : '';
+      const video = hosted ? hosted : embed ? `<div class="player">${embedHtml(embed, l.title)}</div>` : l.video_url ? `<p><a class="btn ghost" href="${escapeHtml(l.video_url)}" target="_blank" rel="noopener">${escapeHtml(t('Video öffnen'))} ${ICON.right}</a></p>` : '';
       const files = (l.downloads ?? []).length
-        ? `<div class="files"><h2>Downloads</h2>${l.downloads.map((d: any) => `<a href="${fileHref(d)}">${ICON.file}<span>${escapeHtml(d.name)}</span></a>`).join('')}</div>`
+        ? `<div class="files"><h2>${escapeHtml(t('Downloads'))}</h2>${l.downloads.map((d: any) => `<a href="${fileHref(d)}">${ICON.file}<span>${escapeHtml(d.name)}</span></a>`).join('')}</div>`
         : '';
       return `${video}<div class="prose">${renderMarkdown(l.body ?? '', { embeds: true })}</div>${files}`;
     };
 
     const lessonPage = (p: Portal, m: Member, s: Seat, l: OutlineLesson & { module: OutlineModule }, query = new URLSearchParams()) => {
+      const t = tp(p);
       const idx = s.lessons.findIndex((x) => x.id === l.id);
       const prev = s.lessons[idx - 1];
       const next = s.lessons[idx + 1];
@@ -457,24 +473,24 @@ ${modules || '<div class="panel empty"><p class="muted">Dieser Kurs hat noch kei
         .filter((mod) => mod.lessons.length)
         .map((mod) => `<div class="mt">${escapeHtml(mod.title)}</div>${mod.lessons.map((x) => lessonRow(p, s, { ...x, module: mod }, l.id)).join('')}`)
         .join('');
-      const side = `<details class="panel toc" open><summary><span>Kursinhalt</span><span class="muted small">${s.progress.percent} %</span></summary>${toc}</details>`;
-      const head = `<div class="crumb"><a href="${p.base}">Meine Kurse</a> / <a href="${courseHref(p, s.course)}">${escapeHtml(s.course.title)}</a> / ${escapeHtml(l.module.title)}</div><h1>${escapeHtml(l.title)}</h1>${l.duration_min ? `<div class="muted small">${duration(l.duration_min)}</div>` : ''}`;
+      const side = `<details class="panel toc" open><summary><span>${escapeHtml(t('Kursinhalt'))}</span><span class="muted small">${s.progress.percent}%</span></summary>${toc}</details>`;
+      const head = `<div class="crumb"><a href="${p.base}">${escapeHtml(t('Meine Kurse'))}</a> / <a href="${courseHref(p, s.course)}">${escapeHtml(s.course.title)}</a> / ${escapeHtml(l.module.title)}</div><h1>${escapeHtml(l.title)}</h1>${l.duration_min ? `<div class="muted small">${escapeHtml(duration(l.duration_min, t))}</div>` : ''}`;
       if (!open(s, l)) {
-        const at = fmtDate(unlockAt(s.origin, l.module.drip_days, l.drip_days), p.loc.timezone);
+        const at = fmtDate(unlockAt(s.origin, l.module.drip_days, l.drip_days), p.loc.timezone, t);
         const gate = gateOf(s, l);
         return page(p, {
           ...courseAssets(p),
           title: l.title,
           member: m,
-          body: `<div class="lesson">${side}<article>${head}<div class="panel locked-box" style="margin-top:18px">${ICON.lock}<h2>Noch nicht freigeschaltet</h2><p class="muted">${gate && isUnlocked(s.origin, l.module.drip_days, l.drip_days) ? escapeHtml(gate) : `Diese Lektion steht dir ab dem <strong>${at}</strong> zur Verfügung.`}</p></div></article></div>`,
+          body: `<div class="lesson">${side}<article>${head}<div class="panel locked-box" style="margin-top:18px">${ICON.lock}<h2>${escapeHtml(t('Noch nicht freigeschaltet'))}</h2><p class="muted">${gate && isUnlocked(s.origin, l.module.drip_days, l.drip_days) ? escapeHtml(gate) : t('Diese Lektion steht dir ab dem <strong>{date}</strong> zur Verfügung.', { date: escapeHtml(at) })}</p></div></article></div>`,
         });
       }
       const done = s.done.has(l.id);
       // Other modules add to a lesson (quiz, assignment): app.services.lessonExtras = [(p, member, seat, lesson) => { html, hideMark? } | undefined].
       const extras = ((app.services.lessonExtras ?? []) as ((p: Portal, m: Member, s: Seat, l: unknown, q: URLSearchParams) => { html: string; hideMark?: boolean } | undefined)[]).map((fn) => fn(p, m, s, l, query)).filter(Boolean) as { html: string; hideMark?: boolean }[];
       const extraHtml = extras.map((x) => x.html).join('');
-      const markForm = extras.some((x) => x.hideMark) ? '<span></span>' : `<form method="post" action="${lessonHref(p, s.course, l)}/complete"><input type="hidden" name="done" value="${done ? '0' : '1'}"><button class="btn ${done ? 'ghost' : 'ok'}">${done ? `${ICON.check} Erledigt – zurücksetzen` : `${ICON.check} Als erledigt markieren`}</button></form>`;
-      const nav = `<div class="nav">${prev ? `<a class="btn ghost" href="${lessonHref(p, s.course, prev)}">${ICON.left} Zurück</a>` : '<span></span>'}${markForm}${next ? `<a class="btn ghost" href="${lessonHref(p, s.course, next)}">Weiter ${ICON.right}</a>` : '<span></span>'}</div>`;
+      const markForm = extras.some((x) => x.hideMark) ? '<span></span>' : `<form method="post" action="${lessonHref(p, s.course, l)}/complete"><input type="hidden" name="done" value="${done ? '0' : '1'}"><button class="btn ${done ? 'ghost' : 'ok'}">${ICON.check} ${escapeHtml(t(done ? 'Erledigt – zurücksetzen' : 'Als erledigt markieren'))}</button></form>`;
+      const nav = `<div class="nav">${prev ? `<a class="btn ghost" href="${lessonHref(p, s.course, prev)}">${ICON.left} ${escapeHtml(t('Zurück'))}</a>` : '<span></span>'}${markForm}${next ? `<a class="btn ghost" href="${lessonHref(p, s.course, next)}">${escapeHtml(t('Weiter'))} ${ICON.right}</a>` : '<span></span>'}</div>`;
       const fileHref = (d: any) => `${p.base}/files/${encodeURIComponent(l.id)}/${encodeURIComponent(d.upload_id)}`;
       // A hosted video (modules/course-video.ts) brings its own player: app.services.lessonVideo = [(p, member, seat, lesson) => html | undefined].
       const hosted = ((app.services.lessonVideo ?? []) as ((p: Portal, m: Member, s: Seat, l: unknown) => string | undefined)[]).map((fn) => fn(p, m, s, l)).find(Boolean) ?? '';
@@ -483,7 +499,7 @@ ${modules || '<div class="panel empty"><p class="muted">Dieser Kurs hat noch kei
 
     app.services.renderLessonPreview = (locationId: string, course: any, lesson: any): string => {
       const p = resolve(locationId)!;
-      const head = `<div class="crumb">${escapeHtml(course.title)}</div><h1>${escapeHtml(lesson.title)}</h1>${lesson.duration_min ? `<div class="muted small">${duration(Number(lesson.duration_min))}</div>` : ''}`;
+      const head = `<div class="crumb">${escapeHtml(course.title)}</div><h1>${escapeHtml(lesson.title)}</h1>${lesson.duration_min ? `<div class="muted small">${escapeHtml(duration(Number(lesson.duration_min), tp(p)))}</div>` : ''}`;
       return String(page(p, { title: lesson.title, preview: true, body: `<article style="max-width:860px;margin:0 auto">${head}${lessonBody(p, lesson, () => '#')}</article>` }).body);
     };
 
@@ -493,7 +509,7 @@ ${modules || '<div class="panel empty"><p class="muted">Dieser Kurs hat noch kei
       db.run('INSERT INTO course_progress (enrollment_id, lesson_id, last_viewed_at) VALUES (?, ?, ?) ON CONFLICT(enrollment_id, lesson_id) DO UPDATE SET last_viewed_at = excluded.last_viewed_at', e.id, lessonId, now());
       db.run('UPDATE course_enrollments SET last_lesson_id = ?, last_seen_at = ? WHERE id = ?', lessonId, now(), e.id);
       if (!e.started_at && db.run('UPDATE course_enrollments SET started_at = ? WHERE id = ? AND started_at IS NULL', now(), e.id).changes) {
-        logActivity(app, e.location_id, e.contact_id, 'course.started', `Kurs „${s.course.title}“ begonnen`);
+        logActivity(app, e.location_id, e.contact_id, 'course.started', tLoc(app, e.location_id)('Kurs „{course}“ begonnen', { course: s.course.title }));
         app.events.emit(e.location_id, 'course.started', { contactId: e.contact_id, courseId: s.course.id, course: { id: s.course.id, title: s.course.title } });
       }
     };
@@ -513,10 +529,11 @@ ${modules || '<div class="panel empty"><p class="muted">Dieser Kurs hat noch kei
       if (!changed) return;
       const progress = computeProgress(s.lessons.map((x) => x.id), completedLessonIds(app, e.id));
       const course = { id: s.course.id, title: s.course.title };
-      logActivity(app, e.location_id, e.contact_id, 'lesson.completed', `Lektion „${l.title}“ abgeschlossen (${s.course.title}, ${progress.percent} %)`);
+      const t = tLoc(app, e.location_id);
+      logActivity(app, e.location_id, e.contact_id, 'lesson.completed', t('Lektion „{lesson}“ abgeschlossen ({course}, {percent} %)', { lesson: l.title, course: s.course.title, percent: progress.percent }));
       app.events.emit(e.location_id, 'lesson.completed', { contactId: e.contact_id, courseId: course.id, lessonId: l.id, course, lesson: { id: l.id, title: l.title }, progress });
       if (progress.total && progress.done >= progress.total && db.run('UPDATE course_enrollments SET completed_at = ? WHERE id = ? AND completed_at IS NULL', now(), e.id).changes) {
-        logActivity(app, e.location_id, e.contact_id, 'course.completed', `Kurs „${s.course.title}“ abgeschlossen`);
+        logActivity(app, e.location_id, e.contact_id, 'course.completed', t('Kurs „{course}“ abgeschlossen', { course: s.course.title }));
         app.events.emit(e.location_id, 'course.completed', { contactId: e.contact_id, courseId: course.id, course });
       }
     };
@@ -524,18 +541,19 @@ ${modules || '<div class="panel empty"><p class="muted">Dieser Kurs hat noch kei
     // --- routes -------------------------------------------------------------------------
     router.get('/portal/:p', 'public', (ctx) => {
       const p = resolve(ctx.params.p);
-      if (!p) return unknownPortal();
+      if (!p) return unknownPortal(ctx);
       const m = memberOf(ctx, p);
       return m ? dashboard(p, m) : loginPage(p);
     });
 
     router.post('/portal/:p/login', 'public', async (ctx) => {
       const p = resolve(ctx.params.p);
-      if (!p) return unknownPortal();
-      if (!sameOrigin(ctx)) return loginPage(p, { error: 'Bitte die Seite neu laden und noch einmal versuchen.', status: 403 });
-      if (ipLimited(ctx.ip)) return loginPage(p, { error: 'Zu viele Versuche – bitte in ein paar Minuten noch einmal.', status: 429 });
+      if (!p) return unknownPortal(ctx);
+      const t = tp(p);
+      if (!sameOrigin(ctx)) return loginPage(p, { error: t('Bitte die Seite neu laden und noch einmal versuchen.'), status: 403 });
+      if (ipLimited(ctx.ip)) return loginPage(p, { error: t('Zu viele Versuche – bitte in ein paar Minuten noch einmal.'), status: 429 });
       const email = normalizeEmail(ctx.body?.email);
-      if (!EMAIL_RE.test(email) || email.length > 200) return loginPage(p, { error: 'Bitte eine gültige E-Mail-Adresse eingeben.', email: String(ctx.body?.email ?? '').slice(0, 200), status: 400, next: safeNext(p, ctx.body?.next) });
+      if (!EMAIL_RE.test(email) || email.length > 200) return loginPage(p, { error: t('Bitte eine gültige E-Mail-Adresse eingeben.'), email: String(ctx.body?.email ?? '').slice(0, 200), status: 400, next: safeNext(p, ctx.body?.next) });
       // Same answer whether or not the address is known (no account guessing).
       const known = db.get(
         `SELECT k.id, EXISTS (SELECT 1 FROM course_enrollments e WHERE e.contact_id = k.id AND e.status = 'active') AS enrolled
@@ -554,37 +572,40 @@ ${modules || '<div class="panel empty"><p class="muted">Dieser Kurs hat noch kei
         }
       }
       return page(p, {
-        title: 'E-Mail unterwegs',
-        body: `<div class="auth"><div class="panel"><div class="icon">${ICON.mail}</div><h1>Schau in dein Postfach</h1>
-<p class="muted">Wenn <strong>${escapeHtml(email)}</strong> für einen Kurs freigeschaltet ist, kommt gleich eine E-Mail mit deinem Login-Link. Er gilt 30 Minuten.</p>
-<p class="muted small">Nichts angekommen? Schau im Spam-Ordner nach oder <a href="${p.base}">fordere einen neuen Link an</a>.</p></div></div>`,
+        title: t('E-Mail unterwegs'),
+        body: `<div class="auth"><div class="panel"><div class="icon">${ICON.mail}</div><h1>${escapeHtml(t('Schau in dein Postfach'))}</h1>
+<p class="muted">${t('Wenn <strong>{email}</strong> für einen Kurs freigeschaltet ist, kommt gleich eine E-Mail mit deinem Login-Link. Er gilt 30 Minuten.', { email: escapeHtml(email) })}</p>
+<p class="muted small">${t('Nichts angekommen? Schau im Spam-Ordner nach oder <a href="{url}">fordere einen neuen Link an</a>.', { url: p.base })}</p></div></div>`,
       });
     });
 
     const tokenRow = (p: Portal, raw: string) =>
       raw ? db.get('SELECT * FROM member_login_tokens WHERE token_hash = ? AND location_id = ? AND used_at IS NULL AND expires_at > ?', sha256(raw), p.locationId, now()) : undefined;
-    const badLink = (p: Portal) =>
-      page(p, {
-        title: 'Link ungültig',
+    const badLink = (p: Portal) => {
+      const t = tp(p);
+      return page(p, {
+        title: t('Link ungültig'),
         status: 400,
-        body: `<div class="auth"><div class="panel"><h1>Link abgelaufen</h1><p class="muted">Dieser Login-Link ist abgelaufen oder wurde schon benutzt. Fordere einfach einen neuen an.</p><a class="btn wide" href="${p.base}">Neuen Link anfordern</a></div></div>`,
+        body: `<div class="auth"><div class="panel"><h1>${escapeHtml(t('Link abgelaufen'))}</h1><p class="muted">${escapeHtml(t('Dieser Login-Link ist abgelaufen oder wurde schon benutzt. Fordere einfach einen neuen an.'))}</p><a class="btn wide" href="${p.base}">${escapeHtml(t('Neuen Link anfordern'))}</a></div></div>`,
       });
+    };
     // Opening the link only shows a button: mail scanners that follow links can't use it up.
     router.get('/portal/:p/auth', 'public', (ctx) => {
       const p = resolve(ctx.params.p);
-      if (!p) return unknownPortal();
+      if (!p) return unknownPortal(ctx);
       const raw = String(ctx.query.get('token') ?? '');
       const row = tokenRow(p, raw);
       if (!row) return badLink(p);
+      const t = tp(p);
       return page(p, {
-        title: 'Anmelden',
-        body: `<div class="auth"><div class="panel">${p.logo ? `<img class="logo" src="${escapeHtml(p.logo)}" alt="">` : ''}<h1>Willkommen zurück</h1><p class="muted">Angemeldet wirst du als <strong>${escapeHtml(row.email)}</strong>.</p>
-<form method="post" action="${p.base}/auth"><input type="hidden" name="token" value="${escapeHtml(raw)}"><button class="btn wide">Jetzt anmelden ${ICON.right}</button></form></div></div>`,
+        title: t('Anmelden'),
+        body: `<div class="auth"><div class="panel">${p.logo ? `<img class="logo" src="${escapeHtml(p.logo)}" alt="">` : ''}<h1>${escapeHtml(t('Willkommen zurück'))}</h1><p class="muted">${t('Angemeldet wirst du als <strong>{email}</strong>.', { email: escapeHtml(row.email) })}</p>
+<form method="post" action="${p.base}/auth"><input type="hidden" name="token" value="${escapeHtml(raw)}"><button class="btn wide">${escapeHtml(t('Jetzt einloggen'))} ${ICON.right}</button></form></div></div>`,
       });
     });
     router.post('/portal/:p/auth', 'public', (ctx) => {
       const p = resolve(ctx.params.p);
-      if (!p) return unknownPortal();
+      if (!p) return unknownPortal(ctx);
       if (!sameOrigin(ctx)) return badLink(p);
       const raw = String(ctx.body?.token ?? '');
       const row = tokenRow(p, raw);
@@ -594,12 +615,12 @@ ${modules || '<div class="panel empty"><p class="muted">Dieser Kurs hat noch kei
       const sid = token(32);
       db.insert('member_sessions', { token_hash: sha256(sid), location_id: p.locationId, contact_id: row.contact_id, created_at: now(), expires_at: new Date(Date.now() + SESSION_DAYS * 864e5).toISOString(), last_seen_at: now() });
       ctx.setCookie(cookieName(p), sid, { maxAge: SESSION_DAYS * 86400 });
-      logActivity(app, p.locationId, row.contact_id, 'portal.login', 'Im Mitgliederbereich angemeldet');
+      logActivity(app, p.locationId, row.contact_id, 'portal.login', tp(p)('Im Mitgliederbereich angemeldet'));
       return redirect(safeNext(p, row.next) || p.base, 303);
     });
     router.post('/portal/:p/logout', 'public', (ctx) => {
       const p = resolve(ctx.params.p);
-      if (!p) return unknownPortal();
+      if (!p) return unknownPortal(ctx);
       const m = memberOf(ctx, p);
       if (m) db.run('DELETE FROM member_sessions WHERE token_hash = ?', m.sessionHash);
       ctx.setCookie(cookieName(p), '', { maxAge: 0 });
@@ -608,7 +629,7 @@ ${modules || '<div class="panel empty"><p class="muted">Dieser Kurs hat noch kei
 
     const withMember = (ctx: Ctx, fn: (p: Portal, m: Member) => RawResult | Promise<RawResult>) => {
       const p = resolve(ctx.params.p);
-      if (!p) return unknownPortal();
+      if (!p) return unknownPortal(ctx);
       const m = memberOf(ctx, p);
       if (!m) return ctx.method === 'GET' ? loginPage(p, { status: 401, next: safeNext(p, ctx.path) }) : redirect(p.base, 303);
       return fn(p, m);
@@ -617,7 +638,7 @@ ${modules || '<div class="panel empty"><p class="muted">Dieser Kurs hat noch kei
       withMember(ctx, (p, m) => {
         const s = seat(p, m.contact.id, ctx.params.course);
         if (!s) return notFoundPage(p, m);
-        return coursePage(p, m, s, ctx.query.get('done') === '1' && s.progress.percent >= 100 ? '🎉 Glückwunsch – du hast den Kurs abgeschlossen!' : '', ctx.query);
+        return coursePage(p, m, s, ctx.query.get('done') === '1' && s.progress.percent >= 100 ? tp(p)('🎉 Glückwunsch – du hast den Kurs abgeschlossen!') : '', ctx.query);
       }),
     );
     router.get('/portal/:p/c/:course/:lesson', 'public', (ctx) =>

@@ -2,6 +2,7 @@ import type { App } from '../core/app.js';
 import { parseJson } from '../core/db.js';
 import { id, now } from '../core/util.js';
 import { getContact, logActivity } from './contacts.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 export const OPP_STATUSES = ['open', 'won', 'lost', 'abandoned'] as const;
 
@@ -16,8 +17,8 @@ export function getPipeline(app: App, locationId: string, pipelineId: string) {
 }
 
 /** The pipeline's reasons for a lost deal: its own list, or the defaults while it has none. */
-export const lostReasonsOf = (pipeline: { lost_reasons?: unknown } | undefined | null): string[] =>
-  Array.isArray(pipeline?.lost_reasons) && pipeline!.lost_reasons.length ? (pipeline!.lost_reasons as string[]) : DEFAULT_LOST_REASONS;
+export const lostReasonsOf = (pipeline: { lost_reasons?: unknown } | undefined | null, t: STFn = tApp()): string[] =>
+  Array.isArray(pipeline?.lost_reasons) && pipeline!.lost_reasons.length ? (pipeline!.lost_reasons as string[]) : DEFAULT_LOST_REASONS.map((r) => t(r));
 
 /** Trims, drops empty and duplicate entries; at most 20 reasons of up to 80 characters. Empty input = back to the defaults (null). */
 export function cleanLostReasons(input: unknown): string[] | null {
@@ -150,11 +151,13 @@ export function updateOpportunity(app: App, locationId: string, oppId: string, p
   if (next.stage_id && next.stage_id !== cur.stage_id) {
     const p = getPipeline(app, locationId, opp.pipeline_id)!;
     const stage = p.stages.find((s: any) => s.id === opp.stage_id);
-    logActivity(app, locationId, opp.contact_id, 'opportunity.stage_changed', `„${opp.name}“ → ${stage?.name ?? '?'}`);
+    logActivity(app, locationId, opp.contact_id, 'opportunity.stage_changed', tLoc(app, locationId)('„{name}“ → {stage}', { name: opp.name, stage: stage?.name ?? '?' }));
     app.events.emit(locationId, 'opportunity.stage_changed', { contactId: opp.contact_id, opportunity: opp, fromStageId: cur.stage_id, stageId: opp.stage_id, pipelineId: opp.pipeline_id });
   }
   if (next.status && next.status !== cur.status) {
-    logActivity(app, locationId, opp.contact_id, 'opportunity.status_changed', `„${opp.name}“ ist jetzt ${next.status}${next.status === 'lost' && opp.lost_reason ? ` (Grund: ${opp.lost_reason})` : ''}`);
+    const t = tLoc(app, locationId);
+    const label = t(({ open: 'offen', won: 'gewonnen', lost: 'verloren', abandoned: 'aufgegeben' } as Record<string, string>)[next.status] ?? next.status);
+    logActivity(app, locationId, opp.contact_id, 'opportunity.status_changed', next.status === 'lost' && opp.lost_reason ? t('„{name}“ ist jetzt {status} (Grund: {reason})', { name: opp.name, status: label, reason: opp.lost_reason }) : t('„{name}“ ist jetzt {status}', { name: opp.name, status: label }));
     app.events.emit(locationId, 'opportunity.status_changed', { contactId: opp.contact_id, opportunity: opp, status: next.status, pipelineId: opp.pipeline_id });
   }
   return opp;

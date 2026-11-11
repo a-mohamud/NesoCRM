@@ -4,6 +4,7 @@ import { HttpError, bad, notFound, str, type Ctx } from '../core/http.js';
 import { id, now } from '../core/util.js';
 import type { Tool } from './mcp.js';
 import { writeAudit } from './security.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Project files (docs/ai-tools.md#project-files): a per sub-account store for arbitrary files of a project – the instructions and
@@ -42,7 +43,7 @@ export function cleanPath(v: unknown): string {
   if (/^[A-Za-z]:\//.test(p)) throw bad('path: bitte einen relativen Pfad angeben (ohne Laufwerk)');
   p = p.replace(/^(\.\/|\/)+/, '').replace(/\/{2,}/g, '/');
   const parts = p.split('/');
-  if (!p || p.endsWith('/') || parts.some((s) => s === '' || s === '.' || s === '..')) throw bad(`path „${v.slice(0, 80)}“ ist ungültig (relativ, ohne „..“, nicht leer)`);
+  if (!p || p.endsWith('/') || parts.some((s) => s === '' || s === '.' || s === '..')) throw bad(tApp()('path „{path}“ ist ungültig (relativ, ohne „..“, nicht leer)', { path: v.slice(0, 80) }));
   if (p.length > 500) throw bad('path ist zu lang (höchstens 500 Zeichen)');
   return p;
 }
@@ -70,7 +71,7 @@ export function guessMime(path: string, text: boolean): string {
 const cleanMime = (v: unknown): string | null => {
   if (v === undefined || v === null || v === '') return null;
   const m = String(v).split(';')[0].trim().toLowerCase();
-  if (m.length > 100 || !/^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/.test(m)) throw bad(`mime „${String(v).slice(0, 60)}“ ist ungültig`);
+  if (m.length > 100 || !/^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/.test(m)) throw bad(tApp()('mime „{mime}“ ist ungültig', { mime: String(v).slice(0, 60) }));
   return m;
 };
 
@@ -105,28 +106,28 @@ interface Incoming {
 /** Checks a batch completely before anything is written: shape, paths, sizes, duplicates. */
 function parseBatch(list: unknown): Incoming[] {
   if (!Array.isArray(list) || !list.length) throw bad('files: Liste mit mindestens einer Datei erwartet');
-  if (list.length > BATCH_MAX_FILES) throw new HttpError(413, `Höchstens ${BATCH_MAX_FILES} Dateien je Aufruf – bitte aufteilen`);
+  if (list.length > BATCH_MAX_FILES) throw new HttpError(413, tApp()('Höchstens {n} Dateien je Aufruf – bitte aufteilen', { n: BATCH_MAX_FILES }));
   const seen = new Set<string>();
   let total = 0;
   return list.map((raw, i) => {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw bad(`files[${i}]: Objekt {path, content} oder {path, data} erwartet`);
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw bad(tApp()('files[{i}]: Objekt {path, content} oder {path, data} erwartet', { i }));
     const f = raw as Record<string, unknown>;
     const path = cleanPath(f.path);
     if (seen.has(path)) throw bad(`files: ${path} kommt doppelt vor`);
     seen.add(path);
     const hasContent = typeof f.content === 'string';
     const hasData = typeof f.data === 'string';
-    if (hasContent === hasData) throw bad(`${path}: genau eines von content (Text) oder data (Base64) angeben`);
+    if (hasContent === hasData) throw bad(tApp()('{path}: genau eines von content (Text) oder data (Base64) angeben', { path }));
     let buf: Buffer;
     if (hasContent) buf = Buffer.from(f.content as string, 'utf8');
     else {
       const b64 = (f.data as string).replace(/^data:[^,]*;base64,/, '').replace(/\s+/g, '');
-      if (!/^[A-Za-z0-9+/_-]*={0,2}$/.test(b64)) throw bad(`${path}: data ist kein gültiges Base64`);
+      if (!/^[A-Za-z0-9+/_-]*={0,2}$/.test(b64)) throw bad(tApp()('{path}: data ist kein gültiges Base64', { path }));
       buf = Buffer.from(b64, 'base64');
     }
-    if (buf.length > FILE_MAX) throw new HttpError(413, `${path}: Datei größer als ${FILE_MAX / MB} MB`);
+    if (buf.length > FILE_MAX) throw new HttpError(413, tApp()('{path}: Datei größer als {mb} MB', { path, mb: FILE_MAX / MB }));
     total += buf.length;
-    if (total > BATCH_MAX_BYTES) throw new HttpError(413, `Mehr als ${BATCH_MAX_BYTES / MB} MB in einem Aufruf – bitte aufteilen`);
+    if (total > BATCH_MAX_BYTES) throw new HttpError(413, tApp()('Mehr als {mb} MB in einem Aufruf – bitte aufteilen', { mb: BATCH_MAX_BYTES / MB }));
     const mime = cleanMime(f.mime) ?? guessMime(path, hasContent);
     return { path, mime, buf, sha256: createHash('sha256').update(buf).digest('hex') };
   });
@@ -149,7 +150,7 @@ export function saveProjectFiles(app: App, locationId: string, list: unknown, so
   if (growth > 0) {
     const cap = projectFilesCap();
     const used = Number(db.get<{ n: number }>('SELECT COALESCE(SUM(size), 0) AS n FROM project_files WHERE location_id = ?', locationId)?.n ?? 0);
-    if (cap !== null && used + growth > cap) throw new HttpError(413, `Der Speicher für Projektdateien dieses Sub-Accounts ist voll (${Math.round(cap / MB)} MB) – alte Dateien löschen oder das Limit erhöhen (PGHL_PROJECT_FILES_MB)`);
+    if (cap !== null && used + growth > cap) throw new HttpError(413, tApp()('Der Speicher für Projektdateien dieses Sub-Accounts ist voll ({mb} MB) – alte Dateien löschen oder das Limit erhöhen (PGHL_PROJECT_FILES_MB)', { mb: Math.round(cap / MB) }));
     app.services.storageGate?.(locationId, growth);
   }
   const out: { id: string; path: string; size: number; sha256: string; status: 'created' | 'updated' | 'unchanged' }[] = [];
@@ -179,7 +180,13 @@ const TOOLS: Tool[] = [
   {
     name: 'ghl_upload_files',
     title: 'Projektdateien hochladen',
-    description: `Legt Dateien eines Projekts ab oder ersetzt sie (gleicher path = gleiche Datei; unveränderte Dateien bleiben stehen): Anweisungen und Wissensdateien eines claude.ai-Projekts, die wichtigen Dateien eines Repos aus Claude Code, Notizen. files: [{path: relativer Pfad wie „docs/plan.md“, content: Text (UTF-8)} oder {path, data: Base64 für Binärdateien}, mime?]. source z. B. „claude-project“ oder „claude-code“. Grenzen: ${FILE_MAX / MB} MB je Datei, ${BATCH_MAX_FILES} Dateien und ${BATCH_MAX_BYTES / MB} MB je Aufruf; ein MCP-Aufruf darf insgesamt etwa 12 MB groß sein – größere Mengen auf mehrere Aufrufe verteilen.`,
+    // A getter: the limits go in as placeholders, the text is read in the instance language when the tool list is built.
+    get description() {
+      return tApp()(
+        'Legt Dateien eines Projekts ab oder ersetzt sie (gleicher path = gleiche Datei; unveränderte Dateien bleiben stehen): Anweisungen und Wissensdateien eines claude.ai-Projekts, die wichtigen Dateien eines Repos aus Claude Code, Notizen. files: [{path: relativer Pfad wie „docs/plan.md“, content: Text (UTF-8)} oder {path, data: Base64 für Binärdateien}, mime?]. source z. B. „claude-project“ oder „claude-code“. Grenzen: {fileMb} MB je Datei, {files} Dateien und {batchMb} MB je Aufruf; ein MCP-Aufruf darf insgesamt etwa 12 MB groß sein – größere Mengen auf mehrere Aufrufe verteilen.',
+        { fileMb: FILE_MAX / MB, files: BATCH_MAX_FILES, batchMb: BATCH_MAX_BYTES / MB },
+      );
+    },
     inputSchema: {
       type: 'object',
       properties: {

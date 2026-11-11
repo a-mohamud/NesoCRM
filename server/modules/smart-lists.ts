@@ -5,6 +5,7 @@ import { id, now } from '../core/util.js';
 import { contactName, findContacts } from '../services/contacts.js';
 import { cleanColumns, cleanDir, cleanFilter, cleanSort, contactOrder, DEFAULT_COLUMNS, smartListById, smartListScope, SORT_KEYS, type SmartListRow } from '../services/smart-lists.js';
 import type { Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Smart Lists 2.0 for contacts (docs/sales.md#smart-lists): a saved view = name + filter + visible columns + sort, per sub-account,
@@ -23,8 +24,7 @@ const TOOLS: Tool[] = [
     name: 'ghl_smart_lists',
     title: 'Smart Lists',
     description:
-      'Gespeicherte Kontakt-Ansichten (Smart Lists) eines Projekts: Name, Filter, sichtbare Spalten, Sortierung und ob die Liste fürs Team geteilt oder privat ist. ' +
-      'Private Listen sieht nur, wer sie angelegt hat (mit einem API-Schlüssel nur die geteilten). Die Kontakte einer Liste liefert ghl_smart_list_contacts.',
+      'Gespeicherte Kontakt-Ansichten (Smart Lists) eines Projekts: Name, Filter, sichtbare Spalten, Sortierung und ob die Liste fürs Team geteilt oder privat ist. Private Listen sieht nur, wer sie angelegt hat (mit einem API-Schlüssel nur die geteilten). Die Kontakte einer Liste liefert ghl_smart_list_contacts.',
     inputSchema: { type: 'object', properties: { location_id: { type: 'string', description: 'Sub-Account/Projekt-ID' } }, additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: false },
     run: async (call, a) => {
@@ -35,7 +35,7 @@ const TOOLS: Tool[] = [
   {
     name: 'ghl_smart_list_contacts',
     title: 'Kontakte einer Smart List',
-    description: `Die Kontakte einer Smart List (list_id aus ghl_smart_lists) mit Filter und Sortierung der Liste, seitenweise (limit bis 200, offset). Mit sort/dir lässt sich anders sortieren: ${SORT_KEYS.join(', ')} oder custom.<feld>. Es gelten die Datensatz-Rechte der Person.`,
+    description: tApp()('Die Kontakte einer Smart List (list_id aus ghl_smart_lists) mit Filter und Sortierung der Liste, seitenweise (limit bis 200, offset). Mit sort/dir lässt sich anders sortieren: {keys} oder custom.<feld>. Es gelten die Datensatz-Rechte der Person.', { keys: SORT_KEYS.join(', ') }),
     inputSchema: {
       type: 'object',
       properties: { location_id: { type: 'string' }, list_id: { type: 'string' }, limit: { type: 'number' }, offset: { type: 'number' }, sort: { type: 'string' }, dir: { type: 'string', enum: ['asc', 'desc'] } },
@@ -115,7 +115,7 @@ export const smartListsModule: Module = {
 
     router.post('/api/smart-lists', 'location', (ctx) => {
       const b = ctx.body ?? {};
-      if ((db.get<{ n: number }>('SELECT COUNT(*) AS n FROM smart_lists WHERE location_id = ?', ctx.locationId)?.n ?? 0) >= MAX_LISTS) throw bad(`Höchstens ${MAX_LISTS} Smart Lists je Sub-Account`);
+      if ((db.get<{ n: number }>('SELECT COUNT(*) AS n FROM smart_lists WHERE location_id = ?', ctx.locationId)?.n ?? 0) >= MAX_LISTS) throw bad(tApp()('Höchstens {max} Smart Lists je Sub-Account', { max: MAX_LISTS }));
       const row = {
         id: id(),
         location_id: ctx.locationId,

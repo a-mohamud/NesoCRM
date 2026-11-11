@@ -1,4 +1,5 @@
 import dns from 'node:dns';
+import { tApp } from '../i18n/index.js';
 import { syncBuiltinESMExports } from 'node:module';
 import net from 'node:net';
 
@@ -51,7 +52,7 @@ function targetOf(args: unknown[]): { host?: string; port?: number; path?: strin
 const DNS_CALLBACK_FNS = ['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny', 'resolveCname', 'resolveMx', 'resolveNaptr', 'resolveNs', 'resolvePtr', 'resolveSoa', 'resolveSrv', 'resolveTxt'];
 
 function blockedError(entry: BlockedConnection): NodeJS.ErrnoException {
-  const err: NodeJS.ErrnoException = new Error(`Demo-Modus: Verbindung nach außen gesperrt (${entry.host}${entry.port ? `:${entry.port}` : ''})`);
+  const err: NodeJS.ErrnoException = new Error(tApp()('Demo-Modus: Verbindung nach außen gesperrt ({target})', { target: `${entry.host}${entry.port ? `:${entry.port}` : ''}` }));
   err.code = 'EDEMOBLOCKED';
   return err;
 }

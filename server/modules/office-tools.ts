@@ -7,6 +7,7 @@ import { KINDS, LIMITS, cleanCommands, writesToCommands } from '../services/offi
 import { assertWritable, getFile, getVersion, maxFileBytes, readVersion, type FileRow } from '../services/office-store.js';
 import { bytesOf, createFile, fileOut, param, saveVersion } from './office.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Agentic editing of Office files (docs/office.md#ai-agent-and-mcp): REST routes that read a file through the headless engine (or
@@ -23,7 +24,7 @@ const versionOf = (v: unknown): number | null => {
   return n;
 };
 
-const cut = (s: string, n = LIMITS.readChars) => (s.length > n ? `${s.slice(0, n)}\n… (gekürzt, ${s.length - n} Zeichen mehr – mit range/sheet eingrenzen)` : s);
+const cut = (s: string, n = LIMITS.readChars) => (s.length > n ? `${s.slice(0, n)}\n${tApp()('… (gekürzt, {n} Zeichen mehr – mit range/sheet eingrenzen)', { n: s.length - n })}` : s);
 
 function structureCut(v: unknown): unknown {
   const json = JSON.stringify(v ?? null);
@@ -37,7 +38,7 @@ async function readFileContent(f: FileRow, buf: Buffer, mode: string, range?: st
   }
   const text = extractText(f.kind, buf);
   if (text === null) throw new EngineMissing(f.kind);
-  return { engine: false, text: cut(text), structure: undefined, note: 'Ohne Office-Engine: nur der reine Text (keine Struktur, keine Formeln)' };
+  return { engine: false, text: cut(text), structure: undefined, note: tApp()('Ohne Office-Engine: nur der reine Text (keine Struktur, keine Formeln)') };
 }
 
 const LOC = { location_id: { type: 'string', description: 'Sub-Account/Projekt-ID (aus ghl_list_projects)' } };
@@ -101,7 +102,7 @@ const TOOLS: Tool[] = [
       const { location_id, commands, ...body } = a;
       const f = await call.api('POST', '/api/office/files', { location: location_id, body });
       if (Array.isArray(commands) && commands.length) {
-        const e = await call.api('POST', `/api/office/files/${f.id}/edit`, { location: location_id, body: { commands, message: 'Vom KI-Agenten beim Anlegen bearbeitet' } });
+        const e = await call.api('POST', `/api/office/files/${f.id}/edit`, { location: location_id, body: { commands, message: tLoc(null, location_id)('Vom KI-Agenten beim Anlegen bearbeitet') } });
         return { created: true, ...short(e) };
       }
       return { created: true, ...short(f) };
@@ -167,11 +168,12 @@ export const officeToolsModule: Module = {
       assertWritable(app, f, actor);
       const base = b.base_version === undefined || b.base_version === null ? null : Number(b.base_version);
       if (base !== null && (!Number.isInteger(base) || base < 1)) throw bad('base_version muss eine Versionsnummer sein');
-      const message = str(b.message, 'Notiz', { max: LIMITS.message }) || (actor.kind === 'agent' ? 'Vom KI-Agenten bearbeitet' : 'Per API bearbeitet');
+      const tl = tLoc(app, ctx.locationId);
+      const message = str(b.message, 'Notiz', { max: LIMITS.message }) || tl(actor.kind === 'agent' ? 'Vom KI-Agenten bearbeitet' : 'Per API bearbeitet');
       const out = await engineEdit(f.kind, readVersion(app, getVersion(app, f)), commands, { maxBytes: maxFileBytes() });
       // the file may have moved on while the engine worked
       const fresh = getFile(app, ctx.locationId, f.id);
-      if (fresh.version !== f.version && base === null) throw new HttpError(409, `Während der Bearbeitung hat ${fresh.updated_by_name || 'jemand'} eine neue Version gespeichert – bitte erneut versuchen`, { current_version: fresh.version });
+      if (fresh.version !== f.version && base === null) throw new HttpError(409, tCtx(ctx)('Während der Bearbeitung hat {name} eine neue Version gespeichert – bitte erneut versuchen', { name: fresh.updated_by_name || tCtx(ctx)('jemand') }), { current_version: fresh.version });
       const v = saveVersion(app, ctx, fresh, out, { actor, message, baseVersion: base });
       return { ...fileOut(app, fresh as FileRow & Record<string, unknown>), saved_version: v.version, commands: commands.length };
     });
@@ -194,7 +196,7 @@ export const officeToolsModule: Module = {
       const pptx = await engineConvertNative(f.kind, buf, 'deckcraft', { maxBytes: maxFileBytes() });
       const base = Number(param(ctx, 'base_version') ?? 0);
       const force = [true, 'true', '1', 1].includes(param(ctx, 'force') as never);
-      const message = str(param(ctx, 'message'), 'Notiz', { max: LIMITS.message }) || 'Im Editor gespeichert';
+      const message = str(param(ctx, 'message'), 'Notiz', { max: LIMITS.message }) || tLoc(app, ctx.locationId)('Im Editor gespeichert');
       const v = saveVersion(app, ctx, getFile(app, ctx.locationId, f.id), pptx, { actor, message, baseVersion: Number.isInteger(base) && base > 0 ? base : null, force });
       return { ...fileOut(app, getFile(app, ctx.locationId, f.id) as FileRow & Record<string, unknown>), saved_version: v.version };
     });
@@ -205,7 +207,7 @@ export const officeToolsModule: Module = {
       const name = ctx.body?.name;
       if (name !== undefined && (typeof name !== 'string' || name.length > 400)) throw bad('name muss Text sein');
       const pdf = await engineExportPdf(f.kind, readVersion(app, getVersion(app, f)), { maxBytes: maxFileBytes() });
-      const created = createFile(app, ctx, { kind: 'pdf', name: name || f.name.replace(/\.[a-z]+$/i, ''), bytes: pdf, links: { contact_id: f.contact_id, deal_id: f.deal_id, project_id: f.project_id }, message: `PDF aus „${f.name}“ (Version ${f.version})` });
+      const created = createFile(app, ctx, { kind: 'pdf', name: name || f.name.replace(/\.[a-z]+$/i, ''), bytes: pdf, links: { contact_id: f.contact_id, deal_id: f.deal_id, project_id: f.project_id }, message: tLoc(app, ctx.locationId)('PDF aus „{name}“ (Version {version})', { name: f.name, version: f.version }) });
       return fileOut(app, created as FileRow & Record<string, unknown>);
     });
 

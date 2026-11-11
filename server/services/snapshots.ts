@@ -3,6 +3,7 @@ import { parseRows } from '../core/db.js';
 import { id, now, slugify, token } from '../core/util.js';
 import { ensureTags } from './contacts.js';
 import { designFields } from './email-design.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Calendar settings that belong to one installation and one calendar, never into a template: the private
@@ -201,9 +202,9 @@ export function validateSnapshot(d: any): SnapshotData {
   if (!d || typeof d !== 'object' || d.version !== 1) throw new Error('Keine gültige Snapshot-Datei (version 1)');
   for (const k of ['custom_fields', 'tags', 'pipelines', 'calendars', 'forms', 'funnels', 'workflows', 'templates', 'products']) {
     if (d[k] === undefined) d[k] = [];
-    if (!Array.isArray(d[k])) throw new Error(`Snapshot: ${k} muss eine Liste sein`);
+    if (!Array.isArray(d[k])) throw new Error(tApp()('Snapshot: {key} muss eine Liste sein', { key: k }));
   }
-  for (const k of ['blog_posts', 'courses', 'community_groups']) if (d[k] !== undefined && !Array.isArray(d[k])) throw new Error(`Snapshot: ${k} muss eine Liste sein`);
+  for (const k of ['blog_posts', 'courses', 'community_groups']) if (d[k] !== undefined && !Array.isArray(d[k])) throw new Error(tApp()('Snapshot: {key} muss eine Liste sein', { key: k }));
   for (const f of d.funnels) if (!Array.isArray(f.pages)) f.pages = [];
   return d as SnapshotData;
 }

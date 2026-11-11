@@ -2,6 +2,7 @@ import { createVerify } from 'node:crypto';
 import { simpleParser } from 'mailparser';
 import { hmac, readJson, safeEqual, sha256hex, type DeliveryEvent, type FetchLike } from './channel-kit.js';
 import { htmlToText } from './email-render.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Transactional email APIs (Resend, Postmark, Amazon SES, Brevo, Mailgun): sending, a connection
@@ -171,7 +172,7 @@ export async function sendMail(p: MailProvider, c: MailCreds, m: Outgoing, fetch
         signal: T(),
       });
       const j = await readJson(r, 'Postmark', (x) => x?.Message);
-      if (Number(j.ErrorCode)) throw new Error(`Postmark: ${j.Message ?? j.ErrorCode}`);
+      if (Number(j.ErrorCode)) throw new Error(`Postmark: ${j.Message ?? j.ErrorCode}`); // i18n-ignore
       return { providerId: String(j.MessageID ?? '') };
     }
     case 'ses': {
@@ -213,28 +214,29 @@ export async function sendMail(p: MailProvider, c: MailCreds, m: Outgoing, fetch
 
 /** A harmless read call that proves the credentials work; returns one line for the settings screen. */
 export async function testMail(p: MailProvider, c: MailCreds, fetcher: FetchLike): Promise<string> {
+  const t = tApp();
   switch (p) {
     case 'resend': {
       const j = await readJson(await fetcher('https://api.resend.com/domains', { headers: { authorization: `Bearer ${c.secrets.api_key}` }, signal: T() }), 'Resend');
       const list: any[] = Array.isArray(j.data) ? j.data : [];
-      return list.length ? `Domains: ${list.slice(0, 5).map((d) => `${d.name} (${d.status === 'verified' ? 'bestätigt' : d.status})`).join(', ')}` : 'Verbunden – noch keine Domain bestätigt';
+      return list.length ? t('Domains: {list}', { list: list.slice(0, 5).map((d) => `${d.name} (${d.status === 'verified' ? t('bestätigt') : d.status})`).join(', ') }) : t('Verbunden – noch keine Domain bestätigt');
     }
     case 'postmark': {
       const j = await readJson(await fetcher('https://api.postmarkapp.com/server', { headers: { accept: 'application/json', 'x-postmark-server-token': c.secrets.server_token }, signal: T() }), 'Postmark', (x) => x?.Message);
-      return `Server „${j.Name ?? '?'}“`;
+      return t('Server „{name}“', { name: j.Name ?? '?' });
     }
     case 'ses': {
       const j = await ses(fetcher, c, 'GET', '/v2/email/account');
-      const quota = j.SendQuota?.Max24HourSend ? ` · max. ${j.SendQuota.Max24HourSend} pro Tag` : '';
-      return `SES ${c.config.region}: ${j.ProductionAccessEnabled ? 'Produktion' : 'Sandbox – nur an bestätigte Adressen'}${quota}`;
+      const quota = j.SendQuota?.Max24HourSend ? t(' · max. {n} pro Tag', { n: j.SendQuota.Max24HourSend }) : '';
+      return `SES ${c.config.region}: ${j.ProductionAccessEnabled ? t('Produktion') : t('Sandbox – nur an bestätigte Adressen')}${quota}`;
     }
     case 'brevo': {
       const j = await readJson(await fetcher('https://api.brevo.com/v3/account', { headers: { accept: 'application/json', 'api-key': c.secrets.api_key }, signal: T() }), 'Brevo');
-      return `Konto ${j.email ?? ''}${j.companyName ? ` (${j.companyName})` : ''}`.trim();
+      return (t('Konto {email}', { email: j.email ?? '' }) + (j.companyName ? ` (${j.companyName})` : '')).trim();
     }
     case 'mailgun': {
       const j = await readJson(await fetcher(`https://${mailgunHost(c)}/v3/domains/${encodeURIComponent(c.config.domain)}`, { headers: { authorization: `Basic ${Buffer.from(`api:${c.secrets.api_key}`).toString('base64')}` }, signal: T() }), 'Mailgun');
-      return `Domain ${j.domain?.name ?? c.config.domain} (${j.domain?.state === 'active' ? 'aktiv' : (j.domain?.state ?? '?')})`;
+      return t('Domain {name} ({state})', { name: j.domain?.name ?? c.config.domain, state: j.domain?.state === 'active' ? t('aktiv') : (j.domain?.state ?? '?') });
     }
   }
 }
@@ -265,6 +267,7 @@ export function verifyMailgun(sig: { timestamp?: unknown; token?: unknown; signa
 
 /** The string Amazon SNS signs (fields depend on the message type). */
 export function snsStringToSign(m: Record<string, any>): string {
+  // i18n-ignore (SNS field names)
   const keys = m.Type === 'Notification' ? ['Message', 'MessageId', 'Subject', 'Timestamp', 'TopicArn', 'Type'] : ['Message', 'MessageId', 'SubscribeURL', 'Timestamp', 'Token', 'TopicArn', 'Type'];
   return keys.filter((k) => m[k] !== undefined && m[k] !== null && !(k === 'Subject' && m[k] === '')).map((k) => `${k}\n${m[k]}\n`).join('');
 }
@@ -279,7 +282,7 @@ export const isSnsHost = (url: string) => {
 
 /** Checks an SNS message's RSA signature against Amazon's signing certificate (only fetched from sns.*.amazonaws.com). */
 export async function verifySns(m: Record<string, any>, fetcher: FetchLike, cache: Map<string, string>): Promise<boolean> {
-  if (!m || !['Notification', 'SubscriptionConfirmation', 'UnsubscribeConfirmation'].includes(m.Type)) return false;
+  if (!m || !['Notification', 'SubscriptionConfirmation', 'UnsubscribeConfirmation'].includes(m.Type)) return false; // i18n-ignore
   const certUrl = String(m.SigningCertURL ?? m.SigningCertUrl ?? '');
   if (!isSnsHost(certUrl) || !new URL(certUrl).pathname.endsWith('.pem')) return false;
   const alg = m.SignatureVersion === '2' ? 'RSA-SHA256' : m.SignatureVersion === '1' ? 'RSA-SHA1' : '';
@@ -339,6 +342,7 @@ export function parseResend(b: any): MailWebhook {
   return { events: [{ providerId: id, status, permanent: status === 'bounced', reason }], inbound: [] };
 }
 
+// i18n-ignore (Postmark bounce types)
 const POSTMARK_HARD = ['HardBounce', 'BadEmailAddress', 'ManuallyDeactivated', 'Blocked', 'SpamNotification', 'Unsubscribe'];
 export function parsePostmark(b: any): MailWebhook {
   const rt = String(b?.RecordType ?? '');
@@ -457,7 +461,7 @@ export async function parseSesMessage(message: string): Promise<MailWebhook> {
     case 'Complaint':
       return { events: [{ providerId: id, status: 'complained' }], inbound: [] };
     case 'Reject':
-      return { events: [{ providerId: id, status: 'failed', reason: String(n.reject?.reason ?? 'Von SES abgelehnt') }], inbound: [] };
+      return { events: [{ providerId: id, status: 'failed', reason: String(n.reject?.reason ?? tApp()('Von SES abgelehnt')) }], inbound: [] };
   }
   return { events: [], inbound: [] };
 }

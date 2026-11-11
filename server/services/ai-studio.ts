@@ -5,6 +5,7 @@ import { dirname, join, sep } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { HttpError, bad } from '../core/http.js';
 import type { ChatRequest, ChatResult, Msg, Part, ToolDef } from './agent-llm.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * AI Studio (docs/ai-studio.md): the per-project workspace on disk (`<data>/ai-studio/<sub-account>/<project>/`), its quota,
@@ -25,7 +26,7 @@ const SEG = /^[A-Za-z0-9_@][A-Za-z0-9._@-]{0,79}$/;
 export function cleanPath(raw: unknown): string {
   const p = String(raw ?? '').trim().replace(/^\.?\/+/, '');
   const segs = p.split('/');
-  if (!p || p.length > 200 || segs.length > 8 || segs.some((s) => !SEG.test(s))) throw bad(`Ungültiger Dateipfad: ${String(raw ?? '').slice(0, 80)}`);
+  if (!p || p.length > 200 || segs.length > 8 || segs.some((s) => !SEG.test(s))) throw bad(tApp()('Ungültiger Dateipfad: {path}', { path: String(raw ?? '').slice(0, 80) }));
   if (segs[0] === 'dist' || segs[0] === 'node_modules') throw bad('dist/ und node_modules/ sind reserviert.');
   return p;
 }
@@ -62,18 +63,18 @@ export class Workspace {
   }
   read(path: string): string {
     const f = join(this.src, cleanPath(path));
-    if (!existsSync(f)) throw new HttpError(404, `Datei nicht gefunden: ${path}`);
+    if (!existsSync(f)) throw new HttpError(404, tApp()('Datei nicht gefunden: {path}', { path }));
     return readFileSync(f, 'utf8');
   }
   write(path: string, content: string): number {
     const p = cleanPath(path);
     const bytes = Buffer.byteLength(String(content ?? ''));
-    if (bytes > MAX_FILE_BYTES) throw bad(`Datei zu groß (höchstens ${MAX_FILE_BYTES / 1024} KB).`);
+    if (bytes > MAX_FILE_BYTES) throw bad(tApp()('Datei zu groß (höchstens {kb} KB).', { kb: MAX_FILE_BYTES / 1024 }));
     const list = this.files();
     const old = list.find((f) => f.path === p);
-    if (!old && list.length >= MAX_FILES) throw bad(`Zu viele Dateien (höchstens ${MAX_FILES}).`);
+    if (!old && list.length >= MAX_FILES) throw bad(tApp()('Zu viele Dateien (höchstens {n}).', { n: MAX_FILES }));
     const total = list.reduce((n, f) => n + f.size, 0) - (old?.size ?? 0) + bytes;
-    if (total > QUOTA_BYTES) throw new HttpError(413, `Speicher des Projekts voll (${Math.round(QUOTA_BYTES / 1048576)} MB).`);
+    if (total > QUOTA_BYTES) throw new HttpError(413, tApp()('Speicher des Projekts voll ({mb} MB).', { mb: Math.round(QUOTA_BYTES / 1048576) }));
     const f = join(this.src, p);
     mkdirSync(dirname(f), { recursive: true });
     writeFileSync(f, String(content ?? ''));
@@ -122,18 +123,21 @@ export class Workspace {
 
 // --- templates ----------------------------------------------------------------------------------------------------
 
-export function starterFiles(stack: Stack, name: string): Record<string, string> {
+/** `t`: the sub-account's language (the starter page's placeholder text and lang attribute). */
+export function starterFiles(stack: Stack, name: string, t: STFn = tApp()): Record<string, string> {
   const title = name.replace(/[<>&"]/g, '');
+  const hint = t('Beschreibe im Chat, was hier entstehen soll.').replace(/[<>&"{}`$\\]/g, '');
+  const lang = t.locale;
   if (stack === 'html')
     return {
-      'index.html': `<!doctype html>\n<html lang="de">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>${title}</title>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n  <main>\n    <h1>${title}</h1>\n    <p>Beschreibe im Chat, was hier entstehen soll.</p>\n  </main>\n  <script src="script.js" defer></script>\n</body>\n</html>\n`,
+      'index.html': `<!doctype html>\n<html lang="${lang}">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>${title}</title>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n  <main>\n    <h1>${title}</h1>\n    <p>${hint}</p>\n  </main>\n  <script src="script.js" defer></script>\n</body>\n</html>\n`,
       'style.css': 'body { font-family: system-ui, sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }\nmain { max-width: 720px; margin: 10vh auto; padding: 24px; }\n',
       'script.js': '// Your JavaScript\n',
     };
   return {
-    'index.html': `<!doctype html>\n<html lang="de">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>${title}</title>\n  </head>\n  <body>\n    <div id="root"></div>\n    <script type="module" src="/src/main.jsx"></script>\n  </body>\n</html>\n`,
+    'index.html': `<!doctype html>\n<html lang="${lang}">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>${title}</title>\n  </head>\n  <body>\n    <div id="root"></div>\n    <script type="module" src="/src/main.jsx"></script>\n  </body>\n</html>\n`,
     'src/main.jsx': "import { createRoot } from 'react-dom/client';\nimport App from './App.jsx';\nimport './index.css';\n\ncreateRoot(document.getElementById('root')).render(<App />);\n",
-    'src/App.jsx': `export default function App() {\n  return (\n    <main className="page">\n      <h1>${title}</h1>\n      <p>Beschreibe im Chat, was hier entstehen soll.</p>\n    </main>\n  );\n}\n`,
+    'src/App.jsx': `export default function App() {\n  return (\n    <main className="page">\n      <h1>${title}</h1>\n      <p>${hint}</p>\n    </main>\n  );\n}\n`,
     'src/index.css': 'body { font-family: system-ui, sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }\n.page { max-width: 720px; margin: 10vh auto; padding: 24px; }\n',
     'package.json': `${JSON.stringify({ name: 'studio-app', private: true, type: 'module', scripts: { dev: 'vite', build: 'vite build' }, dependencies: { react: '^19.0.0', 'react-dom': '^19.0.0' }, devDependencies: { vite: '^7.0.0', '@vitejs/plugin-react': '^5.0.0' } }, null, 2)}\n`,
     'vite.config.js': "import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({ plugins: [react()], base: './' });\n",
@@ -154,6 +158,7 @@ export interface BuildResult {
  * The child: esbuild over a virtual file system sent through IPC; bare imports only from the built-in packages, whose files
  * the plugin reads itself (so esbuild-wasm runs in-process through its browser API, with no file system and no child process).
  */
+// i18n-ignore (code run in the build sandbox)
 const RUNNER = `
 process.once('message', async (m) => {
   const send = (r) => { process.send(r, () => process.exit(0)); };
@@ -237,11 +242,11 @@ function runChild(msg: Record<string, unknown>, nodeModules: string, timeoutMs: 
       child.kill('SIGKILL');
       resolve(r);
     };
-    const timer = setTimeout(() => finish({ ok: false, errors: [`Zeitlimit des Builds überschritten (${timeoutMs / 1000} s).`] }), timeoutMs);
+    const timer = setTimeout(() => finish({ ok: false, errors: [tApp()('Zeitlimit des Builds überschritten ({s} s).', { s: timeoutMs / 1000 })] }), timeoutMs);
     child.stderr?.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-1500)));
     child.on('message', finish);
-    child.on('error', (e) => finish({ ok: false, errors: [`Build konnte nicht starten: ${e.message}`] }));
-    child.on('exit', (code) => finish({ ok: false, errors: [`Build-Prozess beendet (${code}). ${stderr.split('\n').find((l) => l.trim()) ?? ''}`.trim()] }));
+    child.on('error', (e) => finish({ ok: false, errors: [tApp()('Build konnte nicht starten: {error}', { error: e.message })] }));
+    child.on('exit', (code) => finish({ ok: false, errors: [`${tApp()('Build-Prozess beendet ({code}).', { code: String(code) })} ${stderr.split('\n').find((l) => l.trim()) ?? ''}`.trim()] }));
     child.send(msg);
   });
 }
@@ -294,13 +299,13 @@ export async function buildProject(ws: Workspace, stack: Stack, timeoutMs = 60_0
 // --- the agent loop -----------------------------------------------------------------------------------------------
 
 export const TOOLS: ToolDef[] = [
-  { name: 'list_files', description: 'List all project files with sizes.', inputSchema: { type: 'object', properties: {} } },
-  { name: 'read_file', description: 'Read one file.', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
-  { name: 'write_file', description: 'Create or replace a file with the full content.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'] } },
-  { name: 'delete_file', description: 'Delete a file.', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
-  { name: 'search_files', description: 'Find a text in all files (case-insensitive); returns path:line hits.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
-  { name: 'run_build', description: 'Build the project; returns errors or success.', inputSchema: { type: 'object', properties: {} } },
-  { name: 'read_logs', description: 'Read the last build log and runtime errors of the preview.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'list_files', description: 'List all project files with sizes.', inputSchema: { type: 'object', properties: {} } }, // tool for the model – i18n-ignore
+  { name: 'read_file', description: 'Read one file.', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } }, // tool for the model – i18n-ignore
+  { name: 'write_file', description: 'Create or replace a file with the full content.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'] } }, // tool for the model – i18n-ignore
+  { name: 'delete_file', description: 'Delete a file.', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } }, // tool for the model – i18n-ignore
+  { name: 'search_files', description: 'Find a text in all files (case-insensitive); returns path:line hits.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }, // tool for the model – i18n-ignore
+  { name: 'run_build', description: 'Build the project; returns errors or success.', inputSchema: { type: 'object', properties: {} } }, // tool for the model – i18n-ignore
+  { name: 'read_logs', description: 'Read the last build log and runtime errors of the preview.', inputSchema: { type: 'object', properties: {} } }, // tool for the model – i18n-ignore
 ];
 
 export const systemPrompt = (stack: Stack) =>
@@ -389,13 +394,13 @@ export async function runTurn(d: TurnDeps, prompt: string, history: { prompt: st
             break;
           }
           case 'delete_file':
-            content = d.ws.remove(a.path) ? 'gelöscht' : 'nicht vorhanden';
+            content = d.ws.remove(a.path) ? 'deleted' : 'not found';
             o.files.push({ action: 'delete', path: cleanPath(a.path), bytes: 0 });
             o.changed = true;
             builtAfterChange = false;
             break;
           case 'search_files':
-            content = d.ws.search(a.query).join('\n') || 'keine Treffer';
+            content = d.ws.search(a.query).join('\n') || 'no matches';
             break;
           case 'run_build': {
             const b = await d.build();
@@ -405,7 +410,7 @@ export async function runTurn(d: TurnDeps, prompt: string, history: { prompt: st
             break;
           }
           case 'read_logs':
-            content = d.logs() || '(keine Logs)';
+            content = d.logs() || '(no logs)';
             break;
           default:
             ok = false;
@@ -421,7 +426,7 @@ export async function runTurn(d: TurnDeps, prompt: string, history: { prompt: st
     messages.push({ role: 'user', content: results });
   }
   if (o.changed && !builtAfterChange) await d.build();
-  if (!o.reply && !o.error) o.reply = 'Schrittlimit erreicht – schreib „weiter“, um fortzufahren.';
+  if (!o.reply && !o.error) o.reply = tApp()('Schrittlimit erreicht – schreib „weiter“, um fortzufahren.');
   return o;
 }
 
@@ -430,18 +435,18 @@ export async function stubChat(req: ChatRequest): Promise<ChatResult> {
   const results = req.messages.filter((m) => m.role === 'user' && m.content.some((p) => p.type === 'tool_result')).length;
   const firstUser = [...req.messages].reverse().find((m) => m.role === 'user' && m.content[0]?.type === 'text');
   const prompt = firstUser?.content[0]?.type === 'text' ? firstUser.content[0].text : '';
-  const title = prompt.replace(/[<>&"{}`$\\]/g, '').slice(0, 60) || 'Meine App';
+  const title = prompt.replace(/[<>&"{}`$\\]/g, '').slice(0, 60) || 'My app';
   const react = req.system.includes('React');
   const usage = { input_tokens: 1200, output_tokens: 160, cache_read_tokens: 0, cache_write_tokens: 0 };
   const calls =
     results === 0
       ? [{ id: 'stub_1', name: 'list_files', args: {} }]
       : results === 1
-        ? [react ? { id: 'stub_2', name: 'write_file', args: { path: 'src/App.jsx', content: `export default function App() {\n  return (\n    <main className="page">\n      <h1>${title}</h1>\n      <p>Gebaut vom Stub-Modell.</p>\n    </main>\n  );\n}\n` } } : { id: 'stub_2', name: 'write_file', args: { path: 'index.html', content: `<!doctype html>\n<html><head><meta charset="utf-8"><title>${title}</title><link rel="stylesheet" href="style.css"></head><body><main><h1>${title}</h1><p>Gebaut vom Stub-Modell.</p></main></body></html>\n` } }]
+        ? [react ? { id: 'stub_2', name: 'write_file', args: { path: 'src/App.jsx', content: `export default function App() {\n  return (\n    <main className="page">\n      <h1>${title}</h1>\n      <p>Built by the stub model.</p>\n    </main>\n  );\n}\n` } } : { id: 'stub_2', name: 'write_file', args: { path: 'index.html', content: `<!doctype html>\n<html><head><meta charset="utf-8"><title>${title}</title><link rel="stylesheet" href="style.css"></head><body><main><h1>${title}</h1><p>Built by the stub model.</p></main></body></html>\n` } }]
         : results === 2
           ? [{ id: 'stub_3', name: 'run_build', args: {} }]
           : [];
-  const text = calls.length ? '' : `Fertig: „${title}“ ist gebaut.`;
+  const text = calls.length ? '' : `Done: “${title}” is built.`;
   const content: Part[] = [...(text ? [{ type: 'text' as const, text }] : []), ...calls.map((c) => ({ type: 'tool_call' as const, ...c }))];
   return { message: { role: 'assistant', content }, text, toolCalls: calls, stopReason: calls.length ? 'tool_use' : 'end_turn', usage, model: 'stub-1', ms: 5 };
 }

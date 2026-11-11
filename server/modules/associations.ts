@@ -3,6 +3,7 @@ import { parseJson, parseRows } from '../core/db.js';
 import { bad, notFound, str } from '../core/http.js';
 import { id, now } from '../core/util.js';
 import { contactName } from '../services/contacts.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * Associations like HubSpot's: links between any two records – contacts, companies, deals, tasks,
@@ -132,7 +133,7 @@ export const associationsModule: Module = {
           input.map((l) => {
             const s = String(l).trim();
             const hit = avail.find((x) => x.id === s || x.name.toLowerCase() === s.toLowerCase());
-            if (!hit) throw bad(`Unbekanntes Label „${s.slice(0, 60)}“ für ${a.type} ↔ ${b.type}`);
+            if (!hit) throw bad(tApp()('Unbekanntes Label „{label}“ für {a} ↔ {b}', { label: s.slice(0, 60), a: a.type, b: b.type }));
             return hit.id;
           }),
         ),
@@ -172,7 +173,7 @@ export const associationsModule: Module = {
         for (const r of [a, b]) {
           const t = type(loc, r.type);
           if (!t) throw bad(`Unbekannter Objekttyp: ${r.type}`);
-          if (!t.get(loc, r.id)) throw notFound(`${t.label} nicht gefunden`);
+          if (!t.get(loc, r.id)) throw notFound(tApp()('{label} nicht gefunden', { label: tApp()(t.label) }));
         }
         const labels = opts.labels ? resolveLabels(loc, a, b, opts.labels) : undefined;
         const cur = rowFor(loc, a, b);
@@ -289,8 +290,9 @@ export const associationsModule: Module = {
       table: 'opportunities',
       get: (loc, rid) => {
         const o = db.get('SELECT o.id, o.name, o.value, o.status, o.pipeline_id, p.name AS pipeline FROM opportunities o JOIN pipelines p ON p.id = o.pipeline_id WHERE o.id = ? AND o.location_id = ?', rid, loc);
-        const status: Record<string, string> = { open: 'offen', won: 'gewonnen', lost: 'verloren', abandoned: 'aufgegeben' };
-        return o ? { id: o.id, name: o.name, sub: `${o.pipeline} · ${new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(o.value || 0)} · ${status[o.status] ?? o.status}`, link: `opportunities?pipeline=${o.pipeline_id}` } : undefined;
+        const tr = tApp();
+        const status: Record<string, string> = { open: tr('offen'), won: tr('gewonnen'), lost: tr('verloren'), abandoned: tr('aufgegeben') };
+        return o ? { id: o.id, name: o.name, sub: `${o.pipeline} · ${new Intl.NumberFormat(tr.locale === 'de' ? 'de-DE' : 'en-GB', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(o.value || 0)} · ${status[o.status] ?? o.status}`, link: `opportunities?pipeline=${o.pipeline_id}` } : undefined;
       },
       search: (loc, q, limit) => db.all('SELECT id, name, value FROM opportunities WHERE location_id = ? AND name LIKE ? ORDER BY updated_at DESC LIMIT ?', loc, `%${q}%`, limit).map((o) => ({ id: o.id, name: o.name, sub: `${o.value} €` })),
     });
@@ -302,7 +304,8 @@ export const associationsModule: Module = {
       table: 'tasks',
       get: (loc, rid) => {
         const t = db.get('SELECT id, title, due_at, done FROM tasks WHERE id = ? AND location_id = ?', rid, loc);
-        return t ? { id: t.id, name: t.title, sub: t.done ? 'erledigt' : t.due_at ? `fällig ${t.due_at.slice(0, 10)}` : 'offen', link: 'tasks' } : undefined;
+        const tr = tApp();
+        return t ? { id: t.id, name: t.title, sub: t.done ? tr('erledigt') : t.due_at ? tr('fällig {date}', { date: t.due_at.slice(0, 10) }) : tr('offen'), link: 'tasks' } : undefined;
       },
     });
 
@@ -312,9 +315,12 @@ export const associationsModule: Module = {
       const idv = str(rid, `${what}: ID`, { required: true, max: 64 });
       return { type, id: idv };
     };
-    const typeOut = (t: AssocType) => ({ type: t.type, label: t.label, plural: t.plural, icon: t.icon ?? 'link', searchable: !!t.search });
+    const typeOut = (t: AssocType, tr: STFn) => ({ type: t.type, label: tr(t.label), plural: tr(t.plural), icon: t.icon ?? 'link', searchable: !!t.search });
 
-    router.get('/api/associations/types', 'location', (ctx) => types(ctx.locationId).map(typeOut));
+    router.get('/api/associations/types', 'location', (ctx) => {
+      const tr = tCtx(ctx);
+      return types(ctx.locationId).map((t) => typeOut(t, tr));
+    });
     router.get('/api/associations', 'location', (ctx) => {
       const r = ref(ctx.query.get('type'), ctx.query.get('id'), 'Datensatz');
       if (!type(ctx.locationId, r.type)) throw bad('Unbekannter Objekttyp');

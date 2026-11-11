@@ -4,6 +4,7 @@ import type { SafeResponse } from './net.js';
 import type { ActionOutcome } from './workflow-engine.js';
 import { addToDate, fromWall, parseDate, wallClock } from './formatters.js';
 import { assign, rowsOf, text, tzOf, type ActionMeta, type FieldDef } from './wfx-kit.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Shared parts of the native app steps (Slack, Trello, HubSpot, Shopify …): one request helper that either calls the app's
@@ -65,9 +66,9 @@ export async function appCall(app: App, locationId: string, cfg: ConnectorConfig
   const method = req.method ?? 'GET';
   if (usesNango(cfg)) {
     const nango = app.services.nango;
-    if (!nango?.config?.()) throw new Error(`${spec.name}: Nango ist nicht eingerichtet (Agentur → Integrationen → Nango) – oder die Nango-Integration im Feld entfernen und ein Token eintragen.`);
+    if (!nango?.config?.()) throw new Error(tLoc(app, locationId)('{app}: Nango ist nicht eingerichtet (Agentur → Integrationen → Nango) – oder die Nango-Integration im Feld entfernen und ein Token eintragen.', { app: spec.name }));
     const r = await nango.request(locationId, { integration: cfg.nango_integration.trim(), method, path: `${spec.nangoPrefix ?? ''}${req.path}`, query: Object.fromEntries(Object.entries(req.query ?? {}).filter(([, v]) => v !== undefined && v !== '')), body: req.form ?? req.body, headers: req.headers }, { source: 'workflow' });
-    if (!r.ok && !(req.accept ?? []).includes(r.status)) throw new Error(`${spec.name} (Nango): ${method} ${req.path} → HTTP ${r.status} ${typeof r.data === 'string' ? r.data.slice(0, 160) : JSON.stringify(r.data ?? '').slice(0, 160)}`);
+    if (!r.ok && !(req.accept ?? []).includes(r.status)) throw new Error(`${spec.name} (Nango): ${method} ${req.path} → HTTP ${r.status} ${typeof r.data /* i18n-ignore */ === 'string' ? r.data.slice(0, 160) : JSON.stringify(r.data ?? '').slice(0, 160)}`);
     return { status: r.status, data: r.data };
   }
   const query = { ...(spec.query?.(cfg) ?? {}), ...(req.query ?? {}) };
@@ -94,7 +95,7 @@ export async function appCall(app: App, locationId: string, cfg: ConnectorConfig
   const reason = data && typeof data === 'object' ? (data.message ?? data.detail ?? data.error_description ?? data.error?.message ?? data.errors?.[0]?.message ?? data.errors?.[0] ?? data.title ?? (typeof data.error === 'string' ? data.error : undefined)) : undefined;
   const shim = { status: r.status, ok: false, headers: r.headers, text: async () => (reason !== undefined ? JSON.stringify({ message: typeof reason === 'string' ? reason : JSON.stringify(reason) }) : raw) } as SafeResponse;
   await readJson(shim, spec.name);
-  throw new Error(`${spec.name} antwortet ${r.status}`);
+  throw new Error(tLoc(app, locationId)('{app} antwortet {status}', { app: spec.name, status: r.status }));
 }
 
 /** Basic auth header value. */

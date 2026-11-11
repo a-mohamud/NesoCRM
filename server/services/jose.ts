@@ -1,4 +1,5 @@
 import { constants, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify, type JsonWebKey, type KeyObject } from 'node:crypto';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Just enough JOSE for OpenID Connect login, with node:crypto only: decode a JWT, verify its
@@ -67,7 +68,7 @@ function publicKeyOf(jwk: Record<string, any>): KeyObject {
 /** Verifies the JWS signature of `jwt` with `jwk`. False when key and algorithm don't fit together. */
 export function verifyJws(jwt: Jwt, jwk: Record<string, any>): boolean {
   const alg = ALGS[jwt.header.alg];
-  if (!alg) throw new JoseError(`Signaturverfahren „${String(jwt.header.alg).slice(0, 20)}“ nicht erlaubt`);
+  if (!alg) throw new JoseError(tApp()('Signaturverfahren „{alg}“ nicht erlaubt', { alg: String(jwt.header.alg).slice(0, 20) }));
   if (!jwk || jwk.kty !== alg.kty) return false;
   if (jwk.alg && jwk.alg !== jwt.header.alg) return false;
   if (jwk.use && jwk.use !== 'sig') return false;
@@ -175,7 +176,7 @@ export function checkIdTokenClaims(c: Record<string, any>, expect: IdTokenExpect
 /** Signature (key from the provider's JWKS) + claims. Returns the claims. */
 export async function verifyIdToken(token: string, jwks: JwksCache, jwksUri: string, expect: IdTokenExpectations): Promise<Record<string, any>> {
   const jwt = decodeJwt(token);
-  if (!SUPPORTED_ALGS.includes(jwt.header.alg)) throw new JoseError(`Signaturverfahren „${String(jwt.header.alg).slice(0, 20)}“ nicht erlaubt`);
+  if (!SUPPORTED_ALGS.includes(jwt.header.alg)) throw new JoseError(tApp()('Signaturverfahren „{alg}“ nicht erlaubt', { alg: String(jwt.header.alg).slice(0, 20) }));
   if (jwt.header.crit !== undefined) throw new JoseError('ID-Token mit unbekannten Pflicht-Erweiterungen (crit)');
   const jwk = await jwks.keyFor(jwksUri, jwt.header);
   if (!verifyJws(jwt, jwk)) throw new JoseError('Signatur des ID-Tokens ist ungültig');

@@ -6,6 +6,7 @@ import { tokenContrast } from '../services/site-a11y.js';
 import { siteBlocks } from '../services/site-blocks.js';
 import { cleanBlocks, walkBlocks } from '../services/site-layout.js';
 import { COLOR_TOKENS, DEFAULT_TOKENS, FONT_STACKS, tokensOf } from '../services/site-style.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Design system of a site and reusable components.
@@ -77,7 +78,7 @@ export const siteDesignModule: Module = {
         tokens,
         defaults: DEFAULT_TOKENS,
         color_names: COLOR_TOKENS,
-        fonts: Object.entries(FONT_STACKS).map(([key, v]) => ({ key, label: v.label, css: v.css })),
+        fonts: Object.entries(FONT_STACKS).map(([key, v]) => ({ key, label: tCtx(ctx)(v.label), css: v.css })),
         contrast: tokenContrast(tokens),
         header: f.settings.header ?? null,
         footer: f.settings.footer ?? null,

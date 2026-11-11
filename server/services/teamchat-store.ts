@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { App } from '../core/app.js';
 import { contentMatches, extFor } from '../core/files.js';
 import { HttpError, bad, notFound, type Ctx } from '../core/http.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 import { id, now, sha256 } from '../core/util.js';
 import { actorOf, isBot, teamUsers, userById, type Actor, type TeamUser } from './collab-actor.js';
 import type { Fts } from './collab-fts.js';
@@ -163,7 +164,7 @@ export const cleanChannelName = (v: unknown): string => {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
   if (n.length < 2) throw bad('Der Name braucht mindestens 2 Buchstaben oder Ziffern');
-  if (n.length > LIMITS.name) throw bad(`Der Name ist zu lang (höchstens ${LIMITS.name} Zeichen)`);
+  if (n.length > LIMITS.name) throw bad(tApp()('Der Name ist zu lang (höchstens {max} Zeichen)', { max: LIMITS.name }));
   return n;
 };
 
@@ -179,8 +180,8 @@ export function createChannel(app: App, ctx: Ctx, o: { name: string; kind: 'publ
   const location = o.agency ? null : ctx.locationId;
   if (o.agency && ctx.user.role !== 'admin') throw new HttpError(403, 'Kanäle für die ganze Agentur legt nur die Agentur an');
   const name = cleanChannelName(o.name);
-  if (nameTaken(app, location, name)) throw bad(`Einen Kanal „${name}“ gibt es schon`);
-  if ((app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM teamchat_channels WHERE location_id IS ?', location)?.n ?? 0) >= LIMITS.channels) throw bad(`Höchstens ${LIMITS.channels} Kanäle`);
+  if (nameTaken(app, location, name)) throw bad(tCtx(ctx)('Einen Kanal „{name}“ gibt es schon', { name }));
+  if ((app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM teamchat_channels WHERE location_id IS ?', location)?.n ?? 0) >= LIMITS.channels) throw bad(tCtx(ctx)('Höchstens {n} Kanäle', { n: LIMITS.channels }));
   const ch: ChannelRow = { id: id(), location_id: location, kind: o.kind, name, topic: String(o.topic ?? '').slice(0, 250), dm_key: null, created_by: ctx.user.id, created_by_name: ctx.user.name, slack_mirror: 0, archived_at: null, last_message_at: null, created_at: now(), updated_at: now() };
   app.db.tx(() => {
     app.db.insert('teamchat_channels', ch);
@@ -203,7 +204,7 @@ export function directChannel(app: App, ctx: Ctx, userIds: string[]): ChannelRow
   if (isBot(ctx) || !ctx.user) throw new HttpError(403, 'Direktnachrichten gibt es nur mit Anmeldung');
   const ids = [...new Set([ctx.user.id, ...userIds.map(String)])].sort();
   if (ids.length < 2) throw bad('Bitte mindestens eine andere Person wählen');
-  if (ids.length > LIMITS.groupMax) throw bad(`Höchstens ${LIMITS.groupMax} Personen in einer Gruppe`);
+  if (ids.length > LIMITS.groupMax) throw bad(tCtx(ctx)('Höchstens {n} Personen in einer Gruppe', { n: LIMITS.groupMax }));
   const people = ids.map((i) => userById(app, i));
   // everybody must be somebody this person can chat with here: the same sub-account (or the agency)
   for (const p of people) if (!p || !mayChat(p, ctx.locationId)) throw bad('Mit dieser Person kannst du hier nicht schreiben');
@@ -222,7 +223,9 @@ export function directChannel(app: App, ctx: Ctx, userIds: string[]): ChannelRow
 export function ensureDefaultChannel(app: App, ctx: Ctx) {
   if (isBot(ctx) || !ctx.user || ctx.scope === 'read') return;
   if (app.db.get(`SELECT 1 AS x FROM teamchat_channels WHERE location_id = ? AND kind IN ('public', 'private')`, ctx.locationId)) return;
-  const ch: ChannelRow = { id: id(), location_id: ctx.locationId, kind: 'public', name: 'allgemein', topic: 'Alles fürs Team', dm_key: null, created_by: null, created_by_name: 'HyperLevel', slack_mirror: 0, archived_at: null, last_message_at: null, created_at: now(), updated_at: now() };
+  // The default channel is a record of the sub-account: named in its language.
+  const t = tLoc(app, ctx.locationId);
+  const ch: ChannelRow = { id: id(), location_id: ctx.locationId, kind: 'public', name: cleanChannelName(t('allgemein')), topic: t('Alles fürs Team'), dm_key: null, created_by: null, created_by_name: 'HyperLevel', slack_mirror: 0, archived_at: null, last_message_at: null, created_at: now(), updated_at: now() };
   app.db.insert('teamchat_channels', ch);
   addMember(app, ch.id, ctx.user.id);
 }
@@ -444,7 +447,7 @@ export function postMessage(app: App, ctx: Ctx, ch: ChannelRow, input: PostInput
   const actor: Actor = actorOf(app, ctx);
   const files = [...new Set(input.fileIds ?? [])].slice(0, LIMITS.files);
   let body = String(input.body ?? '').replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim();
-  if (body.length > LIMITS.body) throw bad(`Die Nachricht ist zu lang (höchstens ${LIMITS.body.toLocaleString('de-DE')} Zeichen)`);
+  if (body.length > LIMITS.body) throw bad(tApp()('Die Nachricht ist zu lang (höchstens {max} Zeichen)', { max: LIMITS.body.toLocaleString(tApp().locale === 'de' ? 'de-DE' : 'en-GB') }));
   if (!body && !files.length) throw bad('Die Nachricht ist leer');
   if (!input.quiet) rateLimit(app, `${actor.id ?? actor.name}`);
   let parent: MessageRow | undefined;
@@ -512,7 +515,7 @@ export function editMessage(app: App, ctx: Ctx, ch: ChannelRow, msg: MessageRow,
   if (!actor.id || msg.author_id !== actor.id || msg.kind !== 'user') throw new HttpError(403, 'Nur eigene Nachrichten bearbeiten');
   const body0 = String(text ?? '').replace(/\r\n?/g, '\n').trim();
   if (!body0) throw bad('Die Nachricht ist leer');
-  if (body0.length > LIMITS.body) throw bad(`Die Nachricht ist zu lang (höchstens ${LIMITS.body.toLocaleString('de-DE')} Zeichen)`);
+  if (body0.length > LIMITS.body) throw bad(tApp()('Die Nachricht ist zu lang (höchstens {max} Zeichen)', { max: LIMITS.body.toLocaleString(tApp().locale === 'de' ? 'de-DE' : 'en-GB') }));
   const m = resolveMentions(app, ch, body0, actor.id);
   const before = new Set(parse<string[]>(msg.mentions, []));
   app.db.run('UPDATE teamchat_messages SET body = ?, mentions = ?, edited_at = ? WHERE id = ?', m.body, JSON.stringify(m.ids), now(), msg.id);
@@ -577,7 +580,7 @@ export function toggleReaction(app: App, ctx: Ctx, ch: ChannelRow, msg: MessageR
 export function setPinned(app: App, ctx: Ctx, ch: ChannelRow, msg: MessageRow, pinned: boolean) {
   const actor = actorOf(app, ctx);
   if (msg.deleted_at) throw bad('Die Nachricht wurde gelöscht');
-  if (pinned && (app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM teamchat_messages WHERE channel_id = ? AND pinned_at IS NOT NULL', ch.id)?.n ?? 0) >= LIMITS.pins) throw bad(`Höchstens ${LIMITS.pins} angepinnte Nachrichten`);
+  if (pinned && (app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM teamchat_messages WHERE channel_id = ? AND pinned_at IS NOT NULL', ch.id)?.n ?? 0) >= LIMITS.pins) throw bad(tApp()('Höchstens {n} angepinnte Nachrichten', { n: LIMITS.pins }));
   app.db.run('UPDATE teamchat_messages SET pinned_at = ?, pinned_by = ? WHERE id = ?', pinned ? now() : null, pinned ? actor.name : null, msg.id);
   const [out] = messageOut(app, [app.db.get<MessageRow>('SELECT * FROM teamchat_messages WHERE id = ?', msg.id)!]);
   publish(app, ch, 'message-edit', out);

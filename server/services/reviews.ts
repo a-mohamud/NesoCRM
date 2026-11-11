@@ -3,8 +3,10 @@ import { render } from '../core/template.js';
 import { id, now, token } from '../core/util.js';
 import { contactVars, getContact } from './contacts.js';
 import { sendToContact, type Channel } from './messaging.js';
+import { tLoc } from '../i18n/index.js';
 
-export const DEFAULT_REVIEW_MESSAGE =
+// German = message id (multi-line: the exact text is the catalog key); sent in the sub-account's language.
+export const DEFAULT_REVIEW_MESSAGE = // i18n-ignore
   'Hallo {{contact.first_name|du}},\n\ndanke, dass du bei {{location.name}} warst! Wie zufrieden bist du? Deine Bewertung dauert nur 30 Sekunden:\n{{review.url}}\n\nVielen Dank!';
 
 /**
@@ -14,7 +16,8 @@ export const DEFAULT_REVIEW_MESSAGE =
  */
 export async function sendReviewRequest(app: App, locationId: string, contactId: string, channel: Channel = 'email') {
   const contact = getContact(app, locationId, contactId);
-  if (!contact) throw new Error('Kontakt nicht gefunden');
+  const t = tLoc(app, locationId);
+  if (!contact) throw new Error(t('Kontakt nicht gefunden'));
   const loc = app.location(locationId)!;
   const row = { id: id(), location_id: locationId, contact_id: contactId, token: token(16), channel, rating: null, comment: '', created_at: now() };
   app.db.insert('review_requests', row);
@@ -23,15 +26,15 @@ export async function sendReviewRequest(app: App, locationId: string, contactId:
   const m = await sendToContact(app, locationId, {
     contactId,
     channel,
-    subject: render(r.subject || 'Wie war es bei {{location.name}}?', vars),
-    body: render(r.message || DEFAULT_REVIEW_MESSAGE, vars),
+    subject: render(r.subject || t('Wie war es bei {{location.name}}?'), vars),
+    body: render(r.message || t(DEFAULT_REVIEW_MESSAGE), vars),
     source: 'Bewertungsanfrage',
     purpose: 'marketing',
     bulk: true,
   });
   if (m.status === 'failed') {
     app.db.run('DELETE FROM review_requests WHERE id = ?', row.id);
-    throw new Error(m.error || 'Bewertungsanfrage nicht gesendet');
+    throw new Error(m.error || t('Bewertungsanfrage nicht gesendet'));
   }
   return row;
 }

@@ -3,6 +3,10 @@ import { bad, notFound, str } from '../core/http.js';
 import { id as newId, now } from '../core/util.js';
 import { SYSTEM, dayOf, getProject, json, notifyUser, statusesOf, team, todayIn, tzOf, type Actor } from './pm-core.js';
 import { createTask, decorate, getTask, updateTask, resolveStatus, type TaskOut, type TaskRow } from './pm-tasks.js';
+import { tApp, tUser } from '../i18n/index.js';
+
+/** Validation messages in the instance language (static ids, so the central error translation is not needed). */
+const tm = tApp();
 
 /**
  * Automations of a project (or of all projects): "when a task's status changes / is completed / created /
@@ -125,12 +129,12 @@ function cleanActions(app: App, locationId: string, input: unknown): Record<stri
   if (input.length > 10) throw bad('Höchstens 10 Aktionen je Regel');
   return input.map((a: any, i) => {
     const type = String(a?.type ?? '');
-    if (!(type in ACTIONS)) throw bad(`Aktion ${i + 1}: unbekannter Typ`);
+    if (!(type in ACTIONS)) throw bad(tm('Aktion {n}: unbekannter Typ', { n: i + 1 }));
     const out: Record<string, any> = { type };
     switch (type) {
       case 'create_task':
         if (a.template_id) {
-          if (!app.db.get(`SELECT 1 AS x FROM pm_templates WHERE id = ? AND location_id = ? AND kind = 'task'`, String(a.template_id), locationId)) throw bad(`Aktion ${i + 1}: Aufgabenvorlage nicht gefunden`);
+          if (!app.db.get(`SELECT 1 AS x FROM pm_templates WHERE id = ? AND location_id = ? AND kind = 'task'`, String(a.template_id), locationId)) throw bad(tm('Aktion {n}: Aufgabenvorlage nicht gefunden', { n: i + 1 }));
           out.template_id = String(a.template_id);
         } else {
           Object.assign(out, cleanTaskTemplate(a));
@@ -141,16 +145,16 @@ function cleanActions(app: App, locationId: string, input: unknown): Record<stri
         break;
       case 'move_status':
         for (const k of ['status_id', 'status', 'category'] as const) if (a[k]) out[k] = String(a[k]);
-        if (!out.status_id && !out.status && !out.category) throw bad(`Aktion ${i + 1}: Status wählen`);
+        if (!out.status_id && !out.status && !out.category) throw bad(tm('Aktion {n}: Status wählen', { n: i + 1 }));
         break;
       case 'assign':
         out.mode = a.mode === 'set' ? 'set' : 'add';
         out.user_id = String(a.user_id ?? '');
-        if (!out.user_id) throw bad(`Aktion ${i + 1}: Person wählen`);
+        if (!out.user_id) throw bad(tm('Aktion {n}: Person wählen', { n: i + 1 }));
         break;
       case 'set_priority':
         out.priority = Number(a.priority);
-        if (!Number.isFinite(out.priority) || out.priority < 0 || out.priority > 4) throw bad(`Aktion ${i + 1}: Priorität 0–4`);
+        if (!Number.isFinite(out.priority) || out.priority < 0 || out.priority > 4) throw bad(tm('Aktion {n}: Priorität 0–4', { n: i + 1 }));
         break;
       case 'add_tag':
         out.tag = str(a.tag, 'Tag', { required: true, max: 40 });
@@ -257,7 +261,10 @@ function runActions(app: App, locationId: string, rule: AutomationRow, task: Tas
         break;
       case 'notify': {
         const ids = a.who === 'watchers' ? current.watchers : a.who === 'assignees' ? current.assignees.map((p) => p.id) : [a.who];
-        for (const u of ids) notifyUser(app, { locationId, userId: u, kind: 'status', title: a.message || `Automation „${rule.name}“: ${current.title}`, body: current.title, taskId: current.id, projectId: current.project_id, ref: `auto:${rule.id}:${current.id}:${u}:${now().slice(0, 16)}` });
+        for (const u of ids) {
+          const tu = tUser(app as never, u);
+          notifyUser(app, { locationId, userId: u, kind: 'status', title: a.message || tu('Automation „{name}“: {title}', { name: rule.name, title: current.title }), body: current.title, taskId: current.id, projectId: current.project_id, ref: `auto:${rule.id}:${current.id}:${u}:${now().slice(0, 16)}` });
+        }
         break;
       }
     }
@@ -310,7 +317,8 @@ export function scanOverdue(app: App, at = new Date()): number {
     const t = decorate(app, r.location_id, [r])[0];
     app.events.emit(r.location_id, 'task.overdue', { contactId: t.contact_id ?? undefined, task: t, projectId: t.project_id, automationDepth: 0, automationChain: [] });
     for (const u of new Set([...t.assignees.map((a) => a.id), ...t.watchers])) {
-      notifyUser(app, { locationId: r.location_id, userId: u, kind: 'overdue', title: `Überfällig: ${t.title}`, body: `Fällig war ${day.split('-').reverse().join('.')}`, taskId: t.id, projectId: t.project_id, ref: `overdue:${t.id}:${t.due_at}:${u}`, });
+      const tu = tUser(app as never, u);
+      notifyUser(app, { locationId: r.location_id, userId: u, kind: 'overdue', title: tu('Überfällig: {title}', { title: t.title }), body: tu('Fällig war {date}', { date: day.split('-').reverse().join(tu.locale === 'de' ? '.' : '/') }), taskId: t.id, projectId: t.project_id, ref: `overdue:${t.id}:${t.due_at}:${u}`, });
     }
   }
   db.run('DELETE FROM pm_seen WHERE at < ?', new Date(at.getTime() - 90 * 864e5).toISOString());
@@ -330,7 +338,8 @@ export function scanDueToday(app: App, at = new Date()): number {
     for (const r of rows.filter((x) => dayOf(x.due_at, tz) === today)) {
       const t = decorate(app, loc.id, [r])[0];
       for (const u of new Set([...t.assignees.map((a) => a.id), ...t.watchers])) {
-        if (notifyUser(app, { locationId: loc.id, userId: u, kind: 'due', title: `Heute fällig: ${t.title}`, body: t.project?.name ?? '', taskId: t.id, projectId: t.project_id, ref: `due:${t.id}:${today}:${u}`, quiet: u === t.assigned_to })) n++;
+        const tu = tUser(app as never, u);
+        if (notifyUser(app, { locationId: loc.id, userId: u, kind: 'due', title: tu('Heute fällig: {title}', { title: t.title }), body: t.project?.name ?? '', taskId: t.id, projectId: t.project_id, ref: `due:${t.id}:${today}:${u}`, quiet: u === t.assigned_to })) n++;
       }
     }
   }

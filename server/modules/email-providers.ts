@@ -3,6 +3,7 @@ import { HttpError, bad, notFound, str, type Ctx } from '../core/http.js';
 import { applyDelivery, channelFetch, deleteAccount, firstSeen, forgetSeen, getAccount, header, noteError, noteWebhook, safeEqual, saveAccount, secretsSet, type ChannelAccount } from '../services/channel-kit.js';
 import { MAIL_PROVIDERS, isMailProvider, parseBrevo, parseMailgun, parseMultipart, parsePostmark, parseResend, parseSesMessage, sendMail, testMail, verifyMailgun, verifySns, verifySvix, isSnsHost, type MailProvider, type MailWebhook } from '../services/email-providers.js';
 import { receiveMessage, type OutMail } from '../services/messaging.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Transactional email APIs as senders per sub-account (Einstellungen → E-Mail & SMS → Anbieter):
@@ -41,15 +42,18 @@ export const emailProvidersModule: Module = {
 
     const out = (p: MailProvider, loc: string, a: ChannelAccount | undefined) => {
       const spec = MAIL_PROVIDERS[p];
+      // labels, hints and options of the provider forms in the sub-account's language
+      const t = tLoc(app, loc);
+      const field = ({ pattern: _p, ...f }: (typeof spec.secrets)[number]) => ({ ...f, label: t(f.label), ...(f.hint ? { hint: t(f.hint) } : {}), ...(f.options ? { options: f.options.map(([k, v]) => [k, t(v)]) } : {}) });
       return {
         provider: p,
         label: spec.label,
         configured: mailConfigured(p, a),
         config: Object.fromEntries(spec.config.map((f) => [f.key, a?.config[f.key] ?? (f.options ? f.options[0][0] : '')])),
         secrets_set: secretsSet(a, spec.secrets.map((f) => f.key)),
-        fields: { secrets: spec.secrets.map(({ pattern: _p, ...f }) => f), config: spec.config.map(({ pattern: _p, ...f }) => f) },
+        fields: { secrets: spec.secrets.map(field), config: spec.config.map(field) },
         webhook_url: hookUrl(p, a, loc),
-        signed: spec.signed,
+        signed: t(spec.signed),
         inbound: spec.inbound,
         last_webhook_at: a?.last_webhook_at ?? null,
         last_error: a?.last_error ?? null,
@@ -75,12 +79,13 @@ export const emailProvidersModule: Module = {
       const p = providerOf(ctx);
       const spec = MAIL_PROVIDERS[p];
       const b = ctx.body ?? {};
+      const t = tCtx(ctx);
       const secrets: Record<string, string | null> = {};
       for (const f of spec.secrets) {
         if (b[f.key] === null) secrets[f.key] = null;
         else if (b[f.key] !== undefined && b[f.key] !== '' && b[f.key] !== '••••••') {
           const v = str(b[f.key], f.label, { max: 300 }).replace(/\s+/g, '');
-          if (f.pattern && !f.pattern.test(v)) throw bad(`${f.label} sieht ungültig aus${f.hint ? ` (${f.hint})` : ''}`);
+          if (f.pattern && !f.pattern.test(v)) throw bad(t('{label} sieht ungültig aus', { label: t(f.label) }) + (f.hint ? ` (${t(f.hint)})` : ''));
           secrets[f.key] = v;
         }
       }
@@ -88,20 +93,20 @@ export const emailProvidersModule: Module = {
       for (const f of spec.config) {
         if (b[f.key] === undefined) continue;
         const v = str(b[f.key], f.label, { max: 300 });
-        if (f.options && !f.options.some(([k]) => k === v)) throw bad(`${f.label}: unbekannte Auswahl`);
-        if (v && f.pattern && !f.pattern.test(v)) throw bad(`${f.label} sieht ungültig aus${f.hint ? ` (z. B. ${f.hint})` : ''}`);
+        if (f.options && !f.options.some(([k]) => k === v)) throw bad(t('{label}: unbekannte Auswahl', { label: t(f.label) }));
+        if (v && f.pattern && !f.pattern.test(v)) throw bad(t('{label} sieht ungültig aus', { label: t(f.label) }) + (f.hint ? t(' (z. B. {hint})', { hint: t(f.hint) }) : ''));
         config[f.key] = v;
       }
       const from: Record<string, string> = {};
       for (const k of ['fromName', 'fromEmail', 'replyTo'] as const) {
         if (b[k] === undefined) continue;
         const v = str(b[k], k === 'fromName' ? 'Absendername' : k === 'fromEmail' ? 'Absender-E-Mail' : 'Antwort an', { max: 200 });
-        if (v && k !== 'fromName' && !EMAIL.test(v)) throw bad(`${k === 'fromEmail' ? 'Absender-E-Mail' : 'Antwort an'}: keine gültige E-Mail-Adresse`);
+        if (v && k !== 'fromName' && !EMAIL.test(v)) throw bad(t('{field}: keine gültige E-Mail-Adresse', { field: k === 'fromEmail' ? t('Absender-E-Mail') : t('Antwort an') }));
         from[k] = v;
       }
       const a = saveAccount(app, ctx.locationId, chan(p), { config, secrets, regenerateKey: !!b.regenerate_webhook });
       if (b.activate) {
-        if (!mailConfigured(p, a)) throw bad(`${spec.label}: bitte alle Pflichtfelder ausfüllen`);
+        if (!mailConfigured(p, a)) throw bad(t('{provider}: bitte alle Pflichtfelder ausfüllen', { provider: spec.label }));
         const fromEmail = from.fromEmail ?? settingsOf(ctx.locationId).email?.fromEmail;
         if (!fromEmail) throw bad('Absender-E-Mail fehlt – sie muss beim Anbieter bestätigt sein');
         writeEmailSettings(ctx.locationId, { ...from, provider: p });
@@ -119,7 +124,7 @@ export const emailProvidersModule: Module = {
     router.post('/api/settings/channels/mail/:provider/test', 'location', async (ctx) => {
       const p = providerOf(ctx);
       const a = getAccount(app, ctx.locationId, chan(p));
-      if (!mailConfigured(p, a)) throw bad(`${MAIL_PROVIDERS[p].label} ist noch nicht vollständig eingerichtet`);
+      if (!mailConfigured(p, a)) throw bad(tCtx(ctx)('{provider} ist noch nicht vollständig eingerichtet', { provider: MAIL_PROVIDERS[p].label }));
       try {
         const info = await testMail(p, mailCreds(a), fetcher());
         noteError(app, ctx.locationId, chan(p), null);
@@ -132,10 +137,11 @@ export const emailProvidersModule: Module = {
     // --- sending: plugs into deliverEmail ---------------------------------------------------------
     const transport = (p: MailProvider) => async (loc: LocationRow, mail: OutMail) => {
       const a = getAccount(app, loc.id, chan(p));
-      if (!mailConfigured(p, a)) throw new Error(`${MAIL_PROVIDERS[p].label} ist nicht eingerichtet (${SETTINGS})`);
+      const t = tLoc(app, loc.id);
+      if (!mailConfigured(p, a)) throw new Error(t('{provider} ist nicht eingerichtet ({where})', { provider: MAIL_PROVIDERS[p].label, where: t(SETTINGS) }));
       const cfg = loc.settings.email ?? {};
       const fromEmail = String(cfg.fromEmail ?? '').trim();
-      if (!fromEmail) throw new Error(`Absender-E-Mail fehlt (${SETTINGS})`);
+      if (!fromEmail) throw new Error(t('Absender-E-Mail fehlt ({where})', { where: t(SETTINGS) }));
       const r = await sendMail(p, mailCreds(a), { fromEmail, fromName: mail.fromName || cfg.fromName, to: mail.to, subject: mail.subject, html: mail.html, text: mail.text, replyTo: mail.replyTo || cfg.replyTo || undefined, ...(mail.headers ? { headers: mail.headers } : {}) }, fetcher());
       return { status: 'sent' as const, providerId: r.providerId || undefined };
     };
@@ -203,9 +209,9 @@ export const emailProvidersModule: Module = {
               if (!isSnsHost(String(body.SubscribeURL ?? ''))) throw bad('Unerwartete Bestätigungs-Adresse');
               try {
                 const r = await fetcher()(String(body.SubscribeURL), { signal: AbortSignal.timeout(10_000) });
-                if (!r.ok) throw new Error(`SNS ${r.status}`);
+                if (!r.ok) throw new Error(`SNS ${r.status}`); // i18n-ignore
               } catch (e) {
-                noteError(app, loc, chan(p), `SNS-Abo nicht bestätigt: ${(e as Error).message}`);
+                noteError(app, loc, chan(p), `${tLoc(app, loc)('SNS-Abo nicht bestätigt')}: ${(e as Error).message}`);
                 throw new HttpError(502, 'SNS-Abo nicht bestätigt');
               }
               noteWebhook(app, loc, chan(p));
@@ -247,17 +253,17 @@ export const emailProvidersModule: Module = {
           credentials: 'API-Schlüssel des Anbieters und bestätigte Absender-Adresse unter Einstellungen → E-Mail & SMS; Webhook-Adresse beim Anbieter eintragen.',
           docs: 'docs/channels.md#email-providers',
         },
-        location: (_ctx: Ctx, loc: string) => providerProbe(app, loc),
+        location: (ctx: Ctx, loc: string) => providerProbe(app, loc, tCtx(ctx)),
       },
     ];
   },
 };
 
-function providerProbe(app: App, loc: string) {
+function providerProbe(app: App, loc: string, t = tApp()) {
   const p = app.location(loc)?.settings.email?.provider;
-  if (!isMailProvider(p)) return { status: 'info' as const, detail: p === 'smtp' ? 'SMTP aktiv' : 'Kein API-Anbieter gewählt' };
+  if (!isMailProvider(p)) return { status: 'info' as const, detail: p === 'smtp' ? t('SMTP aktiv') : t('Kein API-Anbieter gewählt') };
   const a = getAccount(app, loc, chan(p));
-  if (!mailConfigured(p, a)) return { status: 'partial' as const, detail: `${MAIL_PROVIDERS[p].label} unvollständig` };
+  if (!mailConfigured(p, a)) return { status: 'partial' as const, detail: t('{provider} unvollständig', { provider: MAIL_PROVIDERS[p].label }) };
   if (a.last_error) return { status: 'partial' as const, detail: `${MAIL_PROVIDERS[p].label}: ${a.last_error.slice(0, 80)}` };
-  return { status: 'ok' as const, detail: `${MAIL_PROVIDERS[p].label}${a.last_webhook_at ? ' · Meldungen kommen an' : ' · noch keine Zustell-Meldung'}` };
+  return { status: 'ok' as const, detail: `${MAIL_PROVIDERS[p].label}${a.last_webhook_at ? t(' · Meldungen kommen an') : t(' · noch keine Zustell-Meldung')}` };
 }

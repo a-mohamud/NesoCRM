@@ -1,4 +1,5 @@
 import QRCode from 'qrcode';
+import { tApp } from '../i18n/index.js';
 import type { Module } from '../core/app.js';
 import { bad, type RawResult } from '../core/http.js';
 
@@ -28,7 +29,10 @@ export interface QrOptions {
 const intParam = (v: string | null, min: number, max: number, def: number, what: string) => {
   if (v === null || v === '') return def;
   const n = Number(v);
-  if (!Number.isInteger(n) || n < min || n > max) throw bad(`${what}: ganze Zahl von ${min} bis ${max}`);
+  if (!Number.isInteger(n) || n < min || n > max) {
+    const t = tApp();
+    throw bad(t('{what}: ganze Zahl von {min} bis {max}', { what: t(what), min, max }));
+  }
   return n;
 };
 
@@ -48,7 +52,7 @@ export function qrOptions(q: URLSearchParams): QrOptions {
 export function qrTarget(raw: string | null, baseUrl: string): string {
   const v = (raw ?? '').trim();
   if (!v) throw bad('Link fehlt');
-  if (v.length > QR_MAX_URL) throw bad(`Link ist zu lang (höchstens ${QR_MAX_URL} Zeichen)`);
+  if (v.length > QR_MAX_URL) throw bad(tApp()('Link ist zu lang (höchstens {n} Zeichen)', { n: QR_MAX_URL }));
   const full = v.startsWith('/') && !v.startsWith('//') ? `${baseUrl.replace(/\/$/, '')}${v}` : v;
   if (!/^https?:\/\/[^\s]+$/i.test(full)) throw bad('Nur Links mit http:// oder https:// werden zum QR-Code');
   return full;

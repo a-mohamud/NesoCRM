@@ -4,6 +4,7 @@ import { formatInTz } from '../core/time.js';
 import { A4, Page, latin, pdfOf } from '../services/creator-pdf.js';
 import { catalog, settingsOf, storeKey } from '../services/store-catalog.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Online-Shop fulfilment and recovery (HighLevel parity, docs/store.md#packing-slips): packing slips as PDF – one order, or every paid
@@ -23,6 +24,7 @@ const parse = (v: unknown, fb: any) => {
 /** One page per order: sender, ship-to address, order number and date, shipping method, the lines (no prices), the buyer's note. */
 export function packingSlipPdf(app: App, locationId: string, orders: any[]): Buffer {
   const loc = app.location(locationId)!;
+  const t = tLoc(app, locationId);
   const pages: Page[] = [];
   const L = 60;
   const W = A4.w - 120;
@@ -33,29 +35,29 @@ export function packingSlipPdf(app: App, locationId: string, orders: any[]): Buf
     let y = 48;
     page.text(L, y, latin(loc.name), 11, { bold: true });
     if (loc.address) page.para(L, y + 16, latin(loc.address), W / 2, 9, { color: '#64748b' });
-    page.text(A4.w - 60, y, latin('Packzettel'), 20, { bold: true, color: '#1e3a8a', anchor: 'end' });
-    page.text(A4.w - 60, y + 28, latin(`Bestellung ${o.number}`), 11, { anchor: 'end' });
+    page.text(A4.w - 60, y, latin(t('Packzettel')), 20, { bold: true, color: '#1e3a8a', anchor: 'end' });
+    page.text(A4.w - 60, y + 28, latin(t('Bestellung {number}', { number: o.number })), 11, { anchor: 'end' });
     page.text(A4.w - 60, y + 44, latin(formatInTz(o.created_at, loc.timezone, { weekday: undefined, hour: undefined, minute: undefined })), 10, { color: '#64748b', anchor: 'end' });
     y = 140;
     const a = parse(o.address, {});
-    const shipTo = [a.name || o.name, a.company, a.street, [a.postal_code, a.city].filter(Boolean).join(' '), a.country && a.country !== 'DE' ? COUNTRY[a.country] || a.country : ''].filter(Boolean).join('\n');
-    page.text(L, y, latin('Lieferadresse'), 9, { bold: true, color: '#475569' });
+    const shipTo = [a.name || o.name, a.company, a.street, [a.postal_code, a.city].filter(Boolean).join(' '), a.country && a.country !== 'DE' ? (COUNTRY[a.country] ? t(COUNTRY[a.country]) : a.country) : ''].filter(Boolean).join('\n');
+    page.text(L, y, latin(t('Lieferadresse')), 9, { bold: true, color: '#475569' });
     y += 16;
     y += page.para(L, y, latin(shipTo || o.name || o.email || '–'), W / 2, 11) + 6;
     const ship = parse(o.shipping, {});
     if (ship?.name) {
-      page.text(L, y, latin(`Versandart: ${ship.name}`), 10, { color: '#475569' });
+      page.text(L, y, latin(t('Versandart: {name}', { name: t(ship.name) })), 10, { color: '#475569' });
       y += 16;
     }
     if (o.phone) {
-      page.text(L, y, latin(`Telefon: ${o.phone}`), 10, { color: '#475569' });
+      page.text(L, y, latin(t('Telefon: {phone}', { phone: o.phone })), 10, { color: '#475569' });
       y += 16;
     }
     y += 14;
     page.rect(L, y, W, 22, { fill: '#f1f5f9' });
-    page.text(L + 8, y + 5, latin('Menge'), 9.5, { bold: true });
-    page.text(L + 70, y + 5, latin('Artikel'), 9.5, { bold: true });
-    page.text(L + W - 8, y + 5, latin('Artikelnummer'), 9.5, { bold: true, anchor: 'end' });
+    page.text(L + 8, y + 5, latin(t('Stückzahl')), 9.5, { bold: true });
+    page.text(L + 70, y + 5, latin(t('Artikelbezeichnung')), 9.5, { bold: true });
+    page.text(L + W - 8, y + 5, latin(t('Artikelnummer')), 9.5, { bold: true, anchor: 'end' });
     y += 30;
     let count = 0;
     for (const it of parse(o.items, []) as any[]) {
@@ -74,15 +76,15 @@ export function packingSlipPdf(app: App, locationId: string, orders: any[]): Buf
       count += Number(it.qty) || 0;
     }
     y += 6;
-    page.text(L, y, latin(`${count} Teile`), 10, { color: '#475569' });
+    page.text(L, y, latin(t.plural(count, { one: '{n} Teil', other: '{n} Teile' })), 10, { color: '#475569' });
     y += 24;
     if (o.note) {
-      page.text(L, y, latin('Anmerkung des Käufers'), 9, { bold: true, color: '#475569' });
+      page.text(L, y, latin(t('Anmerkung des Käufers')), 9, { bold: true, color: '#475569' });
       y += 14;
       page.para(L, y, latin(o.note), W, 10);
     }
   }
-  return pdfOf(pages, { title: orders.length === 1 ? `Packzettel ${orders[0].number}` : `Packzettel (${orders.length})` });
+  return pdfOf(pages, { title: orders.length === 1 ? t('Packzettel {number}', { number: orders[0].number }) : t('Packzettel ({n})', { n: orders.length }) });
 }
 
 const pdf = (body: Buffer, filename: string) => ({ __raw: true as const, status: 200, headers: { 'content-type': 'application/pdf', 'content-disposition': `inline; filename="${filename}"`, 'cache-control': 'private, no-store' }, body });

@@ -1,15 +1,15 @@
 import type { App } from '../core/app.js';
 import { jsonForScript, publicPage } from '../core/page.js';
 import { escapeHtml } from '../core/template.js';
-import { centsToMoney } from '../core/util.js';
 import { contractHtml } from '../modules/contracts.js';
 import { contactName, getContact } from './contacts.js';
-import { deYmd, openCents, unitCode, UNITS } from './invoice-model.js';
+import { openCents, unitCode, UNITS } from './invoice-model.js';
 import { loadInvoice } from './invoice-flow.js';
 import { dueOnAccept, type QuoteRow } from './quote-engine.js';
-import { isExpired, quoteTotals, resolveSelection, type QuoteItem, type Selection } from './quote-model.js';
+import { dateIn, isExpired, moneyIn, numIn, quoteTotals, resolveSelection, tq, type QuoteItem, type Selection } from './quote-model.js';
 import { discountText, lineAmounts } from './sales-lines.js';
 import { ymdInTz } from '../core/time.js';
+import { tLoc, translator, type STFn } from '../i18n/index.js';
 
 /**
  * The page a customer gets: the offer on one screen – positions, alternative options to choose from, optional positions to tick, a
@@ -19,6 +19,8 @@ import { ymdInTz } from '../core/time.js';
  */
 
 const e = escapeHtml;
+
+// Neso fork: the page speaks the sub-account's customer language (tLoc); amounts and dates follow it (quote-model.ts).
 
 const CSS = `
 .q{max-width:860px;margin:0 auto;padding:28px 16px 64px}
@@ -71,36 +73,36 @@ const CSS = `
 @media print{body{background:#fff}.q-noprint{display:none!important}.q-card{box-shadow:none;border:0;padding:0}.q-tab{display:block!important}.q-opt:not(:has(input:checked)){display:none}}
 `;
 
-const qtyText = (it: QuoteItem) => `${String(it.qty).replace('.', ',')}${it.unit ? ` ${UNITS[unitCode(it.unit)] ?? ''}` : ''}`;
+const qtyText = (it: QuoteItem, t: STFn) => `${numIn(t, it.qty)}${it.unit ? ` ${UNITS[unitCode(it.unit)] ? t(UNITS[unitCode(it.unit)]) : ''}` : ''}`;
 
-function rowsHtml(items: QuoteItem[], q: QuoteRow, selected: Selection, optionId = ''): string {
-  const money = (c: number) => centsToMoney(c, q.currency);
+function rowsHtml(items: QuoteItem[], q: QuoteRow, selected: Selection, optionId = '', t: STFn = translator()): string {
+  const money = moneyIn(t, q.currency);
   const ticked = new Set(selected.optional_ids);
   const row = (it: QuoteItem) => {
     const a = lineAmounts(it);
     const off = discountText(it, money);
     const name = `<b>${e(it.name)}</b>${it.description ? `<small>${e(it.description)}</small>` : ''}`;
     const cell = it.optional
-      ? `<label class="q-pick"><input type="checkbox" class="q-optional" value="${e(it.id)}" data-option="${e(optionId)}"${ticked.has(it.id) ? ' checked' : ''}><span class="n">${name}<small>Optional – nach Wunsch dazunehmen</small></span></label>`
+      ? `<label class="q-pick"><input type="checkbox" class="q-optional" value="${e(it.id)}" data-option="${e(optionId)}"${ticked.has(it.id) ? ' checked' : ''}><span class="n">${name}<small>${e(t('Optional – nach Wunsch dazunehmen'))}</small></span></label>`
       : `<span class="n">${name}</span>`;
-    return `<tr class="${it.optional ? 'opt' : ''}"><td class="n">${cell}</td><td class="r hide-s">${e(qtyText(it))}</td><td class="r hide-s">${money(it.price_cents)}</td><td class="r">${money(a.net_cents)}${off ? `<div class="off">– ${e(off)} Rabatt</div>` : ''}</td></tr>`;
+    return `<tr class="${it.optional ? 'opt' : ''}"><td class="n">${cell}</td><td class="r hide-s">${e(qtyText(it, t))}</td><td class="r hide-s">${money(it.price_cents)}</td><td class="r">${money(a.net_cents)}${off ? `<div class="off">${e(t('– {amount} Rabatt', { amount: off }))}</div>` : ''}</td></tr>`;
   };
   return items.map(row).join('');
 }
 
 /** The sums box and what is due at acceptance for a choice – also what the preview endpoint answers with. */
-export function totalsHtml(q: QuoteRow, sel: Selection): string {
-  const money = (c: number) => centsToMoney(c, q.currency);
+export function totalsHtml(q: QuoteRow, sel: Selection, tr: STFn = translator()): string {
+  const money = moneyIn(tr, q.currency);
   const t = quoteTotals(q.doc, sel, q.tax_mode);
   const rows: string[] = [];
-  if (t.discount_cents > 0) rows.push(`<div class="muted"><span>Positionen</span><span>${money(t.list_cents)}</span></div>`, `<div class="muted"><span>Rabatte</span><span>– ${money(t.discount_cents)}</span></div>`);
-  rows.push(`<div><span>Summe netto</span><span>${money(t.subtotal_cents)}</span></div>`);
-  for (const g of t.groups) if (g.rate > 0) rows.push(`<div class="muted"><span>Umsatzsteuer ${e(String(g.rate).replace('.', ','))} %</span><span>${money(g.tax_cents)}</span></div>`);
-  rows.push(`<div class="big"><span>Gesamtbetrag</span><span>${money(t.total_cents)}</span></div>`);
+  if (t.discount_cents > 0) rows.push(`<div class="muted"><span>${e(tr('Positionen'))}</span><span>${money(t.list_cents)}</span></div>`, `<div class="muted"><span>${e(tr('Rabatte'))}</span><span>– ${money(t.discount_cents)}</span></div>`);
+  rows.push(`<div><span>${e(tr('Summe netto'))}</span><span>${money(t.subtotal_cents)}</span></div>`);
+  for (const g of t.groups) if (g.rate > 0) rows.push(`<div class="muted"><span>${e(tr('Umsatzsteuer {rate} %', { rate: numIn(tr, g.rate) }))}</span><span>${money(g.tax_cents)}</span></div>`);
+  rows.push(`<div class="big"><span>${e(tr('Gesamtbetrag'))}</span><span>${money(t.total_cents)}</span></div>`);
   let due = '';
   try {
-    const d = dueOnAccept(q, t);
-    if (d) due = `<div class="q-due"><b>${d.kind === 'full' ? 'Mit der Annahme zahlbar' : `Bei Annahme fällig: ${e(d.label)}`}</b> – ${money(d.total_cents)}<br><span class="muted">Sie erhalten die Rechnung sofort per E-Mail und können gleich online bezahlen.</span></div>`;
+    const d = dueOnAccept(q, t, tr);
+    if (d) due = `<div class="q-due"><b>${d.kind === 'full' ? e(tr('Mit der Annahme zahlbar')) : e(tr('Bei Annahme fällig: {label}', { label: d.label }))}</b> – ${money(d.total_cents)}<br><span class="muted">${e(tr('Sie erhalten die Rechnung sofort per E-Mail und können gleich online bezahlen.'))}</span></div>`;
   } catch {
     /* a deposit that does not fit this choice is caught when the quote is edited */
   }
@@ -115,93 +117,96 @@ function seller(app: App, q: QuoteRow) {
 
 function frame(app: App, q: QuoteRow, inner: string, head = ''): string {
   const { loc, logo } = seller(app, q);
-  const body = `<div class="q"><div class="q-head"><div>${logo}</div><div class="q-meta"><strong>Angebot ${e(q.number)}</strong>${q.sent_at ? `vom ${e(deYmd(q.sent_at))}<br>` : ''}${q.valid_until ? `gültig bis ${e(deYmd(q.valid_until))}` : ''}</div></div>${inner}<div class="q-foot">${e(loc.name)}${loc.address ? ` · ${e(loc.address)}` : ''}${loc.email ? ` · <a href="mailto:${e(loc.email)}">${e(loc.email)}</a>` : ''}</div></div>`;
-  return publicPage({ title: `Angebot ${q.number} – ${loc.name}`, body, head: `<style>${CSS}</style><meta name="robots" content="noindex">`, color: loc.settings?.branding?.color || undefined });
+  const t = tLoc(app, q.location_id);
+  const body = `<div class="q"><div class="q-head"><div>${logo}</div><div class="q-meta"><strong>${e(t('Angebot {number}', { number: q.number }))}</strong>${q.sent_at ? `${e(t('vom {date}', { date: dateIn(t, q.sent_at) }))}<br>` : ''}${q.valid_until ? e(t('gültig bis {date}', { date: dateIn(t, q.valid_until) })) : ''}</div></div>${inner}<div class="q-foot">${e(loc.name)}${loc.address ? ` · ${e(loc.address)}` : ''}${loc.email ? ` · <a href="mailto:${e(loc.email)}">${e(loc.email)}</a>` : ''}</div></div>`;
+  return publicPage({ title: t('Angebot {number} – {company}', { number: q.number, company: loc.name }), body, head: `<style>${CSS}</style><meta name="robots" content="noindex">`, color: loc.settings?.branding?.color || undefined });
 }
 
-const notice = (title: string, text: string, kind = '') => `<div class="q-card"><h1>${e(title)}</h1><p class="q-badge ${kind}">${e(kind === 'bad' ? 'Nicht mehr verfügbar' : 'Status')}</p><p class="q-text">${e(text)}</p></div>`;
+const notice = (t: STFn, title: string, text: string, kind = '') => `<div class="q-card"><h1>${e(title)}</h1><p class="q-badge ${kind}">${e(kind === 'bad' ? t('Nicht mehr verfügbar') : t('Status'))}</p><p class="q-text">${e(text)}</p></div>`;
 
 function acceptedPage(app: App, q: QuoteRow): string {
-  const money = (c: number) => centsToMoney(c, q.currency);
+  const t = tLoc(app, q.location_id);
+  const money = moneyIn(t, q.currency);
   const contract = q.contract_id ? app.db.get<{ public_token: string }>('SELECT public_token FROM contracts WHERE id = ?', q.contract_id) : undefined;
   const inv = q.invoice_id ? loadInvoice(app, q.location_id, q.invoice_id) : undefined;
   const est = q.estimate_id ? loadInvoice(app, q.location_id, q.estimate_id) : undefined;
   const parts: string[] = [];
   if (inv && inv.status !== 'draft') {
-    const label = inv.inv_type === 'partial' ? 'Anzahlungsrechnung' : 'Rechnung';
+    const partial = inv.inv_type === 'partial';
     const paid = inv.status === 'paid';
     // what is still open (a part payment or a credit note is not asked for again); cancelled or credited: nothing
     const open = inv.status === 'void' ? 0 : openCents(inv);
     const due = !paid && open > 0;
     parts.push(
-      `<div class="q-card"><h2>${paid ? `${label} bezahlt` : `${label} ${e(inv.number)}`}</h2><p class="q-text">${paid ? 'Vielen Dank – Ihre Zahlung ist bei uns eingegangen.' : due ? `Offener Betrag: <b>${money(open)}</b>. Sie können gleich online bezahlen:` : 'Für diese Rechnung ist nichts mehr offen.'}</p>${due ? String(app.services.invoicePayHtml?.(inv) ?? '') : ''}<p><a class="btn q-btn2" href="/i/${e(inv.public_token)}">${due ? 'Rechnung ansehen / andere Zahlungswege' : 'Rechnung ansehen'}</a></p></div>`,
+      `<div class="q-card"><h2>${e(paid ? (partial ? t('Anzahlungsrechnung bezahlt') : t('Rechnung bezahlt')) : partial ? t('Anzahlungsrechnung {number}', { number: inv.number }) : t('Rechnung {number}', { number: inv.number }))}</h2><p class="q-text">${paid ? e(t('Vielen Dank – Ihre Zahlung ist bei uns eingegangen.')) : due ? e(t('Offener Betrag: {amount}. Sie können gleich online bezahlen:', { amount: '\u0000' })).replace('\u0000', `<b>${money(open)}</b>`) : e(t('Für diese Rechnung ist nichts mehr offen.'))}</p>${due ? String(app.services.invoicePayHtml?.(inv) ?? '') : ''}<p><a class="btn q-btn2" href="/i/${e(inv.public_token)}">${e(due ? t('Rechnung ansehen / andere Zahlungswege') : t('Rechnung ansehen'))}</a></p></div>`,
     );
   }
   const links = [
-    contract ? `<a class="btn q-btn2" href="/s/${e(contract.public_token)}">Unterschriebene Kopie</a>` : '',
-    est ? `<a class="btn q-btn2" href="/i/${e(est.public_token)}/pdf">Angebot als PDF</a>` : '',
+    contract ? `<a class="btn q-btn2" href="/s/${e(contract.public_token)}">${e(t('Unterschriebene Kopie'))}</a>` : '',
+    est ? `<a class="btn q-btn2" href="/i/${e(est.public_token)}/pdf">${e(t('Angebot als PDF'))}</a>` : '',
   ].filter(Boolean);
   return frame(
     app,
     q,
-    `<div class="q-card q-ok"><h2>Vielen Dank – das Angebot ist angenommen</h2><p class="q-text">Sie haben „${e(q.title)}“ am ${e(deYmd(q.accepted_at))} unterschrieben (${e(q.signer_name)}). Wir melden uns bei Ihnen.${q.accepted_total_cents ? ` Auftragswert: <b>${money(q.accepted_total_cents)}</b>.` : ''}</p>${links.length ? `<div class="q-actions">${links.join('')}</div>` : ''}</div>${parts.join('')}`,
+    `<div class="q-card q-ok"><h2>${e(t('Vielen Dank – das Angebot ist angenommen'))}</h2><p class="q-text">${e(t('Sie haben „{title}“ am {date} unterschrieben ({name}). Wir melden uns bei Ihnen.', { title: q.title, date: dateIn(t, q.accepted_at), name: q.signer_name }))}${q.accepted_total_cents ? ` ${e(t('Auftragswert: {amount}.', { amount: '\u0000' })).replace('\u0000', `<b>${money(q.accepted_total_cents)}</b>`)}` : ''}</p>${links.length ? `<div class="q-actions">${links.join('')}</div>` : ''}</div>${parts.join('')}`,
   );
 }
 
 /** The page for the quote's token, whatever state it is in. */
 export function quoteHtml(app: App, q: QuoteRow): string {
   const { loc } = seller(app, q);
+  const tr = tLoc(app, q.location_id);
   if (q.status === 'accepted') return acceptedPage(app, q);
-  if (q.status === 'declined') return frame(app, q, notice('Angebot abgelehnt', 'Sie haben dieses Angebot abgelehnt. Wenn Sie es sich anders überlegen, melden Sie sich gern bei uns.'));
-  if (q.status === 'void') return frame(app, q, notice('Angebot zurückgezogen', `Dieses Angebot wurde zurückgezogen${q.note ? ` (${q.note})` : ''}. Bitte melden Sie sich bei uns – wir senden Ihnen gern ein aktuelles.`, 'bad'));
+  if (q.status === 'declined') return frame(app, q, notice(tr, tr('Angebot abgelehnt'), tr('Sie haben dieses Angebot abgelehnt. Wenn Sie es sich anders überlegen, melden Sie sich gern bei uns.')));
+  if (q.status === 'void') return frame(app, q, notice(tr, tr('Angebot zurückgezogen'), q.note ? tr('Dieses Angebot wurde zurückgezogen ({note}). Bitte melden Sie sich bei uns – wir senden Ihnen gern ein aktuelles.', { note: q.note }) : tr('Dieses Angebot wurde zurückgezogen. Bitte melden Sie sich bei uns – wir senden Ihnen gern ein aktuelles.'), 'bad'));
   const today = ymdInTz(new Date(), loc.timezone || 'Europe/Berlin');
-  if (q.status === 'expired' || isExpired(q.valid_until, today)) return frame(app, q, notice('Angebot abgelaufen', `Dieses Angebot war bis ${deYmd(q.valid_until)} gültig. Melden Sie sich bei uns – wir verlängern es gern oder machen ein neues.`, 'bad'));
+  if (q.status === 'expired' || isExpired(q.valid_until, today)) return frame(app, q, notice(tr, tr('Angebot abgelaufen'), tr('Dieses Angebot war bis {date} gültig. Melden Sie sich bei uns – wir verlängern es gern oder machen ein neues.', { date: dateIn(tr, q.valid_until) }), 'bad'));
 
   const sel = resolveSelection(q.doc);
   const contact = getContact(app, q.location_id, q.contact_id);
-  const money = (c: number) => centsToMoney(c, q.currency);
+  const money = moneyIn(tr, q.currency);
   const many = q.doc.options.length > 1;
   const options = many
-    ? `<div class="q-card"><h2>Wählen Sie Ihre Variante</h2><div class="q-opts" role="radiogroup" aria-label="Variante">${q.doc.options
+    ? `<div class="q-card"><h2>${e(tr('Wählen Sie Ihre Variante'))}</h2><div class="q-opts" role="radiogroup" aria-label="${e(tr('Variante'))}">${q.doc.options
         .map((o) => {
           const t = quoteTotals(q.doc, resolveSelection(q.doc, { option_id: o.id }), q.tax_mode);
-          return `<label class="q-opt">${o.recommended ? '<span class="q-rec">EMPFOHLEN</span>' : ''}<input type="radio" name="option" value="${e(o.id)}"${o.id === sel.option_id ? ' checked' : ''}><b>${e(o.name)}</b>${o.description ? `<span class="q-sub">${e(o.description)}</span>` : ''}<span class="q-price">${money(t.subtotal_cents)} <span class="q-sub">netto</span></span></label>`;
+          return `<label class="q-opt">${o.recommended ? `<span class="q-rec">${e(tr('EMPFOHLEN'))}</span>` : ''}<input type="radio" name="option" value="${e(o.id)}"${o.id === sel.option_id ? ' checked' : ''}><b>${e(o.name)}</b>${o.description ? `<span class="q-sub">${e(o.description)}</span>` : ''}<span class="q-price">${money(t.subtotal_cents)} <span class="q-sub">${e(tr('netto'))}</span></span></label>`;
         })
         .join('')}</div></div>`
     : '';
   const tbl = (id: string, items: QuoteItem[], title = '') =>
-    items.length ? `${title ? `<div class="q-sec">${e(title)}</div>` : ''}<table class="q-tbl"><thead><tr><th>Position</th><th class="r hide-s">Menge</th><th class="r hide-s">Einzelpreis</th><th class="r">Betrag</th></tr></thead><tbody>${rowsHtml(items, q, sel, id)}</tbody></table>` : '';
+    items.length ? `${title ? `<div class="q-sec">${e(title)}</div>` : ''}<table class="q-tbl"><thead><tr><th>${e(tq(tr, 'Position'))}</th><th class="r hide-s">${e(tq(tr, 'Menge'))}</th><th class="r hide-s">${e(tr('Einzelpreis'))}</th><th class="r">${e(tr('Betrag'))}</th></tr></thead><tbody>${rowsHtml(items, q, sel, id, tr)}</tbody></table>` : '';
   const optionTabs = q.doc.options.map((o) => `<div class="q-tab${o.id === sel.option_id ? ' on' : ''}" data-tab="${e(o.id)}">${tbl(o.id, o.items, many ? o.name : '')}</div>`).join('');
 
   const body = `
 <div class="q-card">
   <h1>${e(q.title)}</h1>
-  <p class="muted" style="margin:0 0 12px">Für ${e(contactName(contact))}</p>
-  ${q.valid_until ? `<span class="q-badge warn">Gültig bis ${e(deYmd(q.valid_until))}</span>` : ''}
+  <p class="muted" style="margin:0 0 12px">${e(tr('Für {name}', { name: contactName(contact) }))}</p>
+  ${q.valid_until ? `<span class="q-badge warn">${e(tr('Gültig bis {date}', { date: dateIn(tr, q.valid_until) }))}</span>` : ''}
   ${q.intro.trim() ? `<div class="q-text" style="margin-top:14px">${contractHtml(q.intro)}</div>` : ''}
 </div>
 ${options}
 <div class="q-card">
-  <h2>Ihr Angebot</h2>
+  <h2>${e(tr('Ihr Angebot'))}</h2>
   ${tbl('', q.doc.items)}
   ${optionTabs}
-  <div id="q-totals">${totalsHtml(q, sel)}</div>
+  <div id="q-totals">${totalsHtml(q, sel, tr)}</div>
 </div>
-${q.terms.trim() ? `<div class="q-card"><h2>Bedingungen</h2><div class="q-text">${contractHtml(q.terms)}</div></div>` : ''}
+${q.terms.trim() ? `<div class="q-card"><h2>${e(tq(tr, 'Bedingungen'))}</h2><div class="q-text">${contractHtml(q.terms)}</div></div>` : ''}
 <form id="q-form" class="q-card q-sign q-noprint" autocomplete="on">
-  <h2>Annehmen und unterschreiben</h2>
-  <label for="q-name">Vollständiger Name</label>
-  <input id="q-name" name="name" required autocomplete="name" value="${e(contactName(contact) === 'Unbekannt' ? '' : [contact?.first_name, contact?.last_name].filter(Boolean).join(' '))}">
-  <label style="margin-top:14px">Unterschrift <span class="muted" style="font-weight:400">(mit Maus oder Finger zeichnen)</span></label>
-  <canvas id="q-pad" width="620" height="180" aria-label="Unterschriftsfeld"></canvas>
-  <p style="margin:8px 0"><button type="button" class="btn q-btn2" id="q-clear">Löschen</button></p>
-  <label class="check" style="margin-top:10px"><input type="checkbox" id="q-agree" required> <span>Ich habe das Angebot gelesen und nehme es mit meiner elektronischen Unterschrift verbindlich an.</span></label>
-  <div class="q-actions"><button type="submit" class="grow" id="q-go">Verbindlich annehmen und unterschreiben</button><button type="button" class="btn q-btn2" id="q-no">Ablehnen</button><button type="button" class="btn q-btn2" onclick="print()">Drucken / als PDF</button></div>
+  <h2>${e(tr('Annehmen und unterschreiben'))}</h2>
+  <label for="q-name">${e(tr('Vollständiger Name'))}</label>
+  <input id="q-name" name="name" required autocomplete="name" value="${e([contact?.first_name, contact?.last_name].filter(Boolean).join(' '))}">
+  <label style="margin-top:14px">${e(tr('Unterschrift'))} <span class="muted" style="font-weight:400">${e(tr('(mit Maus oder Finger zeichnen)'))}</span></label>
+  <canvas id="q-pad" width="620" height="180" aria-label="${e(tr('Unterschriftsfeld'))}"></canvas>
+  <p style="margin:8px 0"><button type="button" class="btn q-btn2" id="q-clear">${e(tr('Unterschrift löschen'))}</button></p>
+  <label class="check" style="margin-top:10px"><input type="checkbox" id="q-agree" required> <span>${e(tr('Ich habe das Angebot gelesen und nehme es mit meiner elektronischen Unterschrift verbindlich an.'))}</span></label>
+  <div class="q-actions"><button type="submit" class="grow" id="q-go">${e(tr('Verbindlich annehmen und unterschreiben'))}</button><button type="button" class="btn q-btn2" id="q-no">${e(tr('Ablehnen'))}</button><button type="button" class="btn q-btn2" onclick="print()">${e(tr('Drucken / als PDF'))}</button></div>
   <div class="error" id="q-err" role="alert"></div>
 </form>
 <script>
 (function(){
-  var T=${jsonForScript(q.public_token)};
+  var T=${jsonForScript(q.public_token)},L=${jsonForScript({ error: tq(tr, 'Fehler'), sign: tr('Bitte unterschreiben.'), why: tr('Angebot ablehnen – möchten Sie uns einen Grund nennen? (optional)') })};
   var form=document.getElementById('q-form'),err=document.getElementById('q-err'),tot=document.getElementById('q-totals');
   function pick(){
     var r=document.querySelector('input[name=option]:checked');var opt=r?r.value:'';
@@ -223,15 +228,15 @@ ${q.terms.trim() ? `<div class="q-card"><h2>Bedingungen</h2><div class="q-text">
   cv.addEventListener('pointermove',function(e){if(!draw)return;var p=pos(e);x.lineTo(p[0],p[1]);x.stroke();ink=true});
   cv.addEventListener('pointerup',function(){draw=false});
   document.getElementById('q-clear').onclick=function(){x.clearRect(0,0,cv.width,cv.height);ink=false};
-  async function post(path,data){var r=await fetch('/api/public/quotes/'+T+'/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});var j=await r.json();if(!r.ok)throw new Error(j.error||'Fehler');return j}
+  async function post(path,data){var r=await fetch('/api/public/quotes/'+T+'/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});var j=await r.json();if(!r.ok)throw new Error(j.error||L.error);return j}
   form.onsubmit=async function(e){
     e.preventDefault();err.textContent='';
-    if(!ink){err.textContent='Bitte unterschreiben.';return}
+    if(!ink){err.textContent=L.sign;return}
     var b=document.getElementById('q-go');b.disabled=true;
     try{var d=pick();d.name=form.name.value;d.agree=document.getElementById('q-agree').checked;d.signature=cv.toDataURL('image/png');await post('accept',d);location.reload()}
     catch(x){err.textContent=x.message;b.disabled=false}
   };
-  document.getElementById('q-no').onclick=async function(){var why=prompt('Angebot ablehnen – möchten Sie uns einen Grund nennen? (optional)');if(why===null)return;try{await post('decline',{reason:why});location.reload()}catch(x){err.textContent=x.message}};
+  document.getElementById('q-no').onclick=async function(){var why=prompt(L.why);if(why===null)return;try{await post('decline',{reason:why});location.reload()}catch(x){err.textContent=x.message}};
 })();
 </script>`;
   return frame(app, q, body);

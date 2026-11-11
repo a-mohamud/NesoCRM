@@ -6,6 +6,7 @@ import { contactVars, getContact } from './contacts.js';
 import { sendToContact } from './messaging.js';
 import { DEFAULT_FOLLOWUP, DEFAULT_NOSHOW, DEFAULT_SMS_REMINDER, type AfterMessage, type Reminder } from './booking-rules.js';
 import { DEFAULT_SETTINGS, apptVars, type CalendarRow } from '../modules/calendars.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Sends what the calendars promise around an appointment: several reminders (e-mail and/or SMS), the follow-up after it
@@ -54,14 +55,17 @@ interface Template {
 async function deliver(app: App, a: any, cal: CalendarRow, t: Template, defaults: { subject: string; body: string; sms_body: string }, o: { source: string; ignoreDnd: boolean }) {
   const contact = getContact(app, a.location_id, a.contact_id);
   if (!contact) return;
+  // the built-in texts in the sub-account's language (own texts stay as written)
+  const tl = tLoc(app, a.location_id);
+  const source = tl(o.source);
   const vars: any = { contact: contactVars(contact), ...apptVars(app, a, cal) };
   vars.appointment.booking_url = `${app.baseUrl()}/book/${cal.slug}`;
   if (t.email && contact.email) {
-    await sendToContact(app, a.location_id, { contactId: contact.id, channel: 'email', subject: render(t.subject || defaults.subject, vars), body: render(t.body || defaults.body, vars), source: o.source, ignoreDnd: o.ignoreDnd });
+    await sendToContact(app, a.location_id, { contactId: contact.id, channel: 'email', subject: render(t.subject || tl(defaults.subject), vars), body: render(t.body || tl(defaults.body), vars), source, ignoreDnd: o.ignoreDnd });
   }
   // SMS only when a provider is set up and the contact has a number; it follows "Nicht stören" (E-Mail-Bestätigungen sind Pflichtmails, SMS nicht).
   if (t.sms && contact.phone && smsReady(app, a.location_id)) {
-    await sendToContact(app, a.location_id, { contactId: contact.id, channel: 'sms', body: render(t.sms_body || defaults.sms_body, vars).slice(0, 480), source: o.source, ignoreDnd: false });
+    await sendToContact(app, a.location_id, { contactId: contact.id, channel: 'sms', body: render(t.sms_body || tl(defaults.sms_body), vars).slice(0, 480), source, ignoreDnd: false });
   }
 }
 

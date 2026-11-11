@@ -1,5 +1,6 @@
 import type { PdfImage } from './canvas-pdf.js';
 import { Page, latin, pdfImageOf, pdfOf, textW } from './creator-pdf.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * The certificate as a PDF (A4 landscape or portrait, no library): frame in the template's colours, logo, title, the
@@ -82,6 +83,8 @@ export interface CertInput {
   score?: number | null;
   logo?: Buffer | null;
   signature?: Buffer | null;
+  /** Language of the fixed texts and the default title/subtitle/body (default: the instance language; callers pass tLoc). */
+  t?: STFn;
 }
 
 /** The text of the body line with its placeholders filled in. */
@@ -96,7 +99,9 @@ const fit = (s: string, size: number, max: number, bold = false, font: 'sans' | 
 };
 
 export function certificatePdf(i: CertInput): Buffer {
-  const c = i.cfg;
+  const t = i.t ?? tApp();
+  // the German defaults (DEFAULT_CERT) are message ids: shown in the certificate's language
+  const c = { ...i.cfg, title: t(i.cfg.title), subtitle: i.cfg.subtitle && t(i.cfg.subtitle), body: i.cfg.body && t(i.cfg.body) };
   const land = c.orientation !== 'portrait';
   const W = land ? 1123 : 794;
   const H = land ? 794 : 1123;
@@ -142,7 +147,7 @@ export function certificatePdf(i: CertInput): Buffer {
   }
   if (tail) y += p.para(cx - (W - 240) / 2, y, tail, W - 240, 18, { anchor: 'middle', font: 'serif', color: '#334155', gap: 10 });
   if (c.show_score && i.score !== null && i.score !== undefined && !/\{\{\s*score\s*\}\}/.test(c.body)) {
-    p.text(cx, y, latin(`Ergebnis: ${i.score} %`), 15, { anchor: 'middle', color: '#475569', font: 'serif' });
+    p.text(cx, y, latin(t('Ergebnis: {score} %', { score: i.score })), 15, { anchor: 'middle', color: '#475569', font: 'serif' });
   }
 
   // bottom row: signature left, date and number right
@@ -153,9 +158,9 @@ export function certificatePdf(i: CertInput): Buffer {
   if (c.signer_name) p.text(sx, base + 6, latin(c.signer_name), 14, { bold: true, font: 'serif' });
   if (c.signer_title || c.issuer) p.text(sx, base + 26, latin([c.signer_title, c.issuer].filter(Boolean).join(' · ').slice(0, 60)), 11.5, { color: '#475569', font: 'serif' });
   const rx = W - (land ? 110 : 90);
-  p.text(rx, base - 18, latin(`Ausgestellt am ${i.date}`), 14, { anchor: 'end', font: 'serif' });
-  p.text(rx, base + 6, latin(`Zertifikat-Nr. ${i.number}`), 12, { anchor: 'end', color: '#475569' });
-  p.text(rx, base + 24, latin(`Echtheit prüfen: ${i.verifyUrl}`.slice(0, 90)), 9.5, { anchor: 'end', color: '#64748b' });
+  p.text(rx, base - 18, latin(t('Ausgestellt am {date}', { date: i.date })), 14, { anchor: 'end', font: 'serif' });
+  p.text(rx, base + 6, latin(t('Zertifikat-Nr. {number}', { number: i.number })), 12, { anchor: 'end', color: '#475569' });
+  p.text(rx, base + 24, latin(t('Echtheit prüfen: {url}', { url: i.verifyUrl }).slice(0, 90)), 9.5, { anchor: 'end', color: '#64748b' });
   if (c.footer) p.text(cx, H - 78, latin(c.footer), 10, { anchor: 'middle', color: '#94a3b8' });
   return pdfOf([p], { images, title: latin(`${c.title} ${i.name}`) });
 }

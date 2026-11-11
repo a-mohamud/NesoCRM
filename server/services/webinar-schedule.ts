@@ -64,7 +64,15 @@ export const normHm = (v: unknown): string | undefined => {
 };
 const validYmd = (v: string) => YMD.test(v) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
 
-export class ScheduleError extends Error {}
+/** A validation error: `key` is the German message id, `vars` its values (translated by the caller; this file is shared with the web app). */
+export class ScheduleError extends Error {
+  constructor(
+    readonly key: string,
+    readonly vars?: Record<string, string | number>,
+  ) {
+    super(vars ? key.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : key);
+  }
+}
 
 const days = (v: unknown, fallback: DayKey[]): DayKey[] => {
   if (!Array.isArray(v)) return fallback;
@@ -76,7 +84,7 @@ const bool = (v: unknown, fallback: boolean) => (v === undefined || v === null ?
 const int = (v: unknown, fallback: number, min: number, max: number, what: string) => {
   if (v === undefined || v === null || v === '') return fallback;
   const n = Math.round(Number(v));
-  if (!Number.isFinite(n) || n < min || n > max) throw new ScheduleError(`${what}: Zahl von ${min} bis ${max} erwartet`);
+  if (!Number.isFinite(n) || n < min || n > max) throw new ScheduleError('{what}: Zahl von {min} bis {max} erwartet', { what, min, max });
   return n;
 };
 
@@ -88,7 +96,7 @@ export function cleanSchedule(input: unknown, base: Schedule = DEFAULT_SCHEDULE)
   const out: Schedule = JSON.parse(JSON.stringify(base));
   if (i.tz !== undefined) {
     const tz = String(i.tz ?? '').trim();
-    if (tz && !isValidTz(tz)) throw new ScheduleError(`Zeitzone „${tz.slice(0, 40)}“ gibt es nicht (z. B. Europe/Berlin)`);
+    if (tz && !isValidTz(tz)) throw new ScheduleError('Zeitzone „{tz}“ gibt es nicht (z. B. Europe/Berlin)', { tz: tz.slice(0, 40) });
     out.tz = tz;
   }
   if (i.fixed !== undefined) {
@@ -107,7 +115,7 @@ export function cleanSchedule(input: unknown, base: Schedule = DEFAULT_SCHEDULE)
     if (!Array.isArray(i.dates)) throw new ScheduleError('Einzeltermine: Liste erwartet');
     const list = i.dates.map((d: unknown) => {
       const m = LOCAL.exec(String(d ?? '').trim());
-      if (!m || !validYmd(m[1])) throw new ScheduleError(`Einzeltermin „${String(d).slice(0, 30)}“: bitte als JJJJ-MM-TTTHH:MM angeben`);
+      if (!m || !validYmd(m[1])) throw new ScheduleError('Einzeltermin „{date}“: bitte als JJJJ-MM-TTTHH:MM angeben', { date: String(d).slice(0, 30) });
       return `${m[1]}T${pad(m[2])}:${m[3]}`;
     });
     out.dates = [...new Set(list as string[])].sort().slice(0, 200);
@@ -138,7 +146,7 @@ export function cleanSchedule(input: unknown, base: Schedule = DEFAULT_SCHEDULE)
         i.blackout.map((b: unknown) => {
           const s = String(b ?? '').trim();
           const [a, z] = s.split('..');
-          if (!validYmd(a) || (z !== undefined && (!validYmd(z) || z < a))) throw new ScheduleError(`Sperrtag „${s.slice(0, 30)}“: JJJJ-MM-TT oder JJJJ-MM-TT..JJJJ-MM-TT erwartet`);
+          if (!validYmd(a) || (z !== undefined && (!validYmd(z) || z < a))) throw new ScheduleError('Sperrtag „{date}“: JJJJ-MM-TT oder JJJJ-MM-TT..JJJJ-MM-TT erwartet', { date: s.slice(0, 30) });
           return s;
         }) as string[],
       ),

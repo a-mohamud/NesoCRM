@@ -4,6 +4,7 @@ import { HttpError, bad, notFound, str, type Ctx } from '../core/http.js';
 import { PERMISSIONS, cleanPermissions, requiredPermission, type Permission } from '../core/permissions.js';
 import { id, now } from '../core/util.js';
 import type { Tool } from './mcp.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Eigene Rollen (Rollen-Vorlagen) – docs/security.md#roles. A role is a named set of areas a member may open, plus the areas they
@@ -65,16 +66,20 @@ export const roleTemplatesModule: Module = {
       if (ctx.viaApiKey) throw new HttpError(403, 'Rollen nur mit Anmeldung ändern – nicht mit einem Schlüssel');
     };
 
-    router.get('/api/role-templates', 'admin', () => ({
+    router.get('/api/role-templates', 'admin', (ctx) => {
+      const t = tCtx(ctx);
+      return {
       templates: list(),
-      presets: ROLE_PRESETS,
-      permissions: PERMISSIONS,
+      presets: ROLE_PRESETS.map((p) => ({ ...p, name: t(p.name), description: t(p.description) })),
+      permissions: Object.fromEntries(Object.entries(PERMISSIONS).map(([k, v]) => [k, t(v)])),
       assignments: Object.fromEntries(db.all<{ user_id: string; template_id: string }>('SELECT user_id, template_id FROM user_role_templates').map((r) => [r.user_id, r.template_id])),
-    }));
+      };
+    });
     router.post('/api/role-templates', 'admin', (ctx) => {
       noKey(ctx);
+      const t = tCtx(ctx);
       const preset = ROLE_PRESETS.find((p) => p.key === ctx.body?.preset);
-      const data = clean(preset ? { ...preset, ...ctx.body, permissions: ctx.body?.permissions ?? preset.permissions, readonly: ctx.body?.readonly ?? preset.readonly } : (ctx.body ?? {}));
+      const data = clean(preset ? { ...preset, name: t(preset.name), description: t(preset.description), ...ctx.body, permissions: ctx.body?.permissions ?? preset.permissions, readonly: ctx.body?.readonly ?? preset.readonly } : (ctx.body ?? {}));
       if (db.get('SELECT id FROM role_templates WHERE name = ?', data.name)) throw bad('Eine Rolle mit diesem Namen gibt es schon');
       const row = { id: id(), ...data, created_at: now(), updated_at: now() };
       db.insert('role_templates', row);
@@ -126,7 +131,10 @@ export const roleTemplatesModule: Module = {
       const row = db.get<{ readonly: string }>('SELECT t.readonly FROM user_role_templates u JOIN role_templates t ON t.id = u.template_id WHERE u.user_id = ?', u.id);
       if (!row) return;
       const ro = JSON.parse(row.readonly || '[]') as string[];
-      if (ro.includes(need)) throw new HttpError(403, `Nur Lesezugriff auf „${PERMISSIONS[need]}“`);
+      if (ro.includes(need)) {
+        const t = tCtx(ctx);
+        throw new HttpError(403, t('Nur Lesezugriff auf „{area}“', { area: t(PERMISSIONS[need]) }));
+      }
     });
     // A member's areas changed by hand (Team → Bearbeiten) no longer follow the role.
     app.afterWrite.push((ctx, route) => {

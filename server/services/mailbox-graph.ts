@@ -19,6 +19,7 @@ import {
   type SyncOutput,
 } from './mailbox-kit.js';
 import { htmlToText } from './email-render.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Microsoft Graph (v1.0, /me or /users/{shared mailbox}) behind the MailApi interface. Sync uses one delta
@@ -116,7 +117,7 @@ export function graphApi(fetcher: typeof fetch, token: TokenFn, shared = ''): Ma
         const part = f.content.subarray(start, Math.min(start + CHUNK, f.content.length));
         // The upload URL is pre-authorised: no bearer token (Graph refuses one here).
         const r = await fetcher(url, { method: 'PUT', headers: { 'content-type': 'application/octet-stream', 'content-range': `bytes ${start}-${start + part.length - 1}/${f.content.length}` }, body: new Uint8Array(part), signal: AbortSignal.timeout(60_000) });
-        if (!r.ok) throw new MailError(`Microsoft: Anhang „${f.filename}“ konnte nicht hochgeladen werden (${r.status})`, r.status);
+        if (!r.ok) throw new MailError(tApp()('Microsoft: Anhang „{name}“ konnte nicht hochgeladen werden ({status})', { name: f.filename, status: r.status }), r.status);
       }
     }
   }

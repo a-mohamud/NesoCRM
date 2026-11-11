@@ -6,11 +6,13 @@ import { now } from '../core/util.js';
 import { parseJson } from '../core/db.js';
 import type { CalendarRow } from './calendars.js';
 import type { Tool } from './mcp.js';
-import { bookSlot, bookableCalendars, calLabel, checkSlots, cleanSettings, freeDays, loadSettings, pickCalendar, replyChannel, slotsBlock, type AiBookingSettings } from '../services/ai-booking.js';
+import { bookSlot, bookableCalendars, checkSlots, cleanSettings, freeDays, loadSettings, pickCalendar, replyChannel, slotsBlock, type AiBookingSettings } from '../services/ai-booking.js';
 import { getContact, logActivity, upsertContact, type Contact } from '../services/contacts.js';
 import { sendToContact } from '../services/messaging.js';
 import { getConfig, hostNames } from '../services/teamcal-engine.js';
 import { managePage } from '../services/teamcal-pages.js';
+import { isVisitorPlaceholder } from '../services/ai-context.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * AI books appointments directly in chat (docs/booking.md#ai-books-appointments). The phone agent's booking logic
@@ -90,11 +92,11 @@ export function withBooking(schema: Record<string, any>) {
   };
 }
 
-export const BOOKING_TASK = `Termine: Du darfst freie Termine nachsehen und buchen – über das Feld "booking":
-- "action": "none" – kein Werkzeug (calendar_id, date, time leer lassen)
-- "action": "check_slots" – freie Zeiten eines Tages nachsehen (calendar_id, date als JJJJ-MM-TT); du bekommst das Ergebnis und antwortest danach
-- "action": "book" – einen Termin buchen (calendar_id, date, time als HH:MM). Nur eine Zeit aus den freien Terminen, erst wenn der Besucher genau diese Zeit bestätigt hat und Vor- und Nachname sowie E-Mail (oder Telefon) genannt hat – sonst zuerst danach fragen.
-Nenne nie Zeiten, die nicht frei sind. Die Bestätigung mit den Links zum Verschieben und Absagen hängt das System an deine Antwort an – schreib in "reply" nur einen kurzen Satz dazu.`;
+export const BOOKING_TASK = `Appointments: you may check free times and book appointments – using the "booking" field:
+- "action": "none" – no tool (leave calendar_id, date, time empty)
+- "action": "check_slots" – check a day's free times (calendar_id, date as YYYY-MM-DD); you get the result and reply afterwards
+- "action": "book" – book an appointment (calendar_id, date, time as HH:MM). Only a time from the free slots, and only once the visitor has confirmed exactly that time and given their first and last name plus email (or phone) – otherwise ask for them first.
+Never offer times that are not free. The system appends the confirmation with the links to reschedule and cancel to your reply – just write one short sentence about it in "reply" (in the visitor's language).`;
 
 interface BookingCall {
   action: 'none' | 'check_slots' | 'book';
@@ -120,7 +122,7 @@ export function splitBooking(raw: string): { rest: Record<string, any>; booking:
 const EMAIL = /^[^@\s<>"]+@[^@\s<>"]+\.[a-z]{2,}$/i;
 const PHONE = /^\+?[\d][\d\s()/-]{4,24}$/;
 const NAME = /^[\p{L}][\p{L}\p{M}' .-]{0,79}$/u;
-const placeholder = (c: Contact) => !c.first_name || c.first_name === 'Website-Besucher';
+const placeholder = (c: Contact) => !c.first_name || isVisitorPlaceholder(c.first_name);
 
 /** Fills empty contact fields from what the visitor said (like the KI-Assistent's lead capture: never an e-mail another contact has). */
 function fillLead(app: App, locationId: string, c: Contact, lead: Record<string, unknown>): Contact {
@@ -148,7 +150,7 @@ export async function chatTurn(app: App, o: { locationId: string; contact: Conta
   let prompt = `${o.prompt}\n\n${slotsBlock(app, cals)}\n\n${BOOKING_TASK}`;
   let last: { text: string; [k: string]: unknown } | null = null;
   const tool = (text: string) =>
-    (prompt += `\n\n<werkzeug_ergebnis>\n${text}\n</werkzeug_ergebnis>\nAntworte jetzt dem Besucher (booking.action "none" – oder "book", wenn er eine dieser Zeiten bestätigt hat).`);
+    (prompt += `\n\n<werkzeug_ergebnis>\n${text}\n</werkzeug_ergebnis>\nNow reply to the visitor (booking.action "none" – or "book" if they have confirmed one of these times).`);
   for (let round = 0; round < 3; round++) {
     const r = await o.ask(prompt, schema);
     const split = splitBooking(r.text);
@@ -158,7 +160,7 @@ export async function chatTurn(app: App, o: { locationId: string; contact: Conta
     if (!b || b.action === 'none') return last;
     const cal = pickCalendar(cals, b.calendar_id);
     if (!cal) {
-      tool(`Kalender unbekannt. Erlaubt: ${cals.map((c) => `${c.name} (${c.id})`).join(', ')}`);
+      tool(`Unknown calendar. Allowed: ${cals.map((c) => `${c.name} (${c.id})`).join(', ')}`);
       continue;
     }
     if (b.action === 'check_slots') {
@@ -173,20 +175,21 @@ export async function chatTurn(app: App, o: { locationId: string; contact: Conta
     let contact = getContact(app, o.locationId, o.contact.id) ?? o.contact;
     contact = fillLead(app, o.locationId, contact, split.rest.lead ?? {});
     if (placeholder(contact) || (!contact.email && !contact.phone)) {
-      tool('Buchung nicht möglich: Vorname und E-Mail-Adresse (oder Telefonnummer) des Besuchers fehlen – bitte zuerst danach fragen.');
+      tool("Booking not possible: the visitor's first name and email address (or phone number) are missing – ask for them first.");
       continue;
     }
+    const t = tLoc(app, o.locationId);
     const out = bookSlot(
       app,
       o.locationId,
-      { calendarId: cal.id, date: b.date, time: b.time, contact: { id: contact.id }, notes: 'Gebucht im Website-Chat vom KI-Assistenten.', source: 'KI-Assistent' },
+      { calendarId: cal.id, date: b.date, time: b.time, contact: { id: contact.id }, notes: t('Gebucht im Website-Chat vom KI-Assistenten.'), source: 'KI-Assistent' },
       s,
     );
     if (!out.ok) {
       tool(out.text);
       continue;
     }
-    logActivity(app, o.locationId, contact.id, 'ai.booked', `KI-Assistent hat im Website-Chat einen Termin gebucht: ${calLabel(cal)}`);
+    logActivity(app, o.locationId, contact.id, 'ai.booked', t('KI-Assistent hat im Website-Chat einen Termin gebucht: {calendar}', { calendar: cal.name }));
     const reply = [String(split.rest.reply ?? '').trim(), out.confirmation].filter(Boolean).join('\n\n').slice(0, 1500);
     const conf = typeof split.rest.confidence === 'number' ? split.rest.confidence : 1;
     return { ...r, text: JSON.stringify({ ...split.rest, reply, handoff: false, handoff_reason: '', confidence: Math.max(conf, 0.95) }), booked: out.appointment.id };
@@ -228,7 +231,7 @@ export const aiBookingModule: Module = {
       ...(app.services.agentPromptExtras ?? []),
       (i: { locationId: string }) =>
         bookableCalendars(app, i.locationId).length
-          ? 'Termine buchen: Wenn jemand einen Termin möchte, sieh mit ghl_booking_slots freie Zeiten nach, biete zwei, drei davon an und buche erst nach einer klaren Zusage mit ghl_book_appointment (contact_id des Kontakts). Die Bestätigung mit Links zum Verschieben und Absagen schickt das System selbst.'
+          ? "Booking appointments: when someone wants an appointment, check free times with ghl_booking_slots, offer two or three of them and only book after a clear yes, using ghl_book_appointment (the contact's contact_id). The system sends the confirmation with links to reschedule and cancel itself."
           : '',
     ];
 
@@ -255,12 +258,12 @@ export const aiBookingModule: Module = {
 
     router.get('/api/ai-booking/slots', 'location', (ctx) => {
       const cals = bookableCalendars(app, ctx.locationId);
-      if (!cals.length) return { calendars: [], hint: 'Für die KI ist kein Kalender freigegeben (KI-Assistent → Termine buchen).' };
+      if (!cals.length) return { calendars: [], hint: tCtx(ctx)('Für die KI ist kein Kalender freigegeben (KI-Assistent → Termine buchen).') };
       const calId = ctx.query.get('calendar_id');
       const date = ctx.query.get('date');
       if (calId || date) {
         const cal = pickCalendar(cals, calId);
-        if (!cal) throw bad(`Kalender nicht freigegeben. Erlaubt: ${cals.map((c) => `${c.name} (${c.id})`).join(', ')}`);
+        if (!cal) throw bad(tCtx(ctx)('Kalender nicht freigegeben. Erlaubt: {calendars}', { calendars: cals.map((c) => `${c.name} (${c.id})`).join(', ') }));
         if (date) {
           const r = checkSlots(app, cal, date);
           return { calendar: { id: cal.id, name: cal.name, duration: cal.duration, timezone: cal.timezone }, date: r.date, times: r.times, next: r.next };
@@ -283,7 +286,8 @@ export const aiBookingModule: Module = {
       const source = (ctx.via as string) === 'agent' ? 'KI-Agent' : 'KI-Buchung';
       const out = bookSlot(app, ctx.locationId, { calendarId: b.calendar_id, date: b.date, time: b.time, contact: { id: contact.id }, notes: typeof b.notes === 'string' ? b.notes : '', source });
       if (!out.ok) throw new HttpError(409, out.text);
-      logActivity(app, ctx.locationId, contact.id, 'ai.booked', `${source === 'KI-Agent' ? 'KI-Agent' : 'KI'} hat einen Termin gebucht: ${calLabel(out.calendar)}`);
+      const t = tLoc(app, ctx.locationId);
+      logActivity(app, ctx.locationId, contact.id, 'ai.booked', t('{who} hat einen Termin gebucht: {calendar}', { who: source === 'KI-Agent' ? t('KI-Agent') : t('KI'), calendar: out.calendar.name }));
       let sent: string | null = null;
       const channel = b.confirm === false ? null : replyChannel(app, ctx.locationId, contact, b.channel);
       if (channel) {
@@ -294,8 +298,8 @@ export const aiBookingModule: Module = {
           contactId: contact.id,
           channel,
           body: out.confirmation,
-          subject: channel === 'email' ? `Termin gebucht: ${out.calendar.name}` : undefined,
-          source: 'KI-Terminbestätigung',
+          subject: channel === 'email' ? t('Termin gebucht: {calendar}', { calendar: out.calendar.name }) : undefined,
+          source: 'KI-Terminbestätigung', // stored source code – i18n-ignore
           ignoreDnd: true,
         };
         const m = await (send ? send(ctx.locationId, input) : sendToContact(app, ctx.locationId, { ...input, channel: channel as 'email' | 'sms' | 'chat' })).catch((e: Error) => ({
@@ -323,7 +327,10 @@ export const aiBookingModule: Module = {
     // --- the reschedule link -------------------------------------------------------------------------------------
     router.get('/book/move/:token', 'public', (ctx) => {
       const a = db.get<any>('SELECT * FROM appointments WHERE manage_token = ?', ctx.params.token);
-      if (!a) return html(messagePage('Nicht gefunden', 'Diesen Termin gibt es nicht.'), 404);
+      if (!a) {
+        const t = tCtx(ctx);
+        return html(messagePage(t('Nicht gefunden'), t('Diesen Termin gibt es nicht.')), 404);
+      }
       const cal = parseJson(db.get<CalendarRow>('SELECT * FROM calendars WHERE id = ?', a.calendar_id), ['availability', 'settings']);
       if (!cal) throw notFound();
       const page = movePage(app, a, cal);

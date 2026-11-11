@@ -13,6 +13,7 @@ import { BatchLiveStt, STT_OPENERS } from './voice-stream-stt.js';
 import { TTS_STREAMERS } from './voice-stream-tts.js';
 import { VoiceError, type FetchFn, type LiveStt, type LiveSttHandlers, type LiveSttOpts, type StreamCtx, type TtsStreamer, type VoiceCap, type VoiceInfo } from './voice-types.js';
 import { defaultWsClient, type WsClientFactory } from './voice-ws.js';
+import { defaultLocale, tApp } from '../i18n/index.js';
 
 /**
  * The voice layer's engine: text to speech and speech to text with the sub-account's own provider keys (the
@@ -94,7 +95,9 @@ export const hasVoiceConnection = (app: App, locationId: string, cap: VoiceCap, 
 async function runAdapter(app: App, locationId: string, conn: AiConnection, cap: VoiceCap, model: string, input: GenInput, bytes?: { data: Buffer; mime: string }): Promise<Extract<Step, { status: 'done' }>> {
   const adapter = adapterFor(conn.provider);
   if (!supports(adapter, cap) || (adapter.id === 'custom_http' && cap === 'stt')) {
-    throw new VoiceError(`${conn.label || adapter.label} kann ${cap === 'audio_tts' ? 'keine Sprachausgabe' : 'keine Transkription'}${adapter.id === 'custom_http' ? ' (eigene HTTP-Anbieter nur für Sprachausgabe)' : ''}`, false, 0, conn.provider);
+    const t = tApp();
+    const name = conn.label || adapter.label;
+    throw new VoiceError(`${cap === 'audio_tts' ? t('{name} kann keine Sprachausgabe', { name }) : t('{name} kann keine Transkription', { name })}${adapter.id === 'custom_http' ? ` ${t('(eigene HTTP-Anbieter nur für Sprachausgabe)')}` : ''}`, false, 0, conn.provider);
   }
   const base = adapterCtx(app, { model, capability: cap, input, location_id: locationId }, conn, null);
   const ctx = bytes ? { ...base, bytes: async () => bytes } : base;
@@ -105,7 +108,7 @@ async function runAdapter(app: App, locationId: string, conn: AiConnection, cap:
     step = await adapter.poll(ctx, step.state);
   }
   if (step.status === 'failed') throw new VoiceError(step.error, false, 0, conn.provider);
-  if (step.status === 'pending') throw new VoiceError(`${conn.label || adapter.label}: Antwort kommt zu spät`, true, 0, conn.provider);
+  if (step.status === 'pending') throw new VoiceError(tApp()('{name}: Antwort kommt zu spät', { name: conn.label || adapter.label }), true, 0, conn.provider);
   return step;
 }
 
@@ -147,7 +150,7 @@ export function ttsDefaults(app: App, locationId: string, o: Pick<SpeakIn, 'conn
     connectionId: o.connectionId || s.connection_id || null,
     model: o.model || (own ? s.model : ''),
     voice: o.voice || (own ? s.voice : ''),
-    language: o.language || s.language || 'de',
+    language: o.language || s.language || defaultLocale(),
     speed: o.speed ?? s.speed,
     instructions: o.instructions ?? (own ? s.instructions : ''),
   };
@@ -157,20 +160,20 @@ export function ttsDefaults(app: App, locationId: string, o: Pick<SpeakIn, 'conn
 export async function synthesize(app: App, o: SpeakIn): Promise<SpeakOut> {
   const text = clean(o.text);
   if (!text) throw new HttpError(400, 'Text fehlt');
-  if (text.length > MAX_TTS_CHARS) throw new HttpError(400, `Text ist zu lang (höchstens ${MAX_TTS_CHARS} Zeichen)`);
+  if (text.length > MAX_TTS_CHARS) throw new HttpError(400, tApp()('Text ist zu lang (höchstens {n} Zeichen)', { n: MAX_TTS_CHARS }));
   const d = ttsDefaults(app, o.locationId, o);
   const conn = await voiceConnection(app, o.locationId, 'audio_tts', d.connectionId);
   const model = d.model || conn.model || '';
   const started = Date.now();
   const step = await runAdapter(app, o.locationId, conn, 'audio_tts', model, { prompt: text, voice: d.voice || undefined, language: d.language, speed: d.speed, instructions: d.instructions || undefined, params: o.params as Record<string, any> | undefined }, undefined);
   const out = step.outputs[0];
-  if (!out) throw new VoiceError(`${conn.label || conn.provider} hat keine Sprachausgabe geliefert`, false, 0, conn.provider);
+  if (!out) throw new VoiceError(tApp()('{name} hat keine Sprachausgabe geliefert', { name: conn.label || conn.provider }), false, 0, conn.provider);
   let data: Buffer;
   let hint = out.mime ?? '';
   if ('data' in out) data = out.data;
   else {
     const r = await gmFetch(app, out.url, { maxBytes: 60 * 1024 * 1024, timeoutMs: 120_000, ...(conn.options?.allow_private ? { allowPrivate: true } : {}) });
-    if (!r.ok) throw new VoiceError(`Download der Sprachausgabe fehlgeschlagen (HTTP ${r.status})`, r.status >= 500, r.status, conn.provider);
+    if (!r.ok) throw new VoiceError(tApp()('Download der Sprachausgabe fehlgeschlagen (HTTP {status})', { status: r.status }), r.status >= 500, r.status, conn.provider);
     data = r.body;
     hint ||= r.headers['content-type'] ?? '';
   }
@@ -205,14 +208,14 @@ export interface ListenOut {
 /** Recording → text. */
 export async function transcribe(app: App, o: ListenIn): Promise<ListenOut> {
   if (!o.audio?.length) throw new HttpError(400, 'Aufnahme fehlt');
-  if (o.audio.length > MAX_STT_BYTES) throw new HttpError(413, `Aufnahme ist zu groß (höchstens ${Math.round(MAX_STT_BYTES / 1024 / 1024)} MB)`);
+  if (o.audio.length > MAX_STT_BYTES) throw new HttpError(413, tApp()('Aufnahme ist zu groß (höchstens {n} MB)', { n: Math.round(MAX_STT_BYTES / 1024 / 1024) }));
   // The type comes from the bytes, never from the upload's header; WebM/MP4 count as audio here.
   const mime = sniff(o.audio, 'audio/');
   if (!mime.startsWith('audio/')) throw new HttpError(400, 'Das ist keine Audioaufnahme (erlaubt: WebM, Ogg, MP3, WAV, M4A, FLAC)');
   const s = loadVoiceSettings(app, o.locationId).stt;
   const conn = await voiceConnection(app, o.locationId, 'stt', o.connectionId || s.connection_id || null);
   const model = o.model || s.model || conn.model || '';
-  const language = o.language || s.language || 'de';
+  const language = o.language || s.language || defaultLocale();
   const fileMime = mime;
   const ext = { 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/mp4': 'm4a', 'audio/flac': 'flac', 'audio/aac': 'aac' }[fileMime] ?? 'bin';
   const started = Date.now();
@@ -225,7 +228,7 @@ export async function transcribe(app: App, o: ListenIn): Promise<ListenOut> {
     { prompt: clean(o.vocabulary ?? '').slice(0, 500), language, audio: { url: 'memory://aufnahme', mime: fileMime, name: `aufnahme.${ext}` }, params: o.params as Record<string, any> | undefined },
     { data: o.audio, mime: fileMime },
   );
-  if (typeof step.text !== 'string') throw new VoiceError(`${conn.label || conn.provider} hat keinen Text geliefert`, false, 0, conn.provider);
+  if (typeof step.text !== 'string') throw new VoiceError(tApp()('{name} hat keinen Text geliefert', { name: conn.label || conn.provider }), false, 0, conn.provider);
   const ms = Date.now() - started;
   bumpUsage(app, o.locationId, 'stt', o.audio.length, ms);
   return { text: step.text.replace(/\s+/g, ' ').trim(), provider: conn.provider, connection_id: conn.connectionId, model, bytes: o.audio.length, ms };
@@ -351,7 +354,7 @@ async function synthesizeWav(app: App, locationId: string, conn: AiConnection, r
   const step = await runAdapter(app, locationId, conn, 'audio_tts', req.model, { prompt: req.text, voice: req.voice || undefined, language: req.language, speed: req.speed, instructions: req.instructions, params: { response_format: 'wav' } });
   const out = step.outputs[0];
   const data = out && 'data' in out ? out.data : null;
-  if (!data || !parseWav(data)) throw new VoiceError(`${conn.label || conn.provider} liefert die Sprachausgabe nicht als WAV – für Telefonate bitte „Aufnahme-Runden“ wählen`, false, 0, conn.provider);
+  if (!data || !parseWav(data)) throw new VoiceError(tApp()('{name} liefert die Sprachausgabe nicht als WAV – für Telefonate bitte „Aufnahme-Runden“ wählen', { name: conn.label || conn.provider }), false, 0, conn.provider);
   bumpUsage(app, locationId, 'tts', req.text.length, 0);
   return wavToUlaw8k(data);
 }
@@ -397,21 +400,23 @@ export function phonePlan(app: App, locationId: string): PhonePlan {
   const vs = loadVoiceSettings(app, locationId);
   if (vs.phone.engine !== 'own') return { engine: 'twilio', transport: 'twilio', problems: [] };
   const problems: string[] = [];
+  const t = tApp();
   const tts = peekConnection(app, locationId, 'audio_tts', vs.phone.tts_connection_id || vs.tts.connection_id || null);
   const stt = peekConnection(app, locationId, 'stt', vs.phone.stt_connection_id || vs.stt.connection_id || null);
-  if (!tts) problems.push('Für die Telefon-Stimme fehlt ein Anbieter mit Sprachausgabe (Einstellungen → KI-Anbieter).');
-  if (!stt) problems.push('Für die Spracherkennung am Telefon fehlt ein Anbieter mit Transkription (Einstellungen → KI-Anbieter).');
+  if (!tts) problems.push(t('Für die Telefon-Stimme fehlt ein Anbieter mit Sprachausgabe (Einstellungen → KI-Anbieter).'));
+  if (!stt) problems.push(t('Für die Spracherkennung am Telefon fehlt ein Anbieter mit Transkription (Einstellungen → KI-Anbieter).'));
   const stream = tts ? ttsStreamMode(tts) : null;
   const pub = publicHttps(app.baseUrl());
   let transport: 'stream' | 'turns' = vs.phone.transport === 'turns' ? 'turns' : vs.phone.transport === 'stream' ? 'stream' : stream && pub ? 'stream' : 'turns';
   if (transport === 'stream' && tts && !stream) {
-    problems.push(`${tts.label || tts.provider} kann nicht live streamen – es werden Aufnahme-Runden benutzt.`);
+    problems.push(t('{name} kann nicht live streamen – es werden Aufnahme-Runden benutzt.', { name: tts.label || tts.provider }));
     transport = 'turns';
   }
-  if (!pub && !problems.length && vs.phone.transport !== 'auto') problems.push('Twilio erreicht den Server nur über eine öffentliche https-Adresse (Einstellungen → Agentur → Basis-Adresse).');
+  if (!pub && !problems.length && vs.phone.transport !== 'auto') problems.push(t('Twilio erreicht den Server nur über eine öffentliche https-Adresse (Einstellungen → Agentur → Basis-Adresse).'));
   return {
     engine: 'own',
-    transport: problems.some((p) => /fehlt ein Anbieter/.test(p)) ? 'twilio' : transport,
+    // A missing provider means the Twilio voice (decided by the facts, not by the – translated – problem texts).
+    transport: !tts || !stt ? 'twilio' : transport,
     ...(tts ? { tts: { id: tts.connectionId, provider: tts.provider, label: tts.label || tts.provider, stream } } : {}),
     ...(stt ? { stt: { id: stt.connectionId, provider: stt.provider, label: stt.label || stt.provider, live: sttStreamMode(stt) === 'live' } } : {}),
     problems,

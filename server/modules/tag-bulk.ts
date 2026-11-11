@@ -3,6 +3,7 @@ import type { Module } from '../core/app.js';
 import { HttpError, bad, str, type Ctx } from '../core/http.js';
 import { cleanColor } from '../services/tag-meta.js';
 import type { Tool } from './mcp.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Tag management in bulk (docs/api.md#tags-in-bulk): how often each tag is used (contacts, workflows, smart lists) and one route
@@ -124,7 +125,7 @@ export const tagBulkModule: Module = {
         const name = str(ctx.body.name, 'Name', { required: true, max: 80 });
         const old = tags[0];
         if (name === old.name) return { count: 0, tags: tagsOf(loc, ids) };
-        if (db.get('SELECT 1 AS x FROM tags WHERE location_id = ? AND name = ?', loc, name)) throw bad(`„${name}“ gibt es schon – zum Zusammenlegen „Zusammenführen“ nehmen`);
+        if (db.get('SELECT 1 AS x FROM tags WHERE location_id = ? AND name = ?', loc, name)) throw bad(tCtx(ctx)('„{name}“ gibt es schon – zum Zusammenlegen „Zusammenführen“ nehmen', { name }));
         let contacts = 0;
         db.tx(() => {
           contacts = db.run(renameSql([old.name]), old.name, name, loc, old.name).changes;
@@ -201,7 +202,8 @@ export const tagBulkModule: Module = {
         action: (_b: unknown, a: unknown) => (!a ? 'delete' : 'bulk'),
         groupLabel: (ctx: Ctx) => {
           const n = bodyIds(ctx.body).length;
-          return `${n} ${n === 1 ? 'Tag' : 'Tags'} ${LABEL[String(ctx.body?.action)] ?? 'geändert'}`;
+          const t = tLoc(app, ctx.locationId);
+          return t.plural(n, { one: '{n} Tag {action}', other: '{n} Tags {action}' }, { action: t(LABEL[String(ctx.body?.action)] ?? 'geändert') });
         },
       });
     }

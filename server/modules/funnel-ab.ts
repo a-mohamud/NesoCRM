@@ -6,6 +6,7 @@ import { id, now } from '../core/util.js';
 import { logActivity } from '../services/contacts.js';
 import { isBot, pickVariant, summarize } from '../services/ab-stats.js';
 import { cleanBlocks, pageUrl, renderPage } from './funnels.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * A/B split tests for funnel and website pages. The live page is variant A; B, C, D are copies
@@ -116,7 +117,7 @@ export const funnelAbModule: Module = {
         name: t.name,
         status: t.status,
         goal: t.goal,
-        goal_label: GOAL_LABEL[g.type] ?? '',
+        goal_label: GOAL_LABEL[g.type] ? tLoc(app, t.location_id)(GOAL_LABEL[g.type]) : '',
         goal_target: named('forms', g.form_id) || named('calendars', g.calendar_id) || named('products', g.product_id) || named('funnel_pages', g.page_id) || g.url || '',
         funnel_id: t.funnel_id,
         page_id: t.page_id,
@@ -204,7 +205,7 @@ export const funnelAbModule: Module = {
         test_id: t.id,
         location_id: t.location_id,
         key,
-        name: str(name, 'Name', { max: 80 }) || `Variante ${key}`,
+        name: str(name, 'Name', { max: 80 }) || tLoc(app, t.location_id)('Variante {key}', { key }),
         weight: 0,
         is_control: 0,
         blocks: from.blocks ?? [],
@@ -236,7 +237,8 @@ export const funnelAbModule: Module = {
         if (!changed) continue;
         n++;
         if (contactId && db.get('SELECT id FROM contacts WHERE id = ? AND location_id = ?', contactId, locationId)) {
-          logActivity(app, locationId, contactId, 'ab.converted', `A/B-Test „${r.name}“: Variante ${r.key} (${r.variant_name}) – ${GOAL_LABEL[type]}`, {
+          const t = tLoc(app, locationId);
+          logActivity(app, locationId, contactId, 'ab.converted', t('A/B-Test „{test}“: Variante {key} ({variant}) – {goal}', { test: r.name, key: r.key, variant: r.variant_name, goal: t(GOAL_LABEL[type]) }), {
             test_id: r.test_id,
             variant_id: r.variant_id,
             variant: r.key,
@@ -355,7 +357,7 @@ export const funnelAbModule: Module = {
         location_id: ctx.locationId,
         funnel_id: page.funnel_id,
         page_id: page.id,
-        name: str(ctx.body.name, 'Name', { max: 120 }) || `Test: ${page.name}`,
+        name: str(ctx.body.name, 'Name', { max: 120 }) || tLoc(app, ctx.locationId)('Test: {page}', { page: page.name }),
         status: 'draft',
         goal: cleanGoal(ctx.locationId, page.id, ctx.body.goal, false),
         created_at: now(),
@@ -363,7 +365,7 @@ export const funnelAbModule: Module = {
       };
       db.tx(() => {
         db.insert('ab_tests', t);
-        db.insert('ab_variants', { id: id(), test_id: t.id, location_id: t.location_id, key: 'A', name: 'Original', weight: 50, is_control: 1, created_at: now(), updated_at: now() });
+        db.insert('ab_variants', { id: id(), test_id: t.id, location_id: t.location_id, key: 'A', name: tLoc(app, t.location_id)('Original'), weight: 50, is_control: 1, created_at: now(), updated_at: now() });
         addVariant(t, { blocks: page.blocks, seo: {} });
       });
       return testOut(getTest(ctx.locationId, t.id), true);
@@ -385,7 +387,7 @@ export const funnelAbModule: Module = {
           next.set(vid, n);
         }
         const sum = [...next.values()].reduce((s, n) => s + n, 0);
-        if (sum !== 100) throw bad(`Die Aufteilung muss zusammen 100 % ergeben (jetzt ${sum} %)`);
+        if (sum !== 100) throw bad(tCtx(ctx)('Die Aufteilung muss zusammen 100 % ergeben (jetzt {sum} %)', { sum }));
         db.tx(() => {
           for (const [vid, n] of next) db.run('UPDATE ab_variants SET weight = ?, updated_at = ? WHERE id = ?', n, now(), vid);
         });
@@ -455,7 +457,7 @@ export const funnelAbModule: Module = {
       const active = db.all('SELECT weight FROM ab_variants WHERE test_id = ? AND archived = 0', t.id);
       if (active.length < 2) throw bad('Mindestens zwei Varianten nötig');
       const sum = active.reduce((s, v) => s + Number(v.weight), 0);
-      if (sum !== 100) throw bad(`Die Aufteilung muss zusammen 100 % ergeben (jetzt ${sum} %)`);
+      if (sum !== 100) throw bad(tCtx(ctx)('Die Aufteilung muss zusammen 100 % ergeben (jetzt {sum} %)', { sum }));
       if (active.filter((v) => Number(v.weight) > 0).length < 2) throw bad('Mindestens zwei Varianten brauchen Besucher (Aufteilung > 0 %)');
       touch(t.id, { status: 'running', goal, started_at: t.started_at ?? now() });
       return testOut(getTest(ctx.locationId, t.id), true);

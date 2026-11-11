@@ -6,6 +6,7 @@ import { now, safeEqual } from '../core/util.js';
 import { getContact, logActivity, type Contact } from '../services/contacts.js';
 import { CHANNEL_LABEL, PURPOSE_LABEL, STATUS_LABEL, deriveChannel, prefToken, verifyDoi, type ConsentChannel, type ConsentPurpose } from '../services/consent-model.js';
 import { confirmDoi, eventsOf, getDoi, grantConsent, mailVars, metaOf, prefsUrl, revokeConsent, settingsOf } from '../services/consent.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * The public pages of the consent ledger: the Double-Opt-in confirmation (a page with a button – the link itself never confirms,
@@ -54,31 +55,33 @@ export const consentPagesModule: Module = {
 
     router.get('/consent/confirm/:token', 'public', (ctx) => {
       const f = doiOf(ctx.params.token);
-      if (!f) return plain('Link ungültig', 'Dieser Bestätigungslink ist nicht gültig.', 404);
+      if (!f) return plain(tApp()('Link ungültig'), tApp()('Dieser Bestätigungslink ist nicht gültig.'), 404);
       const { d, v } = f;
       const loc = app.location(d.location_id)!;
+      const t = tLoc(app, d.location_id);
       const s = settingsOf(app, d.location_id).doi.page;
-      const vars = pageVars(d) ?? { location: { name: loc.name }, purpose_text: 'Nachrichten' };
+      const vars = pageVars(d) ?? { location: { name: loc.name }, purpose_text: t('Nachrichten') };
       if (d.status === 'confirmed') return shell(loc, s.success_title, `<h1>${escapeHtml(render(s.success_title, vars))}</h1><p>${escapeHtml(render(s.success_text, vars))}</p>`);
-      if (d.status === 'cancelled') return shell(loc, 'Nicht mehr gültig', '<h1>Nicht mehr gültig</h1><p class="muted">Diese Anfrage wurde zurückgezogen. Es ist keine Bestätigung nötig.</p>', 410);
+      if (d.status === 'cancelled') return shell(loc, t('Nicht mehr gültig'), `<h1>${escapeHtml(t('Nicht mehr gültig'))}</h1><p class="muted">${escapeHtml(t('Diese Anfrage wurde zurückgezogen. Es ist keine Bestätigung nötig.'))}</p>`, 410);
       if (v.expired || d.status === 'expired' || Date.parse(d.expires_at) <= Date.now()) return shell(loc, s.expired_title, `<h1>${escapeHtml(render(s.expired_title, vars))}</h1><p class="muted">${escapeHtml(render(s.expired_text, vars))}</p>`, 410);
       return shell(loc, s.title, `<h1>${escapeHtml(render(s.title, vars))}</h1><p>${escapeHtml(render(s.text, vars))}</p>
 <form method="post" action="/consent/confirm/${escapeHtml(encodeURIComponent(ctx.params.token))}" style="margin-top:18px"><button type="submit" style="width:100%">${escapeHtml(render(s.button, vars))}</button></form>
-<p class="muted" style="font-size:12px;margin-bottom:0">Du hast dich nicht angemeldet? Dann schließe dieses Fenster – ohne deine Bestätigung passiert nichts.</p>`);
+<p class="muted" style="font-size:12px;margin-bottom:0">${escapeHtml(t('Du hast dich nicht angemeldet? Dann schließe dieses Fenster – ohne deine Bestätigung passiert nichts.'))}</p>`);
     });
 
     router.post('/consent/confirm/:token', 'public', (ctx) => {
       const f = doiOf(ctx.params.token);
-      if (!f) return plain('Link ungültig', 'Dieser Bestätigungslink ist nicht gültig.', 404);
+      if (!f) return plain(tApp()('Link ungültig'), tApp()('Dieser Bestätigungslink ist nicht gültig.'), 404);
       const loc = app.location(f.d.location_id)!;
+      const t = tLoc(app, f.d.location_id);
       const s = settingsOf(app, f.d.location_id).doi.page;
-      const vars = pageVars(f.d) ?? { location: { name: loc.name }, purpose_text: 'Nachrichten' };
+      const vars = pageVars(f.d) ?? { location: { name: loc.name }, purpose_text: t('Nachrichten') };
       if (f.v.expired) return shell(loc, s.expired_title, `<h1>${escapeHtml(render(s.expired_title, vars))}</h1><p class="muted">${escapeHtml(render(s.expired_text, vars))}</p>`, 410);
       const r = confirmDoi(app, f.d.id, metaOf(ctx));
       if (!r.ok) {
         return r.reason === 'expired'
           ? shell(loc, s.expired_title, `<h1>${escapeHtml(render(s.expired_title, vars))}</h1><p class="muted">${escapeHtml(render(s.expired_text, vars))}</p>`, 410)
-          : shell(loc, 'Nicht mehr gültig', '<h1>Nicht mehr gültig</h1><p class="muted">Diese Anfrage wurde zurückgezogen. Es ist keine Bestätigung nötig.</p>', 410);
+          : shell(loc, t('Nicht mehr gültig'), `<h1>${escapeHtml(t('Nicht mehr gültig'))}</h1><p class="muted">${escapeHtml(t('Diese Anfrage wurde zurückgezogen. Es ist keine Bestätigung nötig.'))}</p>`, 410);
       }
       if (s.redirect_url && !r.already) return redirect(s.redirect_url, 303);
       return shell(loc, s.success_title, `<h1>${escapeHtml(render(s.success_title, vars))}</h1><p>${escapeHtml(render(s.success_text, vars))}</p>`);
@@ -105,6 +108,7 @@ export const consentPagesModule: Module = {
     const maskMail = (e: string) => e.replace(/^(.).*?(@.)(.*?)(\.[^.]+)$/, (_m, a, b, _mid, tld) => `${a}•••${b}•••${tld}`);
 
     const prefPage = (ctx: Ctx, c: Contact, loc: LocationRow, note = ''): RawResult => {
+      const t = tLoc(app, loc.id);
       const events = eventsOf(app, c.id);
       const list = rows(c);
       const base = `/consent/p/${encodeURIComponent(c.id)}/${encodeURIComponent(ctx.params.token)}`;
@@ -112,39 +116,45 @@ export const consentPagesModule: Module = {
         .map(([ch, p]) => {
           const st = deriveChannel(events, ch, { dnd: !!c.dnd }).purposes[p];
           const on = st.status === 'confirmed';
-          const hint = st.status === 'pending' ? ' <span class="muted">(Bestätigung per E-Mail noch offen)</span>' : '';
-          return `<label class="check" style="margin:10px 0"><input type="checkbox" name="p__${ch}__${p}" value="1"${on || st.status === 'pending' ? ' checked' : ''}> <span><strong>${escapeHtml(PURPOSE_LABEL[p])}</strong> per ${escapeHtml(CHANNEL_LABEL[ch])}${hint}</span></label>`;
+          const hint = st.status === 'pending' ? ` <span class="muted">${escapeHtml(t('(Bestätigung per E-Mail noch offen)'))}</span>` : '';
+          return `<label class="check" style="margin:10px 0"><input type="checkbox" name="p__${ch}__${p}" value="1"${on || st.status === 'pending' ? ' checked' : ''}> <span><strong>${escapeHtml(t(PURPOSE_LABEL[p]))}</strong> ${escapeHtml(t('per {channel}', { channel: t(CHANNEL_LABEL[ch]) }))}${hint}</span></label>`;
         })
         .join('');
-      const inner = `<h1>Deine Einstellungen</h1>
-<p class="muted">${escapeHtml(c.first_name ? `Hallo ${c.first_name}, hier` : 'Hier')} legst du fest, was du von ${escapeHtml(loc.name)} bekommst${c.email ? ` (${escapeHtml(maskMail(c.email))})` : ''}. Du kannst deine Einwilligung jederzeit mit Wirkung für die Zukunft ändern oder widerrufen.</p>
+      const mail = c.email ? ` (${maskMail(c.email)})` : '';
+      const intro = c.first_name
+        ? t('Hallo {first_name}, hier legst du fest, was du von {name} bekommst{mail}. Du kannst deine Einwilligung jederzeit mit Wirkung für die Zukunft ändern oder widerrufen.', { first_name: c.first_name, name: loc.name, mail })
+        : t('Hier legst du fest, was du von {name} bekommst{mail}. Du kannst deine Einwilligung jederzeit mit Wirkung für die Zukunft ändern oder widerrufen.', { name: loc.name, mail });
+      const inner = `<h1>${escapeHtml(t('Deine Einstellungen'))}</h1>
+<p class="muted">${escapeHtml(intro)}</p>
 ${note ? `<p class="ok">${escapeHtml(note)}</p>` : ''}
-${c.dnd ? '<p class="muted"><strong>Aktuell bekommst du von uns keine Werbung</strong> (abgemeldet). Wenn du etwas wieder aktivierst, schicken wir dir wieder Nachrichten.</p>' : ''}
+${c.dnd ? `<p class="muted"><strong>${escapeHtml(t('Aktuell bekommst du von uns keine Werbung'))}</strong> ${escapeHtml(t('(abgemeldet). Wenn du etwas wieder aktivierst, schicken wir dir wieder Nachrichten.'))}</p>` : ''}
 <form method="post" action="${escapeHtml(base)}">
-${body || '<p class="muted">Es gibt nichts einzustellen – zu deinem Kontakt sind keine Kanäle gespeichert.</p>'}
-<div class="row" style="margin-top:18px"><button type="submit" name="do" value="save">Speichern</button><button type="submit" name="do" value="none" class="btn secondary" style="background:#fff;color:#111827;border:1px solid #e5e7eb">Alles abbestellen</button></div>
+${body || `<p class="muted">${escapeHtml(t('Es gibt nichts einzustellen – zu deinem Kontakt sind keine Kanäle gespeichert.'))}</p>`}
+<div class="row" style="margin-top:18px"><button type="submit" name="do" value="save">${escapeHtml(t('Speichern'))}</button><button type="submit" name="do" value="none" class="btn secondary" style="background:#fff;color:#111827;border:1px solid #e5e7eb">${escapeHtml(t('Alles abbestellen'))}</button></div>
 </form>
-<p class="muted" style="font-size:12px;margin-bottom:0">Service-Nachrichten zu deinen Aufträgen und Terminen (Rechnung, Terminbestätigung) bekommst du weiterhin – sie sind keine Werbung.</p>`;
-      return shell(loc, 'Deine Einstellungen', inner);
+<p class="muted" style="font-size:12px;margin-bottom:0">${escapeHtml(t('Service-Nachrichten zu deinen Aufträgen und Terminen (Rechnung, Terminbestätigung) bekommst du weiterhin – sie sind keine Werbung.'))}</p>`;
+      return shell(loc, t('Deine Einstellungen'), inner);
     };
 
     router.get('/consent/p/:id/:token', 'public', (ctx) => {
       const f = lookup(ctx);
-      if (!f) return plain('Link ungültig', 'Dieser Link ist nicht gültig.', 404);
-      return prefPage(ctx, f.c, f.loc, ctx.query.get('saved') === '1' ? 'Gespeichert.' : ctx.query.get('none') === '1' ? 'Du bekommst keine Werbung mehr von uns.' : '');
+      if (!f) return plain(tApp()('Link ungültig'), tApp()('Dieser Link ist nicht gültig.'), 404);
+      const t = tLoc(app, f.loc.id);
+      return prefPage(ctx, f.c, f.loc, ctx.query.get('saved') === '1' ? t('Gespeichert.') : ctx.query.get('none') === '1' ? t('Du bekommst keine Werbung mehr von uns.') : '');
     });
 
     router.post('/consent/p/:id/:token', 'public', (ctx) => {
       const f = lookup(ctx);
-      if (!f) return plain('Link ungültig', 'Dieser Link ist nicht gültig.', 404);
+      if (!f) return plain(tApp()('Link ungültig'), tApp()('Dieser Link ist nicht gültig.'), 404);
       const { c, loc } = f;
+      const t = tLoc(app, loc.id);
       const back = `/consent/p/${encodeURIComponent(c.id)}/${encodeURIComponent(ctx.params.token)}`;
       const meta = metaOf(ctx);
-      const source = { kind: 'preferences', label: 'Einstellungsseite in einer E-Mail' };
+      const source = { kind: 'preferences', label: t('Einstellungsseite in einer E-Mail') };
       if (ctx.body?.do === 'none') {
         db.run('UPDATE contacts SET dnd = 1, updated_at = ? WHERE id = ?', now(), c.id);
         revokeConsent(app, { locationId: loc.id, contactId: c.id, channel: 'all', source, meta, actor: 'contact' });
-        logActivity(app, loc.id, c.id, 'contact.unsubscribed', 'Über die Einstellungsseite von allem abgemeldet');
+        logActivity(app, loc.id, c.id, 'contact.unsubscribed', t('Über die Einstellungsseite von allem abgemeldet'));
         app.events.emit(loc.id, 'contact.unsubscribed', { contactId: c.id });
         return redirect(`${back}?none=1`, 303);
       }
@@ -156,7 +166,7 @@ ${body || '<p class="muted">Es gibt nichts einzustellen – zu deinem Kontakt si
         const cur = deriveChannel(events, ch, { dnd: false }).purposes[p].status;
         if (want && cur !== 'confirmed' && cur !== 'pending') {
           // The link comes from a mail to this person: that is enough proof of the address, no second mail.
-          const text = `Ich möchte ${loc.name} per ${CHANNEL_LABEL[ch]} ${PHRASE[p] ?? PURPOSE_LABEL[p]} schicken lassen.`;
+          const text = t('Ich möchte {name} per {channel} {what} schicken lassen.', { name: loc.name, channel: t(CHANNEL_LABEL[ch]), what: t(PHRASE[p] ?? PURPOSE_LABEL[p]) });
           grantConsent(app, { locationId: loc.id, contactId: c.id, channel: ch, purposes: [p], source, text: { key: `preferences:${ch}:${p}`, text }, proofUrl: `${app.baseUrl()}/consent/p`, meta, actor: 'contact', clearDnd: true });
         } else if (!want && (cur === 'confirmed' || cur === 'pending')) {
           revokeConsent(app, { locationId: loc.id, contactId: c.id, channel: ch, purposes: [p], source, meta, actor: 'contact' });
@@ -170,7 +180,8 @@ ${body || '<p class="muted">Es gibt nichts einzustellen – zu deinem Kontakt si
       const row = db.get<{ id: string; location_id: string }>('SELECT id, location_id FROM contacts WHERE id = ?', contactId);
       const loc = row ? app.location(row.location_id) : undefined;
       if (!row || !loc) return undefined;
-      return shell(loc, 'Abgemeldet', `<h1>Abgemeldet</h1><p class="muted">Du bekommst von uns keine Nachrichten mehr.</p><p><a class="btn secondary" href="/consent/p/${escapeHtml(encodeURIComponent(row.id))}/${prefToken(app.config.secret, row.id)}">Doch etwas behalten oder wieder anmelden</a></p>`);
+      const t = tLoc(app, loc.id);
+      return shell(loc, t('Abgemeldet'), `<h1>${escapeHtml(t('Abgemeldet'))}</h1><p class="muted">${escapeHtml(t('Du bekommst von uns keine Nachrichten mehr.'))}</p><p><a class="btn secondary" href="/consent/p/${escapeHtml(encodeURIComponent(row.id))}/${prefToken(app.config.secret, row.id)}">${escapeHtml(t('Doch etwas behalten oder wieder anmelden'))}</a></p>`);
     };
 
     /** Link for the footer of marketing mails ('' when the sub-account turned it off). */

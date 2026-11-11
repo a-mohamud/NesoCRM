@@ -1,6 +1,7 @@
 import type { Account, Batch, Consent, CountRow, PartKey, RContact, RCourse, REnrollment, RProduct, RTagRec, SourceDef, SourceField, StepCtx, StepDef } from './umzug-core.js';
 import { UmzugError, VendorHttp, networkFetch } from './umzug-http.js';
 import { stripHtml, toCents, toIso } from './umzug-text.js';
+import { translator, tApp } from '../i18n/index.js';
 
 /**
  * Kajabi (public API v1, JSON:API at https://api.kajabi.com/v1, client-credentials token): contacts with tags
@@ -24,13 +25,14 @@ const http = (creds: Record<string, string>, _meta: Record<string, string>, deps
     pauseMs: deps.pauseMs ?? 150,
     errorText: (b) => b?.errors?.[0]?.detail ?? b?.error_description ?? b?.error,
     prepare: async () => {
+      const t = tApp();
       if (token && Date.now() < expires - 30_000) return;
       const f = deps.fetch ?? networkFetch;
       let r;
       try {
         r = await f(`${BASE}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: new URLSearchParams({ grant_type: 'client_credentials', client_id: creds.client_id ?? '', client_secret: creds.client_secret ?? '' }).toString() });
       } catch (e) {
-        throw new UmzugError(0, `Kajabi nicht erreichbar: ${(e as Error).message}`);
+        throw new UmzugError(0, t('Kajabi nicht erreichbar: {reason}', { reason: (e as Error).message }));
       }
       const j: any = await r.json().catch(() => ({}));
       if (!r.ok || !j.access_token) throw new UmzugError(401, 'Kajabi: Client-ID oder Client-Secret ungültig');
@@ -138,11 +140,12 @@ const steps = (): StepDef[] => [
     label: 'Produkte → Kurse',
     part: 'courses',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const all = await everything(ctx.http, '/products', ctx);
       const skipped = all.filter((p) => !isCourse(p));
-      if (skipped.length) ctx.warn(`Kajabi: ${skipped.length} Produkte (${skipped.slice(0, 3).map((p) => p.attributes?.title).join(', ')}) sind keine Kurse und wurden nicht übernommen`);
+      if (skipped.length) ctx.warn(t('Kajabi: {n} Produkte ({skipped}) sind keine Kurse und wurden nicht übernommen', { n: skipped.length, skipped: skipped.slice(0, 3).map((p) => p.attributes?.title).join(', ') }));
       ctx.warn(NO_LESSONS);
-      const records: RCourse[] = all.filter(isCourse).map((p) => ({ kind: 'course', ext: `p:${p.id}`, title: String(p.attributes?.title ?? `Produkt ${p.id}`), description: stripHtml(p.attributes?.description ?? ''), cover: p.attributes?.thumbnail_url ?? p.attributes?.image_url, modules: [] }));
+      const records: RCourse[] = all.filter(isCourse).map((p) => ({ kind: 'course', ext: `p:${p.id}`, title: String(p.attributes?.title ?? t('Produkt {id}', { id: p.id })), description: stripHtml(p.attributes?.description ?? ''), cover: p.attributes?.thumbnail_url ?? p.attributes?.image_url, modules: [] }));
       yield { records, cursor: undefined };
     },
   },
@@ -151,12 +154,13 @@ const steps = (): StepDef[] => [
     label: 'Angebote → Produkte',
     part: 'products',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       for await (const pg of pages(ctx.http, '/offers', {}, ctx, Number(ctx.cursor ?? 1))) {
         const records: RProduct[] = pg.items.map((o) => {
           const a = o.attributes ?? {};
           const recurring = /subscription|recurring/i.test(String(a.payment_type ?? a.offer_type ?? '')) || a.recurring_offer === true;
           const price = a.price_in_cents !== undefined ? Number(a.price_in_cents) : toCents(a.price ?? a.amount);
-          return { kind: 'product', ext: `o:${o.id}`, name: String(a.title ?? a.name ?? `Angebot ${o.id}`), description: stripHtml(a.description ?? ''), price_cents: price || 0, currency: a.currency ? String(a.currency).toUpperCase() : undefined, recurring: recurring ? { interval: /year|annual|jähr/i.test(String(a.recurring_interval ?? a.interval ?? '')) ? 'year' : 'month' } : undefined, active: a.archived === true || a.active === false ? false : true };
+          return { kind: 'product', ext: `o:${o.id}`, name: String(a.title ?? a.name ?? t('Angebot {id}', { id: o.id })), description: stripHtml(a.description ?? ''), price_cents: price || 0, currency: a.currency ? String(a.currency).toUpperCase() : undefined, recurring: recurring ? { interval: /year|annual|jähr/i.test(String(a.recurring_interval ?? a.interval ?? '')) ? 'year' : 'month' } : undefined, active: a.archived === true || a.active === false ? false : true };
         });
         yield { records, cursor: pg.next, total: pg.total };
       }

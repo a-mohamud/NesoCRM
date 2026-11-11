@@ -5,6 +5,7 @@ import { teamOf } from './wfx-crm.js';
 import { appCall, appMeta, MAP_FIELD, NANGO_FIELD, qs, saveResult, setVars, usesNango, whenOf, WHEN_FIELDS, type AppSpec } from '../services/app-kit.js';
 import { connectorFetch, NOTION_VERSION, notionPageId, readJson, registerConnector, spreadsheetId, type ConnectorConfig } from '../services/connectors.js';
 import { addToDate, parseDate, parseNumber } from '../services/formatters.js';
+import { tApp, tLoc } from '../i18n/index.js';
 import { registerActionMeta, requireText, rowsOf, text, tzOf, type ActionMeta, type FieldDef } from '../services/wfx-kit.js';
 
 /**
@@ -20,7 +21,7 @@ function dueOf(app: App, run: any, step: any, vars: Record<string, any>): Date |
   const raw = text(step.due, vars).trim();
   if (raw) {
     const d = parseDate(raw, tz);
-    if (!d) throw new Error(`Fälligkeit „${raw.slice(0, 30)}“ ist kein Datum`);
+    if (!d) throw new Error(tLoc(app, run.location_id)('Fälligkeit „{value}“ ist kein Datum', { value: raw.slice(0, 30) }));
     return d;
   }
   if (step.due_in_days !== undefined && String(step.due_in_days).trim() !== '') return addToDate(new Date(), Number(step.due_in_days) || 0, 'days', tz);
@@ -47,7 +48,7 @@ export function notionValue(prop: NotionProp, raw: string, name: string): unknow
       return { rich_text: [{ text: { content: raw.slice(0, 2000) } }] };
     case 'number': {
       const n = parseNumber(v);
-      if (Number.isNaN(n)) throw new Error(`Notion-Eigenschaft „${name}“: „${v.slice(0, 30)}“ ist keine Zahl`);
+      if (Number.isNaN(n)) throw new Error(tApp()('Notion-Eigenschaft „{name}“: „{value}“ ist keine Zahl', { name, value: v.slice(0, 30) }));
       return { number: n };
     }
     case 'select':
@@ -67,7 +68,7 @@ export function notionValue(prop: NotionProp, raw: string, name: string): unknow
     case 'url':
       return { url: v || null };
     default:
-      throw new Error(`Notion-Eigenschaft „${name}“ (Typ ${prop.type}) lässt sich hier nicht befüllen`);
+      throw new Error(tApp()('Notion-Eigenschaft „{name}“ (Typ {type}) lässt sich hier nicht befüllen', { name, type: prop.type }));
   }
 }
 
@@ -82,7 +83,7 @@ export function notionProperties(schema: Record<string, NotionProp>, rows: { pro
   }
   for (const r of rows) {
     const real = byLower.get(String(r.property).trim().toLowerCase());
-    if (!real) throw new Error(`Notion-Datenbank hat keine Spalte „${String(r.property).slice(0, 40)}“ (vorhanden: ${Object.keys(schema).slice(0, 8).join(', ')})`);
+    if (!real) throw new Error(tApp()('Notion-Datenbank hat keine Spalte „{name}“ (vorhanden: {existing})', { name: String(r.property).slice(0, 40), existing: Object.keys(schema).slice(0, 8).join(', ') }));
     out[real] = notionValue(schema[real], String(r.value ?? ''), real);
   }
   return out;
@@ -99,7 +100,7 @@ export function airtableMatch(field: string, value: string): string {
 /** Column letters to a 0-based index (A=0, Z=25, AA=26). */
 export function colIndex(letters: string): number {
   const s = letters.trim().toUpperCase();
-  if (!/^[A-Z]{1,3}$/.test(s)) throw new Error(`„${letters}“ ist keine Spalte (A, B, … AA)`);
+  if (!/^[A-Z]{1,3}$/.test(s)) throw new Error(tApp()('„{letters}“ ist keine Spalte (A, B, … AA)', { letters }));
   return [...s].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
 }
 export const colLetters = (i: number): string => {
@@ -139,7 +140,7 @@ const clickupSpec: AppSpec = { name: 'ClickUp', base: () => 'https://api.clickup
 const airtableSpec: AppSpec = { name: 'Airtable', base: () => 'https://api.airtable.com/v0', headers: (c): Record<string, string> => (c.token ? { authorization: `Bearer ${c.token}` } : {}), nangoPrefix: '/v0' };
 
 const needToken = (cfg: ConnectorConfig, what: string) => {
-  if (!usesNango(cfg) && !cfg.token) throw new Error(`${what}: Token fehlt (Apps → Direkt-Verbindungen)`);
+  if (!usesNango(cfg) && !cfg.token) throw new Error(tApp()('{app}: Token fehlt (Apps → Direkt-Verbindungen)', { app: what }));
 };
 
 export const connectorAppsWorkModule: Module = {
@@ -167,8 +168,9 @@ export const connectorAppsWorkModule: Module = {
       test: async (a, cfg) => {
         needToken(cfg, 'Slack');
         const r = await appCall(a, '', cfg, slackSpec, { method: 'POST', path: '/auth.test', body: {} });
-        if (!r.data?.ok) throw new Error(`Slack: ${SLACK_ERRORS[r.data?.error] ?? r.data?.error ?? 'Antwort ungültig'}`);
-        return `Verbunden als ${String(r.data.user ?? 'Bot')} in ${String(r.data.team ?? 'Slack')}`;
+        const t = tApp();
+        if (!r.data?.ok) throw new Error(`Slack: ${t(SLACK_ERRORS[r.data?.error] ?? r.data?.error ?? 'Antwort ungültig')}`); // i18n-ignore
+        return t('Verbunden als {user} in {team}', { user: String(r.data.user ?? 'Bot'), team: String(r.data.team ?? 'Slack') });
       },
       actions: {
         slack_post_message: async (a, cfg, run, step, vars) => {
@@ -178,8 +180,9 @@ export const connectorAppsWorkModule: Module = {
           const body = (step.title ? `*${text(step.title, vars).trim()}*\n` : '') + text(step.text, vars);
           if (!body.trim()) throw new Error('Kein Text');
           const r = await appCall(a, loc(run), cfg, slackSpec, { method: 'POST', path: '/chat.postMessage', body: { channel, text: body.slice(0, 3900), unfurl_links: !!step.unfurl, ...(step.thread_ts ? { thread_ts: text(step.thread_ts, vars) } : {}) } });
-          if (!r.data?.ok) throw new Error(`Slack: ${SLACK_ERRORS[r.data?.error] ?? r.data?.error ?? 'Antwort ungültig'}`);
-          return setVars({ result: `Slack: in ${channel} gepostet`, output: { ts: r.data.ts, channel: r.data.channel } }, { slack_ts: r.data.ts, slack_channel: r.data.channel });
+          const tl = tLoc(a, loc(run));
+          if (!r.data?.ok) throw new Error(`Slack: ${tl(SLACK_ERRORS[r.data?.error] ?? r.data?.error ?? 'Antwort ungültig')}`); // i18n-ignore
+          return setVars({ result: tl('Slack: in {channel} gepostet', { channel }), output: { ts: r.data.ts, channel: r.data.channel } }, { slack_ts: r.data.ts, slack_channel: r.data.channel });
         },
       },
     });
@@ -195,10 +198,10 @@ export const connectorAppsWorkModule: Module = {
           contentUrl: null,
           content: {
             $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-            type: 'AdaptiveCard',
+            type: 'AdaptiveCard', // i18n-ignore
             version: '1.4',
-            body: [...(title ? [{ type: 'TextBlock', text: title.slice(0, 200), weight: 'Bolder', size: 'Medium', wrap: true }] : []), { type: 'TextBlock', text: body.slice(0, 3800) || ' ', wrap: true }],
-            ...(link ? { actions: [{ type: 'Action.OpenUrl', title: link.title.slice(0, 40) || 'Öffnen', url: link.url }] } : {}),
+            body: [...(title ? [{ type: 'TextBlock', text: title.slice(0, 200), weight: 'Bolder', size: 'Medium', wrap: true }] : []), { type: 'TextBlock', text: body.slice(0, 3800) || ' ', wrap: true }], // i18n-ignore (Adaptive Card values)
+            ...(link ? { actions: [{ type: 'Action.OpenUrl', title: link.title.slice(0, 40) || tApp()('Öffnen'), url: link.url }] } : {}),
           },
         },
       ],
@@ -208,8 +211,9 @@ export const connectorAppsWorkModule: Module = {
       const r = await connectorFetch(a)(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(teamsCard(title, body, link)), timeoutMs: 15_000, maxBytes: 64 * 1024 });
       if (!r.ok) {
         const detail = (await r.text()).slice(0, 140);
-        if (r.status === 404 || r.status === 410) throw new Error(`Teams: Webhook gibt es nicht mehr (${r.status}) – neue URL eintragen`);
-        throw new Error(`Teams antwortet ${r.status}${detail ? `: ${detail}` : ''}`);
+        const t = tApp();
+        if (r.status === 404 || r.status === 410) throw new Error(t('Teams: Webhook gibt es nicht mehr ({status}) – neue URL eintragen', { status: r.status }));
+        throw new Error(t('Teams antwortet {status}', { status: r.status }) + (detail ? `: ${detail}` : ''));
       }
     };
     registerConnector(app, {
@@ -259,7 +263,7 @@ export const connectorAppsWorkModule: Module = {
       test: async (a, cfg) => {
         if (!usesNango(cfg) && !(cfg.api_key && cfg.token)) throw new Error('Trello: API-Key und Token eintragen');
         const r = await appCall(a, '', cfg, trelloSpec, { path: '/members/me', query: { fields: 'username,fullName' } });
-        return `Verbunden als ${String(r.data?.fullName || r.data?.username || 'Trello')}`;
+        return tApp()('Verbunden als {name}', { name: String(r.data?.fullName || r.data?.username || 'Trello') });
       },
       actions: {
         trello_create_card: async (a, cfg, run, step, vars) => {
@@ -269,7 +273,7 @@ export const connectorAppsWorkModule: Module = {
           const name = requireText(text(step.name, vars), 'Kartentitel');
           const due = dueOf(a, run, step, vars);
           const r = await appCall(a, loc(run), cfg, trelloSpec, { method: 'POST', path: '/cards', query: { idList: list, name: name.slice(0, 16000), desc: text(step.desc, vars).slice(0, 16000), due: due?.toISOString(), idLabels: text(step.labels, vars).replace(/\s+/g, ''), pos: step.pos === 'bottom' ? 'bottom' : 'top' } });
-          const out = setVars({ result: `Trello-Karte angelegt: ${name.slice(0, 50)}`, output: { id: r.data?.id, url: r.data?.shortUrl } }, { trello_card_id: r.data?.id, trello_card_url: r.data?.shortUrl });
+          const out = setVars({ result: tLoc(a, loc(run))('Trello-Karte angelegt: {name}', { name: name.slice(0, 50) }), output: { id: r.data?.id, url: r.data?.shortUrl } }, { trello_card_id: r.data?.id, trello_card_url: r.data?.shortUrl });
           return saveResult(out, step, r.data?.shortUrl);
         },
       },
@@ -295,7 +299,7 @@ export const connectorAppsWorkModule: Module = {
       test: async (a, cfg) => {
         needToken(cfg, 'Asana');
         const r = await appCall(a, '', cfg, asanaSpec, { path: '/users/me' });
-        return `Verbunden als ${String(r.data?.data?.name ?? 'Asana')}`;
+        return tApp()('Verbunden als {name}', { name: String(r.data?.data?.name ?? 'Asana') });
       },
       actions: {
         asana_create_task: async (a, cfg, run, step, vars) => {
@@ -311,7 +315,7 @@ export const connectorAppsWorkModule: Module = {
           const r = await appCall(a, loc(run), cfg, asanaSpec, { method: 'POST', path: '/tasks', body: { data } });
           const gid = r.data?.data?.gid;
           const url = r.data?.data?.permalink_url;
-          return saveResult(setVars({ result: `Asana-Aufgabe angelegt: ${name.slice(0, 50)}`, output: { gid, url } }, { asana_task_gid: gid, asana_task_url: url }), step, url);
+          return saveResult(setVars({ result: tLoc(a, loc(run))('Asana-Aufgabe angelegt: {name}', { name: name.slice(0, 50) }), output: { gid, url } }, { asana_task_gid: gid, asana_task_url: url }), step, url);
         },
       },
     });
@@ -335,7 +339,7 @@ export const connectorAppsWorkModule: Module = {
       test: async (a, cfg) => {
         needToken(cfg, 'ClickUp');
         const r = await appCall(a, '', cfg, clickupSpec, { path: '/user' });
-        return `Verbunden als ${String(r.data?.user?.username ?? 'ClickUp')}`;
+        return tApp()('Verbunden als {name}', { name: String(r.data?.user?.username ?? 'ClickUp') });
       },
       actions: {
         clickup_create_task: async (a, cfg, run, step, vars) => {
@@ -353,7 +357,7 @@ export const connectorAppsWorkModule: Module = {
           const tags = text(step.tags, vars).split(',').map((x) => x.trim()).filter(Boolean);
           if (tags.length) body.tags = tags;
           const r = await appCall(a, loc(run), cfg, clickupSpec, { method: 'POST', path: `/list/${list}/task`, body });
-          return saveResult(setVars({ result: `ClickUp-Aufgabe angelegt: ${name.slice(0, 50)}`, output: { id: r.data?.id, url: r.data?.url } }, { clickup_task_id: r.data?.id, clickup_task_url: r.data?.url }), step, r.data?.url);
+          return saveResult(setVars({ result: tLoc(a, loc(run))('ClickUp-Aufgabe angelegt: {name}', { name: name.slice(0, 50) }), output: { id: r.data?.id, url: r.data?.url } }, { clickup_task_id: r.data?.id, clickup_task_url: r.data?.url }), step, r.data?.url);
         },
       },
     });
@@ -377,7 +381,7 @@ export const connectorAppsWorkModule: Module = {
       test: async (a, cfg) => {
         needToken(cfg, 'Airtable');
         const r = await appCall(a, '', cfg, airtableSpec, { path: '/meta/whoami' });
-        return `Verbunden (${String(r.data?.email ?? r.data?.id ?? 'Airtable')})`;
+        return tApp()('Verbunden ({name})', { name: String(r.data?.email ?? r.data?.id ?? 'Airtable') });
       },
       actions: {
         airtable_create_record: async (a, cfg, run, step, vars) => {
@@ -387,7 +391,7 @@ export const connectorAppsWorkModule: Module = {
           const table = requireText(text(step.table, vars), 'Tabelle');
           const fields = airtableFields(step.rows, vars);
           const r = await appCall(a, loc(run), cfg, airtableSpec, { method: 'POST', path: `/${base}/${encodeURIComponent(table)}`, body: { fields, typecast: true } });
-          return saveResult(setVars({ result: `Airtable: Datensatz ${r.data?.id ?? ''} angelegt`, output: { id: r.data?.id, fields: r.data?.fields } }, { airtable_record_id: r.data?.id }), step, r.data?.id);
+          return saveResult(setVars({ result: tLoc(a, loc(run))('Airtable: Datensatz {id} angelegt', { id: String(r.data?.id ?? '') }), output: { id: r.data?.id, fields: r.data?.fields } }, { airtable_record_id: r.data?.id }), step, r.data?.id);
         },
         airtable_update_record: async (a, cfg, run, step, vars) => {
           needToken(cfg, 'Airtable');
@@ -402,13 +406,13 @@ export const connectorAppsWorkModule: Module = {
             const f = await appCall(a, loc(run), cfg, airtableSpec, { path: `/${base}/${encodeURIComponent(table)}`, query: { filterByFormula: airtableMatch(field, value), maxRecords: 1 } });
             id = String(f.data?.records?.[0]?.id ?? '');
             if (!id) {
-              if (!step.create_if_missing) return { result: `Airtable: kein Datensatz mit ${field} = ${value.slice(0, 40)}`, vars: { airtable_found: false } };
+              if (!step.create_if_missing) return { result: tLoc(a, loc(run))('Airtable: kein Datensatz mit {field} = {value}', { field, value: value.slice(0, 40) }), vars: { airtable_found: false } };
               const c = await appCall(a, loc(run), cfg, airtableSpec, { method: 'POST', path: `/${base}/${encodeURIComponent(table)}`, body: { fields: { ...fields, [field]: value }, typecast: true } });
-              return saveResult(setVars({ result: `Airtable: Datensatz ${c.data?.id ?? ''} neu angelegt`, output: { id: c.data?.id } }, { airtable_record_id: c.data?.id, airtable_found: false }), step, c.data?.id);
+              return saveResult(setVars({ result: tLoc(a, loc(run))('Airtable: Datensatz {id} neu angelegt', { id: String(c.data?.id ?? '') }), output: { id: c.data?.id } }, { airtable_record_id: c.data?.id, airtable_found: false }), step, c.data?.id);
             }
           }
           const r = await appCall(a, loc(run), cfg, airtableSpec, { method: 'PATCH', path: `/${base}/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, body: { fields, typecast: true } });
-          return saveResult(setVars({ result: `Airtable: Datensatz ${r.data?.id ?? id} aktualisiert`, output: { id: r.data?.id ?? id, fields: r.data?.fields } }, { airtable_record_id: r.data?.id ?? id, airtable_found: true }), step, r.data?.id ?? id);
+          return saveResult(setVars({ result: tLoc(a, loc(run))('Airtable: Datensatz {id} aktualisiert', { id: String(r.data?.id ?? id) }), output: { id: r.data?.id ?? id, fields: r.data?.fields } }, { airtable_record_id: r.data?.id ?? id, airtable_found: true }), step, r.data?.id ?? id);
         },
       },
     });
@@ -428,7 +432,7 @@ export const connectorAppsWorkModule: Module = {
       const rows = rowsOf<{ property: string; value: string }>(step.rows, ['property']).map((r) => ({ property: r.property, value: text(r.value, vars) }));
       const props = notionProperties(db?.properties ?? {}, rows, step.title ? text(step.title, vars) : undefined);
       const page = await notion(app, cfg.token, 'POST', '/pages', { parent: { database_id: dbId }, properties: props });
-      return saveResult(setVars({ result: `Notion: Eintrag angelegt${page?.url ? ` (${String(page.url).slice(0, 80)})` : ''}`, output: { id: page?.id, url: page?.url } }, { notion_page_id: page?.id, notion_page_url: page?.url }), step, page?.url);
+      return saveResult(setVars({ result: tLoc(app, run.location_id)('Notion: Eintrag angelegt') + (page?.url ? ` (${String(page.url).slice(0, 80)})` : ''), output: { id: page?.id, url: page?.url } }, { notion_page_id: page?.id, notion_page_url: page?.url }), step, page?.url);
     };
     meta(appMeta('Notion', { type: 'notion_create_item', label: 'Notion: Datenbank-Eintrag anlegen', summary: 'Legt einen Eintrag (Seite) in einer Notion-Datenbank an.', doc: 'Datenbank als Link oder ID – sie muss mit der Integration geteilt sein (Notion → ••• → Verbindungen). Titel füllt die Titel-Spalte; weitere Zeilen setzen Spalten nach ihrem Namen (Text, Zahl, Auswahl, Mehrfachauswahl, Status, Haken, Datum, E-Mail, Telefon, URL). Danach {{var.notion_page_url}}.', icon: 'doc', needs: 'Apps → Direkt-Verbindungen → Notion (Token)', keywords: 'notion datenbank database eintrag seite item', fields: [{ key: 'database_id', label: 'Datenbank (Link oder ID)', type: 'text', required: true }, { key: 'title', label: 'Titel', type: 'text', default: '{{contact.name}}' }, { key: 'rows', label: 'Weitere Spalten', type: 'rows', addLabel: '+ Spalte', rows: [{ key: 'property', label: 'Spalte', type: 'text' }, { key: 'value', label: 'Wert', type: 'text' }] }, MAP_FIELD], provides: ['var.notion_page_url', 'var.notion_page_id'], sample: { database_id: 'https://www.notion.so/…', title: '{{contact.name}}', rows: [{ property: 'E-Mail', value: '{{contact.email}}' }] } }));
 
@@ -458,7 +462,7 @@ export const connectorAppsWorkModule: Module = {
         const range = a1(tab, 'A1');
         const r = await sheetsCall(run, 'POST', `${SHEETS}/${id}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, { majorDimension: 'ROWS', values: [values] });
         const where = String(r?.updates?.updatedRange ?? '');
-        return setVars({ result: `Google Sheets: Zeile angehängt${where ? ` (${where})` : ''}`, output: r?.updates }, { sheet_range: where });
+        return setVars({ result: tLoc(app, run.location_id)('Google Sheets: Zeile angehängt') + (where ? ` (${where})` : ''), output: r?.updates }, { sheet_range: where });
       },
       gsheets_update_row: async (run: any, step: any, vars: Record<string, any>) => {
         const { id, tab } = sheetOf(step, vars);
@@ -471,17 +475,18 @@ export const connectorAppsWorkModule: Module = {
         const colVals: string[] = found?.values?.[0] ?? [];
         const at = colVals.findIndex((v) => String(v ?? '').trim().toLowerCase() === keyValue.toLowerCase());
         if (at < 0) {
-          if (!step.append_if_missing) return { result: `Google Sheets: keine Zeile mit ${keyValue.slice(0, 40)} in Spalte ${L}`, vars: { sheet_row: 0 } };
+          if (!step.append_if_missing) return { result: tLoc(app, run.location_id)('Google Sheets: keine Zeile mit {value} in Spalte {column}', { value: keyValue.slice(0, 40), column: L }), vars: { sheet_row: 0 } };
           const width = Math.max(keyCol, ...cells.map((c) => c.idx)) + 1;
           const row = Array.from({ length: width }, () => '');
           row[keyCol] = cell(keyValue);
           for (const c of cells) row[c.idx] = c.value;
           const r = await sheetsCall(run, 'POST', `${SHEETS}/${id}/values/${encodeURIComponent(a1(tab, 'A1'))}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, { majorDimension: 'ROWS', values: [row] });
-          return setVars({ result: `Google Sheets: neue Zeile angehängt (${keyValue.slice(0, 40)})`, output: r?.updates }, { sheet_row: 0, sheet_range: String(r?.updates?.updatedRange ?? '') });
+          return setVars({ result: tLoc(app, run.location_id)('Google Sheets: neue Zeile angehängt ({value})', { value: keyValue.slice(0, 40) }), output: r?.updates }, { sheet_row: 0, sheet_range: String(r?.updates?.updatedRange ?? '') });
         }
         const row = at + 1;
         await sheetsCall(run, 'POST', `${SHEETS}/${id}/values:batchUpdate`, { valueInputOption: 'RAW', data: cells.map((c) => ({ range: a1(tab, `${colLetters(c.idx)}${row}`), values: [[c.value]] })) });
-        return setVars({ result: `Google Sheets: Zeile ${row} aktualisiert (${cells.length} Zellen)`, output: { row, cells: cells.length } }, { sheet_row: row });
+        const tl = tLoc(app, run.location_id);
+        return setVars({ result: tl.plural(cells.length, { one: 'Google Sheets: Zeile {row} aktualisiert ({n} Zelle)', other: 'Google Sheets: Zeile {row} aktualisiert ({n} Zellen)' }, { row }), output: { row, cells: cells.length } }, { sheet_row: row });
       },
     };
 
@@ -519,7 +524,7 @@ export const connectorAppsWorkModule: Module = {
         if (r.status === 409) data = { id: eventId, htmlLink: '' };
         else if (!r.ok) await readJson({ status: r.status, ok: false, headers: r.headers, text: async () => raw }, 'Google Kalender');
       }
-      return setVars({ result: `Google Kalender: Termin „${String(body.summary).slice(0, 40)}“ am ${start.toISOString()} angelegt`, output: { id: data?.id ?? eventId, url: data?.htmlLink } }, { gcal_event_id: data?.id ?? eventId, gcal_event_url: data?.htmlLink ?? '' });
+      return setVars({ result: tLoc(app, run.location_id)('Google Kalender: Termin „{title}“ am {start} angelegt', { title: String(body.summary).slice(0, 40), start: start.toISOString() }), output: { id: data?.id ?? eventId, url: data?.htmlLink } }, { gcal_event_id: data?.id ?? eventId, gcal_event_url: data?.htmlLink ?? '' });
     };
 
     // These steps use connections that exist elsewhere, so there is no form of their own; they only need their handlers.

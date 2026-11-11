@@ -9,6 +9,7 @@ import { setBan } from '../services/community-actions.js';
 import { onlineIds } from '../services/community-ext.js';
 import { TEAM, dmGroups, inbox, isBlocked, markRead, messagesOf, nameOf, reportMessage, sendDm, setBlocked, sharedGroups, threadOf, unreadCount, whyNot, type Message } from '../services/community-dm.js';
 import { communityUi, kitOf, type PortalCtx, type PortalMember } from '../services/community-ui.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Direct messages in the member area (/portal/<key>/community/messages): inbox, conversation with live updates, blocking and
@@ -100,11 +101,12 @@ export const communityDmModule: Module = {
         const threads = threadsOf(loc, c.id).map((t) => {
           const other = t.contact_a === c.id ? t.contact_b : t.contact_a;
           const messages = db.all<Message>('SELECT * FROM community_dm_messages WHERE thread_id = ? ORDER BY created_at, rowid', t.id);
-          return { mit: nameOf(app, loc, other), begonnen: t.created_at, letzte_nachricht: t.last_message_at, nachrichten: messages.map((m) => ({ von: m.sender_id === c.id ? 'ich' : m.sender_name, text: m.body, status: m.status, at: m.created_at })) };
+          return { mit: nameOf(app, loc, other), begonnen: t.created_at, letzte_nachricht: t.last_message_at, nachrichten: messages.map((m) => ({ von: m.sender_id === c.id ? tLoc(app, loc)('ich') : m.sender_name, text: m.body, status: m.status, at: m.created_at })) };
         });
         const blocks = db.all<{ blocked_id: string; created_at: string }>('SELECT blocked_id, created_at FROM community_blocks WHERE location_id = ? AND blocker_id = ?', loc, c.id).map((b) => ({ blockiert: nameOf(app, loc, b.blocked_id), at: b.created_at }));
         const reports = db.all('SELECT reason, status, action, created_at, resolved_at FROM community_dm_reports WHERE location_id = ? AND reporter_id = ?', loc, c.id);
-        return { ...(threads.length ? { 'Community-Direktnachrichten': threads } : {}), ...(blocks.length ? { 'Community-Blockierungen': blocks } : {}), ...(reports.length ? { 'Community-Meldungen (Nachrichten)': reports } : {}) };
+        const t = tLoc(app, loc);
+        return { ...(threads.length ? { [t('Community-Direktnachrichten')]: threads } : {}), ...(blocks.length ? { [t('Community-Blockierungen')]: blocks } : {}), ...(reports.length ? { [t('Community-Meldungen (Nachrichten)')]: reports } : {}) };
       },
     ];
     app.services.privacyErase = [
@@ -123,7 +125,8 @@ export const communityDmModule: Module = {
     headerLinks.push((p: PortalCtx, m: PortalMember) => {
       if (!dmGroups(app, p.locationId, m.contact.id).length && !inbox(app, p.locationId, m.contact.id).length) return '';
       const n = unreadCount(app, p.locationId, m.contact.id);
-      return `<a class="pn-msg" href="${p.base}/community/messages" aria-label="Nachrichten${n ? ` (${n} ungelesen)` : ''}">${ICON_CHAT}${n ? `<b>${n > 99 ? '99+' : n}</b>` : ''}</a>`;
+      const t = tLoc(app, p.locationId);
+      return `<a class="pn-msg" href="${p.base}/community/messages" aria-label="${n ? t('Nachrichten ({n} ungelesen)', { n }) : t('Nachrichten')}">${ICON_CHAT}${n ? `<b>${n > 99 ? '99+' : n}</b>` : ''}</a>`;
     });
     ui.notificationIcon.push((k) => (k === 'dm' ? ICON_CHAT : undefined));
     ui.notificationTarget.push((p, n) => {
@@ -140,13 +143,15 @@ export const communityDmModule: Module = {
       return db.get<{ contact_id: string }>('SELECT contact_id FROM community_profiles WHERE location_id = ? AND handle = ?', loc, handle.toLowerCase())?.contact_id;
     };
 
+    /** Date and time in the portal's zone and language. */
+    const fmt = (p: PortalCtx, iso: string, opts: Intl.DateTimeFormatOptions = {}) =>
+      tLoc(app, p.locationId).locale === 'de' ? formatInTz(iso, kitOf(app).tz(p), opts) : new Intl.DateTimeFormat('en-GB', { timeZone: kitOf(app).tz(p), weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', ...opts }).format(new Date(iso));
     const bubble = (p: PortalCtx, m: PortalMember, msg: Message) => {
       const kit = kitOf(app);
       const me = msg.sender_id === m.contact.id;
-      const tz = kit.tz(p);
-      return `<div class="dm-b${me ? ' me' : ''}" id="m-${escapeHtml(msg.id)}"><div class="prose">${kit.renderText(p, msg.body, true)}</div><time datetime="${escapeHtml(msg.created_at)}" title="${escapeHtml(formatInTz(msg.created_at, tz))}">${escapeHtml(formatInTz(msg.created_at, tz, { weekday: undefined, day: undefined, month: undefined, year: undefined }))}</time></div>`;
+      return `<div class="dm-b${me ? ' me' : ''}" id="m-${escapeHtml(msg.id)}"><div class="prose">${kit.renderText(p, msg.body, true)}</div><time datetime="${escapeHtml(msg.created_at)}" title="${escapeHtml(fmt(p, msg.created_at))}">${escapeHtml(fmt(p, msg.created_at, { weekday: undefined, day: undefined, month: undefined, year: undefined }))}</time></div>`;
     };
-    const dayLabel = (p: PortalCtx, iso: string) => formatInTz(iso, kitOf(app).tz(p), { weekday: 'long', year: undefined, hour: undefined, minute: undefined });
+    const dayLabel = (p: PortalCtx, iso: string) => fmt(p, iso, { weekday: 'long', year: undefined, hour: undefined, minute: undefined });
 
     // --- inbox ---------------------------------------------------------------------------------------------------------------------
     router.get('/portal/:p/community/messages', 'public', (ctx) =>
@@ -154,22 +159,23 @@ export const communityDmModule: Module = {
         const kit = kitOf(app);
         const threads = inbox(app, p.locationId, m.contact.id);
         const allowed = dmGroups(app, p.locationId, m.contact.id).length > 0;
+        const tr = tLoc(app, p.locationId);
         const rows = threads
           .map((t) => {
             const team = t.other === TEAM;
             const pr = team ? undefined : kit.profile(p, t.other);
-            const name = team ? 'Team' : (pr?.display_name ?? nameOf(app, p.locationId, t.other));
+            const name = team ? tr('Team') : (pr?.display_name ?? nameOf(app, p.locationId, t.other));
             const href = `${kit.cbase(p)}/messages/${team ? TEAM : encodeURIComponent(pr?.handle ?? '')}`;
             if (!team && !pr) return '';
-            return `<li><a class="${t.unread ? 'un' : ''}" href="${href}">${team ? `<span class="av" style="background:var(--brand)" aria-hidden="true">★</span>` : kit.avatar(p, name, pr)}<span class="t"><div><strong>${escapeHtml(name)}</strong></div><div class="muted small">${escapeHtml(t.last_preview)}</div></span><span class="when">${t.unread ? `<span class="cm-n">${t.unread}</span><br>` : ''}${relTime(t.last_message_at)}</span></a></li>`;
+            return `<li><a class="${t.unread ? 'un' : ''}" href="${href}">${team ? `<span class="av" style="background:var(--brand)" aria-hidden="true">★</span>` : kit.avatar(p, name, pr)}<span class="t"><div><strong>${escapeHtml(name)}</strong></div><div class="muted small">${escapeHtml(t.last_preview)}</div></span><span class="when">${t.unread ? `<span class="cm-n">${t.unread}</span><br>` : ''}${relTime(t.last_message_at, Date.now(), tr)}</span></a></li>`;
           })
           .join('');
         return kit.frame(
           p,
           m,
-          'Nachrichten',
-          `<div class="crumb"><a href="${kit.cbase(p)}">Community</a></div><div class="cm-row" style="margin-bottom:14px"><h1 class="grow" style="margin:0">Nachrichten</h1>${allowed ? `<a class="btn ghost" href="${kit.cbase(p)}/messages/${TEAM}">Team schreiben</a>` : ''}</div>
-<div class="cm-box" style="padding:0;max-width:760px;overflow:hidden">${rows ? `<ul class="dm-list">${rows}</ul>` : `<p class="cm-empty">${allowed ? 'Noch keine Nachrichten. Öffne ein Profil oder das Mitgliederverzeichnis und schreib jemandem.' : 'Nachrichten sind in deinen Gruppen ausgeschaltet.'}</p>`}</div>`,
+          tr('Nachrichten'),
+          `<div class="crumb"><a href="${kit.cbase(p)}">${tr('Community')}</a></div><div class="cm-row" style="margin-bottom:14px"><h1 class="grow" style="margin:0">${tr('Nachrichten')}</h1>${allowed ? `<a class="btn ghost" href="${kit.cbase(p)}/messages/${TEAM}">${tr('Team schreiben')}</a>` : ''}</div>
+<div class="cm-box" style="padding:0;max-width:760px;overflow:hidden">${rows ? `<ul class="dm-list">${rows}</ul>` : `<p class="cm-empty">${allowed ? tr('Noch keine Nachrichten. Öffne ein Profil oder das Mitgliederverzeichnis und schreib jemandem.') : tr('Nachrichten sind in deinen Gruppen ausgeschaltet.')}</p>`}</div>`,
         );
       }),
     );
@@ -180,7 +186,8 @@ export const communityDmModule: Module = {
       const team = other === TEAM;
       const pr = team ? undefined : kit.profile(p, other);
       if (!team && !pr) return kit.errorPage(p, m, 'Dieses Mitglied gibt es nicht.', 404);
-      const name = team ? 'Team' : pr!.display_name;
+      const t = tLoc(app, p.locationId);
+      const name = team ? t('Team') : pr!.display_name;
       const handle = team ? TEAM : pr!.handle;
       const th = threadOf(app, p.locationId, m.contact.id, other);
       const msgs = th ? messagesOf(app, th.id) : [];
@@ -201,19 +208,19 @@ export const communityDmModule: Module = {
       const base = `${kit.cbase(p)}/messages/${encodeURIComponent(handle)}`;
       const menu = team
         ? ''
-        : `<details class="dm-menu"><summary aria-label="Mehr">⋯</summary><div class="pop">
-<form method="post" action="${base}/${blocked ? 'unblock' : 'block'}">${kit.tokenInput(m)}<button>${blocked ? 'Blockierung aufheben' : 'Blockieren'}</button></form>
-${msgs.filter((x) => x.sender_id === other).slice(-1).map((x) => `<form method="post" action="${base}/report" data-confirm="Die letzte Nachricht von ${escapeHtml(name)} ans Team melden?">${kit.tokenInput(m)}<input type="hidden" name="message_id" value="${escapeHtml(x.id)}"><button>Letzte Nachricht melden</button></form>`).join('')}
-<a class="cm-link" style="display:block;padding:10px 12px" href="${kit.cbase(p)}/u/${encodeURIComponent(handle)}">Profil ansehen</a></div></details>`;
+        : `<details class="dm-menu"><summary aria-label="${t('Mehr')}">⋯</summary><div class="pop">
+<form method="post" action="${base}/${blocked ? 'unblock' : 'block'}">${kit.tokenInput(m)}<button>${blocked ? t('Blockierung aufheben') : t('Blockieren')}</button></form>
+${msgs.filter((x) => x.sender_id === other).slice(-1).map((x) => `<form method="post" action="${base}/report" data-confirm="${t('Die letzte Nachricht von {name} ans Team melden?', { name: escapeHtml(name) })}">${kit.tokenInput(m)}<input type="hidden" name="message_id" value="${escapeHtml(x.id)}"><button>${t('Letzte Nachricht melden')}</button></form>`).join('')}
+<a class="cm-link" style="display:block;padding:10px 12px" href="${kit.cbase(p)}/u/${encodeURIComponent(handle)}">${t('Profil ansehen')}</a></div></details>`;
       return kit.frame(
         p,
         m,
-        `Nachricht an ${name}`,
-        `<div class="crumb"><a href="${kit.cbase(p)}/messages">Nachrichten</a></div>
-<div class="dm-head">${team ? `<span class="av" style="background:var(--brand)" aria-hidden="true">★</span>` : kit.avatar(p, name, pr)}<div><h1>${escapeHtml(name)}</h1>${online ? '<div class="muted small"><span class="dot on"></span> online</div>' : ''}</div>${menu}</div>
-${opts.error ? `<div class="cm-err" role="alert">${escapeHtml(opts.error)}</div>` : ''}
-<div data-dm-thread data-poll="${base}/poll" data-last="${escapeHtml(last)}" data-scroll><div class="dm-thread" data-dm-list>${list || '<p class="muted">Noch keine Nachrichten – schreib die erste.</p>'}</div>
-${why ? `<p class="cm-hint" style="margin-top:14px">${escapeHtml(why)}</p>` : `<form class="dm-compose" method="post" action="${base}">${kit.tokenInput(m)}<textarea name="body" required maxlength="4000" rows="2" placeholder="Nachricht schreiben … (Enter sendet, Umschalt+Enter für eine neue Zeile)" aria-label="Nachricht">${escapeHtml(opts.draft ?? '')}</textarea><button class="btn">Senden</button></form>`}</div>`,
+        t('Nachricht an {name}', { name }),
+        `<div class="crumb"><a href="${kit.cbase(p)}/messages">${t('Nachrichten')}</a></div>
+<div class="dm-head">${team ? `<span class="av" style="background:var(--brand)" aria-hidden="true">★</span>` : kit.avatar(p, name, pr)}<div><h1>${escapeHtml(name)}</h1>${online ? `<div class="muted small"><span class="dot on"></span> ${t('online')}</div>` : ''}</div>${menu}</div>
+${opts.error ? `<div class="cm-err" role="alert">${escapeHtml(t(opts.error))}</div>` : ''}
+<div data-dm-thread data-poll="${base}/poll" data-last="${escapeHtml(last)}" data-scroll><div class="dm-thread" data-dm-list>${list || `<p class="muted">${t('Noch keine Nachrichten – schreib die erste.')}</p>`}</div>
+${why ? `<p class="cm-hint" style="margin-top:14px">${escapeHtml(t(why))}</p>` : `<form class="dm-compose" method="post" action="${base}">${kit.tokenInput(m)}<textarea name="body" required maxlength="4000" rows="2" placeholder="${t('Nachricht schreiben … (Enter sendet, Umschalt+Enter für eine neue Zeile)')}" aria-label="${t('Nachricht')}">${escapeHtml(opts.draft ?? '')}</textarea><button class="btn">${t('Senden')}</button></form>`}</div>`,
         opts.status,
       );
     };
@@ -273,7 +280,8 @@ ${why ? `<p class="cm-hint" style="margin-top:14px">${escapeHtml(why)}</p>` : `<
           if (e instanceof HttpError) return kit.errorPage(p, m, e.message, e.status);
           throw e;
         }
-        return kit.frame(p, m, 'Danke', `<div class="cm-box cm-empty" style="max-width:560px"><p><strong>Danke – das Team schaut sich die Nachricht an.</strong></p><p class="small">Du kannst die Person zusätzlich blockieren.</p><p><a class="btn" href="${kit.cbase(p)}/messages/${encodeURIComponent(ctx.params.handle)}">Zurück</a></p></div>`);
+        const t = tLoc(app, p.locationId);
+        return kit.frame(p, m, t('Danke'), `<div class="cm-box cm-empty" style="max-width:560px"><p><strong>${t('Danke – das Team schaut sich die Nachricht an.')}</strong></p><p class="small">${t('Du kannst die Person zusätzlich blockieren.')}</p><p><a class="btn" href="${kit.cbase(p)}/messages/${encodeURIComponent(ctx.params.handle)}">${t('Zurück')}</a></p></div>`);
       }),
     );
 
@@ -307,7 +315,7 @@ ${why ? `<p class="cm-hint" style="margin-top:14px">${escapeHtml(why)}</p>` : `<
     /** The team writes to one member (shown as the sender "Team" or the name given). */
     router.post('/api/community/messages/:contactId', 'location', (ctx) => {
       if (!getContact(app, ctx.locationId, ctx.params.contactId)) throw notFound('Kontakt nicht gefunden');
-      const name = str(ctx.body?.from_name, 'Absender', { max: 60 }) || 'Team';
+      const name = str(ctx.body?.from_name, 'Absender', { max: 60 }) || tLoc(app, ctx.locationId)('Team');
       const sent = sendDm(app, ctx.locationId, TEAM, ctx.params.contactId, ctx.body?.body, { fromName: name, skipLimits: true });
       return { id: sent.message.id, thread_id: sent.thread.id };
     });
@@ -342,8 +350,9 @@ ${why ? `<p class="cm-hint" style="margin-top:14px">${escapeHtml(why)}</p>` : `<
       if (action !== 'dismiss' && msg) db.run(`UPDATE community_dm_messages SET status = 'removed' WHERE id = ?`, msg.id);
       if (action === 'ban' && msg && msg.sender_id !== TEAM) {
         const g = sharedGroups(app, ctx.locationId, msg.sender_id, r.reporter_id)[0];
-        if (g) setBan(app, g, msg.sender_id, true, { reason: 'Nachricht gemeldet', by: ctx.user?.name ?? '' });
-        logActivity(app, ctx.locationId, msg.sender_id, 'community.dm_banned', 'Wegen einer gemeldeten Nachricht gesperrt');
+        const t = tLoc(app, ctx.locationId);
+        if (g) setBan(app, g, msg.sender_id, true, { reason: t('Nachricht gemeldet'), by: ctx.user?.name ?? '' });
+        logActivity(app, ctx.locationId, msg.sender_id, 'community.dm_banned', t('Wegen einer gemeldeten Nachricht gesperrt'));
       }
       db.run(`UPDATE community_dm_reports SET status = ?, action = ?, resolved_at = ?, resolved_by = ? WHERE message_id = ? AND status = 'open'`, action === 'dismiss' ? 'dismissed' : 'resolved', action, now(), ctx.user?.name ?? '', r.message_id);
       return { ok: true };

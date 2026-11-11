@@ -37,6 +37,7 @@ import { getBranding } from './agency.js';
 import { safeNext, type HostInfo } from './login-policy.js';
 import { sealSecret } from './mail-sync.js';
 import { clientConfig } from './oauth-connect.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Sign-in with Google, Microsoft, GitHub, Apple and any OpenID Connect provider (Keycloak, Authentik,
@@ -270,7 +271,7 @@ export const ssoModule: Module = {
         const d = await discovery.get(f as Fetcher, r.issuer, { allowHttp });
         const secret = r.client_secret ? lp().secret(r.client_secret) : '';
         const t = await exchangeCode(f as Fetcher, d.token_endpoint, { code, verifier: flow.verifier, redirectUri: flow.redirect_uri, clientId: r.client_id, clientSecret: secret, auth: clientAuthFor(d, !!secret) });
-        if (!t.id_token) throw new LoginError(`${r.name} hat kein ID-Token geliefert (Scope „openid“?)`);
+        if (!t.id_token) throw new LoginError(tApp()('{provider} hat kein ID-Token geliefert (Scope „openid“?)', { provider: r.name }));
         const claims = await verifyIdToken(t.id_token, jwks, d.jwks_uri, { issuer: d.issuer, audience: r.client_id, nonce: flow.nonce });
         let all = claims;
         if (r.config.use_userinfo && d.userinfo_endpoint && t.access_token) {
@@ -299,12 +300,12 @@ export const ssoModule: Module = {
       } else {
         // Google / Microsoft: the agency's OAuth app (same as for calendars), shared token helper.
         const cfg = clientConfig(app, p.key);
-        if (!cfg) throw new LoginError(`Die ${p.label}-App der Agentur fehlt`);
+        if (!cfg) throw new LoginError(tApp()('Die {provider}-App der Agentur fehlt', { provider: p.label }));
         audience = cfg.client_id;
         tenant = cfg.tenant;
         idToken = (await oauthExchange(f, p.key, cfg, { code, verifier: flow.verifier, redirectUri: flow.redirect_uri, scopes: ['openid', 'email', 'profile'] })).id_token;
       }
-      if (!idToken) throw new LoginError(`${p.label} hat kein ID-Token geliefert`);
+      if (!idToken) throw new LoginError(tApp()('{provider} hat kein ID-Token geliefert', { provider: p.label }));
       const claims = await verifyIdToken(idToken, jwks, ep.jwks!, { issuer: socialIssuerCheck(p.key, { tenant }), audience, nonce: flow.nonce });
       return { provider: p.key, label: p.label, ...identityFromClaims(p.key, claims, appleUser), groups: [], mfa: amrIsMfa(claims) };
     }
@@ -344,39 +345,39 @@ export const ssoModule: Module = {
         const u = userRow(known.user_id);
         if (!u) throw new LoginError('Konto nicht gefunden');
         if (p.kind === 'oidc') {
-          if (p.row.location_id && !onlyClientOf(u, p.row.location_id)) throw new LoginError(`Dieses Konto kann nicht über ${p.label} angemeldet werden`);
-          if (!mappingFor(p.row, i.groups).allowed) throw new LoginError(`Kein Zugriff: dein ${p.label}-Konto ist in keiner freigegebenen Gruppe`);
+          if (p.row.location_id && !onlyClientOf(u, p.row.location_id)) throw new LoginError(tApp()('Dieses Konto kann nicht über {provider} angemeldet werden', { provider: p.label }));
+          if (!mappingFor(p.row, i.groups).allowed) throw new LoginError(tApp()('Kein Zugriff: dein {provider}-Konto ist in keiner freigegebenen Gruppe', { provider: p.label }));
           if (p.row.config.sync_roles) syncRoles(u, p.row, i.groups);
         }
         db.run('UPDATE auth_identities SET email = ?, name = ?, last_login_at = ? WHERE id = ?', i.email, i.name, now(), known.id);
         return loginOutcome(userRow(u.id), p, i);
       }
-      if (!i.email) throw new LoginError(`${p.label} hat keine bestätigte E-Mail-Adresse übermittelt`);
-      if (!i.emailVerified) throw new LoginError(`Die E-Mail-Adresse ist bei ${p.label} nicht bestätigt`);
-      if (p.kind === 'oidc' && p.row.config.allowed_domains.length && !p.row.config.allowed_domains.includes(emailDomain(i.email))) throw new LoginError(`@${emailDomain(i.email)} ist für ${p.label} nicht freigegeben`);
+      if (!i.email) throw new LoginError(tApp()('{provider} hat keine bestätigte E-Mail-Adresse übermittelt', { provider: p.label }));
+      if (!i.emailVerified) throw new LoginError(tApp()('Die E-Mail-Adresse ist bei {provider} nicht bestätigt', { provider: p.label }));
+      if (p.kind === 'oidc' && p.row.config.allowed_domains.length && !p.row.config.allowed_domains.includes(emailDomain(i.email))) throw new LoginError(tApp()('@{domain} ist für {provider} nicht freigegeben', { domain: emailDomain(i.email), provider: p.label }));
       const existing = db.get('SELECT * FROM users WHERE email = ?', i.email);
       if (existing) {
         if (mayLink(p, existing, true)) {
           if (p.kind === 'oidc') {
-            if (!mappingFor(p.row, i.groups).allowed) throw new LoginError(`Kein Zugriff: dein ${p.label}-Konto ist in keiner freigegebenen Gruppe`);
+            if (!mappingFor(p.row, i.groups).allowed) throw new LoginError(tApp()('Kein Zugriff: dein {provider}-Konto ist in keiner freigegebenen Gruppe', { provider: p.label }));
             if (p.row.config.sync_roles) syncRoles(existing, p.row, i.groups);
           }
           link(existing.id, i);
           return loginOutcome(userRow(existing.id), p, i);
         }
-        if (p.kind === 'oidc' && p.row.location_id) throw new LoginError(`Dieses Konto kann nicht über ${p.label} angemeldet werden`);
+        if (p.kind === 'oidc' && p.row.location_id) throw new LoginError(tApp()('Dieses Konto kann nicht über {provider} angemeldet werden', { provider: p.label }));
         if (existing.password_set) return { kind: 'link_confirm', userId: existing.id, data: { identity: i } };
-        throw new LoginError(`Für ${i.email} gibt es schon ein Konto. Melde dich wie bisher an und verknüpfe ${p.label} unter Einstellungen → Mein Konto.`);
+        throw new LoginError(tApp()('Für {email} gibt es schon ein Konto. Melde dich wie bisher an und verknüpfe {provider} unter Einstellungen → Mein Konto.', { email: i.email, provider: p.label }));
       }
       let u: any;
       if (p.kind === 'oidc') {
-        if (!p.row.config.jit) throw new LoginError(`Für ${i.email} gibt es noch keinen Zugang – bitte bei der Agentur melden`);
+        if (!p.row.config.jit) throw new LoginError(tApp()('Für {email} gibt es noch keinen Zugang – bitte bei der Agentur melden', { email: i.email }));
         const m = mappingFor(p.row, i.groups);
-        if (!m.allowed) throw new LoginError(`Kein Zugriff: dein ${p.label}-Konto ist in keiner freigegebenen Gruppe`);
+        if (!m.allowed) throw new LoginError(tApp()('Kein Zugriff: dein {provider}-Konto ist in keiner freigegebenen Gruppe', { provider: p.label }));
         u = lp().createUser({ email: i.email, name: i.name, role: m.role, locations: m.locations, permissions: m.permissions, via: p.label });
       } else {
         u = lp().provision(i.email, i.name, p.label);
-        if (!u) throw new LoginError(`Für ${i.email} gibt es kein Konto, und neue Konten sind nicht freigegeben`);
+        if (!u) throw new LoginError(tApp()('Für {email} gibt es kein Konto, und neue Konten sind nicht freigegeben', { email: i.email }));
       }
       link(u.id, i);
       return loginOutcome(u, p, i);
@@ -386,12 +387,17 @@ export const ssoModule: Module = {
       const u = userRow(flow.user_id);
       if (!u) throw new LoginError('Konto nicht gefunden');
       const known = identityOf(i.provider, i.subject);
-      if (known && known.user_id !== u.id) throw new LoginError(`Dieses ${p.label}-Konto ist schon mit einem anderen Login verknüpft`);
-      if (!mayLink(p, u, false)) throw new LoginError(`${p.label} gehört zu einem Kunden-Konto und kann hier nicht verknüpft werden`);
+      if (known && known.user_id !== u.id) throw new LoginError(tApp()('Dieses {provider}-Konto ist schon mit einem anderen Login verknüpft', { provider: p.label }));
+      if (!mayLink(p, u, false)) throw new LoginError(tApp()('{provider} gehört zu einem Kunden-Konto und kann hier nicht verknüpft werden', { provider: p.label }));
       return { kind: 'link', userId: u.id, data: { identity: i } };
     }
 
-    function messagePage(ctx: Ctx, title: string, text: string, status = 200, action?: { href: string; label: string }) {
+    function messagePage(ctx: Ctx, title0: string, text0: string, status = 200, action0?: { href: string; label: string }) {
+      // Title, text and button arrive as German message ids (or already translated texts): shown in the visitor's language.
+      const t = tCtx(ctx);
+      const title = t(title0);
+      const text = t(text0);
+      const action = action0 && { href: action0.href, label: t(action0.label) };
       const b = getBranding(app);
       const btn = action ? `<p style="margin-top:22px"><a class="btn" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a></p>` : '';
       return html(publicPage({ title: `${title} – ${b.name}`, color: /^#[0-9a-f]{6}$/i.test(b.color) ? b.color : undefined, body: `<div class="wrap" style="max-width:520px"><div class="card"><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(text)}</p>${btn}</div></div>` }), status);
@@ -416,7 +422,7 @@ export const ssoModule: Module = {
         outcome = flow.mode === 'link' ? linkOutcome(p, flow, ident) : decide(p, ident);
       } catch (e) {
         const expected = e instanceof LoginError || e instanceof JoseError || e instanceof OidcError || e instanceof PolicyError;
-        const msg = expected ? (e as Error).message : `Anmeldung fehlgeschlagen: ${(e as Error).message}`.slice(0, 300);
+        const msg = expected ? (e as Error).message : `${tApp()('Anmeldung fehlgeschlagen')}: ${(e as Error).message}`.slice(0, 300);
         if (!expected) console.error('[sso]', flow.provider, e);
         app.services.audit?.({ ctx, action: 'login.sso_failed', summary: `${labelOf(flow.provider)}: ${msg}`.slice(0, 300) });
         outcome = { kind: 'error', data: { message: msg } };
@@ -457,7 +463,7 @@ export const ssoModule: Module = {
         if (!me || me.id !== u.id) return { error: 'Bitte mit dem Konto angemeldet bleiben, mit dem du verknüpfen wolltest' };
         const i = t.data.identity as Identity;
         const known = identityOf(i.provider, i.subject);
-        if (known && known.user_id !== u.id) return { error: `Dieses ${label}-Konto ist schon mit einem anderen Login verknüpft` };
+        if (known && known.user_id !== u.id) return { error: tApp()('Dieses {provider}-Konto ist schon mit einem anderen Login verknüpft', { provider: label }) };
         if (!known) link(u.id, i);
         return { linked: label };
       }
@@ -494,7 +500,7 @@ export const ssoModule: Module = {
       if (!lp().tickets.take(t, 'link_confirm')) throw new HttpError(410, 'Abgelaufen – bitte noch einmal anmelden');
       const i = tk.data.identity as Identity;
       const known = identityOf(i.provider, i.subject);
-      if (known && known.user_id !== u.id) throw bad(`Dieses ${i.label}-Konto ist schon mit einem anderen Login verknüpft`);
+      if (known && known.user_id !== u.id) throw bad(tCtx(ctx)('Dieses {provider}-Konto ist schon mit einem anderen Login verknüpft', { provider: i.label }));
       if (!known) link(u.id, i);
       return lp().finish(ctx, u, { method: 'sso', provider: i.provider, mfa: true, next: tk.data.next });
     });
@@ -579,7 +585,7 @@ export const ssoModule: Module = {
       const locs = (v: unknown, what: string) => {
         if (!Array.isArray(v)) return [];
         const list = v.map(String).slice(0, 100);
-        for (const l of list) if (!app.location(l)) throw bad(`${what}: Sub-Account nicht gefunden`);
+        for (const l of list) if (!app.location(l)) throw bad(tApp()('{field}: Sub-Account nicht gefunden', { field: tApp()(what) }));
         return list;
       };
       let enforce: string[];
@@ -592,7 +598,7 @@ export const ssoModule: Module = {
       }
       for (const d of enforce) {
         const other = db.all('SELECT id, name, config FROM sso_providers WHERE id != ?', cur?.id ?? '').find((r) => (JSON.parse(r.config || '{}').enforce_domains ?? []).includes(d));
-        if (other) throw bad(`@${d} ist schon „${other.name}“ zugeordnet`);
+        if (other) throw bad(tApp()('@{domain} ist schon „{name}“ zugeordnet', { domain: d, name: other.name }));
       }
       if (preset === 'google' && !allowed.length) throw bad('Google Workspace: erlaubte Domains eintragen (sonst kann sich jedes Google-Konto anmelden)');
       const rules: GroupRule[] = (Array.isArray(c.group_rules) ? c.group_rules : []).slice(0, 100).map((r: any) => {

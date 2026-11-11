@@ -357,7 +357,7 @@ describe('HubSpot, Mailchimp, Brevo', () => {
     reply = (r) => (r.url.endsWith('/tags') ? { status: 204, body: '' } : { body: { id: mailchimpHash('ida@example.com'), status: 'pending' } });
     const r = await first([{ type: 'mailchimp_add_member', email: '{{contact.email}}', first_name: '{{contact.first_name}}', phone: '{{contact.phone}}', status: 'pending', tags: 'kunde, newsletter', rows: [{ tag: 'company', value: '{{contact.company}}' }] }]);
     const hash = mailchimpHash('ida@example.com');
-    expect(r.msg).toBe('Mailchimp: ida@example.com (pending), 2 Tag(s)');
+    expect(r.msg).toBe('Mailchimp: ida@example.com (pending), 2 Tags');
     expect(seen[0]).toMatchObject({ method: 'PUT', url: `https://us21.api.mailchimp.com/3.0/lists/abc123def4/members/${hash}`, headers: { authorization: `Basic ${Buffer.from(`gohigh:${key}`).toString('base64')}` } });
     expect(seen[0].body).toEqual({ email_address: 'ida@example.com', status_if_new: 'pending', merge_fields: { FNAME: 'Ida', PHONE: '+491701234567', COMPANY: 'Kurz GmbH' } });
     expect(seen[1]).toMatchObject({ method: 'POST', url: `https://us21.api.mailchimp.com/3.0/lists/abc123def4/members/${hash}/tags`, body: { tags: [{ name: 'kunde', status: 'active' }, { name: 'newsletter', status: 'active' }] } });

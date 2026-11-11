@@ -9,6 +9,7 @@ import { deliverEmail, notifyTeam, sendToContact } from '../services/messaging.j
 import { registerTriggers, type TriggerMeta } from '../services/wfx-kit.js';
 import { contractHtml, isSignatureImage } from './contracts.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Several signers with roles and a signing order for a contract (HighLevel/PandaDoc parity, docs/sales.md#several-signers).
@@ -71,6 +72,7 @@ export const CONTRACT_SIGNER_TOOLS: Tool[] = [
   {
     name: 'ghl_contract_signers_set',
     title: 'Unterzeichner festlegen und Signaturlauf starten',
+    // i18n-ignore – the catalog key is the full text with MAX_SIGNERS filled in (mcp.ts translates it on tools/list)
     description: `Legt für einen Vertragsentwurf mehrere Unterzeichner mit Rollen fest (höchstens ${MAX_SIGNERS}; Reihenfolge = Reihenfolge der Liste) und startet mit send=true den Signaturlauf: Bei sequential bekommt zuerst Person 1 ihren Link, die nächste erst nach deren Unterschrift; bei parallel alle sofort. Eine leere Liste stellt wieder auf „nur der Kontakt unterschreibt“ um. Verschickt E-Mails – vor send=true nachfragen.`,
     inputSchema: obj(
       {
@@ -146,17 +148,18 @@ export const contractSignersModule: Module = {
       const [first, ...rest] = s.name.split(/\s+/);
       const person = { first_name: first ?? '', last_name: rest.join(' '), name: s.name, full_name: s.name, email: s.email };
       const vars = { contact: person, signer: { ...person, role: s.role, position: s.position }, location: loc, contract: { title: c.title, url: signerUrl(s) } };
-      const subject = render(input.subject || 'Bitte unterschreiben: {{contract.title}}', vars);
+      const t = tLoc(app, c.location_id);
+      const subject = render(input.subject || t('Bitte unterschreiben: {{contract.title}}'), vars);
       const body = render(
         input.body ||
-          'Hallo {{signer.first_name}},\n\nbitte lies und unterschreibe „{{contract.title}}“ als {{signer.role|Unterzeichner}}:\n{{contract.url}}\n\nViele Grüße\n{{location.name}}',
+          [t('Hallo {{signer.first_name}},'), '', t('bitte lies und unterschreibe „{{contract.title}}“ als {{signer.role|Unterzeichner}}:'), '{{contract.url}}', '', t('Viele Grüße'), '{{location.name}}'].join('\n'),
         vars,
       );
       const contact = db.get<{ id: string }>('SELECT id FROM contacts WHERE location_id = ? AND lower(email) = ? LIMIT 1', c.location_id, s.email);
       let result: { status: string; error?: string };
       try {
         if (contact) {
-          const m = await sendToContact(app, c.location_id, { contactId: contact.id, channel: 'email', subject, body, userId: input.userId, source: 'Vertrag', ignoreDnd: true });
+          const m = await sendToContact(app, c.location_id, { contactId: contact.id, channel: 'email', subject, body, userId: input.userId, source: t('Vertrag'), ignoreDnd: true });
           result = { status: m.status, error: m.error ?? undefined };
         } else {
           const r = await deliverEmail(loc, { to: s.email, subject, text: body, html: textToHtml(body) });
@@ -166,7 +169,7 @@ export const contractSignersModule: Module = {
         result = { status: 'failed', error: (e as Error).message };
       }
       db.run(`UPDATE contract_signers SET status = CASE WHEN status = 'waiting' THEN 'invited' ELSE status END, invited_at = ? WHERE id = ?`, now(), s.id);
-      if (contact) logActivity(app, c.location_id, contact.id, 'contract.sent', `Vertrag „${c.title}“ zum Unterschreiben gesendet${s.role ? ` (${s.role})` : ''}`);
+      if (contact) logActivity(app, c.location_id, contact.id, 'contract.sent', t('Vertrag „{title}“ zum Unterschreiben gesendet', { title: c.title }) + (s.role ? ` (${s.role})` : ''));
       return result;
     }
 
@@ -192,17 +195,18 @@ export const contractSignersModule: Module = {
       if (c.status !== 'draft') throw bad('Nach dem Versand lassen sich die Unterzeichner nicht mehr ändern');
       const raw = ctx.body.signers;
       if (!Array.isArray(raw)) throw bad('Unterzeichner fehlen');
-      if (raw.length > MAX_SIGNERS) throw bad(`Höchstens ${MAX_SIGNERS} Unterzeichner`);
+      const t = tApp();
+      if (raw.length > MAX_SIGNERS) throw bad(t('Höchstens {n} Unterzeichner', { n: MAX_SIGNERS }));
       const mode = ctx.body.mode === 'parallel' ? 'parallel' : 'sequential';
       const seen = new Set<string>();
       const clean = raw.map((x: any, i: number) => {
-        if (!x || typeof x !== 'object') throw bad(`Unterzeichner ${i + 1}: ungültig`);
-        const name = str(x.name, `Unterzeichner ${i + 1}: Name`, { required: true, max: 200 });
+        if (!x || typeof x !== 'object') throw bad(t('Unterzeichner {n}: ungültig', { n: i + 1 }));
+        const name = str(x.name, t('Unterzeichner {n}: Name', { n: i + 1 }), { required: true, max: 200 });
         const email = normalizeEmail(x.email);
-        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad(`Unterzeichner ${i + 1}: E-Mail-Adresse fehlt oder ist ungültig`);
-        if (seen.has(email)) throw bad(`Unterzeichner ${i + 1}: Diese E-Mail-Adresse steht schon in der Liste`);
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad(t('Unterzeichner {n}: E-Mail-Adresse fehlt oder ist ungültig', { n: i + 1 }));
+        if (seen.has(email)) throw bad(t('Unterzeichner {n}: Diese E-Mail-Adresse steht schon in der Liste', { n: i + 1 }));
         seen.add(email);
-        return { role: str(x.role, `Unterzeichner ${i + 1}: Rolle`, { max: 80 }), name, email };
+        return { role: str(x.role, t('Unterzeichner {n}: Rolle', { n: i + 1 }), { max: 80 }), name, email };
       });
       db.tx(() => {
         db.run('DELETE FROM contract_signers WHERE contract_id = ?', c.id);
@@ -238,7 +242,7 @@ export const contractSignersModule: Module = {
       let results = await inviteDue(fresh, input);
       // Sent again: remind whoever is signing right now.
       if (!results.length) for (const s of signersOf(c.id).filter((x) => ACTIVE.has(x.status))) results.push(await invite(fresh, s, input));
-      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.sent', `Vertrag „${c.title}“ an ${signersOf(c.id).length} Unterzeichner gesendet`);
+      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.sent', tLoc(app, c.location_id)('Vertrag „{title}“ an {n} Unterzeichner gesendet', { title: c.title, n: signersOf(c.id).length }));
       const failed = results.find((r) => r.status === 'failed');
       return { ...contractOut(contractOf(c.location_id, c.id)), message: failed ? { status: 'failed', error: failed.error } : { status: results[0]?.status ?? 'sent' }, signers: overview(fresh) };
     }
@@ -274,12 +278,15 @@ export const contractSignersModule: Module = {
 
     router.get('/sign/:token', 'public', (ctx) => {
       const found = byToken(ctx.params.token);
-      if (!found) return html(messagePage('Nicht gefunden', 'Diesen Link gibt es nicht.'), 404);
+      if (!found) {
+        const tn = tCtx(ctx);
+        return html(messagePage(tn('Nicht gefunden'), tn('Diesen Link gibt es nicht.')), 404);
+      }
       const { s, c } = found;
       if (s.status === 'invited' && ['sent', 'viewed'].includes(c.status)) {
         db.run(`UPDATE contract_signers SET status = 'viewed', viewed_at = ? WHERE id = ? AND status = 'invited'`, now(), s.id);
         if (c.status === 'sent') db.run(`UPDATE contracts SET status = 'viewed', viewed_at = ? WHERE id = ? AND status = 'sent'`, now(), c.id);
-        if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.viewed', `Vertrag „${c.title}“ geöffnet von ${s.name}${s.role ? ` (${s.role})` : ''}`);
+        if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.viewed', tLoc(app, c.location_id)('Vertrag „{title}“ geöffnet von {name}', { title: c.title, name: `${s.name}${s.role ? ` (${s.role})` : ''}` }));
       }
       return html(page(db.get<any>('SELECT * FROM contracts WHERE id = ?', c.id), db.get<Signer>('SELECT * FROM contract_signers WHERE id = ?', s.id)));
     });
@@ -307,7 +314,7 @@ export const contractSignersModule: Module = {
       if (!done) throw new HttpError(409, 'Du hast schon geantwortet');
       const list = signersOf(c.id);
       const remaining = list.filter((x) => x.status !== 'signed').length;
-      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.signer_signed', `Vertrag „${c.title}“: ${name}${s.role ? ` (${s.role})` : ''} hat unterschrieben`);
+      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.signer_signed', tLoc(app, c.location_id)('Vertrag „{title}“: {name} hat unterschrieben', { title: c.title, name: `${name}${s.role ? ` (${s.role})` : ''}` }));
       app.events.emit(c.location_id, 'contract.signer_signed', { contactId: c.contact_id, contract: { id: c.id, title: c.title }, signer: { role: s.role, name, email: s.email, position: s.position }, remaining });
       if (remaining === 0) await complete(c, list);
       else await inviteDue(c);
@@ -319,8 +326,10 @@ export const contractSignersModule: Module = {
       const reason = str(ctx.body.reason, 'Grund', { max: 2000 });
       db.run(`UPDATE contract_signers SET status = 'declined', decline_reason = ?, ip = ?, signed_at = ? WHERE id = ?`, reason, ctx.ip, now(), s.id);
       db.run(`UPDATE contracts SET status = 'declined', signed_at = ?, decline_reason = ?, signer_name = ?, signer_email = ?, signer_ip = ?, updated_at = ? WHERE id = ?`, now(), reason, s.name, s.email, ctx.ip, now(), c.id);
-      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.declined', `Vertrag „${c.title}“ abgelehnt von ${s.name}${s.role ? ` (${s.role})` : ''}`);
-      void notifyTeam(app, c.location_id, `Vertrag abgelehnt: ${c.title}`, `${s.name}${s.role ? ` (${s.role})` : ''} hat abgelehnt.\nGrund: ${reason || '–'}\n\n${contractUrl(c)}`);
+      const tl = tLoc(app, c.location_id);
+      const who = `${s.name}${s.role ? ` (${s.role})` : ''}`;
+      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.declined', tl('Vertrag „{title}“ abgelehnt von {name}', { title: c.title, name: who }));
+      void notifyTeam(app, c.location_id, tl('Vertrag abgelehnt: {title}', { title: c.title }), `${tl('{name} hat abgelehnt.', { name: who })}\n${tl('Grund: {reason}', { reason: reason || '–' })}\n\n${contractUrl(c)}`);
       app.events.emit(c.location_id, 'contract.declined', { contactId: c.contact_id, contract: { id: c.id, title: c.title }, signer: { role: s.role, name: s.name, email: s.email } });
       return { ok: true };
     });
@@ -335,13 +344,14 @@ export const contractSignersModule: Module = {
         at, names.slice(0, 1000), list[0].email, last.ip, last.ua, list[0].signature, sha256(`${c.title}\n\n${c.content}`), at, c.id,
       ).changes;
       if (!ok) return;
-      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.signed', `Vertrag „${c.title}“ von allen unterschrieben`);
-      void notifyTeam(app, c.location_id, `Vertrag unterschrieben: ${c.title}`, `Alle ${list.length} Unterzeichner haben „${c.title}“ unterschrieben: ${names}.\n\n${contractUrl(c)}`);
+      const t = tLoc(app, c.location_id);
+      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.signed', t('Vertrag „{title}“ von allen unterschrieben', { title: c.title }));
+      void notifyTeam(app, c.location_id, t('Vertrag unterschrieben: {title}', { title: c.title }), `${t('Alle {n} Unterzeichner haben „{title}“ unterschrieben: {names}.', { n: list.length, title: c.title, names })}\n\n${contractUrl(c)}`);
       const loc = app.location(c.location_id)!;
       for (const s of list) {
-        const text = `Hallo ${s.signed_name || s.name},\n\n„${c.title}“ ist jetzt von allen unterschrieben. Hier kannst du den Vertrag mit allen Unterschriften ansehen und als PDF speichern:\n${signerUrl(s)}\n\nViele Grüße\n${loc.name}`;
+        const text = [t('Hallo {name},', { name: s.signed_name || s.name }), '', t('„{title}“ ist jetzt von allen unterschrieben. Hier kannst du den Vertrag mit allen Unterschriften ansehen und als PDF speichern:', { title: c.title }), signerUrl(s), '', t('Viele Grüße'), loc.name].join('\n');
         try {
-          await deliverEmail(loc, { to: s.email, subject: `Deine Kopie: ${c.title}`, text, html: textToHtml(text) });
+          await deliverEmail(loc, { to: s.email, subject: t('Deine Kopie: {title}', { title: c.title }), text, html: textToHtml(text) });
         } catch (e) {
           console.error('[contract-signers] copy', (e as Error).message);
         }
@@ -354,45 +364,47 @@ export const contractSignersModule: Module = {
       const loc = app.location(c.location_id)!;
       const list = signersOf(c.id);
       const run = runOf(c.id);
-      const when = (v: string | null) => (v ? `${formatInTz(v, loc.timezone, { weekday: undefined })} Uhr` : '');
+      const t = tLoc(app, c.location_id);
+      const when = (v: string | null) => (v ? t('{time} Uhr', { time: formatInTz(v, loc.timezone, { weekday: undefined }) }) : '');
       const state = (s: Signer) =>
-        s.status === 'signed' ? `Unterschrieben am ${when(s.signed_at)}` : s.status === 'declined' ? 'Abgelehnt' : ACTIVE.has(s.status) ? 'Ist dran' : run?.mode === 'parallel' ? 'Offen' : 'Wartet';
+        s.status === 'signed' ? t('Unterschrieben am {date}', { date: when(s.signed_at) }) : s.status === 'declined' ? t('Abgelehnt') : ACTIVE.has(s.status) ? t('Ist dran') : run?.mode === 'parallel' ? t('Offen') : t('Wartet');
       const rows = list
         .map(
           (s) =>
-            `<tr${me?.id === s.id ? ' style="font-weight:600"' : ''}><td style="padding:6px 8px 6px 0">${s.position}.</td><td style="padding:6px 8px 6px 0">${escapeHtml(s.role || '–')}</td><td style="padding:6px 8px 6px 0">${escapeHtml(s.signed_name || s.name)}${me?.id === s.id ? ' (du)' : ''}</td><td style="padding:6px 0">${escapeHtml(state(s))}</td></tr>`,
+            `<tr${me?.id === s.id ? ' style="font-weight:600"' : ''}><td style="padding:6px 8px 6px 0">${s.position}.</td><td style="padding:6px 8px 6px 0">${escapeHtml(s.role || '–')}</td><td style="padding:6px 8px 6px 0">${escapeHtml(s.signed_name || s.name)}${me?.id === s.id ? ` (${escapeHtml(t('du'))})` : ''}</td><td style="padding:6px 0">${escapeHtml(state(s))}</td></tr>`,
         )
         .join('');
       const signatures = list
         .filter((s) => s.status === 'signed' && s.signature)
         .map(
           (s) =>
-            `<div style="flex:1 1 240px"><img src="${escapeHtml(s.signature!)}" alt="Unterschrift ${escapeHtml(s.signed_name || s.name)}" style="max-width:260px;max-height:100px;border-bottom:1px solid #111;display:block"><p style="margin:4px 0 0">${escapeHtml(s.signed_name || s.name)}${s.role ? ` · ${escapeHtml(s.role)}` : ''}</p><p class="muted" style="margin:2px 0;font-size:12px">${escapeHtml(when(s.signed_at))} · IP ${escapeHtml(s.ip ?? '')}</p></div>`,
+            `<div style="flex:1 1 240px"><img src="${escapeHtml(s.signature!)}" alt="${escapeHtml(t('Unterschrift {name}', { name: s.signed_name || s.name }))}" style="max-width:260px;max-height:100px;border-bottom:1px solid #111;display:block"><p style="margin:4px 0 0">${escapeHtml(s.signed_name || s.name)}${s.role ? ` · ${escapeHtml(s.role)}` : ''}</p><p class="muted" style="margin:2px 0;font-size:12px">${escapeHtml(when(s.signed_at))} · IP ${escapeHtml(s.ip ?? '')}</p></div>`,
         )
         .join('');
       const canSign = me && ACTIVE.has(me.status) && ['sent', 'viewed'].includes(c.status);
       const notice =
         c.status === 'void'
-          ? '<p class="error">Dieser Vertrag ist nicht mehr gültig.</p>'
+          ? `<p class="error">${escapeHtml(t('Dieser Vertrag ist nicht mehr gültig.'))}</p>`
           : c.status === 'declined'
-            ? '<p class="error">Dieser Vertrag wurde abgelehnt.</p>'
+            ? `<p class="error">${escapeHtml(t('Dieser Vertrag wurde abgelehnt.'))}</p>`
             : me?.status === 'waiting'
-              ? '<p class="muted">Du bist noch nicht an der Reihe. Sobald die Personen vor dir unterschrieben haben, bekommst du eine E-Mail.</p>'
+              ? `<p class="muted">${escapeHtml(t('Du bist noch nicht an der Reihe. Sobald die Personen vor dir unterschrieben haben, bekommst du eine E-Mail.'))}</p>`
               : me?.status === 'signed' && c.status !== 'signed'
-                ? '<p class="muted">Danke, deine Unterschrift ist gespeichert. Wenn alle unterschrieben haben, bekommst du eine Kopie per E-Mail.</p>'
+                ? `<p class="muted">${escapeHtml(t('Danke, deine Unterschrift ist gespeichert. Wenn alle unterschrieben haben, bekommst du eine Kopie per E-Mail.'))}</p>`
                 : '';
       const form = canSign
         ? `<form id="sign" style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px">
-    <label for="n">Vollständiger Name</label><input id="n" name="name" required value="${escapeHtml(me!.name)}" autocomplete="name">
-    <label style="margin-top:14px" for="pad">Unterschrift <span class="muted" style="font-weight:400">(mit Maus oder Finger zeichnen)</span></label>
+    <label for="n">${escapeHtml(t('Vollständiger Name'))}</label><input id="n" name="name" required value="${escapeHtml(me!.name)}" autocomplete="name">
+    <label style="margin-top:14px" for="pad">${escapeHtml(t('Unterschrift'))} <span class="muted" style="font-weight:400">${escapeHtml(t('(mit Maus oder Finger zeichnen)'))}</span></label>
     <canvas id="pad" width="600" height="180" style="width:100%;max-width:600px;height:180px;border:1px dashed #9ca3af;border-radius:9px;background:#fff;touch-action:none;display:block"></canvas>
-    <p style="margin:6px 0"><button type="button" class="btn secondary" id="clear" style="padding:6px 12px">Löschen</button></p>
-    <label class="check" style="margin-top:12px"><input type="checkbox" name="agree" required> Ich habe den Vertrag gelesen und stimme ihm${me!.role ? ` als ${escapeHtml(me!.role)}` : ''} mit meiner elektronischen Unterschrift zu.</label>
-    <div class="row" style="margin-top:16px"><button type="submit">Verbindlich unterschreiben</button><button type="button" class="btn secondary" id="decline">Ablehnen</button></div>
+    <p style="margin:6px 0"><button type="button" class="btn secondary" id="clear" style="padding:6px 12px">${escapeHtml(t('Löschen'))}</button></p>
+    <label class="check" style="margin-top:12px"><input type="checkbox" name="agree" required> ${escapeHtml(me!.role ? t('Ich habe den Vertrag gelesen und stimme ihm als {role} mit meiner elektronischen Unterschrift zu.', { role: me!.role }) : t('Ich habe den Vertrag gelesen und stimme ihm mit meiner elektronischen Unterschrift zu.'))}</label>
+    <div class="row" style="margin-top:16px"><button type="submit">${escapeHtml(t('Verbindlich unterschreiben'))}</button><button type="button" class="btn secondary" id="decline">${escapeHtml(t('Ablehnen'))}</button></div>
     <div class="error" id="err" role="alert"></div>
   </form>
   <script>
   (function(){
+    var M=${jsonForScript({ error: t('Fehler'), sign: t('Bitte unterschreiben.'), why: t('Ablehnen – möchtest du uns einen Grund nennen? (optional)') })};
     var T=${jsonForScript(me!.token)},cv=document.getElementById('pad'),x=cv.getContext('2d'),draw=false,ink=false;
     x.lineWidth=2.4;x.lineCap='round';x.lineJoin='round';x.strokeStyle='#111';
     function pos(e){var r=cv.getBoundingClientRect();return [(e.clientX-r.left)*cv.width/r.width,(e.clientY-r.top)*cv.height/r.height]}
@@ -401,10 +413,10 @@ export const contractSignersModule: Module = {
     cv.addEventListener('pointerup',function(){draw=false});
     document.getElementById('clear').onclick=function(){x.clearRect(0,0,cv.width,cv.height);ink=false};
     var f=document.getElementById('sign'),err=document.getElementById('err');
-    async function post(path,data){var r=await fetch('/api/public/sign/'+T+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});var j=await r.json();if(!r.ok)throw new Error(j.error||'Fehler');location.reload()}
-    f.onsubmit=async function(e){e.preventDefault();err.textContent='';if(!ink){err.textContent='Bitte unterschreiben.';return}
+    async function post(path,data){var r=await fetch('/api/public/sign/'+T+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});var j=await r.json();if(!r.ok)throw new Error(j.error||M.error);location.reload()}
+    f.onsubmit=async function(e){e.preventDefault();err.textContent='';if(!ink){err.textContent=M.sign;return}
       try{await post('',{name:f.name.value,agree:f.agree.checked,signature:cv.toDataURL('image/png')})}catch(x){err.textContent=x.message}};
-    document.getElementById('decline').onclick=async function(){var why=prompt('Ablehnen – möchtest du uns einen Grund nennen? (optional)');if(why===null)return;try{await post('/decline',{reason:why})}catch(x){err.textContent=x.message}};
+    document.getElementById('decline').onclick=async function(){var why=prompt(M.why);if(why===null)return;try{await post('/decline',{reason:why})}catch(x){err.textContent=x.message}};
   })();
   </script>`
         : '';
@@ -416,10 +428,10 @@ export const contractSignersModule: Module = {
   <h1 style="margin-top:24px">${escapeHtml(c.title)}</h1>
   <div class="doc">${contractHtml(c.content)}</div>
   <div style="margin-top:28px;border-top:1px solid var(--line);padding-top:16px">
-    <p><strong>Unterzeichner</strong> <span class="muted" style="font-size:13px">${run?.mode === 'parallel' ? '(in beliebiger Reihenfolge)' : '(in dieser Reihenfolge)'}</span></p>
+    <p><strong>${escapeHtml(t('Unterzeichner'))}</strong> <span class="muted" style="font-size:13px">${escapeHtml(run?.mode === 'parallel' ? t('(in beliebiger Reihenfolge)') : t('(in dieser Reihenfolge)'))}</span></p>
     <table style="width:100%;font-size:14px;border-collapse:collapse">${rows}</table>
     ${signatures ? `<div class="row" style="margin-top:18px;gap:18px;flex-wrap:wrap">${signatures}</div>` : ''}
-    ${c.status === 'signed' ? `<p class="muted" style="font-size:12px;margin-top:14px;overflow-wrap:anywhere">Dokument-Prüfsumme (SHA-256): ${escapeHtml(c.content_hash ?? '')}</p><p class="noprint" style="margin-top:12px"><button onclick="print()">Als PDF speichern / drucken</button></p>` : ''}
+    ${c.status === 'signed' ? `<p class="muted" style="font-size:12px;margin-top:14px;overflow-wrap:anywhere">${escapeHtml(t('Dokument-Prüfsumme (SHA-256)'))}: ${escapeHtml(c.content_hash ?? '')}</p><p class="noprint" style="margin-top:12px"><button onclick="print()">${escapeHtml(t('Als PDF speichern / drucken'))}</button></p>` : ''}
     ${notice}
   </div>
   ${form}
@@ -449,7 +461,7 @@ export const contractSignersModule: Module = {
           loc,
           email,
         );
-        return rows.length ? { 'contract_signers (E-Mail)': rows } : {};
+        return rows.length ? { 'contract_signers (E-Mail)': rows } : {}; // i18n-ignore – export key
       },
     ];
   },

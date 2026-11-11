@@ -1,3 +1,4 @@
+import { tApp, type STFn } from '../i18n/index.js';
 /**
  * VAT (Umsatzsteuer) building blocks of the light accounting: tax codes, rounding, and the
  * mapping to the Kennzahlen of the Umsatzsteuer-Voranmeldung and to DATEV's BU-Schlüssel.
@@ -45,6 +46,8 @@ export const TAX_CODES: Record<TaxCode, TaxDef> = {
 };
 
 export const TAX_CODE_LIST = Object.values(TAX_CODES);
+/** The tax codes with their labels in a language (routes that list them should use this instead of TAX_CODE_LIST). */
+export const localizedTaxCodes = (t: STFn) => TAX_CODE_LIST.map((c) => ({ ...c, label: t(c.label) }));
 export const isTaxCode = (v: unknown): v is TaxCode => typeof v === 'string' && v in TAX_CODES;
 export const isOutput = (c: TaxCode) => TAX_CODES[c].kind === 'output';
 export const isInput = (c: TaxCode) => TAX_CODES[c].kind === 'input';
@@ -83,6 +86,6 @@ export function codeForRate(rate: number, side: 'output' | 'input'): TaxCode {
 
 export function cleanTaxCode(v: unknown, fallback: TaxCode = 'none'): TaxCode {
   if (v === undefined || v === null || v === '') return fallback;
-  if (!isTaxCode(v)) throw new Error(`Unbekannter Steuerschlüssel „${String(v).slice(0, 20)}“`);
+  if (!isTaxCode(v)) throw new Error(tApp()('Unbekannter Steuerschlüssel „{code}“', { code: String(v).slice(0, 20) }));
   return v;
 }

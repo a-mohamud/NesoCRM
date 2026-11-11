@@ -3,6 +3,7 @@ import { slugify } from '../core/util.js';
 import { NO_LEDGER_SOURCES, guessStd, SOURCE_LABELS, type Batch, type Consent, type ConsentProof, type CountRow, type FieldType, type PartKey, type RContact, type RCourse, type RDeal, type REnrollment, type RPipeline, type RTemplate, type SourceField, type SourceKey, type StepDef } from './umzug-core.js';
 import { looksLikeZip, readZip } from './umzug-zip.js';
 import { cleanHtml, stripHtml, toCents, toIso } from './umzug-text.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Export files instead of an API: CSV (comma, semicolon or tab), JSON, HTML and ZIP archives of those.
@@ -74,7 +75,7 @@ export function parseDelimited(input: string): string[][] {
       push();
       if (row.some((f) => f !== '')) rows.push(row);
       row = [];
-      if (rows.length > MAX_ROWS) throw new Error(`Mehr als ${MAX_ROWS.toLocaleString('de-DE')} Zeilen – bitte die Datei teilen`);
+      if (rows.length > MAX_ROWS) throw new Error(tApp()('Mehr als {n} Zeilen – bitte die Datei teilen', { n: MAX_ROWS.toLocaleString(tApp().locale === 'de' ? 'de-DE' : 'en-GB') }));
     } else field += ch;
   }
   push();
@@ -100,7 +101,7 @@ function jsonTable(name: string, text: string): Table {
   try {
     doc = JSON.parse(text.replace(/^﻿/, ''));
   } catch {
-    throw new Error(`„${name}“ ist kein gültiges JSON`);
+    throw new Error(tApp()('„{name}“ ist kein gültiges JSON', { name }));
   }
   const list: any[] = Array.isArray(doc) ? doc : (Object.values(doc ?? {}).find((v) => Array.isArray(v)) as any[]) ?? [];
   const objs = list.filter((x) => x && typeof x === 'object' && !Array.isArray(x)).slice(0, MAX_ROWS);
@@ -131,7 +132,7 @@ export function parseUpload(name: string, buf: Buffer, depth = 0): Table[] {
   if (lower.endsWith('.json') || /^\s*[[{]/.test(text.slice(0, 50))) return [jsonTable(name, text)];
   if (text.includes('\u0000')) throw new Error('Das sieht nach einer Binärdatei aus – erwartet wird CSV, JSON, HTML oder ZIP');
   const rows = parseDelimited(text);
-  if (rows.length < 1) throw new Error(`„${name}“ ist leer`);
+  if (rows.length < 1) throw new Error(tApp()('„{name}“ ist leer', { name }));
   const header = rows[0].map((h) => h.trim());
   return [{ name, header, rows: rows.slice(1).filter((r) => r.some((c) => c.trim() !== '')) }];
 }
@@ -226,7 +227,7 @@ interface ContactCols {
 }
 
 /** Roles of a contact table's columns; refs are the header texts (made unique). */
-export function contactCols(header: string[], rows: string[][]): ContactCols {
+export function contactCols(header: string[], rows: string[][], t: STFn = tApp()): ContactCols {
   const refs: string[] = [];
   const seen = new Map<string, number>();
   for (const h of header) {
@@ -248,15 +249,15 @@ export function contactCols(header: string[], rows: string[][]): ContactCols {
   const sample = (i: number) => rows.map((r) => r[i]?.trim()).filter(Boolean).slice(0, 3) as string[];
   const fields: SourceField[] = header.map((h, i) => {
     const std = guessStd(headHead(h));
-    const f: SourceField = { ref: refs[i], label: h || `Spalte ${i + 1}`, type: typeOf(h), sample: sample(i), group: std ? 'standard' : 'custom' };
+    const f: SourceField = { ref: refs[i], label: h || t('Spalte {n}', { n: i + 1 }), type: typeOf(h), sample: sample(i), group: std ? 'standard' : 'custom' };
     if (std && i !== name) f.std = std;
     if (tags.includes(i)) f.preset = 'tag';
     else if (i === name || RE.status.test(headHead(h)) || RE.created.test(headHead(h)) || RE.id.test(headHead(h)) || RE.skip.test(headHead(h))) f.preset = '';
     return f;
   });
   if (name >= 0) {
-    fields.push({ ref: '__first', label: `Vorname (aus „${header[name]}“)`, type: 'text', std: 'first_name', sample: sample(name).map((v) => v.split(/\s+/)[0]), group: 'standard' });
-    fields.push({ ref: '__last', label: `Nachname (aus „${header[name]}“)`, type: 'text', std: 'last_name', sample: sample(name).map((v) => v.split(/\s+/).slice(1).join(' ')).filter(Boolean), group: 'standard' });
+    fields.push({ ref: '__first', label: t('Vorname (aus „{column}“)', { column: header[name] }), type: 'text', std: 'first_name', sample: sample(name).map((v) => v.split(/\s+/)[0]), group: 'standard' });
+    fields.push({ ref: '__last', label: t('Nachname (aus „{column}“)', { column: header[name] }), type: 'text', std: 'last_name', sample: sample(name).map((v) => v.split(/\s+/).slice(1).join(' ')).filter(Boolean), group: 'standard' });
   }
   return { header, email, id, tags, status, created, name, first, last, fields, refs, splitName: name >= 0 };
 }
@@ -324,10 +325,10 @@ export function contactRecord(cols: ContactCols, row: string[], tableName: strin
 }
 
 /** Contact fields of all contact tables (same header = same field). */
-export function fileContactFields(tables: Table[]): SourceField[] {
+export function fileContactFields(tables: Table[], t: STFn = tApp()): SourceField[] {
   const out = new Map<string, SourceField>();
-  for (const t of tables) {
-    for (const f of contactCols(t.header, t.rows.slice(0, 200)).fields) if (!out.has(f.ref)) out.set(f.ref, f);
+  for (const tb of tables) {
+    for (const f of contactCols(tb.header, tb.rows.slice(0, 200), t).fields) if (!out.has(f.ref)) out.set(f.ref, f);
   }
   return [...out.values()];
 }
@@ -359,8 +360,8 @@ export function dealRecords(tables: Table[]): { pipelines: RPipeline[]; deals: R
       const get = (i: number) => (i >= 0 ? (row[i] ?? '').trim() : '');
       const title = get(c.title);
       if (!title) continue;
-      const pName = get(c.pipeline) || 'Importierte Pipeline';
-      const pExt = slugify(pName);
+      const pName = get(c.pipeline) || tApp()('Importierte Pipeline');
+      const pExt = slugify(get(c.pipeline) || 'Importierte Pipeline'); // i18n-ignore (id)
       const p = pipes.get(pExt) ?? { kind: 'pipeline' as const, ext: pExt, name: pName, stages: [] };
       pipes.set(pExt, p);
       const sName = get(c.stage) || 'Neu';
@@ -389,14 +390,15 @@ export function dealRecords(tables: Table[]): { pipelines: RPipeline[]; deals: R
 
 // --- courses and students ------------------------------------------------------------------------------------------
 
-export function courseRecords(tables: Table[]): RCourse[] {
+export function courseRecords(tables: Table[], t: STFn = tApp()): RCourse[] {
   const out = new Map<string, RCourse>();
-  for (const t of tables) {
-    const j: any = t.json;
+  // Ids (ext) stay built from the German defaults, so files and earlier runs keep matching; only the shown names are translated.
+  for (const tb of tables) {
+    const j: any = tb.json;
     const docs: any[] = Array.isArray(j?.courses) ? j.courses : Array.isArray(j) && j.some((c: any) => Array.isArray(c?.modules)) ? j : [];
     docs.forEach((c, ci) => {
-      const title = String(c.title ?? c.name ?? `Kurs ${ci + 1}`);
-      const ext = slugify(title);
+      const title = String(c.title ?? c.name ?? t('Kurs {id}', { id: ci + 1 }));
+      const ext = slugify(String(c.title ?? c.name ?? `Kurs ${ci + 1}`)); // i18n-ignore (id)
       out.set(ext, {
         kind: 'course',
         ext,
@@ -405,24 +407,24 @@ export function courseRecords(tables: Table[]): RCourse[] {
         cover: c.cover ?? c.image_url ?? c.cover_image,
         modules: (c.modules ?? c.sections ?? []).map((m: any, mi: number) => ({
           ext: `m${mi + 1}-${slugify(String(m.title ?? m.name ?? ''))}`,
-          title: String(m.title ?? m.name ?? `Modul ${mi + 1}`),
-          lessons: (m.lessons ?? m.lectures ?? []).map((l: any, li: number) => ({ ext: `l${li + 1}-${slugify(String(l.title ?? l.name ?? ''))}`, title: String(l.title ?? l.name ?? `Lektion ${li + 1}`), video_url: l.video_url ?? l.video ?? undefined, body: l.body ?? l.text ?? l.content ?? '', duration_min: Number(l.duration_min ?? l.duration) || 0 })),
+          title: String(m.title ?? m.name ?? t('Modul {id}', { id: mi + 1 })),
+          lessons: (m.lessons ?? m.lectures ?? []).map((l: any, li: number) => ({ ext: `l${li + 1}-${slugify(String(l.title ?? l.name ?? ''))}`, title: String(l.title ?? l.name ?? t('Lektion {id}', { id: li + 1 })), video_url: l.video_url ?? l.video ?? undefined, body: l.body ?? l.text ?? l.content ?? '', duration_min: Number(l.duration_min ?? l.duration) || 0 })),
         })),
       });
     });
     if (docs.length) continue;
-    const find = (re: RegExp) => t.header.findIndex((h) => re.test(h.trim()));
+    const find = (re: RegExp) => tb.header.findIndex((h) => re.test(h.trim()));
     const c = { course: find(/^(course|kurs|product|produkt)( title| name| titel)?$/i), module: find(/^(module|modul|section|abschnitt)( title| name| titel)?$/i), lesson: find(/^(lesson|lektion|lecture|video)( title| name| titel)?$/i), video: find(/^(video|video[_ ]?url|url|link)$/i), text: find(/^(text|body|content|inhalt|description|beschreibung)$/i), dur: find(/^(duration|dauer)([_ ]?min.*)?$/i) };
-    for (const row of t.rows) {
+    for (const row of tb.rows) {
       const get = (i: number) => (i >= 0 ? (row[i] ?? '').trim() : '');
       const lesson = get(c.lesson);
-      const title = get(c.course) || 'Importierter Kurs';
+      const title = get(c.course) || t('Importierter Kurs');
       if (!lesson && !get(c.module)) continue;
-      const ext = slugify(title);
+      const ext = slugify(get(c.course) || 'Importierter Kurs'); // i18n-ignore (id, matches studentRecords)
       const course = out.get(ext) ?? { kind: 'course' as const, ext, title, modules: [] };
       out.set(ext, course);
-      const mTitle = get(c.module) || 'Modul 1';
-      const mExt = slugify(mTitle);
+      const mTitle = get(c.module) || t('Modul {id}', { id: 1 });
+      const mExt = slugify(get(c.module) || 'Modul 1'); // i18n-ignore (id)
       let m = course.modules.find((x) => x.ext === mExt);
       if (!m) course.modules.push((m = { ext: mExt, title: mTitle, lessons: [] }));
       if (lesson) m.lessons.push({ ext: `${m.lessons.length + 1}-${slugify(lesson)}`, title: lesson, video_url: /^https?:\/\//i.test(get(c.video)) ? get(c.video) : undefined, body: get(c.text), duration_min: Number(get(c.dur)) || 0 });
@@ -440,7 +442,7 @@ export function studentRecords(tables: Table[]): REnrollment[] {
       const get = (k: number) => (k >= 0 ? (row[k] ?? '').trim() : '');
       const email = get(c.email).toLowerCase();
       if (!emailOk(email)) return;
-      const course = slugify(get(c.course) || 'Importierter Kurs');
+      const course = slugify(get(c.course) || 'Importierter Kurs'); // i18n-ignore (id, matches courseRecords)
       out.push({ kind: 'enrollment', ext: `${course}:${emailExt(email)}`, course, contact: emailExt(email), email, name: get(c.name) || undefined, enrolled_at: toIso(get(c.at)), completed_at: toIso(get(c.done)) });
       void i;
     });
@@ -568,9 +570,9 @@ export function fileSteps(source: SourceKey, files: LoadedFile[], parts: PartKey
 }
 
 /** One line for the wizard: what we think the file is. */
-export function detectLabel(source: SourceKey, tables: Table[], kind: FileKind): string {
-  const h = tables.flatMap((t) => t.header).join('|');
-  if (source === 'mailchimp' && kind === 'contacts' && /LEID|OPTIN_TIME|MEMBER_RATING/i.test(h)) return 'Mailchimp-Audience-Export erkannt';
-  if (source === 'pipedrive' && /(person|deal) - /i.test(h)) return 'Pipedrive-Export erkannt';
-  return `${SOURCE_LABELS[source]}: ${FILE_KINDS.find((k) => k.key === kind)!.label}`;
+export function detectLabel(source: SourceKey, tables: Table[], kind: FileKind, t: STFn = tApp()): string {
+  const h = tables.flatMap((tb) => tb.header).join('|');
+  if (source === 'mailchimp' && kind === 'contacts' && /LEID|OPTIN_TIME|MEMBER_RATING/i.test(h)) return t('Mailchimp-Audience-Export erkannt');
+  if (source === 'pipedrive' && /(person|deal) - /i.test(h)) return t('Pipedrive-Export erkannt');
+  return `${SOURCE_LABELS[source]}: ${t(FILE_KINDS.find((k) => k.key === kind)!.label)}`;
 }

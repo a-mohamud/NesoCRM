@@ -3,6 +3,7 @@ import { bad, str } from '../core/http.js';
 import { now } from '../core/util.js';
 import { safeFetch } from '../services/net.js';
 import { openSecret, sealSecret } from './mail-sync.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * One-way mirror of the CRM into a Supabase project (PostgREST), so other projects and the Supabase
@@ -131,7 +132,7 @@ function client(app: App, cfg: MirrorConfig) {
   const headers = { apikey: key, authorization: `Bearer ${key}`, 'content-type': 'application/json' };
   const call = async (method: string, path: string, body?: unknown, prefer?: string) => {
     const r = await fetcher(`${base}/rest/v1/${path}`, { method, headers: { ...headers, ...(prefer ? { prefer } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
-    if (r.status >= 300) throw new Error(`Supabase ${method} ${path.split('?')[0]}: ${r.status} ${r.text.slice(0, 200)}`);
+    if (r.status >= 300) throw new Error(`Supabase ${method} ${path.split('?')[0]}: ${r.status} ${r.text.slice(0, 200)}`); // i18n-ignore – technical error from Supabase
     return r.text;
   };
   return { call };
@@ -188,7 +189,7 @@ export const supabaseMirrorModule: Module = {
         try {
           await client(app, next).call('GET', 'ghl_projects?select=id&limit=1');
         } catch (e) {
-          throw bad(`Gespeichert, aber Supabase antwortet nicht wie erwartet: ${(e as Error).message}. Wurden die Tabellen angelegt (SQL unten)?`);
+          throw bad(tApp()('Gespeichert, aber Supabase antwortet nicht wie erwartet: {error}. Wurden die Tabellen angelegt (SQL unten)?', { error: (e as Error).message }));
         }
       }
       return view();

@@ -6,6 +6,7 @@ import { emailDomain, hostMethods, signupAllowed } from '../services/login-polic
 import { deliverEmail, type OutMail } from '../services/messaging.js';
 import { getBranding } from './agency.js';
 import { safeNext } from './login-policy.js';
+import { tApp, tCtx, tUser, type STFn } from '../i18n/index.js';
 
 /**
  * Passwordless login by e-mail: a single-use link, valid 15 minutes, rate limited per address and IP.
@@ -55,12 +56,12 @@ export const magicLinkModule: Module = {
       return `${o.origin}/app/?magic=${t}`;
     }
 
-    async function send(to: string, user: any, locationId: string | undefined, subject: string, text: string, link: string) {
+    async function send(to: string, user: any, locationId: string | undefined, subject: string, text: string, link: string, t: STFn = tApp()) {
       const loc = sender(user, locationId);
       if (!loc) return 'skipped';
       const htmlBody = `<!doctype html><html><body style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#1f2937">${escapeHtml(text)
         .replace(/\n/g, '<br>')
-        .replace(escapeHtml(link), `<a href="${escapeHtml(link)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Anmelden</a>`)}</body></html>`;
+        .replace(escapeHtml(link), `<a href="${escapeHtml(link)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">${escapeHtml(t('Anmelden'))}</a>`)}</body></html>`;
       try {
         return (await mailer(loc, { to, subject, text, html: htmlBody })).status;
       } catch (e) {
@@ -73,10 +74,12 @@ export const magicLinkModule: Module = {
       async sendInvite(email: string, origin: string, days: number) {
         const b = getBranding(app);
         const link = create(email, { userId: null, kind: 'invite', origin, next: '/app', ttlMs: days * 864e5, ip: '' });
-        const text = `Hallo,\n\ndu bist zu ${b.name} eingeladen. Mit diesem Link meldest du dich an (${days} Tage gültig, einmal nutzbar):\n${link}\n\nViele Grüße\n${b.name}`;
+        const t = tApp();
+        const text = t('Hallo,\n\ndu bist zu {brand} eingeladen. Mit diesem Link meldest du dich an ({days} Tage gültig, einmal nutzbar):\n{link}\n\nViele Grüße\n{brand}', { brand: b.name, days, link });
+        const subject = t('Einladung zu {brand}', { brand: b.name });
         // The agency's own wording, if set (modules/system-mails.ts).
-        const m = app.services.systemMail?.('invite', { subject: `Einladung zu ${b.name}`, text }, { brand: b, link, days }) ?? { subject: `Einladung zu ${b.name}`, text };
-        return send(email, null, undefined, m.subject, m.text, link);
+        const m = app.services.systemMail?.('invite', { subject, text }, { brand: b, link, days }) ?? { subject, text };
+        return send(email, null, undefined, m.subject, m.text, link, t);
       },
     };
 
@@ -97,7 +100,7 @@ export const magicLinkModule: Module = {
       const email = str(ctx.body.email, 'E-Mail', { required: true, max: 200 }).toLowerCase();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) throw new HttpError(400, 'Bitte eine gültige E-Mail-Adresse angeben');
       const sso = app.services.ssoEnforced?.(email);
-      if (sso && !lp().breakGlass()) throw new HttpError(403, `Für @${emailDomain(email)} ist die Anmeldung über „${sso.label}“ vorgeschrieben`);
+      if (sso && !lp().breakGlass()) throw new HttpError(403, tCtx(ctx)('Für @{domain} ist die Anmeldung über „{provider}“ vorgeschrieben', { domain: emailDomain(email), provider: sso.label }));
       const answer = { ok: true, message: 'Wenn es ein Konto für diese Adresse gibt, ist der Link unterwegs. Er gilt 15 Minuten.' };
       const recent = db.get<{ n: number }>('SELECT COUNT(*) n FROM magic_links WHERE email = ? AND created_at > ?', email, new Date(Date.now() - WINDOW).toISOString())!.n;
       if (recent >= MAX_PER_EMAIL) return answer;
@@ -106,9 +109,11 @@ export const magicLinkModule: Module = {
       if (!user && !signupAllowed(lp().get(), email, !!lp().inviteOf(email))) return answer;
       const b = getBranding(app);
       const link = create(email, { userId: user?.id ?? null, kind: 'login', origin: h.origin, next: String(ctx.body.next ?? '/app'), ttlMs: LOGIN_TTL, ip: ctx.ip });
-      const text = `Hallo${user?.name ? ` ${user.name}` : ''},\n\nhier ist dein Anmelde-Link für ${b.name}. Er gilt 15 Minuten und nur einmal:\n${link}\n\nDu hast keinen Link angefordert? Dann ignoriere diese E-Mail einfach.\n\n${b.name}`;
-      const m = app.services.systemMail?.('magic_login', { subject: `Dein Anmelde-Link für ${b.name}`, text }, { brand: b, link, user: { name: user?.name ?? '' } }) ?? { subject: `Dein Anmelde-Link für ${b.name}`, text };
-      const status = await send(email, user, h.locationId, m.subject, m.text, link);
+      const t = user ? tUser(app as never, user.id) : tCtx(ctx);
+      const text = t(user?.name ? 'Hallo {name},\n\nhier ist dein Anmelde-Link für {brand}. Er gilt 15 Minuten und nur einmal:\n{link}\n\nDu hast keinen Link angefordert? Dann ignoriere diese E-Mail einfach.\n\n{brand}' : 'Hallo,\n\nhier ist dein Anmelde-Link für {brand}. Er gilt 15 Minuten und nur einmal:\n{link}\n\nDu hast keinen Link angefordert? Dann ignoriere diese E-Mail einfach.\n\n{brand}', { name: user?.name ?? '', brand: b.name, link });
+      const subject = t('Dein Anmelde-Link für {brand}', { brand: b.name });
+      const m = app.services.systemMail?.('magic_login', { subject, text }, { brand: b, link, user: { name: user?.name ?? '' } }) ?? { subject, text };
+      const status = await send(email, user, h.locationId, m.subject, m.text, link, t);
       app.services.audit?.({ ctx, action: 'login.magic_link', summary: `${email} (${status})`, userId: user?.id });
       return answer;
     });

@@ -47,6 +47,7 @@ import {
 } from '../services/teamchat-store.js';
 import { markdownToText } from '../services/wiki-markdown.js';
 import { PUSH_KINDS } from './push.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Team-Chat: channels (public/private, per sub-account or agency-wide), direct and group messages, threads,
@@ -148,7 +149,7 @@ export const teamchatModule: Module = {
     };
     const log = (ctx: Ctx, action: string, route: string, ch: ChannelRow, entityId: string, summary: string) => {
       quiet(ctx);
-      app.services.audit?.({ ctx, action, route, entityId, summary: `${summary} (${channelLabel(app, ch, ctx.user?.id ?? null)})` });
+      app.services.audit?.({ ctx, action, route, entityId, summary: `${tApp()(summary)} (${channelLabel(app, ch, ctx.user?.id ?? null)})` });
     };
 
     const channelOut = (ctx: Ctx, ch: ChannelRow, role: Role, counts?: Map<string, { unread: number; mentions: number }>) => {
@@ -172,7 +173,7 @@ export const teamchatModule: Module = {
         unread: me ? c.unread : 0,
         mentions: me ? c.mentions : 0,
         last_message_at: ch.last_message_at,
-        preview: last ? { text: markdownToText(last.body).slice(0, 100) || (last.kind === 'agent' ? 'Antwort des Agenten' : '📎'), author: last.author_name } : null,
+        preview: last ? { text: markdownToText(last.body).slice(0, 100) || (last.kind === 'agent' ? tCtx(ctx)('Antwort des Agenten') : '📎'), author: last.author_name } : null,
         archived: !!ch.archived_at,
         slack_mirror: !!ch.slack_mirror,
         created_by_name: ch.created_by_name,
@@ -228,7 +229,7 @@ export const teamchatModule: Module = {
         }
         if (b.name !== undefined) {
           const name = cleanChannelName(b.name);
-          if (db.get(`SELECT 1 AS x FROM teamchat_channels WHERE location_id IS ? AND kind IN ('public', 'private') AND LOWER(name) = ? AND id != ?`, ch.location_id, name, ch.id)) throw bad(`Einen Kanal „${name}“ gibt es schon`);
+          if (db.get(`SELECT 1 AS x FROM teamchat_channels WHERE location_id IS ? AND kind IN ('public', 'private') AND LOWER(name) = ? AND id != ?`, ch.location_id, name, ch.id)) throw bad(tCtx(ctx)('Einen Kanal „{name}“ gibt es schon', { name }));
           patch.name = name;
         }
         if (b.topic !== undefined) patch.topic = String(b.topic).slice(0, 250);
@@ -249,7 +250,7 @@ export const teamchatModule: Module = {
       }
       const fresh = db.get<ChannelRow>('SELECT * FROM teamchat_channels WHERE id = ?', ch.id)!;
       if (manage) {
-        log(ctx, 'chat.channel.update', 'PATCH /api/team-chat/channels/:id', fresh, ch.id, `Kanal geändert: ${Object.keys(patch).filter((k) => k !== 'updated_at').join(', ')}`);
+        log(ctx, 'chat.channel.update', 'PATCH /api/team-chat/channels/:id', fresh, ch.id, tApp()('Kanal geändert: {fields}', { fields: Object.keys(patch).filter((k) => k !== 'updated_at').join(', ') }));
         publish(app, fresh, 'channel', { id: fresh.id, change: 'updated' });
       }
       return channelOut(ctx, fresh, role);
@@ -286,7 +287,7 @@ export const teamchatModule: Module = {
     router.post('/api/team-chat/channels/:id/members', 'location', (ctx) => {
       const { ch } = loadChannel(app, ctx, ctx.params.id, 'member');
       if (ch.kind === 'dm') throw bad('Eine Direktnachricht hat genau zwei Personen – für mehr bitte eine Gruppe anlegen');
-      if (ch.kind === 'group' && memberIds(app, ch.id).length + (Array.isArray(ctx.body?.user_ids) ? ctx.body.user_ids.length : 0) > LIMITS.groupMax) throw bad(`Höchstens ${LIMITS.groupMax} Personen in einer Gruppe`);
+      if (ch.kind === 'group' && memberIds(app, ch.id).length + (Array.isArray(ctx.body?.user_ids) ? ctx.body.user_ids.length : 0) > LIMITS.groupMax) throw bad(tCtx(ctx)('Höchstens {n} Personen in einer Gruppe', { n: LIMITS.groupMax }));
       const added: string[] = [];
       for (const uid of Array.isArray(ctx.body?.user_ids) ? ctx.body.user_ids.map(String).slice(0, 50) : []) if (!memberOf(app, ch.id, uid) && addInvited(app, ctx, ch, uid)) added.push(uid);
       if (added.length) publish(app, ch, 'channel', { id: ch.id, change: 'members' });
@@ -388,7 +389,7 @@ export const teamchatModule: Module = {
       if (msg.deleted_at) throw bad('Die Nachricht wurde gelöscht');
       const contactId = str(ctx.body?.contact_id, 'Kontakt', { required: true, max: 40 });
       const text = markdownToText(msg.body).slice(0, 4000);
-      const note = await callRoute(app, ctx, 'POST', `/api/contacts/${encodeURIComponent(contactId)}/notes`, { body: `Aus dem Team-Chat (${channelLabel(app, ch, ctx.user?.id ?? null)}) – ${msg.author_name}:\n${text}` });
+      const note = await callRoute(app, ctx, 'POST', `/api/contacts/${encodeURIComponent(contactId)}/notes`, { body: `${tLoc(app, ctx.locationId)('Aus dem Team-Chat ({channel}) – {author}:', { channel: channelLabel(app, ch, ctx.user?.id ?? null), author: msg.author_name })}\n${text}` });
       return { ok: true, note_id: note?.id, contact_id: contactId };
     });
 

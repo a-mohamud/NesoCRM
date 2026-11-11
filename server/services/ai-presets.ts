@@ -352,6 +352,7 @@ export function guardedFetch(allowPrivate: boolean): FetchLike {
 }
 
 /** The public view of a preset (for the card grid). */
-export function presetOut(p: Preset) {
-  return { id: p.id, label: p.label, group: p.group, wire: p.wire, base_url: p.baseUrl, custom_url: p.customUrl, auth: p.auth, auth_header: p.authHeader ?? '', key_required: p.keyRequired, key_hint: p.keyHint, capabilities: p.capabilities, models: p.models, list_models: p.listModels !== 'none', price: p.price, key_url: p.keyUrl, docs: p.docs, note: p.note ?? '', local: !!p.local, realtime: p.realtime ?? {}, eu: p.eu ?? null, tags: [...(p.tags ?? []), ...(p.local || p.group === 'local' ? ['local'] : [])], referral: p.referral ?? p.id, verified: p.verified ?? '' };
+/** A preset for the browser; `t` translates its readable texts (label, key hint, notes – German message ids). */
+export function presetOut(p: Preset, t: (s: string) => string = (s) => s) {
+  return { id: p.id, label: t(p.label), group: p.group, wire: p.wire, base_url: p.baseUrl, custom_url: p.customUrl, auth: p.auth, auth_header: p.authHeader ?? '', key_required: p.keyRequired, key_hint: p.keyHint ? t(p.keyHint) : '', capabilities: p.capabilities, models: p.models, list_models: p.listModels !== 'none', price: p.price, key_url: p.keyUrl, docs: p.docs, note: p.note ? t(p.note) : '', local: !!p.local, realtime: p.realtime ?? {}, eu: p.eu ? { ...p.eu, region: t(p.eu.region), ...(p.eu.note ? { note: t(p.eu.note) } : {}) } : null, tags: [...(p.tags ?? []), ...(p.local || p.group === 'local' ? ['local'] : [])], referral: p.referral ?? p.id, verified: p.verified ?? '' };
 }

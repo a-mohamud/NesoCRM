@@ -3,7 +3,8 @@ import { HttpError, bad, notFound, str, type Ctx } from '../core/http.js';
 import { id as newId, now } from '../core/util.js';
 import { LIMITS, cleanAccent, cleanIcon, cleanLine, cleanText } from '../services/boards-model.js';
 import { createBoard, stateOf, type BoardRow } from '../services/boards-store.js';
-import { STARTERS, TEMPLATE_CATEGORIES, cleanTemplateInput, integrityOf, reviewTemplate, stateFromTemplate, templateFromState, type TemplateReview, type TemplateWidget } from '../services/boards-templates.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
+import { STARTERS, TEMPLATE_CATEGORIES, localizeStarter, cleanTemplateInput, integrityOf, reviewTemplate, stateFromTemplate, templateFromState, type TemplateReview, type TemplateWidget } from '../services/boards-templates.js';
 import { requirePro } from '../services/werkstatt/license.js';
 import { NAMES } from '../services/werkstatt/names.js';
 
@@ -61,7 +62,7 @@ export const boardsTemplatesModule: Module = {
         return [];
       }
     };
-    const reviewOf = (locationId: string, widgets: TemplateWidget[]): TemplateReview => reviewTemplate({ widgets }, { reg: reg(), env: { app, locationId }, hostOf });
+    const reviewOf = (locationId: string, widgets: TemplateWidget[], t?: STFn): TemplateReview => reviewTemplate({ widgets }, { reg: reg(), env: { app, locationId }, hostOf, t });
     const preview = (widgets: { type: string; x: number; y: number; w: number; h: number }[]) => widgets.slice(0, 40).map(({ type, x, y, w, h }) => ({ type, x, y, w, h }));
     const isAdmin = (ctx: Ctx) => ctx.user?.role === 'admin';
 
@@ -75,13 +76,15 @@ export const boardsTemplatesModule: Module = {
     const canManage = (ctx: Ctx, r: TemplateRow) => r.location_id === ctx.locationId && (isAdmin(ctx) || (!!ctx.user && r.owner_id === ctx.user.id));
 
     const out = (ctx: Ctx, r: TemplateRow, detail = false) => {
+      const tr = tCtx(ctx);
       const widgets = widgetsOf(r);
+      const catLabel = TEMPLATE_CATEGORIES.find(([k]) => k === r.category)?.[1];
       return {
         id: r.id,
         name: r.name,
         description: r.description,
         category: r.category,
-        category_label: TEMPLATE_CATEGORIES.find(([k]) => k === r.category)?.[1] ?? r.category,
+        category_label: catLabel ? tr(catLabel) : r.category,
         icon: r.icon,
         accent: r.accent,
         scope: r.scope,
@@ -94,22 +97,23 @@ export const boardsTemplatesModule: Module = {
         can_manage: canManage(ctx, r),
         published_at: r.published_at,
         updated_at: r.updated_at,
-        ...(detail ? { items: widgets.map((w) => ({ type: w.type, title: w.title || reg().get(w.type)?.label || w.type })), review: reviewOf(ctx.locationId, widgets) } : {}),
+        ...(detail ? { items: widgets.map((w) => ({ type: w.type, title: w.title || (reg().get(w.type)?.label ? tr(reg().get(w.type).label) : w.type) })), review: reviewOf(ctx.locationId, widgets, tr) } : {}),
       };
     };
 
     // --- listing ----------------------------------------------------------------------------------------------------------------
     router.get('/api/board-templates', 'location', (ctx) => {
+      const tr = tCtx(ctx);
       const q = String(ctx.query.get('q') ?? '').trim().toLowerCase().slice(0, 80);
       const cat = String(ctx.query.get('category') ?? '');
       const match = (name: string, description: string) => !q || `${name} ${description}`.toLowerCase().includes(q);
       const mine = db.all<TemplateRow>('SELECT * FROM board_templates WHERE location_id = ? ORDER BY updated_at DESC LIMIT 200', ctx.locationId).filter((r) => match(r.name, r.description) && (!cat || r.category === cat));
       const market = db.all<TemplateRow>("SELECT * FROM board_templates WHERE scope = 'marketplace' AND location_id <> ? ORDER BY installs DESC, published_at DESC LIMIT 200", ctx.locationId).filter((r) => match(r.name, r.description) && (!cat || r.category === cat));
       return {
-        starters: STARTERS.filter((s) => match(s.name, s.description)).map((s) => ({ key: s.key, name: s.name, description: s.description, icon: s.icon, accent: cleanAccent(s.accent) ?? '', widgets: s.widgets.length, preview: preview(s.widgets) })),
+        starters: STARTERS.map((s) => localizeStarter(s, tr)).filter((s) => match(s.name, s.description)).map((s) => ({ key: s.key, name: s.name, description: s.description, icon: s.icon, accent: cleanAccent(s.accent) ?? '', widgets: s.widgets.length, preview: preview(s.widgets) })),
         mine: mine.map((r) => out(ctx, r)),
         marketplace: market.map((r) => out(ctx, r)),
-        categories: TEMPLATE_CATEGORIES.map(([key, label]) => ({ key, label })),
+        categories: TEMPLATE_CATEGORIES.map(([key, label]) => ({ key, label: tr(label) })),
         names: NAMES,
         can_publish: isAdmin(ctx),
       };
@@ -118,8 +122,9 @@ export const boardsTemplatesModule: Module = {
     // --- review before sharing (static paths before /:id) -------------------------------------------------------------------------------
     router.get('/api/board-templates/check', 'location', (ctx) => {
       const { board } = B().load(ctx, String(ctx.query.get('board_id') ?? '')) as { board: BoardRow };
-      const t = templateFromState(stateOf(board), reg());
-      return { review: reviewOf(ctx.locationId, t.widgets), stripped: t.stripped, widgets: t.widgets.length, name: board.name, icon: board.icon };
+      const tr = tCtx(ctx);
+      const t = templateFromState(stateOf(board), reg(), tr);
+      return { review: reviewOf(ctx.locationId, t.widgets, tr), stripped: t.stripped, widgets: t.widgets.length, name: board.name, icon: board.icon };
     });
 
     // --- save a board as a template, publish ------------------------------------------------------------------------------------------------
@@ -129,13 +134,14 @@ export const boardsTemplatesModule: Module = {
       const name = cleanLine(str(b.name, 'Name', { max: 200 }), LIMITS.name) || board.name;
       const description = cleanText(str(b.description, 'Beschreibung', { max: 2000 }), 600);
       const scope = b.scope === 'marketplace' ? 'marketplace' : 'location';
-      const t = templateFromState(stateOf(board), reg());
-      const review = reviewOf(ctx.locationId, t.widgets);
-      if (review.verdict === 'fail') throw new HttpError(409, `Das Board lässt sich nicht als Vorlage speichern: ${review.checks.find((c) => c.level === 'fail')?.text}`);
+      const tr = tCtx(ctx);
+      const t = templateFromState(stateOf(board), reg(), tr);
+      const review = reviewOf(ctx.locationId, t.widgets, tr);
+      if (review.verdict === 'fail') throw new HttpError(409, tr('Das Board lässt sich nicht als Vorlage speichern: {reason}', { reason: review.checks.find((c) => c.level === 'fail')?.text ?? '' }));
       if (scope === 'marketplace') {
-        if (!isAdmin(ctx)) throw new HttpError(403, `Nur Admins veröffentlichen im ${NAMES.marktplatz}.`);
+        if (!isAdmin(ctx)) throw new HttpError(403, tr('Nur Admins veröffentlichen im {marketplace}.', { marketplace: tr(NAMES.marktplatz) }));
         requirePro(app, 'marktplatz');
-        if (b.approve !== true) throw bad(`Bitte bestätige die Veröffentlichung im ${NAMES.marktplatz} (approve).`);
+        if (b.approve !== true) throw bad(tr('Bitte bestätige die Veröffentlichung im {marketplace} (approve).', { marketplace: tr(NAMES.marktplatz) }));
         if (review.verdict === 'warn' && b.accept_warnings !== true) throw bad('Die Prüfung hat Hinweise – bitte bestätigen, dass du sie gelesen hast (accept_warnings).');
       }
       const widgets = t.widgets;
@@ -149,29 +155,30 @@ export const boardsTemplatesModule: Module = {
         row = { ...prior, ...row0, scope, version: prior.version + 1, updated_at: t0, published_at: scope === 'marketplace' ? (prior.published_at ?? t0) : null, published_by: scope === 'marketplace' ? (ctx.user?.id ?? null) : null };
         db.run('UPDATE board_templates SET name = ?, description = ?, category = ?, icon = ?, accent = ?, widgets = ?, integrity = ?, scope = ?, version = ?, updated_at = ?, published_at = ?, published_by = ? WHERE id = ?', row.name, row.description, row.category, row.icon, row.accent, row.widgets, row.integrity, row.scope, row.version, row.updated_at, row.published_at, row.published_by, row.id);
       } else {
-        row = { id: newId(), location_id: ctx.locationId, owner_id: ctx.user?.id ?? null, owner_name: ctx.user?.name ?? 'API-Schlüssel', ...row0, scope, version: 1, installs: 0, source_board_id: board.id, created_at: t0, updated_at: t0, published_at: scope === 'marketplace' ? t0 : null, published_by: scope === 'marketplace' ? (ctx.user?.id ?? null) : null };
+        row = { id: newId(), location_id: ctx.locationId, owner_id: ctx.user?.id ?? null, owner_name: ctx.user?.name ?? tLoc(app, ctx.locationId)('API-Schlüssel'), ...row0, scope, version: 1, installs: 0, source_board_id: board.id, created_at: t0, updated_at: t0, published_at: scope === 'marketplace' ? t0 : null, published_by: scope === 'marketplace' ? (ctx.user?.id ?? null) : null };
         db.insert('board_templates', row);
       }
       return { ...out(ctx, row, true), stripped: t.stripped };
     });
 
     router.post('/api/board-templates/import', 'location', (ctx) => {
+      const tr = tCtx(ctx);
       const bundle = ctx.body?.bundle;
-      if (!bundle || typeof bundle !== 'object' || bundle.format !== FORMAT || !bundle.template) throw bad(`Das ist keine Board-Vorlage (format „${FORMAT}“ erwartet).`);
+      if (!bundle || typeof bundle !== 'object' || bundle.format !== FORMAT || !bundle.template) throw bad(tr('Das ist keine Board-Vorlage (format „{format}“ erwartet).', { format: FORMAT }));
       const src = bundle.template as Record<string, any>;
       const name = cleanLine(src.name, LIMITS.name);
       if (!name) throw bad('Die Vorlage hat keinen Namen.');
       const cleaned = cleanTemplateInput(src);
-      if (cleaned.errors.length) throw bad(`Die Vorlage ist nicht gültig: ${cleaned.errors[0]}`);
+      if (cleaned.errors.length) throw bad(tr('Die Vorlage ist nicht gültig: {reason}', { reason: tr(cleaned.errors[0]) }));
       const icon = cleanIcon(src.icon);
       const accent = cleanAccent(src.accent) ?? '';
-      const review = reviewOf(ctx.locationId, cleaned.widgets);
-      if (review.verdict === 'fail') throw bad(`Die Vorlage lässt sich hier nicht verwenden: ${review.checks.find((c) => c.level === 'fail')?.text}`);
+      const review = reviewOf(ctx.locationId, cleaned.widgets, tr);
+      if (review.verdict === 'fail') throw bad(tr('Die Vorlage lässt sich hier nicht verwenden: {reason}', { reason: review.checks.find((c) => c.level === 'fail')?.text ?? '' }));
       const integrityOk = bundle.integrity === integrityOf({ name, icon, accent, widgets: cleaned.widgets });
       const total = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM board_templates WHERE location_id = ?', ctx.locationId)!.n;
       if (total >= 100) throw bad('Ein Sub-Account kann höchstens 100 Vorlagen haben.');
       const t0 = now();
-      const row: TemplateRow = { id: newId(), location_id: ctx.locationId, owner_id: ctx.user?.id ?? null, owner_name: ctx.user?.name ?? 'API-Schlüssel', name, description: cleanText(src.description, 600), category: category(src.category), icon, accent, scope: 'location', widgets: JSON.stringify(cleaned.widgets), integrity: integrityOf({ name, icon, accent, widgets: cleaned.widgets }), version: 1, installs: 0, source_board_id: null, created_at: t0, updated_at: t0, published_at: null, published_by: null };
+      const row: TemplateRow = { id: newId(), location_id: ctx.locationId, owner_id: ctx.user?.id ?? null, owner_name: ctx.user?.name ?? tLoc(app, ctx.locationId)('API-Schlüssel'), name, description: cleanText(src.description, 600), category: category(src.category), icon, accent, scope: 'location', widgets: JSON.stringify(cleaned.widgets), integrity: integrityOf({ name, icon, accent, widgets: cleaned.widgets }), version: 1, installs: 0, source_board_id: null, created_at: t0, updated_at: t0, published_at: null, published_by: null };
       db.insert('board_templates', row);
       return { ...out(ctx, row, true), integrity_ok: integrityOk };
     });
@@ -192,11 +199,13 @@ export const boardsTemplatesModule: Module = {
 
     // --- install: a new board from a template -----------------------------------------------------------------------------------------------
     router.post('/api/board-templates/:id/install', 'location', (ctx) => {
+      const tr = tCtx(ctx);
       const r = mustSee(ctx, ctx.params.id);
       const widgets = widgetsOf(r);
       if (r.integrity !== integrityOf({ name: r.name, icon: r.icon, accent: r.accent, widgets })) throw new HttpError(409, 'Die Vorlage wurde verändert und lässt sich nicht installieren.');
       const foreign = r.location_id !== ctx.locationId;
-      const review = reviewOf(ctx.locationId, widgets);
+      // the review's needs keys are German on purpose: the consent is compared with them
+      const review = reviewOf(ctx.locationId, widgets, tr);
       if (foreign) {
         // The Marktplatz way: installing somebody else's template asks for exactly what it reads and shows.
         requirePro(app, 'marktplatz');
@@ -204,15 +213,15 @@ export const boardsTemplatesModule: Module = {
         const given = Array.isArray(ctx.body?.consent) ? (ctx.body.consent as unknown[]).map(String).sort().join('|') : null;
         if (given !== want) throw bad('Bitte bestätige, was die Vorlage liest und zeigt (consent).');
       }
-      if (review.verdict === 'fail') throw new HttpError(409, `Die Vorlage lässt sich hier nicht installieren: ${review.checks.find((c) => c.level === 'fail')?.text}`);
+      if (review.verdict === 'fail') throw new HttpError(409, tr('Die Vorlage lässt sich hier nicht installieren: {reason}', { reason: review.checks.find((c) => c.level === 'fail')?.text ?? '' }));
       const total = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM boards WHERE location_id = ?', ctx.locationId)!.n;
-      if (total >= LIMITS.boardsPerLocation) throw bad(`Ein Sub-Account hat höchstens ${LIMITS.boardsPerLocation} Boards`);
+      if (total >= LIMITS.boardsPerLocation) throw bad(tr('Ein Sub-Account hat höchstens {n} Boards', { n: LIMITS.boardsPerLocation }));
       const name = cleanLine(str(ctx.body?.name, 'Name', { max: 200 }), LIMITS.name) || r.name;
       const scope = ctx.body?.scope === 'shared' ? 'shared' : 'personal';
       if (!ctx.user && scope === 'personal') throw bad('Mit einem Schlüssel lassen sich nur geteilte Boards anlegen (scope: shared)');
       const built = stateFromTemplate({ name, icon: r.icon, accent: r.accent, widgets }, { ...env(ctx.locationId), strict: false });
-      if (built.errors.length) throw bad(`Die Vorlage lässt sich hier nicht anlegen: ${built.errors[0]}`);
-      const { board } = createBoard(app, ctx, { name, scope, team_access: 'view', state: built.state, template_key: r.id, kind: 'template', summary: `Aus Vorlage „${r.name}“${foreign ? ` (${NAMES.marktplatz})` : ''} angelegt` });
+      if (built.errors.length) throw bad(tr('Die Vorlage lässt sich hier nicht anlegen: {reason}', { reason: tr(built.errors[0]) }));
+      const { board } = createBoard(app, ctx, { name, scope, team_access: 'view', state: built.state, template_key: r.id, kind: 'template', summary: foreign ? tLoc(app, ctx.locationId)('Aus Vorlage „{name}“ ({marketplace}) angelegt', { name: r.name, marketplace: tLoc(app, ctx.locationId)(NAMES.marktplatz) }) : tLoc(app, ctx.locationId)('Aus Vorlage „{name}“ angelegt', { name: r.name }) });
       db.run('UPDATE board_templates SET installs = installs + 1 WHERE id = ?', r.id);
       return B().full(ctx, board, 'owner');
     });

@@ -18,6 +18,7 @@ import {
   titleCase,
 } from './formatters.js';
 import { ymdInTz } from '../core/time.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * A small, safe expression language for the workflow step "Code" and for `if` conditions – instead of running
@@ -42,7 +43,8 @@ export class ExprError extends Error {
     message: string,
     public pos?: number,
   ) {
-    super(message);
+    // static messages are catalog keys (server/i18n); interpolated ones arrive already translated
+    super(tApp()(message));
   }
 }
 
@@ -175,7 +177,7 @@ function tokenize(src: string, budget: Budget, depth: number): Tok[] {
       continue;
     }
     const op = OPS.find((o) => src.startsWith(o, i));
-    if (!op) throw new ExprError(`Unerwartetes Zeichen „${c}“`, i);
+    if (!op) throw new ExprError(tApp()('Unerwartetes Zeichen „{char}“', { char: c }), i);
     // "a ?.5 : 1" is a ternary, not optional chaining
     if (op === '?.' && /[0-9]/.test(src[i + 2] ?? '')) {
       toks.push({ t: 'op', v: '?', pos: i });
@@ -251,15 +253,15 @@ class Parser {
     return null;
   }
   private expect(v: string) {
-    if (!this.eat(v)) throw new ExprError(`„${v}“ erwartet, gefunden: ${this.describe()}`, this.cur.pos);
+    if (!this.eat(v)) throw new ExprError(tApp()('„{expected}“ erwartet, gefunden: {found}', { expected: v, found: this.describe() }), this.cur.pos);
   }
   private describe() {
-    return this.cur.t === 'eof' ? 'Ende' : `„${this.cur.t === 'tpl' ? '`…`' : String(this.cur.v)}“`;
+    return this.cur.t === 'eof' ? tApp()('Ende') : `„${this.cur.t === 'tpl' ? '`…`' : String(this.cur.v)}“`;
   }
 
   /** The whole input must have been read. */
   finish() {
-    if (this.cur.t !== 'eof') throw new ExprError(`Unerwartet: ${this.describe()}`, this.cur.pos);
+    if (this.cur.t !== 'eof') throw new ExprError(tApp()('Unerwartet: {found}', { found: this.describe() }), this.cur.pos);
   }
 
   program(): Node[] {
@@ -518,7 +520,7 @@ class Parser {
       if (t.v === 'false') return this.node({ k: 'lit', v: false });
       if (t.v === 'null') return this.node({ k: 'lit', v: null });
       if (t.v === 'undefined') return this.node({ k: 'lit', v: undefined });
-      if (KEYWORDS.has(t.v)) throw new ExprError(`„${t.v}“ steht hier nicht richtig`, t.pos);
+      if (KEYWORDS.has(t.v)) throw new ExprError(tApp()('„{token}“ steht hier nicht richtig', { token: t.v }), t.pos);
       return this.node({ k: 'id', n: t.v, pos: t.pos });
     }
     if (this.eat('(')) {
@@ -544,7 +546,7 @@ class Parser {
         else if (kt.t === 'num') key = String(kt.v);
         else throw new ExprError('Feldname erwartet', kt.pos);
         this.i++;
-        if (BANNED_KEYS.has(key)) throw new ExprError(`Feldname „${key}“ ist nicht erlaubt`, kt.pos);
+        if (BANNED_KEYS.has(key)) throw new ExprError(tApp()('Feldname „{key}“ ist nicht erlaubt', { key }), kt.pos);
         if (this.eat(':')) props.push([key, this.expression()]);
         else if (kt.t === 'id') props.push([key, this.node({ k: 'id', n: key, pos: kt.pos })]);
         else throw new ExprError('„:“ erwartet', this.cur.pos);
@@ -553,7 +555,7 @@ class Parser {
       this.expect('}');
       return this.node({ k: 'obj', props });
     }
-    throw new ExprError(`Unerwartet: ${this.describe()}`, t.pos);
+    throw new ExprError(tApp()('Unerwartet: {found}', { found: this.describe() }), t.pos);
   }
 }
 
@@ -568,7 +570,7 @@ function parseExpression(src: string, budget: Budget, base: number): Node {
 export function parseProgram(source: string, limits: Partial<ExprLimits> = {}): Node[] {
   const l = { ...DEFAULT_LIMITS, ...limits };
   if (typeof source !== 'string') throw new ExprError('Kein Text');
-  if (source.length > l.maxSource) throw new ExprError(`Code zu lang (höchstens ${l.maxSource} Zeichen)`);
+  if (source.length > l.maxSource) throw new ExprError(tApp()('Code zu lang (höchstens {max} Zeichen)', { max: l.maxSource }));
   const budget: Budget = { nodes: 0, limits: l };
   return new Parser(tokenize(source, budget, 0), budget, 0).program();
 }
@@ -678,8 +680,8 @@ class Runtime {
     this.now = opts.now ?? new Date();
   }
   tick(pos?: number) {
-    if (++this.steps > this.limits.maxSteps) throw new ExprError(`Schritt-Grenze erreicht (${this.limits.maxSteps}) – Endlosschleife?`, pos);
-    if ((this.steps & 127) === 0 && Date.now() - this.start > this.limits.maxMs) throw new ExprError(`Zeitgrenze erreicht (${this.limits.maxMs} ms)`, pos);
+    if (++this.steps > this.limits.maxSteps) throw new ExprError(tApp()('Schritt-Grenze erreicht ({max}) – Endlosschleife?', { max: this.limits.maxSteps }), pos);
+    if ((this.steps & 127) === 0 && Date.now() - this.start > this.limits.maxMs) throw new ExprError(tApp()('Zeitgrenze erreicht ({ms} ms)', { ms: this.limits.maxMs }), pos);
   }
   checkStr(s: string): string {
     if (s.length > this.limits.maxString) throw new ExprError('Text zu lang (höchstens 100 000 Zeichen)');
@@ -778,7 +780,7 @@ class Interpreter {
     if (env.has(name)) return env.get(name);
     const b = FUNCTIONS[name];
     if (b) return new Builtin(name, b.fn);
-    throw new ExprError(`„${name}“ ist nicht bekannt`, pos);
+    throw new ExprError(tApp()('„{name}“ ist nicht bekannt', { name }), pos);
   }
 
   execBlock(body: Node[], env: Env): Signal | undefined {
@@ -859,7 +861,7 @@ class Interpreter {
       }
     };
     if (target.k === 'id') {
-      if (!env.has(target.n)) throw new ExprError(`„${target.n}“ ist nicht deklariert – mit let anlegen`, target.pos);
+      if (!env.has(target.n)) throw new ExprError(tApp()('„{name}“ ist nicht deklariert – mit let anlegen', { name: target.n }), target.pos);
       const v = combine(env.get(target.n));
       env.set(target.n, v);
       return v;
@@ -967,7 +969,7 @@ class Interpreter {
             if (isPlain(b)) return typeof a === 'string' && Object.prototype.hasOwnProperty.call(b, a) && !BANNED_KEYS.has(a);
             return false;
           default:
-            throw new ExprError(`Unbekannter Operator ${n.op}`, n.pos);
+            throw new ExprError(tApp()('Unbekannter Operator {op}', { op: n.op }), n.pos);
         }
       }
       case 'mem': {
@@ -997,7 +999,7 @@ class Interpreter {
         if (m && (m.on === 'any' || (m.on === 'string' && typeof obj === 'string') || (m.on === 'array' && Array.isArray(obj)) || (m.on === 'number' && typeof obj === 'number'))) return m.fn(obj, args, rt);
         if (isPlain(obj) && Object.prototype.hasOwnProperty.call(obj, key) && (obj[key] instanceof Lambda || obj[key] instanceof Builtin)) return this.callValue(obj[key], args);
       }
-      throw new ExprError(`„${toStr(key)}“ gibt es hier nicht als Funktion`, n.pos);
+      throw new ExprError(tApp()('„{name}“ gibt es hier nicht als Funktion', { name: toStr(key) }), n.pos);
     }
     const f = this.eval(n.f, env);
     if ((f === null || f === undefined) && n.opt) return undefined;
@@ -1046,7 +1048,7 @@ def('int', 'int(wert)', 'Ganzzahl (schneidet ab)', ([v]) => {
   const n = parseNumber(v);
   return Number.isNaN(n) ? null : Math.trunc(n);
 });
-def('abs', 'abs(zahl)', 'Betrag', ([v]) => Math.abs(num(v)));
+def('abs', 'abs(zahl)', 'Betrag (Absolutwert)', ([v]) => Math.abs(num(v)));
 def('floor', 'floor(zahl)', 'Abrunden', ([v]) => Math.floor(num(v)));
 def('ceil', 'ceil(zahl)', 'Aufrunden', ([v]) => Math.ceil(num(v)));
 def('round', 'round(zahl, stellen?)', 'Runden (kaufmännisch)', ([v, d]) => roundTo(num(v), d === undefined ? 0 : num(d)));
@@ -1153,7 +1155,7 @@ def('group_count', 'group_count(liste, x => schlüssel)', 'Zählt je Schlüssel 
 // dates
 const dt = (v: unknown, rt: Runtime): Date => {
   const d = parseDate(v === undefined || v === '' ? 'now' : v, rt.tz, rt.now);
-  if (!d) throw new ExprError(`„${toStr(v).slice(0, 40)}“ ist kein Datum`);
+  if (!d) throw new ExprError(tApp()('„{value}“ ist kein Datum', { value: toStr(v).slice(0, 40) }));
   return d;
 };
 def('now', 'now()', 'Jetzt (ISO, UTC)', (_a, rt) => rt.now.toISOString());
@@ -1196,9 +1198,9 @@ M('pop', 'array', (a) => a.pop());
 M('toFixed', 'number', (n, [d]) => numberOp('fixed', n, { digits: d === undefined ? 0 : num(d) }));
 M('toString', 'any', (v) => toStr(v));
 /** The functions of the language, for the editor's help and the docs. */
-export function functionDocs(): { name: string; sig: string; doc: string }[] {
+export function functionDocs(t: STFn = tApp()): { name: string; sig: string; doc: string }[] {
   return Object.entries(FUNCTIONS)
-    .map(([name, f]) => ({ name, sig: f.sig, doc: f.doc }))
+    .map(([name, f]) => ({ name, sig: t(f.sig), doc: t(f.doc) }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -1212,7 +1214,7 @@ export function evaluate(source: string, data: Record<string, unknown> = {}, opt
   try {
     program = parseProgram(source, limits);
   } catch (e) {
-    if (e instanceof ExprError) throw new ExprError(e.pos === undefined ? e.message : `${e.message} (Position ${e.pos})`, e.pos);
+    if (e instanceof ExprError) throw new ExprError(e.pos === undefined ? e.message : tApp()('{message} (Position {pos})', { message: e.message, pos: e.pos }), e.pos);
     throw new ExprError('Syntaxfehler');
   }
   const rt = new Runtime(limits, opts);

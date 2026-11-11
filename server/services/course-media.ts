@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { bad } from '../core/http.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Course video, pure parts: chapters, captions (WebVTT / SRT), resume position and "watched" bookkeeping, the signed-URL
@@ -47,7 +48,7 @@ export function cleanChapters(input: unknown): Chapter[] {
     for (const line of input.split(/\r?\n/)) {
       const m = /^\s*[-*•]?\s*\(?(\d{1,2}:\d{2}(?::\d{2})?|\d{1,6})\)?\s*[-–—:.]?\s*(.+?)\s*$/.exec(line);
       if (m) list.push({ t: parseTimestamp(m[1]), title: m[2] });
-      else if (line.trim()) throw bad(`Kapitel: „${line.trim().slice(0, 40)}“ – bitte als „0:00 Titel“ schreiben`);
+      else if (line.trim()) throw bad(tApp()('Kapitel: „{line}“ – bitte als „0:00 Titel“ schreiben', { line: line.trim().slice(0, 40) }));
     }
   } else if (input !== undefined && input !== null && input !== '') throw bad('Kapitel: Liste oder Text erwartet');
   const out: Chapter[] = [];
@@ -109,7 +110,7 @@ export function parseCaptions(source: string): Cue[] {
     const [a, b] = lines[at].split('-->');
     const start = timeOf(a ?? '');
     const end = timeOf((b ?? '').trim().split(/\s+/)[0] ?? '');
-    if (start === undefined || end === undefined || end <= start) throw bad(`Untertitel: ungültige Zeitangabe „${lines[at].slice(0, 40)}“`);
+    if (start === undefined || end === undefined || end <= start) throw bad(tApp()('Untertitel: ungültige Zeitangabe „{time}“', { time: lines[at].slice(0, 40) }));
     const body = cueText(lines.slice(at + 1).join('\n'));
     if (body) cues.push({ start, end, text: body });
     if (cues.length > 20_000) throw bad('Untertitel: zu viele Einträge');

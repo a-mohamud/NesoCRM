@@ -23,6 +23,10 @@ import {
 import { addDays, mondayOf } from './pm-schedule.js';
 import { taskRow } from './pm-tasks.js';
 import { hiddenUser } from '../core/permissions.js';
+import { tApp, tUser } from '../i18n/index.js';
+
+/** Messages in the instance language (static ids for the catalog). */
+const tm = tApp();
 
 /**
  * Time tracking: one running timer per person (across sub-accounts, enforced by a unique index), manual entries
@@ -137,8 +141,8 @@ function assertFree(app: App, locationId: string, userId: string, from: Date, to
   const clash = overlapping(app, userId, from, to, exceptId)[0];
   if (!clash) return;
   const tz = tzOf(app, clash.location_id);
-  const hm = (iso: string) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: tz });
-  throw bad(`Überschneidung mit einem anderen Zeiteintrag (${hm(clash.started_at)}–${clash.ended_at ? hm(clash.ended_at) : 'läuft'}${clash.task_title ? `, ${clash.task_title}` : ''})`);
+  const hm = (iso: string) => new Date(iso).toLocaleTimeString(tm.locale === 'de' ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+  throw bad(tm('Überschneidung mit einem anderen Zeiteintrag ({from}–{to}{task})', { from: hm(clash.started_at), to: clash.ended_at ? hm(clash.ended_at) : tm('läuft'), task: clash.task_title ? `, ${clash.task_title}` : '' }));
 }
 
 // --- locked weeks -------------------------------------------------------------------------------------
@@ -506,7 +510,11 @@ export function submitWeek(app: App, locationId: string, userId: string, anyDay:
     app.db.run(`INSERT INTO pm_timesheets (location_id, user_id, week, status, submitted_at, note) VALUES (?, ?, ?, 'submitted', ?, '') ON CONFLICT(location_id, user_id, week) DO UPDATE SET status = 'submitted', submitted_at = excluded.submitted_at, decided_by = NULL, decided_at = NULL, note = ''`, locationId, userId, week, now());
   });
   const who = team(app, locationId).find((p) => p.id === userId)?.name ?? actor.name;
-  for (const m of managersOf(app, locationId)) if (m !== userId) notifyUser(app, { locationId, userId: m, kind: 'timesheet', title: `Zeiten zur Freigabe: ${who}`, body: `Woche ab ${week.split('-').reverse().join('.')}`, ref: `timesheet:${userId}:${week}:${now().slice(0, 16)}` });
+  for (const m of managersOf(app, locationId)) {
+    if (m === userId) continue;
+    const tu = tUser(app as never, m);
+    notifyUser(app, { locationId, userId: m, kind: 'timesheet', title: tu('Zeiten zur Freigabe: {name}', { name: who }), body: tu('Woche ab {date}', { date: week.split('-').reverse().join(tu.locale === 'de' ? '.' : '/') }), ref: `timesheet:${userId}:${week}:${now().slice(0, 16)}` });
+  }
   app.events.emit(locationId, 'timesheet.submitted', { userId, week });
   return timesheetOf(app, locationId, userId, week);
 }
@@ -532,7 +540,8 @@ export function decideWeek(app: App, locationId: string, userId: string, anyDay:
     if (inWeek.length) app.db.run(`UPDATE pm_time_entries SET approval = ?, updated_at = ? WHERE id IN (${inWeek.map(() => '?').join(',')})`, next === 'open' ? 'open' : next, now(), ...inWeek.map((e) => e.id));
     app.db.run(`INSERT INTO pm_timesheets (location_id, user_id, week, status, decided_by, decided_at, note) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(location_id, user_id, week) DO UPDATE SET status = excluded.status, decided_by = excluded.decided_by, decided_at = excluded.decided_at, note = excluded.note`, locationId, userId, week, next, actor.id, now(), str(note, 'Hinweis', { max: 500 }));
   });
-  if (next !== 'open') notifyUser(app, { locationId, userId, kind: 'timesheet', title: next === 'approved' ? 'Deine Zeiten wurden freigegeben' : 'Deine Zeiten wurden abgelehnt', body: `Woche ab ${week.split('-').reverse().join('.')}${note ? ` – ${note}` : ''}`, ref: `timesheet-decision:${userId}:${week}:${next}:${now().slice(0, 16)}` });
+  const tu = tUser(app as never, userId);
+  if (next !== 'open') notifyUser(app, { locationId, userId, kind: 'timesheet', title: next === 'approved' ? tu('Deine Zeiten wurden freigegeben') : tu('Deine Zeiten wurden abgelehnt'), body: `${tu('Woche ab {date}', { date: week.split('-').reverse().join(tu.locale === 'de' ? '.' : '/') })}${note ? ` – ${note}` : ''}`, ref: `timesheet-decision:${userId}:${week}:${next}:${now().slice(0, 16)}` });
   app.events.emit(locationId, 'timesheet.decided', { userId, week, status: next });
   return timesheetOf(app, locationId, userId, week);
 }
@@ -818,8 +827,9 @@ export function autoStopTimers(app: App, at = new Date()): number {
     const end = new Date(Date.parse(r.started_at) + limit * 1000);
     const done = closeEntry(app, r, end, { auto_stopped: 1 });
     n++;
-    if (done) app.services.audit?.({ action: 'pm.time.auto_stop', actor: 'System', locationId: r.location_id, entityId: r.id, summary: `Timer nach ${Math.round(limit / 3600)} Stunden gestoppt`, userId: r.user_id });
-    if (done) notifyUser(app, { locationId: r.location_id, userId: r.user_id, kind: 'timer', title: 'Dein Timer wurde automatisch gestoppt', body: `${r.task_title || 'Zeiterfassung'} lief länger als ${Math.round(limit / 3600)} Stunden – bitte die Zeit prüfen.`, taskId: r.task_id, projectId: r.project_id, ref: `timer-auto:${r.id}` });
+    if (done) app.services.audit?.({ action: 'pm.time.auto_stop', actor: 'System', locationId: r.location_id, entityId: r.id, summary: tm('Timer nach {hours} Stunden gestoppt', { hours: Math.round(limit / 3600) }), userId: r.user_id });
+    const tu = tUser(app as never, r.user_id);
+    if (done) notifyUser(app, { locationId: r.location_id, userId: r.user_id, kind: 'timer', title: tu('Dein Timer wurde automatisch gestoppt'), body: tu('{task} lief länger als {hours} Stunden – bitte die Zeit prüfen.', { task: r.task_title || tu('Zeiterfassung'), hours: Math.round(limit / 3600) }), taskId: r.task_id, projectId: r.project_id, ref: `timer-auto:${r.id}` });
   }
   return n;
 }

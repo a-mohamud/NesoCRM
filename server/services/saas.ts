@@ -1,4 +1,5 @@
 import { PERMISSIONS, type Permission } from '../core/permissions.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * SaaS mode (agency resells sub-accounts): plan shape, limits, usage months, the billing
@@ -85,13 +86,13 @@ export interface Subscription {
 const money = (v: unknown, field: string): number => {
   if (v === undefined || v === null || v === '') return 0;
   const n = Math.round(Number(String(v).replace(',', '.')) * 100);
-  if (!Number.isFinite(n) || n < 0 || n > 100_000_00) throw new Error(`${field}: bitte einen Betrag zwischen 0 und 100.000 angeben`);
+  if (!Number.isFinite(n) || n < 0 || n > 100_000_00) throw new Error(tApp()('{field}: bitte einen Betrag zwischen 0 und 100.000 angeben', { field: tApp()(field) }));
   return n;
 };
 const count = (v: unknown, field: string): number | null => {
   if (v === undefined || v === null || v === '') return null;
   const n = Number(v);
-  if (!Number.isInteger(n) || n < 0 || n > 100_000_000) throw new Error(`${field}: bitte eine ganze Zahl ab 0 (leer = unbegrenzt)`);
+  if (!Number.isInteger(n) || n < 0 || n > 100_000_000) throw new Error(tApp()('{field}: bitte eine ganze Zahl ab 0 (leer = unbegrenzt)', { field: tApp()(field) }));
   return n;
 };
 
@@ -180,15 +181,17 @@ export const limitOf = (plan: Pick<Plan, 'limits'> | undefined, k: LimitKey): nu
   return v === undefined || v === null ? null : Number(v);
 };
 
-const fmt = (n: number) => n.toLocaleString('de-DE');
+const fmt = (n: number) => n.toLocaleString(tApp().locale === 'de' ? 'de-DE' : 'en-GB');
 
 /** "Limit erreicht" with what is included and where to upgrade. */
 export function limitMessage(k: LimitKey, limit: number, planName: string): string {
-  const what = USAGE_KEYS.includes(k as UsageKey) ? `${fmt(limit)} ${UNIT[k]} pro Monat` : `${fmt(limit)} ${UNIT[k]}`;
-  return `Limit erreicht: Dein Tarif „${planName}“ enthält ${what}. Für mehr bitte auf einen größeren Tarif wechseln (Einstellungen → Abo & Rechnung).`;
+  const t = tApp();
+  const what = USAGE_KEYS.includes(k as UsageKey) ? t('{n} {unit} pro Monat', { n: fmt(limit), unit: t(UNIT[k]) }) : k === 'users' ? t.plural(limit, { one: '{n} Nutzer', other: '{n} Nutzer' }, { n: fmt(limit) }) : `${fmt(limit)} ${t(UNIT[k])}`;
+  return t('Limit erreicht: Dein Tarif „{plan}“ enthält {what}. Für mehr bitte auf einen größeren Tarif wechseln (Einstellungen → Abo & Rechnung).', { plan: planName, what });
 }
 export function featureMessage(area: Permission, planName: string): string {
-  return `„${PERMISSIONS[area]}“ ist in deinem Tarif „${planName}“ nicht enthalten. Für diesen Bereich bitte auf einen größeren Tarif wechseln (Einstellungen → Abo & Rechnung).`;
+  const t = tApp();
+  return t('„{area}“ ist in deinem Tarif „{plan}“ nicht enthalten. Für diesen Bereich bitte auf einen größeren Tarif wechseln (Einstellungen → Abo & Rechnung).', { area: t(PERMISSIONS[area]), plan: planName });
 }
 export function readOnlyMessage(status: SubStatus): string {
   return status === 'canceled'

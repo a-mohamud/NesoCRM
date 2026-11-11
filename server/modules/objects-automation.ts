@@ -10,6 +10,7 @@ import type { AssociationsService, Ref } from './associations.js';
 import { COMPANY_FIELDS, findCompanyByDomain, upsertCompany, updateCompany } from './companies.js';
 import { objectType, updateRecord, upsertRecord } from './custom-objects.js';
 import type { Tool } from './mcp.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Companies and custom objects in the rest of the app: workflow triggers (record created/updated/
@@ -102,7 +103,7 @@ export const objectsAutomationModule: Module = {
     };
     const needType = (loc: string, object: string) => {
       const t = objectType(app, loc, object);
-      if (!t) throw new Error(object ? `Objekt ${object} nicht gefunden` : 'Kein Objekt gewählt');
+      if (!t) throw new Error(object ? tApp()('Objekt {object} nicht gefunden', { object }) : tApp()('Kein Objekt gewählt'));
       return t;
     };
     const findByProperty = (loc: string, object: string, property: string, value: string): string[] => {
@@ -124,6 +125,7 @@ export const objectsAutomationModule: Module = {
       create_record: async (run: any, step: any, vars: any) => {
         const object = String(step.object ?? '');
         const values = tpl(vars, step.properties);
+        const tl = tLoc(app, run.location_id);
         let target: Ref;
         let created: boolean;
         let label: string;
@@ -131,7 +133,7 @@ export const objectsAutomationModule: Module = {
           const r = upsertCompany(app, run.location_id, companyInput(values), { source: 'Workflow' });
           target = { type: 'company', id: r.company.id };
           created = r.created;
-          label = `Firma „${r.company.name}“`;
+          label = tl('Firma „{name}“', { name: r.company.name });
         } else {
           const t = needType(run.location_id, object);
           const r = upsertRecord(app, run.location_id, t, { properties: Object.fromEntries(Object.entries(values).filter(([, v]) => v !== '')) });
@@ -140,7 +142,7 @@ export const objectsAutomationModule: Module = {
           label = `${t.singular} „${r.record.display}“`;
         }
         if (step.associate !== false) linkContact(run, step, target);
-        return `${label} ${created ? 'angelegt' : 'aktualisiert'}`;
+        return created ? tl('{label} angelegt', { label }) : tl('{label} aktualisiert', { label });
       },
       update_record: async (run: any, step: any, vars: any) => {
         const object = String(step.object ?? '');
@@ -151,12 +153,13 @@ export const objectsAutomationModule: Module = {
         if (target === 'trigger') ids = [triggerRecord(run, object)?.id].filter(Boolean) as string[];
         else if (target === 'primary' && object === 'company') ids = [A.primary(loc, contactRef(run), 'company')].filter(Boolean) as string[];
         else ids = A.list(loc, contactRef(run), { type: object, label: step.label || undefined }).map((l) => l.record_id);
-        if (!ids.length) return 'kein Datensatz';
+        const tl = tLoc(app, loc);
+        if (!ids.length) return tl('kein Datensatz');
         for (const rid of ids.slice(0, 50)) {
           if (object === 'company') updateCompany(app, loc, rid, companyInput(values), {});
           else updateRecord(app, loc, needType(loc, object), rid, { properties: values }, {});
         }
-        return `${ids.length} aktualisiert`;
+        return tl('{n} aktualisiert', { n: ids.length });
       },
       associate_records: async (run: any, step: any, vars: any) => {
         const object = String(step.object ?? '');
@@ -172,9 +175,10 @@ export const objectsAutomationModule: Module = {
             else ids = [upsertRecord(app, loc, needType(loc, object), { properties: { [prop === 'display' ? 'name' : prop]: value } }).record.id];
           }
         }
-        if (!ids.length) return 'nichts gefunden';
+        const tl = tLoc(app, loc);
+        if (!ids.length) return tl('nichts gefunden');
         for (const rid of ids.slice(0, 20)) linkContact(run, step, { type: object, id: rid });
-        return `${ids.length} verknüpft`;
+        return tl('{n} verknüpft', { n: ids.length });
       },
     };
 

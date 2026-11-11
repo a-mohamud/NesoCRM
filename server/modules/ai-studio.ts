@@ -6,6 +6,7 @@ import { HttpError, bad, notFound, str, type Ctx, type RawResult } from '../core
 import { id, now } from '../core/util.js';
 import { chatWithTools, type ChatRequest, type ChatResult } from '../services/agent-llm.js';
 import { textCost, type FetchLike, type Resolved } from '../services/ai-presets.js';
+import { tLoc } from '../i18n/index.js';
 import { MAX_VERSIONS, Workspace, buildProject, cleanPath, runTurn, starterFiles, stubChat, type Stack } from '../services/ai-studio.js';
 import { budget } from '../services/site-ai-kit.js';
 import { buildZip } from '../services/acc-datev.js';
@@ -122,8 +123,8 @@ export const aiStudioModule: Module = {
       if ((db.get<{ n: number }>('SELECT COUNT(*) AS n FROM studio_projects WHERE location_id = ?', ctx.locationId)?.n ?? 0) >= 50) throw bad('Höchstens 50 Projekte je Sub-Account.');
       const p = { id: id(), location_id: ctx.locationId, name, stack, connection_id: str(ctx.body?.connection_id, 'Verbindung', { max: 64 }), created_by: ctx.user?.id ?? null, created_at: now(), updated_at: now() };
       db.insert('studio_projects', p);
-      ws(p).replaceAll(starterFiles(stack, name));
-      snapshot(p, 'Vorlage');
+      ws(p).replaceAll(starterFiles(stack, name, tLoc(app, ctx.locationId)));
+      snapshot(p, tLoc(app, ctx.locationId)('Vorlage'));
       await build(p);
       return view(db.get('SELECT * FROM studio_projects WHERE id = ?', p.id));
     });

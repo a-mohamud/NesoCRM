@@ -5,6 +5,7 @@ import { getContact, logActivity, upsertContact } from './contacts.js';
 import { getOrCreateConversation } from './messaging.js';
 import { EMAIL, MailError, appendReference, canSend, composeBody, newMessageId, oneLine, parseAddresses, replySubject, sameAddress, withSignature, type MailAddress, type OutgoingMail, type SentRef } from './mailbox-kit.js';
 import { apiFor, externalId, getMap, getMailbox, refreshPreview, saveMap, type MailboxRow, type MapRow } from './mailbox-sync.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Sending through a connected mailbox: new mail, replies that stay in their thread (Gmail threadId + In-Reply-To /
@@ -49,9 +50,9 @@ function addresses(v: unknown, label: string): MailAddress[] {
   const out: MailAddress[] = [];
   for (const p of parts) {
     const list = parseAddresses(p);
-    if (!list.length && p.trim()) throw bad(`${label}: „${p.slice(0, 60)}“ ist keine E-Mail-Adresse`);
+    if (!list.length && p.trim()) throw bad(tApp()('{field}: „{value}“ ist keine E-Mail-Adresse', { field: tApp()(label), value: p.slice(0, 60) }));
     for (const a of list) {
-      if (!EMAIL.test(a.email)) throw bad(`${label}: „${a.email.slice(0, 60)}“ ist keine E-Mail-Adresse`);
+      if (!EMAIL.test(a.email)) throw bad(tApp()('{field}: „{value}“ ist keine E-Mail-Adresse', { field: tApp()(label), value: a.email.slice(0, 60) }));
       if (!out.some((x) => x.email === a.email)) out.push(a);
     }
   }
@@ -67,16 +68,16 @@ export interface Attachment {
 function attachmentsOf(v: unknown): Attachment[] {
   if (v === undefined || v === null || v === '') return [];
   if (!Array.isArray(v)) throw bad('Anhänge als Liste angeben');
-  if (v.length > MAX_ATTACHMENTS) throw bad(`Höchstens ${MAX_ATTACHMENTS} Anhänge`);
+  if (v.length > MAX_ATTACHMENTS) throw bad(tApp()('Höchstens {max} Anhänge', { max: MAX_ATTACHMENTS }));
   let total = 0;
   return v.map((a: any) => {
     const name = String(a?.filename ?? a?.name ?? '').replace(/[\r\n\\/"]+/g, '_').trim().slice(0, 200);
     const b64 = String(a?.content_base64 ?? a?.content ?? '');
     if (!name || !b64) throw bad('Anhang: filename und content_base64 nötig');
-    if (!/^[A-Za-z0-9+/=_\-\s]+$/.test(b64)) throw bad(`Anhang „${name}“: kein gültiges Base64`);
+    if (!/^[A-Za-z0-9+/=_\-\s]+$/.test(b64)) throw bad(tApp()('Anhang „{name}“: kein gültiges Base64', { name }));
     const content = Buffer.from(b64.replace(/\s+/g, ''), b64.includes('-') || b64.includes('_') ? 'base64url' : 'base64');
     total += content.length;
-    if (total > MAX_ATTACHMENT_BYTES) throw bad(`Anhänge zusammen höchstens ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB`);
+    if (total > MAX_ATTACHMENT_BYTES) throw bad(tApp()('Anhänge zusammen höchstens {mb} MB', { mb: MAX_ATTACHMENT_BYTES / 1024 / 1024 }));
     return { filename: name, contentType: String(a?.content_type ?? a?.type ?? 'application/octet-stream').slice(0, 100).replace(/[\r\n]/g, ''), content };
   });
 }
@@ -138,7 +139,7 @@ export function prepareMail(app: App, mb: MailboxRow, actor: Actor, input: MailI
     prepared.to = to;
   }
   if (!prepared.to.length) throw bad('Empfänger fehlt');
-  if (prepared.to.length + cc.length + bcc.length > MAX_RECIPIENTS) throw bad(`Höchstens ${MAX_RECIPIENTS} Empfänger`);
+  if (prepared.to.length + cc.length + bcc.length > MAX_RECIPIENTS) throw bad(tApp()('Höchstens {max} Empfänger', { max: MAX_RECIPIENTS }));
   prepared.subject = subject || '(kein Betreff)';
   const composed = composeBody(body, !!input.html);
   const signed = input.signature === false ? composed : withSignature(composed, mb.signature);
@@ -220,7 +221,7 @@ function record(app: App, mb: MailboxRow, actor: Actor, p: Prepared, ref: SentRe
     attachments: attachmentInfo(p.attachments),
     addrs: { from: { email: own(mb), name: '' }, to: p.to, cc: p.cc },
   });
-  if (kind === 'sent') logActivity(app, actor.locationId, contactId, 'email.sent', `E-Mail über Postfach gesendet: ${p.subject}`.slice(0, 200));
+  if (kind === 'sent') logActivity(app, actor.locationId, contactId, 'email.sent', tLoc(app, actor.locationId)('E-Mail über Postfach gesendet: {subject}', { subject: p.subject }).slice(0, 200));
   return { messageId, conversationId, contactId };
 }
 
@@ -302,7 +303,7 @@ export async function runScheduled(app: App, limit = 5): Promise<number> {
   // `sent_at` holds the claim time while a row is 'sending'; rows claimed before that was written fall back to their send time.
   const stale = db.all<{ id: string }>(`SELECT id FROM mailbox_scheduled WHERE status = 'sending' AND COALESCE(sent_at, send_at) < ?`, new Date(Date.now() - SENDING_STALE_MS).toISOString());
   for (const r of stale) {
-    if (!inFlight.has(r.id)) db.run(`UPDATE mailbox_scheduled SET status = 'failed', error = ?, sent_at = NULL WHERE id = ? AND status = 'sending'`, `Versand unterbrochen (Neustart) – ${MAYBE_SENT}`, r.id);
+    if (!inFlight.has(r.id)) db.run(`UPDATE mailbox_scheduled SET status = 'failed', error = ?, sent_at = NULL WHERE id = ? AND status = 'sending'`, tApp()('Versand unterbrochen (Neustart) – {hint}', { hint: tApp()(MAYBE_SENT) }), r.id);
   }
   const due = db.all<any>(`SELECT * FROM mailbox_scheduled WHERE status = 'pending' AND send_at <= ? ORDER BY send_at LIMIT ?`, now(), limit);
   let sent = 0;
@@ -312,11 +313,11 @@ export async function runScheduled(app: App, limit = 5): Promise<number> {
     inFlight.add(row.id);
     try {
       const mb = getMailbox(app, row.mailbox_id);
-      if (!mb) throw new Error('Das Postfach wurde getrennt');
+      if (!mb) throw new Error(tApp()('Das Postfach wurde getrennt'));
       // The same rule as when it was scheduled: the sub-account's mailbox, or the person's own.
       const allowed = mb.scope === 'location' ? mb.location_id === row.location_id : !!row.user_id && mb.owner_user_id === row.user_id;
-      if (!allowed) throw new Error('Kein Zugriff mehr auf dieses Postfach');
-      if (row.user_id && !db.get('SELECT id FROM users WHERE id = ?', row.user_id)) throw new Error('Der Absender existiert nicht mehr');
+      if (!allowed) throw new Error(tApp()('Kein Zugriff mehr auf dieses Postfach'));
+      if (row.user_id && !db.get('SELECT id FROM users WHERE id = ?', row.user_id)) throw new Error(tApp()('Der Absender existiert nicht mehr'));
       const input = JSON.parse(row.input);
       const res = await sendMail(app, mb, { locationId: row.location_id, userId: row.user_id }, input);
       db.run(`UPDATE mailbox_scheduled SET status = 'sent', sent_at = ?, message_id = ?, error = NULL WHERE id = ?`, now(), res.message_id ?? null, row.id);
@@ -327,7 +328,7 @@ export async function runScheduled(app: App, limit = 5): Promise<number> {
       // No answer to the send itself (timeout, connection lost while waiting): the provider may have sent it – never twice.
       const unsure = e instanceof MailError && e.unknownOutcome;
       const final = unsure || attempts >= MAX_TRIES || (e instanceof HttpError && e.status < 500) || (e instanceof MailError && !e.transient);
-      const error = unsure ? `${(e as Error).message.slice(0, 160)} – ${MAYBE_SENT}` : (e as Error).message.slice(0, 300);
+      const error = unsure ? `${(e as Error).message.slice(0, 160)} – ${tApp()(MAYBE_SENT)}` : (e as Error).message.slice(0, 300);
       db.run('UPDATE mailbox_scheduled SET status = ?, attempts = ?, error = ?, send_at = ?, sent_at = NULL WHERE id = ?', final ? 'failed' : 'pending', attempts, error, final ? row.send_at : new Date(Date.now() + RETRY_MS).toISOString(), row.id);
     } finally {
       inFlight.delete(row.id);
@@ -389,7 +390,7 @@ export async function sendDraft(app: App, mb: MailboxRow, actor: Actor, messageI
     refreshPreview(app, map.conversation_id);
   });
   const subject = app.db.get<{ subject: string; contact_id: string }>('SELECT subject, contact_id FROM messages WHERE id = ?', map.message_id);
-  if (subject) logActivity(app, actor.locationId, subject.contact_id, 'email.sent', `E-Mail über Postfach gesendet: ${subject.subject}`.slice(0, 200));
+  if (subject) logActivity(app, actor.locationId, subject.contact_id, 'email.sent', tLoc(app, actor.locationId)('E-Mail über Postfach gesendet: {subject}', { subject: subject.subject }).slice(0, 200));
   return { message_id: map.message_id, conversation_id: map.conversation_id, status: 'sent' as const };
 }
 

@@ -5,6 +5,7 @@ import { OP_NAMES } from '../services/boards-patch.js';
 import { LIMITS, parseSpec } from '../services/boards-model.js';
 import type { BoardRow } from '../services/boards-store.js';
 import type { Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Living Boards for agents and the phone: four MCP tools (list, get, apply a patch, the widget catalogue) plus one to
@@ -21,15 +22,16 @@ const link = (id: string) => `/app/boards/${id}`;
 /** Widget types that touch the outside: adding them always needs the person's confirmation. */
 const HIGH = new Set(['embed', 'actions']);
 
-const OPS_DOC = `ops = Liste von Änderungen (höchstens ${LIMITS.ops}), jede ein Objekt mit "op" und nur den passenden Feldern – unbekannte Felder und Typen sind Fehler:
-• add: type (Widget-Typ aus ghl_board_widgets), optional title, config {Feld: Wert}, ref (eigene Bezeichnung für spätere Schritte), w/h (Größe im 12-Spalten-Raster), placement ("top", "bottom", "beside:<id|ref>", "below:<id|ref>", "above:<id|ref>") oder x/y
+// Written for AI models (MCP clients and the in-app agent), so in English; the German accent codes are the values the patch takes. i18n-ignore
+const OPS_DOC = `ops = list of changes (at most ${LIMITS.ops}), each an object with "op" and only the matching fields – unknown fields and types are errors:
+• add: type (widget type from ghl_board_widgets), optional title, config {field: value}, ref (your own label for later steps), w/h (size in the 12-column grid), placement ("top", "bottom", "beside:<id|ref>", "below:<id|ref>", "above:<id|ref>") or x/y
 • remove: id
-• move: id und placement oder x/y (bp: lg|md|sm; sm = Reihenfolge auf dem Handy)
-• resize: id und w/h oder dw/dh (relativ, z. B. dw 2 = zwei Spalten breiter)
-• configure: id und config (nur zu ändernde Felder; null setzt ein Feld zurück) und/oder title
-• rename: name und/oder icon
-• theme: accent (blau, grün, violett, orange, rot, türkis, rosa, grau oder #rrggbb; "" = zurücksetzen)
-Reihenfolge zählt. Mit dry_run: true wird nur geprüft und die Vorschau (changes, risk) zurückgegeben – nichts gespeichert.`;
+• move: id and placement or x/y (bp: lg|md|sm; sm = order on the phone)
+• resize: id and w/h or dw/dh (relative, e.g. dw 2 = two columns wider)
+• configure: id and config (only the fields to change; null resets a field) and/or title
+• rename: name and/or icon
+• theme: accent (blau = blue, grün = green, violett = violet, orange, rot = red, türkis = turquoise, rosa = pink, grau = grey, or #rrggbb; "" = reset)
+Order matters. With dry_run: true the patch is only checked and the preview (changes, risk) is returned – nothing is saved.`;
 
 export const BOARD_TOOLS: Tool[] = [
   {
@@ -75,7 +77,7 @@ export const BOARD_TOOLS: Tool[] = [
   {
     name: 'ghl_board_apply_patch',
     title: 'Living Boards: Board ändern',
-    description: `Ändert ein Board mit einem validierten Patch: Widgets hinzufügen, entfernen, verschieben, vergrößern, konfigurieren, Board umbenennen, Akzentfarbe setzen. Jede Änderung wird eine Version (die Person kann sie in der Oberfläche sofort rückgängig machen) und erscheint live bei allen, die das Board offen haben. Ungültiges wird mit Gründen abgelehnt, nichts wird halb angewendet. Lies vorher ghl_board_widgets (Typen und Felder) und ghl_board_get (ids, Version); prüfe bei Unsicherheit mit dry_run. Fügst du eine Einbettung (embed) oder Schnellaktions-Knöpfe (actions) hinzu oder änderst sie, frage die Person erst und setze danach confirm_external: true. ${OPS_DOC}`,
+    description: `Changes a board with a validated patch: add, remove, move, resize and configure widgets, rename the board, set the accent colour. Every change becomes a version (the person can undo it at once in the app) and appears live for everyone who has the board open. Anything invalid is refused with reasons; nothing is applied halfway. Read ghl_board_widgets (types and fields) and ghl_board_get (ids, version) first; check with dry_run when unsure. If you add or change an embed or quick-action buttons (actions), ask the person first and then set confirm_external: true. ${OPS_DOC}`,
     inputSchema: obj(
       {
         ...LOC,
@@ -106,9 +108,9 @@ export const BOARD_TOOLS: Tool[] = [
     run: async (call, a) => {
       const r = await call.api('GET', '/api/boards/widgets', { location: a.location_id });
       return {
-        widgets: (r.widgets as any[]).map((w) => ({ type: w.type, label: w.label, description: w.description, category: w.category_label, size: w.size, risk: w.risk, access: w.access_label || undefined, fields: (w.fields as any[]).filter((f) => !f.hidden || f.type === 'json').map((f) => ({ key: f.key, label: f.label, type: f.type, options: f.options?.map(([v, l]: [string, string]) => `${v || '(leer)'}=${l}`), from: f.optionsFrom, min: f.min, max: f.max, default: f.default, only_if: f.showIf ? `${f.showIf.key} in ${f.showIf.in.join('|')}` : undefined, item: f.item?.map((i: any) => i.key) })) })),
+        widgets: (r.widgets as any[]).map((w) => ({ type: w.type, label: w.label, description: w.description, category: w.category_label, size: w.size, risk: w.risk, access: w.access_label || undefined, fields: (w.fields as any[]).filter((f) => !f.hidden || f.type === 'json').map((f) => ({ key: f.key, label: f.label, type: f.type, options: f.options?.map(([v, l]: [string, string]) => `${v || '(empty)'}=${l}`), from: f.optionsFrom, min: f.min, max: f.max, default: f.default, only_if: f.showIf ? `${f.showIf.key} in ${f.showIf.in.join('|')}` : undefined, item: f.item?.map((i: any) => i.key) })) })),
         limits: r.limits,
-        hint: 'ids für Felder wie pipeline_id, report_id, workflow_id liefern die Werkzeuge der jeweiligen Bereiche (ghl_list_pipelines, ghl_list_dashboards …); ohne Angabe gelten Standardwerte.',
+        hint: tApp()('ids für Felder wie pipeline_id, report_id, workflow_id liefern die Werkzeuge der jeweiligen Bereiche (ghl_list_pipelines, ghl_list_dashboards …); ohne Angabe gelten Standardwerte.'),
       };
     },
   },
@@ -139,8 +141,8 @@ export const boardsToolsModule: Module = {
           ? ''
           : [
               '# Living Boards',
-              'Boards sind Arbeitsbereiche aus Widgets (Kennzahlen, Diagramme, Listen, Pipeline, Termine, Aufgaben …), persönlich oder geteilt. Soll ein Board geändert werden („zeig mir oben die offenen Deals“, „mach die Umsatzkurve größer“): ghl_board_list → ghl_board_get (ids, Version) → ghl_board_widgets (Typen und Felder) → ghl_board_apply_patch. Prüfe unsichere Patches erst mit dry_run und beschreibe der Person in einem Satz, was sich ändert. Jede Änderung ist eine Version; in der Oberfläche macht „Rückgängig“ sie sofort zurück.',
-              'Einbettungen (embed) und Schnellaktions-Knöpfe (actions) berühren die Außenwelt: frage die Person vorher und setze erst dann confirm_external. Kann kein Widget den Wunsch erfüllen, erfinde nichts – schlage vor, ein passendes Widget in der Werkstatt bauen zu lassen (Plugins können Widgets liefern).',
+              'Boards are workspaces made of widgets (key figures, charts, lists, pipeline, appointments, tasks …), personal or shared. When a board should change ("show me the open deals at the top", "make the revenue chart bigger"): ghl_board_list → ghl_board_get (ids, version) → ghl_board_widgets (types and fields) → ghl_board_apply_patch. Check uncertain patches with dry_run first and tell the person in one sentence what changes. Every change is a version; "Undo" in the app reverts it at once.',
+              'Embeds (embed) and quick-action buttons (actions) touch the outside world: ask the person first and only then set confirm_external. If no widget can do what is asked, invent nothing – suggest having a suitable widget built in the Workshop (plugins can provide widgets).',
             ].join('\n'),
     ];
 

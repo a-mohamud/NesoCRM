@@ -1,6 +1,7 @@
 import { PERMISSIONS, type Permission } from '../core/permissions.js';
 import { slugify } from '../core/util.js';
 import type { Interval } from './saas.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Cloud mode (PGHL_CLOUD_MODE=1), pure part: the plan catalogue, fair-use limits, the operator's settings and their
@@ -41,42 +42,60 @@ export interface PlanInfo {
 export const PLAN_INFO: Record<PlanKey, PlanInfo> = {
   solo: {
     key: 'solo',
-    name: 'Cloud Solo',
-    tagline: 'Für dich allein: eine Person, Kontakte, Funnels und Workflows unbegrenzt.',
+    get name() {
+      return tApp()('Cloud Solo');
+    },
+    get tagline() {
+      return tApp()('Für dich allein: eine Person, Kontakte, Funnels und Workflows unbegrenzt.');
+    },
     price_month_cents: 4999,
     users: 1,
     white_label: false,
     client_accounts: false,
     custom_domain: false,
-    highlights: ['1 Nutzer', 'Alle Funktionen außer White-Label und Kunden-Accounts', 'Unbegrenzt Kontakte, Funnels und Workflows', 'Datenexport jederzeit'],
+    get highlights() {
+      return ['1 Nutzer', 'Alle Funktionen außer White-Label und Kunden-Accounts', 'Unbegrenzt Kontakte, Funnels und Workflows', 'Datenexport jederzeit'].map((x) => tApp()(x));
+    },
   },
   team: {
     key: 'team',
-    name: 'Cloud Team & Company',
-    tagline: 'Für Teams und Firmen: unbegrenzt Nutzer, ein Preis pro Firma.',
+    get name() {
+      return tApp()('Cloud Team & Company');
+    },
+    get tagline() {
+      return tApp()('Für Teams und Firmen: unbegrenzt Nutzer, ein Preis pro Firma.');
+    },
     price_month_cents: 9999,
     users: null,
     white_label: false,
     client_accounts: false,
     custom_domain: false,
-    highlights: ['Unbegrenzt Nutzer – keine Gebühr pro Platz', 'Alle Funktionen außer White-Label und Kunden-Accounts', 'Unbegrenzt Kontakte, Funnels und Workflows', 'Datenexport jederzeit'],
+    get highlights() {
+      return ['Unbegrenzt Nutzer – keine Gebühr pro Platz', 'Alle Funktionen außer White-Label und Kunden-Accounts', 'Unbegrenzt Kontakte, Funnels und Workflows', 'Datenexport jederzeit'].map((x) => tApp()(x));
+    },
   },
   agency: {
     key: 'agency',
-    name: 'Cloud Agentur',
-    tagline: 'White-Label für Agenturen: deine Marke statt unserer, Kunden-Accounts ohne Aufpreis.',
+    get name() {
+      return tApp()('Cloud Agentur');
+    },
+    get tagline() {
+      return tApp()('White-Label für Agenturen: deine Marke statt unserer, Kunden-Accounts ohne Aufpreis.');
+    },
     price_month_cents: 19900,
     users: null,
     white_label: true,
     client_accounts: true,
     custom_domain: true,
-    highlights: [
-      'White-Label: dein Name, Logo und deine Farben',
-      'Eigene Login-Domain und eigene Domains für deine Kunden',
-      'Installierbare App mit deinem Namen und Icon',
-      'Unbegrenzt Nutzer und Kunden-Sub-Accounts',
-      'Alle Funktionen – nichts gesperrt',
-    ],
+    get highlights() {
+      return [
+        'White-Label: dein Name, Logo und deine Farben',
+        'Eigene Login-Domain und eigene Domains für deine Kunden',
+        'Installierbare App mit deinem Namen und Icon',
+        'Unbegrenzt Nutzer und Kunden-Sub-Accounts',
+        'Alle Funktionen – nichts gesperrt',
+      ].map((x) => tApp()(x));
+    },
   },
 };
 
@@ -103,11 +122,20 @@ export const DEFAULT_FAIR_USE: Record<PlanKey, FairUse> = {
   agency: { emails: 50_000, sms: 0, ai: 2_000, storage_mb: 25_000 },
 };
 
+/** Labels in the instance language (read when used). */
 export const FAIR_USE_LABEL: Record<keyof FairUse, string> = {
-  emails: 'E-Mails pro Monat',
-  sms: 'SMS pro Monat inklusive',
-  ai: 'KI-Aufrufe pro Monat inklusive',
-  storage_mb: 'Medien-Speicher',
+  get emails() {
+    return tApp()('E-Mails pro Monat');
+  },
+  get sms() {
+    return tApp()('SMS pro Monat inklusive');
+  },
+  get ai() {
+    return tApp()('KI-Aufrufe pro Monat inklusive');
+  },
+  get storage_mb() {
+    return tApp()('Medien-Speicher');
+  },
 };
 
 // --- settings ---------------------------------------------------------------------------------------------
@@ -211,26 +239,26 @@ export function normalizeDomainLoose(v: unknown): string {
 
 const int = (v: unknown, label: string, min: number, max: number): number => {
   const n = Number(v);
-  if (!Number.isInteger(n) || n < min || n > max) throw new Error(`${label}: ganze Zahl von ${min} bis ${max}`);
+  if (!Number.isInteger(n) || n < min || n > max) throw new Error(tApp()('{label}: ganze Zahl von {min} bis {max}', { label: tApp()(label), min, max }));
   return n;
 };
 const limit = (v: unknown, label: string): Limit => {
   if (v === null || v === undefined || v === '') return null;
-  return int(v, `${label} (leer = unbegrenzt)`, 0, 1_000_000_000);
+  return int(v, tApp()('{label} (leer = unbegrenzt)', { label }), 0, 1_000_000_000);
 };
 const cost = (v: unknown, label: string): number => {
   const n = Number(String(v).replace(',', '.'));
-  if (!Number.isFinite(n) || n < 0 || n > 10_000) throw new Error(`${label}: 0 bis 10.000 Cent`);
+  if (!Number.isFinite(n) || n < 0 || n > 10_000) throw new Error(tApp()('{label}: 0 bis 10.000 Cent', { label }));
   return n;
 };
 const text = (v: unknown, label: string, max: number): string => {
   const s = String(v ?? '').trim();
-  if (s.length > max) throw new Error(`${label} ist zu lang`);
+  if (s.length > max) throw new Error(tApp()('{label} ist zu lang', { label: tApp()(label) }));
   return s;
 };
 const url = (v: unknown, label: string): string => {
   const s = text(v, label, 500);
-  if (s && !/^https:\/\/\S+$/i.test(s)) throw new Error(`${label}: bitte mit https:// angeben`);
+  if (s && !/^https:\/\/\S+$/i.test(s)) throw new Error(tApp()('{label}: bitte mit https:// angeben', { label: tApp()(label) }));
   return s;
 };
 
@@ -244,7 +272,7 @@ export function cleanSettings(b: any, cur: CloudSettings): CloudSettings {
   if (b.trial_days !== undefined) s.trial_days = int(b.trial_days, 'Testphase (Tage)', 0, 90);
   if (b.yearly_discount_percent !== undefined) s.yearly_discount_percent = int(b.yearly_discount_percent, 'Jahresrabatt (%)', 0, 60);
   if (b.prices && typeof b.prices === 'object') {
-    for (const k of PLAN_KEYS) if (b.prices[k] !== undefined) s.prices[k] = int(b.prices[k], `Preis ${PLAN_INFO[k].name} (in Cent pro Monat)`, 100, 1_000_000);
+    for (const k of PLAN_KEYS) if (b.prices[k] !== undefined) s.prices[k] = int(b.prices[k], tApp()('Preis {plan} (in Cent pro Monat)', { plan: PLAN_INFO[k].name }), 100, 1_000_000);
   }
   if (b.fair_use && typeof b.fair_use === 'object') {
     for (const k of PLAN_KEYS) {
@@ -252,7 +280,7 @@ export function cleanSettings(b: any, cur: CloudSettings): CloudSettings {
     }
   }
   if (b.overage && typeof b.overage === 'object') for (const m of METRICS) if (b.overage[m] !== undefined) s.overage[m] = b.overage[m] === 'bill' ? 'bill' : 'block';
-  if (b.unit_cost && typeof b.unit_cost === 'object') for (const m of METRICS) if (b.unit_cost[m] !== undefined) s.unit_cost[m] = cost(b.unit_cost[m], `Kosten je ${m}`);
+  if (b.unit_cost && typeof b.unit_cost === 'object') for (const m of METRICS) if (b.unit_cost[m] !== undefined) s.unit_cost[m] = cost(b.unit_cost[m], tApp()('Kosten je {metric}', { metric: m }));
   if (b.markup_percent !== undefined) {
     const m = Number(b.markup_percent);
     if (!Number.isFinite(m) || m < 0 || m > 1000) throw new Error('Aufschlag: 0 bis 1000 %');
@@ -284,7 +312,7 @@ export function cleanSettings(b: any, cur: CloudSettings): CloudSettings {
   }
   if (b.price_note !== undefined) s.price_note = b.price_note === 'gross' ? 'gross' : b.price_note === 'none' ? 'none' : 'net';
   if (b.operator && typeof b.operator === 'object') {
-    for (const k of Object.keys(DEFAULT_OPERATOR) as (keyof Operator)[]) if (b.operator[k] !== undefined) s.operator[k] = text(b.operator[k], `Anbieter: ${k}`, 200);
+    for (const k of Object.keys(DEFAULT_OPERATOR) as (keyof Operator)[]) if (b.operator[k] !== undefined) s.operator[k] = text(b.operator[k], tApp()('Anbieter: {field}', { field: k }), 200);
   }
   return s;
 }
@@ -392,11 +420,24 @@ export function entitlements(k: PlanKey, s: Pick<CloudSettings, 'agency_max_clie
   return { users: p.users, white_label: p.white_label, client_accounts: p.client_accounts, custom_domain: p.custom_domain, max_clients: p.client_accounts && s.agency_max_clients > 0 ? s.agency_max_clients : null };
 }
 
+/** Keys are stored; the texts are read in the instance language. */
 export const CANCEL_REASONS: Record<string, string> = {
-  price: 'Zu teuer',
-  features: 'Es fehlt eine Funktion',
-  switched: 'Zu einem anderen Anbieter gewechselt',
-  selfhost: 'Ich hoste selbst',
-  not_needed: 'Brauche ich nicht mehr',
-  other: 'Anderer Grund',
+  get price() {
+    return tApp()('Zu teuer');
+  },
+  get features() {
+    return tApp()('Es fehlt eine Funktion');
+  },
+  get switched() {
+    return tApp()('Zu einem anderen Anbieter gewechselt');
+  },
+  get selfhost() {
+    return tApp()('Ich hoste selbst');
+  },
+  get not_needed() {
+    return tApp()('Brauche ich nicht mehr');
+  },
+  get other() {
+    return tApp()('Anderer Grund');
+  },
 };

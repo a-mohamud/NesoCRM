@@ -4,6 +4,7 @@ import { limiter } from '../services/creator-kit.js';
 import { assemble, cleanReport, type Aggregates } from '../services/form-analytics.js';
 import type { FormField } from '../services/form-fields.js';
 import { parseJson } from '../core/db.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Per-field analytics for forms (docs/forms.md): the page reports opens, views, answers and the end (no cookie, no address, a random id per
@@ -85,7 +86,7 @@ export const formAnalyticsModule: Module = {
           form.id,
           since,
         );
-      return { form: { id: form.id, name: form.name }, days, ...assemble(form.fields, aggregates(form.id, since)), daily, submissions: db.get<{ n: number }>('SELECT COUNT(*) AS n FROM form_submissions WHERE form_id = ? AND created_at >= ?', form.id, since)!.n };
+      return { form: { id: form.id, name: form.name }, days, ...assemble(form.fields, aggregates(form.id, since), tCtx(ctx)), daily, submissions: db.get<{ n: number }>('SELECT COUNT(*) AS n FROM form_submissions WHERE form_id = ? AND created_at >= ?', form.id, since)!.n };
     });
     router.delete('/api/forms/:id/analytics', 'location', (ctx) => {
       if (!db.get('SELECT id FROM forms WHERE id = ? AND location_id = ?', ctx.params.id, ctx.locationId)) throw notFound();

@@ -4,6 +4,7 @@ import type { Cmd } from './canvas-path.js';
 import { rasterize, type Bitmap } from './canvas-png.js';
 import type { Prim } from './canvas-render.js';
 import { DEFAULT_NAME, SPLASH_BG, type Scheme } from './pwa-devices.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * The installable app on iPhone, iPad and foldables, as pure logic (docs/ios-web-app.md):
@@ -87,15 +88,15 @@ export function manifestIcons(brand: PwaBrand, key = '') {
 }
 
 /** The web app manifest: standalone window (iOS needs it for push), one scope, the white label's name, colour and icons. */
-export function appManifest(brand: PwaBrand, key = '') {
+export function appManifest(brand: PwaBrand, key = '', t: STFn = tApp()) {
   const icon = (src: string) => [{ src, sizes: '192x192', type: 'image/png' }];
   const shortcutIcon = brand.custom ? `/pwa/icon/icon-192.png${key ? `?v=${key}` : ''}` : '/icon-192.png';
   return {
     id: '/app',
     name: brand.name,
     short_name: shortName(brand.name),
-    description: 'CRM, Konversationen, Kalender, Aufgaben und Rechnungen',
-    lang: 'de',
+    description: t('CRM, Konversationen, Kalender, Aufgaben und Rechnungen'),
+    lang: t.locale,
     dir: 'ltr',
     start_url: '/app',
     scope: '/app',
@@ -112,10 +113,10 @@ export function appManifest(brand: PwaBrand, key = '') {
     theme_color: brand.color,
     icons: manifestIcons(brand, key),
     shortcuts: [
-      { name: 'Konversationen', url: '/app/conversations', icons: icon(shortcutIcon) },
-      { name: 'Kontakte', url: '/app/contacts', icons: icon(shortcutIcon) },
-      { name: 'Aufgaben', url: '/app/tasks', icons: icon(shortcutIcon) },
-      { name: 'Arbeitsfläche', url: '/app/workspace', icons: icon(shortcutIcon) },
+      { name: t('Konversationen'), url: '/app/conversations', icons: icon(shortcutIcon) },
+      { name: t('Kontakte'), url: '/app/contacts', icons: icon(shortcutIcon) },
+      { name: t('Aufgaben'), url: '/app/tasks', icons: icon(shortcutIcon) },
+      { name: t('Arbeitsfläche'), url: '/app/workspace', icons: icon(shortcutIcon) },
     ],
   };
 }

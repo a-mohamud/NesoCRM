@@ -1,5 +1,6 @@
 import { zonedToUtc } from '../core/time.js';
 import { normalizeEmail, normalizePhone } from '../core/util.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Building blocks of the relational CRM (companies, custom objects, properties): property types,
@@ -71,7 +72,7 @@ export function cleanPropertyDef(input: any, opts: { existing?: Partial<Property
   if (!KEY_RE.test(key)) throw err('Interner Name: nur a-z, 0-9 und _ (beginnt mit einem Buchstaben)');
   const allowed = opts.types ?? (Object.keys(PROPERTY_TYPES) as PropertyType[]);
   const type = (input?.type ?? ex?.type ?? 'text') as PropertyType;
-  if (!allowed.includes(type)) throw err(`Unbekannter Typ: ${type}`);
+  if (!allowed.includes(type)) throw err(tApp()('Unbekannter Typ: {type}', { type }));
   const rawOpts = input?.options ?? ex?.options ?? [];
   const options = [...new Set((Array.isArray(rawOpts) ? rawOpts : String(rawOpts).split(',')).map((o: unknown) => String(o).trim().slice(0, 100)).filter(Boolean))].slice(0, 200);
   if ((type === 'select' || type === 'multiselect') && !options.length) throw err('Auswahl braucht mindestens eine Option');
@@ -125,24 +126,25 @@ const pick = (options: string[], v: string) => options.find((o) => o.toLowerCase
  */
 export function coerceValue(def: Pick<PropertyDef, 'label' | 'type' | 'options'>, raw: unknown, tz = 'Europe/Berlin'): unknown {
   if (isEmpty(raw)) return null;
-  const L = `„${def.label}“`;
+  const tr = tApp();
+  const L = def.label;
   switch (def.type) {
     case 'text':
     case 'textarea': {
       const s = String(raw).trim();
       const max = def.type === 'text' ? 2000 : 20000;
-      if (s.length > max) throw err(`${L} ist zu lang`);
+      if (s.length > max) throw err(tr('„{field}“ ist zu lang', { field: L }));
       return s || null;
     }
     case 'number':
     case 'currency': {
       const n = parseNumber(raw);
-      if (!Number.isFinite(n)) throw err(`${L} muss eine Zahl sein`);
+      if (!Number.isFinite(n)) throw err(tr('„{field}“ muss eine Zahl sein', { field: L }));
       return def.type === 'currency' ? Math.round(n * 100) / 100 : n;
     }
     case 'date': {
       const d = day(raw);
-      if (!d || Number.isNaN(Date.parse(d))) throw err(`${L}: Datum als JJJJ-MM-TT oder TT.MM.JJJJ`);
+      if (!d || Number.isNaN(Date.parse(d))) throw err(tr('„{field}“: Datum als JJJJ-MM-TT oder TT.MM.JJJJ', { field: L }));
       return d;
     }
     case 'datetime': {
@@ -156,19 +158,19 @@ export function coerceValue(def: Pick<PropertyDef, 'label' | 'type' | 'options'>
       if (local) {
         const hh = Number(local.h ?? 0);
         const mm = Number(local.m ?? 0);
-        if (!local.ymd || hh > 23 || mm > 59) throw err(`${L}: ungültiges Datum/Uhrzeit`);
+        if (!local.ymd || hh > 23 || mm > 59) throw err(tr('„{field}“: ungültiges Datum/Uhrzeit', { field: L }));
         try {
           t = zonedToUtc(local.ymd, `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, tz).getTime();
         } catch {
           t = Date.parse(`${local.ymd}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00Z`);
         }
       } else t = Date.parse(s);
-      if (Number.isNaN(t)) throw err(`${L}: ungültiges Datum/Uhrzeit`);
+      if (Number.isNaN(t)) throw err(tr('„{field}“: ungültiges Datum/Uhrzeit', { field: L }));
       return new Date(t).toISOString();
     }
     case 'select': {
       const v = pick(def.options, String(raw));
-      if (!v) throw err(`${L}: „${String(raw).slice(0, 60)}“ ist keine Option (${def.options.join(', ')})`);
+      if (!v) throw err(tr('„{field}“: „{value}“ ist keine Option ({options})', { field: L, value: String(raw).slice(0, 60), options: def.options.join(', ') }));
       return v;
     }
     case 'multiselect': {
@@ -176,7 +178,7 @@ export function coerceValue(def: Pick<PropertyDef, 'label' | 'type' | 'options'>
       const out: string[] = [];
       for (const x of list.map((s) => String(s).trim()).filter(Boolean)) {
         const v = pick(def.options, x);
-        if (!v) throw err(`${L}: „${x.slice(0, 60)}“ ist keine Option (${def.options.join(', ')})`);
+        if (!v) throw err(tr('„{field}“: „{value}“ ist keine Option ({options})', { field: L, value: x.slice(0, 60), options: def.options.join(', ') }));
         if (!out.includes(v)) out.push(v);
       }
       return out.length ? out : null;
@@ -186,43 +188,43 @@ export function coerceValue(def: Pick<PropertyDef, 'label' | 'type' | 'options'>
       const s = String(raw).trim().toLowerCase();
       if (['1', 'true', 'ja', 'yes', 'x', 'wahr', 'on'].includes(s)) return true;
       if (['0', 'false', 'nein', 'no', 'falsch', 'off'].includes(s)) return false;
-      throw err(`${L}: ja oder nein`);
+      throw err(tr('„{field}“: ja oder nein', { field: L }));
     }
     case 'url': {
       let s = String(raw).trim();
       if (!/^https?:\/\//i.test(s)) {
         if (/^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(s)) s = `https://${s}`;
-        else throw err(`${L}: Adresse mit https:// angeben`);
+        else throw err(tr('„{field}“: Adresse mit https:// angeben', { field: L }));
       }
       try {
         const u = new URL(s);
         if (!/^https?:$/.test(u.protocol)) throw new Error();
       } catch {
-        throw err(`${L}: ungültige Adresse`);
+        throw err(tr('„{field}“: ungültige Adresse', { field: L }));
       }
-      if (s.length > 2000) throw err(`${L} ist zu lang`);
+      if (s.length > 2000) throw err(tr('„{field}“ ist zu lang', { field: L }));
       return s;
     }
     case 'email': {
       const e = normalizeEmail(raw);
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw err(`${L}: ungültige E-Mail`);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw err(tr('„{field}“: ungültige E-Mail', { field: L }));
       return e;
     }
     case 'phone': {
       const p = normalizePhone(String(raw));
-      if (p.replace(/\D/g, '').length < 5) throw err(`${L}: ungültige Telefonnummer`);
+      if (p.replace(/\D/g, '').length < 5) throw err(tr('„{field}“: ungültige Telefonnummer', { field: L }));
       return p;
     }
     case 'user':
-      if (typeof raw !== 'string' || raw.length > 64) throw err(`${L}: Nutzer-ID erwartet`);
+      if (typeof raw !== 'string' || raw.length > 64) throw err(tr('„{field}“: Nutzer-ID erwartet', { field: L }));
       return raw;
     case 'file': {
       const fid = typeof raw === 'object' ? (raw as any)?.id ?? (raw as any)?.upload_id : raw;
-      if (typeof fid !== 'string' || !fid || fid.length > 64) throw err(`${L}: Datei (Upload-ID) erwartet`);
+      if (typeof fid !== 'string' || !fid || fid.length > 64) throw err(tr('„{field}“: Datei (Upload-ID) erwartet', { field: L }));
       return fid;
     }
     default:
-      throw err(`${L}: unbekannter Typ`);
+      throw err(tr('„{field}“: unbekannter Typ', { field: L }));
   }
 }
 
@@ -237,13 +239,13 @@ export function validateProps(defs: PropertyDef[], input: Record<string, unknown
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(input)) {
     const def = byKey.get(k);
-    if (!def) throw err(`Unbekannte Eigenschaft: ${k}`);
+    if (!def) throw err(tApp()('Unbekannte Eigenschaft: {key}', { key: k }));
     out[k] = coerceValue(def, v, opts.tz);
   }
   for (const d of defs) {
     if (!d.required) continue;
     const next = k(out, d.key) ? out[d.key] : opts.current?.[d.key];
-    if ((opts.partial ? k(out, d.key) : true) && isEmpty(next)) throw err(`„${d.label}“ ist ein Pflichtfeld`);
+    if ((opts.partial ? k(out, d.key) : true) && isEmpty(next)) throw err(tApp()('„{field}“ ist ein Pflichtfeld', { field: d.label }));
   }
   return out;
 }
@@ -289,7 +291,7 @@ export type FieldExpr = (field: string) => { sql: string; type: PropertyType | '
 
 /** JSON path expression for a property key (keys are checked against KEY_RE first). */
 export const jsonPath = (col: string, key: string) => {
-  if (!KEY_RE.test(key)) throw err(`Ungültiges Feld: ${key}`);
+  if (!KEY_RE.test(key)) throw err(tApp()('Ungültiges Feld: {key}', { key }));
   return `json_extract(${col}, '$.${key}')`;
 };
 

@@ -262,7 +262,7 @@ describe('stage 2 „Mini-App“: a sandboxed plugin, private for the requester 
     pluginId = done.plugin_id;
     // active for the requester …
     const mine = (await member('GET', '/api/plugins')).data.plugins.find((p: any) => p.id === pluginId);
-    expect(mine).toMatchObject({ name: 'Deal-Ampel', scope: 'private', active_here: true, version: '1.0.0', can_manage: true });
+    expect(mine).toMatchObject({ name: 'Deal traffic light', scope: 'private', active_here: true, version: '1.0.0', can_manage: true });
     expect((await member('GET', '/api/plugins/active')).data.map((p: any) => p.id)).toContain(pluginId);
     // … and for nobody else: not another login in the sub-account, not another sub-account
     expect((await narrow('GET', '/api/plugins/active')).data).toEqual([]);
@@ -365,7 +365,7 @@ describe('stage 2 „Mini-App“: a sandboxed plugin, private for the requester 
     expect((await member('POST', `/api/plugins/${pluginId}/call`, { op: 'opportunities.list' })).status).toBe(404);
     expect((await member('GET', `/plugin-host/${pluginId}?locationId=${A}&entry=page`)).text).toContain('nicht aktiv');
     // the error was filed like any crash
-    const tickets = t.app.db.all(`SELECT title FROM feedback_items WHERE kind = 'auto' AND title LIKE '%Deal-Ampel%'`);
+    const tickets = t.app.db.all(`SELECT title FROM feedback_items WHERE kind = 'auto' AND title LIKE '%Deal traffic light%'`);
     expect(tickets.length).toBeGreaterThan(0);
     expect((await member('POST', `/api/plugins/${pluginId}/revive`, {})).status).toBe(403);
     expect((await admin('POST', `/api/plugins/${pluginId}/revive`, {})).status).toBe(200);

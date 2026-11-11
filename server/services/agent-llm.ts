@@ -1,5 +1,6 @@
 import { ZERO_USAGE, readUsage, type Usage } from './anthropic.js';
 import { chatEndpoint, presetById, type FetchLike, type Resolved } from './ai-presets.js';
+import { tApp } from '../i18n/index.js';
 import { DEFAULT_EFFORT, effortFields, effortKind, isEffortRejection, planEffort, type Effort, type EffortPlan } from './ai-effort.js';
 
 /**
@@ -148,7 +149,7 @@ function parseBlock(block: string): { event: string; data: string } | null {
 
 // --- neutral → wire -------------------------------------------------------------------------------
 
-const textOfFile = (p: Extract<Part, { type: 'file' }>) => `[Datei „${p.name}“ (${p.mime}), file_id: ${p.fileId}]\n${p.preview}`;
+const textOfFile = (p: Extract<Part, { type: 'file' }>) => `[File “${p.name}” (${p.mime}), file_id: ${p.fileId}]\n${p.preview}`;
 
 /** Messages in Anthropic's format (tool results first in a user turn, thinking blocks replayed as they came). */
 export function toAnthropic(messages: Msg[], vision: boolean): any[] {
@@ -160,7 +161,7 @@ export function toAnthropic(messages: Msg[], vision: boolean): any[] {
       for (const p of m.content) {
         if (p.type === 'text' && p.text) blocks.push({ type: 'text', text: p.text });
         else if (p.type === 'file') blocks.push({ type: 'text', text: textOfFile(p) });
-        else if (p.type === 'image') blocks.push(vision ? { type: 'image', source: { type: 'base64', media_type: p.mediaType, data: p.data } } : { type: 'text', text: `[Bild „${p.name ?? 'Bild'}“ – dieses Modell kann keine Bilder sehen]` });
+        else if (p.type === 'image') blocks.push(vision ? { type: 'image', source: { type: 'base64', media_type: p.mediaType, data: p.data } } : { type: 'text', text: `[Image “${p.name ?? 'image'}” – this model cannot see images]` });
         else if (p.type === 'document') blocks.push({ type: 'document', source: { type: 'base64', media_type: p.mediaType, data: p.data } });
       }
     } else {
@@ -194,8 +195,8 @@ export function toOpenAI(messages: Msg[], vision: boolean, documents = false): a
     for (const p of m.content) {
       if (p.type === 'text' && p.text) parts.push({ type: 'text', text: p.text });
       else if (p.type === 'file') parts.push({ type: 'text', text: textOfFile(p) });
-      else if (p.type === 'image') parts.push(vision ? { type: 'image_url', image_url: { url: `data:${p.mediaType};base64,${p.data}` } } : { type: 'text', text: `[Bild „${p.name ?? 'Bild'}“ – dieses Modell kann keine Bilder sehen]` });
-      else if (p.type === 'document') parts.push(documents ? { type: 'file', file: { filename: p.name || 'beleg.pdf', file_data: `data:${p.mediaType};base64,${p.data}` } } : { type: 'text', text: `[Dokument „${p.name ?? 'Dokument'}“ – dieses Modell kann keine PDFs lesen]` });
+      else if (p.type === 'image') parts.push(vision ? { type: 'image_url', image_url: { url: `data:${p.mediaType};base64,${p.data}` } } : { type: 'text', text: `[Image “${p.name ?? 'image'}” – this model cannot see images]` });
+      else if (p.type === 'document') parts.push(documents ? { type: 'file', file: { filename: p.name || 'beleg.pdf', file_data: `data:${p.mediaType};base64,${p.data}` } } : { type: 'text', text: `[Document “${p.name ?? 'document'}” – this model cannot read PDFs]` });
     }
     if (!parts.length) continue;
     out.push({ role: 'user', content: parts.every((x) => x.type === 'text') ? parts.map((x) => x.text).join('\n\n') : parts });
@@ -318,15 +319,16 @@ export function estimateUsage(req: ChatRequest, outText: string, calls: ToolCall
 
 export function providerError(provider: string, status: number, message: string, label = presetById(provider)?.label ?? provider): AgentError {
   const detail = message ? `: ${message.slice(0, 240)}` : '';
-  if (status === 401) return new AgentError(`${label}: Der Schlüssel ist ungültig. Bitte die Verbindung unter „Modelle verbinden“ prüfen.`, 502, 'auth');
-  if (status === 402) return new AgentError(`${label}: Zahlungsproblem beim Anbieter (Guthaben leer?).`, 502, 'billing');
-  if (status === 403) return new AgentError(`${label}: Dieser Schlüssel darf das Modell nicht nutzen${detail}`, 502, 'permission');
-  if (status === 404) return new AgentError(`${label}: Modell oder Adresse nicht gefunden${detail}`, 502, 'not_found');
-  if (status === 413) return new AgentError(`${label}: Die Anfrage ist zu groß – bitte einen neuen Chat beginnen.`, 502, 'too_large');
-  if (status === 429) return new AgentError(`${label}: Zu viele Anfragen oder Kontingent erschöpft – bitte kurz warten.`, 429, 'rate_limit');
-  if (status === 529 || status === 503) return new AgentError(`${label} ist gerade überlastet – bitte gleich noch einmal versuchen.`, 503, 'overloaded');
-  if (status >= 500) return new AgentError(`${label} hat gerade ein Problem – bitte später erneut versuchen.`, 503, 'server');
-  return new AgentError(`${label} hat die Anfrage abgelehnt (${status})${detail}`, 502, 'invalid_request');
+  const t = tApp();
+  if (status === 401) return new AgentError(t('{label}: Der Schlüssel ist ungültig. Bitte die Verbindung unter „Modelle verbinden“ prüfen.', { label }), 502, 'auth');
+  if (status === 402) return new AgentError(t('{label}: Zahlungsproblem beim Anbieter (Guthaben leer?).', { label }), 502, 'billing');
+  if (status === 403) return new AgentError(t('{label}: Dieser Schlüssel darf das Modell nicht nutzen{detail}', { label, detail }), 502, 'permission');
+  if (status === 404) return new AgentError(t('{label}: Modell oder Adresse nicht gefunden{detail}', { label, detail }), 502, 'not_found');
+  if (status === 413) return new AgentError(t('{label}: Die Anfrage ist zu groß – bitte einen neuen Chat beginnen.', { label }), 502, 'too_large');
+  if (status === 429) return new AgentError(t('{label}: Zu viele Anfragen oder Kontingent erschöpft – bitte kurz warten.', { label }), 429, 'rate_limit');
+  if (status === 529 || status === 503) return new AgentError(t('{label} ist gerade überlastet – bitte gleich noch einmal versuchen.', { label }), 503, 'overloaded');
+  if (status >= 500) return new AgentError(t('{label} hat gerade ein Problem – bitte später erneut versuchen.', { label }), 503, 'server');
+  return new AgentError(t('{label} hat die Anfrage abgelehnt ({status}){detail}', { label, status, detail }), 502, 'invalid_request');
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -340,10 +342,11 @@ export function envelopeError(data: any, label: string): AgentError | null {
   const code = Number(data.code ?? data.status);
   const msg = String(data.msg ?? data.message ?? (typeof data.error === 'string' ? data.error : (data.error?.message ?? '')) ?? '').slice(0, 240);
   if (!msg && !(code >= 400)) return null;
-  if (code === 429 || /rate.?limit|too many/i.test(msg)) return new AgentError(`${label}: Zu viele Anfragen oder Kontingent erschöpft – bitte kurz warten.`, 429, 'rate_limit');
-  if (code === 401 || code === 403) return new AgentError(`${label}: Der Schlüssel ist ungültig oder darf das Modell nicht nutzen${msg ? `: ${msg}` : ''}`, 502, code === 401 ? 'auth' : 'permission');
-  if (code >= 500 || /no_available_account|internal|overloaded|unavailable/i.test(msg)) return new AgentError(`${label} hat gerade ein Problem${msg ? ` (${msg})` : ''} – bitte später erneut versuchen.`, 503, 'upstream');
-  return new AgentError(`${label} hat die Anfrage abgelehnt${msg ? `: ${msg}` : ''}`, 502, 'invalid_request');
+  const t = tApp();
+  if (code === 429 || /rate.?limit|too many/i.test(msg)) return new AgentError(t('{label}: Zu viele Anfragen oder Kontingent erschöpft – bitte kurz warten.', { label }), 429, 'rate_limit');
+  if (code === 401 || code === 403) return new AgentError(t('{label}: Der Schlüssel ist ungültig oder darf das Modell nicht nutzen{detail}', { label, detail: msg ? `: ${msg}` : '' }), 502, code === 401 ? 'auth' : 'permission');
+  if (code >= 500 || /no_available_account|internal|overloaded|unavailable/i.test(msg)) return new AgentError(msg ? t('{label} hat gerade ein Problem ({msg}) – bitte später erneut versuchen.', { label, msg }) : t('{label} hat gerade ein Problem – bitte später erneut versuchen.', { label }), 503, 'upstream');
+  return new AgentError(t('{label} hat die Anfrage abgelehnt{detail}', { label, detail: msg ? `: ${msg}` : '' }), 502, 'invalid_request');
 }
 
 function errorMessage(data: any, raw: string): string {
@@ -365,7 +368,7 @@ export async function chatWithTools(req: ChatRequest, fetchImpl: FetchLike = (u,
   const started = Date.now();
   const extra = extraWires[req.connection.wire];
   if (extra) return extra(req, fetchImpl);
-  if (req.connection.wire !== 'anthropic' && req.connection.wire !== 'openai') throw new AgentError(`${labelOf(req.connection)} ist kein Text-Modell (kein Chat möglich).`, 400, 'not_text');
+  if (req.connection.wire !== 'anthropic' && req.connection.wire !== 'openai') throw new AgentError(tApp()('{label} ist kein Text-Modell (kein Chat möglich).', { label: labelOf(req.connection) }), 400, 'not_text');
   const ep = chatEndpoint(req.connection, req.app);
   let skipEffort = false;
   let body = ep.kind === 'anthropic' ? anthropicBody(req) : openaiBody(req, ep);
@@ -378,8 +381,8 @@ export async function chatWithTools(req: ChatRequest, fetchImpl: FetchLike = (u,
     } catch (e) {
       if (req.signal?.aborted) throw new AgentError('Abgebrochen.', 499, 'aborted');
       const name = (e as Error)?.name;
-      if (name === 'TimeoutError' || name === 'AbortError') throw new AgentError('Das Modell hat nicht rechtzeitig geantwortet – bitte erneut versuchen.', 504, 'timeout');
-      throw new AgentError(`${labelOf(req.connection)} ist nicht erreichbar (${(e as Error).message}).`, 504, 'network');
+      if (name === 'TimeoutError' || name === 'AbortError') throw new AgentError(tApp()('Das Modell hat nicht rechtzeitig geantwortet – bitte erneut versuchen.'), 504, 'timeout');
+      throw new AgentError(tApp()('{label} ist nicht erreichbar ({error}).', { label: labelOf(req.connection), error: (e as Error).message }), 504, 'network');
     }
     if (res.ok) break;
     const raw = await res.text().catch(() => '');
@@ -402,7 +405,7 @@ export async function chatWithTools(req: ChatRequest, fetchImpl: FetchLike = (u,
         body = ep.kind === 'anthropic' ? anthropicBody(req, true) : openaiBody(req, ep, true);
         continue;
       }
-      throw new AgentError(`${labelOf(req.connection)}: Das Modell „${req.connection.model}“ nimmt die Denkstufe „${plan.applied}“ nicht an (${detail.slice(0, 160)}). Bitte ein anderes Modell wählen oder die Denkstufe unter Einstellungen → KI-Anbieter → Denkstufe ändern.`, 400, 'effort_rejected');
+      throw new AgentError(tApp()('{label}: Das Modell „{model}“ nimmt die Denkstufe „{effort}“ nicht an ({detail}). Bitte ein anderes Modell wählen oder die Denkstufe unter Einstellungen → KI-Anbieter → Denkstufe ändern.', { label: labelOf(req.connection), model: String(req.connection.model ?? ''), effort: String(plan.applied), detail: detail.slice(0, 160) }), 400, 'effort_rejected');
     }
     throw providerError(req.connection.provider, res.status, detail, labelOf(req.connection));
   }
@@ -473,12 +476,12 @@ async function readAnthropic(res: Response, stream: boolean, req: ChatRequest): 
           break;
         }
         case 'error':
-          throw new AgentError(`Anthropic: ${String(d.error?.message ?? 'Fehler im Stream')}`, d.error?.type === 'overloaded_error' ? 503 : 502, 'stream_error', usage);
+          throw new AgentError(`Anthropic: ${String(d.error?.message ?? tApp()('Fehler im Stream'))}`, d.error?.type === 'overloaded_error' ? 503 : 502, 'stream_error', usage);
       }
     }
     blocks = blocks.filter(Boolean);
   }
-  if (stopReason === 'refusal') throw new AgentError('Das Modell hat diese Anfrage aus Sicherheitsgründen abgelehnt.', 422, 'refusal', usage);
+  if (stopReason === 'refusal') throw new AgentError(tApp()('Das Modell hat diese Anfrage aus Sicherheitsgründen abgelehnt.'), 422, 'refusal', usage);
   const parsed = fromAnthropicBlocks(blocks);
   return { ...parsed, stopReason, usage, model };
 }
@@ -492,7 +495,7 @@ async function readOpenAI(res: Response, stream: boolean, req: ChatRequest): Pro
   if (!stream) {
     const data: any = await res.json().catch(() => null);
     const choice = data?.choices?.[0];
-    if (!choice) throw envelopeError(data, labelOf(req.connection)) ?? new AgentError(`Unerwartete Antwort von ${labelOf(req.connection)}.`, 502, 'bad_response');
+    if (!choice) throw envelopeError(data, labelOf(req.connection)) ?? new AgentError(tApp()('Unerwartete Antwort von {label}.', { label: labelOf(req.connection) }), 502, 'bad_response');
     text = typeof choice.message?.content === 'string' ? choice.message.content : Array.isArray(choice.message?.content) ? choice.message.content.map((p: any) => p?.text ?? '').join('') : '';
     if (text) req.onText?.(text);
     for (const tc of choice.message?.tool_calls ?? []) calls.push({ id: String(tc.id ?? ''), name: String(tc.function?.name ?? ''), args: typeof tc.function?.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function?.arguments ?? {}) });
@@ -534,7 +537,7 @@ async function readOpenAI(res: Response, stream: boolean, req: ChatRequest): Pro
     }
   }
   const parsed = fromOpenAI(text, calls.filter(Boolean));
-  if (stopReason === 'content_filter' && !parsed.text && !parsed.toolCalls.length) throw new AgentError('Der Anbieter hat die Antwort gefiltert.', 422, 'refusal');
+  if (stopReason === 'content_filter' && !parsed.text && !parsed.toolCalls.length) throw new AgentError(tApp()('Der Anbieter hat die Antwort gefiltert.'), 422, 'refusal');
   const estimated = !usage;
   return { ...parsed, stopReason, usage: usage ?? estimateUsage(req, parsed.text, parsed.toolCalls), model, ...(estimated ? { estimated: true } : {}) };
 }

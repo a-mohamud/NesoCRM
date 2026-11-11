@@ -7,6 +7,7 @@ import { listBackups, snapshotInto } from './backups.js';
 import { plan, stampOf, timeOfStamp } from '../services/backup-retention.js';
 import { fileHash, listSnapshots, objectKeys, offsiteConfig, ping, restoreSnapshot, uploadEncrypted, verifyDb, walkFiles, writeManifest, type Manifest, type OffsiteConfig } from '../services/backup-offsite.js';
 import { S3Client } from '../services/s3-lite.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Off-site encrypted backups (docs/backups.md): every PGHL_BACKUP_INTERVAL_MIN (default 60) a consistent copy of the database
@@ -169,7 +170,8 @@ export const offsiteBackupModule: Module = {
         const detail = JSON.stringify({ integrity: r.integrity, rows: r.rows, expected: r.expectedRows, files: r.files, files_checked: r.filesChecked, seconds: Math.round((Date.now() - t0) / 1000), problems: r.problems });
         if (r.problems.length) {
           finish(runId, { status: 'failed', stamp: r.stamp, error: r.problems.slice(0, 5).join(' · ').slice(0, 500), detail });
-          app.services.opsAlert?.event({ key: 'restore_test_failed', severity: 'critical', title: 'Restore-Test fehlgeschlagen', body: `Sicherung ${r.stamp}: ${r.problems.slice(0, 5).join(' · ')}` });
+          const tr = tApp();
+          app.services.opsAlert?.event({ key: 'restore_test_failed', severity: 'critical', title: tr('Restore-Test fehlgeschlagen'), body: tr('Sicherung {stamp}: {problems}', { stamp: r.stamp, problems: r.problems.slice(0, 5).join(' · ') }) });
         } else finish(runId, { status: 'ok', stamp: r.stamp, detail });
       } catch (e) {
         const msg = (e as Error).message.slice(0, 500);

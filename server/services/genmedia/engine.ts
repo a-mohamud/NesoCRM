@@ -6,6 +6,7 @@ import { parseJson } from '../../core/db.js';
 import { HttpError, bad, notFound } from '../../core/http.js';
 import { id, now, sha256, slugify, token } from '../../core/util.js';
 import { isPrivateIp } from '../net.js';
+import { tApp, tLoc } from '../../i18n/index.js';
 import { adapterFor, supports } from './index.js';
 import { authFor, baseOf, checkUrl, ensureOk, gmFetch, hostIn } from './http.js';
 import { ASPECTS, EXT, MAX_INPUT_BYTES, accepts, kindOf, maxBytesFor, sniff } from './media.js';
@@ -98,7 +99,7 @@ export async function listConnections(app: App, locationId: string, cap?: Capabi
 const txt = (v: unknown, field: string, max: number) => {
   if (v === undefined || v === null) return '';
   const s = String(v).trim();
-  if (s.length > max) throw bad(`${field} ist zu lang (max. ${max} Zeichen)`);
+  if (s.length > max) throw bad(tApp()('{field} ist zu lang (max. {max} Zeichen)', { field: tApp()(field), max }));
   return s;
 };
 
@@ -172,11 +173,11 @@ export async function createJob(app: App, inp: CreateIn) {
   const { db } = app;
   const b = inp.body ?? {};
   const cap = String(b.capability ?? '') as Capability;
-  if (!CAPABILITIES.includes(cap)) throw bad(`Art fehlt oder unbekannt (${CAPABILITIES.join(', ')})`);
+  if (!CAPABILITIES.includes(cap)) throw bad(tApp()('Art fehlt oder unbekannt ({list})', { list: CAPABILITIES.join(', ') }));
   const connectionId = txt(b.connection_id, 'Verbindung', 120) || null;
   const conn = await resolveConnection(app, inp.locationId, cap, connectionId);
   const adapter = adapterFor(conn.provider);
-  if (!supports(adapter, cap)) throw bad(`${adapter.label} kann „${CAPABILITY_LABEL[cap]}“ nicht – bitte eine andere Verbindung wählen`);
+  if (!supports(adapter, cap)) throw bad(tApp()('{provider} kann „{capability}“ nicht – bitte eine andere Verbindung wählen', { provider: adapter.label, capability: tApp()(CAPABILITY_LABEL[cap]) }));
   const model = txt(b.model, 'Modell', 200) || conn.model || adapter.models[cap]?.[0]?.id || '';
   if (model && !/^[\w./:@+-]+$/.test(model)) throw bad('Modell-ID: nur Buchstaben, Ziffern und . / : @ + - _');
 
@@ -187,13 +188,13 @@ export async function createJob(app: App, inp: CreateIn) {
   if (neg) input.negative_prompt = neg;
   const aspect = txt(b.aspect_ratio, 'Seitenverhältnis', 10);
   if (aspect) {
-    if (!ASPECTS.includes(aspect)) throw bad(`Seitenverhältnis: ${ASPECTS.join(', ')}`);
+    if (!ASPECTS.includes(aspect)) throw bad(tApp()('Seitenverhältnis: {list}', { list: ASPECTS.join(', ') }));
     input.aspect_ratio = aspect;
   }
   if (b.duration !== undefined && b.duration !== null && b.duration !== '') {
     const d = Number(b.duration);
     const max = cap === 'audio_music' ? 600 : cap === 'video' ? 60 : 600;
-    if (!Number.isFinite(d) || d <= 0 || d > max) throw bad(`Dauer: 1 bis ${max} Sekunden`);
+    if (!Number.isFinite(d) || d <= 0 || d > max) throw bad(tApp()('Dauer: 1 bis {max} Sekunden', { max }));
     input.duration = Math.round(d);
   }
   if (b.seed !== undefined && b.seed !== null && b.seed !== '') {
@@ -246,7 +247,7 @@ export async function createJob(app: App, inp: CreateIn) {
   }
 
   const active = Number(db.get(`SELECT COUNT(*) n FROM genmedia_jobs WHERE location_id = ? AND status IN ('queued','running')`, inp.locationId)?.n ?? 0);
-  if (active >= MAX_ACTIVE_PER_LOCATION) throw new HttpError(429, `Höchstens ${MAX_ACTIVE_PER_LOCATION} laufende Aufträge je Sub-Account – bitte warten, bis einer fertig ist`);
+  if (active >= MAX_ACTIVE_PER_LOCATION) throw new HttpError(429, tApp()('Höchstens {n} laufende Aufträge je Sub-Account – bitte warten, bis einer fertig ist', { n: MAX_ACTIVE_PER_LOCATION }));
 
   const source = SOURCES.includes(String(inp.source ?? b.source)) ? String(inp.source ?? b.source) : 'studio';
   const parent = b.parent_id ? db.get('SELECT id FROM genmedia_jobs WHERE id = ? AND location_id = ?', String(b.parent_id), inp.locationId) : null;
@@ -303,7 +304,7 @@ export function jobOut(app: App, j: any) {
     id: j.id,
     location_id: j.location_id,
     capability: j.capability,
-    capability_label: CAPABILITY_LABEL[j.capability as Capability] ?? j.capability,
+    capability_label: CAPABILITY_LABEL[j.capability as Capability] ? tLoc(app, j.location_id)(CAPABILITY_LABEL[j.capability as Capability]) : j.capability,
     provider: j.provider,
     provider_label: adapterFor(j.provider).label,
     model: j.model,
@@ -389,7 +390,7 @@ export function adapterCtx(app: App, job: any, conn: AiConnection, callbackUrl: 
       let data: Buffer;
       if (p) {
         if (!existsSync(p)) throw new ProviderError('Referenzdatei fehlt auf dem Server');
-        if (statSync(p).size > maxBytes) throw new ProviderError(`Referenzdatei größer als ${Math.round(maxBytes / 1024 / 1024)} MB`);
+        if (statSync(p).size > maxBytes) throw new ProviderError(tApp()('Referenzdatei größer als {mb} MB', { mb: Math.round(maxBytes / 1024 / 1024) }));
         data = readFileSync(p);
       } else {
         const r = ensureOk(await gmFetch(app, ref.url, { maxBytes, timeoutMs: 120_000 }), 'Referenzdatei');
@@ -461,7 +462,7 @@ async function handleError(app: App, job: any, e: unknown, phase: Phase) {
   const retry = attempts < MAX_ATTEMPTS && transient && (phase !== 'submit' || (!!pe && (pe.status === 429 || pe.status >= 500)));
   if (retry) {
     const wait = Math.min(300_000, 5000 * 2 ** attempts);
-    setJob(app, job.id, { attempts, error: `Versuch ${attempts}: ${err.message}`.slice(0, 500), next_run_at: new Date(Date.now() + wait).toISOString(), ...(phase === 'submit' ? { status: 'queued' } : {}) });
+    setJob(app, job.id, { attempts, error: tLoc(app, job.location_id)('Versuch {n}: {message}', { n: attempts, message: tLoc(app, job.location_id)(err.message) }).slice(0, 500), next_run_at: new Date(Date.now() + wait).toISOString(), ...(phase === 'submit' ? { status: 'queued' } : {}) });
     return;
   }
   await finishFailed(app, job, err.message || 'Unbekannter Fehler');
@@ -496,8 +497,10 @@ async function applyStep(app: App, job: any, step: Step, conn: AiConnection) {
 }
 
 async function finishFailed(app: App, job: any, error: string) {
+  const t = tLoc(app, job.location_id);
+  error = t(String(error));
   setJob(app, job.id, { status: 'failed', error: String(error).slice(0, 1000), finished_at: now(), next_run_at: null });
-  if (job.target?.type) setJob(app, job.id, { target_result: `Nicht ausgeführt: ${String(error).slice(0, 300)}` });
+  if (job.target?.type) setJob(app, job.id, { target_result: t('Nicht ausgeführt: {error}', { error: String(error).slice(0, 300) }) });
   app.events.emit(job.location_id, 'genmedia.failed', { contactId: job.target?.contactId, jobId: job.id, capability: job.capability, error: String(error).slice(0, 300) });
 }
 
@@ -530,7 +533,7 @@ async function storeOutputs(app: App, job: any, outputs: Output[], conn: AiConne
       hint ||= r.headers['content-type'] ?? '';
     }
     if (data.length > max) {
-      rejected = `Ergebnis größer als ${Math.round(max / 1024 / 1024)} MB`;
+      rejected = tApp()('Ergebnis größer als {mb} MB', { mb: Math.round(max / 1024 / 1024) });
       continue;
     }
     const mime = sniff(data, hint);
@@ -578,6 +581,7 @@ async function applyTarget(app: App, job: any) {
   const { db } = app;
   const out = jobOut(app, job);
   const value = job.capability === 'stt' ? String(job.result_text ?? '') : String(out.url ?? '');
+  const tl = tLoc(app, job.location_id);
   let result = '';
   try {
     if (t.type === 'field' && t.contactId) {
@@ -590,11 +594,11 @@ async function applyTarget(app: App, job: any) {
       result = `${field} = ${value.slice(0, 80)}`;
     } else if (t.type === 'note' && t.contactId) {
       if (!db.get('SELECT id FROM contacts WHERE id = ? AND location_id = ?', t.contactId, job.location_id)) throw new Error('Kontakt nicht gefunden');
-      const label = CAPABILITY_LABEL[job.capability as Capability];
+      const label = tl(CAPABILITY_LABEL[job.capability as Capability]);
       const links = out.results.map((r: any) => r.library_url ?? r.url).join('\n');
-      const body = job.capability === 'stt' ? `Transkript (KI):\n${value}` : `${label} (KI, ${job.model || job.provider}): ${String(job.input?.prompt ?? '').slice(0, 200)}\n${links}`;
+      const body = job.capability === 'stt' ? `${tl('Transkript (KI):')}\n${value}` : `${tl('{label} (KI, {model}): {prompt}', { label, model: job.model || job.provider, prompt: String(job.input?.prompt ?? '').slice(0, 200) })}\n${links}`;
       db.insert('notes', { id: id(), location_id: job.location_id, contact_id: t.contactId, body: body.slice(0, 10_000), user_id: null, created_at: now() });
-      result = 'Notiz mit Anhang angelegt';
+      result = tl('Notiz mit Anhang angelegt');
     } else if (t.type === 'social_draft') {
       if (!app.services.socialPost) throw new Error('Social Planner ist nicht verfügbar');
       const video = job.capability === 'video';
@@ -607,10 +611,10 @@ async function applyTarget(app: App, job: any) {
         ...(video ? { mediaUrls: out.results.filter((r: any) => r.kind === 'video').map((r: any) => r.library_url ?? r.url), video: true } : {}),
         source: 'KI-Studio',
       });
-      result = `Social-Entwurf angelegt (${post?.id ?? 'ok'})`;
+      result = tl('Social-Entwurf angelegt ({id})', { id: post?.id ?? 'ok' });
     }
   } catch (e) {
-    result = `Fehler: ${(e as Error).message}`.slice(0, 300);
+    result = tl('Fehler: {message}', { message: tl((e as Error).message) }).slice(0, 300);
   }
   if (result) setJob(app, job.id, { target_result: result });
 }

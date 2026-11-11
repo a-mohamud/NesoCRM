@@ -7,6 +7,7 @@ import { now } from '../core/util.js';
 import { notifyTeam } from '../services/messaging.js';
 import { safeFetch } from '../services/net.js';
 import { locationStats } from '../services/location-stats.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Projects hub: every sub-account can carry a project profile (status, website, repos, servers,
@@ -18,7 +19,7 @@ export const PROJECT_STATUSES = ['idee', 'entwicklung', 'beta', 'live', 'pausier
 const cleanList = (v: unknown, max = 30) => (Array.isArray(v) ? v.slice(0, max) : []);
 const url = (v: unknown, label: string) => {
   const s = str(v, label, { max: 500 });
-  if (s && !/^https?:\/\/[^\s]+$/i.test(s)) throw bad(`${label}: bitte mit https:// angeben`);
+  if (s && !/^https?:\/\/[^\s]+$/i.test(s)) throw bad(tApp()('{field}: bitte mit https:// angeben', { field: tApp()(label) }));
   return s;
 };
 
@@ -128,8 +129,9 @@ export async function checkWebsite(app: App, locationId: string) {
   app.db.insert('project_checks', row);
   // Tell the team when the site goes down or comes back.
   if (prev && prev.ok !== row.ok) {
-    const name = app.location(locationId)?.name ?? 'Projekt';
-    void notifyTeam(app, locationId, row.ok ? `✅ ${name} ist wieder online` : `⚠️ ${name} ist nicht erreichbar`, `${p.website}\nStatus: ${status || 'keine Antwort'} (${row.ms} ms)\n\n${app.baseUrl()}/app/project`);
+    const t = tLoc(app, locationId);
+    const name = app.location(locationId)?.name ?? t('Projekt');
+    void notifyTeam(app, locationId, row.ok ? t('✅ {name} ist wieder online', { name }) : t('⚠️ {name} ist nicht erreichbar', { name }), `${p.website}\n${t('Status: {status} ({ms} ms)', { status: status || t('keine Antwort'), ms: row.ms })}\n\n${app.baseUrl()}/app/project`);
     app.events.emit(locationId, row.ok ? 'website.up' : 'website.down', { website: p.website, status, ms: row.ms });
   }
   app.db.run(`DELETE FROM project_checks WHERE location_id = ? AND at < ?`, locationId, new Date(Date.now() - 30 * 864e5).toISOString());

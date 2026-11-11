@@ -11,6 +11,7 @@ import { clip, htmlToMarkdown, stripHtml } from './umzug-text.js';
 import { PmWriter, undoPm } from './umzug-pm.js';
 import { ObjectsWriter, undoObjects } from './umzug-objects.js';
 import { BookingWriter, undoBooking } from './umzug-booking.js';
+import { tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Everything the switch-over importers write beyond the basics of umzug-write.ts, in one place so the shared writer stays small:
@@ -57,6 +58,8 @@ export class ExtraWriter {
   private readonly pm: PmWriter;
   private readonly objects: ObjectsWriter;
   private readonly booking: BookingWriter;
+  /** The sub-account's language: ledger notes, wiki pages and warnings are written in it. */
+  private readonly tr: STFn;
 
   constructor(
     private env: ExtraEnv,
@@ -65,6 +68,8 @@ export class ExtraWriter {
     this.app = env.app;
     this.db = env.app.db;
     this.loc = env.locationId;
+    const t = tLoc(env.app, env.locationId);
+    this.tr = t;
     this.pm = new PmWriter(env, host);
     this.objects = new ObjectsWriter(env, host);
     this.booking = new BookingWriter(env, host);
@@ -87,13 +92,14 @@ export class ExtraWriter {
    * add nothing twice: the same action, channel and source (and time, when the vendor gave one) is not written again.
    */
   ledger(contactId: string, rec: RContact, created: boolean) {
+    const t = this.tr;
     const proofs = proofList(rec);
     if (!proofs.length) return;
     if (this.hasLedger === undefined) this.hasLedger = this.tableThere('consent_events');
     if (!this.hasLedger) return;
     const contact = this.db.get<{ email: string; phone: string }>('SELECT email, phone FROM contacts WHERE id = ? AND location_id = ?', contactId, this.loc);
     if (!contact) return;
-    const label = clip(`Umzug aus ${this.env.label}`, 200);
+    const label = clip(t('Umzug aus {source}', { source: this.env.label }), 200);
     for (const p of proofs) {
       const channel = p.channel ?? 'email';
       if (channel === 'email' ? !contact.email : !contact.phone) continue;
@@ -117,15 +123,23 @@ export class ExtraWriter {
   }
 
   private note(rec: RContact, p: ConsentProof): string {
-    const channel = p.channel === 'sms' ? 'SMS' : 'E-Mail';
+    const t = this.tr;
+    const channel = p.channel === 'sms' ? 'SMS' : t('E-Mail');
+    // Reasons and methods from the sources are German catalog keys (or arrive translated).
     const what =
-      p.basis === 'revoked' ? `${channel}: ${p.reason ?? REASON[rec.consent ?? ''] ?? 'Widerruf'}` : p.basis === 'confirmed' ? `${channel}: Einwilligung beim alten Anbieter dokumentiert` : p.basis === 'none' ? `${channel}: dort nie für Werbung angemeldet` : `${channel}: als angemeldet geführt, aber ohne eigenen Nachweis (Altbestand)`;
-    const parts = [`Übernommen aus ${this.env.label} – ${what}`];
-    if (p.method) parts.push(`Art: ${p.method}`);
-    if (p.at) parts.push(`Stand: ${day(p.at)}`);
-    if (rec.native_status && p.basis !== 'revoked' && p.channel !== 'sms') parts.push(`Status dort: ${rec.native_status}`);
-    if (p.note) parts.push(p.note);
-    if (p.basis === 'legacy') parts.push('Der Nachweis liegt beim alten Anbieter – vor dem Löschen des Kontos dort exportieren');
+      p.basis === 'revoked'
+        ? `${channel}: ${p.reason ? t(p.reason) : REASON[rec.consent ?? ''] ? t(REASON[rec.consent ?? '']) : t('Widerruf')}`
+        : p.basis === 'confirmed'
+          ? t('{channel}: Einwilligung beim alten Anbieter dokumentiert', { channel })
+          : p.basis === 'none'
+            ? t('{channel}: dort nie für Werbung angemeldet', { channel })
+            : t('{channel}: als angemeldet geführt, aber ohne eigenen Nachweis (Altbestand)', { channel });
+    const parts = [t('Übernommen aus {source} – {what}', { source: this.env.label, what })];
+    if (p.method) parts.push(t('Art: {method}', { method: t(p.method) }));
+    if (p.at) parts.push(t('Stand: {date}', { date: day(p.at) }));
+    if (rec.native_status && p.basis !== 'revoked' && p.channel !== 'sms') parts.push(t('Status dort: {status}', { status: rec.native_status }));
+    if (p.note) parts.push(t(p.note));
+    if (p.basis === 'legacy') parts.push(t('Der Nachweis liegt beim alten Anbieter – vor dem Löschen des Kontos dort exportieren'));
     return clip(`${parts.join('. ')}.`, 1000);
   }
 
@@ -210,7 +224,10 @@ export class ExtraWriter {
     }
   }
 
-  private ensureSpace(name = 'Umzug', icon = '📦', description = 'Referenzlisten aus dem Umzug: was sich nicht automatisch übernehmen ließ und neu gebaut werden muss.'): { id: string } {
+  private ensureSpace(spaceName?: string, icon = '📦', spaceDescription?: string): { id: string } {
+    const t = this.tr;
+    const name = spaceName ?? t('Umzug');
+    const description = spaceDescription ?? t('Referenzlisten aus dem Umzug: was sich nicht automatisch übernehmen ließ und neu gebaut werden muss.');
     const cached = this.spaces.get(name);
     if (cached) return cached;
     const had = this.db.get<{ id: string }>('SELECT id FROM wiki_spaces WHERE location_id = ? AND name = ? ORDER BY created_at LIMIT 1', this.loc, name);
@@ -220,7 +237,7 @@ export class ExtraWriter {
     }
     const sid = id();
     const pos = this.db.get<{ n: number }>('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM wiki_spaces WHERE location_id = ?', this.loc)!.n;
-    this.db.insert('wiki_spaces', { id: sid, location_id: this.loc, name, icon, description, team_access: 'edit', owner_id: null, owner_name: 'Umzug', position: pos, created_at: now(), updated_at: now() });
+    this.db.insert('wiki_spaces', { id: sid, location_id: this.loc, name, icon, description, team_access: 'edit', owner_id: null, owner_name: t('Umzug'), position: pos, created_at: now(), updated_at: now() });
     this.host.item('wiki_space', sid, `umzug-space:${name}`, true);
     const made = { id: sid };
     this.spaces.set(name, made);
@@ -228,13 +245,15 @@ export class ExtraWriter {
   }
 
   private reference(rec: RReference) {
-    this.page({ idKind: 'reference', stat: 'references', itemKind: 'wiki_page', ext: rec.ext, title: rec.title, body: rec.body, icon: '📋', label: `Referenzliste „${clip(rec.title, 60)}“` });
+    const t = this.tr;
+    this.page({ idKind: 'reference', stat: 'references', itemKind: 'wiki_page', ext: rec.ext, title: rec.title, body: rec.body, icon: '📋', label: t('Referenzliste „{title}“', { title: clip(rec.title, 60) }) });
   }
 
   /** A page of the old tool (Notion page, monday doc, ClickUp doc …) in a wiki space of its own, with its hierarchy. */
   private doc(rec: RDoc) {
+    const t = this.tr;
     const name = clip(rec.space || this.env.label, 80) || this.env.label;
-    this.page({ idKind: 'doc', stat: 'docs', itemKind: 'wiki_doc', ext: rec.ext, title: rec.title, body: rec.body, icon: rec.icon ?? '📄', label: `Seite „${clip(rec.title, 60)}“`, parent: rec.parent, space: { name, icon: '📄', description: `Seiten aus ${this.env.label}, beim Umzug übernommen.` } });
+    this.page({ idKind: 'doc', stat: 'docs', itemKind: 'wiki_doc', ext: rec.ext, title: rec.title, body: rec.body, icon: rec.icon ?? '📄', label: t('Seite „{title}“', { title: clip(rec.title, 60) }), parent: rec.parent, space: { name, icon: '📄', description: t('Seiten aus {source}, beim Umzug übernommen.', { source: this.env.label }) } });
   }
 
   /**
@@ -242,6 +261,7 @@ export class ExtraWriter {
    * since stays as they left it). `parent` is the ext of another imported page of the same kind.
    */
   private page(o: { idKind: string; stat: string; itemKind: string; ext: string; title: string; body: string; icon: string; label: string; parent?: string; space?: { name: string; icon: string; description: string } }) {
+    const t = this.tr;
     const known = this.host.getId(o.idKind, o.ext);
     if (this.env.dry) {
       this.host.stat(o.stat, known ? 'updated' : 'created');
@@ -250,10 +270,11 @@ export class ExtraWriter {
     if (this.hasWiki === undefined) this.hasWiki = this.tableThere('wiki_pages') && this.tableThere('wiki_spaces');
     if (!this.hasWiki) {
       this.host.stat(o.stat, 'skipped');
-      return void this.env.warn(`${o.label} nicht angelegt: das Wiki ist in dieser Installation nicht verfügbar`);
+      return void this.env.warn(t('{what} nicht angelegt: das Wiki ist in dieser Installation nicht verfügbar', { what: o.label }));
     }
-    const author = clip(`Umzug (${this.env.label})`, 200);
-    const title = clip(o.title, 200).trim() || 'Ohne Titel';
+    // "Umzug (<source>)" also tells the undo that nobody has edited the page since (undoExtra).
+    const author = clip(`${t('Umzug')} (${this.env.label})`, 200);
+    const title = clip(o.title, 200).trim() || t('Ohne Titel');
     const body = clip(o.body, 200_000);
     const page = known ? this.db.get<{ id: string; version: number; updated_by_name: string; trashed_at: string | null; space_id: string }>('SELECT id, version, updated_by_name, trashed_at, space_id FROM wiki_pages WHERE id = ? AND location_id = ?', known.local, this.loc) : undefined;
     if (page && !page.trashed_at) {
@@ -263,7 +284,7 @@ export class ExtraWriter {
       }
       this.db.tx(() => {
         this.db.run('UPDATE wiki_pages SET title = ?, body = ?, text = ?, version = version + 1, updated_at = ? WHERE id = ?', title, body, markdownToText(body), now(), page.id);
-        this.db.insert('wiki_versions', { id: id(), page_id: page.id, location_id: this.loc, rev: page.version + 1, title, body, author_id: null, author_name: author, via: 'umzug', note: 'Umzug erneut ausgeführt', created_at: now(), saved_at: now() });
+        this.db.insert('wiki_versions', { id: id(), page_id: page.id, location_id: this.loc, rev: page.version + 1, title, body, author_id: null, author_name: author, via: 'umzug', note: t('Umzug erneut ausgeführt'), created_at: now(), saved_at: now() });
       });
       this.reindex(page.id);
       this.host.stat(o.stat, 'updated');
@@ -278,7 +299,7 @@ export class ExtraWriter {
     const pos = this.db.get<{ n: number }>(`SELECT COALESCE(MAX(position), -1) + 1 AS n FROM wiki_pages WHERE space_id = ? AND ${parentId ? 'parent_id = ?' : 'parent_id IS NULL'}`, space.id, ...(parentId ? [parentId] : []))!.n;
     this.db.tx(() => {
       this.db.insert('wiki_pages', { id: pid, location_id: this.loc, space_id: space.id, parent_id: parentId, position: pos, title, icon: o.icon, body, text: markdownToText(body), version: 1, trashed_at: null, kb_article_id: null, kb_version: null, created_by: null, created_by_name: author, updated_by: null, updated_by_name: author, created_at: now(), updated_at: now() });
-      this.db.insert('wiki_versions', { id: id(), page_id: pid, location_id: this.loc, rev: 1, title, body, author_id: null, author_name: author, via: 'umzug', note: 'Aus dem Umzug', created_at: now(), saved_at: now() });
+      this.db.insert('wiki_versions', { id: id(), page_id: pid, location_id: this.loc, rev: 1, title, body, author_id: null, author_name: author, via: 'umzug', note: t('Aus dem Umzug'), created_at: now(), saved_at: now() });
       this.db.run('UPDATE wiki_spaces SET updated_at = ? WHERE id = ?', now(), space.id);
     });
     this.reindex(pid);
@@ -295,6 +316,7 @@ export class ExtraWriter {
    * there already (a re-run) is not added again. Support contacts the import did not bring along are created from the ticket.
    */
   private ticket(rec: RTicket) {
+    const t = this.tr;
     const known = this.host.getId('ticket', rec.ext);
     if (this.env.dry) {
       this.host.stat('tickets', known ? 'updated' : 'created');
@@ -304,7 +326,7 @@ export class ExtraWriter {
     const imp = this.app.services.ticketsImport;
     if (typeof imp !== 'function') {
       this.host.stat('tickets', 'skipped');
-      return void this.env.warn('Tickets übersprungen: in dieser Installation gibt es keinen Helpdesk');
+      return void this.env.warn(t('Tickets übersprungen: in dieser Installation gibt es keinen Helpdesk'));
     }
     let contact = this.host.contactLocal(rec.contact);
     if (contact?.startsWith('dry:')) contact = undefined;
@@ -375,7 +397,7 @@ export class ExtraWriter {
       this.host.stat('kb_categories', 'skipped');
       return;
     }
-    const name = clip(rec.name, 120) || 'Allgemein';
+    const name = clip(rec.name, 120) || tLoc(this.app, this.loc)('Allgemein');
     if (known && this.db.get('SELECT 1 FROM kb_categories WHERE id = ? AND location_id = ?', known.local, this.loc)) {
       this.host.stat('kb_categories', 'updated');
       return;
@@ -395,6 +417,7 @@ export class ExtraWriter {
   }
 
   private article(rec: RArticle) {
+    const t = this.tr;
     const known = this.host.getId('article', rec.ext);
     if (this.env.dry) {
       this.host.stat('articles', known ? 'updated' : 'created');
@@ -402,12 +425,12 @@ export class ExtraWriter {
     }
     if (!this.hasKb()) {
       this.host.stat('articles', 'skipped');
-      return void this.env.warn(`Artikel „${clip(rec.title, 60)}“ nicht angelegt: die Wissensdatenbank ist in dieser Installation nicht verfügbar`);
+      return void this.env.warn(t('Artikel „{title}“ nicht angelegt: die Wissensdatenbank ist in dieser Installation nicht verfügbar', { title: clip(rec.title, 60) }));
     }
     const body = clip(rec.markdown ?? htmlToMarkdown(rec.html ?? ''), 200_000);
     const cat = rec.category ? this.host.getId('kb_category', rec.category) : undefined;
     const categoryId = cat?.local && !cat.local.startsWith('dry:') && this.db.get('SELECT 1 FROM kb_categories WHERE id = ? AND location_id = ?', cat.local, this.loc) ? cat.local : null;
-    const title = clip(rec.title, 200) || 'Artikel';
+    const title = clip(rec.title, 200) || tLoc(this.app, this.loc)('Artikel');
     const row = { title, body, excerpt: clip(stripHtml(rec.html ?? body).replace(/\s+/g, ' '), 200), category_id: categoryId, tags: [...new Set((rec.tags ?? []).map((t) => clip(t, 40)).filter(Boolean))].slice(0, 20), updated_at: now() };
     if (known && this.db.get('SELECT 1 FROM kb_articles WHERE id = ? AND location_id = ?', known.local, this.loc)) {
       this.db.update('kb_articles', known.local, row, this.loc);
@@ -460,7 +483,7 @@ export class ExtraWriter {
       if (m.internal) {
         if (this.host.getId('conversation_note', ext)) continue;
         const nid = id();
-        this.db.insert('notes', { id: nid, location_id: this.loc, contact_id: contact, body: clip(`${this.env.label}-Notiz${m.author ? ` (${m.author})` : ''}: ${m.body}`, 20_000), user_id: null, created_at: at });
+        this.db.insert('notes', { id: nid, location_id: this.loc, contact_id: contact, body: clip(`${tLoc(this.app, this.loc)('{source}-Notiz', { source: this.env.label })}${m.author ? ` (${m.author})` : ''}: ${m.body}`, 20_000), user_id: null, created_at: at });
         this.host.setId('conversation_note', ext, nid);
         this.host.item('note', nid, ext, true);
         this.host.stat('conversation_notes', 'created');
@@ -571,18 +594,20 @@ export function undoExtra(app: App, loc: string, items: { kind: string; local_id
     }
   }
   // Wiki pages (reference lists and imported documents): pages somebody has edited, or that have pages of their own below them, stay.
-  for (const [kind, stat, label] of [
-    ['wiki_page', 'references', 'Eine Referenzliste im Wiki'],
-    ['wiki_doc', 'docs', 'Eine importierte Wiki-Seite'],
+  const t = tLoc(app, loc);
+  const byImport = (name: string) => name.startsWith('Umzug (') || name.startsWith(`${t('Umzug')} (`);
+  for (const [kind, stat, note, below] of [
+    ['wiki_page', 'references', 'Eine Referenzliste im Wiki bleibt, weil sie inzwischen bearbeitet wurde.', 'Eine Referenzliste im Wiki bleibt, weil darunter eigene Seiten liegen.'],
+    ['wiki_doc', 'docs', 'Eine importierte Wiki-Seite bleibt, weil sie inzwischen bearbeitet wurde.', 'Eine importierte Wiki-Seite bleibt, weil darunter eigene Seiten liegen.'],
   ] as const) {
     const made = new Set(items.filter((i) => i.kind === kind && i.created).map((i) => i.local_id));
     const cand = new Map<string, { parent: string | null }>();
     for (const tid of made) {
       const p = db.get<{ parent_id: string | null; updated_by_name: string }>('SELECT parent_id, updated_by_name FROM wiki_pages WHERE id = ? AND location_id = ?', tid, loc);
       if (!p) continue;
-      if (!p.updated_by_name.startsWith('Umzug (')) {
+      if (!byImport(p.updated_by_name)) {
         h.keep(stat);
-        h.notes.push(`${label} bleibt, weil sie inzwischen bearbeitet wurde.`);
+        h.notes.push(t(note));
         continue;
       }
       cand.set(tid, { parent: p.parent_id });
@@ -595,7 +620,7 @@ export function undoExtra(app: App, loc: string, items: { kind: string; local_id
         if (!stranger) continue;
         cand.delete(tid);
         h.keep(stat);
-        h.notes.push(`${label} bleibt, weil darunter eigene Seiten liegen.`);
+        h.notes.push(t(below));
         again = true;
       }
     }

@@ -238,9 +238,9 @@ export const delta = (cur: number | null, prev: number | null): number | null =>
 
 const deltaText = (cur: number, prev: number, lang: Lang) => {
   const p = delta(cur, prev);
-  if (p === null) return cur > 0 ? (lang === 'en' ? 'new' : 'neu') : lang === 'en' ? 'none yet' : 'noch keine';
-  if (p === 0) return lang === 'en' ? 'same as last week' : 'wie in der Vorwoche';
-  return lang === 'en' ? `${p > 0 ? '+' : '−'}${Math.abs(p)} % vs. last week` : `${p > 0 ? '+' : '−'}${Math.abs(p)} % zur Vorwoche`;
+  if (p === null) return cur > 0 ? (lang === 'en' ? 'new' : 'neu') : lang === 'en' ? 'none yet' : 'noch keine'; // i18n-ignore – German half of the existing L(de, en) / lang texts
+  if (p === 0) return lang === 'en' ? 'same as last week' : 'wie in der Vorwoche'; // i18n-ignore – German half of the existing L(de, en) / lang texts
+  return lang === 'en' ? `${p > 0 ? '+' : '−'}${Math.abs(p)} % vs. last week` : `${p > 0 ? '+' : '−'}${Math.abs(p)} % zur Vorwoche`; // i18n-ignore – German half of the existing L(de, en) / lang texts
 };
 
 // --- the items --------------------------------------------------------------------------------------------------------------
@@ -269,8 +269,8 @@ function staleDeals({ d, L, lang, wr }: Env): GrowthItem | null {
     key: 'opp:stale_deals',
     kind: 'opportunity',
     area: 'pipeline',
-    title: L(`${list.length} ${plural(list.length, 'Deal liegt', 'Deals liegen')} seit 14+ Tagen still · ${euro(total, lang)}`, `${list.length} ${plural(list.length, 'deal has', 'deals have')} been idle for 14+ days · ${euro(total, lang)}`),
-    detail: L(`Größter: „${name}“ (${euro(Number(top.value), lang)}, seit ${idle(top)} Tagen unberührt)`, `Biggest: “${name}” (${euro(Number(top.value), lang)}, untouched for ${idle(top)} days)`),
+    title: L(`${list.length} ${plural(list.length, 'Deal liegt', 'Deals liegen')} seit 14+ Tagen still · ${euro(total, lang)}`, `${list.length} ${plural(list.length, 'deal has', 'deals have')} been idle for 14+ days · ${euro(total, lang)}`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L(`Größter: „${name}“ (${euro(Number(top.value), lang)}, seit ${idle(top)} Tagen unberührt)`, `Biggest: “${name}” (${euro(Number(top.value), lang)}, untouched for ${idle(top)} days)`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: Math.round(total * wr),
     estimate: true,
     count: list.length,
@@ -278,10 +278,10 @@ function staleDeals({ d, L, lang, wr }: Env): GrowthItem | null {
     sig: `${list.length}:${top.id}:${bucket(total)}`,
     action: {
       label: L(`„${clip(top.name, 30)}“ nachfassen`, `Follow up “${clip(top.name, 30)}”`),
-      prompt: L(`Hilf mir, den ausgewählten Deal (${euro(Number(top.value), lang)}, seit ${idle(top)} Tagen unberührt) nachzufassen: Fasse den Stand zusammen und entwirf eine kurze Nachricht an den Kontakt – noch nicht senden.`, `Help me follow up the selected deal (${euro(Number(top.value), lang)}, untouched for ${idle(top)} days): summarise where it stands and draft a short message to the contact – do not send it yet.`),
+      prompt: L(`Hilf mir, den ausgewählten Deal (${euro(Number(top.value), lang)}, seit ${idle(top)} Tagen unberührt) nachzufassen: Fasse den Stand zusammen und entwirf eine kurze Nachricht an den Kontakt – noch nicht senden.`, `Help me follow up the selected deal (${euro(Number(top.value), lang)}, untouched for ${idle(top)} days): summarise where it stands and draft a short message to the contact – do not send it yet.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: top.contact_id ? 'email' : 'none',
       draft: top.contact_id
-        ? L(`Hallo ${first(who)},\n\nich wollte kurz nachhaken, wie es bei Ihnen mit „${name}“ aussieht. Wenn noch Fragen offen sind, klären wir sie gern in einem kurzen Gespräch – passt Ihnen ein Termin diese oder nächste Woche?\n\nViele Grüße`, `Hi ${first(who)},\n\nI wanted to check in on “${name}”. If anything is still open, happy to clear it up in a short call – would this or next week work for you?\n\nBest regards`)
+        ? L(`Hallo ${first(who)},\n\nich wollte kurz nachhaken, wie es bei Ihnen mit „${name}“ aussieht. Wenn noch Fragen offen sind, klären wir sie gern in einem kurzen Gespräch – passt Ihnen ein Termin diese oder nächste Woche?\n\nViele Grüße`, `Hi ${first(who)},\n\nI wanted to check in on “${name}”. If anything is still open, happy to clear it up in a short call – would this or next week work for you?\n\nBest regards`) // i18n-ignore – German half of the existing L(de, en) / lang texts
         : '',
       entity: top.contact_id ? { type: 'contact', id: String(top.contact_id), label: who || name } : { type: 'opportunity', id: top.id, label: name },
     },
@@ -298,8 +298,8 @@ function pastClose({ d, L, lang, today }: Env): GrowthItem | null {
     key: 'risk:past_close',
     kind: 'risk',
     area: 'pipeline',
-    title: L(`${list.length} ${plural(list.length, 'Deal hat', 'Deals haben')} das Abschlussdatum überschritten · ${euro(total, lang)}`, `${list.length} ${plural(list.length, 'deal is', 'deals are')} past the close date · ${euro(total, lang)}`),
-    detail: L(`Größter: „${name}“ (${euro(Number(top.value), lang)}, geplant bis ${String(top.expected_close_date).slice(0, 10)})`, `Biggest: “${name}” (${euro(Number(top.value), lang)}, planned for ${String(top.expected_close_date).slice(0, 10)})`),
+    title: L(`${list.length} ${plural(list.length, 'Deal hat', 'Deals haben')} das Abschlussdatum überschritten · ${euro(total, lang)}`, `${list.length} ${plural(list.length, 'deal is', 'deals are')} past the close date · ${euro(total, lang)}`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L(`Größter: „${name}“ (${euro(Number(top.value), lang)}, geplant bis ${String(top.expected_close_date).slice(0, 10)})`, `Biggest: “${name}” (${euro(Number(top.value), lang)}, planned for ${String(top.expected_close_date).slice(0, 10)})`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: Math.round(total),
     estimate: false,
     count: list.length,
@@ -307,7 +307,7 @@ function pastClose({ d, L, lang, today }: Env): GrowthItem | null {
     sig: `${list.length}:${top.id}:${bucket(total)}`,
     action: {
       label: L(`„${clip(top.name, 30)}“ retten`, `Rescue “${clip(top.name, 30)}”`),
-      prompt: L(`Der ausgewählte Deal (${euro(Number(top.value), lang)}) hat sein Abschlussdatum überschritten. Fasse den Stand zusammen, schlag ein realistisches neues Datum vor und entwirf eine Nachricht an den Kontakt – Änderungen nur über die Bestätigungskarte.`, `The selected deal (${euro(Number(top.value), lang)}) is past its close date. Summarise where it stands, suggest a realistic new date and draft a message to the contact – changes only through the confirmation card.`),
+      prompt: L(`Der ausgewählte Deal (${euro(Number(top.value), lang)}) hat sein Abschlussdatum überschritten. Fasse den Stand zusammen, schlag ein realistisches neues Datum vor und entwirf eine Nachricht an den Kontakt – Änderungen nur über die Bestätigungskarte.`, `The selected deal (${euro(Number(top.value), lang)}) is past its close date. Summarise where it stands, suggest a realistic new date and draft a message to the contact – changes only through the confirmation card.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: 'none',
       draft: '',
       entity: { type: 'opportunity', id: top.id, label: name },
@@ -325,8 +325,8 @@ function openQuotes({ d, L, lang, wr }: Env): GrowthItem | null {
     key: 'opp:open_quotes',
     kind: 'opportunity',
     area: 'pipeline',
-    title: L(`${list.length} ${plural(list.length, 'Angebot wartet', 'Angebote warten')} auf Antwort · ${euro(total, lang)}`, `${list.length} ${plural(list.length, 'quote awaits', 'quotes await')} an answer · ${euro(total, lang)}`),
-    detail: L(`Größtes: ${clip(top.number, 30) || 'ohne Nummer'}${who ? ` an ${who}` : ''} (${euro(Number(top.total_cents) / 100, lang)}, seit ${ageDays(top.sent_at, d.now)} Tagen offen)`, `Biggest: ${clip(top.number, 30) || 'no number'}${who ? ` to ${who}` : ''} (${euro(Number(top.total_cents) / 100, lang)}, open for ${ageDays(top.sent_at, d.now)} days)`),
+    title: L(`${list.length} ${plural(list.length, 'Angebot wartet', 'Angebote warten')} auf Antwort · ${euro(total, lang)}`, `${list.length} ${plural(list.length, 'quote awaits', 'quotes await')} an answer · ${euro(total, lang)}`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L(`Größtes: ${clip(top.number, 30) || 'ohne Nummer'}${who ? ` an ${who}` : ''} (${euro(Number(top.total_cents) / 100, lang)}, seit ${ageDays(top.sent_at, d.now)} Tagen offen)`, `Biggest: ${clip(top.number, 30) || 'no number'}${who ? ` to ${who}` : ''} (${euro(Number(top.total_cents) / 100, lang)}, open for ${ageDays(top.sent_at, d.now)} days)`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: Math.round(total * Math.max(wr, 0.4)),
     estimate: true,
     count: list.length,
@@ -334,9 +334,9 @@ function openQuotes({ d, L, lang, wr }: Env): GrowthItem | null {
     sig: `${list.length}:${top.id}:${bucket(total)}`,
     action: {
       label: L(`Angebote nachfassen (${list.length})`, `Follow up quotes (${list.length})`),
-      prompt: L(`Es warten ${list.length} gesendete Angebote seit mindestens 5 Tagen auf Antwort (zusammen ${euro(total, lang)}). Liste sie auf und entwirf je eine kurze, freundliche Nachfass-Nachricht – noch nichts senden.`, `${list.length} sent quotes have been waiting at least 5 days for an answer (${euro(total, lang)} in total). List them and draft a short, friendly follow-up for each – do not send anything yet.`),
+      prompt: L(`Es warten ${list.length} gesendete Angebote seit mindestens 5 Tagen auf Antwort (zusammen ${euro(total, lang)}). Liste sie auf und entwirf je eine kurze, freundliche Nachfass-Nachricht – noch nichts senden.`, `${list.length} sent quotes have been waiting at least 5 days for an answer (${euro(total, lang)} in total). List them and draft a short, friendly follow-up for each – do not send anything yet.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: top.contact_id ? 'email' : 'none',
-      draft: top.contact_id ? L(`Hallo ${first(who)},\n\nhaben Sie unser Angebot ${clip(top.number, 30)} schon ansehen können? Gern beantworte ich offene Fragen oder passe es an – ein kurzer Anruf genügt.\n\nViele Grüße`, `Hi ${first(who)},\n\nhave you had a chance to look at our quote ${clip(top.number, 30)}? Happy to answer questions or adjust it – a short call is enough.\n\nBest regards`) : '',
+      draft: top.contact_id ? L(`Hallo ${first(who)},\n\nhaben Sie unser Angebot ${clip(top.number, 30)} schon ansehen können? Gern beantworte ich offene Fragen oder passe es an – ein kurzer Anruf genügt.\n\nViele Grüße`, `Hi ${first(who)},\n\nhave you had a chance to look at our quote ${clip(top.number, 30)}? Happy to answer questions or adjust it – a short call is enough.\n\nBest regards`) : '', // i18n-ignore – German half of the existing L(de, en) / lang texts
       entity: top.contact_id ? { type: 'contact', id: String(top.contact_id), label: who } : null,
     },
   };
@@ -370,18 +370,18 @@ function dormant({ d, L, lang }: Env): GrowthItem | null {
     key: 'growth:reactivation',
     kind: 'growth',
     area: 'customers',
-    title: L(`Reaktivierung: ${list.length} ${plural(list.length, 'Kunde hat', 'Kunden haben')} seit 90+ Tagen nichts gekauft`, `Reactivation: ${list.length} ${plural(list.length, 'customer has', 'customers have')} not bought for 90+ days`),
-    detail: L(`Ø ${euro(ticket, lang)} je Kauf – holt eine Kampagne ${Math.round(REACTIVATION_RATE * 100)} % zurück, sind das rund ${euro(impact, lang)}. Größter: ${top.name || 'ohne Namen'} (${euro(top.paid, lang)} gesamt)`, `Avg. ${euro(ticket, lang)} per purchase – if a campaign wins back ${Math.round(REACTIVATION_RATE * 100)} %, that is about ${euro(impact, lang)}. Biggest: ${top.name || 'unnamed'} (${euro(top.paid, lang)} in total)`),
+    title: L(`Reaktivierung: ${list.length} ${plural(list.length, 'Kunde hat', 'Kunden haben')} seit 90+ Tagen nichts gekauft`, `Reactivation: ${list.length} ${plural(list.length, 'customer has', 'customers have')} not bought for 90+ days`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L(`Ø ${euro(ticket, lang)} je Kauf – holt eine Kampagne ${Math.round(REACTIVATION_RATE * 100)} % zurück, sind das rund ${euro(impact, lang)}. Größter: ${top.name || 'ohne Namen'} (${euro(top.paid, lang)} gesamt)`, `Avg. ${euro(ticket, lang)} per purchase – if a campaign wins back ${Math.round(REACTIVATION_RATE * 100)} %, that is about ${euro(impact, lang)}. Biggest: ${top.name || 'unnamed'} (${euro(top.paid, lang)} in total)`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: impact,
     estimate: true,
     count: list.length,
     url: 'contacts',
     sig: `${list.length}:${bucket(ticket)}`,
     action: {
-      label: L(`Reaktivierungs-Kampagne für ${list.length} Kunden entwerfen`, `Draft a reactivation campaign for ${list.length} customers`),
-      prompt: L(`Entwirf eine E-Mail-Kampagne zur Reaktivierung für die ${list.length} Kunden, die seit über 90 Tagen nichts gekauft haben (bezahlte Rechnungen, keine Aktivität seit 45 Tagen): Segment, Betreff, Text mit einem konkreten Anlass. Lege sie nur als Entwurf an – nichts senden.`, `Draft a reactivation e-mail campaign for the ${list.length} customers who have not bought for over 90 days (paid invoices, no activity for 45 days): segment, subject, text with a concrete reason. Create it as a draft only – send nothing.`),
+      label: L(`Reaktivierungs-Kampagne für ${list.length} Kunden entwerfen`, `Draft a reactivation campaign for ${list.length} customers`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+      prompt: L(`Entwirf eine E-Mail-Kampagne zur Reaktivierung für die ${list.length} Kunden, die seit über 90 Tagen nichts gekauft haben (bezahlte Rechnungen, keine Aktivität seit 45 Tagen): Segment, Betreff, Text mit einem konkreten Anlass. Lege sie nur als Entwurf an – nichts senden.`, `Draft a reactivation e-mail campaign for the ${list.length} customers who have not bought for over 90 days (paid invoices, no activity for 45 days): segment, subject, text with a concrete reason. Create it as a draft only – send nothing.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: 'campaign',
-      draft: L(`Betreff: Wir haben an Sie gedacht\n\nHallo {{contact.first_name}},\n\nes ist eine Weile her – deshalb ein kurzer Gruß und ein Dankeschön für Ihr Vertrauen. Für unsere Bestandskunden haben wir gerade etwas Neues${d.profile.tagline ? ` (${clip(d.profile.tagline, 80)})` : ''}. Antworten Sie einfach auf diese E-Mail, dann melden wir uns persönlich.\n\nViele Grüße`, `Subject: We thought of you\n\nHi {{contact.first_name}},\n\nit has been a while – so a short hello and thank you for your trust. We have something new for existing customers${d.profile.tagline ? ` (${clip(d.profile.tagline, 80)})` : ''}. Just reply to this e-mail and we will get back to you personally.\n\nBest regards`),
+      draft: L(`Betreff: Wir haben an Sie gedacht\n\nHallo {{contact.first_name}},\n\nes ist eine Weile her – deshalb ein kurzer Gruß und ein Dankeschön für Ihr Vertrauen. Für unsere Bestandskunden haben wir gerade etwas Neues${d.profile.tagline ? ` (${clip(d.profile.tagline, 80)})` : ''}. Antworten Sie einfach auf diese E-Mail, dann melden wir uns persönlich.\n\nViele Grüße`, `Subject: We thought of you\n\nHi {{contact.first_name}},\n\nit has been a while – so a short hello and thank you for your trust. We have something new for existing customers${d.profile.tagline ? ` (${clip(d.profile.tagline, 80)})` : ''}. Just reply to this e-mail and we will get back to you personally.\n\nBest regards`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       entity: null,
     },
   };
@@ -401,18 +401,18 @@ function upsell({ d, L, lang }: Env): GrowthItem | null {
     key: 'opp:upsell',
     kind: 'opportunity',
     area: 'customers',
-    title: L(`Upsell: ${top.length} ${plural(top.length, 'Top-Kunde', 'Top-Kunden')} mit hohem Umsatz`, `Upsell: ${top.length} top ${plural(top.length, 'customer', 'customers')} with high revenue`),
-    detail: L(`${best.name || 'Bester Kunde'}: ${euro(best.paid365, lang)} in 12 Monaten – ein Folgeangebot bringt geschätzt ${euro(impact, lang)}`, `${best.name || 'Best customer'}: ${euro(best.paid365, lang)} in 12 months – a follow-up offer is worth about ${euro(impact, lang)}`),
+    title: L(`Upsell: ${top.length} ${plural(top.length, 'Top-Kunde', 'Top-Kunden')} mit hohem Umsatz`, `Upsell: ${top.length} top ${plural(top.length, 'customer', 'customers')} with high revenue`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L(`${best.name || 'Bester Kunde'}: ${euro(best.paid365, lang)} in 12 Monaten – ein Folgeangebot bringt geschätzt ${euro(impact, lang)}`, `${best.name || 'Best customer'}: ${euro(best.paid365, lang)} in 12 months – a follow-up offer is worth about ${euro(impact, lang)}`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: impact,
     estimate: true,
     count: top.length,
     url: `contacts/${best.id}`,
     sig: `${top.length}:${best.id}:${bucket(best.paid365)}`,
     action: {
-      label: L(`Folgeangebot für ${clip(best.name, 28) || 'Top-Kunden'} vorbereiten`, `Prepare a follow-up offer for ${clip(best.name, 28) || 'top customer'}`),
-      prompt: L(`Der ausgewählte Kontakt ist einer unserer umsatzstärksten Kunden (${euro(best.paid365, lang)} in 12 Monaten). Schau dir seine Käufe an, schlag ein passendes Upsell- oder Cross-Sell-Angebot vor und entwirf eine persönliche E-Mail – noch nicht senden.`, `The selected contact is one of our top customers (${euro(best.paid365, lang)} in 12 months). Look at their purchases, suggest a fitting upsell or cross-sell offer and draft a personal e-mail – do not send it yet.`),
+      label: L(`Folgeangebot für ${clip(best.name, 28) || 'Top-Kunden'} vorbereiten`, `Prepare a follow-up offer for ${clip(best.name, 28) || 'top customer'}`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+      prompt: L(`Der ausgewählte Kontakt ist einer unserer umsatzstärksten Kunden (${euro(best.paid365, lang)} in 12 Monaten). Schau dir seine Käufe an, schlag ein passendes Upsell- oder Cross-Sell-Angebot vor und entwirf eine persönliche E-Mail – noch nicht senden.`, `The selected contact is one of our top customers (${euro(best.paid365, lang)} in 12 months). Look at their purchases, suggest a fitting upsell or cross-sell offer and draft a personal e-mail – do not send it yet.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: 'email',
-      draft: L(`Hallo ${first(best.name)},\n\ndanke für die gute Zusammenarbeit in den letzten Monaten! Weil Sie schon einiges mit uns umgesetzt haben, hätte ich eine Idee für den nächsten Schritt – darf ich sie Ihnen in 15 Minuten vorstellen?\n\nViele Grüße`, `Hi ${first(best.name)},\n\nthank you for the great work together over the last months! Since you have already done quite a bit with us, I have an idea for the next step – may I show it to you in 15 minutes?\n\nBest regards`),
+      draft: L(`Hallo ${first(best.name)},\n\ndanke für die gute Zusammenarbeit in den letzten Monaten! Weil Sie schon einiges mit uns umgesetzt haben, hätte ich eine Idee für den nächsten Schritt – darf ich sie Ihnen in 15 Minuten vorstellen?\n\nViele Grüße`, `Hi ${first(best.name)},\n\nthank you for the great work together over the last months! Since you have already done quite a bit with us, I have an idea for the next step – may I show it to you in 15 minutes?\n\nBest regards`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       entity: { type: 'contact', id: best.id, label: best.name },
     },
   };
@@ -429,8 +429,8 @@ function reviewAsks({ d, L }: Env): GrowthItem | null {
     key: 'growth:reviews',
     kind: 'growth',
     area: 'marketing',
-    title: L(`${happy.length} zufriedene ${plural(happy.length, 'Kunde', 'Kunden')} um eine Bewertung bitten`, `Ask ${happy.length} happy ${plural(happy.length, 'customer', 'customers')} for a review`),
-    detail: L(`Kauf in den letzten 60 Tagen, noch keine Anfrage${avg !== null ? ` · bisher Ø ${avg.toFixed(1)} Sterne aus ${rated.length} Bewertungen` : ''}`, `Bought in the last 60 days, never asked${avg !== null ? ` · so far avg. ${avg.toFixed(1)} stars from ${rated.length} reviews` : ''}`),
+    title: L(`${happy.length} zufriedene ${plural(happy.length, 'Kunde', 'Kunden')} um eine Bewertung bitten`, `Ask ${happy.length} happy ${plural(happy.length, 'customer', 'customers')} for a review`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L(`Kauf in den letzten 60 Tagen, noch keine Anfrage${avg !== null ? ` · bisher Ø ${avg.toFixed(1)} Sterne aus ${rated.length} Bewertungen` : ''}`, `Bought in the last 60 days, never asked${avg !== null ? ` · so far avg. ${avg.toFixed(1)} stars from ${rated.length} reviews` : ''}`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: 0,
     estimate: true,
     count: happy.length,
@@ -438,7 +438,7 @@ function reviewAsks({ d, L }: Env): GrowthItem | null {
     sig: `${happy.length}`,
     action: {
       label: L(`Bewertungsanfragen an ${happy.length} Kunden vorbereiten`, `Prepare review requests for ${happy.length} customers`),
-      prompt: L(`Bereite Bewertungsanfragen für die ${happy.length} Kunden vor, die in den letzten 60 Tagen gekauft und noch keine Anfrage bekommen haben – über die Bestätigungskarte, nichts ohne meinen Klick senden.`, `Prepare review requests for the ${happy.length} customers who bought in the last 60 days and were never asked – through the confirmation card, send nothing without my click.`),
+      prompt: L(`Bereite Bewertungsanfragen für die ${happy.length} Kunden vor, die in den letzten 60 Tagen gekauft und noch keine Anfrage bekommen haben – über die Bestätigungskarte, nichts ohne meinen Klick senden.`, `Prepare review requests for the ${happy.length} customers who bought in the last 60 days and were never asked – through the confirmation card, send nothing without my click.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: 'none',
       draft: '',
       entity: null,
@@ -458,18 +458,18 @@ function bestSource({ d, L, lang, avg }: Env): GrowthItem | null {
     key: 'growth:best_source',
     kind: 'growth',
     area: 'leads',
-    title: L(`Mehr Leads aus „${clip(best.source, 30)}“ – ${pct} % werden Kunden`, `More leads from “${clip(best.source, 30)}” – ${pct} % become customers`),
-    detail: L(`${best.won} von ${best.leads} Leads in 90 Tagen gewonnen – fünf Leads mehr bringen geschätzt ${euro(impact, lang)}`, `${best.won} of ${best.leads} leads won in 90 days – five more leads are worth about ${euro(impact, lang)}`),
+    title: L(`Mehr Leads aus „${clip(best.source, 30)}“ – ${pct} % werden Kunden`, `More leads from “${clip(best.source, 30)}” – ${pct} % become customers`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L(`${best.won} von ${best.leads} Leads in 90 Tagen gewonnen – fünf Leads mehr bringen geschätzt ${euro(impact, lang)}`, `${best.won} of ${best.leads} leads won in 90 days – five more leads are worth about ${euro(impact, lang)}`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: impact,
     estimate: true,
     count: best.leads,
     url: 'reports',
     sig: `${best.source}:${pct}`,
     action: {
-      label: L('Kampagne für den besten Kanal entwerfen', 'Draft a campaign for the best channel'),
-      prompt: L(`Unser bester Lead-Kanal wandelt ${pct} % der Leads in Kunden um (${best.won} von ${best.leads} in 90 Tagen). Schlag drei konkrete Maßnahmen vor, um aus diesem Kanal mehr Leads zu holen, und entwirf einen passenden Social-Media-Beitrag als Entwurf – nichts veröffentlichen.`, `Our best lead channel converts ${pct} % of leads into customers (${best.won} of ${best.leads} in 90 days). Suggest three concrete steps to get more leads from it and draft a matching social media post as a draft – publish nothing.`),
+      label: L('Kampagne für den besten Kanal entwerfen', 'Draft a campaign for the best channel'), // i18n-ignore – German half of the existing L(de, en) / lang texts
+      prompt: L(`Unser bester Lead-Kanal wandelt ${pct} % der Leads in Kunden um (${best.won} von ${best.leads} in 90 Tagen). Schlag drei konkrete Maßnahmen vor, um aus diesem Kanal mehr Leads zu holen, und entwirf einen passenden Social-Media-Beitrag als Entwurf – nichts veröffentlichen.`, `Our best lead channel converts ${pct} % of leads into customers (${best.won} of ${best.leads} in 90 days). Suggest three concrete steps to get more leads from it and draft a matching social media post as a draft – publish nothing.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: 'social_post',
-      draft: L(`${d.profile.tagline ? `${clip(d.profile.tagline, 120)}\n\n` : ''}Viele unserer Kundinnen und Kunden haben uns über ${clip(best.source, 30)} gefunden – danke dafür! Neugierig? Schreib uns eine Nachricht, wir melden uns noch heute.`, `${d.profile.tagline ? `${clip(d.profile.tagline, 120)}\n\n` : ''}Many of our customers found us through ${clip(best.source, 30)} – thank you! Curious? Send us a message, we will get back to you today.`),
+      draft: L(`${d.profile.tagline ? `${clip(d.profile.tagline, 120)}\n\n` : ''}Viele unserer Kundinnen und Kunden haben uns über ${clip(best.source, 30)} gefunden – danke dafür! Neugierig? Schreib uns eine Nachricht, wir melden uns noch heute.`, `${d.profile.tagline ? `${clip(d.profile.tagline, 120)}\n\n` : ''}Many of our customers found us through ${clip(best.source, 30)} – thank you! Curious? Send us a message, we will get back to you today.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       entity: null,
     },
   };
@@ -483,17 +483,17 @@ function leadFlow({ d, L }: Env): GrowthItem | null {
     key: 'growth:lead_flow',
     kind: 'growth',
     area: 'leads',
-    title: L('Lead-Fluss aufbauen – seit 28 Tagen kein neuer Kontakt', 'Build a lead flow – no new contact in 28 days'),
-    detail: L(`Ohne neue Leads wächst die Pipeline nicht${offer ? ` · Angebot: ${offer}` : ''}`, `Without new leads the pipeline cannot grow${offer ? ` · offer: ${offer}` : ''}`),
+    title: L('Lead-Fluss aufbauen – seit 28 Tagen kein neuer Kontakt', 'Build a lead flow – no new contact in 28 days'), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L(`Ohne neue Leads wächst die Pipeline nicht${offer ? ` · Angebot: ${offer}` : ''}`, `Without new leads the pipeline cannot grow${offer ? ` · offer: ${offer}` : ''}`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: 0,
     estimate: true,
     count: 0,
     url: 'forms',
     sig: '0',
     action: {
-      label: L('Lead-Magnet, Formular und Willkommens-Mail entwerfen', 'Draft a lead magnet, a form and a welcome mail'),
+      label: L('Lead-Magnet, Formular und Willkommens-Mail entwerfen', 'Draft a lead magnet, a form and a welcome mail'), // i18n-ignore – German half of the existing L(de, en) / lang texts
       prompt: L(
-        'Seit 28 Tagen ist kein neuer Kontakt dazugekommen. Schlag aus unserem Steckbrief (Angebot, Zielgruppe, Ziele) einen passenden Lead-Magneten vor, entwirf ein Formular mit den nötigsten Feldern, einen kurzen Landingpage-Abschnitt und eine Willkommens-E-Mail – alles nur als Entwurf, nichts veröffentlichen oder senden.',
+        'Seit 28 Tagen ist kein neuer Kontakt dazugekommen. Schlag aus unserem Steckbrief (Angebot, Zielgruppe, Ziele) einen passenden Lead-Magneten vor, entwirf ein Formular mit den nötigsten Feldern, einen kurzen Landingpage-Abschnitt und eine Willkommens-E-Mail – alles nur als Entwurf, nichts veröffentlichen oder senden.', // i18n-ignore – German half of the existing L(de, en) / lang texts
         'No new contact has come in for 28 days. From our profile (offer, audience, goals) suggest a fitting lead magnet, draft a form with the fewest fields, a short landing page section and a welcome e-mail – drafts only, publish or send nothing.',
       ),
       draft_type: 'none',
@@ -512,18 +512,18 @@ function unansweredLeads({ d, L, lang, wr, avg }: Env): GrowthItem | null {
     key: 'opp:unanswered_leads',
     kind: 'opportunity',
     area: 'leads',
-    title: L(`${n} ${plural(n, 'neuer Lead wartet', 'neue Leads warten')} auf eine erste Antwort`, `${n} new ${plural(n, 'lead waits', 'leads wait')} for a first answer`),
-    detail: L(`Bei Ø ${euro(avg, lang)} je Deal und ${Math.round(wr * 100)} % Abschlussquote rund ${euro(impact, lang)} Potenzial${top ? ` · zuerst: ${clip(top.name, 40)}` : ''}`, `At avg. ${euro(avg, lang)} per deal and a ${Math.round(wr * 100)} % win rate about ${euro(impact, lang)}${top ? ` · first: ${clip(top.name, 40)}` : ''}`),
+    title: L(`${n} ${plural(n, 'neuer Lead wartet', 'neue Leads warten')} auf eine erste Antwort`, `${n} new ${plural(n, 'lead waits', 'leads wait')} for a first answer`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L(`Bei Ø ${euro(avg, lang)} je Deal und ${Math.round(wr * 100)} % Abschlussquote rund ${euro(impact, lang)} Potenzial${top ? ` · zuerst: ${clip(top.name, 40)}` : ''}`, `At avg. ${euro(avg, lang)} per deal and a ${Math.round(wr * 100)} % win rate about ${euro(impact, lang)}${top ? ` · first: ${clip(top.name, 40)}` : ''}`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: impact,
     estimate: true,
     count: n,
     url: 'contacts',
     sig: `${n}:${top?.id ?? ''}`,
     action: {
-      label: top ? L(`${clip(top.name, 28)} begrüßen`, `Welcome ${clip(top.name, 28)}`) : L('Neue Leads begrüßen', 'Welcome new leads'),
-      prompt: L('Entwirf eine kurze, persönliche Begrüßung an den ausgewählten neuen Kontakt mit einer Frage nach seinem Anliegen – noch nicht senden.', 'Draft a short, personal welcome to the selected new contact with a question about what they need – do not send it yet.'),
+      label: top ? L(`${clip(top.name, 28)} begrüßen`, `Welcome ${clip(top.name, 28)}`) : L('Neue Leads begrüßen', 'Welcome new leads'), // i18n-ignore – German half of the existing L(de, en) / lang texts
+      prompt: L('Entwirf eine kurze, persönliche Begrüßung an den ausgewählten neuen Kontakt mit einer Frage nach seinem Anliegen – noch nicht senden.', 'Draft a short, personal welcome to the selected new contact with a question about what they need – do not send it yet.'), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: top ? 'email' : 'none',
-      draft: top ? L(`Hallo ${first(top.name)},\n\nschön, dass Sie sich bei uns gemeldet haben! Wobei dürfen wir Ihnen helfen? Wenn es passt, rufe ich Sie gern kurz an.\n\nViele Grüße`, `Hi ${first(top.name)},\n\ngreat to hear from you! How can we help? If it suits you, I am happy to give you a quick call.\n\nBest regards`) : '',
+      draft: top ? L(`Hallo ${first(top.name)},\n\nschön, dass Sie sich bei uns gemeldet haben! Wobei dürfen wir Ihnen helfen? Wenn es passt, rufe ich Sie gern kurz an.\n\nViele Grüße`, `Hi ${first(top.name)},\n\ngreat to hear from you! How can we help? If it suits you, I am happy to give you a quick call.\n\nBest regards`) : '', // i18n-ignore – German half of the existing L(de, en) / lang texts
       entity: top ? { type: 'contact', id: top.id, label: clip(top.name, 60) } : null,
     },
   };
@@ -539,16 +539,16 @@ function overdueInvoices({ d, L, lang }: Env): GrowthItem | null {
     key: 'risk:overdue_invoices',
     kind: 'risk',
     area: 'cash',
-    title: L(`${late.length} überfällige ${plural(late.length, 'Rechnung', 'Rechnungen')} · ${euro(total, lang)} offen`, `${late.length} overdue ${plural(late.length, 'invoice', 'invoices')} · ${euro(total, lang)} open`),
-    detail: L(`Größte: ${clip(top.number, 30) || 'ohne Nummer'}${who ? ` von ${who}` : ''} (${euro(Number(top.open_cents) / 100, lang)}, ${top.days_overdue} Tage drüber)`, `Biggest: ${clip(top.number, 30) || 'no number'}${who ? ` from ${who}` : ''} (${euro(Number(top.open_cents) / 100, lang)}, ${top.days_overdue} days late)`),
+    title: L(`${late.length} überfällige ${plural(late.length, 'Rechnung', 'Rechnungen')} · ${euro(total, lang)} offen`, `${late.length} overdue ${plural(late.length, 'invoice', 'invoices')} · ${euro(total, lang)} open`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L(`Größte: ${clip(top.number, 30) || 'ohne Nummer'}${who ? ` von ${who}` : ''} (${euro(Number(top.open_cents) / 100, lang)}, ${top.days_overdue} Tage drüber)`, `Biggest: ${clip(top.number, 30) || 'no number'}${who ? ` from ${who}` : ''} (${euro(Number(top.open_cents) / 100, lang)}, ${top.days_overdue} days late)`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: Math.round(total),
     estimate: false,
     count: late.length,
     url: 'invoices',
     sig: `${late.length}:${top.id}:${bucket(total)}`,
     action: {
-      label: L(`Zahlungserinnerung an ${clip(who, 28) || 'den Kunden'}`, `Payment reminder to ${clip(who, 28) || 'the customer'}`),
-      prompt: L(`Schick dem Kunden der ausgewählten Rechnung (${euro(Number(top.open_cents) / 100, lang)}, ${top.days_overdue} Tage überfällig) eine freundliche Zahlungserinnerung – über die Bestätigungskarte.`, `Send the customer of the selected invoice (${euro(Number(top.open_cents) / 100, lang)}, ${top.days_overdue} days overdue) a friendly payment reminder – through the confirmation card.`),
+      label: L(`Zahlungserinnerung an ${clip(who, 28) || 'den Kunden'}`, `Payment reminder to ${clip(who, 28) || 'the customer'}`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+      prompt: L(`Schick dem Kunden der ausgewählten Rechnung (${euro(Number(top.open_cents) / 100, lang)}, ${top.days_overdue} Tage überfällig) eine freundliche Zahlungserinnerung – über die Bestätigungskarte.`, `Send the customer of the selected invoice (${euro(Number(top.open_cents) / 100, lang)}, ${top.days_overdue} days overdue) a friendly payment reminder – through the confirmation card.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: 'none',
       draft: '',
       entity: { type: 'invoice', id: top.id, label: clip(top.number, 40) || who },
@@ -564,16 +564,16 @@ function leadDrop({ d, L, lang, wr, avg }: Env, cur: Kpis, prev: Kpis): GrowthIt
     key: 'risk:lead_drop',
     kind: 'risk',
     area: 'leads',
-    title: L(`Lead-Fluss bricht ein: ${cur.leads} statt ${prev.leads} neue Leads`, `Lead flow drops: ${cur.leads} instead of ${prev.leads} new leads`),
-    detail: L(`${missing} Leads weniger als in der Vorwoche – rund ${euro(impact, lang)} weniger Pipeline-Wert`, `${missing} fewer leads than last week – about ${euro(impact, lang)} less pipeline value`),
+    title: L(`Lead-Fluss bricht ein: ${cur.leads} statt ${prev.leads} neue Leads`, `Lead flow drops: ${cur.leads} instead of ${prev.leads} new leads`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L(`${missing} Leads weniger als in der Vorwoche – rund ${euro(impact, lang)} weniger Pipeline-Wert`, `${missing} fewer leads than last week – about ${euro(impact, lang)} less pipeline value`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: impact,
     estimate: true,
     count: missing,
     url: 'reports',
     sig: `${cur.leads}:${prev.leads}`,
     action: {
-      label: L('Ursache und Gegenmaßnahmen finden', 'Find cause and countermeasures'),
-      prompt: L(`Neue Leads diese Woche: ${cur.leads}, in der Vorwoche: ${prev.leads}. Prüfe Quellen, Formulare und Kampagnen, nenne die wahrscheinliche Ursache und schlag zwei Gegenmaßnahmen vor – mit einem Kampagnen-Entwurf, nichts senden.`, `New leads this week: ${cur.leads}, last week: ${prev.leads}. Check sources, forms and campaigns, name the likely cause and suggest two countermeasures – with a campaign draft, send nothing.`),
+      label: L('Ursache und Gegenmaßnahmen finden', 'Find cause and countermeasures'), // i18n-ignore – German half of the existing L(de, en) / lang texts
+      prompt: L(`Neue Leads diese Woche: ${cur.leads}, in der Vorwoche: ${prev.leads}. Prüfe Quellen, Formulare und Kampagnen, nenne die wahrscheinliche Ursache und schlag zwei Gegenmaßnahmen vor – mit einem Kampagnen-Entwurf, nichts senden.`, `New leads this week: ${cur.leads}, last week: ${prev.leads}. Check sources, forms and campaigns, name the likely cause and suggest two countermeasures – with a campaign draft, send nothing.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: 'none',
       draft: '',
       entity: null,
@@ -588,7 +588,7 @@ function revenueDrop({ L, lang }: Env, cur: Kpis, prev: Kpis): GrowthItem | null
     key: 'risk:revenue_drop',
     kind: 'risk',
     area: 'cash',
-    title: L(`Umsatz ${euro(cur.revenue, lang)} statt ${euro(prev.revenue, lang)} in der Vorwoche`, `Revenue ${euro(cur.revenue, lang)} instead of ${euro(prev.revenue, lang)} last week`),
+    title: L(`Umsatz ${euro(cur.revenue, lang)} statt ${euro(prev.revenue, lang)} in der Vorwoche`, `Revenue ${euro(cur.revenue, lang)} instead of ${euro(prev.revenue, lang)} last week`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     detail: L(`${euro(gap, lang)} weniger Zahlungseingang in 7 Tagen`, `${euro(gap, lang)} less cash in over 7 days`),
     impact_eur: Math.round(gap),
     estimate: false,
@@ -596,8 +596,8 @@ function revenueDrop({ L, lang }: Env, cur: Kpis, prev: Kpis): GrowthItem | null
     url: 'invoices',
     sig: `${bucket(cur.revenue)}:${bucket(prev.revenue)}`,
     action: {
-      label: L('Umsatzlücke schließen', 'Close the revenue gap'),
-      prompt: L(`Der Zahlungseingang der letzten 7 Tage liegt ${euro(gap, lang)} unter der Vorwoche. Zeig mir offene Rechnungen, Angebote und Deals kurz vor Abschluss, mit denen wir die Lücke schließen können, sortiert nach Betrag.`, `Cash in over the last 7 days is ${euro(gap, lang)} below last week. Show me open invoices, quotes and deals close to closing that could close the gap, sorted by amount.`),
+      label: L('Umsatzlücke schließen', 'Close the revenue gap'), // i18n-ignore – German half of the existing L(de, en) / lang texts
+      prompt: L(`Der Zahlungseingang der letzten 7 Tage liegt ${euro(gap, lang)} unter der Vorwoche. Zeig mir offene Rechnungen, Angebote und Deals kurz vor Abschluss, mit denen wir die Lücke schließen können, sortiert nach Betrag.`, `Cash in over the last 7 days is ${euro(gap, lang)} below last week. Show me open invoices, quotes and deals close to closing that could close the gap, sorted by amount.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: 'none',
       draft: '',
       entity: null,
@@ -614,15 +614,15 @@ function badReviews({ d, L }: Env): GrowthItem | null {
     kind: 'risk',
     area: 'marketing',
     title: L(`${list.length} schwache ${plural(list.length, 'Bewertung', 'Bewertungen')} in 30 Tagen`, `${list.length} weak ${plural(list.length, 'review', 'reviews')} in 30 days`),
-    detail: L(`Zuletzt ${top.rating} Sterne${top.name ? ` von ${clip(top.name, 40)}` : ''} – eine schnelle, persönliche Antwort rettet oft den Kunden`, `Latest ${top.rating} stars${top.name ? ` from ${clip(top.name, 40)}` : ''} – a quick, personal answer often saves the customer`),
+    detail: L(`Zuletzt ${top.rating} Sterne${top.name ? ` von ${clip(top.name, 40)}` : ''} – eine schnelle, persönliche Antwort rettet oft den Kunden`, `Latest ${top.rating} stars${top.name ? ` from ${clip(top.name, 40)}` : ''} – a quick, personal answer often saves the customer`), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: 0,
     estimate: false,
     count: list.length,
     url: 'reputation',
     sig: `${list.length}:${top.id}`,
     action: {
-      label: L('Auf die schwache Bewertung reagieren', 'Respond to the weak review'),
-      prompt: L('Fasse die ausgewählte schwache Bewertung zusammen und entwirf eine persönliche, lösungsorientierte Antwort an den Kunden – noch nicht senden.', 'Summarise the selected weak review and draft a personal, solution-oriented answer to the customer – do not send it yet.'),
+      label: L('Auf die schwache Bewertung reagieren', 'Respond to the weak review'), // i18n-ignore – German half of the existing L(de, en) / lang texts
+      prompt: L('Fasse die ausgewählte schwache Bewertung zusammen und entwirf eine persönliche, lösungsorientierte Antwort an den Kunden – noch nicht senden.', 'Summarise the selected weak review and draft a personal, solution-oriented answer to the customer – do not send it yet.'), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: 'none',
       draft: '',
       entity: top.contact_id ? { type: 'contact', id: String(top.contact_id), label: clip(top.name, 60) } : null,
@@ -632,21 +632,21 @@ function badReviews({ d, L }: Env): GrowthItem | null {
 
 function bottleneck({ d, L }: Env): GrowthItem | null {
   if (d.tasksOverdue < 3 && d.waiting < 1) return null;
-  const parts = [d.tasksOverdue >= 3 ? L(`${d.tasksOverdue} überfällige Aufgaben`, `${d.tasksOverdue} overdue tasks`) : '', d.waiting ? L(`${d.waiting} ${plural(d.waiting, 'Nachricht wartet', 'Nachrichten warten')} seit über 24 Stunden`, `${d.waiting} ${plural(d.waiting, 'message has', 'messages have')} been waiting over 24 hours`) : ''].filter(Boolean);
+  const parts = [d.tasksOverdue >= 3 ? L(`${d.tasksOverdue} überfällige Aufgaben`, `${d.tasksOverdue} overdue tasks`) : '', d.waiting ? L(`${d.waiting} ${plural(d.waiting, 'Nachricht wartet', 'Nachrichten warten')} seit über 24 Stunden`, `${d.waiting} ${plural(d.waiting, 'message has', 'messages have')} been waiting over 24 hours`) : ''].filter(Boolean); // i18n-ignore – German half of the existing L(de, en) / lang texts
   return {
     key: 'risk:bottleneck',
     kind: 'risk',
     area: 'operations',
-    title: L(`Engpass im Tagesgeschäft: ${parts.join(', ')}`, `Operations bottleneck: ${parts.join(', ')}`),
-    detail: L('Langsame Antworten kosten Abschlüsse – zuerst das Älteste abarbeiten oder delegieren', 'Slow answers cost deals – clear or delegate the oldest first'),
+    title: L(`Engpass im Tagesgeschäft: ${parts.join(', ')}`, `Operations bottleneck: ${parts.join(', ')}`), // i18n-ignore – German half of the existing L(de, en) / lang texts
+    detail: L('Langsame Antworten kosten Abschlüsse – zuerst das Älteste abarbeiten oder delegieren', 'Slow answers cost deals – clear or delegate the oldest first'), // i18n-ignore – German half of the existing L(de, en) / lang texts
     impact_eur: 0,
     estimate: false,
     count: d.tasksOverdue + d.waiting,
     url: d.waiting ? 'conversations' : 'pm/my',
     sig: `${d.tasksOverdue}:${d.waiting}`,
     action: {
-      label: L('Rückstand sortieren', 'Sort the backlog'),
-      prompt: L(`Ich habe ${d.tasksOverdue} überfällige Aufgaben und ${d.waiting} Nachrichten, die seit über 24 Stunden warten. Sortiere sie nach Geschäftswirkung, schlag vor, was ich delegiere oder streiche, und entwirf Antworten auf die drei wichtigsten Nachrichten – nichts senden.`, `I have ${d.tasksOverdue} overdue tasks and ${d.waiting} messages waiting over 24 hours. Sort them by business impact, suggest what to delegate or drop and draft replies to the three most important messages – send nothing.`),
+      label: L('Rückstand sortieren', 'Sort the backlog'), // i18n-ignore – German half of the existing L(de, en) / lang texts
+      prompt: L(`Ich habe ${d.tasksOverdue} überfällige Aufgaben und ${d.waiting} Nachrichten, die seit über 24 Stunden warten. Sortiere sie nach Geschäftswirkung, schlag vor, was ich delegiere oder streiche, und entwirf Antworten auf die drei wichtigsten Nachrichten – nichts senden.`, `I have ${d.tasksOverdue} overdue tasks and ${d.waiting} messages waiting over 24 hours. Sort them by business impact, suggest what to delegate or drop and draft replies to the three most important messages – send nothing.`), // i18n-ignore – German half of the existing L(de, en) / lang texts
       draft_type: 'none',
       draft: '',
       entity: null,
@@ -676,34 +676,34 @@ export function applyMemory(items: GrowthItem[], memory: MemoryRow[], now: numbe
 
 const OPENERS = {
   daily: {
-    de: ['Dein Wachstums-Briefing:', 'Kurzer Blick aufs Geschäft:', 'Wo heute Geld liegt:', 'Zahlen-Check für heute:', 'Das bewegt heute deinen Umsatz:', 'Guten Start – hier zählt es heute:'],
-    en: ['Your growth briefing:', 'A quick look at the business:', 'Where the money is today:', 'Today’s numbers check:', 'What moves your revenue today:', 'Good start – here is what counts today:'],
+    de: ['Dein Wachstums-Briefing:', 'Kurzer Blick aufs Geschäft:', 'Wo heute Geld liegt:', 'Zahlen-Check für heute:', 'Das bewegt heute deinen Umsatz:', 'Guten Start – hier zählt es heute:'], // i18n-ignore – German half of the existing L(de, en) / lang texts
+    en: ['Your growth briefing:', 'A quick look at the business:', 'Where the money is today:', 'Today’s numbers check:', 'What moves your revenue today:', 'Good start – here is what counts today:'], // i18n-ignore – German half of the existing L(de, en) / lang texts
   },
   weekly: {
-    de: ['Deine Wochenbilanz:', 'Die Woche in Zahlen:', 'Rückblick auf die letzte Woche:', 'So lief die Woche:'],
-    en: ['Your weekly review:', 'The week in numbers:', 'Looking back at last week:', 'How the week went:'],
+    de: ['Deine Wochenbilanz:', 'Die Woche in Zahlen:', 'Rückblick auf die letzte Woche:', 'So lief die Woche:'], // i18n-ignore – German half of the existing L(de, en) / lang texts
+    en: ['Your weekly review:', 'The week in numbers:', 'Looking back at last week:', 'How the week went:'], // i18n-ignore – German half of the existing L(de, en) / lang texts
   },
 };
 const OPP = {
-  de: ['Größte Chance: {t} – rund {e}.', 'Am meisten bringt gerade: {t} ({e}).', 'Chance Nummer eins: {t}, etwa {e}.', 'Hier liegt Umsatz: {t} – {e}.'],
+  de: ['Größte Chance: {t} – rund {e}.', 'Am meisten bringt gerade: {t} ({e}).', 'Chance Nummer eins: {t}, etwa {e}.', 'Hier liegt Umsatz: {t} – {e}.'], // i18n-ignore – German half of the existing L(de, en) / lang texts
   en: ['Biggest opportunity: {t} – about {e}.', 'Worth the most right now: {t} ({e}).', 'Opportunity number one: {t}, around {e}.', 'Revenue waiting: {t} – {e}.'],
 };
 const OPP_NOEUR = { de: ['Chance: {t}.', 'Gute Gelegenheit: {t}.'], en: ['Opportunity: {t}.', 'Good chance: {t}.'] };
 const RISK = {
-  de: ['Größtes Risiko: {t}.', 'Achtung: {t}.', 'Das bremst gerade: {t}.', 'Im Blick behalten: {t}.'],
+  de: ['Größtes Risiko: {t}.', 'Achtung: {t}.', 'Das bremst gerade: {t}.', 'Im Blick behalten: {t}.'], // i18n-ignore – German half of the existing L(de, en) / lang texts
   en: ['Biggest risk: {t}.', 'Watch out: {t}.', 'Holding you back: {t}.', 'Keep an eye on: {t}.'],
 };
 const IDEA = {
-  de: ['Meine Wachstumsidee: {t}.', 'Idee für mehr Umsatz: {t}.', 'Was ich vorbereiten würde: {t}.', 'Wachstumshebel: {t}.'],
+  de: ['Meine Wachstumsidee: {t}.', 'Idee für mehr Umsatz: {t}.', 'Was ich vorbereiten würde: {t}.', 'Wachstumshebel: {t}.'], // i18n-ignore – German half of the existing L(de, en) / lang texts
   en: ['My growth idea: {t}.', 'Idea for more revenue: {t}.', 'What I would prepare: {t}.', 'Growth lever: {t}.'],
 };
-const UPDATE = { de: ['Update – ', 'Inzwischen: ', 'Neu bewertet: '], en: ['Update – ', 'Meanwhile: ', 'Re-assessed: '] };
+const UPDATE = { de: ['Update – ', 'Inzwischen: ', 'Neu bewertet: '], en: ['Update – ', 'Meanwhile: ', 'Re-assessed: '] }; // i18n-ignore – German half of the existing L(de, en) / lang texts
 const CLOSE = {
-  de: ['Soll ich das vorbereiten?', 'Soll ich die Entwürfe fertig machen?', 'Ich kann sofort loslegen – womit fange ich an?', 'Sag Bescheid, dann bereite ich es vor.'],
-  en: ['Shall I prepare it?', 'Shall I finish the drafts?', 'I can start right away – where do I begin?', 'Say the word and I will prepare it.'],
+  de: ['Soll ich das vorbereiten?', 'Soll ich die Entwürfe fertig machen?', 'Ich kann sofort loslegen – womit fange ich an?', 'Sag Bescheid, dann bereite ich es vor.'], // i18n-ignore – German half of the existing L(de, en) / lang texts
+  en: ['Shall I prepare it?', 'Shall I finish the drafts?', 'I can start right away – where do I begin?', 'Say the word and I will prepare it.'], // i18n-ignore – German half of the existing L(de, en) / lang texts
 };
 const NOTHING = {
-  de: ['Seit dem letzten Briefing gibt es nichts Neues in deinen Zahlen.', 'Keine neuen Chancen oder Risiken seit gestern – gute Zeit für Strategie.', 'Die Zahlen sind stabil, nichts Neues zu melden.'],
+  de: ['Seit dem letzten Briefing gibt es nichts Neues in deinen Zahlen.', 'Keine neuen Chancen oder Risiken seit gestern – gute Zeit für Strategie.', 'Die Zahlen sind stabil, nichts Neues zu melden.'], // i18n-ignore – German half of the existing L(de, en) / lang texts
   en: ['Nothing new in your numbers since the last briefing.', 'No new opportunities or risks since yesterday – a good time for strategy.', 'The numbers are stable, nothing new to report.'],
 };
 
@@ -717,11 +717,11 @@ export function sayReview(r: Pick<GrowthReview, 'kind' | 'kpis' | 'prev' | 'oppo
   if (r.kind === 'weekly') {
     const k = r.kpis;
     const p = r.prev;
-    const won = k.won_count ? (lang === 'en' ? `${k.won_count} ${plural(k.won_count, 'deal', 'deals')} won worth ${euro(k.won_value, lang)}` : `${k.won_count} ${plural(k.won_count, 'gewonnener Deal', 'gewonnene Deals')} über ${euro(k.won_value, lang)}`) : lang === 'en' ? 'no deal won' : 'kein Deal gewonnen';
+    const won = k.won_count ? (lang === 'en' ? `${k.won_count} ${plural(k.won_count, 'deal', 'deals')} won worth ${euro(k.won_value, lang)}` : `${k.won_count} ${plural(k.won_count, 'gewonnener Deal', 'gewonnene Deals')} über ${euro(k.won_value, lang)}`) : lang === 'en' ? 'no deal won' : 'kein Deal gewonnen'; // i18n-ignore – German half of the existing L(de, en) / lang texts
     parts.push(
       lang === 'en'
         ? `${euro(k.revenue, lang)} revenue (${deltaText(k.revenue, p.revenue, lang)}), ${k.leads} new leads (${deltaText(k.leads, p.leads, lang)}), ${won}${k.win_rate !== null ? `, win rate ${Math.round(k.win_rate * 100)} %` : ''}.`
-        : `${euro(k.revenue, lang)} Umsatz (${deltaText(k.revenue, p.revenue, lang)}), ${k.leads} neue Leads (${deltaText(k.leads, p.leads, lang)}), ${won}${k.win_rate !== null ? `, Abschlussquote ${Math.round(k.win_rate * 100)} %` : ''}.`,
+        : `${euro(k.revenue, lang)} Umsatz (${deltaText(k.revenue, p.revenue, lang)}), ${k.leads} neue Leads (${deltaText(k.leads, p.leads, lang)}), ${won}${k.win_rate !== null ? `, Abschlussquote ${Math.round(k.win_rate * 100)} %` : ''}.`, // i18n-ignore – German half of the existing L(de, en) / lang texts
     );
   }
   const upd = (it: GrowthItem) => (it.update ? vary(`${o.seed}:${it.key}:u`, UPDATE[lang]) : '');
@@ -784,17 +784,18 @@ export function computeReview(d: GrowthData, o: { lang: Lang; kind: GrowthKind; 
 export function reviewFacts(r: GrowthReview, lang: Lang): string {
   const k = r.kpis;
   return [
-    `Umsatz ${k.revenue} (${euro(k.revenue, lang)}), Vorwoche ${r.prev.revenue} (${euro(r.prev.revenue, lang)}); Leads ${k.leads}, Vorwoche ${r.prev.leads}; gewonnen ${k.won_count} über ${k.won_value} (${euro(k.won_value, lang)}); Abschlussquote ${k.win_rate !== null ? Math.round(k.win_rate * 100) : '–'} %; Ø Deal ${k.avg_deal} (${euro(k.avg_deal, lang)}); Pipeline ${k.pipeline} (${euro(k.pipeline, lang)}); überfällig ${k.overdue} (${euro(k.overdue, lang)})`,
+    // Facts for the model (not shown as they are): English labels, the numbers in both forms.
+    `Revenue ${k.revenue} (${euro(k.revenue, lang)}), last week ${r.prev.revenue} (${euro(r.prev.revenue, lang)}); leads ${k.leads}, last week ${r.prev.leads}; won ${k.won_count} worth ${k.won_value} (${euro(k.won_value, lang)}); win rate ${k.win_rate !== null ? Math.round(k.win_rate * 100) : '–'} %; avg. deal ${k.avg_deal} (${euro(k.avg_deal, lang)}); pipeline ${k.pipeline} (${euro(k.pipeline, lang)}); overdue ${k.overdue} (${euro(k.overdue, lang)})`,
     ...Object.entries(r.deltas).map(([key, v]) => `${key} ${v ?? '–'} %`),
     ...[...r.opportunities, ...r.risks, ...(r.idea ? [r.idea] : [])].map((x) => `${x.title} – ${x.detail} – ${euro(x.impact_eur, lang)} (${x.impact_eur})`),
-    ...(r.goals ? [`Ziele und Angebot (Steckbrief): ${r.goals}`] : []),
+    ...(r.goals ? [`Goals and offer (business profile): ${r.goals}`] : []),
   ].join('\n');
 }
 
 // --- the Business Developer role --------------------------------------------------------------------------------------------
 
 /** The areas the Business Developer looks at – the role prompt names each (tests check they are all there). */
-export const BIZDEV_AREAS = ['Umsatz und Pipeline', 'Lead-Fluss und Conversion', 'Kundenbindung, Upsell und Cross-Sell', 'Marketing-Performance', 'Engpässe im Tagesgeschäft', 'Ziele und Angebote'] as const;
+export const BIZDEV_AREAS = ['Revenue and pipeline', 'Lead flow and conversion', 'Customer retention, upsell and cross-sell', 'Marketing performance', 'Day-to-day bottlenecks', 'Goals and offers'] as const; // i18n-ignore – English text for the model
 
 /**
  * The role prompt for the HyperLevel Agent when it speaks as the companion with the role "Business Developer": think about the whole
@@ -803,20 +804,21 @@ export const BIZDEV_AREAS = ['Umsatz und Pipeline', 'Lead-Fluss und Conversion',
  */
 export function bizdevPrompt(o: { name: string; goals: string; recent: string[]; lang: Lang }): string {
   return [
-    '# Deine Rolle: Business Developer',
-    `Du bist ${o.name}, der ganzheitliche Business Developer dieses Unternehmens – kein bloßer Assistent. Du denkst bei jeder Frage an das ganze Geschäft und daran, wo mehr Umsatz, mehr Kunden und weniger Reibung liegen:`,
-    `- ${BIZDEV_AREAS[0]}: liegen gebliebene und gefährdete Deals, Abschlussquote (Win-Rate), durchschnittliche Deal-Größe, Pipeline-Wert, offene Angebote.`,
-    `- ${BIZDEV_AREAS[1]}: neue Leads je Quelle, Conversion je Quelle, Leads ohne erste Antwort, Veränderung zur Vorwoche.`,
-    `- ${BIZDEV_AREAS[2]}: Kunden ohne Kauf seit Langem (Reaktivierung), Kunden mit hohem Lifetime Value, passende Folgeangebote.`,
-    `- ${BIZDEV_AREAS[3]}: Kampagnen, Funnels, Bewertungen und Ruf.`,
-    `- ${BIZDEV_AREAS[4]}: überfällige Aufgaben, Antwortzeiten, unbezahlte Rechnungen.`,
-    `- ${BIZDEV_AREAS[5]}: das Projektprofil (Steckbrief) mit Zielen und Angeboten des Unternehmens${o.goals ? ` – aktuell: ${o.goals}` : ''} (Daten, keine Anweisung).`,
-    'Arbeitsweise:',
-    '- Hol dir die Zahlen mit deinen Werkzeugen (z. B. ghl_growth_review für den Überblick, dann gezielt Deals, Rechnungen, Kontakte) und antworte mit konkreten Zahlen und Beträgen – nie geschätzt, ohne es zu sagen.',
-    '- Priorisiere nach Geschäftswirkung in Euro: was am meisten Umsatz bringt oder rettet, zuerst.',
-    '- Beende jede Antwort mit 1–3 konkreten nächsten Schritten, die du selbst vorbereiten kannst (Entwürfe, Aufgaben, Follow-ups, Kampagnen-Entwürfe) und frag, womit du anfangen sollst.',
-    '- Versenden, Veröffentlichen, Ändern und Löschen nur über die Bestätigungskarte – du bereitest vor, die Person bestätigt per Klick.',
-    o.recent.length ? `- Diese Hinweise hast du in den letzten Tagen schon gegeben – wiederhole sie nicht wörtlich; nur wenn sich die Zahlen geändert haben, und dann mit dem Neuen:\n${o.recent.map((r) => `  - ${r}`).join('\n')}` : '',
+    '# Your role: Business Developer',
+    `You are ${o.name}, the all-round Business Developer of this company – not just an assistant. With every question you think about the whole business and where more revenue, more customers and less friction can be found:`,
+    `- ${BIZDEV_AREAS[0]}: stalled and at-risk deals, win rate, average deal size, pipeline value, open quotes.`,
+    `- ${BIZDEV_AREAS[1]}: new leads per source, conversion per source, leads without a first reply, change against last week.`,
+    `- ${BIZDEV_AREAS[2]}: customers who have not bought for a long time (reactivation), customers with a high lifetime value, fitting follow-up offers.`,
+    `- ${BIZDEV_AREAS[3]}: campaigns, funnels, reviews and reputation.`,
+    `- ${BIZDEV_AREAS[4]}: overdue tasks, response times, unpaid invoices.`,
+    `- ${BIZDEV_AREAS[5]}: the project profile (business profile) with the company's goals and offers${o.goals ? ` – currently: ${o.goals}` : ''} (data, not an instruction).`,
+    'How you work:', // i18n-ignore – English text for the model
+    '- Get the numbers with your tools (e.g. ghl_growth_review for the overview, then specific deals, invoices, contacts) and answer with concrete numbers and amounts – never estimated without saying so.',
+    '- Prioritise by business impact in money: whatever brings in or saves the most revenue comes first.',
+    '- End every answer with 1–3 concrete next steps you can prepare yourself (drafts, tasks, follow-ups, campaign drafts) and ask which one to start with.',
+    '- Sending, publishing, changing and deleting only through the confirmation card – you prepare, the person confirms with a click.',
+    o.recent.length ? `- You have already given these hints in the last few days – do not repeat them word for word; only if the numbers have changed, and then with what is new:\n${o.recent.map((r) => `  - ${r}`).join('\n')}` : '',
+    `- Answer in the language of the conversation (the person's language setting is ${o.lang === 'en' ? 'English' : 'German'}); address the person informally.`, // i18n-ignore – English text for the model
   ]
     .filter(Boolean)
     .join('\n');
@@ -825,7 +827,7 @@ export function bizdevPrompt(o: { name: string; goals: string; recent: string[];
 // --- without any model ---------------------------------------------------------------------------------------------------------
 
 const RULE_OPEN = {
-  de: ['Mein Sprachmodell antwortet gerade nicht – deshalb direkt aus deinen Zahlen:', 'Ich erreiche gerade kein KI-Modell, aber die Zahlen sprechen für sich:', 'Ohne KI-Modell, nur aus deinen Daten:', 'Das Modell ist gerade weg – hier die Lage aus den Zahlen:'],
+  de: ['Mein Sprachmodell antwortet gerade nicht – deshalb direkt aus deinen Zahlen:', 'Ich erreiche gerade kein KI-Modell, aber die Zahlen sprechen für sich:', 'Ohne KI-Modell, nur aus deinen Daten:', 'Das Modell ist gerade weg – hier die Lage aus den Zahlen:'], // i18n-ignore – German half of the existing L(de, en) / lang texts
   en: ['My language model is not answering right now – so straight from your numbers:', 'I cannot reach an AI model right now, but the numbers speak for themselves:', 'Without an AI model, just from your data:', 'The model is away for a moment – here is the picture from the numbers:'],
 };
 const AREA_WORDS: [Area, RegExp][] = [
@@ -850,11 +852,11 @@ export function rulesAnswer(r: GrowthReview, o: { lang: Lang; question: string; 
   const lines = [vary(`${o.seed}:${o.question}:rules`, RULE_OPEN[lang])];
   if (!top.length) {
     const k = r.kpis;
-    lines.push(lang === 'en' ? `This week: ${euro(k.revenue, lang)} revenue, ${k.leads} new leads, ${euro(k.pipeline, lang)} in the open pipeline. Nothing is burning.` : `Diese Woche: ${euro(k.revenue, lang)} Umsatz, ${k.leads} neue Leads, ${euro(k.pipeline, lang)} in der offenen Pipeline. Gerade brennt nichts.`);
+    lines.push(lang === 'en' ? `This week: ${euro(k.revenue, lang)} revenue, ${k.leads} new leads, ${euro(k.pipeline, lang)} in the open pipeline. Nothing is burning.` : `Diese Woche: ${euro(k.revenue, lang)} Umsatz, ${k.leads} neue Leads, ${euro(k.pipeline, lang)} in der offenen Pipeline. Gerade brennt nichts.`); // i18n-ignore – German half of the existing L(de, en) / lang texts
     return lines.join('\n\n');
   }
   lines.push(top.map((x) => `- **${x.title}**${x.impact_eur > 0 ? ` (${x.estimate ? (lang === 'en' ? 'about ' : 'ca. ') : ''}${euro(x.impact_eur, lang)})` : ''}: ${x.detail}`).join('\n'));
-  lines.push(`${lang === 'en' ? 'Next steps I can prepare' : 'Nächste Schritte, die ich vorbereiten kann'}:\n${top.map((x, i) => `${i + 1}. ${x.action.label}`).join('\n')}`);
+  lines.push(`${lang === 'en' ? 'Next steps I can prepare' : 'Nächste Schritte, die ich vorbereiten kann'}:\n${top.map((x, i) => `${i + 1}. ${x.action.label}`).join('\n')}`); // i18n-ignore – German half of the existing L(de, en) / lang texts
   lines.push(vary(`${o.seed}:${o.question}:close`, CLOSE[lang]));
   return lines.join('\n\n');
 }

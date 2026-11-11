@@ -1,6 +1,7 @@
 import type { App } from '../core/app.js';
 import { id, now, slugify, token as randomToken } from '../core/util.js';
 import { ensureTags, upsertContact } from './contacts.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Pulls a GoHighLevel sub-account into this app: custom fields, tags, contacts, pipelines,
@@ -149,7 +150,8 @@ export async function importFromGhl(
   progress: ImportProgress = { part: '', done: 0, log: [], counts: {} },
 ) {
   const db = app.db;
-  const say = (s: string) => progress.log.push(`${new Date().toLocaleTimeString('de-DE')} ${s}`);
+  const t = tLoc(app, locationId);
+  const say = (s: string) => progress.log.push(`${new Date().toLocaleTimeString(t.locale === 'de' ? 'de-DE' : 'en-GB')} ${s}`);
   const count = (k: string, n = 1) => (progress.counts[k] = (progress.counts[k] ?? 0) + n);
   const fieldKeyById = new Map<string, string>();
   const want = (p: ImportPart) => parts.includes(p);
@@ -177,9 +179,9 @@ export async function importFromGhl(
         );
         count('custom_fields');
       }
-      say(`Eigene Felder: ${progress.counts.custom_fields ?? 0}`);
+      say(t('Eigene Felder: {n}', { n: progress.counts.custom_fields ?? 0 }));
     } catch (e) {
-      say(`Eigene Felder übersprungen: ${(e as Error).message}`);
+      say(t('Eigene Felder übersprungen: {error}', { error: (e as Error).message }));
     }
   }
 
@@ -190,9 +192,9 @@ export async function importFromGhl(
       const names = (j.tags ?? []).map((t: any) => String(t.name)).filter(Boolean);
       ensureTags(app, locationId, names);
       count('tags', names.length);
-      say(`Tags: ${names.length}`);
+      say(t('Tags: {n}', { n: names.length }));
     } catch (e) {
-      say(`Tags übersprungen: ${(e as Error).message}`);
+      say(t('Tags übersprungen: {error}', { error: (e as Error).message }));
     }
   }
 
@@ -228,7 +230,7 @@ export async function importFromGhl(
         dnd: !!c.dnd,
         created_at: c.dateAdded,
       },
-      { source: 'GHL-Import', quiet: true },
+      { source: t('GHL-Import'), quiet: true },
     );
     db.run('UPDATE contacts SET external_id = ? WHERE id = ?', c.id, contact.id);
     contactIdByGhl.set(c.id, contact.id);
@@ -252,9 +254,9 @@ export async function importFromGhl(
         startAfterId = j.meta.startAfterId;
         startAfter = j.meta.startAfter;
       }
-      say(`Kontakte: ${progress.counts.contacts ?? 0}`);
+      say(t('Kontakte: {n}', { n: progress.counts.contacts ?? 0 }));
     } catch (e) {
-      say(`Kontakte abgebrochen: ${(e as Error).message}`);
+      say(t('Kontakte abgebrochen: {error}', { error: (e as Error).message }));
     }
   }
 
@@ -272,9 +274,9 @@ export async function importFromGhl(
         pipelineByGhl.set(p.id, { id: pid, stages: new Map((p.stages ?? []).map((s: any) => [s.id, `g${String(s.id).slice(0, 20)}`])) });
         count('pipelines');
       }
-      say(`Pipelines: ${progress.counts.pipelines ?? 0}`);
+      say(t('Pipelines: {n}', { n: progress.counts.pipelines ?? 0 }));
     } catch (e) {
-      say(`Pipelines übersprungen: ${(e as Error).message}`);
+      say(t('Pipelines übersprungen: {error}', { error: (e as Error).message }));
     }
   }
 
@@ -297,7 +299,7 @@ export async function importFromGhl(
             if (!contactId && o.contact) contactId = importContact({ id: ghlContactId, firstName: o.contact.name, email: o.contact.email, phone: o.contact.phone, tags: o.contact.tags });
             if (!contactId) continue;
             const status = ['open', 'won', 'lost', 'abandoned'].includes(o.status) ? o.status : 'open';
-            const row = { pipeline_id: p.id, stage_id: p.stages.get(o.pipelineStageId) ?? [...p.stages.values()][0], contact_id: contactId, name: o.name || 'Opportunity', value: Math.round(Number(o.monetaryValue) || 0), status, source: o.source ?? 'GHL', updated_at: now() };
+            const row = { pipeline_id: p.id, stage_id: p.stages.get(o.pipelineStageId) ?? [...p.stages.values()][0], contact_id: contactId, name: o.name || t('Opportunity'), value: Math.round(Number(o.monetaryValue) || 0), status, source: o.source ?? 'GHL', updated_at: now() };
             const existing = db.get('SELECT id FROM opportunities WHERE location_id = ? AND external_id = ?', locationId, o.id);
             if (existing) db.update('opportunities', existing.id, row);
             else db.insert('opportunities', { id: id(), location_id: locationId, external_id: o.id, created_at: o.createdAt ?? now(), stage_changed_at: now(), ...row });
@@ -309,9 +311,9 @@ export async function importFromGhl(
         startAfterId = j.meta.startAfterId;
         startAfter = j.meta.startAfter;
       }
-      say(`Opportunities: ${progress.counts.opportunities ?? 0}`);
+      say(t('Opportunities: {n}', { n: progress.counts.opportunities ?? 0 }));
     } catch (e) {
-      say(`Opportunities abgebrochen: ${(e as Error).message}`);
+      say(t('Opportunities abgebrochen: {error}', { error: (e as Error).message }));
     }
   }
 
@@ -352,9 +354,9 @@ export async function importFromGhl(
         calendarByGhl.set(c.id, { id: cid, duration });
         count('calendars');
       }
-      say(`Kalender: ${progress.counts.calendars ?? 0}`);
+      say(t('Kalender: {n}', { n: progress.counts.calendars ?? 0 }));
     } catch (e) {
-      say(`Kalender übersprungen: ${(e as Error).message}`);
+      say(t('Kalender übersprungen: {error}', { error: (e as Error).message }));
     }
   }
 
@@ -371,15 +373,15 @@ export async function importFromGhl(
             const row = { calendar_id: cal.id, contact_id: contactIdByGhl.get(ev.contactId) ?? null, title: ev.title || 'Termin', start_at: new Date(ev.startTime).toISOString(), end_at: new Date(ev.endTime).toISOString(), status };
             const existing = db.get('SELECT id FROM appointments WHERE location_id = ? AND external_id = ?', locationId, ev.id);
             if (existing) db.update('appointments', existing.id, row);
-            else db.insert('appointments', { id: id(), location_id: locationId, external_id: ev.id, manage_token: randomToken(18), reminder_sent: 1, source: 'GHL-Import', notes: ev.notes ?? '', created_at: now(), ...row });
+            else db.insert('appointments', { id: id(), location_id: locationId, external_id: ev.id, manage_token: randomToken(18), reminder_sent: 1, source: t('GHL-Import'), notes: ev.notes ?? '', created_at: now(), ...row });
             count('appointments');
           }
         });
       } catch (e) {
-        say(`Termine (${ghlCal}) übersprungen: ${(e as Error).message}`);
+        say(t('Termine ({calendar}) übersprungen: {error}', { calendar: ghlCal, error: (e as Error).message }));
       }
     }
-    say(`Termine: ${progress.counts.appointments ?? 0}`);
+    say(t('Termine: {n}', { n: progress.counts.appointments ?? 0 }));
   }
 
   progress.part = 'fertig';

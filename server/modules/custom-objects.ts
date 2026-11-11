@@ -19,6 +19,7 @@ import {
 } from '../services/objects.js';
 import type { AssociationsService, Ref } from './associations.js';
 import type { ObjectSchema } from './object-schema.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Custom objects (HubSpot "Benutzerdefinierte Objekte"): per sub-account object types with a
@@ -72,7 +73,7 @@ export function createRecord(app: App, locationId: string, t: any, input: { prop
 
 export function updateRecord(app: App, locationId: string, t: any, rid: string, input: { properties?: Record<string, unknown>; owner_id?: string | null }, opts: RecordOpts = {}) {
   const cur = getRecord(app, locationId, t.id, rid);
-  if (!cur) throw notFound(`${t.singular} nicht gefunden`);
+  if (!cur) throw notFound(tApp()('{object} nicht gefunden', { object: t.singular }));
   const patch = input.properties !== undefined ? schema(app).validate(locationId, t.key, input.properties, { partial: true, current: cur.properties, recordId: rid }) : {};
   const next = mergeProps(cur.properties, patch);
   const owner = checkOwner(app, locationId, input.owner_id);
@@ -83,7 +84,7 @@ export function updateRecord(app: App, locationId: string, t: any, rid: string, 
   const record = { ...getRecord(app, locationId, t.id, rid)!, object: t.key };
   const defs = new Map(schema(app).defs(locationId, t.key).map((d) => [d.key, d]));
   const parts = changed.map((k) => `${defs.get(k)?.label ?? k}: ${displayValue(defs.get(k), cur.properties[k]) || '–'} → ${displayValue(defs.get(k), next[k]) || '–'}`);
-  if (ownerChanged) parts.push('Zuständig geändert');
+  if (ownerChanged) parts.push(tLoc(app, locationId)('Zuständig geändert'));
   schema(app).log(locationId, t.key, rid, 'record.updated', parts.join(' · ').slice(0, 480), { changed }, opts.userId);
   if (!opts.quiet) {
     app.events.emit(locationId, 'record.updated', { recordId: rid, objectKey: t.key, objectLabel: t.singular, record, changed: ownerChanged ? [...changed, 'owner_id'] : changed });
@@ -111,7 +112,7 @@ export function upsertRecord(app: App, locationId: string, t: any, input: { id?:
 
 export function deleteRecord(app: App, locationId: string, t: any, rid: string, opts: RecordOpts = {}) {
   const cur = getRecord(app, locationId, t.id, rid);
-  if (!cur) throw notFound(`${t.singular} nicht gefunden`);
+  if (!cur) throw notFound(tApp()('{object} nicht gefunden', { object: t.singular }));
   // The delete trigger removes associations, notes and activity.
   app.db.run('DELETE FROM object_records WHERE id = ?', rid);
   if (!opts.quiet) app.events.emit(locationId, 'record.deleted', { recordId: rid, objectKey: t.key, objectLabel: t.singular, record: cur });
@@ -198,10 +199,10 @@ export const customObjectsModule: Module = {
         icon: t.icon,
         get: (l: string, rid: string) => {
           const r = db.get('SELECT id, display FROM object_records WHERE id = ? AND location_id = ? AND type_id = ?', rid, l, t.id);
-          return r ? { id: r.id, name: r.display || `${t.singular} ohne Namen`, sub: t.singular, link: `objects/${t.key}/${r.id}` } : undefined;
+          return r ? { id: r.id, name: r.display || tApp()('{object} ohne Namen', { object: t.singular }), sub: t.singular, link: `objects/${t.key}/${r.id}` } : undefined;
         },
         search: (l: string, q: string, limit: number) =>
-          db.all('SELECT id, display FROM object_records WHERE location_id = ? AND type_id = ? AND (display LIKE ? OR properties LIKE ?) ORDER BY display LIMIT ?', l, t.id, `%${q}%`, `%${q}%`, limit).map((r) => ({ id: r.id, name: r.display || `${t.singular} ohne Namen`, sub: t.singular })),
+          db.all('SELECT id, display FROM object_records WHERE location_id = ? AND type_id = ? AND (display LIKE ? OR properties LIKE ?) ORDER BY display LIMIT ?', l, t.id, `%${q}%`, `%${q}%`, limit).map((r) => ({ id: r.id, name: r.display || tApp()('{object} ohne Namen', { object: t.singular }), sub: t.singular })),
       })),
     );
     A.onChange((c) => {
@@ -213,7 +214,7 @@ export const customObjectsModule: Module = {
         if (!CUSTOM_OBJECT_RE.test(me.type)) continue;
         const o = A.type(c.locationId, other.type);
         const name = o?.get(c.locationId, other.id)?.name;
-        if (name) S.log(c.locationId, me.type, me.id, c.kind === 'linked' ? 'association.added' : 'association.removed', `${o!.label} „${name}“ ${c.kind === 'linked' ? 'verknüpft' : 'entfernt'}`);
+        if (name) S.log(c.locationId, me.type, me.id, c.kind === 'linked' ? 'association.added' : 'association.removed', tLoc(app, c.locationId)(c.kind === 'linked' ? '{type} „{name}“ verknüpft' : '{type} „{name}“ entfernt', { type: o!.label, name }));
       }
     });
 
@@ -267,8 +268,8 @@ export const customObjectsModule: Module = {
       const plural = str(b.plural, 'Name (Mehrzahl)', { max: 60 }) || singular;
       const key = String(b.key ?? '').trim() || `p_${keyFromLabel(plural).slice(0, 40)}`;
       if (!CUSTOM_OBJECT_RE.test(key)) throw bad('Interner Name: p_ und dann a-z, 0-9, _');
-      if (objectType(app, ctx.locationId, key)) throw bad(`Es gibt schon ein Objekt „${key}“`);
-      if (objectTypes(app, ctx.locationId).length >= MAX_TYPES) throw bad(`Höchstens ${MAX_TYPES} eigene Objekte`);
+      if (objectType(app, ctx.locationId, key)) throw bad(tApp()('Es gibt schon ein Objekt „{key}“', { key }));
+      if (objectTypes(app, ctx.locationId).length >= MAX_TYPES) throw bad(tApp()('Höchstens {max} eigene Objekte', { max: MAX_TYPES }));
       const primaryLabel = str(b.primary_label, 'Anzeige-Eigenschaft', { max: 100 }) || 'Name';
       const t = {
         id: id(),
@@ -321,7 +322,7 @@ export const customObjectsModule: Module = {
       const t = objectType(app, ctx.locationId, ctx.params.id);
       if (!t) throw notFound('Objekttyp nicht gefunden');
       const n = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM object_records WHERE type_id = ?', t.id)!.n;
-      if (n && ctx.query.get('force') !== '1') throw bad(`${t.plural} hat noch ${n} Datensätze – zum Löschen bestätigen (force=1)`);
+      if (n && ctx.query.get('force') !== '1') throw bad(tApp()('{object} hat noch {n} Datensätze – zum Löschen bestätigen (force=1)', { object: t.plural, n }));
       db.tx(() => {
         db.run('DELETE FROM object_types WHERE id = ?', t.id);
         for (const table of ['object_properties', 'property_groups', 'object_views']) db.run(`DELETE FROM ${table} WHERE location_id = ? AND object_key = ?`, ctx.locationId, t.key);
@@ -374,7 +375,7 @@ export const customObjectsModule: Module = {
         const def = given ? defs.find((d) => d.key === given) : defs.find((d) => d.key === k || d.label.toLowerCase() === k);
         if (def) mapping[i] = def.key;
       });
-      if (!Object.keys(mapping).length) throw bad(`Keine Spalte passt zu den Eigenschaften (${defs.map((d) => d.label).join(', ')})`);
+      if (!Object.keys(mapping).length) throw bad(tApp()('Keine Spalte passt zu den Eigenschaften ({fields})', { fields: defs.map((d) => d.label).join(', ') }));
       let created = 0;
       let updated = 0;
       let skipped = 0;
@@ -401,7 +402,7 @@ export const customObjectsModule: Module = {
     router.get('/api/objects/:key/records/:id', 'location', (ctx) => {
       const t = needType(ctx);
       const r = getRecord(app, ctx.locationId, t.id, ctx.params.id);
-      if (!r) throw notFound(`${t.singular} nicht gefunden`);
+      if (!r) throw notFound(tApp()('{object} nicht gefunden', { object: t.singular }));
       return {
         ...r,
         object: t.key,
@@ -421,7 +422,7 @@ export const customObjectsModule: Module = {
     });
     router.post('/api/objects/:key/records/:id/notes', 'location', (ctx) => {
       const t = needType(ctx);
-      if (!getRecord(app, ctx.locationId, t.id, ctx.params.id)) throw notFound(`${t.singular} nicht gefunden`);
+      if (!getRecord(app, ctx.locationId, t.id, ctx.params.id)) throw notFound(tApp()('{object} nicht gefunden', { object: t.singular }));
       return S.addNote(ctx.locationId, t.key, ctx.params.id, str(ctx.body.body, 'Notiz', { required: true, max: 20000 }), uid(ctx));
     });
   },

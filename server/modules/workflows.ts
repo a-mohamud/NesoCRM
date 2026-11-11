@@ -8,6 +8,7 @@ import { hasIdentity } from '../services/inbound-webhooks.js';
 import { designFields } from '../services/email-design.js';
 import { cleanErrorSettings } from '../services/workflow-errors.js';
 import { TRIGGERS, branchKeys, installWorkflowEngine, processRun, startWorkflow, walk, type Step } from '../services/workflow-engine.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 const STEP_TYPES = [
   'send_email', 'send_sms', 'wait', 'if', 'goal', 'end', 'add_tag', 'remove_tag', 'update_field', 'set_dnd',
@@ -23,7 +24,7 @@ export function cleanSteps(input: unknown, depth = 0): Step[] {
   if (!Array.isArray(input)) return [];
   if (depth > 8) throw bad('Zu tief verschachtelt');
   return input.slice(0, 300).map((s: any) => {
-    if (!STEP_TYPES.includes(s?.type) && !extraSteps().includes(s?.type)) throw bad(`Unbekannter Schritt: ${s?.type}`);
+    if (!STEP_TYPES.includes(s?.type) && !extraSteps().includes(s?.type)) throw bad(tApp()('Unbekannter Schritt: {type}', { type: String(s?.type) }));
     const out: Step = { ...s, id: String(s.id || id(8)) };
     if (s.type === 'send_email') {
       // Email builder: the step stores its design and the rendered HTML/text next to it.
@@ -92,6 +93,29 @@ const RECIPES: Record<string, Recipe> = {
   },
 };
 
+/**
+ * A starter recipe in the sub-account's language: names, subjects, texts, task titles and the starter tags (the tag the goal
+ * waits for is translated with the same catalog, so "booked" and "new lead" still match). Keys are the German texts.
+ */
+function localizeRecipe(r: Recipe, t: STFn): Recipe {
+  const tx = (v: string) => {
+    if (!/\p{L}/u.test(v)) return v;
+    const hit = t(v);
+    if (hit !== v) return hit;
+    const flat = v.replace(/\s+/g, ' ').trim();
+    const h2 = t(flat);
+    return h2 !== flat ? h2 : v;
+  };
+  const TEXT = new Set(['name', 'subject', 'body', 'title', 'tags', 'value']);
+  const walk = (v: any, key = ''): any => {
+    if (typeof v === 'string') return TEXT.has(key) ? tx(v) : v;
+    if (Array.isArray(v)) return v.map((x) => walk(x, key));
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, k)]));
+    return v;
+  };
+  return { ...r, name: tx(r.name), steps: walk(r.steps) };
+}
+
 export const workflowsModule: Module = {
   name: 'workflows',
   migrations: [
@@ -128,7 +152,7 @@ export const workflowsModule: Module = {
     // Other modules add triggers (e.g. call.missed) and recipes via app.services.
     const triggers = (): string[] => [...TRIGGERS, ...(app.services.workflowTriggers ?? [])];
     const recipes = (): Record<string, Recipe> => ({ ...RECIPES, ...(app.services.workflowRecipes ?? {}) });
-    router.get('/api/workflows/meta', 'location', () => ({ triggers: triggers(), steps: [...STEP_TYPES, ...extraSteps()], recipes: Object.entries(recipes()).map(([k, r]) => ({ key: k, name: r.name })) }));
+    router.get('/api/workflows/meta', 'location', (ctx) => ({ triggers: triggers(), steps: [...STEP_TYPES, ...extraSteps()], recipes: Object.entries(recipes()).map(([k, r]) => ({ key: k, name: tLoc(app, ctx.locationId)(r.name) })) }));
 
     router.get('/api/workflows', 'location', (ctx) =>
       parseRows(
@@ -149,13 +173,14 @@ export const workflowsModule: Module = {
       return out(w);
     });
     router.post('/api/workflows', 'location', (ctx) => {
-      const recipe = recipes()[ctx.body.recipe];
+      const raw = recipes()[ctx.body.recipe];
+      const recipe = raw && localizeRecipe(raw, tLoc(app, ctx.locationId));
       const trigger = recipe?.trigger ?? ctx.body.trigger ?? { type: 'contact.tag_added', config: {} };
       if (!triggers().includes(trigger.type)) throw bad('Unbekannter Auslöser');
       const row = {
         id: id(),
         location_id: ctx.locationId,
-        name: str(ctx.body.name, 'Name') || recipe?.name || 'Neuer Workflow',
+        name: str(ctx.body.name, 'Name') || recipe?.name || tLoc(app, ctx.locationId)('Neuer Workflow'),
         status: 'draft',
         trigger,
         steps: cleanSteps(recipe?.steps ?? ctx.body.steps ?? []),

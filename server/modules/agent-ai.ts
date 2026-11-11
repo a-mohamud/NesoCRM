@@ -8,6 +8,7 @@ import { askChecked, estimate, modelInfo } from '../services/site-ai-kit.js';
 import { estimateTokens } from '../services/site-ai.js';
 import { PURPOSES } from './ai-assistant.js';
 import type { Tool } from './mcp.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * "KI-Agent mit KI erstellen" (HighLevel's Agent Studio "Build with AI"): a description becomes a custom-agent config – name,
@@ -65,9 +66,10 @@ export const agentAiModule: Module = {
     const catalogOf = (ctx: Ctx): CatalogTool[] => ((app.services.agent?.toolCatalog?.(userOf(ctx), true) ?? []) as any[]).map((t) => ({ name: t.name, title: t.title, group: t.group, klass: t.klass }));
 
     router.get('/api/agent-ai/status', 'location', (ctx) => {
-      const reason: string | null = app.services.aiReady?.(ctx.locationId) ?? (app.services.aiRun ? null : 'Der KI-Assistent ist nicht verfügbar.');
+      const t = tCtx(ctx);
+      const reason: string | null = app.services.aiReady?.(ctx.locationId) ?? (app.services.aiRun ? null : t('Der KI-Assistent ist nicht verfügbar.'));
       const m = modelInfo(app, ctx.locationId, PURPOSE, ctx.user?.id);
-      return { ready: !reason && !!app.services.agent, reason: reason ?? (app.services.agent ? null : 'Der KI-Agent ist nicht verfügbar.'), provider: { label: m.label, model: m.model, byok: m.byok }, examples: EXAMPLES };
+      return { ready: !reason && !!app.services.agent, reason: reason ? t(reason) : app.services.agent ? null : t('Der KI-Agent ist nicht verfügbar.'), provider: { label: m.label, model: m.model, byok: m.byok }, examples: EXAMPLES.map((x) => t(x)) };
     });
 
     router.post('/api/agent-ai/generate', 'location', async (ctx) => {
@@ -77,7 +79,7 @@ export const agentAiModule: Module = {
       if (prompt.length < 12) throw bad('Beschreibe in ein bis zwei Sätzen, was der Agent tun soll.');
       const tools = catalogOf(ctx);
       if (!tools.length) throw new HttpError(409, 'Der KI-Agent ist nicht verfügbar.');
-      const system = [{ text: `${RULES}\n\nWERKZEUG-KATALOG (name · Titel (read = liest, write = ändert, sensitive = versendet/löscht/bezahlt))\n${catalogText(tools)}`, cache: true }];
+      const system = [{ text: `${RULES}\n\nTOOL CATALOGUE (name · title (read = reads, write = changes, sensitive = sends/deletes/pays))\n${catalogText(tools)}`, cache: true }];
       const est = estimate(app, ctx.locationId, PURPOSE, user.id, estimateTokens({ mode: 'write', systemChars: system[0].text.length, userChars: prompt.length }));
       if (tooMany(ctx.locationId)) throw new HttpError(429, 'Zu viele KI-Entwürfe in kurzer Zeit – bitte in einigen Minuten erneut versuchen.');
       const ready: string | null = app.services.aiReady?.(ctx.locationId) ?? (app.services.aiRun ? null : 'Der KI-Assistent ist nicht verfügbar.');
@@ -86,9 +88,9 @@ export const agentAiModule: Module = {
       let extra = { summary: '', notes: [] as string[] };
       const r = await askChecked<AgentDraft>(app, ctx, {
         purpose: PURPOSE,
-        what: 'Agenten-Entwurf',
+        what: tCtx(ctx)('Agenten-Entwurf'),
         system,
-        user: `BESCHREIBUNG\n${prompt}`,
+        user: `DESCRIPTION\n${prompt}`,
         maxTokens: 5000,
         timeoutMs: 120_000,
         check: (raw) => {
@@ -113,8 +115,9 @@ export const agentAiModule: Module = {
       const { schedule, ...rest } = c;
       const agent = await callRoute(app, ctx, 'POST', '/api/agents', { ...rest, visibility: 'private', responder: { enabled: false, channels: [], mode: 'draft', outside_hours: false }, schedules: schedule ? [{ ...schedule, enabled: false }] : [] });
       db.run(`UPDATE agent_ai_runs SET status = 'applied', applied_agent_id = ? WHERE id = ?`, agent.id, run.id);
-      auditLog(app, ctx, ctx.locationId, 'agent_ai.apply', `KI-Entwurf „${c.name}“ als privater Agent gespeichert (Zeitplan aus)`, agent.id);
-      return { ...agent, draft: true, message: 'Als Entwurf gespeichert: privat, Zeitplan ausgeschaltet. Prüfen, testen und dann einschalten oder teilen.' };
+      const t = tCtx(ctx);
+      auditLog(app, ctx, ctx.locationId, 'agent_ai.apply', t('KI-Entwurf „{name}“ als privater Agent gespeichert (Zeitplan aus)', { name: c.name }), agent.id);
+      return { ...agent, draft: true, message: t('Als Entwurf gespeichert: privat, Zeitplan ausgeschaltet. Prüfen, testen und dann einschalten oder teilen.') };
     });
 
     app.onTick(() => {

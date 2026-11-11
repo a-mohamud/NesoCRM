@@ -1,5 +1,6 @@
 import { fieldKey } from './umzug-text.js';
 import type { FetchFn, VendorHttp } from './umzug-http.js';
+import type { ServerLocale } from '../i18n/index.js';
 
 /**
  * Umzug (switch-over importers): the shared vocabulary. Every source – an API client or an uploaded
@@ -678,6 +679,8 @@ export interface StepCtx {
   options: JobOptions;
   /** The parts ticked for this job (a step may load extra data when another part needs it). */
   parts: PartKey[];
+  /** Language of the texts a step writes (notes, tags, warnings): the sub-account's (server/i18n tLoc). */
+  lang?: ServerLocale;
 }
 export interface StepDef {
   id: string;
@@ -708,7 +711,7 @@ export interface SourceDef {
   /** Validates the credentials with one harmless call. */
   connect(creds: Record<string, string>, deps: SourceDeps): Promise<Account>;
   /** Counts per part and the fields available for mapping. */
-  describe(http: VendorHttp, parts: PartKey[], ctx: { creds: Record<string, string>; meta: Record<string, string> }): Promise<{ counts: CountRow[]; fields: SourceField[]; warnings: string[] }>;
+  describe(http: VendorHttp, parts: PartKey[], ctx: { creds: Record<string, string>; meta: Record<string, string>; lang: ServerLocale }): Promise<{ counts: CountRow[]; fields: SourceField[]; warnings: string[] }>;
   steps(parts: PartKey[]): StepDef[];
 }
 
@@ -747,6 +750,7 @@ export const STD_ALIASES: Record<StdTarget, string[]> = {
   email: ['email', 'emailaddress', 'e-mail', 'mail', 'emailaddress1', 'emailwork', 'personemailwork', 'primaryemail', 'emailadresse', 'email1'],
   phone: ['phone', 'phonenumber', 'telephone', 'telefon', 'mobile', 'mobil', 'handy', 'phone1', 'phonework', 'personphonework', 'cell', 'mobilephone'],
   company: ['company', 'companyname', 'organization', 'organisation', 'org', 'firma', 'account', 'orgname', 'organizationname', 'personorganization', 'unternehmen'],
+  // i18n-ignore (header aliases)
   address: ['address', 'address1', 'street', 'strasse', 'straße', 'addr1', 'addressline1', 'streetaddress', 'adresse'],
   city: ['city', 'town', 'stadt', 'ort', 'locality'],
   postal_code: ['zip', 'zipcode', 'postalcode', 'postcode', 'plz', 'postleitzahl'],

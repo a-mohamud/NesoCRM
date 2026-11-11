@@ -40,6 +40,7 @@ import { viesCheck } from '../services/vies.js';
 import { mergeSettings } from './core.js';
 import { finaliseChecked, invoiceOut, sendInvoice } from './payments.js';
 import { ymdInTz } from '../core/time.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * GoBD-style invoicing on top of the invoices of modules/payments.ts: finalising (gap-free number, frozen content, snapshot
@@ -50,7 +51,7 @@ import { ymdInTz } from '../core/time.js';
 
 const FROZEN = FROZEN_COLUMNS.filter((c) => c !== 'snapshot' && c !== 'doc_hash');
 
-export const GOBD_SQL = `
+export const GOBD_SQL = /* i18n-ignore */ `
 ALTER TABLE invoices ADD COLUMN finalised_at TEXT;
 ALTER TABLE invoices ADD COLUMN finalised_by TEXT;
 ALTER TABLE invoices ADD COLUMN doc_hash TEXT;
@@ -163,7 +164,10 @@ export function cleanInvoiceSettings(app: App, loc: string, b: Record<string, an
     const v = String(b.vat_id ?? '').trim();
     if (v) {
       const c = checkVatId(v);
-      if (!c.valid) throw bad(`Deine USt-IdNr.: ${c.reason}`);
+      if (!c.valid) {
+        const t = tApp();
+        throw bad(t('Deine USt-IdNr.: {reason}', { reason: t(c.reason ?? '') }));
+      }
       out.vat_id = c.normalized;
     } else out.vat_id = '';
   }
@@ -206,7 +210,8 @@ export function cleanInvoiceSettings(app: App, loc: string, b: Record<string, an
         const { next: _n, ...rest } = b.ranges[key];
         ranges[key] = cleanRange(rest, rangeCfg(cur, key));
       } catch (e) {
-        throw bad(`${RANGE_LABELS[key]}: ${(e as Error).message}`);
+        const t = tApp();
+        throw bad(t('{range}: {message}', { range: t(RANGE_LABELS[key]), message: t((e as Error).message) }));
       }
     }
     if (Object.keys(ranges).length) out.ranges = ranges;
@@ -222,7 +227,10 @@ function setNextNumber(app: App, loc: string, key: RangeKey, next: unknown) {
   const year = ymdInTz(new Date(), tzOf(app, loc)).slice(0, 4);
   const period = rangePeriod(cfg, year);
   const row = app.db.get<{ last: number }>('SELECT last FROM invoice_counters WHERE location_id = ? AND range = ? AND period = ?', loc, key, period);
-  if (row && n <= row.last) throw new HttpError(409, `${RANGE_LABELS[key]}: die Nummer ${n} ist schon vergeben – die nächste muss größer als ${row.last} sein (Nummern werden nie zweimal verwendet)`);
+  if (row && n <= row.last) {
+    const t = tApp();
+    throw new HttpError(409, t('{range}: die Nummer {n} ist schon vergeben – die nächste muss größer als {last} sein (Nummern werden nie zweimal verwendet)', { range: t(RANGE_LABELS[key]), n, last: row.last }));
+  }
   app.db.run(`INSERT INTO invoice_counters (location_id, range, period, last) VALUES (?, ?, ?, ?) ON CONFLICT(location_id, range, period) DO UPDATE SET last = excluded.last`, loc, key, period, n - 1);
 }
 
@@ -234,6 +242,7 @@ export const invoicingModule: Module = {
     // cancelled_at; no Stornorechnung – the credit notes stand next to it, see invoice-model.ts creditClosed), with an audit entry.
     [
       '002-credited-closed',
+      // i18n-ignore (migration SQL: the audit text is stored once, as it was)
       `
       INSERT INTO invoice_audit (id, location_id, invoice_id, at, actor, action, detail)
       SELECT lower(hex(randomblob(8))), location_id, id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'Update', 'invoice.credited', 'Vollständig gutgeschrieben – beim Update geschlossen'
@@ -269,7 +278,7 @@ export const invoicingModule: Module = {
     // --- the state changes --------------------------------------------------------------------------------------------------------
     router.post('/api/invoices/:id/finalise', 'location', async (ctx) => {
       const inv = mustInvoice(app, ctx.locationId, ctx.params.id);
-      if (inv.finalised_at) throw new HttpError(409, `Die Rechnung ${inv.number} ist schon festgeschrieben`);
+      if (inv.finalised_at) throw new HttpError(409, tCtx(ctx)('Die Rechnung {number} ist schon festgeschrieben', { number: inv.number }));
       const fin = await finaliseChecked(app, ctx.locationId, inv.id, { actor: actorOf(ctx), issued_at: ctx.body?.issued_at, adopt: false });
       return invoiceOut(app, fin.invoice, { warnings: fin.warnings });
     });
@@ -322,7 +331,7 @@ export const invoicingModule: Module = {
       const out = einvoiceOf(app, inv, ctx.query.get('syntax') === 'ubl' ? 'ubl' : 'cii');
       const actor = actorOf(ctx);
       const doc = archiveEinvoice(app, inv, out, actor);
-      if (!doc.duplicate) invAudit(app, ctx.locationId, inv.id, 'einvoice.generated', `${out.syntax === 'ubl' ? 'UBL 2.1' : 'CII'} · SHA-256 ${doc.sha256.slice(0, 16)}… · Aufbewahrung bis ${doc.retention_until}`, actor);
+      if (!doc.duplicate) invAudit(app, ctx.locationId, inv.id, 'einvoice.generated', tLoc(app, ctx.locationId)('{syntax} · SHA-256 {hash}… · Aufbewahrung bis {until}', { syntax: out.syntax === 'ubl' ? 'UBL 2.1' : 'CII', hash: doc.sha256.slice(0, 16), until: doc.retention_until }), actor);
       // format=json: the XML inside a JSON answer (MCP tools and API clients that only read JSON)
       if (ctx.query.get('format') === 'json') return { filename: out.filename, syntax: out.syntax, xml: out.xml, sha256: doc.sha256, retention_until: doc.retention_until, validation: { valid: out.validation.valid, errors: out.validation.errors, warnings: out.validation.warnings } };
       return attachment(out.filename, 'application/xml; charset=utf-8', out.xml, ctx.query.get('download') !== '1');

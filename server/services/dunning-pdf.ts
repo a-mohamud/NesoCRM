@@ -1,5 +1,6 @@
 import { money, deDate } from './creator-kit.js';
 import { A4, Page, fitLine, latin, pdfOf, sizeToFit, textW } from './creator-pdf.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * The dunning letter as a PDF (A4): sender, recipient, subject, the claim in lines (invoice, fee, interest, flat fee, total),
@@ -22,6 +23,8 @@ export interface LetterInput {
   body: string;
   invoiceUrl: string;
   smallBusiness?: boolean;
+  /** The letter's language (the sub-account's); the instance default when left out. */
+  t?: STFn;
 }
 
 export function dunningPdf(i: LetterInput): Buffer {
@@ -31,6 +34,7 @@ export function dunningPdf(i: LetterInput): Buffer {
 /** The laid-out letter (what `dunningPdf` writes). */
 export function dunningPage(i: LetterInput): Page {
   const color = /^#[0-9a-f]{6}$/i.test(i.brand.color ?? '') ? i.brand.color! : '#1e3a8a';
+  const t = i.t ?? tApp();
   const p = new Page();
   const L = 72;
   const R = A4.w - 72;
@@ -39,7 +43,7 @@ export function dunningPage(i: LetterInput): Page {
 
   p.rect(0, 0, A4.w, 10, { fill: color });
   y += p.para(L, y - 2, latin(i.brand.name), W, 18, { bold: true, color, maxLines: 2 }) + 2;
-  const sender = [i.brand.address, i.brand.email, i.brand.tax_id ? `USt-ID/St.-Nr.: ${i.brand.tax_id}` : ''].filter(Boolean).join('  ·  ');
+  const sender = [i.brand.address, i.brand.email, i.brand.tax_id ? t('USt-ID/St.-Nr.: {id}', { id: i.brand.tax_id }) : ''].filter(Boolean).join('  ·  ');
   if (sender) y += p.para(L, y, latin(sender), W, 10, { color: '#64748b' });
 
   // address field
@@ -60,7 +64,7 @@ export function dunningPage(i: LetterInput): Page {
   p.text(R, 170, date, 11, { anchor: 'end', color: '#475569' });
 
   y = Math.max(y + 40, 300);
-  p.text(L, y, latin(`${i.levelLabel} – Rechnung ${i.reference.number}`), 17, { bold: true });
+  p.text(L, y, latin(t('{label} – Rechnung {number}', { label: i.levelLabel, number: i.reference.number })), 17, { bold: true });
   y += 36;
   y += p.para(L, y, latin(i.body), W, 11.5, { gap: 18 });
 
@@ -72,24 +76,24 @@ export function dunningPage(i: LetterInput): Page {
     y += 22;
   };
   const a = i.amounts;
-  row(`Rechnung ${i.reference.number} vom ${deDate(i.reference.issued_at, i.tz)}, fällig am ${deDate(i.reference.due_at, i.tz)}`, money(a.principal_cents, i.currency));
-  if (a.prior_fee_cents) row('Mahngebühren früherer Schreiben', money(a.prior_fee_cents, i.currency));
-  if (a.fee_cents) row(`Mahngebühr (${i.levelLabel})`, money(a.fee_cents, i.currency));
-  if (a.interest_cents) row(`Verzugszinsen ${String(a.rate).replace('.', ',')} % p. a. für ${a.days} Tage`, money(a.interest_cents, i.currency));
-  if (a.flat_fee_cents) row('Verzugspauschale gem. § 288 Abs. 5 BGB', money(a.flat_fee_cents, i.currency));
-  row('Gesamtforderung', money(a.total_cents, i.currency), { bold: true, line: true });
+  row(t('Rechnung {number} vom {date}, fällig am {due}', { number: i.reference.number, date: deDate(i.reference.issued_at, i.tz), due: deDate(i.reference.due_at, i.tz) }), money(a.principal_cents, i.currency));
+  if (a.prior_fee_cents) row(t('Mahngebühren früherer Schreiben'), money(a.prior_fee_cents, i.currency));
+  if (a.fee_cents) row(t('Mahngebühr ({label})', { label: i.levelLabel }), money(a.fee_cents, i.currency));
+  if (a.interest_cents) row(t('Verzugszinsen {rate} % p. a. für {days} Tage', { rate: t.locale === 'de' ? String(a.rate).replace('.', ',') : String(a.rate), days: a.days }), money(a.interest_cents, i.currency));
+  if (a.flat_fee_cents) row(t('Verzugspauschale gem. § 288 Abs. 5 BGB'), money(a.flat_fee_cents, i.currency));
+  row(t('Gesamtforderung'), money(a.total_cents, i.currency), { bold: true, line: true });
   y += 8;
-  y += p.para(L, y, latin(`Bitte überweisen Sie den Betrag bis zum ${i.deadline}.`), W, 11.5, { bold: true, gap: 8 });
+  y += p.para(L, y, latin(t('Bitte überweisen Sie den Betrag bis zum {date}.', { date: i.deadline })), W, 11.5, { bold: true, gap: 8 });
   if (i.brand.iban) {
-    const bank = [`Empfänger: ${i.brand.name}`, `IBAN: ${i.brand.iban}${i.brand.bic ? `   BIC: ${i.brand.bic}` : ''}`, i.brand.bank ? `Bank: ${i.brand.bank}` : '', `Verwendungszweck: ${i.reference.number}`].filter(Boolean);
+    const bank = [t('Empfänger: {name}', { name: i.brand.name }), `IBAN: ${i.brand.iban}${i.brand.bic ? `   BIC: ${i.brand.bic}` : ''}`, i.brand.bank ? t('Bank: {bank}', { bank: i.brand.bank }) : '', t('Verwendungszweck: {ref}', { ref: i.reference.number })].filter(Boolean);
     for (const line of bank) {
       p.text(L, y, latin(line), 11);
       y += 16;
     }
   }
   y += 10;
-  if (i.invoiceUrl) y += p.para(L, y, latin(`Rechnung online ansehen und bezahlen: ${i.invoiceUrl}`), W, 10, { color: '#1d4ed8' });
-  if (i.smallBusiness) y += p.para(L, y + 6, 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.', W, 9, { color: '#64748b' });
+  if (i.invoiceUrl) y += p.para(L, y, latin(t('Rechnung online ansehen und bezahlen: {url}', { url: i.invoiceUrl })), W, 10, { color: '#1d4ed8' });
+  if (i.smallBusiness) y += p.para(L, y + 6, latin(t('Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.')), W, 9, { color: '#64748b' });
 
   p.text(L, A4.h - 56, latin(i.brand.name), 9, { color: '#94a3b8' });
   return p;

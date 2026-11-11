@@ -1,4 +1,5 @@
 import type { Module } from '../core/app.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Pause single workflow steps (docs/workflow-actions.md → Pause a step): a step with `disabled: true` stays in the flow but the
@@ -21,6 +22,6 @@ export const workflowPauseModule: Module = {
         else delete step.disabled;
       },
     };
-    app.services.workflowStepSkips = [...(app.services.workflowStepSkips ?? []), (step: { disabled?: unknown }) => (step.disabled === true ? PAUSED_RESULT : undefined)];
+    app.services.workflowStepSkips = [...(app.services.workflowStepSkips ?? []), (step: { disabled?: unknown }) => (step.disabled === true ? tApp()(PAUSED_RESULT) : undefined)];
   },
 };

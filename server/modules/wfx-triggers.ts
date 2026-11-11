@@ -11,6 +11,7 @@ import { daysOverdue, overdueBefore } from '../services/invoice-model.js';
 import { processRun, startWorkflow, triggerFiltersPass } from '../services/workflow-engine.js';
 import { cronFires, diffContact, dueDays, fieldChangeMatches, fromWallMinute, monthDaysForToday, parseCron, wallMinute, yearOf } from '../services/wfx-triggers.js';
 import { registerTriggers, type FieldDef, type TriggerMeta } from '../services/wfx-kit.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Additional workflow triggers: field changed (old → new), birthday, anniversary, schedule (cron in the sub-account's
@@ -319,8 +320,8 @@ export const wfxTriggersModule: Module = {
           // (public input: a phone number only counts when the visitor gave no e-mail address – services/contacts.ts)
           let contactId = (data.email ? db.get<any>('SELECT id FROM contacts WHERE location_id = ? AND email = ?', p.location_id, data.email)?.id : undefined) ?? (data.phone && !data.email ? db.get<any>('SELECT id FROM contacts WHERE location_id = ? AND phone = ?', p.location_id, data.phone)?.id : undefined);
           if (!contactId) {
-            contactId = upsertContact(app, p.location_id, data, { source: `Formular abgebrochen: ${form?.name ?? ''}`, quiet: true, publicInput: true }).contact.id;
-            addTags(app, p.location_id, contactId, ['formular-abgebrochen']);
+            contactId = upsertContact(app, p.location_id, data, { source: tLoc(app, p.location_id)('Formular abgebrochen: {form}', { form: form?.name ?? '' }), quiet: true, publicInput: true }).contact.id;
+            addTags(app, p.location_id, contactId, [tLoc(app, p.location_id)('formular-abgebrochen')]);
           }
           await fire(wf, contactId, { formId: p.form_id, form: { id: p.form_id, name: form?.name ?? '' }, partial: data, page: p.page });
           db.run(`UPDATE wfx_form_partials SET status = 'fired' WHERE id = ?`, p.id);

@@ -5,6 +5,7 @@ import { agencyAds, fetcherOf, loadConnection, metaCreds, saveConnection, type C
 import { logActivity, upsertContact } from './contacts.js';
 import { openSecret } from '../core/secrets.js';
 import { verifySignature } from './meta.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Meta Lead Ads → HyperLevel: a lead (instant form answer) becomes a contact – tagged, with its answers as a note and
@@ -126,22 +127,23 @@ function record(app: App, k: LeadKey, status: 'imported' | 'skipped' | 'failed',
 /** Creates or updates the contact of one lead and starts the workflows. Idempotent per lead id. */
 export function importLead(app: App, locationId: string, lead: any, source: 'webhook' | 'poll', o: { tags?: string[]; formName?: string } = {}): ImportResult {
   const leadId = String(lead?.id ?? '');
-  if (!/^\d{5,30}$/.test(leadId)) return { status: 'skipped', error: 'Lead ohne gültige ID' };
+  const t = tLoc(app, locationId);
+  if (!/^\d{5,30}$/.test(leadId)) return { status: 'skipped', error: t('Lead ohne gültige ID') };
   const seen = app.db.get<{ status: string }>('SELECT status FROM ads_leads WHERE location_id = ? AND leadgen_id = ?', locationId, leadId);
   if (seen?.status === 'imported') return { status: 'duplicate' };
   const key: LeadKey = { location_id: locationId, leadgen_id: leadId, page_id: String(lead.page_id ?? ''), form_id: String(lead.form_id ?? ''), ad_id: String(lead.ad_id ?? ''), campaign_id: String(lead.campaign_id ?? ''), campaign_name: String(lead.campaign_name ?? '').slice(0, 300) };
   const m = mapLead(lead);
   if (!m.input.email && !m.input.phone && !m.input.name && !m.input.first_name && !m.input.last_name) {
-    const error = 'Der Lead enthält keine Kontaktdaten';
+    const error = t('Der Lead enthält keine Kontaktdaten');
     record(app, key, 'skipped', { error, source });
     return { status: 'skipped', error };
   }
   const platformName = String(lead.platform ?? '').toLowerCase() === 'ig' ? 'instagram' : 'facebook';
   const organic = lead.is_organic === true || lead.is_organic === 'true';
   try {
-    const { contact, created } = upsertContact(app, locationId, { ...m.input, custom: m.custom }, { source: organic ? 'Meta Lead (organisch)' : 'Meta Lead Ad', tags: o.tags ?? DEFAULT_LEAD_TAGS, publicInput: true });
+    const { contact, created } = upsertContact(app, locationId, { ...m.input, custom: m.custom }, { source: organic ? t('Meta Lead (organisch)') : 'Meta Lead Ad', tags: o.tags ?? DEFAULT_LEAD_TAGS, publicInput: true });
     record(app, key, 'imported', { contactId: contact.id, source });
-    const where = [o.formName ? `Formular „${o.formName}“` : '', lead.campaign_name ? `Kampagne „${lead.campaign_name}“` : '', lead.ad_name ? `Anzeige „${lead.ad_name}“` : ''].filter(Boolean).join(', ');
+    const where = [o.formName ? t('Formular „{name}“', { name: o.formName }) : '', lead.campaign_name ? t('Kampagne „{name}“', { name: lead.campaign_name }) : '', lead.ad_name ? t('Anzeige „{name}“', { name: lead.ad_name }) : ''].filter(Boolean).join(', ');
     app.db.insert('notes', {
       id: id(),
       location_id: locationId,
@@ -150,7 +152,7 @@ export function importLead(app: App, locationId: string, lead: any, source: 'web
       user_id: null,
       created_at: now(),
     });
-    logActivity(app, locationId, contact.id, 'ads.lead', `Lead aus ${organic ? 'Instant-Formular' : 'Anzeige'}${lead.campaign_name ? ` „${lead.campaign_name}“` : ''}`, { leadgen_id: leadId, form_id: key.form_id, campaign_id: key.campaign_id, ad_id: key.ad_id });
+    logActivity(app, locationId, contact.id, 'ads.lead', lead.campaign_name ? t(organic ? 'Lead aus Instant-Formular „{campaign}“' : 'Lead aus Anzeige „{campaign}“', { campaign: lead.campaign_name }) : t(organic ? 'Lead aus Instant-Formular' : 'Lead aus Anzeige'), { leadgen_id: leadId, form_id: key.form_id, campaign_id: key.campaign_id, ad_id: key.ad_id });
     // The campaign (utm_campaign = its name) is what the attribution report and the ad report join on.
     try {
       app.services.attribution?.capture(undefined, locationId, contact.id, 'lead_ad', {

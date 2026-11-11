@@ -6,6 +6,7 @@ import { appConfig, cleanCode, cleanDomain, cleanInstanceUrl, emailDomain, type 
 import { RateLimiter } from '../services/native-push.js';
 import { brandKey, pwaBrand } from '../services/pwa-ios.js';
 import { effectiveBranding } from './agency.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Instance discovery for the gray-label app (docs/apps.md#discovery).
@@ -93,7 +94,7 @@ export const appDiscoveryModule: Module = {
         const r = db.get('SELECT * FROM app_directory WHERE kind = ? AND key = ?', kind, key);
         if (r) return json({ instance_url: r.instance_url, name: r.name, matched: { kind, key } });
       }
-      return json({ error: 'Keine Instanz für diese Adresse gefunden' }, 0, 404);
+      return json({ error: tCtx(ctx)('Keine Instanz für diese Adresse gefunden') }, 0, 404);
     });
     router.add('OPTIONS', '/api/app-directory/lookup', 'public', () => ({ __raw: true, status: 204, headers: CORS, body: '' }));
 
@@ -134,7 +135,7 @@ export const appDiscoveryModule: Module = {
       } catch {
         /* no record */
       }
-      if (!records.some((parts) => parts.join('').trim() === want)) throw bad(`TXT-Eintrag fehlt: ${TXT_PREFIX}.${domain} → "${want}"`);
+      if (!records.some((parts) => parts.join('').trim() === want)) throw bad(tCtx(ctx)('TXT-Eintrag fehlt: {record}', { record: `${TXT_PREFIX}.${domain} → "${want}"` }));
       let cfg: any;
       try {
         const r = await fetchFn()(`${instance}/.well-known/gohyperlevel-app.json`, { signal: AbortSignal.timeout(10_000), headers: { accept: 'application/json' } });

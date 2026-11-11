@@ -9,6 +9,7 @@ import { sendToContact } from '../services/messaging.js';
 import { sign, verifySig } from '../services/helpdesk.js';
 import { addTicketEvent, getTicketRow, loadHelpdeskSettings, renderTicketText } from '../services/tickets.js';
 import { render } from '../core/template.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Customer satisfaction: after a ticket is solved the contact gets a signed CSAT link (1–5 + comment);
@@ -40,10 +41,10 @@ button{margin-top:14px;width:100%;border:0;border-radius:10px;background:var(--b
 .ok{text-align:center}.ok .big{font-size:46px}.err{color:#dc2626;font-size:14px}
 @media (max-width:480px){.card{padding:20px}.scale.nps label{min-width:38px}}`;
 
-function surveyPage(title: string, body: string, color: string, status = 200): RawResult {
+function surveyPage(title: string, body: string, color: string, status = 200, lang = 'en'): RawResult {
   const c = /^#[0-9a-f]{6}$/i.test(color) ? color : '#2563eb';
   const r = html(
-    `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${escapeHtml(title)}</title><style>${CSS}:root{--brand:${c}}</style></head><body><div class="wrap"><div class="card">${body}</div></div></body></html>`,
+    `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${escapeHtml(title)}</title><style>${CSS}:root{--brand:${c}}</style></head><body><div class="wrap"><div class="card">${body}</div></div></body></html>`,
     status,
   );
   Object.assign(r.headers, { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" });
@@ -93,42 +94,45 @@ export const csatModule: Module = {
 
     /** Sends the CSAT request for a solved ticket (email with five buttons, or SMS with the link). */
     const sendCsat = async (loc: string, ticketId: string, force = false) => {
+      // Neso fork: the reasons are shown to the team (instance language); what reaches the contact uses the sub-account's.
+      const tr = tApp();
       const t = getTicketRow(app, loc, ticketId);
-      if (!t || !t.contact_id || t.merged_into) return { status: 'skipped', reason: 'kein Kontakt' };
+      if (!t || !t.contact_id || t.merged_into) return { status: 'skipped', reason: tr('kein Kontakt') };
       if (csatSending.has(t.id)) {
         if (force) throw new HttpError(409, 'Die Umfrage wird gerade gesendet');
-        return { status: 'skipped', reason: 'wird gerade gesendet' };
+        return { status: 'skipped', reason: tr('wird gerade gesendet') };
       }
-      if (t.csat_sent_at && !force) return { status: 'skipped', reason: 'schon gesendet' };
+      if (t.csat_sent_at && !force) return { status: 'skipped', reason: tr('schon gesendet') };
       const s = loadHelpdeskSettings(app, loc);
       const contact = getContact(app, loc, t.contact_id);
-      if (!contact) return { status: 'skipped', reason: 'kein Kontakt' };
+      if (!contact) return { status: 'skipped', reason: tr('kein Kontakt') };
       const pref = s.csat.channel === 'auto' ? (t.channel === 'sms' || t.channel === 'whatsapp' ? 'sms' : 'email') : s.csat.channel;
       const channel = pref === 'email' && contact.email ? 'email' : contact.phone ? 'sms' : contact.email ? 'email' : '';
-      if (!channel) return { status: 'skipped', reason: 'keine E-Mail/Telefonnummer' };
+      if (!channel) return { status: 'skipped', reason: tr('keine E-Mail/Telefonnummer') };
       // A satisfaction survey is advertising in German law (BGH VI ZR 225/17), like the NPS: "Nicht stören", a withdrawal or a
       // missing consent (under the sub-account's policy) means no survey – also when it is sent again by hand.
-      if (contact.dnd) return { status: 'skipped', reason: 'Kontakt hat „Nicht stören“ aktiv' };
+      if (contact.dnd) return { status: 'skipped', reason: tr('Kontakt hat „Nicht stören“ aktiv') };
       const verdict = app.services.consent?.allowMarketing?.(loc, contact, channel) as { allow: boolean; reason: string } | undefined;
       if (verdict && !verdict.allow) return { status: 'skipped', reason: verdict.reason };
       const link = csatLink(t.id);
+      const tl = tLoc(app, loc);
       const textBody = renderTicketText(app, t, s.csat.body, null, { csat_link: link });
       let body = textBody;
       let isHtml = false;
       if (channel === 'email') {
         const marker = '\u0000CSAT\u0000';
-        const buttons = `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:14px 0"><tr>${FACES.map((f, i) => `<td style="padding:0 4px"><a href="${escapeHtml(link)}?s=${i + 1}" title="${CSAT_LABELS[i]}" style="display:inline-block;width:48px;height:48px;line-height:48px;text-align:center;font-size:28px;text-decoration:none;border:1px solid #e5e7eb;border-radius:12px">${f}</a></td>`).join('')}</tr></table>`;
+        const buttons = `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:14px 0"><tr>${FACES.map((f, i) => `<td style="padding:0 4px"><a href="${escapeHtml(link)}?s=${i + 1}" title="${tl(CSAT_LABELS[i])}" style="display:inline-block;width:48px;height:48px;line-height:48px;text-align:center;font-size:28px;text-decoration:none;border:1px solid #e5e7eb;border-radius:12px">${f}</a></td>`).join('')}</tr></table>`;
         body = textToHtml(renderTicketText(app, t, s.csat.body, null, { csat_link: marker })).replace(marker, buttons);
         isHtml = true;
       }
       // Claimed before the send (on the row as it is now, not the copy read above): the ticket solved again while the survey is
       // on its way – reopened by the customer's answer, solved by the agent – or the delayed job finds it asked already.
       const claim = now();
-      if (!db.run(`UPDATE tickets SET csat_sent_at = ?, csat_due_at = NULL WHERE id = ? ${force ? '' : 'AND csat_sent_at IS NULL'}`, claim, t.id).changes) return { status: 'skipped', reason: 'schon gesendet' };
+      if (!db.run(`UPDATE tickets SET csat_sent_at = ?, csat_due_at = NULL WHERE id = ? ${force ? '' : 'AND csat_sent_at IS NULL'}`, claim, t.id).changes) return { status: 'skipped', reason: tr('schon gesendet') };
       csatSending.add(t.id);
       let msg;
       try {
-        msg = await sendToContact(app, loc, { contactId: contact.id, channel, subject: renderTicketText(app, t, s.csat.subject), body, text: channel === 'email' ? textBody : undefined, isHtml, source: 'Zufriedenheit (CSAT)', purpose: 'marketing', bulk: true });
+        msg = await sendToContact(app, loc, { contactId: contact.id, channel, subject: renderTicketText(app, t, s.csat.subject), body, text: channel === 'email' ? textBody : undefined, isHtml, source: tl('Zufriedenheit (CSAT)'), purpose: 'marketing', bulk: true });
       } catch (e) {
         // nothing went out: the survey may be asked again later
         db.run('UPDATE tickets SET csat_sent_at = ?, csat_due_at = ? WHERE id = ? AND csat_sent_at = ?', t.csat_sent_at ?? null, t.csat_due_at ?? null, t.id, claim);
@@ -136,7 +140,7 @@ export const csatModule: Module = {
       } finally {
         csatSending.delete(t.id);
       }
-      addTicketEvent(app, t, 'csat_sent', { body: 'Zufriedenheits-Umfrage gesendet', messageId: msg.id, data: { channel, status: msg.status } });
+      addTicketEvent(app, t, 'csat_sent', { body: tl('Zufriedenheits-Umfrage gesendet'), messageId: msg.id, data: { channel, status: msg.status } });
       return { status: msg.status, error: msg.error || undefined };
     };
     app.services.sendCsat = sendCsat;
@@ -168,15 +172,21 @@ export const csatModule: Module = {
       if (!tid || !sig || !verifySig(secret, `csat:${tid}`, sig)) return undefined;
       return parseJson(db.get('SELECT * FROM tickets WHERE id = ?', tid), ['tags']);
     };
-    const invalid = () => surveyPage('Link ungültig', '<h1>Link ungültig</h1><p class="muted">Dieser Umfrage-Link ist nicht (mehr) gültig.</p>', '#2563eb', 404);
+    const invalid = () => {
+      const tr = tApp();
+      return surveyPage(tr('Link ungültig'), `<h1>${escapeHtml(tr('Link ungültig'))}</h1><p class="muted">${escapeHtml(tr('Dieser Umfrage-Link ist nicht (mehr) gültig.'))}</p>`, '#2563eb', 404, tr.locale);
+    };
     const csatForm = (t: any, pre: number, err = '') => {
       const loc = app.location(t.location_id);
+      const tl: STFn = tLoc(app, t.location_id);
       return surveyPage(
-        'Wie zufrieden warst du?',
-        `<h1>Wie zufrieden warst du mit unserer Hilfe?</h1><p class="muted">Anfrage #${t.number}: ${escapeHtml(t.subject)} · ${escapeHtml(loc?.settings?.branding?.name || loc?.name || '')}</p>
-<form method="post"><div class="scale" role="radiogroup" aria-label="Zufriedenheit">${FACES.map((f, i) => `<label><input type="radio" name="score" value="${i + 1}"${pre === i + 1 ? ' checked' : ''} required><span><b aria-hidden="true">${f}</b>${CSAT_LABELS[i]}</span></label>`).join('')}</div>
-${err ? `<p class="err">${escapeHtml(err)}</p>` : ''}<label for="c" class="muted" style="display:block;margin:14px 0 6px">Möchtest du uns noch etwas sagen? (optional)</label><textarea id="c" name="comment" maxlength="2000">${escapeHtml(t.csat_comment || '')}</textarea><button>Absenden</button></form>`,
+        tl('Wie zufrieden warst du?'),
+        `<h1>${escapeHtml(tl('Wie zufrieden warst du mit unserer Hilfe?'))}</h1><p class="muted">${escapeHtml(tl('Anfrage #{number}', { number: t.number }))}: ${escapeHtml(t.subject)} · ${escapeHtml(loc?.settings?.branding?.name || loc?.name || '')}</p>
+<form method="post"><div class="scale" role="radiogroup" aria-label="${escapeHtml(tl('Zufriedenheit'))}">${FACES.map((f, i) => `<label><input type="radio" name="score" value="${i + 1}"${pre === i + 1 ? ' checked' : ''} required><span><b aria-hidden="true">${f}</b>${escapeHtml(tl(CSAT_LABELS[i]))}</span></label>`).join('')}</div>
+${err ? `<p class="err">${escapeHtml(tl(err))}</p>` : ''}<label for="c" class="muted" style="display:block;margin:14px 0 6px">${escapeHtml(tl('Möchtest du uns noch etwas sagen? (optional)'))}</label><textarea id="c" name="comment" maxlength="2000">${escapeHtml(t.csat_comment || '')}</textarea><button>${escapeHtml(tl('Absenden'))}</button></form>`,
         colorOf(t.location_id),
+        200,
+        tl.locale,
       );
     };
     // Opening the link only shows the form (mail scanners that follow links don't vote).
@@ -194,9 +204,10 @@ ${err ? `<p class="err">${escapeHtml(err)}</p>` : ''}<label for="c" class="muted
       const comment = String(ctx.body?.comment ?? '').trim().slice(0, 2000);
       const first = t.csat_score === null || t.csat_score === undefined;
       db.run('UPDATE tickets SET csat_score = ?, csat_comment = ?, csat_at = ? WHERE id = ?', score, comment, now(), t.id);
-      addTicketEvent(app, t, 'csat', { body: comment, data: { score, label: CSAT_LABELS[score - 1], updated: !first } });
+      const tl = tLoc(app, t.location_id);
+      addTicketEvent(app, t, 'csat', { body: comment, data: { score, label: tl(CSAT_LABELS[score - 1]), updated: !first } });
       if (t.contact_id) {
-        logActivity(app, t.location_id, t.contact_id, 'csat.received', `Zufriedenheit zu Ticket #${t.number}: ${score}/5`, { ticketId: t.id, score });
+        logActivity(app, t.location_id, t.contact_id, 'csat.received', tl('Zufriedenheit zu Ticket #{number}: {score}/5', { number: t.number, score }), { ticketId: t.id, score });
         app.events.emit(t.location_id, 'csat.received', { contactId: t.contact_id, ticketId: t.id, score, comment });
       }
       return redirect(`/survey/csat/${encodeURIComponent(ctx.params.token)}/danke`, 303);
@@ -204,7 +215,8 @@ ${err ? `<p class="err">${escapeHtml(err)}</p>` : ''}<label for="c" class="muted
     router.get('/survey/csat/:token/danke', 'public', (ctx) => {
       const t = ticketFromToken(ctx.params.token);
       if (!t) return invalid();
-      return surveyPage('Danke!', `<div class="ok"><div class="big">${FACES[(t.csat_score ?? 3) - 1] ?? '🙂'}</div><h1>Danke für dein Feedback!</h1><p class="muted">Das hilft uns, besser zu werden.</p></div>`, colorOf(t.location_id));
+      const tl = tLoc(app, t.location_id);
+      return surveyPage(tl('Danke!'), `<div class="ok"><div class="big">${FACES[(t.csat_score ?? 3) - 1] ?? '🙂'}</div><h1>${escapeHtml(tl('Danke für dein Feedback!'))}</h1><p class="muted">${escapeHtml(tl('Das hilft uns, besser zu werden.'))}</p></div>`, colorOf(t.location_id), 200, tl.locale);
     });
 
     router.post('/api/surveys/csat/:ticketId/send', 'location', async (ctx) => {
@@ -244,15 +256,16 @@ ${err ? `<p class="err">${escapeHtml(err)}</p>` : ''}<label for="c" class="muted
 
     const campaignIn = (b: any, cur: any | null, who: ListReader) => {
       const out: Record<string, any> = {};
+      const tl = tLoc(app, cur?.location_id ?? b.__loc);
       if (b.name !== undefined || !cur) out.name = str(b.name, 'Name', { required: true, max: 120 });
-      if (b.question !== undefined || !cur) out.question = str(b.question, 'Frage', { max: 300 }) || 'Wie wahrscheinlich ist es, dass du uns Freunden oder Kollegen empfiehlst?';
+      if (b.question !== undefined || !cur) out.question = str(b.question, 'Frage', { max: 300 }) || tl('Wie wahrscheinlich ist es, dass du uns Freunden oder Kollegen empfiehlst?');
       if (b.channel !== undefined) {
         if (!['email', 'sms'].includes(b.channel)) throw bad('Kanal: email oder sms');
         out.channel = b.channel;
       }
-      if (b.subject !== undefined || !cur) out.subject = str(b.subject, 'Betreff', { max: 300 }) || 'Kurze Frage: Würdest du uns weiterempfehlen?';
+      if (b.subject !== undefined || !cur) out.subject = str(b.subject, 'Betreff', { max: 300 }) || tl('Kurze Frage: Würdest du uns weiterempfehlen?');
       if (b.body !== undefined || !cur) {
-        const body = str(b.body, 'Text', { max: 10_000 }) || 'Hallo {{contact.first_name|}},\n\nwie wahrscheinlich ist es, dass du uns weiterempfiehlst? Eine Antwort dauert 10 Sekunden:\n\n{{nps_link}}\n\nDanke!\n{{location.name}}';
+        const body = str(b.body, 'Text', { max: 10_000 }) || tl('Hallo {{contact.first_name|}},\n\nwie wahrscheinlich ist es, dass du uns weiterempfiehlst? Eine Antwort dauert 10 Sekunden:\n\n{{nps_link}}\n\nDanke!\n{{location.name}}');
         if (!body.includes('{{nps_link}}')) throw bad('Der Text braucht den Platzhalter {{nps_link}}');
         out.body = body;
       }
@@ -327,7 +340,7 @@ ${err ? `<p class="err">${escapeHtml(err)}</p>` : ''}<label for="c" class="muted
         const loc = app.location(c.location_id);
         if (!loc) continue;
         // A send the process did not live to write down (restart, crash): the provider may well have taken it – not sent again.
-        db.run(`UPDATE nps_sends SET status = 'failed', error = ? WHERE campaign_id = ? AND status = 'sending' AND sent_at < ?`, NPS_INTERRUPTED, c.id, new Date(Date.now() - NPS_SENDING_STALE_MS).toISOString());
+        db.run(`UPDATE nps_sends SET status = 'failed', error = ? WHERE campaign_id = ? AND status = 'sending' AND sent_at < ?`, tApp()(NPS_INTERRUPTED), c.id, new Date(Date.now() - NPS_SENDING_STALE_MS).toISOString());
         const pending = db.all(`SELECT * FROM nps_sends WHERE campaign_id = ? AND status = 'pending' LIMIT ?`, c.id, PER_TICK);
         for (const p of pending) {
           // Claimed before the send (sent_at = the claim's time while 'sending'): a second run at the same time skips this recipient.
@@ -363,12 +376,15 @@ ${err ? `<p class="err">${escapeHtml(err)}</p>` : ''}<label for="c" class="muted
     const npsForm = (x: { c: any; contact: any }, pre: number | null, err = '') => {
       const prev = db.get('SELECT * FROM nps_responses WHERE campaign_id = ? AND contact_id = ?', x.c.id, x.contact.id);
       const sel = pre ?? prev?.score ?? null;
+      const tl = tLoc(app, x.c.location_id);
       return surveyPage(
         x.c.name,
-        `<h1>${escapeHtml(x.c.question)}</h1><p class="muted">0 = gar nicht wahrscheinlich, 10 = äußerst wahrscheinlich</p>
-<form method="post"><div class="scale nps" role="radiogroup" aria-label="Bewertung 0 bis 10">${Array.from({ length: 11 }, (_, i) => `<label><input type="radio" name="score" value="${i}"${sel === i ? ' checked' : ''} required><span><b>${i}</b></span></label>`).join('')}</div>
-${err ? `<p class="err">${escapeHtml(err)}</p>` : ''}<label for="c" class="muted" style="display:block;margin:14px 0 6px">Was ist der wichtigste Grund für deine Bewertung? (optional)</label><textarea id="c" name="comment" maxlength="2000">${escapeHtml(prev?.comment ?? '')}</textarea><button>Absenden</button></form>`,
+        `<h1>${escapeHtml(x.c.question)}</h1><p class="muted">${escapeHtml(tl('0 = gar nicht wahrscheinlich, 10 = äußerst wahrscheinlich'))}</p>
+<form method="post"><div class="scale nps" role="radiogroup" aria-label="${escapeHtml(tl('Bewertung 0 bis 10'))}">${Array.from({ length: 11 }, (_, i) => `<label><input type="radio" name="score" value="${i}"${sel === i ? ' checked' : ''} required><span><b>${i}</b></span></label>`).join('')}</div>
+${err ? `<p class="err">${escapeHtml(tl(err))}</p>` : ''}<label for="c" class="muted" style="display:block;margin:14px 0 6px">${escapeHtml(tl('Was ist der wichtigste Grund für deine Bewertung? (optional)'))}</label><textarea id="c" name="comment" maxlength="2000">${escapeHtml(prev?.comment ?? '')}</textarea><button>${escapeHtml(tl('Absenden'))}</button></form>`,
         colorOf(x.c.location_id),
+        200,
+        tl.locale,
       );
     };
     router.get('/survey/nps/:token', 'public', (ctx) => {
@@ -396,9 +412,10 @@ ${err ? `<p class="err">${escapeHtml(err)}</p>` : ''}<label for="c" class="muted
         now(),
         now(),
       );
-      logActivity(app, x.c.location_id, x.contact.id, 'nps.received', `NPS „${x.c.name}“: ${score}/10`, { campaignId: x.c.id, score });
+      const tl = tLoc(app, x.c.location_id);
+      logActivity(app, x.c.location_id, x.contact.id, 'nps.received', tl('NPS „{name}“: {score}/10', { name: x.c.name, score }), { campaignId: x.c.id, score });
       app.events.emit(x.c.location_id, 'nps.received', { contactId: x.contact.id, campaignId: x.c.id, score, comment });
-      return surveyPage('Danke!', `<div class="ok"><div class="big">🙏</div><h1>Danke für deine Antwort!</h1><p class="muted">Du hast ${score} von 10 gegeben.</p></div>`, colorOf(x.c.location_id));
+      return surveyPage(tl('Danke!'), `<div class="ok"><div class="big">🙏</div><h1>${escapeHtml(tl('Danke für deine Antwort!'))}</h1><p class="muted">${escapeHtml(tl('Du hast {score} von 10 gegeben.', { score }))}</p></div>`, colorOf(x.c.location_id), 200, tl.locale);
     });
 
     // Rows for the contact page (latest answers first).

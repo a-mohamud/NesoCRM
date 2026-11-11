@@ -156,7 +156,7 @@ describe('Marktplatz: curation, install with consent, updates, reviews, uninstal
     expect(list.plugins.map((p: any) => p.id)).toContain(id);
     expect(list.categories.find((c: any) => c.key === 'ki').count).toBe(1);
     const p = list.plugins.find((x: any) => x.id === id);
-    expect(p).toMatchObject({ name: 'Kontakt-Notizen-Zusammenfassung', category_label: 'KI & Zusammenfassungen', installed: false, installs: 1, rating: null });
+    expect(p).toMatchObject({ name: 'Contact notes summary', category_label: 'KI & Zusammenfassungen', installed: false, installs: 1, rating: null });
     expect(p.owner).toBeUndefined(); // like the wish list: names only for the agency
     expect((await other('GET', '/api/marktplatz?q=zusammen')).data.plugins).toHaveLength(1);
     expect((await other('GET', '/api/marktplatz?q=zzzz')).data.plugins).toHaveLength(0);
@@ -290,7 +290,7 @@ describe('server logic: scheduled jobs and the workflow action â€žPlugin-Aktionâ
     expect((await member('GET', '/api/tasks')).data.filter((x: any) => x.contact_id === c.id)).toHaveLength(1);
     // the audit log shows who acted for whom
     const audit = JSON.stringify((await admin('GET', '/api/audit?limit=80')).data);
-    expect(audit).toContain('Plugin Geburtstags-Erinnerungen (im Auftrag von');
+    expect(audit).toContain('Plugin Birthday reminders (im Auftrag von');
     // the policy can switch server logic off
     await admin('PUT', '/api/werkstatt/policy', { server_logic: 'off' });
     t.app.db.run('UPDATE plugin_job_state SET next_run_at = ? WHERE plugin_id = ?', new Date(Date.now() - 1000).toISOString(), id);
@@ -331,14 +331,14 @@ describe('export and import as a JSON bundle', () => {
     expect(ex.status).toBe(200);
     expect(ex.headers.get('content-disposition')).toContain('.gohigh-plugin.json');
     const bundle = JSON.parse(ex.text);
-    expect(bundle).toMatchObject({ format: 'gohigh-plugin', bundle_version: 1, plugin: { name: 'Deal-Ampel' } });
+    expect(bundle).toMatchObject({ format: 'gohigh-plugin', bundle_version: 1, plugin: { name: 'Deal traffic light' } });
     expect(JSON.stringify(bundle)).not.toMatch(/session|password|token/i);
     const pre = await other('POST', '/api/plugins/import/preview', { bundle });
-    expect(pre.data).toMatchObject({ name: 'Deal-Ampel', intact: true, consent_required: ['opportunities:read'] });
+    expect(pre.data).toMatchObject({ name: 'Deal traffic light', intact: true, consent_required: ['opportunities:read'] });
     expect((await other('POST', '/api/plugins/import', { bundle })).status).toBe(400);
     const r = await other('POST', '/api/plugins/import', { bundle, consent: ['opportunities:read'], accept_unverified: true });
     expect(r.status, JSON.stringify(r.data)).toBe(200);
-    expect(r.data, JSON.stringify(r.data)).toMatchObject({ name: 'Deal-Ampel', scope: 'private', origin: 'import', intact: true, active_here: true });
+    expect(r.data, JSON.stringify(r.data)).toMatchObject({ name: 'Deal traffic light', scope: 'private', origin: 'import', intact: true, active_here: true });
     expect(r.data.slug).not.toBe('deal-ampel'); // slugs stay unique
     expect((await member('GET', '/api/plugins/active')).data.map((p: any) => p.id)).not.toContain(r.data.id);
     // a tampered bundle is checked like any other code

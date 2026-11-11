@@ -2,6 +2,7 @@ import type { Module } from '../core/app.js';
 import { HttpError } from '../core/http.js';
 import { SOURCE_KEYS, SOURCE_LABELS, PART_KEYS } from '../services/umzug-core.js';
 import type { Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * MCP tools of the Umzug assistant and the deliverability wizard (HyperLevel Agent, Claude, ChatGPT, Codex). Thin relays
@@ -9,7 +10,9 @@ import type { Tool } from './mcp.js';
  * log apply. Credentials are never accepted here – they are entered in the app (Einstellungen → Umzug).
  */
 
-const LOC = { location_id: { type: 'string', description: 'Ziel-Sub-Account/Projekt-ID (aus ghl_list_projects) – dorthin wird importiert' } };
+/** Tool texts are for the model: the instance language (English here), fixed when the module loads. */
+const t = tApp();
+const LOC = { location_id: { type: 'string', description: t('Ziel-Sub-Account/Projekt-ID (aus ghl_list_projects) – dorthin wird importiert') } };
 const obj = (props: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties: props, required, additionalProperties: false });
 const RO = { readOnlyHint: true, openWorldHint: true };
 const W = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
@@ -29,20 +32,22 @@ function loc(call: Caller, a: Record<string, any>): string | undefined {
   return undefined;
 }
 
-const SHAPE =
-  `source = ${SOURCE_KEYS.slice(0, -1).join(', ')} oder ${SOURCE_KEYS[SOURCE_KEYS.length - 1]}. Quelle ist entweder die API-Verbindung (muss vorher in der Oberfläche unter Einstellungen → Umzug eingerichtet sein – Zugangsdaten nimmt dieses Werkzeug nicht entgegen) oder hochgeladene Export-Dateien (file_ids). parts = was mitkommt (Standard: alles, was die Quelle vorschlägt).`;
+const SHAPE = t(
+  'source = {keys} oder {last}. Quelle ist entweder die API-Verbindung (muss vorher in der Oberfläche unter Einstellungen → Umzug eingerichtet sein – Zugangsdaten nimmt dieses Werkzeug nicht entgegen) oder hochgeladene Export-Dateien (file_ids). parts = was mitkommt (Standard: alles, was die Quelle vorschlägt).',
+  { keys: SOURCE_KEYS.slice(0, -1).join(', '), last: SOURCE_KEYS[SOURCE_KEYS.length - 1] },
+);
 
 const jobBrief = (j: any) => ({
   id: j.id,
   source: j.source_label ?? j.source,
-  kind: j.kind === 'dry_run' ? 'Probelauf' : 'Import',
+  kind: j.kind === 'dry_run' ? t('Probelauf') : t('Import'),
   status: j.status,
   percent: j.percent,
   current_step: j.step_label,
   processed: j.processed,
   total: j.total,
   steps: (j.steps ?? []).map((s: any) => `${s.done ? '✓' : '·'} ${s.label}`),
-  report: (j.report ?? []).map((l: any) => `${l.label}: ${l.created} neu, ${l.updated} aktualisiert${l.skipped ? `, ${l.skipped} übersprungen` : ''}${l.failed ? `, ${l.failed} Fehler` : ''}`),
+  report: (j.report ?? []).map((l: any) => [t('{label}: {created} neu, {updated} aktualisiert', { label: l.label, created: l.created, updated: l.updated }), l.skipped ? t('{n} übersprungen', { n: l.skipped }) : '', l.failed ? t('{n} Fehler', { n: l.failed }) : ''].filter(Boolean).join(', ')),
   warnings: (j.warnings ?? []).slice(0, 15),
   warnings_total: (j.warnings ?? []).length,
   notes: (j.notes ?? []).slice(0, 8),
@@ -56,8 +61,8 @@ const jobBrief = (j: any) => ({
 export const UMZUG_TOOLS: Tool[] = [
   {
     name: 'ghl_umzug_sources',
-    title: 'Umzug: Quellen und Stand',
-    description: `Umzug zu HyperLevel: die Quellen (${SOURCE_NAMES}) mit den Teilen, die mitkommen können, dem was NICHT mitkommt, ob die API-Verbindung im Ziel-Sub-Account steht, hochgeladenen Export-Dateien und den letzten Umzügen. Starte hier, wenn jemand von einem anderen Tool wechseln will. Die Zugangsdaten gibt die Person in der Oberfläche ein (Einstellungen → Umzug, Link in der Antwort) – frage nie nach API-Schlüsseln im Chat.`,
+    title: t('Umzug: Quellen und Stand'),
+    description: t('Umzug zu HyperLevel: die Quellen ({sources}) mit den Teilen, die mitkommen können, dem was NICHT mitkommt, ob die API-Verbindung im Ziel-Sub-Account steht, hochgeladenen Export-Dateien und den letzten Umzügen. Starte hier, wenn jemand von einem anderen Tool wechseln will. Die Zugangsdaten gibt die Person in der Oberfläche ein (Einstellungen → Umzug, Link in der Antwort) – frage nie nach API-Schlüsseln im Chat.', { sources: SOURCE_NAMES }),
     inputSchema: obj({ ...LOC }, []),
     annotations: RO,
     run: async (call, a) => {
@@ -72,15 +77,15 @@ export const UMZUG_TOOLS: Tool[] = [
   },
   {
     name: 'ghl_umzug_preview',
-    title: 'Umzug: Vorschau mit Zahlen und Feldzuordnung',
-    description: `Vorschau eines Umzugs ohne etwas zu schreiben: wie viele Kontakte, Listen/Tags, Deals, Kurse … in der Quelle liegen, wie viele davon schon übernommen wurden, welche Felder wohin zugeordnet werden (automatisch; unbekannte Felder würden als neue eigene Felder angelegt) und Hinweise. ${SHAPE}`,
+    title: t('Umzug: Vorschau mit Zahlen und Feldzuordnung'),
+    description: t('Vorschau eines Umzugs ohne etwas zu schreiben: wie viele Kontakte, Listen/Tags, Deals, Kurse … in der Quelle liegen, wie viele davon schon übernommen wurden, welche Felder wohin zugeordnet werden (automatisch; unbekannte Felder würden als neue eigene Felder angelegt) und Hinweise. {shape}', { shape: SHAPE }),
     inputSchema: obj(
       {
         ...LOC,
         source: { type: 'string', enum: SOURCES },
         parts: { type: 'array', items: { type: 'string' }, description: PART_KEYS.join(', ') },
-        file_ids: { type: 'array', items: { type: 'string' }, description: 'IDs hochgeladener Export-Dateien (ghl_umzug_sources) statt der API-Verbindung' },
-        mapping: { type: 'object', description: 'Eigene Zuordnung: Quellfeld → Kontaktfeld (first_name, last_name, email, phone, company, address, city, postal_code, country, website, date_of_birth, source), custom:<schlüssel>, new:<typ>:<Bezeichnung>, tag, note oder leer = überspringen' },
+        file_ids: { type: 'array', items: { type: 'string' }, description: t('IDs hochgeladener Export-Dateien (ghl_umzug_sources) statt der API-Verbindung') },
+        mapping: { type: 'object', description: t('Eigene Zuordnung: Quellfeld → Kontaktfeld (first_name, last_name, email, phone, company, address, city, postal_code, country, website, date_of_birth, source), custom:<schlüssel>, new:<typ>:<Bezeichnung>, tag, note oder leer = überspringen') },
       },
       ['source'],
     ),
@@ -90,31 +95,31 @@ export const UMZUG_TOOLS: Tool[] = [
       const mapped = Object.entries(r.mapping as Record<string, string>);
       return {
         source: r.label,
-        from: r.origin === 'file' ? 'Export-Datei' : 'API-Verbindung',
+        from: r.origin === 'file' ? t('Export-Datei') : t('API-Verbindung'),
         parts: r.parts,
-        counts: (r.counts as any[]).map((c) => `${c.label}: ${c.total ?? 'unbekannt'}${c.error ? ` (${c.error})` : ''}`),
+        counts: (r.counts as any[]).map((c) => `${c.label}: ${c.total ?? t('unbekannt')}${c.error ? ` (${c.error})` : ''}`),
         already_imported: r.existing,
-        field_mapping: mapped.slice(0, 60).map(([ref, target]) => `${(r.fields as any[]).find((f) => f.ref === ref)?.label ?? ref} → ${target || 'überspringen'}`),
+        field_mapping: mapped.slice(0, 60).map(([ref, target]) => `${(r.fields as any[]).find((f) => f.ref === ref)?.label ?? ref} → ${target || t('überspringen')}`),
         new_custom_fields: mapped.filter(([, t]) => t.startsWith('new:')).length,
         warnings: r.warnings,
-        next: 'Probelauf mit ghl_umzug_start (dry_run: true), dann echt starten. Die Zuordnung lässt sich in der Oberfläche feinjustieren.',
+        next: t('Probelauf mit ghl_umzug_start (dry_run: true), dann echt starten. Die Zuordnung lässt sich in der Oberfläche feinjustieren.'),
         link: link('settings/umzug'),
       };
     },
   },
   {
     name: 'ghl_umzug_start',
-    title: 'Umzug starten (Probelauf oder Import)',
-    description: `Startet einen Umzug als Hintergrund-Auftrag: mit dry_run: true ein Probelauf (liest alles, schreibt nichts, zählt neu/aktualisiert und sammelt Warnungen), sonst der Import. Mehrfach ausführbar – ein zweiter Lauf aktualisiert statt zu verdoppeln; vorhandene Kontakte (gleiche E-Mail/Telefon) werden zusammengeführt (merge: fill = nur leere Felder füllen, overwrite = überschreiben); Abgemeldete/Bounces werden „Nicht stören“; Automationen und Sequenzen kommen nur als Entwürfe „bitte prüfen“. Der Auftrag lässt sich in der Oberfläche pausieren, fortsetzen und rückgängig machen. Fortschritt mit ghl_umzug_status. Erst Probelauf, dann Import – und den Import nur nach Rückfrage bei der Person starten. ${SHAPE}`,
+    title: t('Umzug starten (Probelauf oder Import)'),
+    description: t('Startet einen Umzug als Hintergrund-Auftrag: mit dry_run: true ein Probelauf (liest alles, schreibt nichts, zählt neu/aktualisiert und sammelt Warnungen), sonst der Import. Mehrfach ausführbar – ein zweiter Lauf aktualisiert statt zu verdoppeln; vorhandene Kontakte (gleiche E-Mail/Telefon) werden zusammengeführt (merge: fill = nur leere Felder füllen, overwrite = überschreiben); Abgemeldete/Bounces werden „Nicht stören“; Automationen und Sequenzen kommen nur als Entwürfe „bitte prüfen“. Der Auftrag lässt sich in der Oberfläche pausieren, fortsetzen und rückgängig machen. Fortschritt mit ghl_umzug_status. Erst Probelauf, dann Import – und den Import nur nach Rückfrage bei der Person starten. {shape}', { shape: SHAPE }),
     inputSchema: obj(
       {
         ...LOC,
         source: { type: 'string', enum: SOURCES },
         parts: { type: 'array', items: { type: 'string' } },
         file_ids: { type: 'array', items: { type: 'string' } },
-        dry_run: { type: 'boolean', description: 'true = Probelauf ohne Schreiben' },
-        mapping: { type: 'object', description: 'wie bei ghl_umzug_preview; ohne Angabe gilt die automatische Zuordnung' },
-        options: { type: 'object', properties: { merge: { type: 'string', enum: ['fill', 'overwrite'] }, tag: { type: 'string', description: 'zusätzlicher Tag für alle importierten Kontakte' }, keep_files: { type: 'boolean' } } },
+        dry_run: { type: 'boolean', description: t('true = Probelauf ohne Schreiben') },
+        mapping: { type: 'object', description: t('wie bei ghl_umzug_preview; ohne Angabe gilt die automatische Zuordnung') },
+        options: { type: 'object', properties: { merge: { type: 'string', enum: ['fill', 'overwrite'] }, tag: { type: 'string', description: t('zusätzlicher Tag für alle importierten Kontakte') }, keep_files: { type: 'boolean' } } },
       },
       ['source'],
     ),
@@ -122,13 +127,13 @@ export const UMZUG_TOOLS: Tool[] = [
     klassFor: (a) => (a.dry_run ? 'read' : 'write'),
     run: async (call, a) => {
       const j = await call.api('POST', a.dry_run ? '/api/umzug/dry-run' : '/api/umzug/jobs', { location: loc(call, a), body: { source: a.source, parts: a.parts, file_ids: a.file_ids, mapping: a.mapping, options: a.options } });
-      return { started: jobBrief(j), next: 'Fortschritt: ghl_umzug_status mit job_id.' };
+      return { started: jobBrief(j), next: t('Fortschritt: ghl_umzug_status mit job_id.') };
     },
   },
   {
     name: 'ghl_umzug_status',
-    title: 'Umzug: Fortschritt und Bericht',
-    description: 'Stand eines Umzugs: Status (läuft, pausiert, fertig, fehlgeschlagen, rückgängig gemacht), Fortschritt je Schritt, Bericht (neu/aktualisiert/übersprungen/Fehler je Bereich) und Warnungen („bitte prüfen“). Ohne job_id: der letzte Umzug des Sub-Accounts.',
+    title: t('Umzug: Fortschritt und Bericht'),
+    description: t('Stand eines Umzugs: Status (läuft, pausiert, fertig, fehlgeschlagen, rückgängig gemacht), Fortschritt je Schritt, Bericht (neu/aktualisiert/übersprungen/Fehler je Bereich) und Warnungen („bitte prüfen“). Ohne job_id: der letzte Umzug des Sub-Accounts.'),
     inputSchema: obj({ ...LOC, job_id: { type: 'string' } }, []),
     annotations: RO,
     run: async (call, a) => {
@@ -136,7 +141,7 @@ export const UMZUG_TOOLS: Tool[] = [
       let id = a.job_id as string | undefined;
       if (!id) {
         const list = await call.api('GET', '/api/umzug/jobs', { location: l });
-        if (!list.length) return { jobs: 0, hint: 'Noch kein Umzug – ghl_umzug_sources zeigt, wie es losgeht.' };
+        if (!list.length) return { jobs: 0, hint: t('Noch kein Umzug – ghl_umzug_sources zeigt, wie es losgeht.') };
         id = list[0].id;
       }
       const j = await call.api('GET', `/api/umzug/jobs/${encodeURIComponent(String(id))}`, { location: l });
@@ -145,9 +150,9 @@ export const UMZUG_TOOLS: Tool[] = [
   },
   {
     name: 'ghl_mail_domain_check',
-    title: 'E-Mail-Zustellung prüfen (SPF, DKIM, DMARC, MX)',
-    description: 'Prüft die Absender-Domain eines Sub-Accounts (oder eine angegebene Domain) per DNS: SPF (ein Eintrag, Abschluss, höchstens 10 Abfragen, Anbieter enthalten), DKIM (Selektor je Anbieter: Amazon SES, Postmark, Resend, Brevo, Mailgun, SMTP), DMARC und MX. Antwort: Gesamtstatus, je Prüfung Status, Befund, Schritte zur Behebung auf Deutsch und die DNS-Einträge zum Kopieren. Nutze es, wenn Mails im Spam landen, vor dem ersten Kampagnenversand oder nach einem Umzug. Die Prüfung schreibt nur das Ergebnis in die Liste der Domains.',
-    inputSchema: obj({ ...LOC, domain: { type: 'string', description: 'Domain wie meinefirma.de – ohne Angabe die Domain der Absender-Adresse' } }, []),
+    title: t('E-Mail-Zustellung prüfen (SPF, DKIM, DMARC, MX)'),
+    description: t('Prüft die Absender-Domain eines Sub-Accounts (oder eine angegebene Domain) per DNS: SPF (ein Eintrag, Abschluss, höchstens 10 Abfragen, Anbieter enthalten), DKIM (Selektor je Anbieter: Amazon SES, Postmark, Resend, Brevo, Mailgun, SMTP), DMARC und MX. Antwort: Gesamtstatus, je Prüfung Status, Befund, Schritte zur Behebung auf Deutsch und die DNS-Einträge zum Kopieren. Nutze es, wenn Mails im Spam landen, vor dem ersten Kampagnenversand oder nach einem Umzug. Die Prüfung schreibt nur das Ergebnis in die Liste der Domains.'),
+    inputSchema: obj({ ...LOC, domain: { type: 'string', description: t('Domain wie meinefirma.de – ohne Angabe die Domain der Absender-Adresse') } }, []),
     annotations: RO,
     klassFor: () => 'read',
     run: async (call, a) => {

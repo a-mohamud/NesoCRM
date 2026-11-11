@@ -6,6 +6,7 @@ import { now } from '../core/util.js';
 import { messagePage } from '../core/page.js';
 import { hostSafeSlug, sitesDomain, slugOfSitesHost, txtHas, verifyRecordName, verifyToken } from '../services/cloud-sites.js';
 import { cloudEnabled, tenantOfLocation } from './cloud.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Customer sites in cloud mode (docs/cloud.md#customer-sites-their-own-origin-and-verified-domains):
@@ -88,7 +89,7 @@ export const cloudSitesModule: Module = {
     async function check(domain: string, lid: string): Promise<Check> {
       ensure(domain, lid);
       const ok = txtHas(await lookup(verifyRecordName(domain)), verifyToken(app.config.secret, lid, domain));
-      db.run('UPDATE site_domain_checks SET checked_at = ?, verified_at = COALESCE(verified_at, ?), error = ? WHERE domain = ?', now(), ok ? now() : null, ok ? '' : 'TXT-Eintrag noch nicht gefunden', domain);
+      db.run('UPDATE site_domain_checks SET checked_at = ?, verified_at = COALESCE(verified_at, ?), error = ? WHERE domain = ?', now(), ok ? now() : null, ok ? '' : tApp()('TXT-Eintrag noch nicht gefunden'), domain);
       return row(domain)!;
     }
     const info = (domain: string, lid: string) => {
@@ -112,7 +113,8 @@ export const cloudSitesModule: Module = {
     });
     router.get('/_site/:kind', 'public', (ctx) => {
       const pending = ctx.params.kind === 'pending';
-      const r = html(pending ? messagePage('Domain wird geprüft', 'Diese Website ist eingerichtet, die Domain aber noch nicht bestätigt. Sobald der Inhaber den DNS-Eintrag angelegt hat, ist sie hier erreichbar.') : messagePage('Nicht gefunden', 'Unter dieser Adresse gibt es keine Website.'), pending ? 503 : 404);
+      const t = tCtx(ctx);
+      const r = html(pending ? messagePage(t('Domain wird geprüft'), t('Diese Website ist eingerichtet, die Domain aber noch nicht bestätigt. Sobald der Inhaber den DNS-Eintrag angelegt hat, ist sie hier erreichbar.')) : messagePage(t('Nicht gefunden'), t('Unter dieser Adresse gibt es keine Website.')), pending ? 503 : 404);
       r.headers['x-robots-tag'] = 'noindex';
       r.headers['cache-control'] = 'no-store';
       return r;
@@ -133,7 +135,8 @@ export const cloudSitesModule: Module = {
             const rest = (ctx.path.startsWith(prefix) ? ctx.path.slice(prefix.length) : '') || '/';
             if (sd && hostSafeSlug(f.slug)) return redirect(`https://${f.slug}.${sd}${rest}${ctx.url.search}`, 301);
             if (f.domain && verified(f.domain, f.location_id)) return redirect(`https://${f.domain}${rest}${ctx.url.search}`, 301);
-            const r = html(messagePage('Nicht hier', 'Diese Website ist nur über ihre eigene Adresse erreichbar.'), 404);
+            const t = tCtx(ctx);
+            const r = html(messagePage(t('Nicht hier'), t('Diese Website ist nur über ihre eigene Adresse erreichbar.')), 404);
             r.headers['x-robots-tag'] = 'noindex';
             return r;
           }
@@ -154,7 +157,7 @@ export const cloudSitesModule: Module = {
       const f = d ? funnelByHost(d) : undefined;
       if (f && f.domain === d && isTenant(f.location_id) && !verified(d, f.location_id)) {
         const i = info(d, f.location_id);
-        return { status: 'unverified', message: `Domain bestätigen: TXT-Eintrag „${i.record.name}“ mit dem Wert „${i.record.value}“ anlegen. Die Seite startet nach der Prüfung (alle 10 Minuten oder sofort per „aktualisieren“).` };
+        return { status: 'unverified', message: tApp()('Domain bestätigen: TXT-Eintrag „{name}“ mit dem Wert „{value}“ anlegen. Die Seite startet nach der Prüfung (alle 10 Minuten oder sofort per „aktualisieren“).', { name: i.record.name, value: i.record.value }) };
       }
       return prevStatus?.(d);
     };

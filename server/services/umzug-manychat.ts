@@ -3,6 +3,7 @@ import type { Account, Batch, CountRow, PartKey, RReference, RTagRec, SourceDef,
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { cell, type Json } from './umzug-flow.js';
 import { counter } from './umzug-lib.js';
+import { translator } from '../i18n/index.js';
 
 /**
  * ManyChat (Page API, https://api.manychat.com, header `Authorization: Bearer <page id>:<token>`). The API cannot list subscribers –
@@ -65,6 +66,7 @@ const steps = (): StepDef[] => [
     label: 'Flows, Tags und Felder → Referenzliste',
     part: 'reference',
     async *run(ctx): AsyncGenerator<Batch> {
+      const t = translator(ctx.lang);
       const flowsData: Json = (await call(ctx.http, '/fb/page/getFlows')) ?? {};
       const flows = list(flowsData.flows);
       const folders = new Map(list(flowsData.folders).map((f) => [String(f.id), String(f.name ?? f.id)]));
@@ -72,28 +74,28 @@ const steps = (): StepDef[] => [
       const fields = list(await call(ctx.http, '/fb/page/getCustomFields'));
       const bot = list(await call(ctx.http, '/fb/page/getBotFields').catch(() => []));
       const body = [
-        '# ManyChat-Konto: Flows, Tags und Felder',
+        t('# ManyChat-Konto: Flows, Tags und Felder'),
         '',
-        `Stand: ${new Date().toISOString().slice(0, 10)}. Diese Liste ist eine **Gedächtnisstütze** zum Nachbauen: ManyChats Schnittstelle liefert die Namen der Flows, nicht ihren Inhalt (Nachrichten, Bedingungen, Schaltflächen). Bau jeden Flow, den du brauchst, in HyperLevel als Workflow oder Chat-Ablauf nach, und prüfe vor dem Kündigen, dass nichts fehlt.`,
+        t('Stand: {date}. Diese Liste ist eine **Gedächtnisstütze** zum Nachbauen: ManyChats Schnittstelle liefert die Namen der Flows, nicht ihren Inhalt (Nachrichten, Bedingungen, Schaltflächen). Bau jeden Flow, den du brauchst, in HyperLevel als Workflow oder Chat-Ablauf nach, und prüfe vor dem Kündigen, dass nichts fehlt.', { date: new Date().toISOString().slice(0, 10) }),
         '',
         `## Flows (${flows.length})`,
         '',
-        ...(flows.length ? ['| Flow | Ordner | Kennung |', '| --- | --- | --- |', ...flows.map((f) => `| ${cell(f.name) || '–'} | ${cell(folders.get(String(f.folder_id))) || '–'} | ${cell(f.ns) || '–'} |`)] : ['_Keine Flows._']),
+        ...(flows.length ? [t('| Flow | Ordner | Kennung |'), '| --- | --- | --- |', ...flows.map((f) => `| ${cell(f.name) || '–'} | ${cell(folders.get(String(f.folder_id))) || '–'} | ${cell(f.ns) || '–'} |`)] : [t('_Keine Flows._')]),
         '',
         `## Tags (${tags.length})`,
         '',
-        tags.length ? tags.map((t) => `- ${cell(t.name)}`).join('\n') : '_Keine Tags._',
+        tags.length ? tags.map((t) => `- ${cell(t.name)}`).join('\n') : t('_Keine Tags._'),
         '',
-        `## Eigene Felder (${fields.length})`,
+        t('## Eigene Felder ({n})', { n: fields.length }),
         '',
-        ...(fields.length ? ['| Feld | Typ | Beschreibung |', '| --- | --- | --- |', ...fields.map((f) => `| ${cell(f.name)} | ${cell(TYPE[String(f.type)] ?? f.type) || '–'} | ${cell(f.description) || '–'} |`)] : ['_Keine eigenen Felder._']),
+        ...(fields.length ? [t('| Feld | Typ | Beschreibung |'), '| --- | --- | --- |', ...fields.map((f) => `| ${cell(f.name)} | ${cell(TYPE[String(f.type)] ? t(TYPE[String(f.type)]) : f.type) || '–'} | ${cell(f.description) || '–'} |`)] : [t('_Keine eigenen Felder._')]),
         '',
-        `## Bot-Felder (${bot.length})`,
+        t('## Bot-Felder ({n})', { n: bot.length }),
         '',
-        bot.length ? `Nur die Namen – die Werte gehören nicht in eine Liste (sie enthalten oft Schlüssel oder Zugangsdaten):\n\n${bot.map((f) => `- ${cell(f.name)} (${cell(TYPE[String(f.type)] ?? f.type) || '–'})`).join('\n')}` : '_Keine Bot-Felder._',
+        bot.length ? t('Nur die Namen – die Werte gehören nicht in eine Liste (sie enthalten oft Schlüssel oder Zugangsdaten):\n\n{bot}', { bot: bot.map((f) => `- ${cell(f.name)} (${cell(TYPE[String(f.type)] ? t(TYPE[String(f.type)]) : f.type) || '–'})`).join('\n') }) : t('_Keine Bot-Felder._'),
       ].join('\n');
-      if (flows.length) ctx.warn(`Flows: ${flows.length} Flow${flows.length === 1 ? '' : 's'} als Referenzliste im Wiki (Bereich „Umzug“) – ihren Inhalt liefert ManyChat nicht, nachbauen musst du sie selbst.`);
-      yield { records: [{ kind: 'reference', ext: 'account', title: 'ManyChat-Konto: Flows, Tags und Felder', body } satisfies RReference], cursor: undefined };
+      if (flows.length) ctx.warn(t.plural(flows.length, { one: 'Flows: {n} Flow als Referenzliste im Wiki (Bereich „Umzug“) – seinen Inhalt liefert ManyChat nicht, nachbauen musst du ihn selbst.', other: 'Flows: {n} Flows als Referenzliste im Wiki (Bereich „Umzug“) – ihren Inhalt liefert ManyChat nicht, nachbauen musst du sie selbst.' }));
+      yield { records: [{ kind: 'reference', ext: 'account', title: t('ManyChat-Konto: Flows, Tags und Felder'), body } satisfies RReference], cursor: undefined };
     },
   },
 ];

@@ -2,6 +2,7 @@ import type { App } from '../core/app.js';
 import { bad } from '../core/http.js';
 import { ymdInTz } from '../core/time.js';
 import { now } from '../core/util.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Settings and small per-member data of the community extensions (everything beyond the first community version):
@@ -121,7 +122,7 @@ export function cleanExt(input: any, cur: Partial<ExtSettings> = {}): ExtSetting
       challenge_complete: int(v.points?.challenge_complete, 0, 10_000, base.points.challenge_complete),
     },
     leaderboard: { reset: v.leaderboard?.reset === 'monthly' ? 'monthly' : v.leaderboard?.reset === 'none' ? 'none' : base.leaderboard.reset },
-    start_here: { post_id: text(v.start_here?.post_id, 40, base.start_here.post_id), label: text(v.start_here?.label, 40, base.start_here.label) || 'Hier starten' },
+    start_here: { post_id: text(v.start_here?.post_id, 40, base.start_here.post_id), label: text(v.start_here?.label, 40, base.start_here.label) || tApp()('Hier starten') },
     welcome: {
       dm: { enabled: bool(w.dm?.enabled, bw.dm.enabled), sender: text(w.dm?.sender, 60, bw.dm.sender), text: text(w.dm?.text, 2000, bw.dm.text) },
       post: { enabled: bool(w.post?.enabled, bw.post.enabled), channel_id: text(w.post?.channel_id, 40, bw.post.channel_id), title: text(w.post?.title, 200, bw.post.title), body: text(w.post?.body, 5000, bw.post.body) },
@@ -133,10 +134,24 @@ export function cleanExt(input: any, cur: Partial<ExtSettings> = {}): ExtSetting
   };
 }
 
-/** Stored (possibly partial or older) settings on top of the defaults. */
-export function mergeExt(cur: any): ExtSettings {
-  const c = cur && typeof cur === 'object' ? cur : {};
+/** The defaults with their texts in a language (DEFAULT_EXT holds the German catalog keys). */
+export function defaultExt(t: STFn = tApp()): ExtSettings {
   const d = DEFAULT_EXT;
+  return {
+    ...d,
+    start_here: { ...d.start_here, label: t(d.start_here.label) },
+    welcome: {
+      dm: { ...d.welcome.dm, text: t(d.welcome.dm.text) },
+      post: { ...d.welcome.post, title: t(d.welcome.post.title), body: t(d.welcome.post.body) },
+      checklist: { ...d.welcome.checklist, items: d.welcome.checklist.items.map((i) => ({ ...i, label: t(i.label) })) },
+    },
+  };
+}
+
+/** Stored (possibly partial or older) settings on top of the defaults. */
+export function mergeExt(cur: any, t: STFn = tApp()): ExtSettings {
+  const c = cur && typeof cur === 'object' ? cur : {};
+  const d = defaultExt(t);
   return {
     dms: { ...d.dms, ...(c.dms ?? {}) },
     directory: { ...d.directory, ...(c.directory ?? {}) },
@@ -157,14 +172,14 @@ export function mergeExt(cur: any): ExtSettings {
 }
 
 export function extOf(app: App, groupId: string): ExtSettings {
-  const row = app.db.get<{ settings: string }>('SELECT settings FROM community_ext WHERE group_id = ?', groupId);
+  const row = app.db.get<{ settings: string; location_id: string }>('SELECT settings, location_id FROM community_ext WHERE group_id = ?', groupId);
   let parsed: unknown = {};
   try {
     parsed = row ? JSON.parse(row.settings) : {};
   } catch {
     parsed = {};
   }
-  return mergeExt(parsed);
+  return mergeExt(parsed, tLoc(app, row?.location_id ?? app.db.get<{ location_id: string }>('SELECT location_id FROM community_groups WHERE id = ?', groupId)?.location_id));
 }
 
 export function saveExt(app: App, g: { id: string; location_id: string }, settings: ExtSettings) {
@@ -296,7 +311,7 @@ export function cleanLinks(v: unknown): { label: string; url: string }[] {
     try {
       u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`);
     } catch {
-      throw bad(`Link „${url.slice(0, 40)}“ ist keine gültige Adresse`);
+      throw bad(tApp()('Link „{url}“ ist keine gültige Adresse', { url: url.slice(0, 40) }));
     }
     if (u.protocol !== 'https:' && u.protocol !== 'http:') throw bad('Links müssen mit https:// beginnen');
     if (u.username || u.password) throw bad('Links ohne Zugangsdaten bitte');

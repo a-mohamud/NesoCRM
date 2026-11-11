@@ -15,6 +15,7 @@ import {
   type PropertyDef,
 } from '../services/objects.js';
 import { hiddenUser } from '../core/permissions.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Properties ("Eigenschaften", like HubSpot) for every object in one place: contact custom fields
@@ -162,10 +163,10 @@ export const objectSchemaModule: Module = {
       for (const d of list) {
         const v = out[d.key];
         if (v === null || v === undefined) continue;
-        if (d.type === 'user' && !users(loc).some((u) => u.id === v)) throw bad(`„${d.label}“: Nutzer hat keinen Zugriff auf diesen Sub-Account`);
+        if (d.type === 'user' && !users(loc).some((u) => u.id === v)) throw bad(tApp()('„{label}“: Nutzer hat keinen Zugriff auf diesen Sub-Account', { label: d.label }));
         if (d.type === 'file') {
           const up = db.get('SELECT id, name, file FROM uploads WHERE id = ? AND location_id = ?', String(v), loc);
-          if (!up) throw bad(`„${d.label}“: Datei nicht gefunden (erst hochladen)`);
+          if (!up) throw bad(tApp()('„{label}“: Datei nicht gefunden (erst hochladen)', { label: d.label }));
           out[d.key] = { id: up.id, name: up.name, url: `${app.baseUrl()}/uploads/${up.file}` };
         }
         if (d.unique && store) {
@@ -177,7 +178,7 @@ export const objectSchemaModule: Module = {
             v as any,
             ...(opts.recordId ? [opts.recordId] : []),
           );
-          if (taken) throw bad(`„${d.label}“ muss eindeutig sein – „${String(v).slice(0, 80)}“ gibt es schon`);
+          if (taken) throw bad(tApp()('„{label}“ muss eindeutig sein – „{value}“ gibt es schon', { label: d.label, value: String(v).slice(0, 80) }));
         }
       }
       return out;
@@ -211,7 +212,7 @@ export const objectSchemaModule: Module = {
       },
       registerObjects: (fn) => void providers.push(fn),
       createProperty: () => {
-        throw new Error('not ready');
+        throw new Error('not ready'); // i18n-ignore (internal)
       },
       registerStore: (match, store) => void stores.unshift({ match, store }),
       users,
@@ -267,8 +268,8 @@ export const objectSchemaModule: Module = {
       const o = needObject(loc, objKey);
       const def = asBad(() => cleanPropertyDef(body, { types: o.key === 'contact' ? CONTACT_FIELD_TYPES : undefined }));
       if (!groupExists(loc, o.key, def.group_key)) throw bad('Gruppe nicht gefunden');
-      if ((STANDARD_PROPS[o.key] ?? []).some((s) => s.key === def.key)) throw bad(`„${def.key}“ ist eine Standard-Eigenschaft`);
-      if (o.key !== 'contact' && RESERVED.includes(def.key)) throw bad(`„${def.key}“ ist reserviert – bitte einen anderen internen Namen`);
+      if ((STANDARD_PROPS[o.key] ?? []).some((s) => s.key === def.key)) throw bad(tApp()('„{key}“ ist eine Standard-Eigenschaft', { key: def.key }));
+      if (o.key !== 'contact' && RESERVED.includes(def.key)) throw bad(tApp()('„{key}“ ist reserviert – bitte einen anderen internen Namen', { key: def.key }));
       if (o.key === 'contact') {
         if (db.get('SELECT id FROM custom_fields WHERE location_id = ? AND key = ?', loc, def.key)) throw bad('Interner Name existiert schon');
         const row = { id: id(), location_id: loc, key: def.key, label: def.label, type: def.type, options: def.options, position: def.position, group_key: def.group_key, description: def.description, created_at: now() };
@@ -324,7 +325,7 @@ export const objectSchemaModule: Module = {
             `SELECT json_extract(${store.column}, '$.${cur.key}') AS v, COUNT(*) AS n FROM ${store.table} WHERE ${w} AND json_extract(${store.column}, '$.${cur.key}') IS NOT NULL GROUP BY v HAVING n > 1 LIMIT 1`,
             ...(p as any[]),
           );
-          if (dup) throw bad(`Nicht eindeutig: „${String(dup.v).slice(0, 80)}“ kommt ${dup.n}× vor`);
+          if (dup) throw bad(tApp()('Nicht eindeutig: „{value}“ kommt {n}× vor', { value: String(dup.v).slice(0, 80), n: dup.n }));
         }
       }
       db.update('object_properties', cur.id, { label: def.label, type: def.type, options: def.options, group_key: def.group_key, description: def.description, is_required: def.required ? 1 : 0, is_unique: def.unique ? 1 : 0, position: def.position, updated_at: now() }, ctx.locationId);

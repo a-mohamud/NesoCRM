@@ -26,6 +26,7 @@ import {
 import { communityUi } from '../services/community-ui.js';
 import type { SnapshotPart } from '../services/snapshots.js';
 import type { Tool } from './mcp.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Community (like GHL Communities / Skool light), admin side: groups per sub-account with channels,
@@ -91,7 +92,7 @@ const TRIGGERS = ['community.post_created', 'community.member_joined', 'communit
 
 const cleanImage = (v: unknown, field = 'Bild') => {
   const s = str(v, field, { max: 1000 });
-  if (s && !/^(https?:\/\/|\/)[^\s]*$/i.test(s)) throw bad(`${field}: bitte eine https://-Adresse`);
+  if (s && !/^(https?:\/\/|\/)[^\s]*$/i.test(s)) throw bad(tApp()('{field}: bitte eine https://-Adresse', { field: tApp()(field) }));
   return s;
 };
 const cleanLink = (v: unknown) => {
@@ -101,7 +102,7 @@ const cleanLink = (v: unknown) => {
 };
 const isoOf = (v: unknown, field: string) => {
   const t = Date.parse(String(v ?? ''));
-  if (Number.isNaN(t)) throw bad(`${field}: ungültiges Datum`);
+  if (Number.isNaN(t)) throw bad(tApp()('{field}: ungültiges Datum', { field: tApp()(field) }));
   return new Date(t).toISOString();
 };
 
@@ -348,9 +349,11 @@ export const communityModule: Module = {
       db.tx(() => {
         db.insert('community_groups', g);
         // A sensible start: general chat, introductions and team-only announcements.
-        const starters: [string, string, number][] = Array.isArray(b.channels) && b.channels.length ? b.channels.map((c: any) => [String(c?.name ?? c), '', c?.admin_only ? 1 : 0]) : [['Allgemein', '💬', 0], ['Vorstellungsrunde', '👋', 0], ['Ankündigungen', '📣', 1]];
+        // the default channels in the sub-account's language
+        const t = tLoc(app, ctx.locationId);
+        const starters: [string, string, number][] = Array.isArray(b.channels) && b.channels.length ? b.channels.map((c: any) => [String(c?.name ?? c), '', c?.admin_only ? 1 : 0]) : [[t('Allgemein'), '💬', 0], [t('Vorstellungsrunde'), '👋', 0], [t('Ankündigungen'), '📣', 1]];
         starters.slice(0, 20).forEach(([cname, emoji, adminOnly], i) => {
-          const n = String(cname).trim().slice(0, 60) || `Kanal ${i + 1}`;
+          const n = String(cname).trim().slice(0, 60) || t('Kanal {n}', { n: i + 1 });
           db.insert('community_channels', { id: id(), location_id: ctx.locationId, group_id: g.id, name: n, slug: uniqueSlug('community_channels', g.id, n), emoji, admin_only: adminOnly, position: i, created_at: now(), updated_at: now() });
         });
       });
@@ -510,7 +513,7 @@ export const communityModule: Module = {
       if (b.channel_id !== undefined) db.run('UPDATE community_posts SET channel_id = ? WHERE id = ?', mustChannel(group, String(b.channel_id)).id, post.id);
       if (b.status !== undefined) {
         if (!['visible', 'hidden'].includes(b.status)) throw bad('Unbekannter Status');
-        setHidden(app, 'post', post, b.status === 'hidden', str(b.reason, 'Grund', { max: 200 }) || 'vom Team');
+        setHidden(app, 'post', post, b.status === 'hidden', str(b.reason, 'Grund', { max: 200 }) || tLoc(app, ctx.locationId)('vom Team'));
         if (b.status === 'visible') db.run(`UPDATE community_reports SET status = 'dismissed', resolved_at = ?, resolved_by = ?, action = 'show' WHERE target_id = ? AND status = 'open'`, now(), ctx.user?.name ?? '', post.id);
       }
       return postOut(getPost(app, group.id, post.id));
@@ -640,9 +643,10 @@ export const communityModule: Module = {
       db.insert('community_events', e);
       if (b.notify) {
         const tz = app.location(ctx.locationId)?.timezone || 'Europe/Berlin';
-        const when = formatInTz(e.starts_at, tz, { weekday: 'short', year: undefined });
+        const t = tLoc(app, ctx.locationId);
+        const when = t.locale === 'de' ? formatInTz(e.starts_at, tz, { weekday: 'short', year: undefined }) : new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(e.starts_at));
         const all = db.all<{ contact_id: string }>('SELECT contact_id FROM community_members WHERE group_id = ? AND banned_at IS NULL', g.id).map((r) => r.contact_id);
-        notify(app, g, all, { kind: 'event', text: `Neuer Termin: ${e.title} (${when})`, actor: ctx.user?.name ?? 'Team' });
+        notify(app, g, all, { kind: 'event', text: t('Neuer Termin: {title} ({when})', { title: e.title, when }), actor: ctx.user?.name ?? t('Team') });
       }
       return e;
     });
@@ -725,9 +729,10 @@ export const communityModule: Module = {
             created_at: now(),
             updated_at: now(),
           });
-          const chs = Array.isArray(raw.channels) && raw.channels.length ? raw.channels : [{ name: 'Allgemein' }];
+          const tl = tLoc(app, loc);
+          const chs = Array.isArray(raw.channels) && raw.channels.length ? raw.channels : [{ name: tl('Allgemein') }];
           chs.slice(0, 50).forEach((c: any, i: number) => {
-            const cname = String(c?.name ?? '').slice(0, 60) || `Kanal ${i + 1}`;
+            const cname = String(c?.name ?? '').slice(0, 60) || tl('Kanal {n}', { n: i + 1 });
             db.insert('community_channels', {
               id: id(),
               location_id: loc,

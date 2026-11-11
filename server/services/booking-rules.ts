@@ -1,5 +1,6 @@
 import type { App } from '../core/app.js';
 import { bad } from '../core/http.js';
+import { tApp } from '../i18n/index.js';
 import { addDaysYmd, weekdayKey, ymdInTz, zonedToUtc } from '../core/time.js';
 
 /**
@@ -23,14 +24,15 @@ const validDay = (s: string) => YMD.test(s) && new Date(`${s}T00:00:00Z`).toISOS
 // --- date-specific hours -------------------------------------------------------------------------
 
 function cleanWindows(input: unknown, day: string): Windows {
-  if (!Array.isArray(input)) throw bad(`Zeiten für ${day}: Liste von Zeitfenstern erwartet`);
+  const t = tApp();
+  if (!Array.isArray(input)) throw bad(t('Zeiten für {day}: Liste von Zeitfenstern erwartet', { day }));
   const out: Windows = [];
   for (const w of input) {
-    if (!Array.isArray(w) || !HM.test(String(w[0])) || !HM.test(String(w[1])) || String(w[0]) >= String(w[1])) throw bad(`Zeitfenster am ${day}: „von“ muss vor „bis“ liegen (HH:MM)`);
+    if (!Array.isArray(w) || !HM.test(String(w[0])) || !HM.test(String(w[1])) || String(w[0]) >= String(w[1])) throw bad(t('Zeitfenster am {day}: „von“ muss vor „bis“ liegen (HH:MM)', { day }));
     out.push([String(w[0]), String(w[1])]);
   }
   out.sort((a, b) => a[0].localeCompare(b[0]));
-  for (let i = 1; i < out.length; i++) if (out[i][0] < out[i - 1][1]) throw bad(`Zeitfenster am ${day} überschneiden sich`);
+  for (let i = 1; i < out.length; i++) if (out[i][0] < out[i - 1][1]) throw bad(t('Zeitfenster am {day} überschneiden sich', { day }));
   return out;
 }
 
@@ -38,13 +40,14 @@ function cleanWindows(input: unknown, day: string): Windows {
 export function cleanOverrides(input: unknown, today: string): DateOverrides {
   if (input === null || input === undefined || input === '') return {};
   if (typeof input !== 'object' || Array.isArray(input)) throw bad('Abweichende Tage: Objekt {Datum: Zeitfenster} erwartet');
+  const t = tApp();
   const out: DateOverrides = {};
   for (const [day, windows] of Object.entries(input as Record<string, unknown>)) {
-    if (!validDay(day)) throw bad(`Abweichender Tag „${day}“: Datum als JJJJ-MM-TT angeben`);
+    if (!validDay(day)) throw bad(t('Abweichender Tag „{day}“: Datum als JJJJ-MM-TT angeben', { day }));
     if (day < today) continue;
     out[day] = cleanWindows(windows, day);
   }
-  if (Object.keys(out).length > MAX_OVERRIDES) throw bad(`Höchstens ${MAX_OVERRIDES} abweichende Tage`);
+  if (Object.keys(out).length > MAX_OVERRIDES) throw bad(t('Höchstens {n} abweichende Tage', { n: MAX_OVERRIDES }));
   return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
 }
 
@@ -60,7 +63,10 @@ export function windowsFor(cal: { availability: Partial<Record<string, Windows>>
 export function cleanLimit(v: unknown, what: string): number {
   if (v === null || v === undefined || v === '') return 0;
   const n = Number(v);
-  if (!Number.isFinite(n) || n < 0) throw bad(`${what}: Zahl ab 0 angeben (0 = unbegrenzt)`);
+  if (!Number.isFinite(n) || n < 0) {
+    const t = tApp();
+    throw bad(t('{what}: Zahl ab 0 angeben (0 = unbegrenzt)', { what: t(what) }));
+  }
   return Math.min(MAX_LIMIT, Math.round(n));
 }
 
@@ -133,25 +139,32 @@ export const DEFAULT_NOSHOW = {
 const bool = (v: unknown) => v === true || v === 'true' || v === 1;
 const text = (v: unknown, what: string, max: number) => {
   const s = String(v ?? '').trim();
-  if (s.length > max) throw bad(`${what} ist zu lang`);
+  if (s.length > max) {
+    const t = tApp();
+    throw bad(t('{what} ist zu lang', { what: t(what) }));
+  }
   return s;
 };
 const hoursOf = (v: unknown, min: number, max: number, what: string) => {
   const n = Number(v);
-  if (!Number.isFinite(n) || n < min || n > max) throw bad(`${what}: zwischen ${min} und ${max} Stunden`);
+  if (!Number.isFinite(n) || n < min || n > max) {
+    const t = tApp();
+    throw bad(t('{what}: zwischen {min} und {max} Stunden', { what: t(what), min, max }));
+  }
   return Math.round(n * 100) / 100;
 };
 
 export function cleanReminders(input: unknown): Reminder[] {
   if (!Array.isArray(input)) throw bad('Erinnerungen: Liste erwartet');
-  if (input.length > MAX_REMINDERS) throw bad(`Höchstens ${MAX_REMINDERS} Erinnerungen`);
+  const t = tApp();
+  if (input.length > MAX_REMINDERS) throw bad(t('Höchstens {n} Erinnerungen', { n: MAX_REMINDERS }));
   const out: Reminder[] = [];
   for (const r of input) {
     const hours = hoursOf(r?.hours, 0.25, 720, 'Erinnerung');
     const email = bool(r?.email);
     const sms = bool(r?.sms);
-    if (!email && !sms) throw bad(`Erinnerung ${hours} Std. vorher braucht E-Mail oder SMS`);
-    if (out.some((x) => x.hours === hours)) throw bad(`Zwei Erinnerungen ${hours} Std. vorher – bitte nur eine`);
+    if (!email && !sms) throw bad(t('Erinnerung {hours} Std. vorher braucht E-Mail oder SMS', { hours }));
+    if (out.some((x) => x.hours === hours)) throw bad(t('Zwei Erinnerungen {hours} Std. vorher – bitte nur eine', { hours }));
     out.push({ id: `h${String(hours).replace('.', '_')}`, hours, email, sms, subject: text(r?.subject, 'Betreff', 300), body: text(r?.body, 'Text', 5000), sms_body: text(r?.sms_body, 'SMS-Text', 480) });
   }
   return out.sort((a, b) => b.hours - a.hours);
@@ -163,7 +176,10 @@ export function cleanAfter(input: unknown, prev: Partial<AfterMessage> | undefin
   const enabled = bool(b.enabled);
   const email = b.email === undefined ? true : bool(b.email);
   const sms = bool(b.sms);
-  if (enabled && !email && !sms) throw bad(`${label}: E-Mail oder SMS wählen`);
+  if (enabled && !email && !sms) {
+    const t = tApp();
+    throw bad(t('{what}: E-Mail oder SMS wählen', { what: t(label) }));
+  }
   return {
     enabled,
     hours: kind === 'followup' ? hoursOf(b.hours ?? 2, 0, 720, label) : 0,

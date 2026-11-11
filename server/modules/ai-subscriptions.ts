@@ -29,6 +29,7 @@ import {
 } from '../services/chatgpt-oauth.js';
 import type { Tool } from './mcp.js';
 import type { Usage } from '../services/anthropic.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Abo-Anmeldung: "Mit ChatGPT anmelden" – a ChatGPT Plus/Pro/Team plan as a PERSONAL model connection.
@@ -113,7 +114,7 @@ const MCP_TOOLS: Tool[] = [
       let routing: unknown = null;
       try {
         const c = await call.api('GET', '/api/ai-connections', { location: a.location_id });
-        connections = (c.connections as any[]).map((x) => ({ id: x.id, provider: x.provider, label: x.label, scope: x.scope, enabled: x.enabled, status: x.status || 'ungeprüft', models: x.models, key_set: x.key_set }));
+        connections = (c.connections as any[]).map((x) => ({ id: x.id, provider: x.provider, label: x.label, scope: x.scope, enabled: x.enabled, status: x.status || tApp()('ungeprüft'), models: x.models, key_set: x.key_set }));
         routing = c.routing?.effective ?? null;
       } catch {
         /* no access to this sub-account's settings */
@@ -124,7 +125,7 @@ const MCP_TOOLS: Tool[] = [
       } catch {
         /* older server */
       }
-      return { providers, connections, routing, subscription_sign_in: subscription, note: 'Keine Schlüssel oder Token in dieser Antwort. Abo-Verbindungen sind persönlich und nur im Browser des Besitzers nutzbar.' };
+      return { providers, connections, routing, subscription_sign_in: subscription, note: tApp()('Keine Schlüssel oder Token in dieser Antwort. Abo-Verbindungen sind persönlich und nur im Browser des Besitzers nutzbar.') };
     },
   },
 ];
@@ -189,9 +190,9 @@ export const aiSubscriptionsModule: Module = {
     };
     const hosted = () => process.env.PGHL_HOSTED === '1' && process.env.PGHL_CHATGPT_SIGNIN_APPROVED !== '1';
     const availability = (): { available: boolean; state: 'on' | 'off_env' | 'hosted' | 'off_admin'; reason: string } => {
-      if ((process.env.PGHL_SUBSCRIPTION_SIGNIN ?? '').toLowerCase() === 'off') return { available: false, state: 'off_env', reason: 'Der Server-Betreiber hat die Abo-Anmeldung ausgeschaltet (PGHL_SUBSCRIPTION_SIGNIN=off).' };
-      if (hosted()) return { available: false, state: 'hosted', reason: 'Diese Installation wird als gehosteter Dienst betrieben. OpenAI gibt „Mit ChatGPT anmelden“ für bezahlte oder gehostete Apps nur nach eigener Freigabe frei – bis sie vorliegt, bitte die lokale Bridge (Codex CLI) oder einen API-Schlüssel nutzen.' };
-      if (settings().chatgpt === false) return { available: false, state: 'off_admin', reason: 'Ein Agentur-Admin hat „Mit ChatGPT anmelden“ ausgeschaltet.' };
+      if ((process.env.PGHL_SUBSCRIPTION_SIGNIN ?? '').toLowerCase() === 'off') return { available: false, state: 'off_env', reason: tApp()('Der Server-Betreiber hat die Abo-Anmeldung ausgeschaltet (PGHL_SUBSCRIPTION_SIGNIN=off).') };
+      if (hosted()) return { available: false, state: 'hosted', reason: tApp()('Diese Installation wird als gehosteter Dienst betrieben. OpenAI gibt „Mit ChatGPT anmelden“ für bezahlte oder gehostete Apps nur nach eigener Freigabe frei – bis sie vorliegt, bitte die lokale Bridge (Codex CLI) oder einen API-Schlüssel nutzen.') };
+      if (settings().chatgpt === false) return { available: false, state: 'off_admin', reason: tApp()('Ein Agentur-Admin hat „Mit ChatGPT anmelden“ ausgeschaltet.') };
       return { available: true, state: 'on', reason: '' };
     };
 
@@ -237,7 +238,7 @@ export const aiSubscriptionsModule: Module = {
     const locks = new Map<string, Promise<Credentials>>();
     const markExpired = (row: any, message: string) => {
       patchRow(row.id, { creds: null, status: 'expired', status_message: message.slice(0, 300), access_expires_at: null, refresh_valid_until: null });
-      audit(undefined, { id: row.user_id }, 'ai.subscription.expired', 'ChatGPT-Anmeldung abgelaufen oder widerrufen – neue Anmeldung nötig');
+      audit(undefined, { id: row.user_id }, 'ai.subscription.expired', tApp()('ChatGPT-Anmeldung abgelaufen oder widerrufen – neue Anmeldung nötig'));
     };
     /** Valid credentials of a row (refreshing when they expire within two minutes). Throws OAuthError (reauth = sign in again). */
     const fresh = async (rowId: string): Promise<{ row: any; creds: Credentials }> => {
@@ -301,7 +302,7 @@ export const aiSubscriptionsModule: Module = {
         headers.authorization = `Bearer ${auth.creds.accessToken}`;
         const res = await http()(url, { ...init, headers });
         touch(rowId);
-        if (res.status === 401) patchRow(rowId, { status_message: 'ChatGPT hat die Anmeldung zuletzt nicht akzeptiert – bitte neu anmelden.' });
+        if (res.status === 401) patchRow(rowId, { status_message: tApp()('ChatGPT hat die Anmeldung zuletzt nicht akzeptiert – bitte neu anmelden.') });
         return res;
       };
     };
@@ -317,7 +318,7 @@ export const aiSubscriptionsModule: Module = {
       if (!row || row.status !== 'connected' || !row.creds || !usesOf(row)[o.usage]) return null;
       const model = modelOf(row, o.usage);
       if (!model) return null;
-      return { connectionId: `${SUB_ID}:${row.id}`, provider: 'chatgpt_plan', baseUrl: RESOURCE, apiKey: '', headers: {}, authStyle: 'none', model, label: 'Mein ChatGPT-Abo', wire: 'responses', capabilities: ['text', 'vision'], options: {} };
+      return { connectionId: `${SUB_ID}:${row.id}`, provider: 'chatgpt_plan', baseUrl: RESOURCE, apiKey: '', headers: {}, authStyle: 'none', model, label: tApp()('Mein ChatGPT-Abo'), wire: 'responses', capabilities: ['text', 'vision'], options: {} };
     };
 
     /** The provider `aiRun` calls for a person's own assistant / Werkstatt action (null = use the sub-account's routing as before). */
@@ -373,7 +374,7 @@ export const aiSubscriptionsModule: Module = {
         claude: {
           available: false,
           oauth: false,
-          reason: 'Anthropic erlaubt Drittanbietern keine Claude-Anmeldung in eigenen Apps und keine Anfragen über Free-, Pro- oder Max-Zugangsdaten. HyperLevel bietet deshalb keine „Mit Claude anmelden“-Funktion.',
+          reason: tApp()('Anthropic erlaubt Drittanbietern keine Claude-Anmeldung in eigenen Apps und keine Anfragen über Free-, Pro- oder Max-Zugangsdaten. HyperLevel bietet deshalb keine „Mit Claude anmelden“-Funktion.'),
           policy_url: 'https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use',
           paths: ['bridge', 'api_key'],
         },
@@ -383,14 +384,15 @@ export const aiSubscriptionsModule: Module = {
     router.get('/api/ai-subscriptions', 'user', (ctx) => {
       const u = person(ctx);
       const a = settings();
+      const t = tCtx(ctx);
       return {
         features: features(),
         chatgpt: mine(u.id),
-        uses: USES,
+        uses: USES.map((x) => ({ ...x, label: t(x.label), hint: t(x.hint) })),
         bridge: app.services.agentBridge?.statusFor?.(u.id) ?? null,
         notes: [
-          'Das Abo gehört dir persönlich: Nur du kannst es hier nutzen – andere Personen, Agentur-Admins, API-Schlüssel, Workflows und automatische Läufe nie.',
-          'Die Nutzung läuft über das Limit deines ChatGPT-Plans (bei Plus gilt ein gemeinsames 5-Stunden-Limit für alle Apps). Unter „Nutzung“ in ChatGPT legst du fest, wie viel diese App verbrauchen darf.',
+          t('Das Abo gehört dir persönlich: Nur du kannst es hier nutzen – andere Personen, Agentur-Admins, API-Schlüssel, Workflows und automatische Läufe nie.'),
+          t('Die Nutzung läuft über das Limit deines ChatGPT-Plans (bei Plus gilt ein gemeinsames 5-Stunden-Limit für alle Apps). Unter „Nutzung“ in ChatGPT legst du fest, wie viel diese App verbrauchen darf.'),
         ],
         can_admin: u.role === 'admin',
         admin: u.role === 'admin' ? { chatgpt: a.chatgpt } : undefined,
@@ -418,7 +420,7 @@ export const aiSubscriptionsModule: Module = {
       const secret: Pending = { state: pkce.state, nonce: pkce.nonce, verifier: pkce.verifier };
       const expires = new Date(Date.now() + PENDING_MS).toISOString();
       db.run('INSERT INTO ai_subscription_pending (user_id, kind, secret, client_id, attempts, created_at, expires_at) VALUES (?, ?, ?, ?, 0, ?, ?) ON CONFLICT(user_id, kind) DO UPDATE SET secret = excluded.secret, client_id = excluded.client_id, attempts = 0, created_at = excluded.created_at, expires_at = excluded.expires_at', u.id, KIND, sealSecret(app, JSON.stringify(secret)), prev?.client_id ?? '', now(), expires);
-      audit(ctx, u, 'ai.subscription.start', 'Anmeldung mit ChatGPT gestartet');
+      audit(ctx, u, 'ai.subscription.start', tApp()('Anmeldung mit ChatGPT gestartet'));
       ctx.skipAfterWrite = true;
       return { authorize_url: url, redirect_uri: REDIRECT_URI, expires_at: expires };
     });
@@ -452,7 +454,7 @@ export const aiSubscriptionsModule: Module = {
         if (!planEnabled(credentials)) {
           // Signed in, but the person did not allow the use of their plan: keep the registration, drop the tokens.
           void revoke(f, clientId, credentials.refreshToken);
-          patchRow(rowId, { creds: null, subject: who.subject, email: who.email, name: who.name, status: 'plan_disabled', status_message: 'Du hast dich angemeldet, aber die Nutzung deines ChatGPT-Abos nicht erlaubt.' });
+          patchRow(rowId, { creds: null, subject: who.subject, email: who.email, name: who.name, status: 'plan_disabled', status_message: tApp()('Du hast dich angemeldet, aber die Nutzung deines ChatGPT-Abos nicht erlaubt.') });
           throw new OAuthError('Du hast dich angemeldet, aber die Nutzung deines ChatGPT-Abos in HyperLevel nicht erlaubt. Starte die Anmeldung neu und erlaube sie bei der Frage nach den Berechtigungen.', 'plan_not_granted', 400);
         }
         let models: { slug: string }[] = [];
@@ -478,7 +480,7 @@ export const aiSubscriptionsModule: Module = {
           connected_at: now(),
           last_refreshed_at: now(),
         });
-        audit(ctx, u, 'ai.subscription.connect', `ChatGPT-Abo verbunden${who.plan ? ` (Plan: ${planLabel(who.plan)})` : ''}`);
+        audit(ctx, u, 'ai.subscription.connect', who.plan ? tApp()('ChatGPT-Abo verbunden (Plan: {plan})', { plan: planLabel(who.plan) }) : tApp()('ChatGPT-Abo verbunden'));
         ctx.skipAfterWrite = true;
         return { ok: true, chatgpt: mine(u.id) };
       } catch (e) {
@@ -536,13 +538,13 @@ export const aiSubscriptionsModule: Module = {
         const { creds } = await fresh(row.id);
         const models = await listPlanModels(http(), creds.accessToken);
         modelCache.set(u.id, { at: Date.now(), models });
-        const out: { ok: boolean; message: string; models: number; model_found: boolean | null; reply?: string; ms?: number } = { ok: true, message: 'Verbindung funktioniert.', models: models.length, model_found: row.model ? models.some((m) => m.slug === row.model) : null };
-        if (row.model && out.model_found === false) out.message = `Verbunden – aber „${row.model}“ steht nicht in der Modell-Liste deines Plans. Bitte ein anderes Modell wählen.`;
+        const out: { ok: boolean; message: string; models: number; model_found: boolean | null; reply?: string; ms?: number } = { ok: true, message: tCtx(ctx)('Verbindung funktioniert.'), models: models.length, model_found: row.model ? models.some((m) => m.slug === row.model) : null };
+        if (row.model && out.model_found === false) out.message = tCtx(ctx)('Verbunden – aber „{model}“ steht nicht in der Modell-Liste deines Plans. Bitte ein anderes Modell wählen.', { model: row.model });
         else if (ctx.body?.deep && row.model) {
           const target = resolveFor({ user: u, locationId: ctx.locationId, usage: 'assistant' }) ?? { connectionId: `${SUB_ID}:${row.id}`, provider: 'chatgpt_plan', baseUrl: RESOURCE, headers: {}, options: {}, wire: 'responses' as const, model: row.model, capabilities: ['text'] };
-          const r = await chatResponses({ connection: target as any, system: 'Du testest eine Verbindung.', messages: [{ role: 'user', content: [{ type: 'text', text: 'Antworte nur mit dem Wort: ok' }] }], tools: [], timeoutMs: 60_000 }, fetchFor(target));
+          const r = await chatResponses({ connection: target as any, system: 'You are testing a connection.', messages: [{ role: 'user', content: [{ type: 'text', text: 'Reply with just the word: ok' }] }], tools: [], timeoutMs: 60_000 }, fetchFor(target));
           out.reply = r.text.slice(0, 80);
-          out.message = 'Verbindung funktioniert – das Modell hat geantwortet.';
+          out.message = tCtx(ctx)('Verbindung funktioniert – das Modell hat geantwortet.');
         }
         out.ms = Date.now() - started;
         patchRow(row.id, { status_message: '' });
@@ -565,9 +567,9 @@ export const aiSubscriptionsModule: Module = {
       patchRow(row.id, { creds: null, scopes: '[]', status: 'disconnected', status_message: '', access_expires_at: null, refresh_valid_until: null, model: '', werkstatt_model: '' });
       modelCache.delete(u.id);
       db.run('DELETE FROM ai_subscription_pending WHERE user_id = ? AND kind = ?', u.id, KIND);
-      audit(ctx, u, 'ai.subscription.disconnect', `ChatGPT-Abo getrennt (Widerruf bei OpenAI ${confirmed ? 'bestätigt' : 'nicht bestätigt'})`);
+      audit(ctx, u, 'ai.subscription.disconnect', confirmed ? tApp()('ChatGPT-Abo getrennt (Widerruf bei OpenAI bestätigt)') : tApp()('ChatGPT-Abo getrennt (Widerruf bei OpenAI nicht bestätigt)'));
       ctx.skipAfterWrite = true;
-      return { ok: true, revoked: confirmed, note: confirmed ? '' : 'Lokal getrennt. Die Freigabe bei OpenAI konnte nicht bestätigt werden – du kannst die App unter chatgpt.com → Einstellungen → Nutzung entfernen.' };
+      return { ok: true, revoked: confirmed, note: confirmed ? '' : tCtx(ctx)('Lokal getrennt. Die Freigabe bei OpenAI konnte nicht bestätigt werden – du kannst die App unter chatgpt.com → Einstellungen → Nutzung entfernen.') };
     });
 
     // --- agency: the off switch -----------------------------------------------------------------------------------------------
@@ -581,7 +583,7 @@ export const aiSubscriptionsModule: Module = {
       if (b.chatgpt !== undefined) {
         s.chatgpt = !!b.chatgpt;
         saveSettings(s);
-        audit(ctx, ctx.user ?? null, 'ai.subscription.admin', `„Mit ChatGPT anmelden“ ${s.chatgpt ? 'eingeschaltet' : 'ausgeschaltet'}`);
+        audit(ctx, ctx.user ?? null, 'ai.subscription.admin', s.chatgpt ? tApp()('„Mit ChatGPT anmelden“ eingeschaltet') : tApp()('„Mit ChatGPT anmelden“ ausgeschaltet'));
       }
       ctx.skipAfterWrite = true;
       return { chatgpt: s.chatgpt ?? true, features: features() };

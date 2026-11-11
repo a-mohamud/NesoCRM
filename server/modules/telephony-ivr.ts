@@ -32,6 +32,7 @@ import { recordNotice, telephonyConfig, type CallRouteInput, type Config } from 
 import { audioOf, audioUrl, type AudioRow } from './telephony-audio.js';
 import { peopleOf } from '../services/team-people.js';
 import type { RouteHandler } from './telephony-numbers.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Telephone menu (IVR): a visual flow of steps – greeting with keys, business-hours and holiday schedules, announcements,
@@ -100,7 +101,7 @@ export const telephonyIvrModule: Module = {
     // Files that a menu uses cannot be deleted from under it; neither can the schedules, ring groups and numbers.
     app.services.audioUsage ??= [];
     app.services.audioUsage.push((locationId: string, audioId: string): string | undefined => {
-      for (const r of db.all<{ name: string; flow: string }>('SELECT name, flow FROM ivr_flows WHERE location_id = ?', locationId)) if (r.flow.includes(`"${audioId}"`)) return `Telefonmenü „${r.name}“`;
+      for (const r of db.all<{ name: string; flow: string }>('SELECT name, flow FROM ivr_flows WHERE location_id = ?', locationId)) if (r.flow.includes(`"${audioId}"`)) return tLoc(app, locationId)('Telefonmenü „{name}“', { name: r.name });
       return undefined;
     });
 
@@ -140,7 +141,7 @@ export const telephonyIvrModule: Module = {
       const r = flowRow(ctx.locationId, ctx.params.id);
       if (!r) throw notFound('Telefonmenü nicht gefunden');
       const used = db.get<{ number: string }>(`SELECT number FROM phone_numbers WHERE location_id = ? AND route_kind = 'ivr' AND route_id = ? AND status = 'active'`, ctx.locationId, r.id);
-      if (used) throw bad(`Das Menü ist noch der Nummer ${used.number} zugeordnet`);
+      if (used) throw bad(tCtx(ctx)('Das Menü ist noch der Nummer {number} zugeordnet', { number: used.number }));
       db.run('DELETE FROM ivr_flows WHERE id = ?', r.id);
       return { ok: true };
     });
@@ -191,7 +192,7 @@ export const telephonyIvrModule: Module = {
     router.delete('/api/telephony/schedules/:id', 'location', (ctx) => {
       const r = db.get<any>('SELECT * FROM call_schedules WHERE id = ? AND location_id = ?', ctx.params.id, ctx.locationId);
       if (!r) throw notFound('Zeitplan nicht gefunden');
-      for (const f of db.all<{ name: string; flow: string }>('SELECT name, flow FROM ivr_flows WHERE location_id = ?', ctx.locationId)) if (f.flow.includes(`"schedule_id":"${r.id}"`)) throw bad(`Der Zeitplan wird noch im Telefonmenü „${f.name}“ benutzt`);
+      for (const f of db.all<{ name: string; flow: string }>('SELECT name, flow FROM ivr_flows WHERE location_id = ?', ctx.locationId)) if (f.flow.includes(`"schedule_id":"${r.id}"`)) throw bad(tCtx(ctx)('Der Zeitplan wird noch im Telefonmenü „{name}“ benutzt', { name: f.name }));
       db.run('DELETE FROM call_schedules WHERE id = ?', r.id);
       return { ok: true };
     });
@@ -235,7 +236,7 @@ export const telephonyIvrModule: Module = {
         }
         case 'voicemail': {
           note(r, node, `Voicemail ${node.box}`);
-          const prompt = speech(node.say || DEFAULT_VOICEMAIL_GREETING, node.audio_id ? audio(r.loc.id, node.audio_id) : undefined);
+          const prompt = speech(node.say || tLoc(app, r.loc.id)(DEFAULT_VOICEMAIL_GREETING), node.audio_id ? audio(r.loc.id, node.audio_id) : undefined);
           // The greeting is played (or read) here; the recorder itself starts without its own greeting.
           const vm = kit().voicemail(r.loc, r.cfg, db.get('SELECT * FROM calls WHERE id = ?', r.call.id), { greeting: ' ', box: node.box, record: true });
           return prompt + innerOf(vm);
@@ -317,8 +318,9 @@ export const telephonyIvrModule: Module = {
         note(run, m, `${d.key}${m.option_labels[d.key] ? ` ${m.option_labels[d.key]}` : ''}`);
         return twiml(exec(run, d.node));
       }
-      if (d.kind === 'repeat') return menuXml(run, m, d.attempt, d.reason === 'invalid' ? say('Diese Eingabe kenne ich nicht.') : '');
-      note(run, m, d.reason === 'invalid' ? 'falsche Eingabe' : 'keine Eingabe');
+      const t = tLoc(app, loc.id);
+      if (d.kind === 'repeat') return menuXml(run, m, d.attempt, d.reason === 'invalid' ? say(t('Diese Eingabe kenne ich nicht.')) : '');
+      note(run, m, d.reason === 'invalid' ? t('falsche Eingabe') : t('keine Eingabe'));
       return d.node ? twiml(exec(run, d.node)) : kit().unanswered(loc, cfg, call);
     });
 
@@ -341,13 +343,14 @@ export const telephonyIvrModule: Module = {
       const node = flowRow(e.locationId, call.route_id)?.flow.nodes[call.route_node];
       if (node?.type !== 'voicemail' || !node.assign_user) return;
       const contact = call.contact_id ? getContact(app, e.locationId, call.contact_id) : undefined;
-      const who = contact ? contactName(contact) : call.from_number || 'Unbekannt';
+      const t = tLoc(app, e.locationId);
+      const who = contact ? contactName(contact) : call.from_number || t('Unbekannt');
       db.insert('tasks', {
         id: id(),
         location_id: e.locationId,
         contact_id: call.contact_id ?? null,
-        title: `Rückruf (Voicemail ${node.box}): ${who}`.slice(0, 200),
-        description: `Voicemail im Telefonmenü, Zweig „${node.box}“.\n${call.route_path ? `Weg: ${call.route_path}\n` : ''}${call.transcription || ''}`.slice(0, 4000),
+        title: t('Rückruf (Voicemail {box}): {who}', { box: node.box, who }).slice(0, 200),
+        description: `${t('Voicemail im Telefonmenü, Zweig „{box}“.', { box: node.box })}\n${call.route_path ? `${t('Weg: {path}', { path: call.route_path })}\n` : ''}${call.transcription || ''}`.slice(0, 4000),
         due_at: now(),
         assigned_to: node.assign_user,
         done: 0,

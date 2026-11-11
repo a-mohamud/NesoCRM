@@ -1,9 +1,10 @@
+import { tApp, type STFn } from '../i18n/index.js';
 /**
  * The one script of the community pages (/portal-community-ext.js). Everything works without it – the forms are plain forms –
  * it only adds comfort: video upload in parts, "online now" signals, live messages. It talks to this server only (CSP connect-src 'self').
  */
 
-const VIDEO = `
+const VIDEO = (t: STFn) => `
 document.querySelectorAll('[data-video-pick]').forEach(function(lab){
   var form=lab.closest('form');if(!form)return;
   var input=lab.querySelector('input[type=file]'),hid=form.querySelector('input[name=video_upload]'),st=form.querySelector('[data-video-state]'),link=form.querySelector('input[name=video_url]');
@@ -14,20 +15,20 @@ document.querySelectorAll('[data-video-pick]').forEach(function(lab){
   function busy(on){form.querySelectorAll('button.btn').forEach(function(b){b.disabled=on})}
   input.addEventListener('change',function(){
     var f=input.files&&input.files[0];input.value='';if(!f)return;
-    busy(true);say('Upload startet …');hid.value='';
+    busy(true);say(${JSON.stringify(t('Upload startet …'))});hid.value='';
     fetch(base,{method:'POST',headers:{'content-type':'application/json','x-community-csrf':token},body:JSON.stringify({name:f.name,size:f.size})})
-    .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||'Upload nicht möglich');return j})})
+    .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||${JSON.stringify(t('Upload nicht möglich'))});return j})})
     .then(function(j){
       var size=f.size,chunk=j.chunk_size,id=j.id;
       function next(off){
         if(off>=size)return Promise.resolve();
         return fetch(base+'/'+id+'?offset='+off,{method:'PUT',headers:{'x-community-csrf':token,'content-type':'application/octet-stream'},body:f.slice(off,Math.min(off+chunk,size))})
-        .then(function(r){return r.json().then(function(x){if(!r.ok)throw new Error(x.error||'Upload abgebrochen');return x})})
-        .then(function(x){say('Lädt hoch … '+Math.round(x.received/size*100)+' %');return x.complete?x:next(x.received)});
+        .then(function(r){return r.json().then(function(x){if(!r.ok)throw new Error(x.error||${JSON.stringify(t('Upload abgebrochen'))});return x})})
+        .then(function(x){say(${JSON.stringify(t('Lädt hoch … {percent} %'))}.replace('{percent}',Math.round(x.received/size*100)));return x.complete?x:next(x.received)});
       }
-      return next(0).then(function(){hid.value=id;if(link)link.value='';say('✓ '+f.name+' ist hochgeladen und wird mit dem Beitrag veröffentlicht.');busy(false)});
+      return next(0).then(function(){hid.value=id;if(link)link.value='';say('✓ '+${JSON.stringify(t('{name} ist hochgeladen und wird mit dem Beitrag veröffentlicht.'))}.replace('{name}',f.name));busy(false)});
     })
-    .catch(function(e){say(e&&e.message?e.message:'Upload fehlgeschlagen');busy(false)});
+    .catch(function(e){say(e&&e.message?e.message:${JSON.stringify(t('Upload fehlgeschlagen'))});busy(false)});
   });
 });
 `;
@@ -65,6 +66,6 @@ export function addClientScript(code: string) {
   extra.push(code);
 }
 
-export const clientJs = () => `(function(){${VIDEO}${PRESENCE}${LIVE_MESSAGES}${extra.join('\n')}})();`;
+export const clientJs = (t: STFn = tApp()) => `(function(){${VIDEO(t)}${PRESENCE}${LIVE_MESSAGES}${extra.join('\n')}})();`;
 /** Kept for importers that want the static part only. */
 export const CLIENT_JS = clientJs();

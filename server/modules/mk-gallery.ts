@@ -2,7 +2,8 @@ import type { Module } from '../core/app.js';
 import { HttpError, bad, notFound, str } from '../core/http.js';
 import { id, now } from '../core/util.js';
 import { designPatch } from '../services/email-design.js';
-import { CATEGORIES, TEMPLATES, categoryLabel, metaOf, preview, searchTemplates, templateByKey } from '../services/mk-gallery.js';
+import { CATEGORIES, TEMPLATES, categoriesIn, categoryLabel, metaOf, preview, searchTemplates, templateByKey } from '../services/mk-gallery.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 import type { Tool } from './mcp.js';
 
 /**
@@ -45,15 +46,18 @@ export const mkGalleryModule: Module = {
     app.services.mcpTools = [...(app.services.mcpTools ?? []), ...TOOLS];
 
     router.get('/api/email-gallery', 'location', (ctx) => {
+      // Neso fork: the gallery speaks the language of the sub-account's mails; the category chips that of the user.
+      const tl = tLoc(app, ctx.locationId);
+      const t = tCtx(ctx);
       const q = (ctx.query.get('q') ?? '').slice(0, 100);
       const category = ctx.query.get('category') ?? '';
-      const found = searchTemplates(q, category);
+      const found = searchTemplates(q, category, tl);
       // The counts per category belong to the search (without the category filter), so the chips show what a click would give.
-      const all = searchTemplates(q, '');
+      const all = searchTemplates(q, '', tl);
       return {
         total: TEMPLATES.length,
-        categories: CATEGORIES.map((c) => ({ ...c, count: all.filter((t) => t.category === c.key).length })),
-        templates: found.map(metaOf),
+        categories: categoriesIn(t).map((c) => ({ ...c, count: all.filter((x) => x.category === c.key).length })),
+        templates: found.map((x) => metaOf(x, tl)),
       };
     });
 
@@ -61,9 +65,10 @@ export const mkGalleryModule: Module = {
     router.get('/api/email-gallery/:key', 'location', (ctx) => {
       const t = templateByKey(ctx.params.key);
       if (!t) throw notFound('Vorlage nicht gefunden');
-      const design = t.build();
+      const tl = tLoc(app, ctx.locationId);
+      const design = t.build(tl);
       const loc = app.location(ctx.locationId);
-      return { ...metaOf(t), design, ...preview(design, { name: loc?.name, address: loc?.address }, t.subject) };
+      return { ...metaOf(t, tl), design, ...preview(design, { name: loc?.name, address: loc?.address }, tl(t.subject), tl) };
     });
 
     /**
@@ -73,7 +78,9 @@ export const mkGalleryModule: Module = {
     router.post('/api/email-gallery/:key/use', 'location', (ctx) => {
       const t = templateByKey(ctx.params.key);
       if (!t) throw notFound('Vorlage nicht gefunden');
-      const design = t.build();
+      const tl = tLoc(app, ctx.locationId);
+      const design = t.build(tl);
+      const subject = tl(t.subject);
       if (ctx.body?.target === 'campaign' || ctx.body?.campaign_id) {
         const cid = str(ctx.body.campaign_id, 'Kampagne', { required: true });
         const c = db.get<any>('SELECT * FROM campaigns WHERE id = ? AND location_id = ?', cid, ctx.locationId);
@@ -81,14 +88,14 @@ export const mkGalleryModule: Module = {
         if (c.channel !== 'email') throw bad('Vorlagen aus der Galerie gibt es nur für E-Mail-Kampagnen');
         if (!['draft', 'scheduled'].includes(c.status)) throw new HttpError(400, 'Versendete Kampagnen lassen sich nicht ändern');
         const patch: Record<string, any> = { updated_at: now(), ...designPatch({ design }, { design: c.design }) };
-        if (!c.subject || ctx.body.replace_subject) patch.subject = t.subject;
+        if (!c.subject || ctx.body.replace_subject) patch.subject = subject;
         db.update('campaigns', c.id, patch, ctx.locationId);
-        return { campaign: { id: c.id, subject: patch.subject ?? c.subject }, template: metaOf(t) };
+        return { campaign: { id: c.id, subject: patch.subject ?? c.subject }, template: metaOf(t, tl) };
       }
-      const name = str(ctx.body?.name, 'Name', { max: 200 }) || `${t.name} (${categoryLabel(t.category)})`;
-      const row = { id: id(), location_id: ctx.locationId, name, channel: 'email', subject: t.subject, body: '', is_html: 1, created_at: now(), updated_at: now(), ...designPatch({ design }) };
+      const name = str(ctx.body?.name, 'Name', { max: 200 }) || `${tl(t.name)} (${categoryLabel(t.category, tl)})`;
+      const row = { id: id(), location_id: ctx.locationId, name, channel: 'email', subject, body: '', is_html: 1, created_at: now(), updated_at: now(), ...designPatch({ design }) };
       db.insert('templates', row);
-      return { template: { id: row.id, name: row.name, subject: row.subject }, from: metaOf(t) };
+      return { template: { id: row.id, name: row.name, subject: row.subject }, from: metaOf(t, tl) };
     });
   },
 };

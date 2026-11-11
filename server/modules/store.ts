@@ -17,6 +17,7 @@ import { storePublicModule } from './store-public.js';
 import { storeToolsModule } from './store-tools.js';
 import { giftCardsModule } from './giftcards.js';
 import { payRegistryModule } from './pay-registry.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Online store (docs/store.md): products with variants (the CRM products and the inventory's articles and variants), collections,
@@ -72,13 +73,14 @@ const money = (c: number, cur: string) => centsToMoney(c, cur);
 
 export const orderUrl = (app: App, o: { location_id: string; token: string }) => `${app.baseUrl()}/store/${encodeURIComponent(storeKey(app, o.location_id))}/order/${o.token}`;
 
-export function orderOut(app: App, o: any) {
+export function orderOut(app: App, o: any, t: STFn = tLoc(app, o?.location_id)) {
+  const label = (v: string | undefined) => (v === undefined ? undefined : t(v));
   return {
     ...o,
-    status_label: ORDER_STATUS_LABELS[o.status] ?? o.status,
-    fulfilment_label: FULFILMENT_LABELS[o.fulfilment as Fulfilment] ?? o.fulfilment,
-    carrier_label: CARRIERS.find(([k]) => k === o.carrier)?.[1] ?? o.carrier,
-    country_name: COUNTRY_NAMES[o.address?.country] ?? o.address?.country ?? '',
+    status_label: label(ORDER_STATUS_LABELS[o.status]) ?? o.status,
+    fulfilment_label: label(FULFILMENT_LABELS[o.fulfilment as Fulfilment]) ?? o.fulfilment,
+    carrier_label: label(CARRIERS.find(([k]) => k === o.carrier)?.[1]) ?? o.carrier,
+    country_name: label(COUNTRY_NAMES[o.address?.country]) ?? o.address?.country ?? '',
     status_url: orderUrl(app, o),
   };
 }
@@ -237,7 +239,7 @@ export const storeModule: Module = {
       const q = String(ctx.query.get('q') ?? '').trim().slice(0, 80);
       if (q) (where.push('(number LIKE ? OR email LIKE ? OR name LIKE ? OR tracking_number LIKE ?)'), args.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`));
       const rows = parseRows(db.all(`SELECT * FROM store_orders WHERE ${where.join(' AND ')} ORDER BY created_at DESC LIMIT ${clampLimit(ctx.query.get('limit'), 100, 500)}`, ...args), ORDER_JSON);
-      return rows.map((o) => orderOut(app, o));
+      return rows.map((o) => orderOut(app, o, tCtx(ctx)));
     });
     router.get('/api/store/orders/:id', 'location', (ctx) => {
       const o = mine(ctx);
@@ -245,7 +247,7 @@ export const storeModule: Module = {
       const pay = o.pay_session_id ? app.services.payRegistry?.get(o.pay_session_id) : undefined;
       const cards = db.all('SELECT id, code, initial_cents, balance_cents, currency, recipient_email FROM gift_cards WHERE order_id = ? AND location_id = ?', o.id, ctx.locationId);
       return {
-        ...orderOut(app, o),
+        ...orderOut(app, o, tCtx(ctx)),
         invoice: inv ? { id: inv.id, number: inv.number, status: inv.status, total_cents: inv.total_cents, url: `${app.baseUrl()}/i/${inv.public_token}` } : null,
         payment: pay ? { id: pay.id, provider: pay.provider, provider_label: app.services.payRegistry.label(pay.provider), status: pay.status, received_cents: pay.received_cents, gift_cents: pay.gift_cents, refunded_cents: pay.refunded_cents, provider_ref: pay.provider_ref } : null,
         gift_cards: cards,
@@ -284,11 +286,11 @@ export const storeModule: Module = {
       const next = loadOrder(app, ctx.locationId, o.id);
       let mail: { status: string } | null = null;
       if (shipped) {
-        if (o.contact_id) logActivity(app, ctx.locationId, o.contact_id, 'store.order_shipped', `Bestellung ${o.number} versendet${tracking ? ` (${tracking})` : ''}`);
+        if (o.contact_id) logActivity(app, ctx.locationId, o.contact_id, 'store.order_shipped', tLoc(app, ctx.locationId)(tracking ? 'Bestellung {number} versendet ({tracking})' : 'Bestellung {number} versendet', { number: o.number, tracking }));
         app.events.emit(ctx.locationId, 'store.order_shipped', { contactId: o.contact_id ?? undefined, orderId: o.id, order: event(next) });
         if (b.notify !== false && next.contact_id) mail = await shippedMail(next).catch((e) => ({ status: `failed: ${(e as Error).message}` }));
       }
-      return { ...orderOut(app, next), mail };
+      return { ...orderOut(app, next, tCtx(ctx)), mail };
     });
     router.post('/api/store/orders/:id/refund', 'location', async (ctx) => {
       const o = mine(ctx);
@@ -302,9 +304,9 @@ export const storeModule: Module = {
       db.run(`UPDATE store_orders SET refunded_cents = refunded_cents + ?, status = CASE WHEN ? THEN 'refunded' ELSE status END, fulfilment = CASE WHEN ? AND fulfilment IN ('unfulfilled', 'processing') THEN 'cancelled' ELSE fulfilment END, updated_at = ? WHERE id = ?`, back, full ? 1 : 0, full ? 1 : 0, now(), o.id);
       // Gift cards this order sold and nobody used yet are switched off with a full refund.
       if (full) db.run(`UPDATE gift_cards SET status = 'disabled', updated_at = ? WHERE order_id = ? AND location_id = ? AND balance_cents = initial_cents`, now(), o.id, ctx.locationId);
-      if (o.contact_id) logActivity(app, ctx.locationId, o.contact_id, 'payment.refunded', `Bestellung ${o.number}: ${money(back, o.currency)} erstattet`);
+      if (o.contact_id) logActivity(app, ctx.locationId, o.contact_id, 'payment.refunded', tLoc(app, ctx.locationId)('Bestellung {number}: {amount} erstattet', { number: o.number, amount: money(back, o.currency) }));
       app.events.emit(ctx.locationId, 'payment.refunded', { contactId: o.contact_id ?? null, orderId: o.id, invoiceId: o.invoice_id ?? null, amount_cents: back, currency: o.currency, full });
-      return { ...orderOut(app, loadOrder(app, ctx.locationId, o.id)), refund: r, hint: 'Die Rechnung bleibt bestehen – für eine Korrektur der Umsatzsteuer eine Gutschrift oder Stornorechnung erstellen.' };
+      return { ...orderOut(app, loadOrder(app, ctx.locationId, o.id)), refund: r, hint: tCtx(ctx)('Die Rechnung bleibt bestehen – für eine Korrektur der Umsatzsteuer eine Gutschrift oder Stornorechnung erstellen.') };
     });
     router.post('/api/store/orders/:id/resend', 'location', async (ctx) => {
       const o = mine(ctx);
@@ -314,23 +316,34 @@ export const storeModule: Module = {
     });
 
     // --- paying: the purpose of the payment registry ---------------------------------------------------------------------------------
-    const lineText = (o: any) => [...o.items.map((l: any) => `${l.qty} × ${plain(l.name)}${l.variant ? ` (${plain(l.variant)})` : ''} – ${money(l.total_cents, o.currency)}`), o.shipping?.name ? `Versand: ${plain(o.shipping.name)} – ${money(o.shipping_cents, o.currency)}` : '', `Gesamt: ${money(o.total_cents, o.currency)}${o.gift_cents ? ` (davon ${money(o.gift_cents, o.currency)} mit Gutschein)` : ''}`].filter(Boolean).join('\n');
-    const addressText = (o: any) => [plain(o.name), plain(o.address?.company), plain(o.address?.street), `${plain(o.address?.postal_code)} ${plain(o.address?.city)}`.trim(), COUNTRY_NAMES[o.address?.country] ?? plain(o.address?.country)].filter(Boolean).join('\n');
+    // Order texts go to the buyer or the team of the sub-account: in the sub-account's language.
+    const lineText = (o: any, t: STFn = tLoc(app, o.location_id)) =>
+      [
+        ...o.items.map((l: any) => `${l.qty} × ${plain(l.name)}${l.variant ? ` (${plain(l.variant)})` : ''} – ${money(l.total_cents, o.currency)}`),
+        o.shipping?.name ? `${t('Versand: {name}', { name: plain(t(o.shipping.name)) })} – ${money(o.shipping_cents, o.currency)}` : '',
+        `${t('Gesamt: {amount}', { amount: money(o.total_cents, o.currency) })}${o.gift_cents ? ` ${t('(davon {amount} mit Gutschein)', { amount: money(o.gift_cents, o.currency) })}` : ''}`,
+      ]
+        .filter(Boolean)
+        .join('\n');
+    const addressText = (o: any, t: STFn = tLoc(app, o.location_id)) => [plain(o.name), plain(o.address?.company), plain(o.address?.street), `${plain(o.address?.postal_code)} ${plain(o.address?.city)}`.trim(), COUNTRY_NAMES[o.address?.country] ? t(COUNTRY_NAMES[o.address?.country]) : plain(o.address?.country)].filter(Boolean).join('\n');
 
     async function confirmationMail(o: any) {
       if (!o.contact_id || !o.invoice_id) return;
       const inv = parseJson(db.get('SELECT * FROM invoices WHERE id = ?', o.invoice_id), ['items']);
       if (!inv) return;
+      const t = tLoc(app, o.location_id);
       await sendInvoice(app, o.location_id, inv, {
-        subject: `Deine Bestellung ${o.number} – vielen Dank!`,
-        body: `Hallo {{contact.first_name|}},\n\nvielen Dank für deine Bestellung ${o.number} bei {{location.name}}. Die Zahlung ist eingegangen.\n\n${lineText(o)}\n${o.shipping?.name ? `\nLieferadresse:\n${addressText(o)}\n` : ''}\nDeine Rechnung: {{invoice.url}}\nBestellstatus: ${orderUrl(app, o)}\n\nViele Grüße\n{{location.name}}`,
+        subject: t('Deine Bestellung {number} – vielen Dank!', { number: o.number }),
+        body: `${t('Hallo {{contact.first_name|}},\n\nvielen Dank für deine Bestellung {number} bei {{location.name}}. Die Zahlung ist eingegangen.', { number: o.number })}\n\n${lineText(o, t)}\n${o.shipping?.name ? `\n${t('Lieferadresse:')}\n${addressText(o, t)}\n` : ''}\n${t('Deine Rechnung: {{invoice.url}}')}\n${t('Bestellstatus: {url}', { url: orderUrl(app, o) })}\n\n${t('Viele Grüße')}\n{{location.name}}`,
       });
     }
     async function shippedMail(o: any) {
-      const carrier = CARRIERS.find(([k]) => k === o.carrier)?.[1] ?? '';
+      const t = tLoc(app, o.location_id);
+      const carrier = t(CARRIERS.find(([k]) => k === o.carrier)?.[1] ?? '');
       const c = getContact(app, o.location_id, o.contact_id);
-      const body = `Hallo ${plain(c?.first_name ?? '')},\n\ndeine Bestellung ${o.number} ist unterwegs.${carrier || o.tracking_number ? `\n${carrier ? `Versand mit ${carrier}` : 'Sendungsnummer'}${o.tracking_number ? `${carrier ? ', Sendungsnummer' : ''}: ${o.tracking_number}` : ''}` : ''}${o.tracking_url ? `\nSendung verfolgen: ${o.tracking_url}` : ''}\n\nBestellstatus: ${orderUrl(app, o)}\n\nViele Grüße\n${app.location(o.location_id)?.name ?? ''}`;
-      return sendToContact(app, o.location_id, { contactId: o.contact_id, channel: 'email', subject: `Deine Bestellung ${o.number} ist unterwegs`, body, source: 'Online-Shop', purpose: 'transactional', ignoreDnd: true });
+      const via = carrier && o.tracking_number ? t('Versand mit {carrier}, Sendungsnummer: {number}', { carrier, number: o.tracking_number }) : carrier ? t('Versand mit {carrier}', { carrier }) : o.tracking_number ? t('Sendungsnummer: {number}', { number: o.tracking_number }) : '';
+      const body = `${t('Hallo {name},', { name: plain(c?.first_name ?? '') })}\n\n${t('deine Bestellung {number} ist unterwegs.', { number: o.number })}${via ? `\n${via}` : ''}${o.tracking_url ? `\n${t('Sendung verfolgen: {url}', { url: o.tracking_url })}` : ''}\n\n${t('Bestellstatus: {url}', { url: orderUrl(app, o) })}\n\n${t('Viele Grüße')}\n${app.location(o.location_id)?.name ?? ''}`;
+      return sendToContact(app, o.location_id, { contactId: o.contact_id, channel: 'email', subject: t('Deine Bestellung {number} ist unterwegs', { number: o.number }), body, source: t('Online-Shop'), purpose: 'transactional', ignoreDnd: true });
     }
 
     /**
@@ -344,15 +357,17 @@ export const storeModule: Module = {
       if (!o || o.status === 'paid' || o.status === 'refunded') return;
       const loc = s.location_id;
       const via = app.services.payRegistry?.label(s.provider) ?? s.provider;
+      const t = tLoc(app, loc);
       if (received + s.gift_cents < o.total_cents) {
-        db.run(`UPDATE store_orders SET meta = json_set(meta, '$.payment_mismatch', ?), updated_at = ? WHERE id = ?`, `${money(received + s.gift_cents, o.currency)} statt ${money(o.total_cents, o.currency)}`, now(), o.id);
-        void notifyTeam(app, loc, `Bestellung ${o.number}: Betrag passt nicht`, `Für die Bestellung ${o.number} kamen ${money(received + s.gift_cents, o.currency)} statt ${money(o.total_cents, o.currency)} an (${via}). Bitte prüfen.`).catch(() => undefined);
+        const amounts = { got: money(received + s.gift_cents, o.currency), want: money(o.total_cents, o.currency) };
+        db.run(`UPDATE store_orders SET meta = json_set(meta, '$.payment_mismatch', ?), updated_at = ? WHERE id = ?`, t('{got} statt {want}', amounts), now(), o.id);
+        void notifyTeam(app, loc, t('Bestellung {number}: Betrag passt nicht', { number: o.number }), t('Für die Bestellung {number} kamen {got} statt {want} an ({via}). Bitte prüfen.', { number: o.number, via, ...amounts })).catch(() => undefined);
         return;
       }
       let invoiceId: string | null = null;
       let invoiceError = '';
       try {
-        invoiceId = createInvoice(app, loc, { kind: 'invoice', contact_id: o.contact_id, title: `Bestellung ${o.number}`, items: o.invoice_items, currency: o.currency, tax_mode: o.tax_mode, buyer_vat_id: o.meta?.vat_id || undefined, notes: `Online-Shop-Bestellung ${o.number}. Bezahlt über ${via}. Vielen Dank für deinen Einkauf!` }).id;
+        invoiceId = createInvoice(app, loc, { kind: 'invoice', contact_id: o.contact_id, title: t('Bestellung {number}', { number: o.number }), items: o.invoice_items, currency: o.currency, tax_mode: o.tax_mode, buyer_vat_id: o.meta?.vat_id || undefined, notes: t('Online-Shop-Bestellung {number}. Bezahlt über {via}. Vielen Dank für deinen Einkauf!', { number: o.number, via }) }).id;
         if (s.gift_cents > 0 && s.gift_card_id) app.services.giftCards?.payInvoice(loc, invoiceId, s.gift_card_id, s.gift_cents, s.id);
         if (received > 0) bookInvoicePayment(app, loc, invoiceId, { amount: received, currency: s.currency, via, note: s.capture_ref || s.provider_ref });
       } catch (e) {
@@ -389,18 +404,18 @@ export const storeModule: Module = {
             message: recipient.message ?? '',
             source: 'store',
             order_id: o.id,
-            note: `Bestellung ${o.number}`,
+            note: t('Bestellung {number}', { number: o.number }),
           });
           void gc.send(card, recipient.email ? plain(o.name) : '').catch((e: Error) => console.error('[store] gift card mail', e.message));
         }
       }
       if (o.contact_id) {
         removeTags(app, loc, o.contact_id, [ABANDONED_TAG]);
-        logActivity(app, loc, o.contact_id, 'store.order_paid', `Bestellung ${o.number} bezahlt (${money(o.total_cents, o.currency)}, ${via})`);
+        logActivity(app, loc, o.contact_id, 'store.order_paid', t('Bestellung {number} bezahlt ({amount}, {via})', { number: o.number, amount: money(o.total_cents, o.currency), via }));
       }
       app.events.emit(loc, 'store.order_paid', { contactId: o.contact_id ?? undefined, orderId: o.id, invoiceId, provider: s.provider, productIds: [...new Set(o.items.map((l: any) => l.product_id))], order: event(paid) });
-      if (settings.notify_email) void notifyTeam(app, loc, `Neue Bestellung ${o.number}`, `${plain(o.name)} <${o.email}>\n\n${lineText(paid)}\n\n${app.baseUrl()}/app/shop`, settings.notify_email).catch(() => undefined);
-      if (invoiceError) void notifyTeam(app, loc, `Bestellung ${o.number}: Rechnung nicht festgeschrieben`, `Die Bestellung ${o.number} ist bezahlt, die Rechnung blieb ein Entwurf: ${invoiceError}`).catch(() => undefined);
+      if (settings.notify_email) void notifyTeam(app, loc, t('Neue Bestellung {number}', { number: o.number }), `${plain(o.name)} <${o.email}>\n\n${lineText(paid)}\n\n${app.baseUrl()}/app/shop`, settings.notify_email).catch(() => undefined);
+      if (invoiceError) void notifyTeam(app, loc, t('Bestellung {number}: Rechnung nicht festgeschrieben', { number: o.number }), t('Die Bestellung {number} ist bezahlt, die Rechnung blieb ein Entwurf: {error}', { number: o.number, error: invoiceError })).catch(() => undefined);
       else void confirmationMail(paid).catch((e) => console.error('[store] confirmation', (e as Error).message));
     }
     registerPayPurpose(app, 'store_order', {
@@ -426,8 +441,9 @@ export const storeModule: Module = {
       if (Date.parse(cart.updated_at) > Date.now() - settings.abandon_minutes * 60_000) return;
       db.run('UPDATE store_carts SET reminded_at = ? WHERE id = ?', now(), cart.id);
       if (!settings.enabled) return;
+      const t = tLoc(app, loc);
       let contactId: string | null = cart.contact_id ?? db.get<{ id: string }>('SELECT id FROM contacts WHERE location_id = ? AND email = ?', loc, cart.email)?.id ?? null;
-      if (!contactId && mkSettings(app, loc).abandoned.create_contacts) contactId = upsertContact(app, loc, { email: cart.email }, { source: 'Online-Shop: Warenkorb abgebrochen' }).contact.id;
+      if (!contactId && mkSettings(app, loc).abandoned.create_contacts) contactId = upsertContact(app, loc, { email: cart.email }, { source: t('Online-Shop: Warenkorb abgebrochen') }).contact.id;
       if (!contactId) return;
       // Ordered and paid meanwhile (another cart, another device): nothing to remind.
       if (db.get(`SELECT 1 AS x FROM store_orders WHERE location_id = ? AND contact_id = ? AND status = 'paid' AND created_at >= ? LIMIT 1`, loc, contactId, cart.created_at)) return;
@@ -437,12 +453,12 @@ export const storeModule: Module = {
       const amount = items.reduce((n, it) => n + (products.find((p) => p.id === it.product_id)?.net_cents ?? 0) * (Number(it.qty) || 1), 0);
       const recovery = `${app.baseUrl()}/store/${encodeURIComponent(storeKey(app, loc))}/checkout?cart=${encodeURIComponent(cart.id)}`;
       addTags(app, loc, contactId, [ABANDONED_TAG]);
-      logActivity(app, loc, contactId, 'checkout.abandoned', `Warenkorb im Online-Shop abgebrochen${first ? `: ${first.name}` : ''}`);
+      logActivity(app, loc, contactId, 'checkout.abandoned', first ? t('Warenkorb im Online-Shop abgebrochen: {name}', { name: first.name }) : t('Warenkorb im Online-Shop abgebrochen'));
       app.events.emit(loc, 'checkout.abandoned', {
         contactId,
         productId: first?.id ?? '',
-        product: { id: first?.id ?? '', name: first?.name ?? 'Warenkorb' },
-        product_name: items.length > 1 ? `${first?.name ?? 'Produkt'} und ${items.length - 1} weitere` : (first?.name ?? 'Warenkorb'),
+        product: { id: first?.id ?? '', name: first?.name ?? t('Warenkorb') },
+        product_name: items.length > 1 ? t('{name} und {n} weitere', { name: first?.name ?? t('Produkt'), n: items.length - 1 }) : (first?.name ?? t('Warenkorb')),
         amount_cents: amount,
         currency: settings.currency,
         checkoutId: cart.id,

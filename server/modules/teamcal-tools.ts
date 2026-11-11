@@ -1,6 +1,7 @@
 import type { Module } from '../core/app.js';
 import { HttpError } from '../core/http.js';
 import type { Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * MCP tools of the Team-Kalender (HyperLevel Agent, Claude, ChatGPT, Codex): the booking calendars with their type, team, questions,
@@ -25,7 +26,10 @@ export const TEAMCAL_TOOLS: Tool[] = [
   {
     name: 'ghl_calendar_types',
     title: 'Buchungskalender und freie Zeiten',
-    description: `Die Buchungskalender („Termintypen“) eines Sub-Accounts mit Typ, Dauer, Team (Personen und Gewichte), Fragen der Buchungsseite (Anzahl), Preis (full oder deposit, Cent), Video-Setting (none, meet, zoom, teams, static) und Buchungslink. Mit calendar_id und from (YYYY-MM-DD) kommen auch die freien Zeiten der nächsten Tage – bei Round Robin mit den Personen, die dann frei wären, bei Gruppen mit den freien Plätzen. ${NOTE}`,
+    get description() {
+      const t = tApp();
+      return `${t('Die Buchungskalender („Termintypen“) eines Sub-Accounts mit Typ, Dauer, Team (Personen und Gewichte), Fragen der Buchungsseite (Anzahl), Preis (full oder deposit, Cent), Video-Setting (none, meet, zoom, teams, static) und Buchungslink. Mit calendar_id und from (YYYY-MM-DD) kommen auch die freien Zeiten der nächsten Tage – bei Round Robin mit den Personen, die dann frei wären, bei Gruppen mit den freien Plätzen.')} ${t(NOTE)}`;
+    },
     inputSchema: obj({ ...LOC, calendar_id: { type: 'string', description: 'Nur dieser Kalender – mit freien Zeiten' }, from: { type: 'string', description: 'Erster Tag der freien Zeiten, YYYY-MM-DD (Standard heute)' }, days: { type: 'integer', minimum: 1, maximum: 14, description: 'Anzahl Tage, Standard 7' } }, ['location_id']),
     annotations: RO,
     run: async (call, a) => {
@@ -41,7 +45,10 @@ export const TEAMCAL_TOOLS: Tool[] = [
   {
     name: 'ghl_book_slot',
     title: 'Termin buchen',
-    description: `Bucht einen freien Termin auf einem Buchungskalender für einen Kontakt (E-Mail und Vorname nötig; der Kontakt wird angelegt oder zusammengeführt). start ist ein Zeitpunkt aus ghl_calendar_types. Bei Round Robin wählt das System die Person nach den Regeln des Kalenders (host_id nur, wenn der Nutzer eine bestimmte Person will), bei Kollektiv sind alle dabei. Fragen der Buchungsseite beantwortest du mit answers ({frage_id: antwort}). Der Kontakt bekommt die Bestätigung per E-Mail – frage vorher, ob das gewollt ist. Kostenpflichtige Kalender: Es entsteht eine Zahlungsseite (status payment_required, checkout_url an den Kontakt geben); der Termin gilt erst nach der Zahlung. payment=waive bucht ohne Zahlung – nur auf ausdrücklichen Wunsch. Ist eine Gruppe ausgebucht, setzt waitlist=true auf die Warteliste. ${NOTE}`,
+    get description() {
+      const t = tApp();
+      return `${t('Bucht einen freien Termin auf einem Buchungskalender für einen Kontakt (E-Mail und Vorname nötig; der Kontakt wird angelegt oder zusammengeführt). start ist ein Zeitpunkt aus ghl_calendar_types. Bei Round Robin wählt das System die Person nach den Regeln des Kalenders (host_id nur, wenn der Nutzer eine bestimmte Person will), bei Kollektiv sind alle dabei. Fragen der Buchungsseite beantwortest du mit answers ({frage_id: antwort}). Der Kontakt bekommt die Bestätigung per E-Mail – frage vorher, ob das gewollt ist. Kostenpflichtige Kalender: Es entsteht eine Zahlungsseite (status payment_required, checkout_url an den Kontakt geben); der Termin gilt erst nach der Zahlung. payment=waive bucht ohne Zahlung – nur auf ausdrücklichen Wunsch. Ist eine Gruppe ausgebucht, setzt waitlist=true auf die Warteliste.')} ${t(NOTE)}`;
+    },
     inputSchema: obj(
       {
         ...LOC,
@@ -66,8 +73,8 @@ export const TEAMCAL_TOOLS: Tool[] = [
         const ap = r.appointment;
         return { status: 'confirmed', appointment_id: ap.id, start_at: ap.start_at, end_at: ap.end_at, host: ap.assignee_name || null, hosts: (r.hosts ?? []).map((h: any) => h.name), meeting_url: r.meeting_url || null, manage_url: r.manage_url, link: '/app/calendars' };
       }
-      if (r.status === 'payment_required') return { status: 'payment_required', checkout_url: r.checkout_url, expires_at: r.expires_at, due_cents: r.due_cents, currency: r.currency, hint: 'Den Link an den Kontakt geben – der Termin gilt nach der Zahlung. Bis dahin ist die Zeit reserviert.' };
-      if (r.status === 'waitlisted') return { status: 'waitlisted', hint: 'Wird ein Platz frei, bekommt der Kontakt eine E-Mail mit einem Link zum Buchen.' };
+      if (r.status === 'payment_required') return { status: 'payment_required', checkout_url: r.checkout_url, expires_at: r.expires_at, due_cents: r.due_cents, currency: r.currency, hint: tApp()('Den Link an den Kontakt geben – der Termin gilt nach der Zahlung. Bis dahin ist die Zeit reserviert.') };
+      if (r.status === 'waitlisted') return { status: 'waitlisted', hint: tApp()('Wird ein Platz frei, bekommt der Kontakt eine E-Mail mit einem Link zum Buchen.') };
       throw new HttpError(500, 'Unerwartete Antwort');
     },
   },

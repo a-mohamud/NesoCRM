@@ -5,6 +5,7 @@ import { resolve, scopeClause } from '../services/record-access.js';
 import type { SnapshotPart } from '../services/snapshots.js';
 import { cleanColor } from '../services/tag-meta.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Smart Tags on deal cards (docs/sales.md#smart-tags): rules that put a coloured chip on open deals – high value, overdue, no
@@ -26,7 +27,7 @@ export interface Rule {
 /** A clean rule or an error message. */
 export function cleanRule(v: any): Rule {
   const kind = String(v?.kind ?? '') as Kind;
-  if (!KINDS.includes(kind)) throw new Error(`Regel: unbekannte Art (${KINDS.join(', ')})`);
+  if (!KINDS.includes(kind)) throw new Error(tApp()('Regel: unbekannte Art ({kinds})', { kinds: KINDS.join(', ') }));
   const out: Rule = { kind };
   if (NEEDS_VALUE.includes(kind)) {
     const n = Number(v?.value);
@@ -108,7 +109,7 @@ export const dealSmartTagsModule: Module = {
       const name = str(ctx.body?.name, 'Name', { required: true, max: 40 });
       const rule = asHttp(() => cleanRule(ctx.body?.rule));
       const color = asHttp(() => cleanColor(ctx.body?.color));
-      if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM deal_smart_tags WHERE location_id = ?', ctx.locationId)!.n >= MAX_RULES) throw bad(`Höchstens ${MAX_RULES} Smart Tags`);
+      if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM deal_smart_tags WHERE location_id = ?', ctx.locationId)!.n >= MAX_RULES) throw bad(tCtx(ctx)('Höchstens {n} Smart Tags', { n: MAX_RULES }));
       const pos = db.get<{ p: number }>('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM deal_smart_tags WHERE location_id = ?', ctx.locationId)!.p;
       const row = { id: id(), location_id: ctx.locationId, name, color, rule, position: pos, created_at: now() };
       db.insert('deal_smart_tags', row);

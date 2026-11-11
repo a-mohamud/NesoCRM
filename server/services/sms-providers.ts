@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { hmac, readJson, safeEqual, sha256hex, type DeliveryEvent, type FetchLike } from './channel-kit.js';
 import type { FieldSpec } from './email-providers.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * SMS APIs for Europe and worldwide besides Twilio: seven.io, Bird (formerly MessageBird), Vonage
@@ -31,7 +32,9 @@ export const SMS_PROVIDERS: Record<SmsProvider, SmsProviderInfo> = {
   bird: {
     label: 'Bird (MessageBird)',
     secrets: [
+      // i18n-ignore (provider's own field name)
       { key: 'access_key', label: 'Access Key', pattern: /^[\w-]{20,200}$/ },
+      // i18n-ignore (provider's own field name)
       { key: 'signing_key', label: 'Webhook Signing Key', pattern: /^[\w-]{8,200}$/, optional: true },
     ],
     config: [
@@ -41,7 +44,7 @@ export const SMS_PROVIDERS: Record<SmsProvider, SmsProviderInfo> = {
     signed: 'HMAC-Signatur (messagebird-signature, messagebird-request-timestamp), wenn ein Signing Key eingetragen ist',
   },
   vonage: {
-    label: 'Vonage',
+    label: 'Vonage', // i18n-ignore
     secrets: [
       { key: 'api_key', label: 'API Key', pattern: /^[A-Za-z0-9]{6,20}$/ },
       { key: 'api_secret', label: 'API Secret', pattern: /^[A-Za-z0-9]{8,64}$/ },
@@ -51,8 +54,9 @@ export const SMS_PROVIDERS: Record<SmsProvider, SmsProviderInfo> = {
     signed: 'Signiertes JWT (HS256 mit dem Signature Secret, payload_hash), wenn eingetragen',
   },
   plivo: {
-    label: 'Plivo',
+    label: 'Plivo', // i18n-ignore
     secrets: [
+      // i18n-ignore (provider's own field name)
       { key: 'auth_id', label: 'Auth ID', pattern: /^[MS]A[A-Z0-9]{16,24}$/ },
       { key: 'auth_token', label: 'Auth Token', pattern: /^[A-Za-z0-9]{20,64}$/ },
     ],
@@ -75,7 +79,8 @@ const basic = (u: string, p: string) => `Basic ${Buffer.from(`${u}:${p}`).toStri
 
 export async function sendSms(p: SmsProvider, c: SmsCreds, to: string, text: string, fetcher: FetchLike, statusUrl?: string): Promise<{ providerId: string }> {
   const json = { 'content-type': 'application/json', accept: 'application/json' };
-  if (digits(to).length < 6) throw new Error('Telefonnummer ungültig');
+  const t = tApp();
+  if (digits(to).length < 6) throw new Error(t('Telefonnummer ungültig'));
   switch (p) {
     case 'seven': {
       const r = await fetcher('https://gateway.seven.io/api/sms', {
@@ -87,7 +92,8 @@ export async function sendSms(p: SmsProvider, c: SmsCreds, to: string, text: str
       const j = await readJson(r, 'seven.io');
       const code = String(j.success ?? j);
       const m = Array.isArray(j.messages) ? j.messages[0] : null;
-      if (code !== '100' || (m && m.success === false)) throw new Error(`seven.io: ${m?.error_text || m?.error || `Fehlercode ${code}`}`);
+      // i18n-ignore (provider name + translated detail)
+      if (code !== '100' || (m && m.success === false)) throw new Error(`seven.io: ${m?.error_text || m?.error || t('Fehlercode {code}', { code })}`);
       return { providerId: String(m?.id ?? '') };
     }
     case 'bird': {
@@ -179,6 +185,7 @@ const b64uJson = (s: string) => {
 /** Vonage signed webhooks: Authorization: Bearer <JWT HS256 with the signature secret>, payload_hash = SHA-256 of the body. */
 export function signVonageJwt(rawBody: string, secret: string, iat = Math.floor(Date.now() / 1000)): string {
   const h = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  // i18n-ignore (JWT issuer)
   const p = Buffer.from(JSON.stringify({ iat, jti: String(iat), iss: 'Vonage', payload_hash: sha256hex(rawBody) })).toString('base64url');
   return `${h}.${p}.${hmac(secret, `${h}.${p}`).toString('base64url')}`;
 }

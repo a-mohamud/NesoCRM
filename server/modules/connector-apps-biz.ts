@@ -5,6 +5,7 @@ import { appCall, appMeta, basic, MAP_FIELD, NANGO_FIELD, saveResult, setVars, u
 import { connectorFetch, readJson, registerConnector, type ConnectorConfig } from '../services/connectors.js';
 import { parseNumber } from '../services/formatters.js';
 import { stripeRequest, StripeError } from '../services/stripe.js';
+import { tApp, tLoc } from '../i18n/index.js';
 import { registerActionMeta, requireText, rowsOf, text, tzOf, type ActionMeta, type FieldDef } from '../services/wfx-kit.js';
 
 /**
@@ -15,7 +16,7 @@ import { registerActionMeta, requireText, rowsOf, text, tzOf, type ActionMeta, t
  */
 
 const needToken = (cfg: ConnectorConfig, what: string) => {
-  if (!usesNango(cfg) && !cfg.token) throw new Error(`${what}: Token fehlt (Apps → Direkt-Verbindungen)`);
+  if (!usesNango(cfg) && !cfg.token) throw new Error(tApp()('{app}: Token fehlt (Apps → Direkt-Verbindungen)', { app: what }));
 };
 const bearer = (c: ConnectorConfig): Record<string, string> => (c.token ? { authorization: `Bearer ${c.token}` } : {});
 const stableId = (run: any, step: any, extra = '') => sha256(`${run.id}:${step.id ?? ''}:${extra}`).slice(0, 32);
@@ -152,7 +153,7 @@ export const connectorAppsBizModule: Module = {
       set('company', text(step.company, vars));
       for (const r of rowsOf<{ property: string; value: string }>(step.rows, ['property'], 50)) {
         const k = String(r.property).trim();
-        if (!/^[a-z][a-z0-9_]{0,99}$/.test(k)) throw new Error(`HubSpot-Eigenschaft „${k.slice(0, 40)}“ ist ungültig (interner Name in Kleinbuchstaben, z. B. lifecyclestage)`);
+        if (!/^[a-z][a-z0-9_]{0,99}$/.test(k)) throw new Error(tApp()('HubSpot-Eigenschaft „{name}“ ist ungültig (interner Name in Kleinbuchstaben, z. B. lifecyclestage)', { name: k.slice(0, 40) }));
         set(k, text(r.value, vars));
       }
       return p;
@@ -175,18 +176,20 @@ export const connectorAppsBizModule: Module = {
       },
       actions: {
         hubspot_create_contact: async (a, cfg, run, step, vars) => {
+          const tl = tLoc(a, loc(run));
           needToken(cfg, 'HubSpot');
           const props = hubspotProps(step, vars, true);
           if (!props.email) throw new Error('E-Mail fehlt');
           const r = await appCall(a, loc(run), cfg, hubspotSpec, { method: 'POST', path: '/crm/v3/objects/contacts', body: { properties: props }, accept: [409] });
-          if (r.status !== 409) return saveResult(hubspotOut(r, true, `HubSpot: Kontakt ${r.data?.id ?? ''} angelegt`), step, r.data?.id);
+          if (r.status !== 409) return saveResult(hubspotOut(r, true, tl('HubSpot: Kontakt {id} angelegt', { id: r.data?.id ?? '' })), step, r.data?.id);
           const id = String(r.data?.message ?? '').match(/Existing ID:\s*(\d+)/i)?.[1];
           if (!id) throw new Error('HubSpot: Kontakt existiert schon, die ID wurde nicht mitgeteilt');
-          if (step.update_existing === false) return saveResult(setVars({ result: `HubSpot: Kontakt ${id} existiert bereits (nicht geändert)` }, { hubspot_contact_id: id, hubspot_created: false }), step, id);
+          if (step.update_existing === false) return saveResult(setVars({ result: tl('HubSpot: Kontakt {id} existiert bereits (nicht geändert)', { id }) }, { hubspot_contact_id: id, hubspot_created: false }), step, id);
           const u = await appCall(a, loc(run), cfg, hubspotSpec, { method: 'PATCH', path: `/crm/v3/objects/contacts/${id}`, body: { properties: props } });
-          return saveResult(hubspotOut({ data: { id, ...u.data } }, false, `HubSpot: vorhandenen Kontakt ${id} aktualisiert`), step, id);
+          return saveResult(hubspotOut({ data: { id, ...u.data } }, false, tl('HubSpot: vorhandenen Kontakt {id} aktualisiert', { id })), step, id);
         },
         hubspot_update_contact: async (a, cfg, run, step, vars) => {
+          const tl = tLoc(a, loc(run));
           needToken(cfg, 'HubSpot');
           const id = text(step.contact_id, vars).trim();
           const email = text(step.email, vars).trim();
@@ -196,11 +199,11 @@ export const connectorAppsBizModule: Module = {
           if (!Object.keys(props).length) throw new Error('Keine Eigenschaften zum Ändern angegeben');
           const r = await appCall(a, loc(run), cfg, hubspotSpec, { method: 'PATCH', path: `/crm/v3/objects/contacts/${id || encodeURIComponent(email)}`, query: id ? {} : { idProperty: 'email' }, body: { properties: props }, accept: [404] });
           if (r.status === 404) {
-            if (!step.create_if_missing || !email) return { result: `HubSpot: kein Kontakt gefunden (${id || email})`, vars: { hubspot_found: false } };
+            if (!step.create_if_missing || !email) return { result: tl('HubSpot: kein Kontakt gefunden ({ref})', { ref: id || email }), vars: { hubspot_found: false } };
             const c = await appCall(a, loc(run), cfg, hubspotSpec, { method: 'POST', path: '/crm/v3/objects/contacts', body: { properties: { ...props, email } } });
-            return saveResult(setVars(hubspotOut(c, true, `HubSpot: Kontakt ${c.data?.id ?? ''} neu angelegt`), { hubspot_found: false }), step, c.data?.id);
+            return saveResult(setVars(hubspotOut(c, true, tl('HubSpot: Kontakt {id} neu angelegt', { id: c.data?.id ?? '' })), { hubspot_found: false }), step, c.data?.id);
           }
-          return saveResult(setVars(hubspotOut(r, false, `HubSpot: Kontakt ${r.data?.id ?? id} aktualisiert`), { hubspot_found: true }), step, r.data?.id);
+          return saveResult(setVars(hubspotOut(r, false, tl('HubSpot: Kontakt {id} aktualisiert', { id: r.data?.id ?? id })), { hubspot_found: true }), step, r.data?.id);
         },
       },
     });
@@ -222,10 +225,11 @@ export const connectorAppsBizModule: Module = {
       test: async (a, cfg) => {
         if (!usesNango(cfg) && !cfg.api_key) throw new Error('Mailchimp: API-Key fehlt');
         const r = await appCall(a, '', cfg, mailchimpSpec, { path: '/ping' });
-        return String(r.data?.health_status ?? 'Verbunden').slice(0, 80);
+        return String(r.data?.health_status ?? tApp()('Verbunden')).slice(0, 80);
       },
       actions: {
         mailchimp_add_member: async (a, cfg, run, step, vars) => {
+          const tl = tLoc(a, loc(run));
           if (!usesNango(cfg) && !cfg.api_key) throw new Error('Mailchimp: API-Key fehlt (Apps → Direkt-Verbindungen)');
           const list = text(step.list_id, vars).trim() || cfg.default_list_id;
           if (!list || !/^[a-zA-Z0-9]{4,30}$/.test(list)) throw new Error('Audience fehlt oder ist ungültig (im Schritt oder als Standard-Audience)');
@@ -242,7 +246,7 @@ export const connectorAppsBizModule: Module = {
           if (phone) m('PHONE', phone);
           for (const r of rowsOf<{ tag: string; value: string }>(step.rows, ['tag'], 30)) {
             const k = String(r.tag).trim().toUpperCase();
-            if (!/^[A-Z][A-Z0-9_]{0,9}$/.test(k)) throw new Error(`Merge-Tag „${k.slice(0, 20)}“ ist ungültig (bis 10 Zeichen, z. B. COMPANY)`);
+            if (!/^[A-Z][A-Z0-9_]{0,9}$/.test(k)) throw new Error(tl('Merge-Tag „{name}“ ist ungültig (bis 10 Zeichen, z. B. COMPANY)', { name: k.slice(0, 20) }));
             m(k, text(r.value, vars));
           }
           const hash = mailchimpHash(email);
@@ -250,7 +254,7 @@ export const connectorAppsBizModule: Module = {
           const r = await appCall(a, loc(run), cfg, mailchimpSpec, { method: 'PUT', path: `/lists/${list}/members/${hash}`, body: { email_address: email, status_if_new: status, ...(Object.keys(merge).length ? { merge_fields: merge } : {}) } });
           const tags = text(step.tags, vars).split(',').map((t) => t.trim()).filter(Boolean).slice(0, 20);
           if (tags.length) await appCall(a, loc(run), cfg, mailchimpSpec, { method: 'POST', path: `/lists/${list}/members/${hash}/tags`, body: { tags: tags.map((name) => ({ name: name.slice(0, 100), status: 'active' })) } });
-          return saveResult(setVars({ result: `Mailchimp: ${email} (${r.data?.status ?? status})${tags.length ? `, ${tags.length} Tag(s)` : ''}`, output: { id: r.data?.id, status: r.data?.status } }, { mailchimp_status: r.data?.status, mailchimp_member_id: r.data?.id }), step, r.data?.status);
+          return saveResult(setVars({ result: `Mailchimp: ${email} (${r.data?.status ?? status})${tags.length ? tl.plural(tags.length, { one: ', {n} Tag', other: ', {n} Tags' }) : ''}`, output: { id: r.data?.id, status: r.data?.status } }, { mailchimp_status: r.data?.status, mailchimp_member_id: r.data?.id }), step, r.data?.status);
         },
       },
     });
@@ -270,10 +274,11 @@ export const connectorAppsBizModule: Module = {
       test: async (a, cfg) => {
         if (!cfg.api_key) throw new Error('Brevo: API-Key fehlt');
         const r = await appCall(a, '', cfg, brevoSpec, { path: '/account' });
-        return `Verbunden mit ${String(r.data?.companyName || r.data?.email || 'Brevo')}`;
+        return tApp()('Verbunden mit {name}', { name: String(r.data?.companyName || r.data?.email || 'Brevo') });
       },
       actions: {
         brevo_add_contact: async (a, cfg, run, step, vars) => {
+          const tl = tLoc(a, loc(run));
           if (!cfg.api_key) throw new Error('Brevo: API-Key fehlt (Apps → Direkt-Verbindungen)');
           const email = requireText(text(step.email, vars), 'E-Mail').toLowerCase();
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('E-Mail ist ungültig');
@@ -287,13 +292,13 @@ export const connectorAppsBizModule: Module = {
           if (phone) set('SMS', phone);
           for (const r of rowsOf<{ attribute: string; value: string }>(step.rows, ['attribute'], 30)) {
             const k = String(r.attribute).trim().toUpperCase();
-            if (!/^[A-Z][A-Z0-9_]{0,59}$/.test(k)) throw new Error(`Brevo-Attribut „${k.slice(0, 30)}“ ist ungültig (Großbuchstaben, Ziffern, _)`);
+            if (!/^[A-Z][A-Z0-9_]{0,59}$/.test(k)) throw new Error(tl('Brevo-Attribut „{name}“ ist ungültig (Großbuchstaben, Ziffern, _)', { name: k.slice(0, 30) }));
             set(k, text(r.value, vars));
           }
           const ids = (text(step.list_ids, vars).trim() || cfg.default_list_ids || '').split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)).map(Number).slice(0, 20);
           const r = await appCall(a, loc(run), cfg, brevoSpec, { method: 'POST', path: '/contacts', body: { email, ...(Object.keys(attrs).length ? { attributes: attrs } : {}), ...(ids.length ? { listIds: ids } : {}), updateEnabled: step.update_existing !== false } });
           const id = r.data?.id;
-          return saveResult(setVars({ result: `Brevo: ${email} ${r.status === 204 ? 'aktualisiert' : 'angelegt'}${ids.length ? ` (Liste ${ids.join(', ')})` : ''}`, output: { id } }, { brevo_contact_id: id ?? '' }), step, id);
+          return saveResult(setVars({ result: (r.status === 204 ? tl('Brevo: {email} aktualisiert', { email }) : tl('Brevo: {email} angelegt', { email })) + (ids.length ? tl(' (Liste {ids})', { ids: ids.join(', ') }) : ''), output: { id } }, { brevo_contact_id: id ?? '' }), step, id);
         },
       },
     });
@@ -303,7 +308,7 @@ export const connectorAppsBizModule: Module = {
     const gql = async (a: App, locationId: string, cfg: ConnectorConfig, query: string, variables: Record<string, unknown>) => {
       if (!usesNango(cfg) && !cfg.token) throw new Error('Shopify: Token fehlt (Apps → Direkt-Verbindungen)');
       const r = await appCall(a, locationId, cfg, shopifySpec(cfg), { method: 'POST', path: '/graphql.json', body: { query, variables } });
-      if (Array.isArray(r.data?.errors) && r.data.errors.length) throw new Error(`Shopify: ${String(r.data.errors[0]?.message ?? 'Fehler').slice(0, 200)}`);
+      if (Array.isArray(r.data?.errors) && r.data.errors.length) throw new Error(`Shopify: ${String(r.data.errors[0]?.message ?? tApp()('Fehler')).slice(0, 200)}`); // i18n-ignore
       return r.data?.data ?? {};
     };
     registerConnector(app, {
@@ -323,10 +328,11 @@ export const connectorAppsBizModule: Module = {
       steps: ['Shopify: Rabattcode erstellen', 'Shopify: Bestellung abrufen'],
       test: async (a, cfg) => {
         const d = await gql(a, '', cfg, '{ shop { name } }', {});
-        return `Verbunden mit ${String(d.shop?.name ?? 'Shopify')}`;
+        return tApp()('Verbunden mit {name}', { name: String(d.shop?.name ?? 'Shopify') });
       },
       actions: {
         shopify_create_discount: async (a, cfg, run, step, vars) => {
+          const tl = tLoc(a, loc(run));
           const manual = text(step.code, vars).trim().toUpperCase();
           if (manual && !/^[A-Z0-9][A-Z0-9_-]{2,40}$/.test(manual)) throw new Error('Rabattcode ungültig (3–41 Zeichen: A–Z, 0–9, _ und -)');
           const code = manual || autoDiscountCode(`${run.id}:${step.id ?? ''}`);
@@ -353,20 +359,21 @@ export const connectorAppsBizModule: Module = {
           const err = res?.userErrors?.[0];
           if (err) {
             // a retry of the same step: the generated code exists already
-            if (!manual && String(err.code) === 'TAKEN') return saveResult(setVars({ result: `Shopify: Rabattcode ${code} gab es schon (Wiederholung)`, output: { code } }, { discount_code: code }), step, code);
-            throw new Error(`Shopify: ${short(err.message, 200)}`);
+            if (!manual && String(err.code) === 'TAKEN') return saveResult(setVars({ result: tl('Shopify: Rabattcode {code} gab es schon (Wiederholung)', { code }), output: { code } }, { discount_code: code }), step, code);
+            throw new Error(`Shopify: ${short(err.message, 200)}`); // i18n-ignore
           }
-          return saveResult(setVars({ result: `Shopify: Rabattcode ${code} erstellt (${kind === 'percent' ? `${value} %` : `${decimal(value)} €`})`, output: { code, id: res?.codeDiscountNode?.id } }, { discount_code: code, discount_id: res?.codeDiscountNode?.id ?? '' }), step, code);
+          return saveResult(setVars({ result: tl('Shopify: Rabattcode {code} erstellt ({value})', { code, value: kind === 'percent' ? `${value} %` : `${decimal(value)} €` }), output: { code, id: res?.codeDiscountNode?.id } }, { discount_code: code, discount_id: res?.codeDiscountNode?.id ?? '' }), step, code);
         },
         shopify_get_order: async (a, cfg, run, step, vars) => {
+          const tl = tLoc(a, loc(run));
           const ref = shopifyOrderRef(text(step.order, vars));
           const fields = 'id name email createdAt cancelledAt displayFinancialStatus displayFulfillmentStatus totalPriceSet { shopMoney { amount currencyCode } } lineItems(first: 20) { nodes { title quantity } }';
           const d = ref.id ? await gql(a, loc(run), cfg, `query($id: ID!) { order(id: $id) { ${fields} } }`, { id: ref.id }) : await gql(a, loc(run), cfg, `query($q: String!) { orders(first: 1, query: $q) { nodes { ${fields} } } }`, { q: ref.query });
           const o = ref.id ? d.order : d.orders?.nodes?.[0];
-          if (!o) return { result: `Shopify: keine Bestellung gefunden (${short(text(step.order, vars), 40)})`, vars: { shopify_found: false } };
+          if (!o) return { result: tl('Shopify: keine Bestellung gefunden ({ref})', { ref: short(text(step.order, vars), 40) }), vars: { shopify_found: false } };
           const items = (o.lineItems?.nodes ?? []).map((l: any) => `${l.quantity}× ${l.title}`).join(', ');
           const money = o.totalPriceSet?.shopMoney ?? {};
-          return saveResult(setVars({ result: `Shopify: Bestellung ${o.name} – ${o.displayFinancialStatus ?? ''}, ${o.displayFulfillmentStatus ?? ''}, ${money.amount ?? ''} ${money.currencyCode ?? ''}`.trim(), output: { id: o.id, name: o.name, status: o.displayFinancialStatus, total: money.amount } }, { shopify_found: true, shopify_order_id: o.id, shopify_order_name: o.name, shopify_order_status: String(o.displayFinancialStatus ?? '').toLowerCase(), shopify_fulfillment: String(o.displayFulfillmentStatus ?? '').toLowerCase(), shopify_order_total: money.amount ?? '', shopify_order_currency: money.currencyCode ?? '', shopify_order_email: o.email ?? '', shopify_order_items: items, shopify_order_cancelled: !!o.cancelledAt }), step, o.displayFinancialStatus);
+          return saveResult(setVars({ result: tl('Shopify: Bestellung {name} – {status}, {fulfillment}, {amount} {currency}', { name: o.name, status: o.displayFinancialStatus ?? '', fulfillment: o.displayFulfillmentStatus ?? '', amount: money.amount ?? '', currency: money.currencyCode ?? '' }).trim(), output: { id: o.id, name: o.name, status: o.displayFinancialStatus, total: money.amount } }, { shopify_found: true, shopify_order_id: o.id, shopify_order_name: o.name, shopify_order_status: String(o.displayFinancialStatus ?? '').toLowerCase(), shopify_fulfillment: String(o.displayFulfillmentStatus ?? '').toLowerCase(), shopify_order_total: money.amount ?? '', shopify_order_currency: money.currencyCode ?? '', shopify_order_email: o.email ?? '', shopify_order_items: items, shopify_order_cancelled: !!o.cancelledAt }), step, o.displayFinancialStatus);
         },
       },
     });
@@ -390,17 +397,18 @@ export const connectorAppsBizModule: Module = {
       steps: ['WooCommerce: Bestellung abrufen'],
       test: async (a, cfg) => {
         const r = await appCall(a, '', cfg, wooSpec, { path: '/orders', query: { per_page: 1 } });
-        return `Verbunden – ${Array.isArray(r.data) ? 'Bestellungen lesbar' : 'Antwort erhalten'}`;
+        return Array.isArray(r.data) ? tApp()('Verbunden – Bestellungen lesbar') : tApp()('Verbunden – Antwort erhalten');
       },
       actions: {
         woocommerce_get_order: async (a, cfg, run, step, vars) => {
+          const tl = tLoc(a, loc(run));
           const id = text(step.order_id, vars).trim().replace(/^#/, '');
           if (!/^\d{1,12}$/.test(id)) throw new Error('Bestellnummer ungültig (nur Ziffern, z. B. 1234)');
           const r = await appCall(a, loc(run), cfg, wooSpec, { path: `/orders/${id}`, accept: [404] });
-          if (r.status === 404) return { result: `WooCommerce: keine Bestellung ${id}`, vars: { woo_found: false } };
+          if (r.status === 404) return { result: tl('WooCommerce: keine Bestellung {id}', { id }), vars: { woo_found: false } };
           const o = r.data ?? {};
           const items = (Array.isArray(o.line_items) ? o.line_items : []).slice(0, 20).map((l: any) => `${l.quantity}× ${l.name}`).join(', ');
-          return saveResult(setVars({ result: `WooCommerce: Bestellung ${id} – ${o.status ?? ''}, ${o.total ?? ''} ${o.currency ?? ''}`.trim(), output: { id: o.id, status: o.status, total: o.total } }, { woo_found: true, woo_order_status: String(o.status ?? ''), woo_order_total: String(o.total ?? ''), woo_order_currency: String(o.currency ?? ''), woo_order_email: String(o.billing?.email ?? ''), woo_order_items: items, woo_payment_method: String(o.payment_method_title ?? o.payment_method ?? ''), woo_order_date: String(o.date_created_gmt ?? o.date_created ?? '') }), step, o.status);
+          return saveResult(setVars({ result: tl('WooCommerce: Bestellung {id} – {status}, {total} {currency}', { id, status: o.status ?? '', total: o.total ?? '', currency: o.currency ?? '' }).trim(), output: { id: o.id, status: o.status, total: o.total } }, { woo_found: true, woo_order_status: String(o.status ?? ''), woo_order_total: String(o.total ?? ''), woo_order_currency: String(o.currency ?? ''), woo_order_email: String(o.billing?.email ?? ''), woo_order_items: items, woo_payment_method: String(o.payment_method_title ?? o.payment_method ?? ''), woo_order_date: String(o.date_created_gmt ?? o.date_created ?? '') }), step, o.status);
         },
       },
     });
@@ -416,12 +424,13 @@ export const connectorAppsBizModule: Module = {
       try {
         return await fn();
       } catch (e) {
-        if (e instanceof StripeError) throw new Error(e.message.startsWith('Stripe') ? e.message : `Stripe: ${e.message}`);
+        if (e instanceof StripeError) throw new Error(e.message.startsWith('Stripe') ? e.message : `Stripe: ${e.message}`); // i18n-ignore
         throw e;
       }
     };
     const stripeActions = {
       stripe_create_customer: async (run: any, step: any, vars: Record<string, any>) => {
+        const tl = tLoc(app, loc(run));
         const key = stripeFor(run);
         const email = text(step.email, vars).trim();
         const name = text(step.name, vars).trim();
@@ -430,13 +439,14 @@ export const connectorAppsBizModule: Module = {
         if (step.reuse_existing !== false && email) {
           const found = await stripeCall(() => stripeRequest<any>(key, 'GET', '/v1/customers', { email, limit: 1 }));
           const c = found?.data?.[0];
-          if (c) return saveResult(setVars({ result: `Stripe: Kunde ${c.id} gab es schon`, output: { id: c.id, created: false } }, { stripe_customer_id: c.id, stripe_customer_created: false }), step, c.id);
+          if (c) return saveResult(setVars({ result: tl('Stripe: Kunde {id} gab es schon', { id: c.id }), output: { id: c.id, created: false } }, { stripe_customer_id: c.id, stripe_customer_created: false }), step, c.id);
         }
         const phone = normalizePhone(text(step.phone, vars));
         const c = await stripeCall(() => stripeRequest<any>(key, 'POST', '/v1/customers', { email: email || undefined, name: name || undefined, phone: phone || undefined, description: short(text(step.description, vars), 300) || undefined, metadata: { ghl_contact_id: run.contact_id ?? '', ghl_location: run.location_id } }, { idempotencyKey: `ghl-cus-${stableId(run, step)}` }));
-        return saveResult(setVars({ result: `Stripe: Kunde ${c.id} angelegt`, output: { id: c.id, created: true } }, { stripe_customer_id: c.id, stripe_customer_created: true }), step, c.id);
+        return saveResult(setVars({ result: tl('Stripe: Kunde {id} angelegt', { id: c.id }), output: { id: c.id, created: true } }, { stripe_customer_id: c.id, stripe_customer_created: true }), step, c.id);
       },
       stripe_create_payment_link: async (run: any, step: any, vars: Record<string, any>) => {
+        const tl = tLoc(app, loc(run));
         const key = stripeFor(run);
         const name = short(requireText(text(step.name, vars), 'Produktname'), 250);
         const amount = parseNumber(text(step.amount, vars));
@@ -457,7 +467,7 @@ export const connectorAppsBizModule: Module = {
         const link = await stripeCall(() =>
           stripeRequest<any>(key, 'POST', '/v1/payment_links', { line_items: [{ price: price.id, quantity: 1, ...(qty > 1 ? { adjustable_quantity: { enabled: true, minimum: 1, maximum: qty } } : {}) }], ...(redirect ? { after_completion: { type: 'redirect', redirect: { url: redirect } } } : {}), metadata: meta }, { idempotencyKey: `ghl-link-${id}` }),
         );
-        return saveResult(setVars({ result: `Stripe: Zahlungslink ${String(link.url ?? '').slice(0, 80)} (${(cents / 100).toFixed(2)} ${currency.toUpperCase()})`, output: { url: link.url, id: link.id, price: price.id } }, { stripe_payment_link: link.url, stripe_payment_link_id: link.id }), step, link.url);
+        return saveResult(setVars({ result: tl('Stripe: Zahlungslink {url} ({amount} {currency})', { url: String(link.url ?? '').slice(0, 80), amount: (cents / 100).toFixed(2), currency: currency.toUpperCase() }), output: { url: link.url, id: link.id, price: price.id } }, { stripe_payment_link: link.url, stripe_payment_link_id: link.id }), step, link.url);
       },
     };
     const stripeNeeds = 'Einstellungen → Stripe (Secret Key des Sub-Accounts)';
@@ -478,16 +488,17 @@ export const connectorAppsBizModule: Module = {
       test: async (a, cfg) => {
         needToken(cfg, 'Calendly');
         const r = await appCall(a, '', cfg, calendlySpec, { path: '/users/me' });
-        return `Verbunden als ${String(r.data?.resource?.name ?? 'Calendly')}`;
+        return tApp()('Verbunden als {name}', { name: String(r.data?.resource?.name ?? 'Calendly') });
       },
       actions: {
         calendly_cancel_event: async (a, cfg, run, step, vars) => {
+          const tl = tLoc(a, loc(run));
           needToken(cfg, 'Calendly');
           const id = calendlyEventId(text(step.event, vars));
           if (!id) throw new Error('Termin-ID fehlt oder ist ungültig (die URI aus Calendly: …/scheduled_events/<id>)');
           const reason = short(text(step.reason, vars), 1000);
           await appCall(a, loc(run), cfg, calendlySpec, { method: 'POST', path: `/scheduled_events/${id}/cancellation`, body: reason ? { reason } : {} });
-          return setVars({ result: `Calendly: Termin ${id.slice(0, 8)}… abgesagt` }, { calendly_cancelled: true });
+          return setVars({ result: tl('Calendly: Termin {id}… abgesagt', { id: id.slice(0, 8) }) }, { calendly_cancelled: true });
         },
       },
     });
@@ -507,10 +518,11 @@ export const connectorAppsBizModule: Module = {
       test: async (a, cfg) => {
         needToken(cfg, 'Typeform');
         const r = await appCall(a, '', cfg, typeformSpec, { path: '/me' });
-        return `Verbunden als ${String(r.data?.alias || r.data?.email || 'Typeform')}`;
+        return tApp()('Verbunden als {name}', { name: String(r.data?.alias || r.data?.email || 'Typeform') });
       },
       actions: {
         typeform_get_response: async (a, cfg, run, step, vars) => {
+          const tl = tLoc(a, loc(run));
           needToken(cfg, 'Typeform');
           const form = text(step.form_id, vars).trim();
           if (!/^[A-Za-z0-9]{4,30}$/.test(form)) throw new Error('Formular-ID fehlt oder ist ungültig (steht in der Typeform-URL …/to/<id>)');
@@ -519,7 +531,7 @@ export const connectorAppsBizModule: Module = {
           if (rid && !/^[\w-]{3,100}$/.test(rid)) throw new Error('Antwort-ID ungültig');
           const r = await appCall(a, loc(run), cfg, typeformSpec, { path: `/forms/${form}/responses`, query: { page_size: 1, ...(rid ? { included_response_ids: rid } : {}), ...(q && !rid ? { query: q.slice(0, 200) } : {}) } });
           const item = r.data?.items?.[0];
-          if (!item) return { result: `Typeform: keine Antwort gefunden${rid ? ` (${rid.slice(0, 20)})` : q ? ` für „${q.slice(0, 30)}“` : ''}`, vars: { typeform_found: false } };
+          if (!item) return { result: rid ? tl('Typeform: keine Antwort gefunden ({ref})', { ref: rid.slice(0, 20) }) : q ? tl('Typeform: keine Antwort gefunden für „{query}“', { query: q.slice(0, 30) }) : tl('Typeform: keine Antwort gefunden'), vars: { typeform_found: false } };
           // titles of the questions from the form definition (best effort – needs forms:read)
           const titles: Record<string, string> = {};
           try {
@@ -529,7 +541,7 @@ export const connectorAppsBizModule: Module = {
             /* refs only */
           }
           const { byRef, lines } = typeformAnswers(item, titles);
-          return saveResult(setVars({ result: `Typeform: Antwort ${String(item.response_id).slice(0, 12)} (${Object.keys(byRef).length} Antworten)`, output: { response_id: item.response_id, submitted_at: item.submitted_at, answers: byRef } }, { typeform_found: true, typeform: byRef, typeform_text: lines, typeform_response_id: item.response_id, typeform_submitted_at: item.submitted_at, typeform_hidden: item.hidden ?? {}, typeform_score: item.calculated?.score ?? '' }), step, lines);
+          return saveResult(setVars({ result: tl.plural(Object.keys(byRef).length, { one: 'Typeform: Antwort {id} ({n} Antwort)', other: 'Typeform: Antwort {id} ({n} Antworten)' }, { id: String(item.response_id).slice(0, 12) }), output: { response_id: item.response_id, submitted_at: item.submitted_at, answers: byRef } }, { typeform_found: true, typeform: byRef, typeform_text: lines, typeform_response_id: item.response_id, typeform_submitted_at: item.submitted_at, typeform_hidden: item.hidden ?? {}, typeform_score: item.calculated?.score ?? '' }), step, lines);
         },
       },
     });
@@ -555,7 +567,7 @@ export const connectorAppsBizModule: Module = {
       test: async (a, cfg) => {
         if (usesNango(cfg)) {
           const r = await appCall(a, '', cfg, zoomSpec, { path: '/users/me' });
-          return `Verbunden als ${String(r.data?.email ?? 'Zoom')}`;
+          return tApp()('Verbunden als {name}', { name: String(r.data?.email ?? 'Zoom') });
         }
         if (!cfg.account_id || !cfg.client_id || !cfg.client_secret) throw new Error('Zoom: Account-ID, Client-ID und Client-Secret eintragen');
         await zoomToken(a, '', cfg);
@@ -563,6 +575,7 @@ export const connectorAppsBizModule: Module = {
       },
       actions: {
         zoom_create_meeting: async (a, cfg, run, step, vars) => {
+          const tl = tLoc(a, loc(run));
           const direct = !usesNango(cfg);
           if (direct && !(cfg.account_id && cfg.client_id && cfg.client_secret)) throw new Error('Zoom: Zugangsdaten fehlen (Apps → Direkt-Verbindungen)');
           const topic = short(requireText(text(step.topic, vars), 'Thema'), 200);
@@ -574,7 +587,7 @@ export const connectorAppsBizModule: Module = {
           const r = await appCall(a, loc(run), cfg, zoomSpec, { method: 'POST', path: `/users/${encodeURIComponent(host)}/meetings`, body, headers });
           const url = r.data?.join_url;
           if (!url) throw new Error('Zoom: Antwort ohne Beitrittslink');
-          return saveResult(setVars({ result: `Zoom: Meeting ${r.data?.id} am ${start.toISOString()} angelegt`, output: { id: r.data?.id, join_url: url } }, { zoom_join_url: url, zoom_meeting_id: String(r.data?.id ?? ''), zoom_password: String(r.data?.password ?? '') }), step, url);
+          return saveResult(setVars({ result: tl('Zoom: Meeting {id} am {start} angelegt', { id: String(r.data?.id ?? ''), start: start.toISOString() }), output: { id: r.data?.id, join_url: url } }, { zoom_join_url: url, zoom_meeting_id: String(r.data?.id ?? ''), zoom_password: String(r.data?.password ?? '') }), step, url);
         },
       },
     });

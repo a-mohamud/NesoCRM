@@ -1,3 +1,4 @@
+import { tApp } from '../i18n/index.js';
 /**
  * "Denkstufe": how hard a model is asked to think (reasoning effort). One global default – `xhigh` – with an optional
  * override per capability (agent chat, Werkstatt, review, quick texts, summaries, voice agent), kept in the KI-Anbieter
@@ -96,19 +97,19 @@ export function planEffort(c: ModelRef, want: Effort, o: { strict?: boolean; ski
   let requested = want;
   let note = '';
   // An everyday call whose provider refused the level is repeated once without it (never for the Werkstatt).
-  if (o.skip && !o.strict) return { requested, applied: null, sent: false, note: `${requested} → ohne Denkstufe wiederholt, der Anbieter hat sie abgelehnt` };
+  if (o.skip && !o.strict) return { requested, applied: null, sent: false, note: tApp()('{level} → ohne Denkstufe wiederholt, der Anbieter hat sie abgelehnt', { level: requested }) };
   if (o.strict && RANK[want] < RANK.high) {
     requested = 'high';
-    note = `${want} → high (Mindeststufe der Werkstatt). `;
+    note = `${tApp()('{level} → high (Mindeststufe der Werkstatt).', { level: want })} `;
   }
   const max = maxEffort(c);
   if (!max) {
     // The Werkstatt always asks for reasoning; everyday calls only where the model is known to take it.
-    if (o.strict) return { requested, applied: lower(requested, 'high'), sent: true, note: `${note}${requested === 'xhigh' ? 'xhigh → high (Modell nicht bekannt, höchste sichere Stufe)' : ''}`.trim() };
-    return { requested, applied: null, sent: false, note: 'Modell ohne Denkstufe' };
+    if (o.strict) return { requested, applied: lower(requested, 'high'), sent: true, note: `${note}${requested === 'xhigh' ? tApp()('xhigh → high (Modell nicht bekannt, höchste sichere Stufe)') : ''}`.trim() };
+    return { requested, applied: null, sent: false, note: tApp()('Modell ohne Denkstufe') };
   }
   const applied = lower(requested, max);
-  if (applied !== requested) note += `${requested} → ${applied}, vom Modell nicht unterstützt`;
+  if (applied !== requested) note += tApp()('{requested} → {applied}, vom Modell nicht unterstützt', { requested, applied: String(applied) });
   return { requested, applied, sent: true, note: note.trim() };
 }
 

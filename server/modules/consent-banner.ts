@@ -6,6 +6,7 @@ import { attributionConsent, applyCmp, cleanCmp, cmpCookie, OPTIONAL, parseChoic
 import { ipNetwork, uaHash } from '../services/consent-model.js';
 import { grantConsent, eventsOf, revokeConsent, type EventRow } from '../services/consent.js';
 import { CONSENT_COOKIE, VISITOR_COOKIE } from '../services/attribution.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Cookie consent banner (CMP) for funnels, websites, blog, forms, booking pages, buy pages, community pages and the member
@@ -104,7 +105,7 @@ export const consentBannerModule: Module = {
       if (dest && dest !== 'document') {
         r.status = 403;
         r.headers = { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' };
-        r.body = 'Nur über die Seite selbst';
+        r.body = tApp()('Nur über die Seite selbst');
         return true;
       }
       let granted: Record<Optional, boolean>;
@@ -170,7 +171,7 @@ export const consentBannerModule: Module = {
         r.body = out.html;
         // The page now depends on the visitor's cookie: nobody may cache it for somebody else.
         if (!/no-store/.test(r.headers['cache-control'] ?? '')) r.headers['cache-control'] = 'private, no-cache';
-        r.headers.vary = [r.headers.vary, 'Cookie'].filter(Boolean).join(', ');
+        r.headers.vary = [r.headers.vary, 'Cookie'].filter(Boolean).join(', '); // i18n-ignore (HTTP header value)
       },
     ];
 
@@ -185,10 +186,11 @@ export const consentBannerModule: Module = {
         const last = (p: string): EventRow | undefined => [...events].reverse().find((e) => e.purpose === p && (e.action === 'granted' || e.action === 'revoked'));
         for (const p of OPTIONAL) {
           const was = last(p);
+          const t = tLoc(app, locationId);
           if (c.granted[p] && was?.action !== 'granted') {
-            grantConsent(app, { locationId, contactId, channel: 'tracking', purposes: [p], source: { kind: 'cmp', id: c.cid, label: `Cookie-Banner (Version ${s.version})` }, text: { key: `cmp:${p}`, text: `${s.categories[p].label}: ${s.categories[p].description}` }, note: `Entscheidung im Cookie-Banner, Protokoll-ID ${c.cid}`, meta: { ip_net: ipNetwork(ctx.ip), ua_digest: uaHash(ctx.req.headers['user-agent']) }, actor: 'contact' });
+            grantConsent(app, { locationId, contactId, channel: 'tracking', purposes: [p], source: { kind: 'cmp', id: c.cid, label: t('Cookie-Banner (Version {version})', { version: s.version }) }, text: { key: `cmp:${p}`, text: `${s.categories[p].label}: ${s.categories[p].description}` }, note: t('Entscheidung im Cookie-Banner, Protokoll-ID {id}', { id: c.cid }), meta: { ip_net: ipNetwork(ctx.ip), ua_digest: uaHash(ctx.req.headers['user-agent']) }, actor: 'contact' });
           } else if (!c.granted[p] && was?.action === 'granted') {
-            revokeConsent(app, { locationId, contactId, channel: 'tracking', purposes: [p], source: { kind: 'cmp', id: c.cid, label: 'Cookie-Banner' }, actor: 'contact', note: `Entscheidung im Cookie-Banner, Protokoll-ID ${c.cid}` });
+            revokeConsent(app, { locationId, contactId, channel: 'tracking', purposes: [p], source: { kind: 'cmp', id: c.cid, label: t('Cookie-Banner') }, actor: 'contact', note: t('Entscheidung im Cookie-Banner, Protokoll-ID {id}', { id: c.cid }) });
           }
         }
       } catch (e) {

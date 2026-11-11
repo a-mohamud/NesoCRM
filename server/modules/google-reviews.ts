@@ -7,6 +7,7 @@ import { logActivity } from '../services/contacts.js';
 import { notifyTeam } from '../services/messaging.js';
 import { openSecret, sealSecret } from './mail-sync.js';
 import type { Tool } from './mcp.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Google reviews in Reputation: once a day the place's rating, review count and newest reviews are
@@ -41,7 +42,7 @@ async function google(app: App, url: string, key: string, init: { method?: strin
       signal: AbortSignal.timeout(15_000),
     });
   } catch (e) {
-    throw new HttpError(502, `Google nicht erreichbar: ${(e as Error).message}`);
+    throw new HttpError(502, tApp()('Google nicht erreichbar: {error}', { error: (e as Error).message }));
   }
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok) throw new HttpError(502, `Google: ${j?.error?.message || `Fehler ${r.status}`}`);
@@ -157,10 +158,16 @@ export function storeGoogleReviews(app: App, locationId: string, list: ReviewInp
     );
   }
   for (const r of fresh) {
-    if (r.contact_id) logActivity(app, locationId, r.contact_id, 'google_review.received', `Google-Bewertung: ${stars(r.rating)}${r.text ? ` – ${r.text.slice(0, 80)}` : ''}`);
+    const t = tLoc(app, locationId);
+    if (r.contact_id) logActivity(app, locationId, r.contact_id, 'google_review.received', t('Google-Bewertung: {stars}', { stars: stars(r.rating) }) + (r.text ? ` – ${r.text.slice(0, 80)}` : ''));
     if (r.rating <= LOW_RATING) {
       db.run('UPDATE google_reviews SET notified = 1 WHERE id = ?', r.id);
-      void notifyTeam(app, locationId, `Neue Google-Bewertung: ${r.rating}★ von ${r.author}`, `${r.author} hat ${r.rating} von 5 Sternen gegeben:\n\n${r.text || '(ohne Text)'}\n\nAuf Google antworten: ${r.link}\nAlle Bewertungen: ${app.baseUrl()}/app/reviews`);
+      void notifyTeam(
+        app,
+        locationId,
+        t('Neue Google-Bewertung: {rating}★ von {author}', { rating: r.rating, author: r.author }),
+        t('{author} hat {rating} von 5 Sternen gegeben:\n\n{text}\n\nAuf Google antworten: {link}\nAlle Bewertungen: {url}', { author: r.author, rating: r.rating, text: r.text || t('(ohne Text)'), link: r.link, url: `${app.baseUrl()}/app/reviews` }),
+      );
     }
     app.events.emit(locationId, GOOGLE_REVIEW_TRIGGER, { contactId: r.contact_id ?? undefined, reviewId: r.id, rating: r.rating, author: r.author, text: r.text, link: r.link, low: r.rating <= LOW_RATING, source: 'google' });
   }

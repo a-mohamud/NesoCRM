@@ -6,6 +6,7 @@ import { id, now } from '../core/util.js';
 import { AUDIO_KINDS, MAX_AUDIO_BYTES, PLAYABLE, audioSeconds, holdMelody, type AudioKind } from '../services/call-audio.js';
 import { sniff } from '../services/genmedia/media.js';
 import { asHttp, synthesize } from '../services/voice-engine.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Audio files of the telephony: greetings of the telephone menu, hold music of queues and the pre-recorded messages the power
@@ -87,7 +88,7 @@ export const telephonyAudioModule: Module = {
       const raw = ctx.rawBuffer;
       if (raw?.length) {
         const name = str(ctx.query.get('name'), 'Name', { required: true, max: 80 });
-        if (raw.length > MAX_AUDIO_BYTES) throw bad(`Datei ist zu groß (höchstens ${Math.round(MAX_AUDIO_BYTES / 1024 / 1024)} MB)`);
+        if (raw.length > MAX_AUDIO_BYTES) throw bad(tCtx(ctx)('Datei ist zu groß (höchstens {mb} MB)', { mb: Math.round(MAX_AUDIO_BYTES / 1024 / 1024) }));
         // The type comes from the bytes, never from the header.
         const mime = sniff(raw, 'audio/');
         if (!PLAYABLE[mime]) throw bad('Bitte eine MP3- oder WAV-Datei hochladen (andere Formate spielt Twilio nicht ab)');
@@ -117,7 +118,7 @@ export const telephonyAudioModule: Module = {
       if (!r) throw notFound('Audiodatei nicht gefunden');
       for (const use of app.services.audioUsage as ((loc: string, audioId: string) => string | undefined)[]) {
         const where = use(ctx.locationId, r.id);
-        if (where) throw bad(`Die Datei wird noch benutzt: ${where}`);
+        if (where) throw bad(tCtx(ctx)('Die Datei wird noch benutzt: {where}', { where }));
       }
       db.run('DELETE FROM call_audio WHERE id = ?', r.id);
       rmSync(join(audioDir(app), r.file), { force: true });

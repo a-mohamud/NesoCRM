@@ -1,4 +1,5 @@
 import { MailError, outcomeUnknown } from './mailbox-kit.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * One request to Gmail or Graph with the user's access token: JSON in and out, a timeout, a single
@@ -43,7 +44,7 @@ export async function mailRequest(label: string, fetcher: typeof fetch, token: T
         signal: AbortSignal.timeout(init.timeoutMs ?? 30_000),
       });
     } catch (e) {
-      const err = new MailError(`${label} nicht erreichbar: ${(e as Error).message}`, 0);
+      const err = new MailError(tApp()('{service} nicht erreichbar: {error}', { service: label, error: (e as Error).message }), 0);
       // a write that got no answer may have been carried out (the caller must not just repeat a send)
       err.unknownOutcome = (init.method ?? 'GET') !== 'GET' && outcomeUnknown(e);
       throw err;

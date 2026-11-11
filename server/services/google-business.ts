@@ -1,3 +1,4 @@
+import { tApp } from '../i18n/index.js';
 /**
  * Google Business Profile APIs with an OAuth access token (scope business.manage): accounts and
  * locations (Account Management / Business Information v1), reviews with replies and local posts
@@ -60,7 +61,7 @@ export function normalizeReview(r: any): GbpReview | null {
   return {
     name: String(r.name).slice(0, 300),
     review_id: String(r.reviewId ?? String(r.name).split('/').pop()),
-    author: r.reviewer?.isAnonymous ? 'Google-Nutzer' : String(r.reviewer?.displayName ?? '').slice(0, 200) || 'Google-Nutzer',
+    author: r.reviewer?.isAnonymous ? tApp()('Google-Nutzer') : String(r.reviewer?.displayName ?? '').slice(0, 200) || tApp()('Google-Nutzer'),
     author_photo: /^https:\/\//.test(String(r.reviewer?.profilePhotoUrl ?? '')) ? String(r.reviewer.profilePhotoUrl) : '',
     rating,
     text: text.slice(0, 5000),
@@ -106,15 +107,15 @@ export function businessApi(fetcher: typeof fetch, token: TokenFn) {
           signal: AbortSignal.timeout(20_000),
         });
       } catch (e) {
-        throw new BusinessError(`Google nicht erreichbar: ${(e as Error).message}`, 0);
+        throw new BusinessError(tApp()('Google nicht erreichbar: {error}', { error: (e as Error).message }), 0);
       }
       if (r.status === 401 && attempt === 0) continue;
       const j: any = r.status === 204 ? {} : await r.json().catch(() => ({}));
       if (r.ok || allow.includes(r.status)) return { status: r.status, json: j };
-      const msg = String(j?.error?.message ?? `Fehler ${r.status}`);
+      const msg = String(j?.error?.message ?? tApp()('Fehler {status}', { status: r.status }));
       if (r.status === 403 && /has not been used|disabled|not been enabled|PERMISSION_DENIED/i.test(`${msg} ${j?.error?.status ?? ''}`))
-        throw new BusinessError(`Google Unternehmensprofil: kein API-Zugriff (${msg.slice(0, 160)}) – die Business Profile APIs müssen für das Cloud-Projekt freigeschaltet sein`, 403);
-      throw new BusinessError(`Google Unternehmensprofil: ${msg.slice(0, 300)}`, r.status);
+        throw new BusinessError(tApp()('Google Unternehmensprofil: kein API-Zugriff ({error}) – die Business Profile APIs müssen für das Cloud-Projekt freigeschaltet sein', { error: msg.slice(0, 160) }), 403);
+      throw new BusinessError(tApp()('Google Unternehmensprofil: {error}', { error: msg.slice(0, 300) }), r.status);
     }
     throw new BusinessError('Google Unternehmensprofil: Anmeldung abgelehnt', 401);
   }

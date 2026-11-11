@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { authFor, baseOf, deepMediaUrls, jsonCall, urlsIn } from './http.js';
 import { ProviderError, type Adapter, type AdapterCtx, type Output, type Step, type VoiceEntry } from './types.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * kie.ai – async tasks with `Authorization: Bearer <key>` (https://docs.kie.ai):
@@ -189,7 +190,7 @@ export function kieRecord(ctx: AdapterCtx, d: any): Step {
   if (!d || typeof d !== 'object') return { status: 'pending', state: {}, pollAfterMs: 5000 };
   const credits = Number(d.creditsConsumed);
   const cost = Number.isFinite(credits) && credits > 0 ? { amount: credits, unit: 'Credits' } : undefined;
-  const fail = (msg: unknown) => ({ status: 'failed' as const, error: `kie.ai: ${String(msg || 'Erzeugung fehlgeschlagen').slice(0, 300)}` });
+  const fail = (msg: unknown) => ({ status: 'failed' as const, error: `kie.ai: ${tApp()(String(msg || 'Erzeugung fehlgeschlagen')).slice(0, 300)}` });
   const done = (): Step => {
     if (ctx.capability === 'stt') {
       const rj = parseJson(d.resultJson);
@@ -223,7 +224,9 @@ export function kieRecord(ctx: AdapterCtx, d: any): Step {
 /** kie wraps everything in {code, msg, data}; code 200 = ok. */
 function unwrap(r: any, what: string): any {
   const code = Number(r?.code ?? 200);
-  if (code !== 200) throw new ProviderError(`kie.ai (${what}): ${String(r?.msg ?? 'Fehler').slice(0, 300)} (Code ${code})${code === 402 ? ' – Guthaben aufladen' : code === 401 ? ' – Schlüssel prüfen' : ''}`, code === 429 || code >= 500, code);
+  const t = tApp();
+  const hint = code === 402 ? t('Guthaben aufladen') : code === 401 ? t('Schlüssel prüfen') : '';
+  if (code !== 200) throw new ProviderError(`kie.ai (${t(what)}): ${String(r?.msg ?? t('Fehler')).slice(0, 300)} (Code ${code})${hint ? ` – ${hint}` : ''}`, code === 429 || code >= 500, code);
   return r?.data;
 }
 
@@ -235,7 +238,7 @@ function recordPath(create: string, poll?: string): string {
 
 const safePath = (p: unknown, what: string) => {
   const s = String(p ?? '').trim();
-  if (!/^\/api\/[\w./-]{1,200}$/.test(s) || s.includes('..')) throw new ProviderError(`${what}: bitte einen Pfad wie /api/v1/… angeben`);
+  if (!/^\/api\/[\w./-]{1,200}$/.test(s) || s.includes('..')) throw new ProviderError(tApp()('{what}: bitte einen Pfad wie /api/v1/… angeben', { what: tApp()(what) }));
   return s;
 };
 

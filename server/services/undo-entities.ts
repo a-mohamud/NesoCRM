@@ -5,6 +5,7 @@ import type { Snapshot } from './undo-core.js';
 import type { Journal } from './undo-journal.js';
 import { registerVersionedEntities } from './undo-versioned.js';
 import { clip, tableEntity, type FieldSpec, type PartSpec } from './undo-table.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * What the journal knows about the main records (docs/undo.md): contacts, companies, tasks (core and
@@ -38,7 +39,10 @@ function automationNotice(app: App, locationId: string, triggers: string[]): str
     ...triggers,
   );
   if (!rows.length) return undefined;
-  return `Die Automation „${clip(rows[0].name, 40)}“${rows.length > 1 ? ' und weitere' : ''} kann darauf reagiert haben (z. B. E-Mail oder SMS) – bereits Gesendetes lässt sich nicht zurückholen; nur die Daten werden zurückgesetzt.`;
+  const t = tLoc(app, locationId);
+  return rows.length > 1
+    ? t('Die Automation „{name}“ und weitere kann darauf reagiert haben (z. B. E-Mail oder SMS) – bereits Gesendetes lässt sich nicht zurückholen; nur die Daten werden zurückgesetzt.', { name: clip(rows[0].name, 40) })
+    : t('Die Automation „{name}“ kann darauf reagiert haben (z. B. E-Mail oder SMS) – bereits Gesendetes lässt sich nicht zurückholen; nur die Daten werden zurückgesetzt.', { name: clip(rows[0].name, 40) });
 }
 
 /** The ids the body lists (bulk routes). */
@@ -175,7 +179,10 @@ export function registerUndoEntities(app: App) {
         const added = is.filter((t) => !was.includes(t));
         const removed = was.filter((t) => !is.includes(t));
         const onlyTags = Object.keys(a.row).every((k) => k === 'tags' || k === 'updated_at' || k === 'last_activity_at' || JSON.stringify(a.row[k]) === JSON.stringify(b.row[k]));
-        if (onlyTags && (added.length || removed.length)) return [added.length ? `Tag „${clip(added.join(', '), 40)}“ hinzugefügt` : '', removed.length ? `Tag „${clip(removed.join(', '), 40)}“ entfernt` : ''].filter(Boolean).join(', ');
+        if (onlyTags && (added.length || removed.length)) {
+          const t = tLoc(app, typeof a.row.location_id === 'string' ? a.row.location_id : undefined);
+          return [added.length ? t('Tag „{tag}“ hinzugefügt', { tag: clip(added.join(', '), 40) }) : '', removed.length ? t('Tag „{tag}“ entfernt', { tag: clip(removed.join(', '), 40) }) : ''].filter(Boolean).join(', ');
+        }
         return undefined;
       },
     }),
@@ -195,8 +202,9 @@ export function registerUndoEntities(app: App) {
     groupLabel: (ctx, rows) => {
       const n = rows.length;
       const tag = clip(ctx.body?.tag, 40);
-      const what = ctx.body?.action === 'add_tag' ? `Tag „${tag}“ hinzugefügt` : ctx.body?.action === 'remove_tag' ? `Tag „${tag}“ entfernt` : ctx.body?.action === 'delete' ? 'gelöscht' : ctx.body?.action === 'dnd' ? 'Nicht-stören geändert' : 'geändert';
-      return `${n} ${n === 1 ? 'Kontakt' : 'Kontakte'}: ${what}`;
+      const t = tLoc(app, ctx.locationId);
+      const what = ctx.body?.action === 'add_tag' ? t('Tag „{tag}“ hinzugefügt', { tag }) : ctx.body?.action === 'remove_tag' ? t('Tag „{tag}“ entfernt', { tag }) : ctx.body?.action === 'delete' ? t('gelöscht') : ctx.body?.action === 'dnd' ? t('Nicht-stören geändert') : t('geändert');
+      return t.plural(n, { one: '{n} Kontakt: {what}', other: '{n} Kontakte: {what}' }, { what });
     },
   });
 
@@ -242,7 +250,11 @@ export function registerUndoEntities(app: App) {
     targets: (ctx) => [{ id: ctx.params.id }, { id: String(ctx.body?.from_id ?? '') }],
     deep: true,
     action: (b, a) => (a ? 'merge' : 'delete'),
-    groupLabel: (_ctx, rows) => `Firmen zusammengeführt: ${rows.map((r) => r.label.replace(/ (zusammengeführt|gelöscht)$/, '')).join(' + ')}`,
+    groupLabel: (ctx, rows) => {
+      const t = tLoc(app, ctx.locationId);
+      const tail = new RegExp(` (${[t('zusammengeführt'), t('gelöscht'), 'zusammengeführt', 'gelöscht'].map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`);
+      return t('Firmen zusammengeführt: {names}', { names: rows.map((r) => r.label.replace(tail, '')).join(' + ') });
+    },
   });
 
   // --- deals and pipelines ------------------------------------------------------------------------------------------------------------

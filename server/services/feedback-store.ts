@@ -9,6 +9,7 @@ import { getBranding } from '../modules/agency.js';
 import { createLocation } from '../modules/core.js';
 import { upsertContact } from './contacts.js';
 import { deliverEmail } from './messaging.js';
+import { tApp, tLoc, tUser } from '../i18n/index.js';
 import {
   CATEGORY_OF,
   EXT,
@@ -262,15 +263,16 @@ export function createItem(app: App, input: NewItem): FeedbackRow {
   const diag = input.diagnostics ?? {};
   const contactId = user && kind !== 'auto' ? reporterContact(app, loc, user) : null;
 
+  const tl = tLoc(app, loc);
   const lines: string[] = [];
   if (kind === 'auto') lines.push(body);
   else {
     lines.push(body || title);
-    if (expected) lines.push('', 'Erwartet:', expected);
-    if (steps) lines.push('', 'Schritte:', steps);
+    if (expected) lines.push('', tl('Erwartet:'), expected);
+    if (steps) lines.push('', tl('Schritte:'), steps);
     lines.push('', '—');
-    if (user) lines.push(`Gemeldet von ${user.name || user.email} (${ROLE_LABEL(user)})${origin ? ` · Sub-Account „${origin.name}“` : ''}`);
-    const where = [diag.route || diag.url ? `Seite: ${diag.route || diag.url}` : '', severity ? `Schweregrad: ${SEVERITY_TEXT[severity] ?? severity}` : '', input.area && kind === 'wish' ? `Bereich: ${input.area}` : '', input.platform === 'android' ? 'aus der Android-App' : ''].filter(Boolean);
+    if (user) lines.push(origin ? tl('Gemeldet von {name} ({role}) · Sub-Account „{location}“', { name: user.name || user.email, role: tl(ROLE_LABEL(user)), location: origin.name }) : tl('Gemeldet von {name} ({role})', { name: user.name || user.email, role: tl(ROLE_LABEL(user)) }));
+    const where = [diag.route || diag.url ? tl('Seite: {page}', { page: diag.route || diag.url || '' }) : '', severity ? tl('Schweregrad: {severity}', { severity: SEVERITY_TEXT[severity] ? tl(SEVERITY_TEXT[severity]) : severity }) : '', input.area && kind === 'wish' ? tl('Bereich: {area}', { area: tl(input.area) }) : '', input.platform === 'android' ? tl('aus der Android-App') : ''].filter(Boolean);
     if (where.length) lines.push(where.join(' · '));
   }
   const tags = uniq([...(input.tags ?? []), kind === 'bug' ? 'fehlermeldung' : kind === 'wish' ? 'wunsch' : kind === 'question' ? 'frage' : 'auto-fehler', ...(input.platform === 'android' ? ['android'] : [])]);
@@ -350,7 +352,7 @@ export const isLinked = (app: App, feedbackId: string, userId: string) => !!app.
 
 /** Status of an item as the reporter sees it. */
 export function statusOf(app: App, f: FeedbackRow, t = ticketOf(app, f)) {
-  if (!t) return { key: 'abgelehnt' as StatusKey, board: f.kind === 'wish' ? 'declined' : '', label: 'Entfernt', tone: 'gray', done: true };
+  if (!t) return { key: 'abgelehnt' as StatusKey, board: f.kind === 'wish' ? 'declined' : '', label: tApp()('Entfernt'), tone: 'gray', done: true };
   return publicStatus(f.kind, t.stage_id, t.status_kind);
 }
 
@@ -380,7 +382,8 @@ export function publicThread(app: App, f: FeedbackRow, viewer: { id: string; rol
     const uid = d.user_id ?? null;
     const mine = !!uid && uid === viewer.id;
     const authorRole = uid ? app.db.get('SELECT role, name FROM users WHERE id = ?', uid) : null;
-    const author = mine ? 'Du' : admin ? (d.user_name ?? authorRole?.name ?? 'Melder') : authorRole?.role === 'admin' ? 'Team' : f.kind === 'wish' ? 'Nutzer' : 'Melder';
+    const tv = tUser(app as never, viewer.id);
+    const author = mine ? tv('Du') : admin ? (d.user_name ?? authorRole?.name ?? tv('Melder')) : authorRole?.role === 'admin' ? 'Team' : f.kind === 'wish' ? tv('Nutzer') : tv('Melder');
     return { id: e.id, type: authorRole?.role === 'admin' && !mine && f.kind === 'wish' ? 'team' : 'user', body: e.body, author, mine, at: e.created_at };
   });
 }
@@ -393,12 +396,12 @@ export function addUserMessage(app: App, f: FeedbackRow, user: User, body: unkno
   let fileNote = '';
   if (screenshot) {
     saveFile(app, f.id, user.id, screenshot);
-    fileNote = '\n\n[Screenshot angehängt]';
+    fileNote = `\n\n${tLoc(app, f.support_location_id)('[Screenshot angehängt]')}`;
   }
   const ev = addTicketEvent(app, t, 'customer_reply', { body: `${text}${fileNote}`, data: { user_id: user.id, user_name: user.name, channel: 'app', via: 'feedback' } });
   app.db.run('UPDATE tickets SET last_customer_at = ?, updated_at = ? WHERE id = ?', now(), now(), t.id);
   app.db.run('UPDATE feedback_items SET updated_at = ? WHERE id = ?', now(), f.id);
-  if (t.owner_id && t.owner_id !== user.id) void Promise.resolve(app.services.pushNotify?.({ userIds: [t.owner_id], kind: 'feedback', title: `Neue Info zu Ticket #${t.number}`, body: text.slice(0, 160), url: `/app/tickets/${t.id}`, tag: `ticket-${t.id}` })).catch(() => {});
+  if (t.owner_id && t.owner_id !== user.id) void Promise.resolve(app.services.pushNotify?.({ userIds: [t.owner_id], kind: 'feedback', title: tUser(app as never, t.owner_id)('Neue Info zu Ticket #{number}', { number: t.number }), body: text.slice(0, 160), url: `/app/tickets/${t.id}`, tag: `ticket-${t.id}` })).catch(() => {});
   return ev;
 }
 
@@ -461,7 +464,8 @@ export async function notifyUsers(app: App, f: FeedbackRow, userIds: string[], n
       if (!u.email || n.skipEmail?.includes(u.id)) continue;
       const p = prefsOf(app, u.id);
       if (p && p.email === 0) continue;
-      const text = `Hallo ${String(u.name || '').split(' ')[0] || ''},\n\n${n.title}${n.body ? `\n\n${n.body}` : ''}\n\nAlle Details: ${app.baseUrl()}${n.url}\n\nViele Grüße\n${brand}`;
+      const tu = tUser(app as never, u.id);
+      const text = tu('Hallo {name},\n\n{message}\n\nAlle Details: {url}\n\nViele Grüße\n{brand}', { name: String(u.name || '').split(' ')[0] || '', message: `${n.title}${n.body ? `\n\n${n.body}` : ''}`, url: `${app.baseUrl()}${n.url}`, brand });
       try {
         if (loc) await send(loc, { to: u.email, subject: n.title, text, html: textToHtml(text).replace(escapeHtml(`${app.baseUrl()}${n.url}`), `<a href="${escapeHtml(`${app.baseUrl()}${n.url}`)}">${escapeHtml(`${app.baseUrl()}${n.url}`)}</a>`) });
       } catch (e) {
@@ -477,15 +481,17 @@ export const numberOf = (app: App, f: FeedbackRow) => ticketOf(app, f)?.number ?
 
 /** Notice text for a status change. */
 export function statusNotice(app: App, f: FeedbackRow, key: StatusKey): Notice {
+  const t = tApp();
   const st = publicStatus(f.kind, key, null);
+  const label = t(st.label);
   const nr = numberOf(app, f);
   const version = f.version && (key === 'behoben' || key === 'ausgeliefert') ? f.version : '';
   if (f.kind === 'wish') {
-    const title = key === 'ausgeliefert' || key === 'behoben' ? `Wunsch umgesetzt: „${f.title}“${version ? ` (Version ${version})` : ''}` : `Wunsch „${f.title}“: ${st.label}`;
-    return { kind: 'status', title, body: key === 'abgelehnt' && f.public_note ? `Begründung: ${f.public_note}` : version && f.public_note ? f.public_note : '', url: urlOf(f), email: true };
+    const title = key === 'ausgeliefert' || key === 'behoben' ? (version ? t('Wunsch umgesetzt: „{title}“ (Version {version})', { title: f.title, version }) : t('Wunsch umgesetzt: „{title}“', { title: f.title })) : t('Wunsch „{title}“: {status}', { title: f.title, status: label });
+    return { kind: 'status', title, body: key === 'abgelehnt' && f.public_note ? t('Begründung: {reason}', { reason: f.public_note }) : version && f.public_note ? f.public_note : '', url: urlOf(f), email: true };
   }
-  const title = version ? `Meldung #${nr}: Behoben in Version ${version}` : `Meldung #${nr}: ${st.label}`;
-  const body = [f.kind === 'auto' ? 'Ein Fehler, der bei dir aufgetreten ist, wurde behoben.' : `„${f.title}“`, key === 'abgelehnt' && f.public_note ? `Begründung: ${f.public_note}` : version && f.public_note ? f.public_note : ''].filter(Boolean).join('\n');
+  const title = version ? t('Meldung #{number}: Behoben in Version {version}', { number: nr, version }) : t('Meldung #{number}: {status}', { number: nr, status: label });
+  const body = [f.kind === 'auto' ? t('Ein Fehler, der bei dir aufgetreten ist, wurde behoben.') : `“${f.title}”`, key === 'abgelehnt' && f.public_note ? t('Begründung: {reason}', { reason: f.public_note }) : version && f.public_note ? f.public_note : ''].filter(Boolean).join('\n');
   return { kind: 'status', title, body, url: urlOf(f), email: true };
 }
 
@@ -537,7 +543,8 @@ export async function notifyReply(app: App, f: FeedbackRow, text: string, alread
   const users = audienceOf(app, f, { wishAll: false });
   if (!users.length) return 0;
   const nr = numberOf(app, f);
-  const title = f.kind === 'wish' ? `Antwort zu deinem Wunsch „${f.title}“` : `Antwort auf deine Meldung #${nr}`;
+  const t = tApp();
+  const title = f.kind === 'wish' ? t('Antwort zu deinem Wunsch „{title}“', { title: f.title }) : t('Antwort auf deine Meldung #{number}', { number: nr });
   return notifyUsers(app, f, users, { kind: 'reply', title, body: stripHtml(text).slice(0, 300), url: urlOf(f), email: true, skipEmail: alreadyMailed });
 }
 
@@ -549,7 +556,7 @@ export async function markFixed(app: App, f: FeedbackRow, input: { version: unkn
   if (!t) throw notFound('Ticket nicht gefunden');
   app.db.run('UPDATE feedback_items SET version = ?, public_note = COALESCE(?, public_note), fixed_at = ?, updated_at = ? WHERE id = ?', version, note ?? null, now(), now(), f.id);
   const key: StatusKey = input.shipped === false ? 'behoben' : 'ausgeliefert';
-  addTicketEvent(app, t, 'released', { body: `${f.kind === 'wish' ? 'Umgesetzt' : 'Behoben'} in Version ${version}`, userId: actor.userId ?? null, data: { version, via: actor.via ?? 'user' } });
+  addTicketEvent(app, t, 'released', { body: tLoc(app, f.support_location_id)(f.kind === 'wish' ? 'Umgesetzt in Version {version}' : 'Behoben in Version {version}', { version }), userId: actor.userId ?? null, data: { version, via: actor.via ?? 'user' } });
   const before = stageNow(app, f);
   if (before === key) {
     const fresh = getItem(app, f.id)!;
@@ -585,13 +592,15 @@ export async function markDuplicate(app: App, f: FeedbackRow, target: FeedbackRo
       f.first_seen_at ?? now(), f.first_seen_at ?? now(), f.last_seen_at ?? now(), f.last_seen_at ?? now(), now(), into.id,
     );
   });
-  addTicketEvent(app, dst, 'note', { body: `Ticket #${src.number} „${f.title}“ als Duplikat hierher zusammengeführt.`, userId: actor.userId ?? null, data: { duplicate: f.id } });
+  const tl = tLoc(app, f.support_location_id);
+  addTicketEvent(app, dst, 'note', { body: tl('Ticket #{number} „{title}“ als Duplikat hierher zusammengeführt.', { number: src.number, title: f.title }), userId: actor.userId ?? null, data: { duplicate: f.id } });
   const pipe = db.get('SELECT stages FROM ticket_pipelines WHERE id = ?', src.pipeline_id);
   const dupStage = (pipe ? JSON.parse(pipe.stages) : []).find((s: any) => s.id === 'duplikat')?.id ?? 'closed';
-  updateTicket(app, f.support_location_id, src.id, { status: dupStage, note: `Duplikat von Ticket #${dst.number} „${into.title}“` }, actor);
+  updateTicket(app, f.support_location_id, src.id, { status: dupStage, note: tl('Duplikat von Ticket #{number} „{title}“', { number: dst.number, title: into.title }) }, actor);
   if (moved.length) {
-    const what = f.kind === 'wish' ? 'Dein Wunsch' : 'Deine Meldung';
-    await notifyUsers(app, getItem(app, into.id)!, moved, { kind: 'duplicate', title: `${what} #${src.number} wurde mit #${dst.number} zusammengeführt`, body: `Weiter geht es bei „${into.title}“ – du wirst dort informiert.`, url: urlOf(into), email: false });
+    const t = tApp();
+    const vars = { number: src.number, target: dst.number };
+    await notifyUsers(app, getItem(app, into.id)!, moved, { kind: 'duplicate', title: f.kind === 'wish' ? t('Dein Wunsch #{number} wurde mit #{target} zusammengeführt', vars) : t('Deine Meldung #{number} wurde mit #{target} zusammengeführt', vars), body: t('Weiter geht es bei „{title}“ – du wirst dort informiert.', { title: into.title }), url: urlOf(into), email: false });
   }
   return getItem(app, into.id)!;
 }

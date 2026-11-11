@@ -8,8 +8,9 @@ import { invAudit, loadInvoice, recordPayment, revertPayment, type Actor } from 
 import { deYmd, openCents } from './invoice-model.js';
 import { sendToContact } from './messaging.js';
 import { creditorOf, endMandate, mandateUsed, settingsOf, todayOf, type MandateRow } from './sepa-mandates.js';
-import { RETURN_CODES, SEQ_LABELS, addTargetDays, earliestCollection, effectiveStatus, ibanInfo, isTargetDay, isYmd, maskIban, nextSeq, nextTargetDay, normalizeBic, checkBic, statusAfter, type SeqType } from './sepa-model.js';
+import { DEFAULT_PRENOTIFY_BODY, DEFAULT_PRENOTIFY_SUBJECT, RETURN_CODES, SEQ_LABELS, addTargetDays, earliestCollection, effectiveStatus, ibanInfo, isTargetDay, isYmd, maskIban, nextSeq, nextTargetDay, normalizeBic, checkBic, statusAfter, type SeqType } from './sepa-model.js';
 import { creditTransferXml, directDebitXml, sepaId, sepaText, type DebitTx } from './sepa-xml.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Collection runs (pain.008) and transfer batches (pain.001) – docs/sepa.md. Open finalised invoices of contacts with a valid
@@ -150,12 +151,13 @@ export function candidates(app: App, loc: string): Candidate[] {
     const open = openCents(r);
     if (!m || open <= 0) continue;
     const problems: string[] = [];
-    if (r.currency !== 'EUR') problems.push(`Lastschriften gibt es nur in Euro (Rechnung in ${r.currency})`);
-    if (effectiveStatus(m, today) === 'expired') problems.push('Mandat abgelaufen (36 Monate ohne Einzug)');
-    if (!m.signed_at) problems.push('Mandat ohne Datum der Unterschrift');
-    if (!ibanInfo(m.iban).ok) problems.push('IBAN des Mandats ungültig');
+    const tl = tLoc(app, loc);
+    if (r.currency !== 'EUR') problems.push(tl('Lastschriften gibt es nur in Euro (Rechnung in {currency})', { currency: r.currency }));
+    if (effectiveStatus(m, today) === 'expired') problems.push(tl('Mandat abgelaufen (36 Monate ohne Einzug)'));
+    if (!m.signed_at) problems.push(tl('Mandat ohne Datum der Unterschrift'));
+    if (!ibanInfo(m.iban).ok) problems.push(tl('IBAN des Mandats ungültig'));
     if (m.kind === 'OOFF') {
-      if (used.has(m.id) || drafted.has(m.id) || oneOffTaken.has(m.id)) problems.push('Einmal-Mandat: nur eine Lastschrift möglich');
+      if (used.has(m.id) || drafted.has(m.id) || oneOffTaken.has(m.id)) problems.push(tl('Einmal-Mandat: nur eine Lastschrift möglich'));
       else oneOffTaken.add(m.id);
     }
     const seq = nextSeq(m, used.has(m.id));
@@ -176,7 +178,7 @@ export function candidates(app: App, loc: string): Candidate[] {
       scheme: m.scheme,
       kind: m.kind,
       seq,
-      seq_label: SEQ_LABELS[seq],
+      seq_label: tLoc(app, loc)(SEQ_LABELS[seq]),
       holder: m.holder,
       iban_masked: maskIban(m.iban),
       ok: !problems.length,
@@ -209,24 +211,25 @@ export function planRun(app: App, loc: string, body: { invoice_ids?: unknown; co
   const date = isYmd(body.collection_date) ? body.collection_date : earliest;
   const errors: string[] = [...creditorOf(app, loc, s).problems];
   const warnings: string[] = [];
-  if (date < earliest) errors.push(`Fälligkeit frühestens am ${deYmd(earliest)} (${s.prenotify_days} Tage Vorabankündigung, ein Bankarbeitstag Vorlauf)`);
-  if (!isTargetDay(date)) errors.push(`Der ${deYmd(date)} ist kein Bankarbeitstag (TARGET2) – nächster: ${deYmd(nextTargetDay(date))}`);
+  const tl = tLoc(app, loc);
+  if (date < earliest) errors.push(tl('Fälligkeit frühestens am {date} ({days} Tage Vorabankündigung, ein Bankarbeitstag Vorlauf)', { date: deYmd(earliest), days: s.prenotify_days }));
+  if (!isTargetDay(date)) errors.push(tl('Der {date} ist kein Bankarbeitstag (TARGET2) – nächster: {next}', { date: deYmd(date), next: deYmd(nextTargetDay(date)) }));
   const ids = Array.isArray(body.invoice_ids) ? [...new Set(body.invoice_ids.map(String))].slice(0, 1000) : [];
   const all = new Map(candidates(app, loc).map((c) => [c.invoice_id, c]));
   const rows: Candidate[] = [];
   for (const iid of ids) {
     const c = all.get(iid);
-    if (!c) errors.push(`Rechnung ${loadInvoice(app, loc, iid)?.number || iid} ist nicht einziehbar (kein aktives Mandat, schon in einem Lauf oder nicht offen)`);
-    else if (!c.ok) errors.push(`Rechnung ${c.number}: ${c.problems.join(', ')}`);
+    if (!c) errors.push(tl('Rechnung {number} ist nicht einziehbar (kein aktives Mandat, schon in einem Lauf oder nicht offen)', { number: loadInvoice(app, loc, iid)?.number || iid }));
+    else if (!c.ok) errors.push(tl('Rechnung {number}: {problems}', { number: c.number, problems: c.problems.join(', ') }));
     else rows.push(c);
   }
-  if (!ids.length) errors.push('Bitte mindestens eine Rechnung wählen');
+  if (!ids.length) errors.push(tl('Bitte mindestens eine Rechnung wählen'));
   const noMail = new Set(rows.filter((r) => !r.has_email).map((r) => r.contact_name));
-  if (s.prenotify_email && noMail.size) warnings.push(`Ohne E-Mail-Adresse, Vorabankündigung bitte selbst zustellen: ${[...noMail].slice(0, 5).join(', ')}${noMail.size > 5 ? ' …' : ''}`);
+  if (s.prenotify_email && noMail.size) warnings.push(tl('Ohne E-Mail-Adresse, Vorabankündigung bitte selbst zustellen: {names}', { names: `${[...noMail].slice(0, 5).join(', ')}${noMail.size > 5 ? ' …' : ''}` }));
   const map = new Map<string, Plan['groups'][number]>();
   for (const r of rows) {
     const k = `${r.scheme}|${r.seq}`;
-    const g = map.get(k) ?? { seq: r.seq, seq_label: SEQ_LABELS[r.seq], scheme: r.scheme, date, count: 0, total_cents: 0 };
+    const g = map.get(k) ?? { seq: r.seq, seq_label: tl(SEQ_LABELS[r.seq]), scheme: r.scheme, date, count: 0, total_cents: 0 };
     g.count++;
     g.total_cents += r.open_cents;
     map.set(k, g);
@@ -264,6 +267,10 @@ async function prenotify(app: App, loc: string, runId: string) {
   const cr = creditorOf(app, loc, s);
   const run = mustRun(app, loc, runId);
   const L = app.location(loc)!;
+  const tl = tLoc(app, loc);
+  // the defaults follow the sub-account's language; an own subject or text stays as written
+  const subjectTpl = s.prenotify_subject === DEFAULT_PRENOTIFY_SUBJECT ? tl(DEFAULT_PRENOTIFY_SUBJECT) : s.prenotify_subject;
+  const bodyTpl = s.prenotify_body === DEFAULT_PRENOTIFY_BODY ? tl(DEFAULT_PRENOTIFY_BODY) : s.prenotify_body;
   const byMandate = new Map<string, ItemRow[]>();
   for (const it of itemsOf(app, runId)) byMandate.set(it.mandate_id ?? it.id, [...(byMandate.get(it.mandate_id ?? it.id) ?? []), it]);
   for (const list of byMandate.values()) {
@@ -271,7 +278,7 @@ async function prenotify(app: App, loc: string, runId: string) {
     const c = first.contact_id ? getContact(app, loc, first.contact_id) : undefined;
     const mark = (status: string, error = '') => app.db.run(`UPDATE sepa_items SET notify_status = ?, notify_error = ?, notified_at = ?, updated_at = ? WHERE id IN (${list.map(() => '?').join(',')})`, status, error, status === 'sent' ? now() : null, now(), ...list.map((i) => i.id));
     if (!c?.email) {
-      mark('failed', 'Keine E-Mail-Adresse');
+      mark('failed', tl('Keine E-Mail-Adresse'));
       continue;
     }
     const total = list.reduce((n, i) => n + i.amount_cents, 0);
@@ -287,8 +294,8 @@ async function prenotify(app: App, loc: string, runId: string) {
       creditor_name: cr.name,
     };
     try {
-      const msg = await sendToContact(app, loc, { contactId: c.id, channel: 'email', subject: render(s.prenotify_subject, vars), body: render(s.prenotify_body, vars), source: 'SEPA-Vorabankündigung', ignoreDnd: true, purpose: 'transactional' });
-      if (msg.status === 'failed') mark('failed', clip(msg.error, 200) || 'Versand fehlgeschlagen');
+      const msg = await sendToContact(app, loc, { contactId: c.id, channel: 'email', subject: render(subjectTpl, vars), body: render(bodyTpl, vars), source: tl('SEPA-Vorabankündigung'), ignoreDnd: true, purpose: 'transactional' });
+      if (msg.status === 'failed') mark('failed', clip(msg.error, 200) || tl('Versand fehlgeschlagen'));
       else mark('sent');
     } catch (e) {
       mark('failed', clip((e as Error).message, 200));
@@ -302,7 +309,7 @@ export async function renotify(app: App, loc: string, runId: string): Promise<Ru
   if (run.status !== 'draft' || run.kind !== 'debit') throw new HttpError(409, 'Nur bei Läufen, die noch nicht eingereicht sind');
   const s = settingsOf(app, loc);
   const lead = earliestCollection(todayOf(app, loc), s.prenotify_days);
-  if (run.exec_date < lead) throw new HttpError(409, `Für eine neue Vorabankündigung ist die Fälligkeit zu nah (frühestens ${deYmd(lead)}) – bitte den Lauf verwerfen und neu anlegen`);
+  if (run.exec_date < lead) throw new HttpError(409, tApp()('Für eine neue Vorabankündigung ist die Fälligkeit zu nah (frühestens {date}) – bitte den Lauf verwerfen und neu anlegen', { date: deYmd(lead) }));
   await prenotify(app, loc, runId);
   return run;
 }
@@ -323,13 +330,14 @@ export function submitRun(app: App, loc: string, runId: string, actor: Actor): {
   if (cr.problems.length) throw bad(cr.problems.join(' · '));
   const today = todayOf(app, loc);
   const latest = addTargetDays(today, 1);
-  if (run.exec_date < latest) throw new HttpError(409, `Die Fälligkeit (${deYmd(run.exec_date)}) ist zu nah: Die Bank braucht die Datei einen Bankarbeitstag vorher. Bitte den Lauf verwerfen und mit neuer Vorabankündigung neu anlegen.`);
+  if (run.exec_date < latest) throw new HttpError(409, tApp()('Die Fälligkeit ({date}) ist zu nah: Die Bank braucht die Datei einen Bankarbeitstag vorher. Bitte den Lauf verwerfen und mit neuer Vorabankündigung neu anlegen.', { date: deYmd(run.exec_date) }));
+  const tl = tLoc(app, loc);
   const dropped: string[] = [];
   const keep: ItemRow[] = [];
   for (const it of itemsOf(app, runId).filter((i) => i.status === 'draft')) {
     const inv = it.invoice_id ? loadInvoice(app, loc, it.invoice_id) : undefined;
     const m = it.mandate_id ? app.db.get<MandateRow>('SELECT * FROM sepa_mandates WHERE id = ?', it.mandate_id) : undefined;
-    const why = !inv || inv.status === 'void' ? 'Rechnung storniert' : inv.status === 'paid' || openCents(inv) <= 0 ? 'Rechnung schon bezahlt' : openCents(inv) !== it.amount_cents ? 'Offener Betrag hat sich geändert – neu ankündigen' : !m || effectiveStatus(m, today) !== 'active' ? 'Mandat nicht mehr gültig' : '';
+    const why = !inv || inv.status === 'void' ? tl('Rechnung storniert') : inv.status === 'paid' || openCents(inv) <= 0 ? tl('Rechnung schon bezahlt') : openCents(inv) !== it.amount_cents ? tl('Offener Betrag hat sich geändert – neu ankündigen') : !m || effectiveStatus(m, today) !== 'active' ? tl('Mandat nicht mehr gültig') : '';
     if (why) {
       app.db.run(`UPDATE sepa_items SET status = 'dropped', return_note = ?, updated_at = ? WHERE id = ?`, why, now(), it.id);
       dropped.push(`${inv?.number || it.end_to_end}: ${why}`);
@@ -339,7 +347,7 @@ export function submitRun(app: App, loc: string, runId: string, actor: Actor): {
       keep.push(it);
     }
   }
-  if (!keep.length) throw bad(`Keine Lastschrift mehr gültig${dropped.length ? `: ${dropped.join(' · ')}` : ''}`);
+  if (!keep.length) throw bad(tl('Keine Lastschrift mehr gültig') + (dropped.length ? `: ${dropped.join(' · ')}` : ''));
   const txs: DebitTx[] = keep.map((it) => ({
     endToEndId: it.end_to_end,
     amount_cents: it.amount_cents,
@@ -363,10 +371,10 @@ export function submitRun(app: App, loc: string, runId: string, actor: Actor): {
         `UPDATE sepa_mandates SET first_used_at = COALESCE(first_used_at, ?), last_used_at = CASE WHEN last_used_at IS NULL OR last_used_at < ? THEN ? ELSE last_used_at END, status = ?, final_next = CASE WHEN ? = 'FNAL' THEN 0 ELSE final_next END, updated_at = ? WHERE id = ?`,
         run.exec_date, run.exec_date, run.exec_date, next, it.seq, t, m.id,
       );
-      invAudit(app, loc, it.invoice_id, 'sepa.submitted', `SEPA-Lastschrift eingereicht · ${money(it.amount_cents)} · fällig ${deYmd(run.exec_date)} · ${SEQ_LABELS[it.seq as SeqType] ?? it.seq} · Mandat ${it.mandate_ref}`, actor);
+      invAudit(app, loc, it.invoice_id, 'sepa.submitted', tl('SEPA-Lastschrift eingereicht · {amount} · fällig {date} · {seq} · Mandat {mandate}', { amount: money(it.amount_cents), date: deYmd(run.exec_date), seq: SEQ_LABELS[it.seq as SeqType] ? tl(SEQ_LABELS[it.seq as SeqType]) : it.seq, mandate: it.mandate_ref }), actor);
     }
   });
-  for (const it of keep) if (it.contact_id) logActivity(app, loc, it.contact_id, 'sepa.submitted', `SEPA-Lastschrift über ${money(it.amount_cents)} eingereicht (${it.remittance}, fällig ${deYmd(run.exec_date)})`);
+  for (const it of keep) if (it.contact_id) logActivity(app, loc, it.contact_id, 'sepa.submitted', tl('SEPA-Lastschrift über {amount} eingereicht ({reference}, fällig {date})', { amount: money(it.amount_cents), reference: it.remittance, date: deYmd(run.exec_date) }));
   return { run: mustRun(app, loc, run.id), dropped, invoices: keep.map((i) => i.invoice_id!).filter(Boolean) };
 }
 
@@ -388,10 +396,10 @@ export function cancelRun(app: App, loc: string, runId: string, actor: Actor, re
   const submitted = items.filter((i) => i.status === 'submitted');
   const t = now();
   app.db.tx(() => {
-    app.db.run(`UPDATE sepa_items SET status = 'dropped', return_note = ?, updated_at = ? WHERE run_id = ? AND status IN ('draft', 'submitted')`, clip(reason, 200) || 'Lauf verworfen', t, runId);
+    app.db.run(`UPDATE sepa_items SET status = 'dropped', return_note = ?, updated_at = ? WHERE run_id = ? AND status IN ('draft', 'submitted')`, clip(reason, 200) || tLoc(app, loc)('Lauf verworfen'), t, runId);
     app.db.run(`UPDATE sepa_runs SET status = 'cancelled', closed_at = ?, note = CASE WHEN ? != '' THEN ? ELSE note END, updated_at = ? WHERE id = ?`, t, clip(reason, 300), clip(reason, 300), t, runId);
     for (const mid of new Set(submitted.map((i) => i.mandate_id).filter(Boolean) as string[])) restoreMandate(app, mid, submitted.filter((i) => i.mandate_id === mid));
-    if (run.kind === 'debit') for (const it of submitted) invAudit(app, loc, it.invoice_id, 'sepa.withdrawn', `SEPA-Lastschrift zurückgezogen${reason ? ` · ${clip(reason, 120)}` : ''}`, actor);
+    if (run.kind === 'debit') for (const it of submitted) invAudit(app, loc, it.invoice_id, 'sepa.withdrawn', tLoc(app, loc)('SEPA-Lastschrift zurückgezogen') + (reason ? ` · ${clip(reason, 120)}` : ''), actor);
   });
   return { run: mustRun(app, loc, runId), invoices: submitted.map((i) => i.invoice_id!).filter(Boolean) };
 }
@@ -421,7 +429,7 @@ export function markPaid(app: App, loc: string, itemId: string, body: { paid_at?
     const inv = loadInvoice(app, loc, it.invoice_id);
     const open = inv ? openCents(inv) : 0;
     if (inv && inv.status !== 'paid' && inv.status !== 'void' && open > 0) {
-      const r = recordPayment(app, loc, inv.id, { amount_cents: Math.min(open, it.amount_cents), paid_at: paidAt.toISOString(), method: 'SEPA-Lastschrift', note: `Mandat ${it.mandate_ref}` }, actor, { source: 'sepa', via: 'SEPA-Lastschrift' });
+      const r = recordPayment(app, loc, inv.id, { amount_cents: Math.min(open, it.amount_cents), paid_at: paidAt.toISOString(), method: tLoc(app, loc)('SEPA-Lastschrift'), note: tLoc(app, loc)('Mandat {reference}', { reference: it.mandate_ref }) }, actor, { source: 'sepa', via: 'SEPA-Lastschrift' });
       paymentId = r.payment_id;
     }
   }
@@ -469,7 +477,9 @@ export function markReturned(app: App, loc: string, itemId: string, body: Return
   if (!Number.isFinite(fee) || fee < 0 || fee > 10_000) throw bad('Gebühr: 0 bis 100 €');
   const at = body.returned_at ? new Date(String(body.returned_at)) : new Date();
   if (Number.isNaN(at.getTime())) throw bad('Ungültiges Datum');
-  const reason = `Rücklastschrift ${code}: ${def.label}`;
+  const tl = tLoc(app, loc);
+  const label = tl(def.label);
+  const reason = tl('Rücklastschrift {code}: {label}', { code, label });
   const inv = loadInvoice(app, loc, it.invoice_id);
   // Paid through the bank match (no payment of our own): the newest payment of exactly this amount is the collection.
   const paymentId =
@@ -485,21 +495,21 @@ export function markReturned(app: App, loc: string, itemId: string, body: Return
     }
   }
   app.db.run(`UPDATE sepa_items SET status = 'returned', returned_at = ?, return_code = ?, return_note = ?, fee_cents = ?, updated_at = ? WHERE id = ?`, at.toISOString(), code, clip(body.note, 300), fee, now(), it.id);
-  invAudit(app, loc, it.invoice_id, 'sepa.returned', `${reason}${fee ? ` · Gebühr ${money(fee)}` : ''}`, actor);
+  invAudit(app, loc, it.invoice_id, 'sepa.returned', `${reason}${fee ? tl(' · Gebühr {amount}', { amount: money(fee) }) : ''}`, actor);
   if (def.mandate) endMandate(app, loc, it.mandate_id, def.mandate === 'revoke' ? 'revoked' : 'suspended', reason);
   let feeInvoice: string | null = null;
   if (fee > 0 && body.fee_invoice && it.contact_id) {
     const draft = createInvoice(app, loc, {
       contact_id: it.contact_id,
-      title: 'Rücklastschrift',
+      title: tl('Rücklastschrift'),
       tax_mode: 'tax_free',
-      tax_note: 'Nicht steuerbarer Schadensersatz (Erstattung der Bankgebühren für die zurückgegebene Lastschrift).',
-      items: [{ name: `Rücklastschriftgebühr zu Rechnung ${inv?.number ?? it.end_to_end}`, description: `${code} – ${def.label}`, qty: 1, price_cents: fee, tax_rate: 0 }],
+      tax_note: tl('Nicht steuerbarer Schadensersatz (Erstattung der Bankgebühren für die zurückgegebene Lastschrift).'),
+      items: [{ name: tl('Rücklastschriftgebühr zu Rechnung {number}', { number: inv?.number ?? it.end_to_end }), description: `${code} – ${label}`, qty: 1, price_cents: fee, tax_rate: 0 }],
     });
     feeInvoice = draft.id;
     app.db.run('UPDATE sepa_items SET fee_invoice_id = ? WHERE id = ?', feeInvoice, it.id);
   }
-  if (it.contact_id) logActivity(app, loc, it.contact_id, 'sepa.returned', `${reason} – Rechnung ${inv?.number ?? it.end_to_end} ist wieder offen`);
+  if (it.contact_id) logActivity(app, loc, it.contact_id, 'sepa.returned', tl('{reason} – Rechnung {number} ist wieder offen', { reason, number: inv?.number ?? it.end_to_end }));
   app.events.emit(loc, 'sepa.returned', { contactId: it.contact_id, invoice: inv ? { id: inv.id, number: inv.number, total_cents: inv.total_cents } : null, code, label: def.label, amount_cents: it.amount_cents, fee_cents: fee, mandate_ref: it.mandate_ref });
   maybeClose(app, it.run_id);
   return { item: mustItem(app, loc, it.id), fee_invoice_id: feeInvoice };
@@ -545,9 +555,10 @@ export function payables(app: App, loc: string): { available: boolean; items: Pa
     items: rows.map((r) => {
       const amount = (r.reverse_charge ? r.net_cents : r.gross_cents) ?? 0;
       const problems: string[] = [];
-      if (!ibanInfo(r.iban).ok) problems.push(r.iban ? 'IBAN des Lieferanten ungültig' : 'IBAN des Lieferanten fehlt (im Beleg eintragen)');
-      if (r.currency !== 'EUR') problems.push(`Beleg in ${r.currency}`);
-      if (amount <= 0) problems.push('Betrag fehlt');
+      const tl = tLoc(app, loc);
+      if (!ibanInfo(r.iban).ok) problems.push(r.iban ? tl('IBAN des Lieferanten ungültig') : tl('IBAN des Lieferanten fehlt (im Beleg eintragen)'));
+      if (r.currency !== 'EUR') problems.push(tl('Beleg in {currency}', { currency: r.currency }));
+      if (amount <= 0) problems.push(tl('Betrag fehlt'));
       return { receipt_id: r.id, supplier: r.supplier, invoice_no: r.invoice_no, invoice_date: r.invoice_date, due_date: r.due_date, amount_cents: amount, iban_masked: maskIban(r.iban), ok: !problems.length, problems };
     }),
   };
@@ -568,7 +579,8 @@ export function createTransfer(app: App, loc: string, body: { execution_date?: u
   if (date < today) throw bad('Das Ausführungsdatum liegt in der Vergangenheit');
   const cr = creditorOf(app, loc);
   const own = ibanInfo(cr.iban);
-  if (!own.ok) throw bad(cr.iban ? `Eigenes Konto: ${own.reason}` : 'Eigene IBAN fehlt (SEPA → Einstellungen oder Rechnungs-Einstellungen)');
+  const tl = tLoc(app, loc);
+  if (!own.ok) throw bad(cr.iban ? tl('Eigenes Konto: {reason}', { reason: tl(own.reason ?? '') }) : tl('Eigene IBAN fehlt (SEPA → Einstellungen oder Rechnungs-Einstellungen)'));
   const rows: Omit<ItemRow, 'id' | 'run_id' | 'location_id' | 'created_at' | 'updated_at' | 'status' | 'notify_status' | 'notified_at' | 'notify_error' | 'payment_id' | 'paid_at' | 'returned_at' | 'return_code' | 'return_note' | 'fee_cents' | 'fee_invoice_id'>[] = [];
   const base = { invoice_id: null, mandate_id: null, contact_id: null, street: '', postal_code: '', city: '', country: '', seq: '', scheme: '', mandate_ref: '', mandate_date: null };
   const ids = Array.isArray(body.receipt_ids) ? [...new Set(body.receipt_ids.map(String))] : [];
@@ -579,21 +591,21 @@ export function createTransfer(app: App, loc: string, body: { execution_date?: u
       if (!p) throw bad('Ein gewählter Beleg ist nicht (mehr) offen');
       if (!p.ok) throw bad(`${p.supplier} ${p.invoice_no}: ${p.problems.join(', ')}`);
       const r = app.db.get<any>('SELECT * FROM acc_receipts WHERE id = ? AND location_id = ?', rid, loc);
-      rows.push({ ...base, receipt_id: rid, name: clip(r.supplier, 70) || 'Lieferant', iban: ibanInfo(r.iban).iban, bic: '', end_to_end: sepaId(r.invoice_no || `BELEG-${rid.slice(0, 8)}`), remittance: sepaText(`Rechnung ${r.invoice_no}`.trim(), 140), amount_cents: p.amount_cents });
+      rows.push({ ...base, receipt_id: rid, name: clip(r.supplier, 70) || tl('Lieferant'), iban: ibanInfo(r.iban).iban, bic: '', end_to_end: sepaId(r.invoice_no || `BELEG-${rid.slice(0, 8)}`), remittance: sepaText(`Rechnung ${r.invoice_no}`.trim(), 140), amount_cents: p.amount_cents });
     }
   }
   const lines = Array.isArray(body.lines) ? (body.lines as TransferLineIn[]) : [];
   lines.forEach((l, n) => {
-    const at = `Zeile ${n + 1}`;
+    const at = tl('Zeile {n}', { n: n + 1 });
     const name = clip(l?.name, 70);
-    if (!name) throw bad(`${at}: Name des Empfängers fehlt`);
+    if (!name) throw bad(tl('{line}: Name des Empfängers fehlt', { line: at }));
     const i = ibanInfo(l?.iban);
-    if (!i.ok) throw bad(`${at}: ${i.reason}`);
+    if (!i.ok) throw bad(`${at}: ${tl(i.reason ?? '')}`);
     const bic = normalizeBic(l?.bic);
-    if (bic && !checkBic(bic)) throw bad(`${at}: BIC ungültig`);
-    if (i.bicRequired && !bic) throw bad(`${at}: Für Konten aus ${i.country} ist die BIC Pflicht`);
+    if (bic && !checkBic(bic)) throw bad(tl('{line}: BIC ungültig', { line: at }));
+    if (i.bicRequired && !bic) throw bad(tl('{line}: Für Konten aus {country} ist die BIC Pflicht', { line: at, country: i.country }));
     const amount = Math.round(Number(l?.amount_cents));
-    if (!Number.isFinite(amount) || amount <= 0 || amount > 99_999_999_999) throw bad(`${at}: Betrag muss größer als 0 sein`);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 99_999_999_999) throw bad(tl('{line}: Betrag muss größer als 0 sein', { line: at }));
     const ref = clip(l?.reference, 140);
     rows.push({ ...base, receipt_id: null, name, iban: i.iban, bic, end_to_end: sepaId(ref || `ZAHLUNG-${n + 1}`), remittance: sepaText(ref, 140), amount_cents: amount });
   });
@@ -614,7 +626,8 @@ export function createTransfer(app: App, loc: string, body: { execution_date?: u
 
 export function runOut(app: App, run: RunRow, withItems = false) {
   const { xml: _x, ...rest } = run;
-  const base = { ...rest, status_label: RUN_STATUS[run.status] ?? run.status, kind_label: run.kind === 'debit' ? 'Lastschrift' : 'Überweisung', has_xml: !!run.xml };
+  const tl = tLoc(app, run.location_id);
+  const base = { ...rest, status_label: RUN_STATUS[run.status] ? tl(RUN_STATUS[run.status]) : run.status, kind_label: run.kind === 'debit' ? tl('Lastschrift') : tl('Überweisung'), has_xml: !!run.xml };
   if (!withItems) return base;
   const items = itemsOf(app, run.id);
   // invoice numbers in one query per 500 items (never one per row)
@@ -640,18 +653,18 @@ export function runOut(app: App, run: RunRow, withItems = false) {
       remittance: it.remittance,
       amount_cents: it.amount_cents,
       seq: it.seq,
-      seq_label: SEQ_LABELS[it.seq as SeqType] ?? '',
+      seq_label: SEQ_LABELS[it.seq as SeqType] ? tl(SEQ_LABELS[it.seq as SeqType]) : '',
       scheme: it.scheme,
       mandate_ref: it.mandate_ref,
       status: it.status,
-      status_label: ITEM_STATUS[it.status] ?? it.status,
+      status_label: ITEM_STATUS[it.status] ? tl(ITEM_STATUS[it.status]) : it.status,
       notify_status: it.notify_status,
       notified_at: it.notified_at,
       notify_error: it.notify_error,
       paid_at: it.paid_at,
       returned_at: it.returned_at,
       return_code: it.return_code,
-      return_label: RETURN_CODES[it.return_code]?.label ?? '',
+      return_label: RETURN_CODES[it.return_code] ? tl(RETURN_CODES[it.return_code].label) : '',
       return_note: it.return_note,
       fee_cents: it.fee_cents,
       fee_invoice_id: it.fee_invoice_id,

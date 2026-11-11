@@ -72,7 +72,7 @@ export function snapshotInto(app: App, file: string): Promise<void> {
     const w = new Worker(WORKER_SOURCE, { eval: true, workerData: { db: app.config.dbFile, out: file } });
     w.once('message', (m: { ok: boolean; error?: string }) => (m.ok ? resolve() : reject(new Error(m.error))));
     w.once('error', reject);
-    w.once('exit', (code) => code !== 0 && reject(new Error(`backup worker exited with ${code}`)));
+    w.once('exit', (code) => code !== 0 && reject(new Error(`backup worker exited with ${code}`))); // i18n-ignore – internal log text
   });
 }
 

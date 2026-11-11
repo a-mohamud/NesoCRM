@@ -14,6 +14,7 @@ import { MODES, agentForbidden, argsHash, type Klass, type Mode } from '../servi
 import { ROUTE_RE, externalTools, makeCaller, toolCatalog, toolsFor, withExternal, type AgentTool, type MemoryNote, type UiContext } from '../services/agent-tools.js';
 import { resolveRecord, routeRecord } from '../services/agent-context.js';
 import { PURPOSES } from './ai-assistant.js';
+import { tApp, tCtx, tUser } from '../i18n/index.js';
 
 /**
  * HyperLevel Agent (core): model connections per agency with per-sub-account override, the chat with
@@ -127,7 +128,7 @@ export function backgroundCtx(user: User, locationId: string): Ctx {
 /** The context tools run under: same user and rights, shown in the audit log as the agent. */
 function agentCtx(base: Ctx | undefined, user: User, locationId: string): Ctx {
   const b = base ?? backgroundCtx(user, locationId);
-  return { ...b, user: { ...user, name: `KI-Agent (im Auftrag von ${user.name})`.slice(0, 200) }, via: 'agent' as Ctx['via'], viaApiKey: false, scope: undefined, locationId, skipAfterWrite: false };
+  return { ...b, user: { ...user, name: tApp()('KI-Agent (im Auftrag von {name})', { name: user.name }).slice(0, 200) }, via: 'agent' as Ctx['via'], viaApiKey: false, scope: undefined, locationId, skipAfterWrite: false };
 }
 
 /** Server-sent events as a streamed response; the run goes on if the browser goes away. */
@@ -395,7 +396,7 @@ export const agentModule: Module = {
       if (!aw) return;
       for (let i = aw.index; i < aw.calls.length; i++) {
         const c = aw.calls[i];
-        aw.results.push({ type: 'tool_result', id: c.id, name: c.name, content: 'Nicht ausgeführt – der Nutzer hat stattdessen eine neue Nachricht geschrieben.', isError: true, meta: { status: 'rejected' } });
+        aw.results.push({ type: 'tool_result', id: c.id, name: c.name, content: 'Not executed – the user wrote a new message instead.', isError: true, meta: { status: 'rejected' } });
       }
       history.push({ role: 'user', content: aw.results });
       state.awaiting = null;
@@ -439,10 +440,10 @@ export const agentModule: Module = {
       const toolLog: RunResult['tools'] = [];
       const ui = o.ui;
       const contextNote = [
-        `[Kontext – nur zur Orientierung: ${formatInTz(new Date(), tz, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} (${tz})`,
-        ui?.label || ui?.route ? `; Seite: ${ui.label || ui.route}${ui.label && ui.route?.includes('/') ? ` (${ui.route})` : ''}` : '',
-        ui?.from ? `; geöffnet von: ${ui.from}` : '',
-        ui?.entity ? `; ausgewählt: ${ui.entity.type} „${String(ui.entity.label ?? '').slice(0, 80)}“ (ID ${ui.entity.id})` : '',
+        `[Context – for orientation only: ${formatInTz(new Date(), tz, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} (${tz})`,
+        ui?.label || ui?.route ? `; page: ${ui.label || ui.route}${ui.label && ui.route?.includes('/') ? ` (${ui.route})` : ''}` : '',
+        ui?.from ? `; opened from: ${ui.from}` : '',
+        ui?.entity ? `; selected: ${ui.entity.type} “${String(ui.entity.label ?? '').slice(0, 80)}” (ID ${ui.entity.id})` : '',
         ']',
       ].join('');
       const purpose = o.automatic ? 'agent_auto' : 'agent';
@@ -603,7 +604,7 @@ export const agentModule: Module = {
       const agentId = conv ? conv.agent_id : (o.agentId ?? null);
       agentConfig(agentId, o.user, o.locationId); // visibility check before anything is stored
       if (!conv) {
-        const row = { id: id(), location_id: o.locationId, user_id: o.user.id, agent_id: agentId, connection: o.connection ?? '', title: (o.title ?? text).replace(/\s+/g, ' ').slice(0, 80) || 'Neue Unterhaltung', source: o.source, created_at: now(), updated_at: now() };
+        const row = { id: id(), location_id: o.locationId, user_id: o.user.id, agent_id: agentId, connection: o.connection ?? '', title: (o.title ?? text).replace(/\s+/g, ' ').slice(0, 80) || tUser(app as never, o.user.id)('Neue Unterhaltung'), source: o.source, created_at: now(), updated_at: now() };
         db.insert('agent_conversations', row);
         conv = db.get('SELECT * FROM agent_conversations WHERE id = ?', row.id);
       }
@@ -710,7 +711,7 @@ export const agentModule: Module = {
     /** Runs one tool directly with the user's identity (GPT actions, approved deferred actions). */
     const runTool = async (o: { user: User; locationId: string; name: string; args: Record<string, unknown>; allow: 'read' | 'write' | 'sensitive'; baseCtx?: Ctx; agentId?: string | null; webFetch?: boolean }) => {
       const tool = withExternal(toolCatalog(app, o.user, { webFetch: !!o.webFetch }), o.name.startsWith('ext_') || o.name.startsWith('nango_') ? await externalTools(app, o.user, o.locationId) : []).find((t) => t.name === o.name);
-      if (!tool) throw notFound(`Werkzeug ${o.name} nicht gefunden`);
+      if (!tool) throw notFound(tUser(app as never, o.user.id)('Werkzeug {name} nicht gefunden', { name: o.name }));
       const klass: Klass = tool.klassFor?.(o.args) ?? tool.klass;
       const rank = { read: 0, internal: 0, write: 1, sensitive: 2 } as const;
       const allowRank = { read: 0, write: 1, sensitive: 2 } as const;
@@ -867,7 +868,7 @@ export const agentModule: Module = {
       const s = locSettings(ctx.locationId);
       return {
         enabled: s.enabled,
-        default_agent: { id: null, name: DEFAULT_AGENT.name, emoji: DEFAULT_AGENT.emoji, description: DEFAULT_AGENT.description, mode: s.default_mode, starters: DEFAULT_STARTERS },
+        default_agent: { id: null, name: DEFAULT_AGENT.name, emoji: DEFAULT_AGENT.emoji, description: tCtx(ctx)(DEFAULT_AGENT.description), mode: s.default_mode, starters: DEFAULT_STARTERS.map((x) => tCtx(ctx)(x)) },
         agents: app.services.agentDefs?.listFor(u, ctx.locationId) ?? [],
         connection: resolved ? { id: resolved.connectionId, provider: resolved.provider, label: resolved.label, model: resolved.model, vision: resolved.capabilities.includes('vision') } : null,
         // Models the chat can switch to: every text connection plus the user's own bridge (if paired).
@@ -897,7 +898,7 @@ export const agentModule: Module = {
         total: { calls: all.calls, cost_usd: all.cost / 1e6, tokens: all.tokens },
         limit_usd: s.monthly_limit_usd,
         token_limit: s.monthly_token_limit,
-        by_agent: byAgent.map((a) => ({ agent_id: a.agent_id, name: a.agent_id ? (app.services.agentDefs?.name?.(a.agent_id) ?? 'Gelöschter Agent') : DEFAULT_AGENT.name, runs: a.runs, cost_usd: (a.cost ?? 0) / 1e6, tokens: a.tokens ?? 0 })),
+        by_agent: byAgent.map((a) => ({ agent_id: a.agent_id, name: a.agent_id ? (app.services.agentDefs?.name?.(a.agent_id) ?? tCtx(ctx)('Gelöschter Agent')) : DEFAULT_AGENT.name, runs: a.runs, cost_usd: (a.cost ?? 0) / 1e6, tokens: a.tokens ?? 0 })),
         by_user: byUser.map((a) => ({ user_id: a.user_id, name: a.name ?? '–', runs: a.runs, cost_usd: (a.cost ?? 0) / 1e6 })),
         recent: recent.map((r) => ({ ...r, cost_usd: r.cost_micros / 1e6, agent: r.agent_id ? (app.services.agentDefs?.name?.(r.agent_id) ?? '–') : DEFAULT_AGENT.name })),
       };

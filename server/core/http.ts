@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Readable } from 'node:stream';
+import { tApp } from '../i18n/index.js';
 
 export class HttpError extends Error {
   constructor(
@@ -29,7 +30,10 @@ export function constraintError(e: unknown): HttpError | undefined {
     case 1555: // PRIMARY KEY
       return new HttpError(409, 'Diesen Eintrag gibt es schon');
     case 1299: // NOT NULL
-      return new HttpError(400, `Pflichtangabe fehlt oder ist leer${/: \w+\.(\w+)$/.exec(msg) ? ` (${/: \w+\.(\w+)$/.exec(msg)![1]})` : ''}`);
+    {
+      const col = /: \w+\.(\w+)$/.exec(msg)?.[1];
+      return new HttpError(400, col ? tApp()('Pflichtangabe fehlt oder ist leer ({field})', { field: col }) : 'Pflichtangabe fehlt oder ist leer');
+    }
     case 787: // FOREIGN KEY
       return new HttpError(400, 'Der verknüpfte Datensatz existiert nicht (mehr)');
     case 275: // CHECK
@@ -253,11 +257,11 @@ export function parseBody(raw: string, type: string | undefined): any {
 /** Small helpers for validating request bodies. */
 export function str(v: unknown, field: string, opts: { required?: boolean; max?: number } = {}): string {
   if (v === undefined || v === null || v === '') {
-    if (opts.required) throw bad(`${field} fehlt`);
+    if (opts.required) throw bad(tApp()('{field} fehlt', { field: tApp()(field) }));
     return '';
   }
   const s = String(v).trim();
-  if (opts.max && s.length > opts.max) throw bad(`${field} ist zu lang`);
+  if (opts.max && s.length > opts.max) throw bad(tApp()('{field} ist zu lang', { field: tApp()(field) }));
   return s;
 }
 
@@ -277,7 +281,7 @@ export function ymdParam(v: unknown, field = 'Datum'): string | undefined {
   if (v === undefined || v === null || v === '') return undefined;
   const s = String(v).trim();
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (!m || new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toISOString().slice(0, 10) !== s) throw bad(`${field}: bitte als JJJJ-MM-TT angeben`);
+  if (!m || new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toISOString().slice(0, 10) !== s) throw bad(tApp()('{field}: bitte als JJJJ-MM-TT angeben', { field: tApp()(field) }));
   return s;
 }
 

@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Inbound webhooks ("Webhook empfangen" workflow trigger): read fields out of any JSON with
@@ -57,7 +58,7 @@ export function cleanMapping(input: unknown, customKeys: string[]): FieldMap[] {
     const to = String(m?.to ?? '').trim();
     if (!from || !to) continue;
     const ok = (CONTACT_TARGETS as readonly string[]).includes(to) || (to.startsWith('custom.') && customKeys.includes(to.slice(7)));
-    if (!ok) throw new Error(`Unbekanntes Zielfeld: ${to}`);
+    if (!ok) throw new Error(tApp()('Unbekanntes Zielfeld: {field}', { field: to }));
     out.push({ from, to });
   }
   return out;

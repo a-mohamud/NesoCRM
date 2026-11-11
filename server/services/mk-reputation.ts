@@ -1,4 +1,5 @@
 import type { App } from '../core/app.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Sender reputation of a sub-account: bounce, complaint (spam) and unsubscribe rates of the campaign e-mails per campaign,
@@ -54,10 +55,11 @@ export interface Issue {
   tip: string;
 }
 
-const pct = (r: number) => `${(Math.round(r * 10_000) / 100).toLocaleString('de-DE')} %`;
+const pct = (r: number, t: STFn) => `${(Math.round(r * 10_000) / 100).toLocaleString(t.locale === 'de' ? 'de-DE' : 'en-GB')} %`;
 
 /** The verdict for some counts: ok, warn or critical (or "few" when there is too little data to say). */
-export function judge(c: Counts): { level: Level; issues: Issue[]; rates: Rates } {
+/** `tr`: the language of the texts (default: the instance language). */
+export function judge(c: Counts, tr: STFn = tApp()): { level: Level; issues: Issue[]; rates: Rates } {
   const r = rates(c);
   const few = c.sent < MIN_SAMPLE;
   const issues: Issue[] = [];
@@ -69,7 +71,7 @@ export function judge(c: Counts): { level: Level; issues: Issue[]; rates: Rates 
     const level = rate >= t.critical ? 'critical' : rate >= t.warn ? 'warn' : null;
     if (!level) continue;
     const limit = level === 'critical' ? t.critical : t.warn;
-    issues.push({ metric: m, level, rate, text: `${t.label} ${pct(rate)} (${level === 'critical' ? 'kritisch ab' : 'Warnung ab'} ${pct(limit)})`, tip: TIPS[m] });
+    issues.push({ metric: m, level, rate, text: `${tr(t.label)} ${pct(rate, tr)} (${level === 'critical' ? tr('kritisch ab') : tr('Warnung ab')} ${pct(limit, tr)})`, tip: tr(TIPS[m]) });
   }
   const level: Level = issues.some((i) => i.level === 'critical') ? 'critical' : issues.length ? 'warn' : few ? 'few' : 'ok';
   return { level, issues, rates: r };
@@ -105,8 +107,10 @@ export interface Report {
 }
 
 const sum = (v: unknown) => Number(v) || 0;
+/** First letter upper case (the shared entry "campaign “…”" is written for the middle of a sentence). */
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const zero = (): Counts => ({ sent: 0, bounced: 0, complained: 0, unsubscribed: 0, opened: 0, clicked: 0 });
-const row = (key: string, label: string, c: Counts): Row => ({ key, label, ...c, ...judge(c) });
+const row = (key: string, label: string, c: Counts, t: STFn): Row => ({ key, label, ...c, ...judge(c, t) });
 const weekKey = (iso: string) => {
   // Same grouping as SQLite's strftime('%Y-%W') so the unsubscribes land in the weeks of the mails.
   const d = new Date(iso);
@@ -120,8 +124,9 @@ const weekKey = (iso: string) => {
 /** How long after a mail an unsubscribe still counts for that mail. */
 const UNSUB_WINDOW_MS = 7 * 864e5;
 
-export function buildReport(app: App, locationId: string, opts: { days?: number } = {}): Report {
+export function buildReport(app: App, locationId: string, opts: { days?: number; t?: STFn } = {}): Report {
   const { db } = app;
+  const t = opts.t ?? tApp();
   const days = Math.min(365, Math.max(7, Math.floor(opts.days ?? 90)));
   const since = new Date(Date.now() - days * 864e5).toISOString();
   const base = `FROM campaign_recipients r JOIN campaigns k ON k.id = r.campaign_id JOIN messages m ON m.id = r.message_id JOIN contacts c ON c.id = m.contact_id
@@ -132,7 +137,7 @@ export function buildReport(app: App, locationId: string, opts: { days?: number 
   const campaigns = new Map<string, { name: string; sent_at: string | null; c: Counts }>();
   for (const r of db.all(`SELECT r.campaign_id id, k.name name, k.sent_at sent_at, ${cols} ${base} GROUP BY r.campaign_id`, locationId, since)) campaigns.set(r.id, { name: r.name, sent_at: r.sent_at, c: counts(r) });
   const domains = new Map<string, Counts>();
-  for (const r of db.all(`SELECT lower(substr(c.email, instr(c.email, '@') + 1)) d, ${cols} ${base} GROUP BY d`, locationId, since)) domains.set(String(r.d || '(ohne)'), counts(r));
+  for (const r of db.all(`SELECT lower(substr(c.email, instr(c.email, '@') + 1)) d, ${cols} ${base} GROUP BY d`, locationId, since)) domains.set(String(r.d || t('(ohne)')), counts(r));
   const weeks = new Map<string, { from: string; c: Counts }>();
   for (const r of db.all(`SELECT strftime('%Y-%W', m.created_at) w, MIN(substr(m.created_at, 1, 10)) f, ${cols} ${base} GROUP BY w`, locationId, since)) weeks.set(String(r.w), { from: String(r.f), c: counts(r) });
 
@@ -150,7 +155,7 @@ export function buildReport(app: App, locationId: string, opts: { days?: number 
     if (!m) continue;
     const camp = campaigns.get(m.campaign_id);
     if (camp) camp.c.unsubscribed++;
-    const dom = domains.get(String(m.email.split('@')[1] ?? '').toLowerCase() || '(ohne)');
+    const dom = domains.get(String(m.email.split('@')[1] ?? '').toLowerCase() || t('(ohne)'));
     if (dom) dom.unsubscribed++;
     const wk = weeks.get(weekKey(m.created_at));
     if (wk) wk.c.unsubscribed++;
@@ -159,21 +164,22 @@ export function buildReport(app: App, locationId: string, opts: { days?: number 
   const total = zero();
   for (const { c } of campaigns.values()) for (const k of Object.keys(total) as (keyof Counts)[]) total[k] += c[k];
   const by_campaign = [...campaigns.entries()]
-    .map(([id, v]) => ({ campaign_id: id, sent_at: v.sent_at, ...row(id, v.name, v.c) }))
+    .map(([id, v]) => ({ campaign_id: id, sent_at: v.sent_at, ...row(id, v.name, v.c, t) }))
     .sort((a, b) => String(b.sent_at ?? '').localeCompare(String(a.sent_at ?? '')));
-  const by_domain = [...domains.entries()].map(([d, c]) => row(d, d, c)).sort((a, b) => b.sent - a.sent).slice(0, 15);
+  const by_domain = [...domains.entries()].map(([d, c]) => row(d, d, c, t)).sort((a, b) => b.sent - a.sent).slice(0, 15);
   const by_week = [...weeks.entries()]
-    .map(([w, v]) => ({ from: v.from, ...row(w, `ab ${v.from}`, v.c) }))
+    .map(([w, v]) => ({ from: v.from, ...row(w, t('ab {date}', { date: v.from }), v.c, t) }))
     .sort((a, b) => a.from.localeCompare(b.from));
 
   const warnings: Report['warnings'] = [];
   const add = (scope: string, r: Row) => {
     for (const i of r.issues) warnings.push({ level: i.level, scope, text: `${scope}: ${i.text}`, tip: i.tip });
   };
-  const totalsRow = row('total', `Letzte ${days} Tage`, total);
-  add(`Letzte ${days} Tage`, totalsRow);
-  for (const c of by_campaign.filter((x) => x.sent_at && Date.parse(x.sent_at) >= Date.now() - 14 * 864e5)) add(`Kampagne „${c.label}“`, c);
-  for (const d of by_domain.filter((x) => x.sent >= MIN_SAMPLE)) add(`Empfänger bei ${d.label}`, d);
+  const lastDays = t('Letzte {n} Tage', { n: days });
+  const totalsRow = row('total', lastDays, total, t);
+  add(lastDays, totalsRow);
+  for (const c of by_campaign.filter((x) => x.sent_at && Date.parse(x.sent_at) >= Date.now() - 14 * 864e5)) add(cap(t('Kampagne „{name}“', { name: c.label })), c);
+  for (const d of by_domain.filter((x) => x.sent >= MIN_SAMPLE)) add(t('Empfänger bei {domain}', { domain: d.label }), d);
   warnings.sort((a, b) => (a.level === b.level ? 0 : a.level === 'critical' ? -1 : 1));
 
   const from = String(app.location(locationId)?.settings?.email?.fromEmail ?? app.location(locationId)?.settings?.email?.user ?? '');

@@ -31,6 +31,7 @@ import {
 } from './umzug-core.js';
 import { ExtraWriter } from './umzug-extra.js';
 import { smartListById } from './smart-lists.js';
+import { tLoc, type STFn } from '../i18n/index.js';
 import { UNSUB_TOKEN, clip, cleanHtml, convertMergeTags, hasMergeTags, htmlToMarkdown, splitList, stripHtml, toDay } from './umzug-text.js';
 
 /**
@@ -77,6 +78,8 @@ export class Writer {
   private fields = new Map<string, { type: string; label: string }>();
   private readonly knownTags = new Set<string>();
   private readonly label: string;
+  /** Texts the import writes into the sub-account (names, notes, tags, warnings) are in its language. */
+  private readonly tr: STFn;
   /** Consent ledger entries, reference lists and the other kinds of the later importers (umzug-extra.ts). */
   private readonly extra: ExtraWriter;
 
@@ -85,6 +88,8 @@ export class Writer {
     this.db = env.app.db;
     this.loc = env.locationId;
     this.label = SOURCE_LABELS[env.source] ?? env.source;
+    const t = tLoc(env.app, env.locationId);
+    this.tr = t;
     this.loadFields();
     this.extra = new ExtraWriter(
       { app: env.app, locationId: env.locationId, jobId: env.jobId, source: env.source, ns: env.ns, label: this.label, dry: env.dry, warn: env.warn },
@@ -219,7 +224,7 @@ export class Writer {
       case 'activity':
         return this.activity(rec);
       default:
-        if (!this.extra.apply(rec)) throw new Error(`Unbekannte Art von Datensatz: ${(rec as { kind: string }).kind}`);
+        if (!this.extra.apply(rec)) throw new Error(tLoc(this.app, this.loc)('Unbekannte Art von Datensatz: {kind}', { kind: (rec as { kind: string }).kind }));
     }
   }
 
@@ -265,20 +270,21 @@ export class Writer {
       }
     }
     // A key that two source fields map to (merge field + custom field of the same name): first non-empty wins.
-    if (rec.consent && rec.consent !== 'ok' && rec.consent !== 'unknown') tags.push(`${this.label}: ${CONSENT_LABEL[rec.consent] ?? rec.consent}`);
+    if (rec.consent && rec.consent !== 'ok' && rec.consent !== 'unknown') tags.push(`${this.label}: ${CONSENT_LABEL[rec.consent] ? this.tr(CONSENT_LABEL[rec.consent]) : rec.consent}`);
     if (this.env.options.tag) tags.push(this.env.options.tag);
     const dnd = !!rec.consent && rec.consent !== 'ok' && rec.consent !== 'unknown';
     return { fields, custom, tags: [...new Set(tags.map((t) => clip(t, 80)).filter(Boolean))], notes, dnd };
   }
 
   private contact(rec: RContact) {
+    const t = this.tr;
     const key = `contact:${rec.ext}`;
     const inp = this.contactInput(rec);
     if (!inp.fields.email && !inp.fields.phone && !inp.fields.first_name && !inp.fields.last_name) {
       this.stat('contacts', 'skipped');
-      return void this.env.warn(`Kontakt ${rec.ext} übersprungen: weder Name noch E-Mail noch Telefon`);
+      return void this.env.warn(t('Kontakt {ext} übersprungen: weder Name noch E-Mail noch Telefon', { ext: rec.ext }));
     }
-    if (!inp.fields.source) inp.fields.source = `${this.label}-Import`;
+    if (!inp.fields.source) inp.fields.source = t('{source}-Import', { source: this.label });
     if (!inp.fields.company && rec.org_name) inp.fields.company = clip(rec.org_name, 200);
     const mapped = this.getId('contact', rec.ext);
     let existing: Contact | undefined = mapped && !mapped.local.startsWith('dry:') ? getContact(this.app, this.loc, mapped.local) : undefined;
@@ -327,7 +333,7 @@ export class Writer {
     this.item('contact', contact.id, rec.ext, created, before);
     this.stat('contacts', created ? 'created' : 'updated');
     this.extra.ledger(contact.id, rec, created);
-    if (inp.dnd) logActivity(this.app, this.loc, contact.id, 'umzug.consent', `Einwilligung aus ${this.label} übernommen: ${CONSENT_LABEL[rec.consent!] ?? rec.consent}${rec.native_status ? ` (${rec.native_status})` : ''}`, { source: this.env.source, status: rec.native_status ?? rec.consent, at: rec.consent_at ?? null });
+    if (inp.dnd) logActivity(this.app, this.loc, contact.id, 'umzug.consent', t('Einwilligung aus {source} übernommen: {status}', { source: this.label, status: `${CONSENT_LABEL[rec.consent!] ? t(CONSENT_LABEL[rec.consent!]) : rec.consent}${rec.native_status ? ` (${rec.native_status})` : ''}` }), { source: this.env.source, status: rec.native_status ?? rec.consent, at: rec.consent_at ?? null });
     for (const body of inp.notes) {
       const nid = id();
       this.db.insert('notes', { id: nid, location_id: this.loc, contact_id: contact.id, body: clip(body, 20_000), user_id: null, created_at: now() });
@@ -438,9 +444,10 @@ export class Writer {
   // --- pipelines and deals ---------------------------------------------------------------------------
 
   private pipeline(rec: RPipeline) {
-    const name = clip(rec.name, 100).trim() || 'Pipeline';
-    const stages = rec.stages.map((s) => ({ id: stageKey(s.ext), name: clip(s.name, 80) || 'Stufe', ...(s.probability !== undefined ? { probability: Math.max(0, Math.min(100, Math.round(s.probability))) } : {}) }));
-    if (!stages.length) stages.push({ id: stageKey('start'), name: 'Neu' });
+    const t = this.tr;
+    const name = clip(rec.name, 100).trim() || t('Pipeline');
+    const stages = rec.stages.map((s) => ({ id: stageKey(s.ext), name: clip(s.name, 80) || t('Stufe'), ...(s.probability !== undefined ? { probability: Math.max(0, Math.min(100, Math.round(s.probability))) } : {}) }));
+    if (!stages.length) stages.push({ id: stageKey('start'), name: t('Neu') });
     const known = this.getId('pipeline', rec.ext);
     const row = known && !known.local.startsWith('dry:') ? parseJson(this.db.get('SELECT * FROM pipelines WHERE id = ? AND location_id = ?', known.local, this.loc), ['stages']) : undefined;
     if (this.env.dry) {
@@ -462,8 +469,9 @@ export class Writer {
   }
 
   private deal(rec: RDeal) {
+    const t = this.tr;
     const pipe = this.getId('pipeline', rec.pipeline);
-    if (!pipe) return void this.stat('deals', 'skipped'), void this.env.warn(`Deal „${clip(rec.name, 60)}“ übersprungen: Pipeline nicht übernommen`);
+    if (!pipe) return void this.stat('deals', 'skipped'), void this.env.warn(t('Deal „{name}“ übersprungen: Pipeline nicht übernommen', { name: clip(rec.name, 60) }));
     let contact = this.contactLocal(rec.contact);
     if (!contact && rec.contact_hint?.email && !this.env.dry) {
       const { contact: c, created } = upsertContact(this.app, this.loc, { email: rec.contact_hint.email, name: rec.contact_hint.name, source: `${this.label}-Import` }, { source: `${this.label}-Import`, quiet: true });
@@ -486,7 +494,7 @@ export class Writer {
       pipeline_id: pipe.local,
       stage_id: stageId,
       contact_id: contact,
-      name: clip(rec.name, 200) || 'Deal',
+      name: clip(rec.name, 200) || t('Deal'),
       value: Math.round(Number(rec.value) || 0),
       status: rec.status,
       source: `${this.label}-Import`,
@@ -583,6 +591,7 @@ export class Writer {
   // --- templates, products, forms ---------------------------------------------------------------------------
 
   private template(rec: RTemplate) {
+    const t = this.tr;
     const known = this.getId('template', rec.ext);
     const v = hasMergeTags(this.env.source) ? this.env.source : undefined;
     let html = cleanHtml(rec.html ?? '');
@@ -597,10 +606,10 @@ export class Writer {
         else subject = out.text;
       }
     }
-    if (unknownTags.size) this.env.warn(`Vorlage „${clip(rec.name, 60)}“: Platzhalter ohne Entsprechung bleiben stehen: ${[...unknownTags].slice(0, 5).join(', ')}`);
+    if (unknownTags.size) this.env.warn(t('Vorlage „{name}“: Platzhalter ohne Entsprechung bleiben stehen: {tags}', { name: clip(rec.name, 60), tags: [...unknownTags].slice(0, 5).join(', ') }));
     const isHtml = /<[a-z][\s\S]*>/i.test(html);
-    if (isHtml && !html.includes(UNSUB_TOKEN) && /<\/body>/i.test(html)) this.env.warn(`Vorlage „${clip(rec.name, 60)}“ enthält keinen Abmeldelink – HyperLevel fügt beim Versand eine Fußzeile hinzu`);
-    const row = { name: clip(rec.name, 200) || 'Vorlage', channel: 'email', subject: clip(subject, 300), body: html || clip(rec.text, 200_000), is_html: isHtml ? 1 : 0, body_text: clip(rec.text || (isHtml ? stripHtml(html) : ''), 100_000), updated_at: now() };
+    if (isHtml && !html.includes(UNSUB_TOKEN) && /<\/body>/i.test(html)) this.env.warn(t('Vorlage „{name}“ enthält keinen Abmeldelink – HyperLevel fügt beim Versand eine Fußzeile hinzu', { name: clip(rec.name, 60) }));
+    const row = { name: clip(rec.name, 200) || t('Vorlage'), channel: 'email', subject: clip(subject, 300), body: html || clip(rec.text, 200_000), is_html: isHtml ? 1 : 0, body_text: clip(rec.text || (isHtml ? stripHtml(html) : ''), 100_000), updated_at: now() };
     if (this.env.dry) {
       this.stat('templates', known ? 'updated' : 'created');
       return void this.virtual.add(`template:${rec.ext}`);
@@ -617,20 +626,21 @@ export class Writer {
   }
 
   private product(rec: RProduct) {
+    const t = this.tr;
     const known = this.getId('product', rec.ext);
     if (this.env.dry) {
       this.stat('products', known ? 'updated' : 'created');
       return void this.virtual.add(`product:${rec.ext}`);
     }
     const row = {
-      name: clip(rec.name, 200) || 'Produkt',
+      name: clip(rec.name, 200) || t('Produkt'),
       description: clip(rec.description, 5000),
       price_cents: Math.max(0, Math.round(rec.price_cents || 0)),
       currency: /^[A-Z]{3}$/.test(rec.currency ?? '') ? rec.currency : 'EUR',
       recurring: rec.recurring?.interval === 'year' ? 'year' : rec.recurring ? 'month' : null,
       active: rec.active === false ? 0 : 1,
     };
-    if (rec.recurring && rec.recurring.interval === 'week') this.env.warn(`Produkt „${clip(rec.name, 60)}“ wird wöchentlich abgerechnet – HyperLevel kennt monatlich und jährlich; bitte prüfen`);
+    if (rec.recurring && rec.recurring.interval === 'week') this.env.warn(t('Produkt „{name}“ wird wöchentlich abgerechnet – HyperLevel kennt monatlich und jährlich; bitte prüfen', { name: clip(rec.name, 60) }));
     if (known && this.db.get('SELECT 1 FROM products WHERE id = ? AND location_id = ?', known.local, this.loc)) {
       this.db.update('products', known.local, row, this.loc);
       return void this.stat('products', 'updated');
@@ -643,16 +653,17 @@ export class Writer {
   }
 
   private form(rec: RForm) {
+    const t = this.tr;
     const known = this.getId('form', rec.ext);
     if (this.env.dry) {
       this.stat('forms', known ? 'updated' : 'created');
       return void this.virtual.add(`form:${rec.ext}`);
     }
     const TYPES = ['text', 'email', 'phone', 'textarea', 'select', 'radio', 'checkbox', 'date', 'number'];
-    const fields = (rec.fields?.length ? rec.fields : [{ label: 'Vorname', type: 'text', required: true }, { label: 'E-Mail', type: 'email', required: true }]).slice(0, 60).map((f, i) => ({
+    const fields = (rec.fields?.length ? rec.fields : [{ label: t('Vorname'), type: 'text', required: true }, { label: t('E-Mail'), type: 'email', required: true }]).slice(0, 60).map((f, i) => ({
       id: `f${i + 1}`,
       type: TYPES.includes(String(f.type)) ? String(f.type) : 'text',
-      label: clip(f.label, 200) || `Feld ${i + 1}`,
+      label: clip(f.label, 200) || t('Feld {n}', { n: i + 1 }),
       name: /e-?mail/i.test(f.label) ? 'email' : /vorname|first/i.test(f.label) ? 'first_name' : /nachname|last/i.test(f.label) ? 'last_name' : /telefon|phone/i.test(f.label) ? 'phone' : `field_${i + 1}`,
       required: !!f.required,
       options: (f.options ?? []).map(String).slice(0, 100),
@@ -660,9 +671,9 @@ export class Writer {
       value: '',
       show_if: null,
     }));
-    fields.push({ id: `f${fields.length + 1}`, type: 'consent', label: 'Ich stimme der Verarbeitung meiner Daten gemäß Datenschutzerklärung zu.', name: 'consent', required: true, options: [], placeholder: '', value: '', show_if: null });
-    const settings = { submit_text: 'Absenden', thank_you: 'Danke! Wir melden uns in Kürze.', tags: [], notify_team: true, umzug: { source: this.env.source, note: rec.note ?? 'Aus dem Umzug – bitte prüfen' } };
-    const name = clip(`${rec.name} (aus ${this.label}, bitte prüfen)`, 120);
+    fields.push({ id: `f${fields.length + 1}`, type: 'consent', label: t('Ich stimme der Verarbeitung meiner Daten gemäß Datenschutzerklärung zu.'), name: 'consent', required: true, options: [], placeholder: '', value: '', show_if: null });
+    const settings = { submit_text: t('Absenden'), thank_you: t('Danke! Wir melden uns in Kürze.'), tags: [], notify_team: true, umzug: { source: this.env.source, note: rec.note ? t(rec.note) : t('Aus dem Umzug – bitte prüfen') } };
+    const name = clip(t('{name} (aus {source}, bitte prüfen)', { name: rec.name, source: this.label }), 120);
     if (known && this.exists('forms', known.local)) {
       this.db.update('forms', known.local, { name, fields, settings, updated_at: now() }, this.loc);
       return void this.stat('forms', 'updated');
@@ -768,21 +779,22 @@ export class Writer {
   // --- workflow drafts -------------------------------------------------------------------------------------------
 
   private workflow(rec: RWorkflow) {
+    const t = this.tr;
     const known = this.getId('workflow', rec.ext);
     if (this.env.dry) {
       this.stat('workflows', known ? 'updated' : 'created');
       return void this.virtual.add(`workflow:${rec.ext}`);
     }
-    const head = { type: 'add_note', body: `UMZUG – BITTE PRÜFEN: Entwurf aus ${this.label}. ${rec.warnings.length ? rec.warnings.join(' · ') : 'Alle Schritte wurden übernommen.'} Prüfe Auslöser, Texte und Verzweigungen, bevor du ihn aktivierst.` };
+    const head = { type: 'add_note', body: t('UMZUG – BITTE PRÜFEN: Entwurf aus {source}. {warnings} Prüfe Auslöser, Texte und Verzweigungen, bevor du ihn aktivierst.', { source: this.label, warnings: rec.warnings.length ? rec.warnings.map((w) => t(w)).join(' · ') : t('Alle Schritte wurden übernommen.') }) };
     let trigger = rec.trigger;
     let steps: any[];
     try {
       steps = cleanSteps([head, ...rec.steps]);
     } catch (e) {
-      steps = cleanSteps([head, { type: 'add_note', body: `Schritte konnten nicht übernommen werden (${(e as Error).message}). Original: ${clip(JSON.stringify(rec.steps), 4000)}` }]);
+      steps = cleanSteps([head, { type: 'add_note', body: t('Schritte konnten nicht übernommen werden ({reason}). Original: {original}', { reason: (e as Error).message, original: clip(JSON.stringify(rec.steps), 4000) }) }]);
     }
-    const name = clip(`${rec.name} (aus ${this.label}, bitte prüfen)`, 200);
-    const settings = { allow_reentry: false, stop_on_error: false, umzug: { source: this.env.source, ext: rec.ext, warnings: rec.warnings.slice(0, 50) } };
+    const name = clip(t('{name} (aus {source}, bitte prüfen)', { name: rec.name, source: this.label }), 200);
+    const settings = { allow_reentry: false, stop_on_error: false, umzug: { source: this.env.source, ext: rec.ext, warnings: rec.warnings.slice(0, 50).map((w) => t(w)) } };
     if (!trigger?.type) trigger = { type: 'manual', config: {} };
     if (known && this.exists('workflows', known.local)) {
       // A draft a person already changed stays: only name and notes are refreshed while it is still a draft.

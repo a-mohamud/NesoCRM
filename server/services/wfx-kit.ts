@@ -1,6 +1,7 @@
 import type { App } from '../core/app.js';
 import { lookup, render } from '../core/template.js';
 import type { ActionOutcome, ActionResult, FlowCtx, RunState } from './workflow-engine.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Building blocks for workflow steps that live in their own modules (services/wfx-*.ts): the description of a step
@@ -178,7 +179,10 @@ export function assign(out: ActionOutcome, target: unknown, value: unknown, fall
   const t = String(target ?? '').trim() || fallback;
   if (t.startsWith('var.')) {
     const name = t.slice(4);
-    if (!/^[A-Za-z_][\w]{0,59}$/.test(name) || name.startsWith('_')) throw new Error(`Ungültiger Variablenname „${name}“ (Buchstaben, Ziffern, _)`);
+    if (!/^[A-Za-z_][\w]{0,59}$/.test(name) || name.startsWith('_')) {
+      const tr = tApp();
+      throw new Error(tr('Ungültiger Variablenname „{name}“ (Buchstaben, Ziffern, _)', { name }));
+    }
     out.vars = { ...(out.vars ?? {}), [name]: value };
   } else {
     out.fields = { ...(out.fields ?? {}), [t]: value };
@@ -187,8 +191,9 @@ export function assign(out: ActionOutcome, target: unknown, value: unknown, fall
 }
 
 export const describeTarget = (target: unknown, fallback = 'var.result') => {
-  const t = String(target ?? '').trim() || fallback;
-  return t.startsWith('var.') ? `Variable ${t.slice(4)}` : `Feld ${t}`;
+  const s = String(target ?? '').trim() || fallback;
+  const t = tApp();
+  return s.startsWith('var.') ? t('Variable {name}', { name: s.slice(4) }) : t('Feld {name}', { name: s });
 };
 
 /** Short, readable preview of a value for the one-line result of a step. */
@@ -207,7 +212,10 @@ export function rowsOf<T extends Record<string, any>>(v: unknown, keys: string[]
 
 export function requireText(v: unknown, label: string): string {
   const s = String(v ?? '').trim();
-  if (!s) throw new Error(`${label} fehlt`);
+  if (!s) {
+    const t = tApp();
+    throw new Error(t('{label} fehlt', { label: t(label) }));
+  }
   return s;
 }
 

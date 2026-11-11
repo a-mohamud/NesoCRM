@@ -5,6 +5,7 @@ import { getContact, logActivity } from '../services/contacts.js';
 import { getOpportunity } from '../services/opportunities.js';
 import { registerTriggers, type TriggerMeta } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Gesprächsnotizen am Deal (docs/sales.md): die Zusammenfassung eines Gesprächs oder Meetings hängt am Deal und am Kontakt. Ein Mensch
@@ -136,7 +137,8 @@ export const meetingNotesModule: Module = {
       } else dealId = dealOf(loc, contact.id);
       const at = input.at && !Number.isNaN(Date.parse(input.at)) ? new Date(input.at).toISOString() : now();
       const items = (Array.isArray(input.actionItems) ? input.actionItems : []).map((x) => String(x).trim().slice(0, 300)).filter(Boolean).slice(0, 20);
-      const title = String(input.title ?? '').trim().slice(0, 200) || 'Gesprächsnotiz';
+      const t = tLoc(app, loc);
+      const title = String(input.title ?? '').trim().slice(0, 200) || t('Gesprächsnotiz');
       const minutes = input.durationSec && input.durationSec > 0 ? Math.max(1, Math.round(input.durationSec / 60)) : 0;
       const row = {
         id: id(),
@@ -159,14 +161,14 @@ export const meetingNotesModule: Module = {
       db.tx(() => {
         // The contact's note shows up on the contact page like any other note; the deal's list shows the same text.
         const noteId = id();
-        db.insert('notes', { id: noteId, location_id: loc, contact_id: contact.id, body: `${title}${minutes ? ` (${minutes} Min.)` : ''}\n\n${summary}${items.length ? `\n\nFolgeschritte:\n${items.map((x) => `- ${x}`).join('\n')}` : ''}`, user_id: input.userId ?? null, created_at: at });
+        db.insert('notes', { id: noteId, location_id: loc, contact_id: contact.id, body: `${title}${minutes ? ` (${t('{n} Min.', { n: minutes })})` : ''}\n\n${summary}${items.length ? `\n\n${t('Folgeschritte:')}\n${items.map((x) => `- ${x}`).join('\n')}` : ''}`, user_id: input.userId ?? null, created_at: at });
         row.note_id = noteId;
         db.insert('deal_meeting_notes', row);
         if (input.createTasks && items.length) {
           const owner = dealId ? (db.get<{ assigned_to: string | null }>('SELECT assigned_to FROM opportunities WHERE id = ?', dealId)?.assigned_to ?? contact.assigned_to ?? null) : (contact.assigned_to ?? null);
           for (const item of items) {
             const tid = id();
-            db.insert('tasks', { id: tid, location_id: loc, contact_id: contact.id, title: item, description: `Aus der Gesprächsnotiz „${title}“`, due_at: null, done: 0, assigned_to: owner, created_at: now() });
+            db.insert('tasks', { id: tid, location_id: loc, contact_id: contact.id, title: item, description: t('Aus der Gesprächsnotiz „{title}“', { title }), due_at: null, done: 0, assigned_to: owner, created_at: now() });
             taskIds.push(tid);
           }
         }

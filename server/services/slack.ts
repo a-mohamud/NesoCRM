@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { safeEqual, type FetchLike } from './channel-kit.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Slack as the team's notification + reply channel: Web API calls, signature check of the Events
@@ -51,12 +52,13 @@ export async function slackCall<T = any>(fetcher: FetchLike, botToken: string, m
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
-    throw new Error(`Slack nicht erreichbar: ${(e as Error).message}`);
+    throw new Error(tApp()('Slack nicht erreichbar: {error}', { error: (e as Error).message }));
   }
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j?.ok) {
     const code = String(j?.error ?? `http_${r.status}`);
-    throw new Error(SLACK_ERRORS[code] ?? `Slack: ${code}`);
+    // i18n-ignore – SLACK_ERRORS are German message ids, an unknown code stays as it is.
+    throw new Error(SLACK_ERRORS[code] !== undefined ? tApp()(SLACK_ERRORS[code]) : `Slack: ${code}`);
   }
   return j as T;
 }

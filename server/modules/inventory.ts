@@ -23,6 +23,7 @@ import {
   type MovementType,
 } from '../services/inv-stock.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Lager & Einkauf: articles (linked to products, with variants, SKU and EAN), storage places, stock movements, minimum
@@ -294,13 +295,13 @@ export const inventoryModule: Module = {
         const sku = str(b.sku, 'Artikelnummer', { required: !cur, max: 40 });
         if (sku) {
           if (!/^[\w.\-/ ]+$/.test(sku)) throw bad('Artikelnummer: Buchstaben, Ziffern und . - _ / erlaubt');
-          if (db.get('SELECT 1 FROM inv_articles WHERE location_id = ? AND lower(sku) = lower(?) AND id != ?', loc, sku, cur?.id ?? '')) throw bad(`Artikelnummer ${sku} gibt es schon`);
+          if (db.get('SELECT 1 FROM inv_articles WHERE location_id = ? AND lower(sku) = lower(?) AND id != ?', loc, sku, cur?.id ?? '')) throw bad(tApp()('Artikelnummer {sku} gibt es schon', { sku }));
           out.sku = sku;
         }
       }
       if (b.name !== undefined || !cur) out.name = str(b.name, 'Name', { required: true, max: 200 });
       for (const [k, max] of [['description', 2000], ['variant', 80], ['supplier_name', 200], ['supplier_sku', 60]] as const) if (b[k] !== undefined) out[k] = str(b[k], k, { max });
-      if (b.unit !== undefined) out.unit = str(b.unit, 'Einheit', { max: 12 }) || 'Stk';
+      if (b.unit !== undefined) out.unit = str(b.unit, 'Einheit', { max: 12 }) || tLoc(app, loc)('Stk');
       if (b.ean !== undefined) {
         const ean = str(b.ean, 'EAN', { max: 14 }).replace(/\s+/g, '');
         if (ean && !validEan(ean)) throw bad('Die EAN ist nicht gültig (8, 12, 13 oder 14 Ziffern mit korrekter Prüfziffer)');
@@ -342,11 +343,12 @@ export const inventoryModule: Module = {
       const b = { ...(ctx.body ?? {}) };
       if (!str(b.sku, 'Artikelnummer')) b.sku = nextSku(ctx.locationId);
       const f = cleanArticle(ctx.locationId, b);
-      const row = { id: id(), location_id: ctx.locationId, description: '', ean: '', unit: 'Stk', variant: '', min_stock: 0, reorder_qty: 0, avg_cost_cents: 0, last_cost_cents: 0, supplier_name: '', supplier_sku: '', track: 1, auto_issue: 1, active: 1, low_notified: 0, created_at: now(), updated_at: now(), ...f };
+      const tl = tLoc(app, ctx.locationId);
+      const row = { id: id(), location_id: ctx.locationId, description: '', ean: '', unit: tl('Stk'), variant: '', min_stock: 0, reorder_qty: 0, avg_cost_cents: 0, last_cost_cents: 0, supplier_name: '', supplier_sku: '', track: 1, auto_issue: 1, active: 1, low_notified: 0, created_at: now(), updated_at: now(), ...f };
       const initial = q3(num(b.initial_qty, 0));
       db.tx(() => {
         db.insert('inv_articles', row);
-        if (initial > 0) applyMovement(app, ctx.locationId, { article_id: row.id, type: 'receipt', qty: initial, unit_cost_cents: b.initial_cost_cents !== undefined ? Math.round(num(b.initial_cost_cents, 0)) : undefined, ref_type: 'manual', note: 'Anfangsbestand', user_id: userId(ctx) });
+        if (initial > 0) applyMovement(app, ctx.locationId, { article_id: row.id, type: 'receipt', qty: initial, unit_cost_cents: b.initial_cost_cents !== undefined ? Math.round(num(b.initial_cost_cents, 0)) : undefined, ref_type: 'manual', note: tl('Anfangsbestand'), user_id: userId(ctx) });
       });
       return articleOut(getArticle(app, ctx.locationId, row.id));
     });
@@ -356,7 +358,7 @@ export const inventoryModule: Module = {
       const existing = db.get<{ id: string }>('SELECT id FROM inv_articles WHERE location_id = ? AND product_id = ?', ctx.locationId, p.id);
       if (existing) return articleOut(getArticle(app, ctx.locationId, existing.id));
       const f = cleanArticle(ctx.locationId, { sku: str(ctx.body?.sku, 'Artikelnummer') || nextSku(ctx.locationId), name: p.name, description: p.description, product_id: p.id });
-      const row = { id: id(), location_id: ctx.locationId, description: '', ean: '', unit: 'Stk', variant: '', min_stock: 0, reorder_qty: 0, avg_cost_cents: 0, last_cost_cents: 0, supplier_name: '', supplier_sku: '', track: 1, auto_issue: 1, active: 1, low_notified: 0, created_at: now(), updated_at: now(), ...f };
+      const row = { id: id(), location_id: ctx.locationId, description: '', ean: '', unit: tLoc(app, ctx.locationId)('Stk'), variant: '', min_stock: 0, reorder_qty: 0, avg_cost_cents: 0, last_cost_cents: 0, supplier_name: '', supplier_sku: '', track: 1, auto_issue: 1, active: 1, low_notified: 0, created_at: now(), updated_at: now(), ...f };
       db.insert('inv_articles', row);
       return articleOut(getArticle(app, ctx.locationId, row.id));
     });
@@ -435,7 +437,8 @@ export const inventoryModule: Module = {
       const v = valuation(app, ctx.locationId, asof);
       if (ctx.query.get('format') === 'csv') {
         app.services.audit?.({ ctx, action: 'export:inventory/valuation', route: 'GET /api/inventory/valuation', summary: asof ?? 'aktuell' });
-        return { __raw: true, status: 200, headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="Lagerbewertung_${asof ?? today(app, ctx.locationId)}.csv"`, 'cache-control': 'no-store' }, body: semicolonCsv([['Artikelnummer', 'Bezeichnung', 'Einheit', 'Bestand', 'Ø Einkaufspreis', 'Wert'], ...v.rows.map((r) => [r.sku, r.name, r.unit, String(r.qty).replace('.', ','), moneyDe(r.avg_cost_cents), moneyDe(r.value_cents)]), ['', 'Summe', '', '', '', moneyDe(v.total_cents)]]) };
+        const t = tCtx(ctx);
+        return { __raw: true, status: 200, headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${t('Lagerbewertung').replace(/[^\w-]+/g, '_')}_${asof ?? today(app, ctx.locationId)}.csv"`, 'cache-control': 'no-store' }, body: semicolonCsv([[t('Artikelnummer'), t('Bezeichnung'), t('Einheit'), t('Bestand'), t('Ø Einkaufspreis'), t('Wert')], ...v.rows.map((r) => [r.sku, r.name, r.unit, String(r.qty).replace('.', ','), moneyDe(r.avg_cost_cents), moneyDe(r.value_cents)]), ['', t('Summe'), '', '', '', moneyDe(v.total_cents)]]) };
       }
       return v;
     });
@@ -496,7 +499,7 @@ export const inventoryModule: Module = {
       return input.map((l: any) => {
         const a = getArticle(app, loc, String(l?.article_id ?? ''));
         const qty = q3(num(l?.qty, NaN));
-        if (!Number.isFinite(qty) || qty <= 0 || qty > 1e9) throw bad(`Menge für ${a.sku} muss größer als 0 sein`);
+        if (!Number.isFinite(qty) || qty <= 0 || qty > 1e9) throw bad(tApp()('Menge für {sku} muss größer als 0 sein', { sku: a.sku }));
         const cost = l?.unit_cost_cents === undefined || l?.unit_cost_cents === '' ? a.last_cost_cents || a.avg_cost_cents : Math.round(num(l.unit_cost_cents, NaN));
         if (!Number.isFinite(cost) || cost < 0) throw bad('Einkaufspreis ungültig');
         return { article_id: a.id, qty, unit_cost_cents: cost };
@@ -558,9 +561,12 @@ export const inventoryModule: Module = {
       if (!o.contact_email) throw bad('Der Lieferant hat keine E-Mail-Adresse');
       if (o.status === 'cancelled' || o.status === 'received') throw bad('Diese Bestellung ist abgeschlossen');
       const loc = app.location(ctx.locationId)!;
-      const list = o.lines.map((l: any, i: number) => `${i + 1}. ${l.sku} – ${l.name}: ${q3(l.qty)} ${l.unit}${l.unit_cost_cents ? ` à ${centsToMoney(l.unit_cost_cents, 'EUR')}` : ''}`).join('\n');
-      const body = str(ctx.body?.body, 'Text', { max: 5000 }) || `Guten Tag,\n\nwir bestellen bei Ihnen (Bestellung ${o.number}):\n\n${list}\n${o.expected_at ? `\nGewünschter Liefertermin: ${o.expected_at}\n` : ''}${o.notes ? `\n${o.notes}\n` : ''}\nBitte bestätigen Sie die Bestellung kurz.\n\nViele Grüße\n${loc.name}`;
-      const m = await sendToContact(app, ctx.locationId, { contactId: o.contact_id, channel: 'email', subject: str(ctx.body?.subject, 'Betreff', { max: 200 }) || `Bestellung ${o.number} von ${loc.name}`, body, source: 'Bestellung', ignoreDnd: true, userId: userId(ctx) ?? undefined });
+      const t = tLoc(app, ctx.locationId);
+      const list = o.lines.map((l: any, i: number) => `${i + 1}. ${l.sku} – ${l.name}: ${q3(l.qty)} ${l.unit}${l.unit_cost_cents ? ` ${t('à {price}', { price: centsToMoney(l.unit_cost_cents, 'EUR') })}` : ''}`).join('\n');
+      const body =
+        str(ctx.body?.body, 'Text', { max: 5000 }) ||
+        `${t('Guten Tag,')}\n\n${t('wir bestellen bei Ihnen (Bestellung {number}):', { number: o.number })}\n\n${list}\n${o.expected_at ? `\n${t('Gewünschter Liefertermin: {date}', { date: o.expected_at })}\n` : ''}${o.notes ? `\n${o.notes}\n` : ''}\n${t('Bitte bestätigen Sie die Bestellung kurz.')}\n\n${t('Viele Grüße')}\n${loc.name}`;
+      const m = await sendToContact(app, ctx.locationId, { contactId: o.contact_id, channel: 'email', subject: str(ctx.body?.subject, 'Betreff', { max: 200 }) || t('Bestellung {number} von {company}', { number: o.number, company: loc.name }), body, source: t('Bestellung'), ignoreDnd: true, userId: userId(ctx) ?? undefined });
       if (m.status === 'failed') throw bad(m.error);
       if (o.status === 'draft') db.run(`UPDATE inv_orders SET status = 'ordered', ordered_at = ?, updated_at = ? WHERE id = ?`, now(), now(), o.id);
       return orderOut(ctx.locationId, o.id);

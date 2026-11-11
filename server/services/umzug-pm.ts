@@ -6,6 +6,7 @@ import { addField, addSection, addStatus, createProject } from './pm-projects.js
 import { cleanCustom, insertStatuses, statusesOf, team, type Actor, type StatusCategory } from './pm-core.js';
 import { createTask } from './pm-tasks.js';
 import { clip } from './umzug-text.js';
+import { tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Projects and tasks of the switch-over importers (monday.com boards, ClickUp lists, Notion databases): a project with the statuses,
@@ -26,6 +27,8 @@ export class PmWriter {
   private people: { id: string; email: string }[] | undefined;
   private readonly actor: Actor;
   private readonly missingProject = new Set<string>();
+  /** The sub-account's language: default names, the task footer and warnings are written in it. */
+  private readonly tr: STFn;
 
   constructor(
     private env: ExtraEnv,
@@ -34,7 +37,9 @@ export class PmWriter {
     this.app = env.app;
     this.db = env.app.db;
     this.loc = env.locationId;
-    this.actor = { id: null, name: `Umzug (${env.label})`, via: 'import' };
+    const t = tLoc(env.app, env.locationId);
+    this.tr = t;
+    this.actor = { id: null, name: `${t('Umzug')} (${env.label})`, via: 'import' };
   }
 
   private available(): boolean {
@@ -53,6 +58,7 @@ export class PmWriter {
 
   /** The statuses of the old board in a usable order (todo, then active, then done); a project needs a todo and a done status. */
   private statuses(rec: RProject): { name: string; category: StatusCategory; color?: string }[] {
+    const t = this.tr;
     const seen = new Set<string>();
     const list: { name: string; category: StatusCategory; color?: string }[] = [];
     for (const s of rec.statuses ?? []) {
@@ -61,11 +67,11 @@ export class PmWriter {
       seen.add(name.toLowerCase());
       list.push({ name, category: CATEGORY_OK(s.category) ? s.category : 'active', color: s.color && /^#[0-9a-f]{6}$/i.test(s.color) ? s.color : undefined });
     }
-    if (!list.some((s) => s.category === 'todo')) list.unshift({ name: seen.has('offen') ? 'Zu erledigen' : 'Offen', category: 'todo', color: '#94a3b8' });
-    if (!list.some((s) => s.category === 'done')) list.push({ name: seen.has('erledigt') ? 'Abgeschlossen' : 'Erledigt', category: 'done', color: '#10b981' });
+    if (!list.some((s) => s.category === 'todo')) list.unshift({ name: seen.has(t('Offen').toLowerCase()) ? t('Zu erledigen') : t('Offen'), category: 'todo', color: '#94a3b8' });
+    if (!list.some((s) => s.category === 'done')) list.push({ name: seen.has(t('Erledigt').toLowerCase()) ? t('Abgeschlossen') : t('Erledigt'), category: 'done', color: '#10b981' });
     const sorted = list.map((s, i) => ({ s, i })).sort((a, b) => RANK[a.s.category] - RANK[b.s.category] || a.i - b.i).map((x) => x.s);
     if (sorted.length > MAX_STATUSES) {
-      this.env.warn(`Projekt „${clip(rec.name, 60)}“: mehr als ${MAX_STATUSES} Status – die übrigen sind zusammengelegt`);
+      this.env.warn(t('Projekt „{name}“: mehr als {n} Status – die übrigen sind zusammengelegt', { name: clip(rec.name, 60), n: MAX_STATUSES }));
       // Keep every todo and done status, trim the active ones.
       const must = sorted.filter((s) => s.category !== 'active');
       const room = Math.max(0, MAX_STATUSES - must.length);
@@ -76,6 +82,7 @@ export class PmWriter {
   }
 
   project(rec: RProject) {
+    const t = this.tr;
     const known = this.host.getId('project', rec.ext);
     if (this.env.dry) {
       this.host.stat('projects', known ? 'updated' : 'created');
@@ -85,7 +92,7 @@ export class PmWriter {
     }
     if (!this.available()) {
       this.host.stat('projects', 'skipped');
-      return void this.env.warn(`Projekt „${clip(rec.name, 60)}“ nicht angelegt: die Projektverwaltung ist in dieser Installation nicht verfügbar`);
+      return void this.env.warn(t('Projekt „{name}“ nicht angelegt: die Projektverwaltung ist in dieser Installation nicht verfügbar', { name: clip(rec.name, 60) }));
     }
     const existing = known ? this.db.get<{ id: string }>('SELECT id FROM pm_projects WHERE id = ? AND location_id = ?', known.local, this.loc) : undefined;
     let pid: string;
@@ -102,7 +109,7 @@ export class PmWriter {
       }
       this.host.stat('projects', 'updated');
     } else {
-      const p = createProject(this.app, this.loc, { name: clip(rec.name, 120) || 'Projekt', description: clip(rec.description, 20_000), color: rec.color && /^#[0-9a-f]{6}$/i.test(rec.color) ? rec.color : undefined, billable: false }, this.actor);
+      const p = createProject(this.app, this.loc, { name: clip(rec.name, 120) || t('Projekt'), description: clip(rec.description, 20_000), color: rec.color && /^#[0-9a-f]{6}$/i.test(rec.color) ? rec.color : undefined, billable: false }, this.actor);
       pid = p.id;
       // The board's own statuses replace the default ones (a new project has no tasks yet).
       this.db.run('DELETE FROM pm_statuses WHERE project_id = ?', pid);
@@ -115,7 +122,7 @@ export class PmWriter {
       const sext = `${rec.ext}:${s.ext}`;
       const sk = this.host.getId('pm_section', sext);
       if (sk && this.db.get('SELECT 1 FROM pm_sections WHERE id = ? AND project_id = ?', sk.local, pid)) continue;
-      const name = clip(s.name, 120).trim() || 'Gruppe';
+      const name = clip(s.name, 120).trim() || this.tr('Gruppe'); // i18n-ignore (catalog key: Gruppe)
       const same = this.db.get<{ id: string }>('SELECT id FROM pm_sections WHERE project_id = ? AND lower(name) = lower(?)', pid, name);
       if (same) {
         this.host.setId('pm_section', sext, same.id);
@@ -125,7 +132,7 @@ export class PmWriter {
         const sec = addSection(this.app, this.loc, pid, { name });
         this.host.setId('pm_section', sext, sec.id);
       } catch (e) {
-        this.env.warn(`Gruppe „${name.slice(0, 40)}“ in „${clip(rec.name, 40)}“ nicht angelegt: ${(e as Error).message}`);
+        this.env.warn(t('Gruppe „{group}“ in „{name}“ nicht angelegt: {reason}', { group: name.slice(0, 40), name: clip(rec.name, 40), reason: t((e as Error).message) }));
       }
     }
     const haveKeys = new Set(this.db.all<{ key: string }>('SELECT key FROM pm_custom_fields WHERE location_id = ? AND project_id = ?', this.loc, pid).map((f) => f.key));
@@ -133,6 +140,7 @@ export class PmWriter {
   }
 
   private field(pid: string, f: RProjectField, have: Set<string>) {
+    const t = this.tr;
     if (have.has(f.key)) return;
     try {
       addField(this.app, this.loc, { project_id: pid, key: f.key, label: clip(f.label, 80), type: f.type, options: f.options ?? [] });
@@ -140,13 +148,14 @@ export class PmWriter {
       this.host.stat('project_fields', 'created');
     } catch (e) {
       this.host.stat('project_fields', 'failed');
-      this.env.warn(`Feld „${clip(f.label, 40)}“ nicht angelegt: ${(e as Error).message}`);
+      this.env.warn(t('Feld „{name}“ nicht angelegt: {reason}', { name: clip(f.label, 40), reason: t((e as Error).message) }));
     }
   }
 
   // --- tasks --------------------------------------------------------------------------------------------------------
 
   task(rec: RPmTask) {
+    const t = this.tr;
     const known = this.host.getId('pm_task', rec.ext);
     if (this.env.dry) {
       this.host.stat('project_tasks', known ? 'updated' : 'created');
@@ -158,7 +167,7 @@ export class PmWriter {
       this.host.stat('project_tasks', 'skipped');
       if (!this.missingProject.has(rec.project)) {
         this.missingProject.add(rec.project);
-        this.env.warn(`Aufgaben übersprungen: das Projekt „${clip(rec.project, 40)}“ ist nicht angelegt`);
+        this.env.warn(t('Aufgaben übersprungen: das Projekt „{name}“ ist nicht angelegt', { name: clip(rec.project, 40) }));
       }
       return;
     }
@@ -166,7 +175,7 @@ export class PmWriter {
     const parent = rec.parent ? this.host.getId('pm_task', rec.parent) : undefined;
     if (rec.parent && (!parent || parent.local.startsWith('dry:'))) {
       this.host.stat('project_tasks', 'skipped');
-      return void this.env.warn(`Unteraufgabe „${clip(rec.title, 40)}“ übersprungen: die übergeordnete Aufgabe fehlt`);
+      return void this.env.warn(t('Unteraufgabe „{name}“ übersprungen: die übergeordnete Aufgabe fehlt', { name: clip(rec.title, 40) }));
     }
     const statuses = statusesOf(this.app, project);
     const named = rec.status ? statuses.find((s) => s.name.toLowerCase() === rec.status!.trim().toLowerCase()) : undefined;
@@ -185,7 +194,7 @@ export class PmWriter {
     const custom = this.custom(project, rec);
     const body = {
       project_id: project,
-      title: clip(rec.title, 300).trim() || 'Aufgabe',
+      title: clip(rec.title, 300).trim() || t('Aufgabe'),
       description,
       ...(status ? { status_id: status.id } : {}),
       ...(rec.done && !status ? { done: true } : {}),
@@ -212,12 +221,12 @@ export class PmWriter {
       this.comments(have.id, rec);
       return;
     }
-    const t = createTask(this.app, this.loc, { ...body, section_id: body.section_id }, this.actor, { quiet: true });
-    this.stamp(t.id, rec);
-    this.host.setId('pm_task', rec.ext, t.id, this.db.get<{ updated_at: string }>('SELECT updated_at FROM tasks WHERE id = ?', t.id)?.updated_at ?? null);
-    this.host.item('pm_task', t.id, rec.ext, true);
+    const made = createTask(this.app, this.loc, { ...body, section_id: body.section_id }, this.actor, { quiet: true });
+    this.stamp(made.id, rec);
+    this.host.setId('pm_task', rec.ext, made.id, this.db.get<{ updated_at: string }>('SELECT updated_at FROM tasks WHERE id = ?', made.id)?.updated_at ?? null);
+    this.host.item('pm_task', made.id, rec.ext, true);
     this.host.stat('project_tasks', 'created');
-    this.comments(t.id, rec);
+    this.comments(made.id, rec);
   }
 
   /** The original dates of creation and completion (createTask stamps "now"). */
@@ -266,7 +275,8 @@ export class PmWriter {
   }
 
   private describe(rec: RPmTask, unmatched: string[]): string {
-    const foot = [`Aus ${this.env.label} übernommen`, rec.url ? rec.url : '', unmatched.length ? `Zuständig dort: ${unmatched.slice(0, 5).join(', ')}` : ''].filter(Boolean).join(' · ');
+    const t = this.tr;
+    const foot = [t('Aus {source} übernommen', { source: this.env.label }), rec.url ? rec.url : '', unmatched.length ? t('Zuständig dort: {people}', { people: unmatched.slice(0, 5).join(', ') }) : ''].filter(Boolean).join(' · ');
     const text = clip(rec.description, 9000).trim();
     return clip(text ? `${text}\n\n${foot}` : foot, 10_000);
   }

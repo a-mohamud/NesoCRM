@@ -10,6 +10,7 @@ import { joinGroup } from './community-actions.js';
 import { groupSettings, levelFor, memberPoints, membershipGrants } from './community.js';
 import { deliverEmail, type OutMail } from './messaging.js';
 import { videoEmbed } from './markdown.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Joining a community from its public page: the page (about text, join questions, approval), the tiers (free, monthly or
@@ -143,7 +144,7 @@ export const cleanHttps = (v: unknown, what: string, opts: { allowRelative?: boo
   const s = str(v, 1000);
   if (!s) return '';
   if (opts.allowRelative && /^\/[^\s/][^\s]*$/.test(s)) return s;
-  if (!/^https:\/\/[^\s]+$/i.test(s)) throw bad(`${what}: bitte eine Adresse mit https:// angeben`);
+  if (!/^https:\/\/[^\s]+$/i.test(s)) throw bad(tApp()('{field}: bitte eine Adresse mit https:// angeben', { field: tApp()(what) }));
   return s;
 };
 
@@ -154,7 +155,7 @@ export function cleanQuestions(v: unknown, cur: Question[] = []): Question[] {
   for (const raw of v) {
     const label = str(raw?.label, 150);
     if (!label) continue;
-    if (out.length >= QUESTION_MAX) throw bad(`Höchstens ${QUESTION_MAX} Fragen`);
+    if (out.length >= QUESTION_MAX) throw bad(tApp()('Höchstens {max} Fragen', { max: QUESTION_MAX }));
     const key = str(raw?.field_key, 60).toLowerCase().replace(/-/g, '_');
     if (key && !/^[a-z][a-z0-9_]{1,59}$/.test(key)) throw bad('Kontaktfeld: nur a–z, 0–9 und _');
     out.push({ id: str(raw?.id, 20).replace(/[^a-z0-9_-]/gi, '') || `q${out.length + 1}`, label, required: raw?.required === true || raw?.required === 1, field_key: key });
@@ -288,8 +289,9 @@ export function monthlyValue(app: App, t: Pick<Tier, 'location_id' | 'product_id
 }
 
 /** "19,00 € / Monat" style text. */
-export function priceText(p: ProductInfo): string {
-  return `${centsToMoney(p.gross_cents, p.currency)}${p.recurring === 'month' ? ' / Monat' : p.recurring === 'year' ? ' / Jahr' : ' einmalig'}`;
+export function priceText(p: ProductInfo, t: STFn = tApp()): string {
+  const price = centsToMoney(p.gross_cents, p.currency);
+  return p.recurring === 'month' ? t('{price} / Monat', { price }) : p.recurring === 'year' ? t('{price} / Jahr', { price }) : t('{price} einmalig', { price });
 }
 
 export function tiersOf(app: App, groupId: string, activeOnly = false): Tier[] {
@@ -324,7 +326,7 @@ export function cleanTier(app: App, locationId: string, input: any, cur?: Tier) 
   const productId = b.product_id === undefined ? (cur?.product_id ?? null) : b.product_id || null;
   const annualId = b.annual_product_id === undefined ? (cur?.annual_product_id ?? null) : b.annual_product_id || null;
   for (const [pid, what] of [[productId, 'Produkt'], [annualId, 'Jahres-Produkt']] as const) {
-    if (pid && !app.db.get('SELECT id FROM products WHERE id = ? AND location_id = ?', pid, locationId)) throw bad(`${what} nicht gefunden`);
+    if (pid && !app.db.get('SELECT id FROM products WHERE id = ? AND location_id = ?', pid, locationId)) throw bad(what === 'Produkt' ? 'Produkt nicht gefunden' : 'Jahres-Produkt nicht gefunden');
   }
   const main = productInfo(app, locationId, productId);
   const annual = productInfo(app, locationId, annualId);
@@ -483,7 +485,9 @@ export function activateMembership(app: App, g: G, m: Membership, opts: { trial?
     }
   }
   if (wasWaiting || (was as string) !== status) {
-    log(app, g, contact.id, trialing ? 'community.trial_started' : 'community.activated', trialing ? `Testphase in „${g.name}“ gestartet (Stufe ${tier?.name ?? '–'})` : `Mitglied von „${g.name}“ (Stufe ${tier?.name ?? '–'})`);
+    const t = tLoc(app, g.location_id);
+    const vars = { group: g.name, tier: tier?.name ?? '–' };
+    log(app, g, contact.id, trialing ? 'community.trial_started' : 'community.activated', trialing ? t('Testphase in „{group}“ gestartet (Stufe {tier})', vars) : t('Mitglied von „{group}“ (Stufe {tier})', vars));
   }
   if (trialing && was !== 'trialing') {
     app.events.emit(g.location_id, 'community.trial_started', { contactId: contact.id, groupId: g.id, group: { id: g.id, name: g.name }, tier: tier ? { id: tier.id, name: tier.name } : null, trial_ends_at: opts.trial!.ends_at });
@@ -504,11 +508,11 @@ export function endMembership(app: App, g: G, m: Membership, reason: string, opt
   app.db.run('DELETE FROM community_members WHERE group_id = ? AND contact_id = ? AND banned_at IS NULL', g.id, contact.id);
   for (const cid of tier?.course_ids ?? []) {
     const e = app.db.get<{ source: string; source_ref: string }>('SELECT source, source_ref FROM course_enrollments WHERE course_id = ? AND contact_id = ? AND status = ?', cid, contact.id, 'active');
-    if (e?.source === 'community' && e.source_ref === refOf(tier)) revokeAccess(app, g.location_id, cid, contact.id, `Community „${g.name}“ verlassen`);
+    if (e?.source === 'community' && e.source_ref === refOf(tier)) revokeAccess(app, g.location_id, cid, contact.id, tLoc(app, g.location_id)('Community „{group}“ verlassen', { group: g.name }));
   }
   removeTags(app, g.location_id, contact.id, [memberTag(g, page), ...(tier ? [tierTag(tier)] : [])]);
   if (live) {
-    log(app, g, contact.id, 'community.left', `Community „${g.name}“ verlassen (${reason}${opts.by ? `, ${opts.by}` : ''})`);
+    log(app, g, contact.id, 'community.left', tLoc(app, g.location_id)('Community „{group}“ verlassen ({reason})', { group: g.name, reason: `${reason}${opts.by ? `, ${opts.by}` : ''}` }));
     app.events.emit(g.location_id, 'community.member_left', { contactId: contact.id, groupId: g.id, group: { id: g.id, name: g.name }, tier: tier ? { id: tier.id, name: tier.name } : null, reason });
   }
   return next;
@@ -519,7 +523,7 @@ export function markPastDue(app: App, g: G, m: Membership): Membership {
   if (m.status === 'past_due' || m.status === 'canceled') return m;
   app.db.update('community_memberships', m.id, { status: 'past_due', past_due_at: now(), updated_at: now() });
   const next = membershipOf(app, g.id, m.contact_id)!;
-  log(app, g, m.contact_id, 'community.past_due', `Zahlung für „${g.name}“ fehlgeschlagen`);
+  log(app, g, m.contact_id, 'community.past_due', tLoc(app, g.location_id)('Zahlung für „{group}“ fehlgeschlagen', { group: g.name }));
   if (!grants(app, next)) return endMembership(app, g, next, 'payment_failed');
   return next;
 }
@@ -531,7 +535,7 @@ export function markConverted(app: App, g: G, m: Membership): Membership {
   app.db.update('community_memberships', m.id, { status: 'active', converted_at: wasTrial ? now() : m.converted_at, past_due_at: null, updated_at: now() });
   const next = membershipOf(app, g.id, m.contact_id)!;
   if (wasTrial) {
-    log(app, g, m.contact_id, 'community.trial_converted', `Testphase in „${g.name}“ wurde zur bezahlten Mitgliedschaft`);
+    log(app, g, m.contact_id, 'community.trial_converted', tLoc(app, g.location_id)('Testphase in „{group}“ wurde zur bezahlten Mitgliedschaft', { group: g.name }));
     app.events.emit(g.location_id, 'community.trial_converted', { contactId: m.contact_id, groupId: g.id, group: { id: g.id, name: g.name }, tier: tierOf(app, g.id, m.tier_id) ? { id: m.tier_id, name: tierOf(app, g.id, m.tier_id)!.name } : null });
   }
   return next;
@@ -539,7 +543,7 @@ export function markConverted(app: App, g: G, m: Membership): Membership {
 
 export function rejectMembership(app: App, g: G, m: Membership, by = '', note = ''): Membership {
   app.db.update('community_memberships', m.id, { status: 'rejected', note: note.slice(0, 300), approved_by: by, canceled_at: now(), updated_at: now() });
-  log(app, g, m.contact_id, 'community.rejected', `Beitrittsanfrage für „${g.name}“ abgelehnt`);
+  log(app, g, m.contact_id, 'community.rejected', tLoc(app, g.location_id)('Beitrittsanfrage für „{group}“ abgelehnt', { group: g.name }));
   return membershipOf(app, g.id, m.contact_id)!;
 }
 
@@ -561,6 +565,7 @@ export const portalCommunityUrl = (app: App, g: { location_id: string; slug: str
 /** Approving a request: free tiers are in at once, paid ones get the checkout link by mail. */
 export async function approveMembership(app: App, g: G, m: Membership, by = ''): Promise<Membership> {
   if (m.status !== 'pending') throw bad('Diese Anfrage ist nicht mehr offen');
+  const t = tLoc(app, g.location_id);
   const tier = tierOf(app, g.id, m.tier_id);
   const prices = tier ? tierPrices(app, tier) : ({ free: true } as TierPrices);
   const contact = getContact(app, g.location_id, m.contact_id);
@@ -568,7 +573,7 @@ export async function approveMembership(app: App, g: G, m: Membership, by = ''):
     const next = activateMembership(app, g, m, { by });
     if (contact?.email) {
       void app.services.sendMemberLoginLink?.(g.location_id, contact.id)?.catch((e: Error) => console.error('[community] login link', e.message));
-      await communityMail(app, g.location_id, contact.email, `Willkommen in „${g.name}“`, [`Dein Beitritt zu „${g.name}“ wurde freigegeben.`, 'Du bekommst gleich eine zweite E-Mail mit deinem Login-Link.']);
+      await communityMail(app, g.location_id, contact.email, t('Willkommen in „{group}“', { group: g.name }), [t('Dein Beitritt zu „{group}“ wurde freigegeben.', { group: g.name }), t('Du bekommst gleich eine zweite E-Mail mit deinem Login-Link.')]);
     }
     return next;
   }
@@ -576,9 +581,9 @@ export async function approveMembership(app: App, g: G, m: Membership, by = ''):
   const next = membershipOf(app, g.id, m.contact_id)!;
   const url = checkoutUrl(app, next);
   if (contact?.email && url) {
-    await communityMail(app, g.location_id, contact.email, `Dein Beitritt zu „${g.name}“ ist freigegeben`, [`Gute Nachricht: Wir haben deine Anfrage für „${g.name}“ angenommen.`, 'Schließe den Beitritt jetzt mit der Zahlung ab:'], { label: 'Beitritt abschließen', url });
+    await communityMail(app, g.location_id, contact.email, t('Dein Beitritt zu „{group}“ ist freigegeben', { group: g.name }), [t('Gute Nachricht: Wir haben deine Anfrage für „{group}“ angenommen.', { group: g.name }), t('Schließe den Beitritt jetzt mit der Zahlung ab:')], { label: t('Beitritt abschließen'), url });
   }
-  log(app, g, m.contact_id, 'community.approved', `Beitrittsanfrage für „${g.name}“ angenommen`);
+  log(app, g, m.contact_id, 'community.approved', t('Beitrittsanfrage für „{group}“ angenommen', { group: g.name }));
   return next;
 }
 

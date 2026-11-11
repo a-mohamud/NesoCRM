@@ -187,8 +187,8 @@ describe.each(INSTANTS)('at $label', ({ at, today, utcDay, leadsToday, leadDays 
       expect(await tick(new Date(Date.parse(next) + 1000))).toBe(1);
       const tasks = (await t.api.get('/api/tasks?status=open')).data;
       const of = (c: any) => tasks.filter((x: any) => x.contact_id === c.id);
-      expect(of(heute).map((x: any) => x.title)).toEqual([expect.stringContaining('hat heute Geburtstag')]);
-      expect(of(morgen).map((x: any) => x.title)).toEqual([expect.stringContaining('hat in 1 Tagen Geburtstag')]);
+      expect(of(heute).map((x: any) => x.title)).toEqual([expect.stringContaining('has a birthday today')]);
+      expect(of(morgen).map((x: any) => x.title)).toEqual([expect.stringContaining('has a birthday in 1 day')]);
       expect(of(gestern)).toEqual([]);
       expect(of(heute)[0].due_at).toBe(`${today}T08:00:00.000Z`);
     });

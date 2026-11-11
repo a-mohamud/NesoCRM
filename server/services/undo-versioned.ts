@@ -7,6 +7,7 @@ import { canonical, encodeRow } from './undo-core.js';
 import type { Journal } from './undo-journal.js';
 import { clip, tableEntity, type FieldSpec, type UndoEntity } from './undo-table.js';
 import { loadPage, restorePage, trashPage, updatePage } from './wiki-store.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Records that already keep their own version history – workflows, wiki pages, canvas boards – are not copied into
@@ -72,7 +73,7 @@ export function registerVersionedEntities(app: App, undo: Journal) {
       wfBase.restore(t, ctx, current);
       // The restore is a version of its own, so the version history tells the story.
       const w = t && db.get<Row>('SELECT * FROM workflows WHERE id = ?', t.id);
-      if (w) wfv()?.snapshot(ctx.locationId, { id: w.id, name: w.name, trigger: json(w.trigger, {}), steps: json(w.steps, []), settings: json(w.settings, {}) }, ctx, 'Wiederhergestellt (Rückgängig)');
+      if (w) wfv()?.snapshot(ctx.locationId, { id: w.id, name: w.name, trigger: json(w.trigger, {}), steps: json(w.steps, []), settings: json(w.settings, {}) }, ctx, tLoc(app, ctx.locationId)('Wiederhergestellt (Rückgängig)'));
     },
   };
   undo.register('workflow', workflow);
@@ -106,7 +107,7 @@ export function registerVersionedEntities(app: App, undo: Journal) {
       if (current.row.trashed_at && !target.row.trashed_at) restorePage(app, page);
       else if (!current.row.trashed_at && target.row.trashed_at) trashPage(app, page);
       const now = db.get<Row>('SELECT * FROM wiki_pages WHERE id = ?', target.id) as any;
-      if (now && (now.title !== target.row.title || now.body !== target.row.body || now.icon !== target.row.icon)) updatePage(app, ctx, now, space, { title: target.row.title as string, body: target.row.body as string, icon: target.row.icon as string }, { force: true, note: 'Wiederhergestellt (Rückgängig)' });
+      if (now && (now.title !== target.row.title || now.body !== target.row.body || now.icon !== target.row.icon)) updatePage(app, ctx, now, space, { title: target.row.title as string, body: target.row.body as string, icon: target.row.icon as string }, { force: true, note: tLoc(app, ctx.locationId)('Wiederhergestellt (Rückgängig)') });
     },
   };
   if (wikiTable) {
@@ -140,7 +141,7 @@ export function registerVersionedEntities(app: App, undo: Journal) {
       if (mode === 'content' && m === 'before') {
         const board = db.get<BoardRow>('SELECT * FROM canvas_boards WHERE id = ?', id)!;
         const same = db.get<{ id: string }>('SELECT id FROM canvas_snapshots WHERE board_id = ? AND seq = ? ORDER BY created_at DESC LIMIT 1', id, board.seq);
-        const snapId = same?.id ?? (board.element_count || db.get('SELECT 1 AS x FROM canvas_elements WHERE board_id = ? LIMIT 1', id) ? createSnapshot(app, id, `Vor Änderung durch ${ctx ? canvasActor(app, ctx).name : 'Rückgängig'}`, true, ctx ? canvasActor(app, ctx) : ({ name: 'Rückgängig' } as any)).id : undefined);
+        const snapId = same?.id ?? (board.element_count || db.get('SELECT 1 AS x FROM canvas_elements WHERE board_id = ? LIMIT 1', id) ? createSnapshot(app, id, tLoc(app, board.location_id)('Vor Änderung durch {name}', { name: ctx ? canvasActor(app, ctx).name : tLoc(app, board.location_id)('Rückgängig') }), true, ctx ? canvasActor(app, ctx) : ({ name: tLoc(app, board.location_id)('Rückgängig') } as any)).id : undefined);
         if (snapId) s.extra = { snapshot_id: snapId };
       }
       return s;

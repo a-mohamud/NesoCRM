@@ -9,6 +9,7 @@ import { cleanIban, commissionFor, payoutCsv, refundAdjustment, sepaXml, validIb
 import { getContact, logActivity, upsertContact } from '../services/contacts.js';
 import { deliverEmail, type OutMail } from '../services/messaging.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Affiliate manager (like GHL's): programs per sub-account (percent or fixed commission, first
@@ -192,7 +193,10 @@ export const affiliatesModule: Module = {
         updated_at: now(),
       };
       db.insert('affiliates', row);
-      logActivity(app, p.location_id, contact.id, 'affiliate.created', `Affiliate im Programm „${p.name}“ (Code ${code}, ${status === 'active' ? 'aktiv' : 'wartet auf Freigabe'})`);
+      {
+        const t = tLoc(app, p.location_id);
+        logActivity(app, p.location_id, contact.id, 'affiliate.created', t('Affiliate im Programm „{program}“ (Code {code}, {status})', { program: p.name, code, status: status === 'active' ? t('aktiv') : t('wartet auf Freigabe') }));
+      }
       app.events.emit(p.location_id, 'affiliate.created', { contactId: contact.id, affiliateId: row.id, programId: p.id, affiliate: { name: row.name, email, code, status, link: linkFor(p, row), portal: portalUrl(p) } });
       return row;
     }
@@ -235,14 +239,14 @@ export const affiliatesModule: Module = {
         .filter((x) => x.a && Date.now() - Date.parse(x.t.created_at) <= Number(x.a.cookie_days) * 864e5)
         .filter((x) => {
           const self = x.a.contact_id === contactId || (!!contact?.email && contact.email === x.a.email);
-          if (self) logActivity(app, locationId, contactId, 'affiliate.self_referral', `Eigenempfehlung von Affiliate ${x.a.code} nicht gezählt`);
+          if (self) logActivity(app, locationId, contactId, 'affiliate.self_referral', tLoc(app, locationId)('Eigenempfehlung von Affiliate {code} nicht gezählt', { code: x.a.code }));
           return !self;
         });
       if (!candidates.length) return;
       const latest = candidates[candidates.length - 1];
       const pick = latest.a.attribution === 'first' ? candidates[0] : latest;
       if (!db.run('INSERT OR IGNORE INTO affiliate_referrals (location_id, contact_id, affiliate_id, program_id, touch_at, created_at) VALUES (?, ?, ?, ?, ?, ?)', locationId, contactId, pick.a.id, pick.a.program_id, pick.t.created_at, now()).changes) return;
-      logActivity(app, locationId, contactId, 'affiliate.referred', `Geworben von Affiliate ${pick.a.name || pick.a.code} (${pick.a.code})`);
+      logActivity(app, locationId, contactId, 'affiliate.referred', tLoc(app, locationId)('Geworben von Affiliate {name} ({code})', { name: pick.a.name || pick.a.code, code: pick.a.code }));
       // A purchase that paid a moment before the visit was linked (event order) still counts.
       for (const inv of db.all("SELECT id FROM invoices WHERE location_id = ? AND contact_id = ? AND status = 'paid' AND paid_at > ?", locationId, contactId, new Date(Date.now() - 10 * 60_000).toISOString())) commissionForInvoice(locationId, inv.id);
     }
@@ -282,13 +286,13 @@ export const affiliatesModule: Module = {
       const base = Math.max(0, commissionBase(inv) - creditedNet(locationId, inv.id));
       const amount = commissionFor(p as any, { base_cents: base, recurring });
       if (!amount) return;
-      const c = { id: id(), location_id: locationId, program_id: p.id, affiliate_id: a.id, contact_id: inv.contact_id, invoice_id: inv.id, kind: recurring ? 'recurring' : 'sale', base_cents: base, amount_cents: amount, currency: inv.currency, status: 'pending', note: `Rechnung ${inv.number}${inv.title ? ` – ${inv.title}` : ''}`.slice(0, 300), created_at: now() };
+      const c = { id: id(), location_id: locationId, program_id: p.id, affiliate_id: a.id, contact_id: inv.contact_id, invoice_id: inv.id, kind: recurring ? 'recurring' : 'sale', base_cents: base, amount_cents: amount, currency: inv.currency, status: 'pending', note: `${tLoc(app, locationId)('Rechnung {number}', { number: inv.number })}${inv.title ? ` – ${inv.title}` : ''}`.slice(0, 300), created_at: now() };
       if (!db.run(
         `INSERT OR IGNORE INTO affiliate_commissions (id, location_id, program_id, affiliate_id, contact_id, invoice_id, kind, base_cents, amount_cents, original_cents, currency, status, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         c.id, c.location_id, c.program_id, c.affiliate_id, c.contact_id, c.invoice_id, c.kind, c.base_cents, c.amount_cents, c.amount_cents, c.currency, c.status, c.note, c.created_at,
       ).changes)
         return;
-      if (a.contact_id) logActivity(app, locationId, a.contact_id, 'affiliate.commission_created', `Provision ${money(amount, c.currency)} für ${c.note}`);
+      if (a.contact_id) logActivity(app, locationId, a.contact_id, 'affiliate.commission_created', tLoc(app, locationId)('Provision {amount} für {note}', { amount: money(amount, c.currency), note: c.note }));
       app.events.emit(locationId, 'affiliate.commission_created', { contactId: a.contact_id, affiliateId: a.id, programId: p.id, commissionId: c.id, amount_cents: amount, currency: c.currency, kind: c.kind, customerId: inv.contact_id, invoiceId: inv.id });
     }
     app.events.on('invoice.paid', (e) => {
@@ -321,7 +325,7 @@ export const affiliatesModule: Module = {
       db.run(
         `INSERT INTO affiliate_commissions (id, location_id, program_id, affiliate_id, contact_id, invoice_id, kind, base_cents, amount_cents, currency, status, note, reversal_of, created_at, approved_at)
          VALUES (?, ?, ?, ?, ?, ?, 'clawback', 0, ?, ?, 'approved', ?, ?, ?, ?)`,
-        id(), c.location_id, c.program_id, c.affiliate_id, c.contact_id, rows.length ? c.invoice_id : null, want, c.currency, `Rückbuchung: ${c.note} (${why})`.slice(0, 300), rows.length ? null : c.id, now(), now(),
+        id(), c.location_id, c.program_id, c.affiliate_id, c.contact_id, rows.length ? c.invoice_id : null, want, c.currency, tLoc(app, c.location_id)('Rückbuchung: {note} ({reason})', { note: c.note, reason: why }).slice(0, 300), rows.length ? null : c.id, now(), now(),
       );
     }
 
@@ -330,8 +334,8 @@ export const affiliatesModule: Module = {
       // once a clawback exists (the commission was paid out, or in a payout that was deleted later), corrections stay clawbacks
       const clawed = clawbacksOf(c).length > 0;
       const adj = refundAdjustment(clawed ? { ...c, payout_id: c.payout_id ?? 'clawed' } : c, refunded, total);
-      if (adj.action === 'reverse') db.run(`UPDATE affiliate_commissions SET status = 'reversed', reversed_at = ?, note = ? WHERE id = ?`, now(), `${c.note} · storniert (${why})`.slice(0, 300), c.id);
-      else if (adj.action === 'reduce') db.run('UPDATE affiliate_commissions SET amount_cents = ?, note = ? WHERE id = ?', adj.amount, `${c.note} · gekürzt (${why})`.slice(0, 300), c.id);
+      if (adj.action === 'reverse') db.run(`UPDATE affiliate_commissions SET status = 'reversed', reversed_at = ?, note = ? WHERE id = ?`, now(), tLoc(app, c.location_id)('{note} · storniert ({reason})', { note: c.note, reason: why }).slice(0, 300), c.id);
+      else if (adj.action === 'reduce') db.run('UPDATE affiliate_commissions SET amount_cents = ?, note = ? WHERE id = ?', adj.amount, tLoc(app, c.location_id)('{note} · gekürzt ({reason})', { note: c.note, reason: why }).slice(0, 300), c.id);
       else if (adj.action === 'clawback') clawback(c, adj.amount, why);
     }
     const commissionsOf = (locationId: string, invoiceId: string) => db.all<any>("SELECT * FROM affiliate_commissions WHERE location_id = ? AND invoice_id = ? AND kind != 'clawback'", locationId, invoiceId);
@@ -360,7 +364,7 @@ export const affiliatesModule: Module = {
     // A Stornorechnung takes all of it back (the tick below is the fallback for invoices voided another way).
     app.events.on('invoice.cancelled', (e) => {
       const inv = e.data.invoice;
-      if (inv?.id) applyRefund(e.locationId, inv.id, 1, 1, 'Rechnung storniert');
+      if (inv?.id) applyRefund(e.locationId, inv.id, 1, 1, tLoc(app, e.locationId)('Rechnung storniert'));
     });
     app.events.on('payment.refunded', (e) => {
       if (!e.data.invoiceId) return;
@@ -375,7 +379,7 @@ export const affiliatesModule: Module = {
         `SELECT c.location_id, c.invoice_id, i.total_cents FROM affiliate_commissions c JOIN invoices i ON i.id = c.invoice_id
          WHERE c.kind != 'clawback' AND i.status = 'void' AND c.status != 'reversed' AND NOT EXISTS (SELECT 1 FROM affiliate_commissions x WHERE x.reversal_of = c.id)`,
       ))
-        applyRefund(c.location_id, c.invoice_id, c.total_cents || 1, c.total_cents || 1, 'Rechnung storniert');
+        applyRefund(c.location_id, c.invoice_id, c.total_cents || 1, c.total_cents || 1, tLoc(app, c.location_id)('Rechnung storniert'));
       for (const p of db.all('SELECT id, hold_days FROM affiliate_programs WHERE hold_days > 0'))
         db.run(`UPDATE affiliate_commissions SET status = 'approved', approved_at = ? WHERE program_id = ? AND status = 'pending' AND created_at < ?`, now(), p.id, new Date(Date.now() - p.hold_days * 864e5).toISOString());
       db.run('DELETE FROM affiliate_login_tokens WHERE expires_at < ?', new Date(Date.now() - 864e5).toISOString());
@@ -480,7 +484,7 @@ export const affiliatesModule: Module = {
       if (!a) throw bad('Affiliate wählen');
       const amount = Math.round(num(ctx.body?.amount_cents, 0));
       if (!amount) throw bad('Betrag fehlt');
-      const row = { id: id(), location_id: ctx.locationId, program_id: a.program_id, affiliate_id: a.id, kind: 'manual', base_cents: 0, amount_cents: amount, currency: 'EUR', status: 'approved', note: str(ctx.body?.note, 'Notiz', { max: 300 }) || 'Manuelle Buchung', created_at: now(), approved_at: now() };
+      const row = { id: id(), location_id: ctx.locationId, program_id: a.program_id, affiliate_id: a.id, kind: 'manual', base_cents: 0, amount_cents: amount, currency: 'EUR', status: 'approved', note: str(ctx.body?.note, 'Notiz', { max: 300 }) || tLoc(app, ctx.locationId)('Manuelle Buchung'), created_at: now(), approved_at: now() };
       db.insert('affiliate_commissions', row);
       return row;
     });
@@ -561,7 +565,7 @@ export const affiliatesModule: Module = {
       return { ok: true };
     });
     router.get('/api/affiliates/payouts/export.csv', 'location', (ctx) => {
-      const r = text('\ufeff' + payoutCsv(payoutLines(ctx.locationId, idsOf(ctx))), 'text/csv; charset=utf-8');
+      const r = text('\ufeff' + payoutCsv(payoutLines(ctx.locationId, idsOf(ctx)), tCtx(ctx)), 'text/csv; charset=utf-8');
       r.headers['content-disposition'] = `attachment; filename="affiliate-auszahlungen-${today(app, ctx.locationId)}.csv"`;
       return r;
     });
@@ -671,17 +675,21 @@ export const affiliatesModule: Module = {
     const base = (p: any) => `/affiliate/${encodeURIComponent(p.slug)}`;
     const page = (p: any, opts: { title: string; body: string; who?: any; status?: number }): RawResult => {
       const b = brandOf(p);
+      const t = tLoc(app, p.location_id);
       const brand = b.logo ? `<img src="${escapeHtml(b.logo)}" alt="${escapeHtml(b.name)}">` : `<span class="mark">${escapeHtml(b.name.slice(0, 1).toUpperCase())}</span><span>${escapeHtml(b.name)}</span>`;
-      const who = opts.who ? `<div class="who"><span>${escapeHtml(opts.who.name || opts.who.email)}</span><form method="post" action="${base(p)}/logout"><button class="linkbtn">Abmelden</button></form></div>` : '';
-      const doc = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+      const who = opts.who ? `<div class="who"><span>${escapeHtml(opts.who.name || opts.who.email)}</span><form method="post" action="${base(p)}/logout"><button class="linkbtn">${t('Ausloggen')}</button></form></div>` : '';
+      const doc = `<!doctype html><html lang="${t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(opts.title)} · ${escapeHtml(p.name)}</title><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="same-origin">
 <style>:root{--brand:${b.color};--soft:${b.color}1f}${PORTAL_CSS}</style></head>
-<body><header class="top"><div class="in"><span class="brand">${brand}</span><span class="muted small">Partnerprogramm</span>${who}</div></header><main>${opts.body}</main></body></html>`;
+<body><header class="top"><div class="in"><span class="brand">${brand}</span><span class="muted small">${t('Partnerprogramm')}</span>${who}</div></header><main>${opts.body}</main></body></html>`;
       const r = html(doc, opts.status ?? 200);
       Object.assign(r.headers, { 'cache-control': 'no-store', 'x-frame-options': 'DENY', 'content-security-policy': "default-src 'none'; img-src * data:; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" });
       return r;
     };
-    const unknown = () => html('<!doctype html><meta charset="utf-8"><title>Nicht gefunden</title><p style="font-family:system-ui;padding:40px;text-align:center">Dieses Partnerprogramm gibt es nicht.</p>', 404);
+    const unknown = () => {
+      const t = tApp();
+      return html(`<!doctype html><meta charset="utf-8"><title>${t('Nicht gefunden')}</title><p style="font-family:system-ui;padding:40px;text-align:center">${t('Dieses Partnerprogramm gibt es nicht.')}</p>`, 404);
+    };
     const memberOf = (ctx: Ctx, p: any): any => {
       const raw = ctx.cookies[cookieName(p)];
       if (!raw) return undefined;
@@ -696,12 +704,13 @@ export const affiliatesModule: Module = {
       const raw = token(32);
       db.insert('affiliate_login_tokens', { token_hash: sha256(raw), affiliate_id: a.id, created_at: now(), expires_at: new Date(Date.now() + LINK_TTL_MS).toISOString() });
       const link = `${portalUrl(p)}/auth?token=${encodeURIComponent(raw)}`;
-      const hello = a.name ? `Hallo ${a.name}` : 'Hallo';
+      const t = tLoc(app, p.location_id);
+      const hello = a.name ? t('Hallo {name}', { name: a.name }) : t('Hallo');
       const r = await mailer(b.loc, {
         to: a.email,
-        subject: `Dein Login für das Partnerprogramm „${p.name}“`,
-        text: `${hello},\n\nhier ist dein Login-Link für das Partnerprogramm „${p.name}“:\n${link}\n\nDer Link gilt 30 Minuten und funktioniert genau einmal.\n\n${b.name}`,
-        html: `<p>${escapeHtml(hello)},</p><p>mit diesem Link meldest du dich im Partnerbereich „${escapeHtml(p.name)}“ an:</p><p><a href="${escapeHtml(link)}" style="display:inline-block;background:${b.color};color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:bold">Jetzt anmelden</a></p><p style="color:#64748b;font-size:13px">Der Link gilt 30 Minuten und funktioniert genau einmal.</p>`,
+        subject: t('Dein Login für das Partnerprogramm „{program}“', { program: p.name }),
+        text: `${hello},\n\n${t('hier ist dein Login-Link für das Partnerprogramm „{program}“:', { program: p.name })}\n${link}\n\n${t('Der Link gilt 30 Minuten und funktioniert genau einmal.')}\n\n${b.name}`,
+        html: `<p>${escapeHtml(hello)},</p><p>${t('mit diesem Link meldest du dich im Partnerbereich „{program}“ an:', { program: escapeHtml(p.name) })}</p><p><a href="${escapeHtml(link)}" style="display:inline-block;background:${b.color};color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:bold">${t('Jetzt einloggen')}</a></p><p style="color:#64748b;font-size:13px">${t('Der Link gilt 30 Minuten und funktioniert genau einmal.')}</p>`,
       });
       return { status: r.status, link };
     }
@@ -716,47 +725,58 @@ export const affiliatesModule: Module = {
       return list.length > max;
     };
 
-    const loginPage = (p: any, opts: { error?: string; notice?: string; status?: number } = {}) =>
-      page(p, {
-        title: 'Anmelden',
+    const loginPage = (p: any, opts: { error?: string; notice?: string; status?: number } = {}) => {
+      const t = tLoc(app, p.location_id);
+      return page(p, {
+        title: t('Anmelden'),
         status: opts.status,
         body: `<div class="auth"><div class="panel"><h1>${escapeHtml(p.name)}</h1>
-<p class="muted">Melde dich mit deiner E-Mail-Adresse an – du bekommst einen Link, ganz ohne Passwort.</p>
+<p class="muted">${t('Melde dich mit deiner E-Mail-Adresse an – du bekommst einen Link, ganz ohne Passwort.')}</p>
 ${opts.notice ? `<div class="notice">${escapeHtml(opts.notice)}</div>` : ''}
-<form method="post" action="${base(p)}/login"><label for="email">E-Mail-Adresse</label><input id="email" name="email" type="email" required autocomplete="email">
-${opts.error ? `<p class="err">${escapeHtml(opts.error)}</p>` : ''}<p><button class="btn wide">Login-Link senden</button></p></form>
-${p.public_signup ? `<p class="muted small">Noch kein Partner? <a href="${base(p)}/join">Jetzt anmelden</a></p>` : ''}</div></div>`,
+<form method="post" action="${base(p)}/login"><label for="email">${t('E-Mail-Adresse')}</label><input id="email" name="email" type="email" required autocomplete="email">
+${opts.error ? `<p class="err">${escapeHtml(opts.error)}</p>` : ''}<p><button class="btn wide">${t('Login-Link senden')}</button></p></form>
+${p.public_signup ? `<p class="muted small">${t('Noch kein Partner?')} <a href="${base(p)}/join">${t('Jetzt anmelden')}</a></p>` : ''}</div></div>`,
       });
+    };
 
     const terms = (p: any) => {
-      const value = p.commission_type === 'fixed' ? money(p.commission_value) : `${String(p.commission_value).replace('.', ',')} %`;
-      return `${value} Provision${p.commission_type === 'percent' ? ' vom Nettoumsatz' : ' je Verkauf'}${p.recurring ? ', auch auf Abo-Verlängerungen' : ''} · ${p.cookie_days} Tage Cookie-Laufzeit · ${p.attribution === 'first' ? 'erster' : 'letzter'} Klick zählt · Auszahlung ab ${money(p.payout_threshold_cents)}`;
+      const t = tLoc(app, p.location_id);
+      const value = p.commission_type === 'fixed' ? money(p.commission_value) : `${t.locale === 'de' ? String(p.commission_value).replace('.', ',') : String(p.commission_value)} %`;
+      const rate = p.commission_type === 'percent' ? t('{value} Provision vom Nettoumsatz', { value }) : t('{value} Provision je Verkauf', { value });
+      return [
+        `${rate}${p.recurring ? t(', auch auf Abo-Verlängerungen') : ''}`,
+        t.plural(Number(p.cookie_days), { one: '{n} Tag Cookie-Laufzeit', other: '{n} Tage Cookie-Laufzeit' }),
+        p.attribution === 'first' ? t('erster Klick zählt') : t('letzter Klick zählt'),
+        t('Auszahlung ab {amount}', { amount: money(p.payout_threshold_cents) }),
+      ].join(' · ');
     };
 
     const dashboard = (p: any, a: any, notice = '') => {
       const s = withStats('a.id = ?', a.id)[0];
       const comms = db.all('SELECT created_at, kind, amount_cents, currency, status FROM affiliate_commissions WHERE affiliate_id = ? ORDER BY created_at DESC LIMIT 50', a.id);
       const payouts = db.all('SELECT created_at, amount_cents, currency, status, paid_at, method FROM affiliate_payouts WHERE affiliate_id = ? ORDER BY created_at DESC LIMIT 24', a.id);
-      const pill = (st: string) => `<span class="pill${st === 'paid' || st === 'approved' ? ' ok' : st === 'reversed' ? ' off' : ''}">${escapeHtml(STATUS_DE[st] ?? st)}</span>`;
+      const t = tLoc(app, p.location_id);
+      const dateOf = (iso: string) => new Date(iso).toLocaleDateString(t.locale === 'de' ? 'de-DE' : 'en-GB');
+      const pill = (st: string) => `<span class="pill${st === 'paid' || st === 'approved' ? ' ok' : st === 'reversed' ? ' off' : ''}">${escapeHtml(STATUS_DE[st] ? t(STATUS_DE[st]) : st)}</span>`;
       const tile = (label: string, v: string) => `<div class="tile"><span class="muted small">${label}</span><b>${v}</b></div>`;
-      const kind = (k: string) => (k === 'recurring' ? 'Abo-Verlängerung' : k === 'clawback' ? 'Rückbuchung' : k === 'manual' ? 'Gutschrift' : 'Verkauf');
+      const kind = (k: string) => (k === 'recurring' ? t('Abo-Verlängerung') : k === 'clawback' ? t('Rückbuchung') : k === 'manual' ? t('Manuelle Gutschrift') : t('Kauf'));
       return page(p, {
-        title: 'Partnerbereich',
+        title: t('Partnerbereich'),
         who: a,
         body: `${notice ? `<div class="notice">${escapeHtml(notice)}</div>` : ''}
-<h1>Hallo${a.name ? ` ${escapeHtml(a.name.split(' ')[0])}` : ''} 👋</h1>
+<h1>${a.name ? t('Hallo {name}', { name: escapeHtml(a.name.split(' ')[0]) }) : t('Hallo')} 👋</h1>
 <p class="muted">${escapeHtml(terms(p))}</p>
-${a.status === 'pending' ? '<div class="panel"><strong>Deine Anmeldung wird geprüft.</strong> <span class="muted">Sobald sie freigegeben ist, zählen deine Klicks und Verkäufe.</span></div>' : ''}
-<div class="panel"><h2>Dein Link</h2><input class="copy" readonly value="${escapeHtml(s.link)}" aria-label="Dein Partner-Link">
-<p class="muted small" style="margin-bottom:0">Du kannst <code>?ref=${escapeHtml(a.code)}</code> auch an jede andere Seite von uns hängen. Dein Code: <strong>${escapeHtml(a.code)}</strong></p></div>
-<div class="tiles">${tile('Klicks', String(s.clicks))}${tile('Leads', String(s.leads))}${tile('Verkäufe', String(s.sales))}${tile('Provision offen', money(s.pending_cents))}${tile('Freigegeben', money(s.approved_cents))}${tile('Ausgezahlt', money(s.paid_cents))}</div>
-<div class="grid2"><div class="panel scroll"><h2>Provisionen</h2>${comms.length ? `<table><thead><tr><th>Datum</th><th>Art</th><th>Betrag</th><th>Status</th></tr></thead><tbody>${comms.map((c) => `<tr><td>${new Date(c.created_at).toLocaleDateString('de-DE')}</td><td>${kind(c.kind)}</td><td>${money(c.amount_cents, c.currency)}</td><td>${pill(c.status)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Noch keine Provisionen.</p>'}</div>
-<div class="panel scroll"><h2>Auszahlungen</h2>${payouts.length ? `<table><thead><tr><th>Datum</th><th>Betrag</th><th>Status</th></tr></thead><tbody>${payouts.map((o) => `<tr><td>${new Date(o.paid_at || o.created_at).toLocaleDateString('de-DE')}</td><td>${money(o.amount_cents, o.currency)}</td><td>${pill(o.status)}</td></tr>`).join('')}</tbody></table>` : `<p class="muted">Noch keine Auszahlung. Ausgezahlt wird ab ${money(p.payout_threshold_cents)} freigegebener Provision.</p>`}</div></div>
-<div class="panel"><h2>Auszahlungsdaten</h2><form method="post" action="${base(p)}/settings">
-<label>Auszahlung per</label><select name="payout_method"><option value="sepa"${a.payout_method !== 'paypal' ? ' selected' : ''}>Überweisung (SEPA)</option><option value="paypal"${a.payout_method === 'paypal' ? ' selected' : ''}>PayPal</option></select>
-<div class="grid2"><div><label for="iban">IBAN</label><input id="iban" name="iban" value="${escapeHtml(a.iban)}" autocomplete="off"></div><div><label for="bic">BIC (optional)</label><input id="bic" name="bic" value="${escapeHtml(a.bic)}"></div></div>
-<label for="paypal">PayPal-E-Mail</label><input id="paypal" name="paypal_email" type="email" value="${escapeHtml(a.paypal_email)}">
-<p><button class="btn">Speichern</button></p></form></div>`,
+${a.status === 'pending' ? `<div class="panel"><strong>${t('Deine Anmeldung wird geprüft.')}</strong> <span class="muted">${t('Sobald sie freigegeben ist, zählen deine Klicks und Verkäufe.')}</span></div>` : ''}
+<div class="panel"><h2>${t('Dein Link')}</h2><input class="copy" readonly value="${escapeHtml(s.link)}" aria-label="${t('Dein Partner-Link')}">
+<p class="muted small" style="margin-bottom:0">${t('Du kannst {param} auch an jede andere Seite von uns hängen. Dein Code: {code}', { param: `<code>?ref=${escapeHtml(a.code)}</code>`, code: `<strong>${escapeHtml(a.code)}</strong>` })}</p></div>
+<div class="tiles">${tile(t('Klicks'), String(s.clicks))}${tile(t('Leads'), String(s.leads))}${tile(t('Verkäufe'), String(s.sales))}${tile(t('Provision offen'), money(s.pending_cents))}${tile(t('Freigegeben'), money(s.approved_cents))}${tile(t('Ausgezahlt'), money(s.paid_cents))}</div>
+<div class="grid2"><div class="panel scroll"><h2>${t('Provisionen')}</h2>${comms.length ? `<table><thead><tr><th>${t('Datum')}</th><th>${t('Art')}</th><th>${t('Betrag')}</th><th>${t('Status')}</th></tr></thead><tbody>${comms.map((c) => `<tr><td>${dateOf(c.created_at)}</td><td>${kind(c.kind)}</td><td>${money(c.amount_cents, c.currency)}</td><td>${pill(c.status)}</td></tr>`).join('')}</tbody></table>` : `<p class="muted">${t('Noch keine Provisionen.')}</p>`}</div>
+<div class="panel scroll"><h2>${t('Auszahlungen')}</h2>${payouts.length ? `<table><thead><tr><th>${t('Datum')}</th><th>${t('Betrag')}</th><th>${t('Status')}</th></tr></thead><tbody>${payouts.map((o) => `<tr><td>${dateOf(o.paid_at || o.created_at)}</td><td>${money(o.amount_cents, o.currency)}</td><td>${pill(o.status)}</td></tr>`).join('')}</tbody></table>` : `<p class="muted">${t('Noch keine Auszahlung. Ausgezahlt wird ab {amount} freigegebener Provision.', { amount: money(p.payout_threshold_cents) })}</p>`}</div></div>
+<div class="panel"><h2>${t('Auszahlungsdaten')}</h2><form method="post" action="${base(p)}/settings">
+<label>${t('Auszahlung per')}</label><select name="payout_method"><option value="sepa"${a.payout_method !== 'paypal' ? ' selected' : ''}>${t('Überweisung (SEPA)')}</option><option value="paypal"${a.payout_method === 'paypal' ? ' selected' : ''}>PayPal</option></select>
+<div class="grid2"><div><label for="iban">IBAN</label><input id="iban" name="iban" value="${escapeHtml(a.iban)}" autocomplete="off"></div><div><label for="bic">${t('BIC (optional)')}</label><input id="bic" name="bic" value="${escapeHtml(a.bic)}"></div></div>
+<label for="paypal">${t('PayPal-E-Mail')}</label><input id="paypal" name="paypal_email" type="email" value="${escapeHtml(a.paypal_email)}">
+<p><button class="btn">${t('Speichern')}</button></p></form></div>`,
       });
     };
 
@@ -771,47 +791,51 @@ ${a.status === 'pending' ? '<div class="panel"><strong>Deine Anmeldung wird gepr
       if (!p || !p.active || !p.public_signup) return unknown();
       return joinPage(p);
     });
-    const joinPage = (p: any, opts: { error?: string; values?: any; status?: number } = {}) =>
-      page(p, {
-        title: 'Partner werden',
+    const joinPage = (p: any, opts: { error?: string; values?: any; status?: number } = {}) => {
+      const t = tLoc(app, p.location_id);
+      return page(p, {
+        title: t('Partner werden'),
         status: opts.status,
-        body: `<div class="auth"><div class="panel"><h1>Partner werden</h1><p class="muted">${escapeHtml(terms(p))}</p>
+        body: `<div class="auth"><div class="panel"><h1>${t('Partner werden')}</h1><p class="muted">${escapeHtml(terms(p))}</p>
 <form method="post" action="${base(p)}/join">
-<label for="name">Name</label><input id="name" name="name" required autocomplete="name" value="${escapeHtml(opts.values?.name ?? '')}">
-<label for="email">E-Mail-Adresse</label><input id="email" name="email" type="email" required autocomplete="email" value="${escapeHtml(opts.values?.email ?? '')}">
+<label for="name">${t('Name')}</label><input id="name" name="name" required autocomplete="name" value="${escapeHtml(opts.values?.name ?? '')}">
+<label for="email">${t('E-Mail-Adresse')}</label><input id="email" name="email" type="email" required autocomplete="email" value="${escapeHtml(opts.values?.email ?? '')}">
 <input type="text" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
 ${p.terms ? `<p class="muted small" style="white-space:pre-wrap">${escapeHtml(p.terms)}</p>` : ''}
-<label class="check"><input type="checkbox" name="accept" value="1" required> Ich akzeptiere die Bedingungen des Partnerprogramms und die Verarbeitung meiner Daten zur Abrechnung.</label>
-${opts.error ? `<p class="err">${escapeHtml(opts.error)}</p>` : ''}<p><button class="btn wide">Anmelden</button></p></form>
-<p class="muted small">Schon Partner? <a href="${base(p)}">Zum Login</a></p></div></div>`,
+<label class="check"><input type="checkbox" name="accept" value="1" required> ${t('Ich akzeptiere die Bedingungen des Partnerprogramms und die Verarbeitung meiner Daten zur Abrechnung.')}</label>
+${opts.error ? `<p class="err">${escapeHtml(opts.error)}</p>` : ''}<p><button class="btn wide">${t('Anmelden')}</button></p></form>
+<p class="muted small">${t('Schon Partner?')} <a href="${base(p)}">${t('Zum Login')}</a></p></div></div>`,
       });
+    };
     router.post('/affiliate/:program/join', 'public', async (ctx) => {
       const p = bySlug(ctx.params.program);
       if (!p || !p.active || !p.public_signup) return unknown();
       const values = { name: String(ctx.body?.name ?? '').slice(0, 120), email: String(ctx.body?.email ?? '').slice(0, 200) };
-      if (!sameOrigin(ctx)) return joinPage(p, { error: 'Bitte die Seite neu laden und noch einmal versuchen.', values, status: 403 });
-      if (ctx.body?.website) return loginPage(p, { notice: 'Danke! Wir melden uns per E-Mail.' });
-      if (limited(`join:${ctx.ip}`, 5)) return joinPage(p, { error: 'Zu viele Versuche – bitte später noch einmal.', values, status: 429 });
-      if (!ctx.body?.accept) return joinPage(p, { error: 'Bitte die Bedingungen bestätigen.', values, status: 400 });
+      const t = tLoc(app, p.location_id);
+      if (!sameOrigin(ctx)) return joinPage(p, { error: t('Bitte die Seite neu laden und noch einmal versuchen.'), values, status: 403 });
+      if (ctx.body?.website) return loginPage(p, { notice: t('Danke! Wir melden uns per E-Mail.') });
+      if (limited(`join:${ctx.ip}`, 5)) return joinPage(p, { error: t('Zu viele Versuche – bitte später noch einmal.'), values, status: 429 });
+      if (!ctx.body?.accept) return joinPage(p, { error: t('Bitte die Bedingungen bestätigen.'), values, status: 400 });
       try {
         const a = createAffiliate(p, { name: values.name, email: values.email }, 'signup');
         if (a.status === 'active') await sendLoginLink(a).catch((e) => console.error('[affiliates] login mail', e));
-        return loginPage(p, { notice: a.status === 'active' ? 'Willkommen! Dein Login-Link ist per E-Mail unterwegs.' : 'Danke für deine Anmeldung! Wir prüfen sie und melden uns per E-Mail.' });
+        return loginPage(p, { notice: a.status === 'active' ? t('Willkommen! Dein Login-Link ist per E-Mail unterwegs.') : t('Danke für deine Anmeldung! Wir prüfen sie und melden uns per E-Mail.') });
       } catch (e) {
-        return joinPage(p, { error: (e as Error).message, values, status: 400 });
+        return joinPage(p, { error: t((e as Error).message), values, status: 400 });
       }
     });
     router.post('/affiliate/:program/login', 'public', async (ctx) => {
       const p = bySlug(ctx.params.program);
       if (!p || !p.active) return unknown();
-      if (!sameOrigin(ctx)) return loginPage(p, { error: 'Bitte die Seite neu laden und noch einmal versuchen.', status: 403 });
-      if (limited(`login:${ctx.ip}`, 20)) return loginPage(p, { error: 'Zu viele Versuche – bitte in ein paar Minuten noch einmal.', status: 429 });
+      const t = tLoc(app, p.location_id);
+      if (!sameOrigin(ctx)) return loginPage(p, { error: t('Bitte die Seite neu laden und noch einmal versuchen.'), status: 403 });
+      if (limited(`login:${ctx.ip}`, 20)) return loginPage(p, { error: t('Zu viele Versuche – bitte in ein paar Minuten noch einmal.'), status: 429 });
       const email = normalizeEmail(ctx.body?.email);
-      if (!EMAIL_RE.test(email)) return loginPage(p, { error: 'Bitte eine gültige E-Mail-Adresse eingeben.', status: 400 });
+      if (!EMAIL_RE.test(email)) return loginPage(p, { error: t('Bitte eine gültige E-Mail-Adresse eingeben.'), status: 400 });
       const a = db.get("SELECT * FROM affiliates WHERE program_id = ? AND email = ? AND status != 'blocked'", p.id, email);
       // Same answer either way (no guessing who is a partner); at most 3 links per 15 minutes.
       if (a && !limited(`mail:${a.id}`, 3)) await sendLoginLink(a).catch((e) => console.error('[affiliates] login mail', e));
-      return loginPage(p, { notice: `Wenn ${email} als Partner angemeldet ist, kommt gleich ein Login-Link per E-Mail.` });
+      return loginPage(p, { notice: t('Wenn {email} als Partner angemeldet ist, kommt gleich ein Login-Link per E-Mail.', { email }) });
     });
     const tokenRow = (raw: string) => (raw ? db.get('SELECT * FROM affiliate_login_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?', sha256(raw), now()) : undefined);
     // Opening the link only shows a button, so mail scanners cannot use it up.
@@ -821,8 +845,9 @@ ${opts.error ? `<p class="err">${escapeHtml(opts.error)}</p>` : ''}<p><button cl
       const raw = String(ctx.query.get('token') ?? '');
       const row = tokenRow(raw);
       const a = row && affiliate(row.affiliate_id);
-      if (!a || a.program_id !== p.id) return loginPage(p, { error: 'Dieser Link ist abgelaufen oder wurde schon benutzt.', status: 400 });
-      return page(p, { title: 'Anmelden', body: `<div class="auth"><div class="panel"><h1>Willkommen zurück</h1><p class="muted">Angemeldet wirst du als <strong>${escapeHtml(a.email)}</strong>.</p><form method="post" action="${base(p)}/auth"><input type="hidden" name="token" value="${escapeHtml(raw)}"><button class="btn wide">Jetzt anmelden</button></form></div></div>` });
+      const t = tLoc(app, p.location_id);
+      if (!a || a.program_id !== p.id) return loginPage(p, { error: t('Dieser Link ist abgelaufen oder wurde schon benutzt.'), status: 400 });
+      return page(p, { title: t('Anmelden'), body: `<div class="auth"><div class="panel"><h1>${t('Willkommen zurück')}</h1><p class="muted">${t('Angemeldet wirst du als {email}.', { email: `<strong>${escapeHtml(a.email)}</strong>` })}</p><form method="post" action="${base(p)}/auth"><input type="hidden" name="token" value="${escapeHtml(raw)}"><button class="btn wide">${t('Jetzt einloggen')}</button></form></div></div>` });
     });
     router.post('/affiliate/:program/auth', 'public', (ctx) => {
       const p = bySlug(ctx.params.program);
@@ -831,7 +856,7 @@ ${opts.error ? `<p class="err">${escapeHtml(opts.error)}</p>` : ''}<p><button cl
       const row = tokenRow(raw);
       const a = row && affiliate(row.affiliate_id);
       if (!sameOrigin(ctx) || !a || a.program_id !== p.id || !db.run('UPDATE affiliate_login_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL', now(), row.token_hash).changes)
-        return loginPage(p, { error: 'Dieser Link ist abgelaufen oder wurde schon benutzt.', status: 400 });
+        return loginPage(p, { error: tLoc(app, p.location_id)('Dieser Link ist abgelaufen oder wurde schon benutzt.'), status: 400 });
       const sid = token(32);
       db.insert('affiliate_sessions', { token_hash: sha256(sid), affiliate_id: a.id, created_at: now(), expires_at: new Date(Date.now() + SESSION_DAYS * 864e5).toISOString() });
       // Clicks from the partner's own connection are not counted (self-referral).
@@ -853,9 +878,10 @@ ${opts.error ? `<p class="err">${escapeHtml(opts.error)}</p>` : ''}<p><button cl
       const a = memberOf(ctx, p);
       if (!a || !sameOrigin(ctx)) return redirect(base(p), 303);
       const iban = cleanIban(ctx.body?.iban);
-      if (iban && !validIban(iban)) return dashboard(p, a, 'Die IBAN ist ungültig – bitte prüfen.');
+      const t = tLoc(app, p.location_id);
+      if (iban && !validIban(iban)) return dashboard(p, a, t('Die IBAN ist ungültig – bitte prüfen.'));
       db.update('affiliates', a.id, { payout_method: ctx.body?.payout_method === 'paypal' ? 'paypal' : 'sepa', iban, bic: String(ctx.body?.bic ?? '').trim().toUpperCase().slice(0, 11), paypal_email: normalizeEmail(ctx.body?.paypal_email).slice(0, 200), updated_at: now() });
-      return dashboard(p, affiliate(a.id), 'Gespeichert.');
+      return dashboard(p, affiliate(a.id), t('Gespeichert.'));
     });
   },
 };

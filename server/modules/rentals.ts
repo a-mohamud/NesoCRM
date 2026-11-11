@@ -12,6 +12,7 @@ import { HM, MAX_QUANTITY, MAX_UNITS, UNITS, rangeText, validYmd, type Unit } fr
 import { rentalBookingPage, rentalManagePage, rentalPaidPage } from '../services/rentals-page.js';
 import { DEFAULT_SETTINGS, type CalendarRow } from './calendars.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Vermietung (HighLevel "Rentals", docs/booking.md#rentals): bookable items with a quantity (3 e-bikes, 2 holiday flats) booked by
@@ -28,6 +29,7 @@ const q = (params: Record<string, unknown>) => {
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') s.set(k, String(v));
   return s.toString() ? `?${s}` : '';
 };
+// i18n-ignore – only a part: the catalog has the full descriptions of ghl_rental_availability and ghl_rental_book that include it.
 const NOTE =
   'Daten sind JJJJ-MM-TT. unit=night (Übernachtung): from = Anreise, to = Abreise – Abreise und nächste Anreise am selben Tag gehen. unit=day (Tagesmiete): from = erster Tag, to = letzter Tag (einschließlich). Statt to geht days (Anzahl Tage/Nächte). Beträge in Cent.';
 
@@ -35,6 +37,7 @@ export const RENTAL_TOOLS: Tool[] = [
   {
     name: 'ghl_rental_availability',
     title: 'Vermietung: Angebote und freie Zeiträume',
+    // i18n-ignore – composed with NOTE; the catalog key is the full text (mcp.ts translates it on tools/list).
     description: `Die Mietangebote eines Sub-Accounts (z. B. E-Bikes, Ferienwohnungen) mit Anzahl, Preis pro Tag/Nacht, Kaution, Mindest-/Höchstdauer und Buchungslink. Mit rental_id und from: die freien Stück je Tag (days, Standard 14) und – mit to oder days – das Angebot für genau diesen Zeitraum (ok, free, Preis, problem). ${NOTE}`,
     inputSchema: obj(
       {
@@ -59,6 +62,7 @@ export const RENTAL_TOOLS: Tool[] = [
   {
     name: 'ghl_rental_book',
     title: 'Vermietung buchen',
+    // i18n-ignore – composed with NOTE; the catalog key is the full text (mcp.ts translates it on tools/list).
     description: `Bucht ein Mietangebot für einen Zeitraum für einen Kontakt (contact_id, oder E-Mail und Vorname – der Kontakt wird angelegt oder zusammengeführt). Prüfe vorher mit ghl_rental_availability, ob genug frei ist. Der Kontakt bekommt die Bestätigung per E-Mail – frage vorher, ob das gewollt ist. Kostenpflichtige Angebote: Es entsteht eine Zahlungsseite (status payment_required, checkout_url an den Kontakt geben); die Buchung gilt erst nach der Zahlung, bis dahin ist der Zeitraum reserviert. payment=waive bucht ohne Online-Zahlung – nur auf ausdrücklichen Wunsch. ${NOTE}`,
     inputSchema: obj(
       {
@@ -83,7 +87,7 @@ export const RENTAL_TOOLS: Tool[] = [
     run: async (call, a) => {
       const { location_id, rental_id, ...body } = a;
       const r = await call.api('POST', `/api/rentals/${encodeURIComponent(rental_id)}/book`, { location: location_id, body });
-      if (r.status === 'payment_required') return { ...r, hint: 'Den Link an den Kontakt geben – die Buchung gilt nach der Zahlung. Bis dahin ist der Zeitraum reserviert.', link: '/app/calendars' };
+      if (r.status === 'payment_required') return { ...r, hint: tApp()('Den Link an den Kontakt geben – die Buchung gilt nach der Zahlung. Bis dahin ist der Zeitraum reserviert.'), link: '/app/calendars' };
       return { status: r.status, booking: r.booking, appointment_id: r.appointment?.id, manage_url: r.manage_url, link: '/app/calendars' };
     },
   },
@@ -128,14 +132,16 @@ function throttled(ip: string, max = 15, windowMs = 10 * 60_000): boolean {
   return list.length > max;
 }
 
-/** Confirmation and reminder texts of a new item (editable in the calendar's settings). */
+/** Confirmation and reminder texts of a new item (editable in the calendar's settings); German ids, translated line by line on creation. */
 const RENTAL_SETTINGS = {
   confirmation_subject: 'Buchung bestätigt: {{calendar.name}}',
-  confirmation_body:
+  confirmation_body: // i18n-ignore – translated line by line (rentalSettings)
     'Hallo {{contact.first_name|du}},\n\ndeine Buchung „{{calendar.name}}“ ist bestätigt:\n{{appointment.rental_text}}\nAbholung / Anreise: {{appointment.start_text}}\n{{appointment.rental_price}}\n{{calendar.meeting_location}}\n\nBuchung ansehen oder absagen: {{appointment.manage_url}}\n\nBis bald!\n{{location.name}}',
   reminder_subject: 'Erinnerung: {{calendar.name}} ab {{appointment.start_text}}',
+  // i18n-ignore – translated line by line (rentalSettings)
   reminder_body: 'Hallo {{contact.first_name|du}},\n\nkurze Erinnerung an deine Buchung „{{calendar.name}}“:\n{{appointment.rental_text}}\nAbholung / Anreise: {{appointment.start_text}}\n{{calendar.meeting_location}}\n\nBuchung ansehen oder absagen: {{appointment.manage_url}}',
 };
+const rentalSettings = (t: STFn) => Object.fromEntries(Object.entries(RENTAL_SETTINGS).map(([k, v]) => [k, v.split('\n').map((l) => (l.trim() ? t(l) : l)).join('\n')]));
 
 export const rentalsModule: Module = {
   name: 'rentals',
@@ -221,7 +227,7 @@ export const rentalsModule: Module = {
       const p: Partial<RentalRow> = {};
       const int = (v: unknown, label: string, lo: number, hi: number) => {
         const n = Number(v);
-        if (!Number.isInteger(n) || n < lo || n > hi) throw bad(`${label}: ganze Zahl von ${lo} bis ${hi}`);
+        if (!Number.isInteger(n) || n < lo || n > hi) throw bad(tApp()('{field}: ganze Zahl von {min} bis {max}', { field: tApp()(label), min: lo, max: hi }));
         return n;
       };
       if (b.quantity !== undefined) p.quantity = int(b.quantity, 'Anzahl', 1, MAX_QUANTITY);
@@ -237,7 +243,7 @@ export const rentalsModule: Module = {
       for (const k of ['checkin_time', 'checkout_time'] as const) {
         if (b[k] === undefined) continue;
         const v = String(b[k] ?? '').trim();
-        if (v && !HM.test(v)) throw bad(`${k === 'checkin_time' ? 'Abholung/Anreise' : 'Rückgabe/Abreise'}: Uhrzeit als HH:MM`);
+        if (v && !HM.test(v)) throw bad(k === 'checkin_time' ? 'Abholung/Anreise: Uhrzeit als HH:MM' : 'Rückgabe/Abreise: Uhrzeit als HH:MM');
         p[k] = v;
       }
       if (b.currency !== undefined) {
@@ -284,7 +290,7 @@ export const rentalsModule: Module = {
         timezone: tz,
         color: /^#[0-9a-f]{6}$/i.test(b.color ?? '') ? b.color : '#0d9488',
         active: b.active === false ? 0 : 1,
-        settings: normalizeBookingSettings({ ...DEFAULT_SETTINGS, ...RENTAL_SETTINGS, rental: true }, {}, todayOf({ timezone: tz })),
+        settings: normalizeBookingSettings({ ...DEFAULT_SETTINGS, ...rentalSettings(tLoc(app, ctx.locationId)), rental: true }, {}, todayOf({ timezone: tz })),
         created_at: t,
       };
       const row = { id: id(), location_id: ctx.locationId, calendar_id: cal.id, quantity: 1, unit: 'day' as Unit, price_cents: 0, deposit_cents: 0, currency: 'EUR', min_units: 1, max_units: 0, checkin_time: '', checkout_time: '', hold_minutes: 30, ...fields, created_at: t, updated_at: t };
@@ -316,7 +322,7 @@ export const rentalsModule: Module = {
       const { r, cal } = loaded(ctx);
       const upcoming = out(r, cal).upcoming;
       // Deleting the item deletes its calendar and appointments: not while bookings are ahead, unless asked for explicitly.
-      if (upcoming && ctx.query.get('force') !== '1') throw new HttpError(409, `Es gibt noch ${upcoming} anstehende Buchung(en) – erst absagen oder „Trotzdem löschen“`);
+      if (upcoming && ctx.query.get('force') !== '1') throw new HttpError(409, tCtx(ctx).plural(upcoming, { one: 'Es gibt noch {n} anstehende Buchung – erst absagen oder „Trotzdem löschen“', other: 'Es gibt noch {n} anstehende Buchungen – erst absagen oder „Trotzdem löschen“' }));
       db.run('DELETE FROM calendars WHERE id = ? AND location_id = ?', cal.id, ctx.locationId);
       return { ok: true };
     });
@@ -388,14 +394,14 @@ export const rentalsModule: Module = {
         const { r, cal } = publicOf(ctx.params.slug);
         return html(rentalBookingPage(app, cal, r, ctx.query.get('embed') === '1'));
       } catch {
-        return html(messagePage('Nicht gefunden', 'Dieses Angebot gibt es nicht (mehr).'), 404);
+        return html(messagePage(tCtx(ctx)('Nicht gefunden'), tCtx(ctx)('Dieses Angebot gibt es nicht (mehr).')), 404);
       }
     });
     router.get('/book/rent/paid/:token', 'public', (ctx) => {
       const b = db.get<BookingRow>('SELECT * FROM rental_bookings WHERE token = ?', ctx.params.token);
       const r = b && db.get<RentalRow>('SELECT * FROM rentals WHERE id = ?', b.rental_id);
       const cal = r && calOfRental(app, r);
-      if (!b || !r || !cal) return html(messagePage('Nicht gefunden', 'Diese Buchung gibt es nicht.'), 404);
+      if (!b || !r || !cal) return html(messagePage(tCtx(ctx)('Nicht gefunden'), tCtx(ctx)('Diese Buchung gibt es nicht.')), 404);
       const res = html(rentalPaidPage(app, cal, r, b, ctx.query.get('cancelled') === '1'));
       res.headers['cache-control'] = 'no-store';
       return res;
@@ -421,10 +427,11 @@ export const rentalsModule: Module = {
       if (Date.parse(a.start_at) <= Date.now()) throw new HttpError(409, 'Die Mietzeit hat schon begonnen – bitte direkt melden');
       db.run(`UPDATE appointments SET status = 'cancelled' WHERE id = ?`, a.id);
       const b = bookingOfAppointment(app, a.id);
-      if (a.contact_id) logActivity(app, a.location_id, a.contact_id, 'appointment.status_changed', 'Buchung vom Kontakt abgesagt');
+      const t = tLoc(app, a.location_id);
+      if (a.contact_id) logActivity(app, a.location_id, a.contact_id, 'appointment.status_changed', t('Buchung vom Kontakt abgesagt'));
       app.events.emit(a.location_id, 'appointment.status_changed', { contactId: a.contact_id, appointment: { ...a, status: 'cancelled' }, status: 'cancelled', calendarId: a.calendar_id });
-      const paid = b?.paid_at ? `\nBezahlt: ${centsToMoney(b.total_cents, b.currency)} – bitte die Erstattung veranlassen.` : '';
-      void notifyTeam(app, a.location_id, `Buchung abgesagt: ${a.title}`, `${a.title} wurde vom Kontakt abgesagt.${b ? `\n${rangeText(r.unit, { from: b.from_date, to: b.to_date, units: b.units })}` : ''}${paid}`);
+      const paid = b?.paid_at ? `\n${t('Bezahlt: {amount} – bitte die Erstattung veranlassen.', { amount: centsToMoney(b.total_cents, b.currency) })}` : '';
+      void notifyTeam(app, a.location_id, t('Buchung abgesagt: {title}', { title: a.title }), `${t('{title} wurde vom Kontakt abgesagt.', { title: a.title })}${b ? `\n${rangeText(r.unit, { from: b.from_date, to: b.to_date, units: b.units }, t)}` : ''}${paid}`);
       return { ok: true };
     };
     /** {{appointment.rental_text}}, {{appointment.rental_qty}}, {{appointment.rental_price}} in the calendar's texts. */
@@ -434,9 +441,13 @@ export const rentalsModule: Module = {
       const b = a?.id ? bookingOfAppointment(app, a.id) : undefined;
       const r = b && db.get<RentalRow>('SELECT unit FROM rentals WHERE id = ?', b.rental_id);
       if (!b || !r) return base;
-      const range = rangeText(r.unit, { from: b.from_date, to: b.to_date, units: b.units });
-      const price = b.total_cents ? `Betrag: ${centsToMoney(b.total_cents, b.currency)}${b.deposit_cents ? ` (davon Kaution ${centsToMoney(b.deposit_cents, b.currency)})` : ''}${b.paid_at ? ' – bezahlt' : ''}` : '';
-      return { ...base, rental_text: `${range}${b.qty > 1 ? ` · ${b.qty} Stück` : ''}`, rental_qty: b.qty, rental_price: price, rental_from: b.from_date, rental_to: b.to_date };
+      // These go into the customer's e-mails: the sub-account's language.
+      const t = tLoc(app, b.location_id);
+      const range = rangeText(r.unit, { from: b.from_date, to: b.to_date, units: b.units }, t);
+      const price = b.total_cents
+        ? [t('Betrag: {amount}', { amount: centsToMoney(b.total_cents, b.currency) }), b.deposit_cents ? t('(davon Kaution {amount})', { amount: centsToMoney(b.deposit_cents, b.currency) }) : ''].filter(Boolean).join(' ') + (b.paid_at ? ` – ${t('bezahlt')}` : '')
+        : '';
+      return { ...base, rental_text: `${range}${b.qty > 1 ? ` · ${t('{n} Stück', { n: b.qty })}` : ''}`, rental_qty: b.qty, rental_price: price, rental_from: b.from_date, rental_to: b.to_date };
     };
 
     // --- payment, holds, privacy ------------------------------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, newBlock, newSection, type Block, type BlockStyle, type EmailDesign, type Section } from './email-render.js';
+import type { STFn } from '../i18n/index.js';
 
 /**
  * Building blocks for the template gallery (services/mk-gallery.ts): colour themes and small functions that return finished sections
@@ -58,6 +59,36 @@ export function tone(t: Theme, tn: Tone) {
 }
 
 type Style = BlockStyle;
+
+/**
+ * Neso fork: the gallery's copy is written in German and is the catalog key (server/i18n). A template is built for one language
+ * (`build(t)`): while it runs, every visible text passes through `L`. Builds are synchronous, so a module-level translator is safe.
+ */
+let current: STFn | null = null;
+export function L(s: string): string {
+  if (!current || !s) return s;
+  // a short word that means something else elsewhere in the app has a gallery-specific entry ("gallery|Abmelden")
+  const ctx = `gallery|${s}`;
+  const own = current(ctx);
+  if (own !== ctx) return own;
+  const hit = current(s);
+  if (hit !== s) return hit;
+  // multi-line copy is keyed by its text with whitespace folded (as the i18n check reports it)
+  const flat = s.replace(/\s+/g, ' ').trim();
+  const h2 = current(flat);
+  return h2 !== flat ? h2 : s;
+}
+/** Runs `fn` with `t` as the gallery's translator (none: the German source). */
+export function withTranslator<T>(t: STFn | undefined, fn: () => T): T {
+  const prev = current;
+  current = t ?? null;
+  try {
+    return fn();
+  } finally {
+    current = prev;
+  }
+}
+
 const sec = (t: Theme, tn: Tone, cols: Block[][], o: { padY?: number; padX?: number; widths?: number[] } = {}): Section => {
   const s = newSection(cols.length, cols, o.widths);
   s.style = { background: tone(t, tn).bg, paddingY: o.padY ?? (tn === 'plain' ? 0 : 28), paddingX: o.padX ?? 0 };
@@ -66,34 +97,35 @@ const sec = (t: Theme, tn: Tone, cols: Block[][], o: { padY?: number; padX?: num
 
 // --- blocks -----------------------------------------------------------------------------------------------------
 
-export const h = (t: Theme, tn: Tone, text: string, level: 1 | 2 | 3 = 1, s: Style = {}): Block => newBlock('heading', { text, level }, { align: 'left', color: tone(t, tn).text, paddingY: 8, ...s });
-export const p = (t: Theme, tn: Tone, text: string, s: Style = {}): Block => newBlock('text', { text }, { align: 'left', color: tone(t, tn).text, ...s });
-export const small = (t: Theme, tn: Tone, text: string, s: Style = {}): Block => newBlock('text', { text }, { align: 'left', color: tone(t, tn).muted, fontSize: 13, ...s });
-export const kicker = (t: Theme, tn: Tone, text: string, s: Style = {}): Block => newBlock('text', { text: text.toUpperCase() }, { align: 'left', color: tn === 'plain' || tn === 'soft' ? t.accent : tone(t, tn).muted, fontSize: 12, paddingY: 4, ...s });
+export const h = (t: Theme, tn: Tone, text: string, level: 1 | 2 | 3 = 1, s: Style = {}): Block => newBlock('heading', { text: L(text), level }, { align: 'left', color: tone(t, tn).text, paddingY: 8, ...s });
+export const p = (t: Theme, tn: Tone, text: string, s: Style = {}): Block => newBlock('text', { text: L(text) }, { align: 'left', color: tone(t, tn).text, ...s });
+export const small = (t: Theme, tn: Tone, text: string, s: Style = {}): Block => newBlock('text', { text: L(text) }, { align: 'left', color: tone(t, tn).muted, fontSize: 13, ...s });
+export const kicker = (t: Theme, tn: Tone, text: string, s: Style = {}): Block => newBlock('text', { text: L(text).toUpperCase() }, { align: 'left', color: tn === 'plain' || tn === 'soft' ? t.accent : tone(t, tn).muted, fontSize: 12, paddingY: 4, ...s });
 export const btn = (t: Theme, tn: Tone, label: string, href: string, s: Style = {}, props: Record<string, unknown> = {}): Block => {
   const c = tone(t, tn);
-  return newBlock('button', { label, href, background: c.button, textColor: c.buttonText, radius: 8, ...props }, { align: 'left', paddingY: 12, ...s });
+  return newBlock('button', { label: L(label), href, background: c.button, textColor: c.buttonText, radius: 8, ...props }, { align: 'left', paddingY: 12, ...s });
 };
 export const ghost = (t: Theme, tn: Tone, label: string, href: string, s: Style = {}): Block => {
   const c = tone(t, tn);
-  return newBlock('button', { label, href, background: c.bg || t.card, textColor: c.text, radius: 8 }, { align: 'left', paddingY: 6, ...s });
+  return newBlock('button', { label: L(label), href, background: c.bg || t.card, textColor: c.text, radius: 8 }, { align: 'left', paddingY: 6, ...s });
 };
 export const rule = (t: Theme, tn: Tone = 'plain', s: Style = {}): Block => newBlock('divider', { color: tone(t, tn).line }, { paddingY: 10, ...s });
 export const gap = (height = 16): Block => newBlock('spacer', { height });
-export const image = (alt: string, s: Style = {}): Block => newBlock('image', { alt }, { paddingX: 0, paddingY: 0, ...s });
+export const image = (alt: string, s: Style = {}): Block => newBlock('image', { alt: L(alt) }, { paddingX: 0, paddingY: 0, ...s });
 
 /** A dashed coupon box (HTML block: inline styles only). */
 export function couponBlock(t: Theme, tn: Tone, code: string, note = ''): Block {
   const c = tone(t, tn);
   const border = tn === 'deep' || tn === 'accent' ? c.text : t.accent;
-  const html = `<div style="text-align:center;border:2px dashed ${border};border-radius:10px;padding:16px 12px;"><div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:${c.muted};">Dein Code</div><div style="font-size:30px;font-weight:700;letter-spacing:4px;color:${c.text};padding:6px 0;">${code}</div>${note ? `<div style="font-size:13px;color:${c.muted};">${note}</div>` : ''}</div>`;
+  const html = `<div style="text-align:center;border:2px dashed ${border};border-radius:10px;padding:16px 12px;"><div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:${c.muted};">${L('Dein Code')}</div><div style="font-size:30px;font-weight:700;letter-spacing:4px;color:${c.text};padding:6px 0;">${L(code)}</div>${note ? `<div style="font-size:13px;color:${c.muted};">${L(note)}</div>` : ''}</div>`;
   return newBlock('html', { html }, { paddingY: 12, paddingX: 40 });
 }
 
 /** A quotation with a coloured bar (HTML block). */
 export function quoteBlock(t: Theme, tn: Tone, text: string, who: string): Block {
   const c = tone(t, tn);
-  const html = `<div style="border-left:4px solid ${t.accent};padding:4px 0 4px 16px;"><div style="font-size:18px;line-height:1.5;font-style:italic;color:${c.text};">„${text}“</div><div style="font-size:13px;color:${c.muted};padding-top:8px;">${who}</div></div>`;
+  const [open, close] = !current || current.locale === 'de' ? ['„', '“'] : ['“', '”'];
+  const html = `<div style="border-left:4px solid ${t.accent};padding:4px 0 4px 16px;"><div style="font-size:18px;line-height:1.5;font-style:italic;color:${c.text};">${open}${L(text)}${close}</div><div style="font-size:13px;color:${c.muted};padding-top:8px;">${L(who)}</div></div>`;
   return newBlock('html', { html }, { paddingY: 12 });
 }
 
@@ -107,7 +139,7 @@ export function scaleBlock(t: Theme, from: number, to: number, url: (n: number) 
 /** A highlighted line (price, date, number) with a small label above (HTML block). */
 export function figureBlock(t: Theme, tn: Tone, label: string, value: string, note = '', s: Style = {}): Block {
   const c = tone(t, tn);
-  const html = `<div style="text-align:center;"><div style="font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:${c.muted};">${label}</div><div style="font-size:40px;line-height:1.15;font-weight:700;color:${tn === 'plain' || tn === 'soft' ? t.accent : c.text};padding:4px 0;">${value}</div>${note ? `<div style="font-size:13px;color:${c.muted};">${note}</div>` : ''}</div>`;
+  const html = `<div style="text-align:center;"><div style="font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:${c.muted};">${L(label)}</div><div style="font-size:40px;line-height:1.15;font-weight:700;color:${tn === 'plain' || tn === 'soft' ? t.accent : c.text};padding:4px 0;">${L(value)}</div>${note ? `<div style="font-size:13px;color:${c.muted};">${L(note)}</div>` : ''}</div>`;
   return newBlock('html', { html }, { paddingY: 10, ...s });
 }
 
@@ -164,7 +196,7 @@ export function steps(t: Theme, items: [title: string, text: string][], o: { ton
   const blocks: Block[] = [];
   if (o.title) blocks.push(h(t, tn, o.title, 2));
   items.forEach(([title, text], i) => {
-    blocks.push(newBlock('heading', { text: `${i + 1}  ${title}`, level: 3 }, { align: 'left', color: tn === 'plain' || tn === 'soft' ? t.accent : tone(t, tn).text, paddingY: 4, fontSize: 18 }));
+    blocks.push(newBlock('heading', { text: `${i + 1}  ${L(title)}`, level: 3 }, { align: 'left', color: tn === 'plain' || tn === 'soft' ? t.accent : tone(t, tn).text, paddingY: 4, fontSize: 18 }));
     blocks.push(p(t, tn, text, { paddingY: 2, fontSize: 15 }));
     if (i < items.length - 1) blocks.push(gap(8));
   });
@@ -175,7 +207,7 @@ export function steps(t: Theme, items: [title: string, text: string][], o: { ton
 export function stats(t: Theme, items: [value: string, label: string][], o: { tone?: Tone } = {}): Section {
   const tn = o.tone ?? 'soft';
   const cols = items.slice(0, 3).map(([value, label]) => [
-    newBlock('heading', { text: value, level: 1 }, { align: 'center', color: tn === 'plain' || tn === 'soft' ? t.accent : tone(t, tn).text, paddingY: 4, fontSize: 34 }),
+    newBlock('heading', { text: L(value), level: 1 }, { align: 'center', color: tn === 'plain' || tn === 'soft' ? t.accent : tone(t, tn).text, paddingY: 4, fontSize: 34 }),
     small(t, tn, label, { align: 'center', paddingY: 2 }),
   ]);
   return sec(t, tn, cols, { padY: 26, widths: cols.length === 3 ? [33, 34, 33] : cols.length === 2 ? [50, 50] : [100] });
@@ -191,7 +223,7 @@ export function cards(t: Theme, items: { title: string; text: string; link?: [st
     const row = items.slice(i, i + n);
     const cols = row.map((c) => {
       const b = [h(t, tn, c.title, 3, { paddingY: 4 }), p(t, tn, c.text, { fontSize: 15, paddingY: 4 })];
-      if (c.link) b.push(newBlock('text', { text: `[${c.link[0]}](${c.link[1]})` }, { fontSize: 15, paddingY: 4, color: tone(t, tn).text }));
+      if (c.link) b.push(newBlock('text', { text: `[${L(c.link[0])}](${c.link[1]})` }, { fontSize: 15, paddingY: 4, color: tone(t, tn).text }));
       return b;
     });
     out.push(sec(t, tn, cols, { padY: tn === 'plain' ? 6 : 20, widths: n === 3 ? [33, 34, 33] : [50, 50] }));
@@ -219,7 +251,7 @@ export function bullets(t: Theme, items: string[], o: { tone?: Tone; title?: str
   const blocks: Block[] = [];
   if (o.title) blocks.push(h(t, tn, o.title, 2));
   // With a mark (✓, •, ☐) the lines stand on their own; without, they form a real list.
-  blocks.push(p(t, tn, o.mark ? items.map((x) => `${o.mark} ${x}`).join('\n') : items.map((x) => `- ${x}`).join('\n')));
+  blocks.push(p(t, tn, o.mark ? items.map((x) => `${o.mark} ${L(x)}`).join('\n') : items.map((x) => `- ${L(x)}`).join('\n')));
   return sec(t, tn, [blocks], { padY: tn === 'plain' ? 10 : 26 });
 }
 
@@ -237,7 +269,7 @@ export const social = (t: Theme, tn: Tone = 'plain'): Section => sec(t, tn, [[ne
 
 /** Footer with company, address and unsubscribe link (required for campaigns). */
 export const foot = (t: Theme, text = 'Du erhältst diese E-Mail, weil du dich bei uns angemeldet hast.'): Section =>
-  sec(t, 'plain', [[newBlock('footer', { company: '{{location.name}}', address: '{{location.address}}', text }, { align: 'center', color: t.muted, fontSize: 12, paddingY: 22 })]], { padY: 0 });
+  sec(t, 'plain', [[newBlock('footer', { company: '{{location.name}}', address: '{{location.address}}', text: L(text) }, { align: 'center', color: t.muted, fontSize: 12, paddingY: 22 })]], { padY: 0 });
 
 /** The design: settings from the theme and the sections in order. */
 export function mail(t: Theme, preheader: string, sections: (Section | Section[])[], o: { width?: number } = {}): EmailDesign {
@@ -266,11 +298,12 @@ export interface GalleryTemplate {
   /** Service mail (invoice, order): for an existing business relationship, not for advertising. */
   service: boolean;
   theme: ThemeKey;
-  build: () => EmailDesign;
+  /** The design in one language (`t`; without: the German source). */
+  build: (t?: STFn) => EmailDesign;
 }
 
 /** One template: its data and the sections (built from its theme). */
 export function tpl(d: { key: string; name: string; category: CategoryKey; description: string; subject: string; preheader: string; theme: ThemeKey; tags?: string; formal?: 'du' | 'sie'; service?: boolean }, sections: (t: Theme) => (Section | Section[])[]): GalleryTemplate {
   const t: Theme = THEMES[d.theme];
-  return { key: d.key, name: d.name, category: d.category, description: d.description, subject: d.subject, preheader: d.preheader, tags: d.tags ?? '', formal: d.formal ?? 'du', service: !!d.service, theme: d.theme, build: () => mail(t, d.preheader, sections(t)) };
+  return { key: d.key, name: d.name, category: d.category, description: d.description, subject: d.subject, preheader: d.preheader, tags: d.tags ?? '', formal: d.formal ?? 'du', service: !!d.service, theme: d.theme, build: (tr?: STFn) => withTranslator(tr, () => mail(t, L(d.preheader), sections(t))) };
 }

@@ -1,5 +1,6 @@
 import { escapeHtml } from '../core/template.js';
 import { slugify } from '../core/util.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Markdown for the Wiki and the Team-Chat – the renderer, the HTML sanitiser behind it and the small
@@ -538,7 +539,7 @@ function parseBlocks(lines: Ln[], st: State, depth: number): string {
         // "> [!TIP] Eigener Titel" – the text after the tag replaces the default title
         const rest = tag[2].trim();
         const body = parseBlocks(q.slice(1), st, depth + 1);
-        const title = rest ? inline(rest, { o, inLink: false, b: st.b }) : kind[1];
+        const title = rest ? inline(rest, { o, inLink: false, b: st.b }) : escapeHtml(tApp()(kind[1]));
         out.push(`<div class="wk-callout wk-callout-${kind[0]}" data-kind="${kind[0]}"><div class="wk-callout-title">${title}</div><div class="wk-callout-body">${body}</div></div>`);
       } else out.push(`<blockquote>${parseBlocks(q, st, depth + 1)}</blockquote>`);
       continue;
@@ -1098,7 +1099,7 @@ export function publicMarkdown(md: string, baseUrl: string): string {
       l
         .replace(/^([ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+)\[ \](?=[ \t]|$)/, '$1☐')
         .replace(/^([ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+)\[[xX]\](?=[ \t]|$)/, '$1☑')
-        .replace(/^([ \t]*>[ \t]?)\[!([A-Za-z]{3,12})\][ \t]*/, (_m, q, k) => `${q}**${CALLOUTS[k.toUpperCase()]?.[1] ?? k}:** `)
+        .replace(/^([ \t]*>[ \t]?)\[!([A-Za-z]{3,12})\][ \t]*/, (_m, q, k) => `${q}**${CALLOUTS[k.toUpperCase()] ? tApp()(CALLOUTS[k.toUpperCase()][1]) : k}:** `)
         .replace(/\[([^\]\n]{0,200})\]\((?:user|card|page):[A-Za-z0-9_:-]{1,140}\)/g, (_m, t) => t),
     );
   }

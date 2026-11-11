@@ -3,6 +3,7 @@ import { bad, notFound } from '../core/http.js';
 import { now } from '../core/util.js';
 import { walk, type Step } from '../services/workflow-engine.js';
 import { cleanSteps } from './workflows.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Copy and paste steps between workflows (docs/workflow-actions.md → Copy and paste). The web editors keep the clipboard in
@@ -45,7 +46,7 @@ export const workflowClipboardModule: Module = {
     const checked = (input: unknown): Step[] => {
       if (!Array.isArray(input) || !input.length) throw bad('Keine Schritte zum Kopieren');
       const steps = cleanSteps(input);
-      if (walk(steps).length > MAX_STEPS) throw bad(`Höchstens ${MAX_STEPS} Schritte auf einmal`);
+      if (walk(steps).length > MAX_STEPS) throw bad(tApp()('Höchstens {n} Schritte auf einmal', { n: MAX_STEPS }));
       return steps;
     };
 
@@ -65,7 +66,7 @@ export const workflowClipboardModule: Module = {
           throw bad('Das ist kein gültiges JSON');
         }
       }
-      if (!data || typeof data !== 'object' || data.format !== STEPS_FORMAT) throw bad(`Das sind keine kopierten Workflow-Schritte (Format „${STEPS_FORMAT}“)`);
+      if (!data || typeof data !== 'object' || data.format !== STEPS_FORMAT) throw bad(tCtx(ctx)('Das sind keine kopierten Workflow-Schritte (Format „{format}“)', { format: STEPS_FORMAT }));
       if (Number(data.version) > 1) throw bad('Diese Schritte stammen aus einer neueren HyperLevel-Version');
       const steps = kit().reId(checked(data.steps), new Map());
       // Jumps to a step outside the pasted ones only stay when that step is in the workflow being edited.
@@ -77,7 +78,7 @@ export const workflowClipboardModule: Module = {
           const v = f.step[k];
           if (typeof v === 'string' && v && !fresh.has(v) && !existing.has(v)) {
             f.step[k] = '';
-            warnings.push(`Schritt ${i + 1} (${f.step.type}): Sprungziel liegt außerhalb der eingefügten Schritte – bitte neu wählen`);
+            warnings.push(tCtx(ctx)('Schritt {n} ({type}): Sprungziel liegt außerhalb der eingefügten Schritte – bitte neu wählen', { n: i + 1, type: f.step.type }));
           }
         }
       });

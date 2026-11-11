@@ -2,6 +2,7 @@ import type { App, Module } from '../core/app.js';
 import { escapeHtml } from '../core/template.js';
 import { wrap, siteBlocks, type BlockEnv } from '../services/site-blocks.js';
 import { miniMarkdown } from '../services/site-blocks.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Product / checkout block for pages: shows a product of the sub-account (name, text, price including VAT, billing interval, a note on
@@ -52,31 +53,32 @@ export const siteProductModule: Module = {
       type: 'product',
       css: CSS,
       render: (env, b, o) => {
+        const t = tLoc(app, env.locationId);
         const of = offer(env, String(b.product_id ?? ''));
         if (!of || !of.stripe) {
           // Visitors see nothing for a product that cannot be bought; the editor says what is missing.
           if (!env.preview) return '';
           // No product chosen yet (template preview, fresh block): show how the card will look.
-          if (!b.product_id) return wrap(env, b, o.bare, `<div class="pcard${b.highlight ? ' hl' : ''}">${b.badge ? `<span class="pbadge">${escapeHtml(String(b.badge))}</span>` : ''}<h3>${escapeHtml(String(b.heading || 'Dein Produkt'))}</h3><div class="pdesc"><p>Name, Beschreibung und Preis kommen aus deinem Produkt.</p></div><p class="pprice">99,00 €<span></span></p><p class="ptax">inkl. 19 % USt.</p><a class="btn" href="#">${escapeHtml(String(b.button_text || 'Zur Bestellung'))}</a><p class="plaw">Vorschau – wähle im Block ein Produkt.</p></div>`);
-          return wrap(env, b, o.bare, `<p class="muted" style="text-align:center">${!b.product_id || b.product_id.includes('{{') ? 'Produkt wählen' : of ? 'Stripe ist noch nicht verbunden – erst dann ist der Kauf-Button sichtbar.' : 'Dieses Produkt gibt es nicht (mehr) oder der Kauf-Link ist aus.'}</p>`);
+          if (!b.product_id) return wrap(env, b, o.bare, `<div class="pcard${b.highlight ? ' hl' : ''}">${b.badge ? `<span class="pbadge">${escapeHtml(String(b.badge))}</span>` : ''}<h3>${escapeHtml(String(b.heading || t('Dein Produkt')))}</h3><div class="pdesc"><p>${escapeHtml(t('Name, Beschreibung und Preis kommen aus deinem Produkt.'))}</p></div><p class="pprice">${escapeHtml(t('99,00 €'))}<span></span></p><p class="ptax">${escapeHtml(t('inkl. 19 % USt.'))}</p><a class="btn" href="#">${escapeHtml(String(b.button_text || t('Zur Bestellung')))}</a><p class="plaw">${escapeHtml(t('Vorschau – wähle im Block ein Produkt.'))}</p></div>`);
+          return wrap(env, b, o.bare, `<p class="muted" style="text-align:center">${escapeHtml(!b.product_id || b.product_id.includes('{{') ? t('Produkt wählen') : of ? t('Stripe ist noch nicht verbunden – erst dann ist der Kauf-Button sichtbar.') : t('Dieses Produkt gibt es nicht (mehr) oder der Kauf-Link ist aus.'))}</p>`);
         }
         const { p, link, tax, gross } = of;
         const loc = app.location(env.locationId);
         const small = !!loc?.settings.invoices?.small_business;
-        const per = p.recurring === 'month' ? ' / Monat' : p.recurring === 'year' ? ' / Jahr' : '';
+        const per = p.recurring === 'month' ? t(' / Monat') : p.recurring === 'year' ? t(' / Jahr') : '';
         const key = encodeURIComponent(link?.slug || p.id);
         const fp = /^[A-Za-z0-9]{1,40}$/.test(String(env.page?.id ?? '')) ? `?fp=${env.page.id}` : '';
         const law = (loc?.settings.checkout_law ?? {}) as { enabled?: boolean; button_text?: string; terms_url?: string; withdrawal_url?: string };
         const profile = app.services.legalTexts?.profile?.(env.locationId) as { company?: string; email?: string; street?: string } | undefined;
         const hosted = !!profile?.company && (!!profile.email || !!profile.street);
         const widerruf = law.withdrawal_url || (hosted ? (app.services.legalTexts.hostedUrl(env.locationId, 'widerruf') as string) : '');
-        const links = [widerruf ? `<a href="${escapeHtml(widerruf)}" target="_blank" rel="noopener">Informationen zum Widerrufsrecht</a>` : '', law.terms_url ? `<a href="${escapeHtml(law.terms_url)}" target="_blank" rel="noopener">AGB</a>` : ''].filter(Boolean);
+        const links = [widerruf ? `<a href="${escapeHtml(widerruf)}" target="_blank" rel="noopener">${escapeHtml(t('Informationen zum Widerrufsrecht'))}</a>` : '', law.terms_url ? `<a href="${escapeHtml(law.terms_url)}" target="_blank" rel="noopener">${escapeHtml(t('AGB'))}</a>` : ''].filter(Boolean);
         const ex = b.show_bump === false ? { bump: undefined, bumpTitle: '', coupons: false } : extras(p.id, env.locationId);
         // what the checkout charges for the bump (the same rule as for the product: no VAT outside the regular tax mode)
         const bumpGross = ex.bump ? Number(app.services.stripeBuy.grossOf({ ...ex.bump, location_id: env.locationId }).gross) : 0;
         const text = String(b.text || p.description || '');
         const label = app.services.buyButtonLabel?.(p, loc) as string | undefined;
-        const body = `<div class="pcard${b.highlight ? ' hl' : ''}">${b.badge ? `<span class="pbadge">${escapeHtml(String(b.badge))}</span>` : ''}${b.heading === '' ? '' : `<h3>${escapeHtml(String(b.heading || p.name))}</h3>`}${text ? `<div class="pdesc">${miniMarkdown(text)}</div>` : ''}<p class="pprice">${escapeHtml(money(gross, p.currency))}<span>${per}</span></p><p class="ptax">${small ? 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.' : tax ? `inkl. ${String(tax).replace('.', ',')} % USt.` : 'Preis ohne Umsatzsteuer'}</p>${ex.bump ? `<p class="pbump">${escapeHtml(ex.bumpTitle || `Optional dazu: ${ex.bump.name} für ${money(bumpGross, ex.bump.currency)}`)}</p>` : ''}<a class="btn" href="${escapeHtml(`${app.baseUrl()}/buy/${key}${fp}`)}">${escapeHtml(String(b.button_text || 'Zur Bestellung'))}</a><p class="plaw">${label ? `Auf der nächsten Seite bestellst du verbindlich mit „${escapeHtml(label)}“. ` : ''}${ex.coupons ? 'Einen Rabattcode gibst du dort ein. ' : ''}${links.length ? `${links.join(' · ')}` : ''}</p></div>`;
+        const body = `<div class="pcard${b.highlight ? ' hl' : ''}">${b.badge ? `<span class="pbadge">${escapeHtml(String(b.badge))}</span>` : ''}${b.heading === '' ? '' : `<h3>${escapeHtml(String(b.heading || p.name))}</h3>`}${text ? `<div class="pdesc">${miniMarkdown(text)}</div>` : ''}<p class="pprice">${escapeHtml(money(gross, p.currency))}<span>${per}</span></p><p class="ptax">${escapeHtml(small ? t('Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.') : tax ? t('inkl. {rate} % USt.', { rate: t.locale === 'de' ? String(tax).replace('.', ',') : String(tax) }) : t('Preis ohne Umsatzsteuer'))}</p>${ex.bump ? `<p class="pbump">${escapeHtml(ex.bumpTitle || t('Optional dazu: {name} für {price}', { name: ex.bump.name, price: money(bumpGross, ex.bump.currency) }))}</p>` : ''}<a class="btn" href="${escapeHtml(`${app.baseUrl()}/buy/${key}${fp}`)}">${escapeHtml(String(b.button_text || t('Zur Bestellung')))}</a><p class="plaw">${label ? `${escapeHtml(t('Auf der nächsten Seite bestellst du verbindlich mit „{label}“.', { label }))} ` : ''}${ex.coupons ? `${escapeHtml(t('Einen Rabattcode gibst du dort ein.'))} ` : ''}${links.length ? `${links.join(' · ')}` : ''}</p></div>`;
         return wrap(env, b, o.bare, body);
       },
     });

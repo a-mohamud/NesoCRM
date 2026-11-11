@@ -6,6 +6,7 @@ import { formatInTz } from '../core/time.js';
 import { id, now, sha256, token } from '../core/util.js';
 import { contactVars, getContact, logActivity } from '../services/contacts.js';
 import { notifyTeam, sendToContact } from '../services/messaging.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Contracts with electronic signature: write (or start from a template), send a link, the client
@@ -55,20 +56,22 @@ function publicUrl(app: App, c: any) {
 
 function auditHtml(app: App, c: any) {
   const loc = app.location(c.location_id)!;
-  const when = (v: string) => (v ? formatInTz(v, loc.timezone, { weekday: undefined }) + ' Uhr' : '');
+  const t = tLoc(app, c.location_id);
+  const when = (v: string) => (v ? t('{time} Uhr', { time: formatInTz(v, loc.timezone, { weekday: undefined }) }) : '');
   const rows = [
-    ['Gesendet', when(c.sent_at)],
-    ['Geöffnet', when(c.viewed_at)],
-    [c.status === 'declined' ? 'Abgelehnt' : 'Unterschrieben', when(c.signed_at)],
-    ['Unterzeichner', c.signer_name ? `${c.signer_name}${c.signer_email ? ` (${c.signer_email})` : ''}` : ''],
-    ['IP-Adresse', c.signer_ip],
-    ['Dokument-Prüfsumme (SHA-256)', c.content_hash],
+    [t('Gesendet'), when(c.sent_at)],
+    [t('Geöffnet'), when(c.viewed_at)],
+    [c.status === 'declined' ? t('Abgelehnt') : t('Unterschrieben'), when(c.signed_at)],
+    [t('Unterzeichner'), c.signer_name ? `${c.signer_name}${c.signer_email ? ` (${c.signer_email})` : ''}` : ''],
+    [t('IP-Adresse'), c.signer_ip],
+    [t('Dokument-Prüfsumme (SHA-256)'), c.content_hash],
   ].filter(([, v]) => v);
-  return `<table style="width:100%;font-size:13px;border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="padding:4px 8px 4px 0;color:#6b7280;white-space:nowrap">${k}</td><td style="padding:4px 0;overflow-wrap:anywhere">${escapeHtml(v)}</td></tr>`).join('')}</table>`;
+  return `<table style="width:100%;font-size:13px;border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="padding:4px 8px 4px 0;color:#6b7280;white-space:nowrap">${escapeHtml(k)}</td><td style="padding:4px 0;overflow-wrap:anywhere">${escapeHtml(v)}</td></tr>`).join('')}</table>`;
 }
 
 function signPage(app: App, c: any) {
   const loc = app.location(c.location_id)!;
+  const t = tLoc(app, c.location_id);
   const signed = c.status === 'signed';
   const contact = c.contact_id ? getContact(app, c.location_id, c.contact_id) : undefined;
   const body = `<div class="wrap" style="max-width:820px"><div class="card contract">
@@ -81,27 +84,28 @@ function signPage(app: App, c: any) {
   ${
     signed
       ? `<div style="margin-top:28px;border-top:1px solid var(--line);padding-top:16px">
-    <p><strong>Unterschrift</strong></p>
-    <img src="${escapeHtml(c.signature)}" alt="Unterschrift" style="max-width:320px;max-height:120px;border-bottom:1px solid #111">
+    <p><strong>${escapeHtml(t('Unterschrift'))}</strong></p>
+    <img src="${escapeHtml(c.signature)}" alt="${escapeHtml(t('Unterschrift'))}" style="max-width:320px;max-height:120px;border-bottom:1px solid #111">
     <p style="margin:4px 0 16px">${escapeHtml(c.signer_name)}</p>
     ${auditHtml(app, c)}
-    <p class="noprint" style="margin-top:18px"><button onclick="print()">Als PDF speichern / drucken</button></p>
+    <p class="noprint" style="margin-top:18px"><button onclick="print()">${escapeHtml(t('Als PDF speichern / drucken'))}</button></p>
   </div>`
       : c.status === 'declined'
-        ? `<p class="error" style="margin-top:24px">Dieser Vertrag wurde abgelehnt.</p>`
+        ? `<p class="error" style="margin-top:24px">${escapeHtml(t('Dieser Vertrag wurde abgelehnt.'))}</p>`
         : c.status === 'void'
-          ? `<p class="error" style="margin-top:24px">Dieser Vertrag ist nicht mehr gültig.</p>`
+          ? `<p class="error" style="margin-top:24px">${escapeHtml(t('Dieser Vertrag ist nicht mehr gültig.'))}</p>`
           : `<form id="sign" style="margin-top:28px;border-top:1px solid var(--line);padding-top:16px">
-    <label for="n">Vollständiger Name</label><input id="n" name="name" required value="${escapeHtml(contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') : '')}" autocomplete="name">
-    <label style="margin-top:14px">Unterschrift <span class="muted" style="font-weight:400">(mit Maus oder Finger zeichnen)</span></label>
+    <label for="n">${escapeHtml(t('Vollständiger Name'))}</label><input id="n" name="name" required value="${escapeHtml(contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') : '')}" autocomplete="name">
+    <label style="margin-top:14px">${escapeHtml(t('Unterschrift'))} <span class="muted" style="font-weight:400">${escapeHtml(t('(mit Maus oder Finger zeichnen)'))}</span></label>
     <canvas id="pad" width="600" height="180" style="width:100%;max-width:600px;height:180px;border:1px dashed #9ca3af;border-radius:9px;background:#fff;touch-action:none;display:block"></canvas>
-    <p style="margin:6px 0"><button type="button" class="btn secondary" id="clear" style="padding:6px 12px">Löschen</button></p>
-    <label class="check" style="margin-top:12px"><input type="checkbox" name="agree" required> Ich habe den Vertrag gelesen und stimme ihm mit meiner elektronischen Unterschrift zu.</label>
-    <div class="row" style="margin-top:16px"><button type="submit">Verbindlich unterschreiben</button><button type="button" class="btn secondary" id="decline">Ablehnen</button></div>
+    <p style="margin:6px 0"><button type="button" class="btn secondary" id="clear" style="padding:6px 12px">${escapeHtml(t('Löschen'))}</button></p>
+    <label class="check" style="margin-top:12px"><input type="checkbox" name="agree" required> ${escapeHtml(t('Ich habe den Vertrag gelesen und stimme ihm mit meiner elektronischen Unterschrift zu.'))}</label>
+    <div class="row" style="margin-top:16px"><button type="submit">${escapeHtml(t('Verbindlich unterschreiben'))}</button><button type="button" class="btn secondary" id="decline">${escapeHtml(t('Ablehnen'))}</button></div>
     <div class="error" id="err"></div>
   </form>
   <script>
   (function(){
+    var M=${jsonForScript({ error: t('Fehler'), sign: t('Bitte unterschreiben.'), why: t('Ablehnen – möchtest du uns einen Grund nennen? (optional)') })};
     var T=${jsonForScript(c.public_token)},cv=document.getElementById('pad'),x=cv.getContext('2d'),draw=false,ink=false;
     x.lineWidth=2.4;x.lineCap='round';x.lineJoin='round';x.strokeStyle='#111';
     function pos(e){var r=cv.getBoundingClientRect();return [(e.clientX-r.left)*cv.width/r.width,(e.clientY-r.top)*cv.height/r.height]}
@@ -110,10 +114,10 @@ function signPage(app: App, c: any) {
     cv.addEventListener('pointerup',function(){draw=false});
     document.getElementById('clear').onclick=function(){x.clearRect(0,0,cv.width,cv.height);ink=false};
     var f=document.getElementById('sign'),err=document.getElementById('err');
-    async function post(path,data){var r=await fetch('/api/public/contracts/'+T+'/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});var j=await r.json();if(!r.ok)throw new Error(j.error||'Fehler');location.reload()}
-    f.onsubmit=async function(e){e.preventDefault();err.textContent='';if(!ink){err.textContent='Bitte unterschreiben.';return}
+    async function post(path,data){var r=await fetch('/api/public/contracts/'+T+'/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});var j=await r.json();if(!r.ok)throw new Error(j.error||M.error);location.reload()}
+    f.onsubmit=async function(e){e.preventDefault();err.textContent='';if(!ink){err.textContent=M.sign;return}
       try{await post('sign',{name:f.name.value,agree:f.agree.checked,signature:cv.toDataURL('image/png')})}catch(x){err.textContent=x.message}};
-    document.getElementById('decline').onclick=async function(){var why=prompt('Ablehnen – möchtest du uns einen Grund nennen? (optional)');if(why===null)return;try{await post('decline',{reason:why})}catch(x){err.textContent=x.message}};
+    document.getElementById('decline').onclick=async function(){var why=prompt(M.why);if(why===null)return;try{await post('decline',{reason:why})}catch(x){err.textContent=x.message}};
   })();
   </script>`
   }
@@ -158,7 +162,7 @@ export function createSignedContract(
     updated_at: at,
   };
   app.db.insert('contracts', row);
-  if (o.contactId) logActivity(app, o.locationId, o.contactId, 'contract.signed', `Vertrag „${row.title}“ unterschrieben`);
+  if (o.contactId) logActivity(app, o.locationId, o.contactId, 'contract.signed', tLoc(app, o.locationId)('Vertrag „{title}“ unterschrieben', { title: row.title }));
   app.events.emit(o.locationId, 'contract.signed', { contactId: o.contactId, contract: { id: row.id, title: row.title } });
   return { id: row.id, token: row.public_token, url: publicUrl(app, row), hash: row.content_hash };
 }
@@ -212,7 +216,7 @@ export const contractsModule: Module = {
         location_id: ctx.locationId,
         kind: ctx.body.kind === 'template' ? 'template' : 'contract',
         contact_id: contactId,
-        title: str(ctx.body.title, 'Titel', { max: 200 }) || tpl?.title || 'Vertrag',
+        title: str(ctx.body.title, 'Titel', { max: 200 }) || tpl?.title || tLoc(app, ctx.locationId)('Vertrag'),
         content: ctx.body.content !== undefined ? str(ctx.body.content, 'Text', { max: 200_000 }) : (tpl?.content ?? ''),
         status: 'draft',
         public_token: token(24),
@@ -259,24 +263,29 @@ export const contractsModule: Module = {
       // Placeholders are filled once, on the first send; afterwards the text is frozen.
       if (c.status === 'draft') db.update('contracts', c.id, { content: render(c.content, vars), title: render(c.title, vars), status: 'sent', sent_at: now(), updated_at: now() });
       const channel = ctx.body.channel === 'sms' ? 'sms' : 'email';
+      const t = tLoc(app, ctx.locationId);
+      const defaultBody = [t('Hallo {{contact.first_name|}},'), '', t('hier ist der Vertrag „{{contract.title}}“ zum Lesen und Unterschreiben:'), '{{contract.url}}', '', t('Viele Grüße'), '{{location.name}}'].join('\n');
       const msg = await sendToContact(app, ctx.locationId, {
         contactId: contact.id,
         channel,
-        subject: render(str(ctx.body.subject, 'Betreff', { max: 300 }) || 'Bitte unterschreiben: {{contract.title}}', vars),
-        body: render(str(ctx.body.body, 'Nachricht', { max: 20_000 }) || 'Hallo {{contact.first_name|}},\n\nhier ist der Vertrag „{{contract.title}}“ zum Lesen und Unterschreiben:\n{{contract.url}}\n\nViele Grüße\n{{location.name}}', vars),
+        subject: render(str(ctx.body.subject, 'Betreff', { max: 300 }) || t('Bitte unterschreiben: {{contract.title}}'), vars),
+        body: render(str(ctx.body.body, 'Nachricht', { max: 20_000 }) || defaultBody, vars),
         userId: ctx.user?.id,
-        source: 'Vertrag',
+        source: t('Vertrag'),
       });
-      logActivity(app, ctx.locationId, contact.id, 'contract.sent', `Vertrag „${c.title}“ gesendet`);
+      logActivity(app, ctx.locationId, contact.id, 'contract.sent', t('Vertrag „{title}“ gesendet', { title: c.title }));
       return { ...out(get(app, ctx.locationId, c.id)), message: { status: msg.status, error: msg.error } };
     });
 
     router.get('/s/:token', 'public', (ctx) => {
       const c = db.get('SELECT * FROM contracts WHERE public_token = ?', ctx.params.token);
-      if (!c || c.kind !== 'contract' || c.status === 'draft') return html(messagePage('Nicht gefunden', 'Diesen Vertrag gibt es nicht.'), 404);
+      if (!c || c.kind !== 'contract' || c.status === 'draft') {
+        const t = c ? tLoc(app, c.location_id) : tCtx(ctx);
+        return html(messagePage(t('Nicht gefunden'), t('Diesen Vertrag gibt es nicht.')), 404);
+      }
       if (c.status === 'sent') {
         db.run(`UPDATE contracts SET status = 'viewed', viewed_at = ? WHERE id = ? AND status = 'sent'`, now(), c.id);
-        if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.viewed', `Vertrag „${c.title}“ geöffnet`);
+        if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.viewed', tLoc(app, c.location_id)('Vertrag „{title}“ geöffnet', { title: c.title }));
       }
       return html(signPage(app, c));
     });
@@ -301,15 +310,16 @@ export const contractsModule: Module = {
         at, name, contact?.email ?? '', ctx.ip, String(ctx.req.headers['user-agent'] ?? '').slice(0, 300), sig, hash, at, c.id,
       ).changes;
       if (!done) throw new HttpError(409, 'Dieser Vertrag ist schon abgeschlossen');
-      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.signed', `Vertrag „${c.title}“ unterschrieben`);
-      void notifyTeam(app, c.location_id, `Vertrag unterschrieben: ${c.title}`, `${name} hat „${c.title}“ unterschrieben.\n\n${publicUrl(app, c)}`);
+      const t = tLoc(app, c.location_id);
+      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.signed', t('Vertrag „{title}“ unterschrieben', { title: c.title }));
+      void notifyTeam(app, c.location_id, t('Vertrag unterschrieben: {title}', { title: c.title }), `${t('{name} hat „{title}“ unterschrieben.', { name, title: c.title })}\n\n${publicUrl(app, c)}`);
       if (contact?.email)
         void sendToContact(app, c.location_id, {
           contactId: contact.id,
           channel: 'email',
-          subject: `Deine Kopie: ${c.title}`,
-          body: `Hallo ${name},\n\ndanke für deine Unterschrift. Hier kannst du den unterschriebenen Vertrag jederzeit ansehen und als PDF speichern:\n${publicUrl(app, c)}`,
-          source: 'Vertrag',
+          subject: t('Deine Kopie: {title}', { title: c.title }),
+          body: `${t('Hallo {name},', { name })}\n\n${t('danke für deine Unterschrift. Hier kannst du den unterschriebenen Vertrag jederzeit ansehen und als PDF speichern:')}\n${publicUrl(app, c)}`,
+          source: t('Vertrag'),
           ignoreDnd: true,
         });
       app.events.emit(c.location_id, 'contract.signed', { contactId: c.contact_id, contract: { id: c.id, title: c.title } });
@@ -318,8 +328,9 @@ export const contractsModule: Module = {
     router.post('/api/public/contracts/:token/decline', 'public', (ctx) => {
       const c = open(ctx.params.token);
       db.run(`UPDATE contracts SET status = 'declined', signed_at = ?, decline_reason = ?, signer_ip = ?, updated_at = ? WHERE id = ?`, now(), str(ctx.body.reason, 'Grund', { max: 2000 }), ctx.ip, now(), c.id);
-      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.declined', `Vertrag „${c.title}“ abgelehnt`);
-      void notifyTeam(app, c.location_id, `Vertrag abgelehnt: ${c.title}`, `Grund: ${ctx.body.reason || '–'}\n\n${publicUrl(app, c)}`);
+      const t = tLoc(app, c.location_id);
+      if (c.contact_id) logActivity(app, c.location_id, c.contact_id, 'contract.declined', t('Vertrag „{title}“ abgelehnt', { title: c.title }));
+      void notifyTeam(app, c.location_id, t('Vertrag abgelehnt: {title}', { title: c.title }), `${t('Grund: {reason}', { reason: ctx.body.reason || '–' })}\n\n${publicUrl(app, c)}`);
       app.events.emit(c.location_id, 'contract.declined', { contactId: c.contact_id, contract: { id: c.id, title: c.title } });
       return { ok: true };
     });

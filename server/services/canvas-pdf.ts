@@ -50,6 +50,7 @@ function winAnsi(s: string): string {
   return out;
 }
 
+// i18n-ignore – PDF base font names
 const FONT_NAMES = ['Helvetica', 'Helvetica-Bold', 'Helvetica-Oblique', 'Helvetica-BoldOblique', 'Times-Roman', 'Times-Bold', 'Times-Italic', 'Times-BoldItalic', 'Courier', 'Courier-Bold', 'Courier-Oblique', 'Courier-BoldOblique'];
 function fontIndex(font: string, bold?: boolean, italic?: boolean): number {
   const base = font === 'serif' ? 4 : font === 'mono' ? 8 : 0;
@@ -147,7 +148,7 @@ function primOps(p: Prim, res: Res, opacity: number, images: Map<string, PdfImag
     case 'image': {
       const img = images.get(p.src);
       if (!img) return '';
-      if (!res.images.has(p.src)) res.images.set(p.src, `Im${res.images.size + 1}`);
+      if (!res.images.has(p.src)) res.images.set(p.src, `Im${res.images.size + 1}`); // i18n-ignore – PDF resource name
       const name = res.images.get(p.src)!;
       // cover/contain inside the box, clipped to it (rounded corners too)
       const sc = p.fit === 'contain' ? Math.min(p.w / img.w, p.h / img.h) : Math.max(p.w / img.w, p.h / img.h);

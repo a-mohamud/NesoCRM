@@ -1,4 +1,5 @@
 import { bad } from '../core/http.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Ticket types of an event (docs/booking.md#ticket-types): pure rules – cleaning the admin's input, whether a type is on sale right
@@ -49,19 +50,19 @@ export interface TicketTypeRow {
 const isoOrNull = (v: unknown, field: string): string | null => {
   if (v === undefined || v === null || v === '') return null;
   const t = Date.parse(String(v));
-  if (!Number.isFinite(t)) throw bad(`${field}: kein gültiger Zeitpunkt`);
+  if (!Number.isFinite(t)) throw bad(tApp()('{field}: kein gültiger Zeitpunkt', { field: tApp()(field) }));
   return new Date(t).toISOString();
 };
 const intOrNull = (v: unknown, field: string, min: number, max: number): number | null => {
   if (v === undefined || v === null || v === '') return null;
   const n = Number(v);
-  if (!Number.isInteger(n) || n < min || n > max) throw bad(`${field}: ganze Zahl von ${min} bis ${max}`);
+  if (!Number.isInteger(n) || n < min || n > max) throw bad(tApp()('{field}: ganze Zahl von {min} bis {max}', { field: tApp()(field), min, max }));
   return n;
 };
 const text = (v: unknown, field: string, max: number, required = false): string => {
   const s = v === undefined || v === null ? '' : String(v).trim();
-  if (required && !s) throw bad(`${field} fehlt`);
-  if (s.length > max) throw bad(`${field} ist zu lang`);
+  if (required && !s) throw bad(tApp()('{field} fehlt', { field: tApp()(field) }));
+  if (s.length > max) throw bad(tApp()('{field} ist zu lang', { field: tApp()(field) }));
   return s;
 };
 
@@ -80,7 +81,7 @@ export function cleanEvent(b: Record<string, any>, partial = false): Partial<Tic
   if (has('ends_at')) out.ends_at = isoOrNull(b.ends_at, 'Ende');
   if (has('currency')) {
     const c = String(b.currency ?? 'EUR').toUpperCase();
-    if (!(CURRENCIES as readonly string[]).includes(c)) throw bad(`Währung: ${CURRENCIES.join(', ')}`);
+    if (!(CURRENCIES as readonly string[]).includes(c)) throw bad(tApp()('Währung: {list}', { list: CURRENCIES.join(', ') }));
     out.currency = c;
   }
   if (has('tax_rate')) out.tax_rate = b.tax_rate === undefined || b.tax_rate === null || b.tax_rate === '' ? null : num(b.tax_rate, 'Steuersatz', 0, 30);
@@ -91,7 +92,7 @@ export function cleanEvent(b: Record<string, any>, partial = false): Partial<Tic
 
 function num(v: unknown, field: string, min: number, max: number): number {
   const n = Number(v);
-  if (!Number.isFinite(n) || n < min || n > max) throw bad(`${field}: ${min} bis ${max}`);
+  if (!Number.isFinite(n) || n < min || n > max) throw bad(tApp()('{field}: {min} bis {max}', { field: tApp()(field), min, max }));
   return n;
 }
 
@@ -111,7 +112,7 @@ export interface TypeInput {
 export function cleanType(b: Record<string, any>, minPaidCents = 50): TypeInput {
   const price = b.price_cents === undefined || b.price_cents === '' || b.price_cents === null ? 0 : Number(b.price_cents);
   if (!Number.isInteger(price) || price < 0 || price > 10_000_000) throw bad('Preis: ganze Cent von 0 bis 100.000 €');
-  if (price > 0 && price < minPaidCents) throw bad(`Preis: 0 (kostenlos) oder mindestens ${(minPaidCents / 100).toFixed(2).replace('.', ',')} €`);
+  if (price > 0 && price < minPaidCents) throw bad(tApp()('Preis: 0 (kostenlos) oder mindestens {amount} €', { amount: tApp().locale === 'de' ? (minPaidCents / 100).toFixed(2).replace('.', ',') : (minPaidCents / 100).toFixed(2) }));
   const out: TypeInput = {
     id: b.id ? String(b.id) : undefined,
     name: text(b.name, 'Name der Ticketart', 120, true),
@@ -123,13 +124,13 @@ export function cleanType(b: Record<string, any>, minPaidCents = 50): TypeInput 
     max_per_order: intOrNull(b.max_per_order, 'Höchstens je Bestellung', 1, MAX_PER_ORDER),
     active: b.active === undefined ? 1 : b.active ? 1 : 0,
   };
-  if (out.sale_start && out.sale_end && Date.parse(out.sale_end) <= Date.parse(out.sale_start)) throw bad(`„${out.name}“: Verkaufsende liegt vor dem Verkaufsstart`);
+  if (out.sale_start && out.sale_end && Date.parse(out.sale_end) <= Date.parse(out.sale_start)) throw bad(tApp()('„{name}“: Verkaufsende liegt vor dem Verkaufsstart', { name: out.name }));
   return out;
 }
 
 export function cleanTypes(list: unknown, minPaidCents = 50): TypeInput[] {
   if (!Array.isArray(list)) throw bad('Ticketarten: Liste erwartet');
-  if (list.length > MAX_TYPES) throw bad(`Höchstens ${MAX_TYPES} Ticketarten je Event`);
+  if (list.length > MAX_TYPES) throw bad(tApp()('Höchstens {n} Ticketarten je Event', { n: MAX_TYPES }));
   return list.map((x) => cleanType(x && typeof x === 'object' ? x : {}, minPaidCents));
 }
 
@@ -170,7 +171,7 @@ export function cleanPicks(b: Record<string, any>): { type_id: string; qty: numb
   const out = [...by].map(([type_id, qty]) => ({ type_id, qty }));
   const total = out.reduce((n, x) => n + x.qty, 0);
   if (!total) throw bad('Bitte mindestens ein Ticket wählen');
-  if (total > MAX_PER_ORDER) throw bad(`Höchstens ${MAX_PER_ORDER} Tickets je Bestellung`);
+  if (total > MAX_PER_ORDER) throw bad(tApp()('Höchstens {n} Tickets je Bestellung', { n: MAX_PER_ORDER }));
   return out;
 }
 

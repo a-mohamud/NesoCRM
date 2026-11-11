@@ -7,6 +7,7 @@ import { schemaSummary } from '../services/composio-schema.js';
 import { getPath } from '../services/inbound-webhooks.js';
 import type { ComposioApi } from './composio.js';
 import type { Tool } from './mcp.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Composio in automations: the workflow action "App-Aktion ausführen (Composio)" (arguments from
@@ -75,10 +76,11 @@ export const composioAutomationModule: Module = {
 
     // --- workflow action: run one app action -------------------------------------------------------
     const runAction = async (run: any, step: any, vars: Record<string, any>): Promise<string> => {
+      const t = tLoc(app, run.location_id);
       const tool = String(step.tool ?? '').trim();
-      if (!tool) throw new Error('Keine App-Aktion gewählt');
+      if (!tool) throw new Error(t('Keine App-Aktion gewählt'));
       const r = await composio().execute(run.location_id, tool, step.arguments ?? {}, { vars, source: 'workflow' });
-      if (!r.successful) throw new Error(`${r.tool}: ${r.error ?? 'von der App abgelehnt'}`);
+      if (!r.successful) throw new Error(`${r.tool}: ${r.error ?? t('von der App abgelehnt')}`);
       // Later steps read the result as {{event.app_result.…}}.
       run.event = { ...(run.event ?? {}), app_result: r.data };
       try {
@@ -92,9 +94,9 @@ export const composioAutomationModule: Module = {
         const c = getContact(app, run.location_id, run.contact_id);
         if (c && (Object.keys(m.fields).length || Object.keys(m.custom).length)) {
           app.db.update('contacts', c.id, { ...m.fields, ...(Object.keys(m.custom).length ? { custom: { ...c.custom, ...m.custom } } : {}), updated_at: now() });
-          mapped = ` · übernommen: ${[...Object.keys(m.fields), ...Object.keys(m.custom).map((k) => `custom.${k}`)].join(', ')}`;
+          mapped = ` · ${t('übernommen: {fields}', { fields: [...Object.keys(m.fields), ...Object.keys(m.custom).map((k) => `custom.${k}`)].join(', ') })}`;
         }
-        if (m.skipped.length) mapped += ` · nicht gefunden: ${m.skipped.join(', ')}`;
+        if (m.skipped.length) mapped += ` · ${t('nicht gefunden: {fields}', { fields: m.skipped.join(', ') })}`;
       }
       return `${r.tool}: OK${mapped} · ${clip(r.data, 400)}`;
     };
@@ -130,13 +132,13 @@ export const composioAutomationModule: Module = {
       const loc_ = app.location(loc);
       for (let i = 0; i < MAX_AGENT_STEPS; i++) {
         const user = [
-          `Du erledigst eine Aufgabe für „${loc_?.name ?? 'diesen Sub-Account'}“ und darfst dafür Aktionen in verbundenen Apps ausführen – ausschließlich die unten erlaubten.`,
-          `Aufgabe: ${task}`,
-          contact ? `Kontakt: ${contactName(contact)} · E-Mail ${contact.email || '–'} · Telefon ${contact.phone || '–'} · Firma ${contact.company || '–'}` : '',
-          tools ? `Erlaubte Aktionen:\n${tools}` : '',
-          apps.length ? `Ganze Apps (Aktionen mit action "search" finden, optional toolkit setzen): ${apps.join(', ')}` : '',
-          history.length ? `Bisherige Schritte:\n${history.map((h, n) => `${n + 1}. ${h}`).join('\n')}` : 'Noch keine Schritte.',
-          `Antworte mit genau einem nächsten Schritt: action "search" (query, toolkit optional), "execute" (tool = Slug, arguments_json = Eingaben als JSON-Objekt-Text) oder "answer" (answer = kurzes Ergebnis auf Deutsch für den Nutzer). Führe nur aus, was die Aufgabe verlangt; erfinde keine Daten. Nicht benötigte Felder als "".${i === MAX_AGENT_STEPS - 1 ? ' Dies ist der letzte Schritt: antworte jetzt mit "answer".' : ''}`,
+          `You are completing a task for “${loc_?.name ?? 'this sub-account'}” and may run actions in connected apps for it – only the ones allowed below.`,
+          `Task: ${task}`,
+          contact ? `Contact: ${contactName(contact)} · email ${contact.email || '–'} · phone ${contact.phone || '–'} · company ${contact.company || '–'}` : '',
+          tools ? `Allowed actions:\n${tools}` : '',
+          apps.length ? `Whole apps (find actions with action "search", optionally set toolkit): ${apps.join(', ')}` : '',
+          history.length ? `Steps so far:\n${history.map((h, n) => `${n + 1}. ${h}`).join('\n')}` : 'No steps yet.', // i18n-ignore (prompt)
+          `Reply with exactly one next step: action "search" (query, toolkit optional), "execute" (tool = slug, arguments_json = inputs as JSON object text) or "answer" (answer = short result for the user, in the language of the task). Only do what the task requires; do not invent data. Leave unneeded fields as "".${i === MAX_AGENT_STEPS - 1 ? ' This is the last step: reply with "answer" now.' : ''}`,
         ]
           .filter(Boolean)
           .join('\n\n');
@@ -155,12 +157,12 @@ export const composioAutomationModule: Module = {
         if (s.action === 'search') {
           const q = String(s.query ?? '').slice(0, 200);
           const found = await c.searchAllowed(loc, q, s.toolkit || undefined, 8).catch((e: Error) => {
-            history.push(`search „${q}“ → Fehler: ${e.message}`);
+            history.push(`search “${q}” → error: ${e.message}`);
             return null;
           });
           if (!found) continue;
           const detail = found.length ? await toolBlock(loc, found.slice(0, 5).map((t) => t.slug)) : '(nichts gefunden)';
-          history.push(`search „${q}“ → ${found.length} Aktion(en):\n${detail}`);
+          history.push(`search “${q}” → ${found.length} action(s):\n${detail}`);
           steps.push({ action: 'search', detail: `Suche „${q}“: ${found.map((t) => t.slug).join(', ') || 'nichts'}` });
           continue;
         }
@@ -169,19 +171,19 @@ export const composioAutomationModule: Module = {
         try {
           args = s.arguments_json ? JSON.parse(s.arguments_json) : {};
         } catch {
-          history.push(`execute ${tool} → Fehler: arguments_json ist kein gültiges JSON`);
+          history.push(`execute ${tool} → error: arguments_json is not valid JSON`);
           continue;
         }
         try {
           const res = await c.execute(loc, tool, args, { enforceAllow: true, source: 'ai' });
-          history.push(`execute ${res.tool} → ${res.successful ? `OK: ${clip(res.data, 2500)}` : `abgelehnt: ${res.error}`}`);
+          history.push(`execute ${res.tool} → ${res.successful ? `OK: ${clip(res.data, 2500)}` : `rejected: ${res.error}`}`);
           steps.push({ action: 'execute', tool: res.tool, ok: res.successful, detail: res.successful ? clip(res.data, 300) : String(res.error) });
         } catch (e) {
-          history.push(`execute ${tool} → Fehler: ${(e as Error).message}`);
+          history.push(`execute ${tool} → error: ${(e as Error).message}`);
           steps.push({ action: 'execute', tool, ok: false, detail: (e as Error).message });
         }
       }
-      return { answer: 'Abgebrochen – zu viele Schritte.', steps };
+      return { answer: tLoc(app, loc)('Abgebrochen – zu viele Schritte.'), steps };
     };
     app.services.composioAgent = runAgent;
 
@@ -194,7 +196,7 @@ export const composioAutomationModule: Module = {
 
     const runAgentStep = async (run: any, step: any, vars: Record<string, any>): Promise<string> => {
       const prompt = render(String(step.prompt ?? ''), vars).trim();
-      if (!prompt) throw new Error('Keine Aufgabe für die KI');
+      if (!prompt) throw new Error(tLoc(app, run.location_id)('Keine Aufgabe für die KI'));
       const r = await runAgent(run.location_id, prompt, { contactId: run.contact_id, purpose: 'workflow' });
       const field = String(step.save_field ?? '');
       if (field.startsWith('custom.') && /^custom\.[\w-]{1,60}$/.test(field)) {
@@ -202,8 +204,9 @@ export const composioAutomationModule: Module = {
         if (c) app.db.update('contacts', c.id, { custom: { ...c.custom, [field.slice(7)]: r.answer.slice(0, 5000) }, updated_at: now() });
       }
       run.event = { ...(run.event ?? {}), app_answer: r.answer };
-      const did = r.steps.filter((s) => s.action === 'execute').map((s) => `${s.tool}${s.ok ? '' : ' (Fehler)'}`);
-      return `${did.length ? `Aktionen: ${did.join(', ')} · ` : ''}${clip(r.answer, 400)}`;
+      const t = tLoc(app, run.location_id);
+      const did = r.steps.filter((s) => s.action === 'execute').map((s) => `${s.tool}${s.ok ? '' : ` (${t('fehlgeschlagen')})`}`);
+      return `${did.length ? `${t('Aktionen: {list}', { list: did.join(', ') })} · ` : ''}${clip(r.answer, 400)}`;
     };
 
     app.services.workflowActions = {
@@ -252,7 +255,7 @@ function mcpTools(): Tool[] {
           for (const t of items.slice(0, 5)) detailed.push(await call.api('GET', `/api/composio/tools/${encodeURIComponent(t.slug)}`, { location }).catch(() => t));
           return {
             tools: [...detailed.map((t: any) => ({ slug: t.slug, name: t.name, toolkit: t.toolkit?.slug, description: t.description, input_parameters: t.input_parameters })), ...items.slice(5).map((t) => ({ slug: t.slug, name: t.name, toolkit: t.toolkit?.slug, description: t.description }))],
-            hint: items.length ? undefined : 'Keine freigegebene Aktion gefunden – im Projekt unter Apps → Composio → KI & MCP freigeben.',
+            hint: items.length ? undefined : 'No allowed action found – allow actions in the project under Apps → Composio → AI & MCP.',
           };
         }
         if (a.mode === 'execute') {

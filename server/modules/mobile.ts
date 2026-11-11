@@ -27,6 +27,7 @@ import {
   taskOut,
   tasks,
 } from '../services/mobile-read.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 import { PROBE, bodyLocation, callRoute, contactName, deepLink, mayUse, ownLocation, plain, scope, visibleLocations, type Area } from '../services/mobile.js';
 
 /**
@@ -78,9 +79,9 @@ const CAPTURE_SCHEMA = {
     kind: { type: 'string', enum: ['task', 'note'] },
     title: { type: 'string' },
     description: { type: 'string' },
-    due_date: { type: 'string', description: 'YYYY-MM-DD oder leer' },
-    due_time: { type: 'string', description: 'HH:MM oder leer' },
-    contact_name: { type: 'string', description: 'Name des Kontakts, wenn klar genannt, sonst leer' },
+    due_date: { type: 'string', description: 'YYYY-MM-DD or empty' },
+    due_time: { type: 'string', description: 'HH:MM or empty' },
+    contact_name: { type: 'string', description: 'Name of the contact if clearly mentioned, otherwise empty' },
     note: { type: 'string' },
   },
   required: ['kind', 'title', 'description', 'due_date', 'due_time', 'contact_name', 'note'],
@@ -161,7 +162,7 @@ export const mobileModule: Module = {
         user_id: ctx.user!.id,
         token_hash: sha256(raw),
         prefix: raw.slice(0, 10),
-        name: clip(b.device_name, 100) || 'Android-Gerät',
+        name: clip(b.device_name, 100) || tCtx(ctx)('Android-Gerät'),
         platform: clip(b.platform, 30).toLowerCase() || 'android',
         app_version: clip(b.app_version, 40),
         created_at: now(),
@@ -261,12 +262,12 @@ export const mobileModule: Module = {
       const lastIn = one(`SELECT channel FROM messages WHERE conversation_id = ? AND direction = 'in' AND channel != 'call' ORDER BY created_at DESC LIMIT 1`, v.id);
       const last = one(`SELECT channel FROM messages WHERE conversation_id = ? AND channel != 'call' ORDER BY created_at DESC LIMIT 1`, v.id);
       const channel = str(ctx.body?.channel, 'Kanal', { max: 20 }) || lastIn?.channel || last?.channel || (contact?.email ? 'email' : 'sms');
-      if (!known.includes(channel)) throw bad(`Unbekannter Kanal: ${channel}`);
+      if (!known.includes(channel)) throw bad(tCtx(ctx)('Unbekannter Kanal: {channel}', { channel }));
       let subject = str(ctx.body?.subject, 'Betreff', { max: 300 });
       if (channel === 'email' && !subject) {
         // An answer to the customer's last e-mail keeps its subject ("Re: …").
         const prev = one(`SELECT subject FROM messages WHERE conversation_id = ? AND channel = 'email' AND direction = 'in' AND subject != '' ORDER BY created_at DESC LIMIT 1`, v.id)?.subject;
-        subject = prev ? (/^(re|aw):/i.test(prev) ? prev : `Re: ${prev}`) : `Nachricht von ${loc.name}`;
+        subject = prev ? (/^(re|aw):/i.test(prev) ? prev : `Re: ${prev}`) : tLoc(app, loc.id)('Nachricht von {name}', { name: loc.name });
       }
       const msg = await callRoute(app, ctx, 'POST', '/api/messages', { locationId: loc.id, body: { contact_id: v.contact_id, channel, subject, body } });
       return { ...messageOut(msg), conversation_id: v.id, location_id: loc.id, location_name: loc.name };
@@ -360,7 +361,7 @@ export const mobileModule: Module = {
       if (!app.router.match('POST', '/api/calls')) throw bad('Telefonie ist auf diesem Server nicht verfügbar');
       const r = await callRoute(app, ctx, 'POST', '/api/calls', { locationId: loc.id, body: { contact_id: contactId } });
       const row = one('SELECT c.*, k.first_name, k.last_name, k.email, k.phone FROM calls c LEFT JOIN contacts k ON k.id = c.contact_id WHERE c.id = ?', r.id);
-      return { ...callOut(row ?? { ...r, location_id: loc.id }, namesOf(ctx)), message: 'Dein Telefon klingelt gleich – nach dem Abnehmen wird verbunden.' };
+      return { ...callOut(row ?? { ...r, location_id: loc.id }, namesOf(ctx)), message: tCtx(ctx)('Dein Telefon klingelt gleich – nach dem Abnehmen wird verbunden.') };
     });
 
     router.post('/api/mobile/appointments/:id/status', 'user', async (ctx) => {
@@ -391,15 +392,16 @@ export const mobileModule: Module = {
             system: [
               {
                 text:
-                  'Du sortierst kurze Diktate aus einer CRM-App. Antworte nur im verlangten JSON. ' +
-                  'kind = "note" nur, wenn der Text klar eine Information über eine namentlich genannte Person/Firma festhält (z. B. "Herr Meier will das Angebot erst im März"); ' +
-                  'sonst kind = "task" (etwas ist zu tun). title: kurzer Aufgaben-Titel im Imperativ (max. 80 Zeichen). description: weitere Details oder leer. ' +
-                  'due_date/due_time nur, wenn ein Zeitpunkt genannt oder klar gemeint ist ("morgen", "Freitag 10 Uhr"), sonst leer. ' +
-                  'contact_name: der genannte Kontakt (Vor- und/oder Nachname, Firma) oder leer. note: bei kind "note" der Notiztext, sonst leer.',
+                  'You sort short dictations from a CRM app. Reply only in the requested JSON. ' +
+                  'kind = "note" only if the text clearly records information about a named person/company (e.g. "Mr Otieno only wants the quote in March"); ' +
+                  'otherwise kind = "task" (something needs doing). title: short task title in the imperative (max. 80 characters). description: further details or empty. ' +
+                  'due_date/due_time only if a time is mentioned or clearly meant ("tomorrow", "Friday 10am"), otherwise empty. ' +
+                  'contact_name: the contact mentioned (first and/or last name, company) or empty. note: for kind "note" the note text, otherwise empty. ' +
+                  'Write title, description and note in the language of the dictation.',
                 cache: true,
               },
             ],
-            user: `Jetzt ist ${today} (Zeitzone ${tz}).\n\nDiktat:\n${text}`,
+            user: `It is now ${today} (time zone ${tz}).\n\nDictation:\n${text}`,
           });
           ai = JSON.parse(String(r.text ?? '').replace(/^```(json)?|```$/g, '').trim());
         } catch {
@@ -427,8 +429,8 @@ export const mobileModule: Module = {
       if (ai && /^\d{4}-\d{2}-\d{2}$/.test(String(ai.due_date ?? ''))) {
         due = /^\d{2}:\d{2}$/.test(String(ai.due_time ?? '')) ? zonedToUtc(ai.due_date, ai.due_time, tz).toISOString() : `${ai.due_date}T00:00:00.000Z`;
       }
-      const title = (ai?.title ? String(ai.title) : text.split('\n')[0]).trim().slice(0, 300) || 'Notiz aus der App';
-      const description = ai ? [String(ai.description ?? '').trim(), ai.title ? `Diktat: ${text}` : ''].filter(Boolean).join('\n\n') : text.length > title.length ? text : '';
+      const title = (ai?.title ? String(ai.title) : text.split('\n')[0]).trim().slice(0, 300) || tCtx(ctx)('Notiz aus der App');
+      const description = ai ? [String(ai.description ?? '').trim(), ai.title ? tCtx(ctx)('Diktat: {text}', { text }) : ''].filter(Boolean).join('\n\n') : text.length > title.length ? text : '';
       const t = await callRoute(app, ctx, 'POST', '/api/tasks', { locationId: loc.id, body: { title, description: description.slice(0, 5000), due_at: due, contact_id: contact?.id ?? null } });
       return { kind: 'task', ai: !!ai, item: taskOut(taskById(t.id), namesOf(ctx)) };
     });
@@ -451,7 +453,7 @@ export const mobileModule: Module = {
       ).changes;
     };
     app.services.mobileFeed = feed;
-    const who = (c: any, fallback = 'Unbekannt') => (c ? contactName(c) : '') || fallback;
+    const who = (c: any, fallback = 'Unbekannt') => (c ? contactName(c) : '') || fallback; // the fallback is translated by the caller's t()
     const contactOf = (locationId: string, contactId?: string | null) => (contactId ? db.get('SELECT * FROM contacts WHERE id = ? AND location_id = ?', contactId, locationId) : undefined);
 
     const lastConv = new Map<string, number>();
@@ -463,39 +465,46 @@ export const mobileModule: Module = {
         lastConv.set(conv, Date.now());
         if (lastConv.size > 5000) lastConv.clear();
       }
-      const label = m.channel === 'email' ? 'Neue E-Mail' : m.channel === 'sms' ? 'Neue SMS' : m.channel === 'chat' ? 'Neue Chat-Nachricht' : m.channel === 'whatsapp' ? 'Neue WhatsApp' : 'Neue Nachricht';
+      const t = tLoc(app, e.locationId);
+      const label = m.channel === 'email' ? t('Neue E-Mail') : m.channel === 'sms' ? t('Neue SMS') : m.channel === 'chat' ? t('Neue Chat-Nachricht') : m.channel === 'whatsapp' ? t('Neue WhatsApp') : t('Neue Nachricht');
       // An assigned conversation (Team-Posteingang) goes to its assignee's feed only.
       const audience = conv ? (app.services.inboxAudience?.(e.locationId, conv) as string[] | undefined) : undefined;
-      feed({ locationId: e.locationId, type: 'message', area: 'conversations', ...(audience ? { userId: audience[0] } : {}), title: `${label} von ${who(e.data.contact)}`, body: [m.subject, m.body].filter(Boolean).join(' – '), link: conv ? `/app/conversations?c=${conv}` : '/app/conversations', ref: m.id ? `message:${m.id}` : undefined });
+      feed({ locationId: e.locationId, type: 'message', area: 'conversations', ...(audience ? { userId: audience[0] } : {}), title: t('{label} von {name}', { label, name: who(e.data.contact, t('Unbekannt')) }), body: [m.subject, m.body].filter(Boolean).join(' – '), link: conv ? `/app/conversations?c=${conv}` : '/app/conversations', ref: m.id ? `message:${m.id}` : undefined });
     });
     app.events.on('call.missed', (e) => {
       const c = contactOf(e.locationId, e.data.contactId);
-      feed({ locationId: e.locationId, type: 'call_missed', area: 'calls', title: `Verpasster Anruf: ${who(c, e.data.from || 'Nummer unterdrückt')}`, body: e.data.from ? `von ${e.data.from}` : '', link: '/app/calls', ref: `call_missed:${e.data.callId}` });
+      const t = tLoc(app, e.locationId);
+      feed({ locationId: e.locationId, type: 'call_missed', area: 'calls', title: t('Verpasster Anruf: {name}', { name: who(c, e.data.from || t('Nummer unterdrückt')) }), body: e.data.from ? t('von {from}', { from: e.data.from }) : '', link: '/app/calls', ref: `call_missed:${e.data.callId}` });
     });
     app.events.on('contact.created', (e) => {
       const c = e.data.contact ?? contactOf(e.locationId, e.data.contactId);
       if (!c) return;
-      feed({ locationId: e.locationId, type: 'lead', area: 'contacts', title: `Neuer Lead: ${who(c)}`, body: [c.source, c.email, c.phone].filter(Boolean).join(' · '), link: `/app/contacts/${c.id}`, ref: `lead:${c.id}` });
+      const t = tLoc(app, e.locationId);
+      feed({ locationId: e.locationId, type: 'lead', area: 'contacts', title: t('Neuer Lead: {who}', { who: who(c, t('Unbekannt')) }), body: [c.source, c.email, c.phone].filter(Boolean).join(' · '), link: `/app/contacts/${c.id}`, ref: `lead:${c.id}` });
     });
     app.events.on('invoice.paid', (e) => {
       const i = e.data.invoice ?? {};
       if (!i.id) return;
       const c = contactOf(e.locationId, i.contact_id);
-      feed({ locationId: e.locationId, type: 'payment', area: 'payments', title: `Zahlung erhalten: ${centsToMoney(Number(i.total_cents ?? 0), i.currency || 'EUR')}`, body: [i.number ? `Rechnung ${i.number}` : '', c ? who(c) : '', e.data.via ? `via ${e.data.via}` : ''].filter(Boolean).join(' · '), link: `/app/invoices/${i.id}`, ref: `payment:${i.id}` });
+      const t = tLoc(app, e.locationId);
+      feed({ locationId: e.locationId, type: 'payment', area: 'payments', title: t('Zahlung erhalten: {amount}', { amount: centsToMoney(Number(i.total_cents ?? 0), i.currency || 'EUR') }), body: [i.number ? t('Rechnung {number}', { number: i.number }) : '', c ? who(c, t('Unbekannt')) : '', e.data.via ? t('via {via}', { via: e.data.via }) : ''].filter(Boolean).join(' · '), link: `/app/invoices/${i.id}`, ref: `payment:${i.id}` });
     });
     const site = (down: boolean) => (e: { locationId: string; data: Record<string, any> }) => {
-      const name = app.location(e.locationId)?.name ?? 'Projekt';
-      feed({ locationId: e.locationId, type: down ? 'website_down' : 'website_up', area: 'project', title: down ? `${name} ist nicht erreichbar` : `${name} ist wieder online`, body: `${e.data.website ?? ''} – Status ${e.data.status || 'keine Antwort'}`, link: '/app/project' });
+      const t = tLoc(app, e.locationId);
+      const name = app.location(e.locationId)?.name ?? t('Projekt');
+      feed({ locationId: e.locationId, type: down ? 'website_down' : 'website_up', area: 'project', title: down ? t('{name} ist nicht erreichbar', { name }) : t('{name} ist wieder online', { name }), body: `${e.data.website ?? ''} – ${t('Status {status}', { status: e.data.status || t('keine Antwort') })}`, link: '/app/project' });
     };
     app.events.on('website.down', site(true));
     app.events.on('website.up', site(false));
     app.events.on('review.received', (e) => {
       const c = contactOf(e.locationId, e.data.contactId);
       const n = Math.max(0, Math.min(5, Number(e.data.rating) || 0));
-      feed({ locationId: e.locationId, type: 'review', area: 'reviews', title: `Neue Bewertung: ${'★'.repeat(n)}${c ? ` von ${who(c)}` : ''}`, body: e.data.comment ?? '', link: '/app/reviews' });
+      const t = tLoc(app, e.locationId);
+      feed({ locationId: e.locationId, type: 'review', area: 'reviews', title: c ? t('Neue Bewertung: {stars} von {name}', { stars: '★'.repeat(n), name: who(c, t('Unbekannt')) }) : t('Neue Bewertung: {stars}', { stars: '★'.repeat(n) }), body: e.data.comment ?? '', link: '/app/reviews' });
     });
     app.events.on('google_review.received', (e) => {
-      feed({ locationId: e.locationId, type: 'review', area: 'reviews', title: `Neue Google-Bewertung: ${Number(e.data.rating) || 0}★ von ${e.data.author || 'Google-Nutzer'}`, body: e.data.text ?? '', link: '/app/reviews', ref: e.data.reviewId ? `review:${e.data.reviewId}` : undefined });
+      const t = tLoc(app, e.locationId);
+      feed({ locationId: e.locationId, type: 'review', area: 'reviews', title: t('Neue Google-Bewertung: {rating}★ von {author}', { rating: Number(e.data.rating) || 0, author: e.data.author || t('Google-Nutzer') }), body: e.data.text ?? '', link: '/app/reviews', ref: e.data.reviewId ? `review:${e.data.reviewId}` : undefined });
     });
 
     /** Tasks become due: timed ones at their time, date-only ones at 8:00 local time on the day. */
@@ -512,7 +521,7 @@ export const mobileModule: Module = {
         const dateOnly = /T00:00:00(\.000)?Z$/.test(t.due_at);
         const when = dateOnly ? zonedToUtc(t.due_at.slice(0, 10), '08:00', t.timezone || 'Europe/Berlin').getTime() : Date.parse(t.due_at);
         if (!(when <= at.getTime() && when > at.getTime() - 864e5)) continue;
-        n += feed({ locationId: t.location_id, type: 'task_due', area: 'tasks', title: `Fällig: ${t.title}`, body: t.description ?? '', link: '/app/tasks', ref: `task_due:${t.id}:${t.due_at}`, userId: t.assigned_to || null });
+        n += feed({ locationId: t.location_id, type: 'task_due', area: 'tasks', title: tLoc(app, t.location_id)('Fällig: {title}', { title: t.title }), body: t.description ?? '', link: '/app/tasks', ref: `task_due:${t.id}:${t.due_at}`, userId: t.assigned_to || null });
       }
       return n;
     };

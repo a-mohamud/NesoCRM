@@ -5,6 +5,7 @@ import { withDefaults as aiDefaults } from '../services/ai-context.js';
 import { MAX_REPLY, TONES, brandVoice, cleanReplySettings, finishReply, pickTone, replySystem, replyUser, withReplyDefaults, type ReplySettings } from '../services/review-replies.js';
 import { GOOGLE_REVIEW_TRIGGER } from './google-reviews.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * "KI-Antwort vorschlagen" for Google reviews: the KI-Assistent (app.services.aiRun – counts on the monthly limit and is logged)
@@ -112,8 +113,8 @@ export const reviewRepliesModule: Module = {
     }
 
     // --- settings -----------------------------------------------------------------------------
-    const settingsOut = (loc: string) => ({ ...settingsOf(loc), tones: Object.entries(TONES).map(([id, t]) => ({ id, label: t.label, hint: t.hint })), ai_problem: aiProblem(loc) });
-    router.get('/api/google-reviews/reply-settings', 'location', (ctx) => settingsOut(ctx.locationId));
+    const settingsOut = (loc: string, tr: STFn = tApp()) => ({ ...settingsOf(loc), tones: Object.entries(TONES).map(([id, t]) => ({ id, label: tr(t.label), hint: tr(t.hint) })), ai_problem: aiProblem(loc) });
+    router.get('/api/google-reviews/reply-settings', 'location', (ctx) => settingsOut(ctx.locationId, tCtx(ctx)));
     router.put('/api/google-reviews/reply-settings', 'location', (ctx) => {
       const next = cleanReplySettings(ctx.body ?? {}, settingsOf(ctx.locationId));
       db.run(

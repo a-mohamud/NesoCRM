@@ -1,4 +1,5 @@
 import type { Mode } from './agent-safety.js';
+import type { STFn } from '../i18n/index.js';
 
 /**
  * Template gallery for custom agents ("eigene KI-Mitarbeiter"): ready roles with instructions,
@@ -145,3 +146,13 @@ export const TEMPLATES: AgentTemplate[] = [
 ];
 
 export const templateByKey = (key: string) => TEMPLATES.find((t) => t.key === key);
+
+/** The template in a language (the German texts above are the message ids of server/i18n). */
+export const localizeTemplate = (tpl: AgentTemplate, t: STFn): AgentTemplate => ({
+  ...tpl,
+  name: t(tpl.name),
+  description: t(tpl.description),
+  instructions: t(tpl.instructions),
+  starters: tpl.starters.map((s) => t(s)),
+  ...(tpl.suggestion ? { suggestion: t(tpl.suggestion) } : {}),
+});

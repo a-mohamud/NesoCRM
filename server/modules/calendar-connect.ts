@@ -7,6 +7,7 @@ import { calendarApi, PreconditionFailed, ProviderError, type CalendarApi, type 
 import { logActivity } from '../services/contacts.js';
 import { OAuthError, PROVIDER_LABEL } from '../services/oauth.js';
 import { connectionOut, type OAuthConnection } from './oauth-connect.js';
+import { tCtx, tLoc, tUser } from '../i18n/index.js';
 
 /**
  * Two-way sync between booking calendars and a user's Google or Outlook calendar (OAuth, see
@@ -167,15 +168,17 @@ export const calendarConnectModule: Module = {
     const inputOf = (c: OAuthConnection, a: any): EventInput => {
       const who = [a.first_name, a.last_name].filter(Boolean).join(' ');
       const loc = app.location(a.location_id);
+      // The event lands in the person's own calendar: their language.
+      const tu = tUser(app as never, c.user_id);
       return {
         title: a.title,
         description: [
           who,
-          a.email ? `E-Mail: ${a.email}` : '',
-          a.phone ? `Telefon: ${a.phone}` : '',
-          a.notes ? `Notizen: ${a.notes}` : '',
+          a.email ? tu('E-Mail: {email}', { email: a.email }) : '',
+          a.phone ? tu('Telefon: {phone}', { phone: a.phone }) : '',
+          a.notes ? tu('Notizen: {notes}', { notes: a.notes }) : '',
           `${a.calendar_name}${loc ? ` · ${loc.name}` : ''}`,
-          a.contact_id ? `Im CRM: ${app.baseUrl()}/app/contacts/${a.contact_id}` : '',
+          a.contact_id ? tu('Im CRM: {url}', { url: `${app.baseUrl()}/app/contacts/${a.contact_id}` }) : '',
         ]
           .filter(Boolean)
           .join('\n'),
@@ -205,18 +208,18 @@ export const calendarConnectModule: Module = {
         if (a.status !== 'cancelled') {
           db.run(`UPDATE appointments SET status = 'cancelled' WHERE id = ?`, a.id);
           const next = db.get('SELECT * FROM appointments WHERE id = ?', a.id)!;
-          if (a.contact_id) logActivity(app, loc, a.contact_id, 'appointment.status_changed', `Termin in ${label(c)} gelöscht – abgesagt`);
+          if (a.contact_id) logActivity(app, loc, a.contact_id, 'appointment.status_changed', tLoc(app, loc)('Termin in {calendar} gelöscht – abgesagt', { calendar: label(c) }));
           app.events.emit(loc, 'appointment.status_changed', { contactId: a.contact_id, appointment: next, status: 'cancelled', calendarId: a.calendar_id, source: c.provider });
         }
         saveMap(c.id, a.id, { deleted: 1, synced_hash: hashOf({ ...a, status: 'cancelled' }), ext_updated: ev?.updated || now(), attempts: 0, next_attempt_at: null, last_error: null, synced_at: now() });
-        log(c.id, 'info', `„${a.title}“ wurde in ${label(c)} gelöscht → hier abgesagt`);
+        log(c.id, 'info', tUser(app as never, c.user_id)('„{title}“ wurde in {calendar} gelöscht → hier abgesagt', { title: a.title, calendar: label(c) }));
         return;
       }
       db.run('UPDATE appointments SET start_at = ?, end_at = ?, reminder_sent = 0 WHERE id = ?', ev.start, ev.end, a.id);
       const tz = db.get('SELECT timezone FROM calendars WHERE id = ?', a.calendar_id)?.timezone ?? 'Europe/Berlin';
-      if (a.contact_id) logActivity(app, loc, a.contact_id, 'appointment.rescheduled', `Termin in ${label(c)} verschoben: ${formatInTz(ev.start, tz)}`);
+      if (a.contact_id) logActivity(app, loc, a.contact_id, 'appointment.rescheduled', tLoc(app, loc)('Termin in {calendar} verschoben: {date}', { calendar: label(c), date: formatInTz(ev.start, tz) }));
       saveMap(c.id, a.id, { synced_hash: hashOf({ ...a, start_at: ev.start, end_at: ev.end }), ext_start: ev.start, ext_end: ev.end, ext_updated: ev.updated || now(), etag: ev.etag || m?.etag || '', attempts: 0, next_attempt_at: null, last_error: null, synced_at: now() });
-      log(c.id, 'info', `„${a.title}“ in ${label(c)} verschoben auf ${formatInTz(ev.start, tz)}`);
+      log(c.id, 'info', tUser(app as never, c.user_id)('„{title}“ in {calendar} verschoben auf {date}', { title: a.title, calendar: label(c), date: formatInTz(ev.start, tz) }));
     }
 
     async function pushChanges(c: OAuthConnection, api: CalendarApi, res: SyncResult) {
@@ -270,11 +273,11 @@ export const calendarConnectModule: Module = {
               if (local && local > external) {
                 if (ev && !ev.cancelled) wrote(c.id, a, m.external_calendar_id, await api.patch(m.external_calendar_id, m.external_event_id, inputOf(c, a)));
                 else wrote(c.id, a, target, await api.create(target, inputOf(c, a)));
-                log(c.id, 'warn', `Konflikt bei „${a.title}“: hier zuletzt geändert – ${label(c)} überschrieben`);
+                log(c.id, 'warn', tUser(app as never, c.user_id)('Konflikt bei „{title}“: hier zuletzt geändert – {calendar} überschrieben', { title: a.title, calendar: label(c) }));
                 res.updated++;
               } else {
                 applyExternal(c, a, m, ev);
-                log(c.id, 'warn', `Konflikt bei „${a.title}“: in ${label(c)} zuletzt geändert – Termin hier angepasst`);
+                log(c.id, 'warn', tUser(app as never, c.user_id)('Konflikt bei „{title}“: in {calendar} zuletzt geändert – Termin hier angepasst', { title: a.title, calendar: label(c) }));
                 res.pulled++;
               }
             }
@@ -327,12 +330,12 @@ export const calendarConnectModule: Module = {
           // Changed here after the change over there: ours wins and goes out with the next push.
           res.conflicts++;
           saveMap(c.id, a.id, ev.cancelled ? { deleted: 1, synced_hash: '' } : { etag: '' });
-          log(c.id, 'warn', `Konflikt bei „${a.title}“: hier zuletzt geändert – ${label(c)} wird überschrieben`);
+          log(c.id, 'warn', tUser(app as never, c.user_id)('Konflikt bei „{title}“: hier zuletzt geändert – {calendar} wird überschrieben', { title: a.title, calendar: label(c) }));
           continue;
         }
         if (localPending) {
           res.conflicts++;
-          log(c.id, 'warn', `Konflikt bei „${a.title}“: in ${label(c)} zuletzt geändert – Termin hier angepasst`);
+          log(c.id, 'warn', tUser(app as never, c.user_id)('Konflikt bei „{title}“: in {calendar} zuletzt geändert – Termin hier angepasst', { title: a.title, calendar: label(c) }));
         }
         if (!ev.cancelled && a.status === 'cancelled') continue; // cancelled here: the push deletes it
         applyExternal(c, a, m, ev);
@@ -346,7 +349,7 @@ export const calendarConnectModule: Module = {
       const res: SyncResult = { created: 0, updated: 0, deleted: 0, pulled: 0, conflicts: 0, errors: [] };
       let c = getConn(cid);
       if (!c) throw notFound();
-      if (c.status === 'error' && /neu verbinden/.test(c.last_error ?? '') && !force) return res;
+      if (c.status === 'error' && /neu verbinden|reconnect/i.test(c.last_error ?? '') && !force) return res;
       const api = apiFor(c);
       try {
         await pushChanges(c, api, res);
@@ -361,7 +364,7 @@ export const calendarConnectModule: Module = {
           } catch (e) {
             if (e instanceof OAuthError) throw e;
             patchState(cid, { inbound_at: now(), inbound_error: (e as Error).message });
-            log(cid, 'error', `Abgleich aus ${label(c)}: ${(e as Error).message}`);
+            log(cid, 'error', tUser(app as never, c.user_id)('Abgleich aus {calendar}: {error}', { calendar: label(c), error: (e as Error).message }));
             res.errors.push((e as Error).message);
           }
           c = getConn(cid)!;
@@ -377,14 +380,15 @@ export const calendarConnectModule: Module = {
             res.errors.push((e as Error).message);
           }
         }
-        if (talked) db.run(`UPDATE oauth_connections SET last_sync_at = ?, status = CASE WHEN last_error LIKE '%neu verbinden%' THEN status ELSE 'ok' END, last_error = CASE WHEN last_error LIKE '%neu verbinden%' THEN last_error ELSE ? END WHERE id = ?`, now(), res.errors[0]?.slice(0, 500) ?? null, cid);
+        // i18n-ignore (SQL)
+        if (talked) db.run(`UPDATE oauth_connections SET last_sync_at = ?, status = CASE WHEN last_error LIKE '%neu verbinden%' OR last_error LIKE '%reconnect%' THEN status ELSE 'ok' END, last_error = CASE WHEN last_error LIKE '%neu verbinden%' OR last_error LIKE '%reconnect%' THEN last_error ELSE ? END WHERE id = ?`, now(), res.errors[0]?.slice(0, 500) ?? null, cid);
       } catch (e) {
         const msg = (e as Error).message;
         if (!(e instanceof OAuthError && e.needsReconnect)) db.run('UPDATE oauth_connections SET last_error = ?, last_sync_at = ? WHERE id = ?', msg.slice(0, 500), now(), cid);
         log(cid, 'error', msg);
         res.errors.push(msg);
       }
-      if (res.created || res.updated || res.deleted || res.pulled) log(cid, 'info', `Abgeglichen: ${res.created} neu, ${res.updated} geändert, ${res.deleted} gelöscht, ${res.pulled} aus ${label(c!)} übernommen`);
+      if (res.created || res.updated || res.deleted || res.pulled) log(cid, 'info', tUser(app as never, c!.user_id)('Abgeglichen: {created} neu, {updated} geändert, {deleted} gelöscht, {pulled} aus {calendar} übernommen', { created: res.created, updated: res.updated, deleted: res.deleted, pulled: res.pulled, calendar: label(c!) }));
       return res;
     }
     app.services.calendarConnectSync = syncConnection;
@@ -444,9 +448,9 @@ export const calendarConnectModule: Module = {
       const c = mine(ctx.user!, ctx.params.id);
       const b = ctx.body ?? {};
       const ids = (v: unknown, what: string) => {
-        if (!Array.isArray(v)) throw bad(`${what} als Liste`);
+        if (!Array.isArray(v)) throw bad(tCtx(ctx)('{what} als Liste', { what: tCtx(ctx)(what) }));
         return [...new Set(v.map(String).map((s) => s.trim()).filter(Boolean))].slice(0, 20).map((s) => {
-          if (s.length > 400) throw bad(`${what}: ID zu lang`);
+          if (s.length > 400) throw bad(tCtx(ctx)('{what}: ID zu lang', { what: tCtx(ctx)(what) }));
           return s;
         });
       };

@@ -12,6 +12,7 @@ import { MAX_STT_BYTES, MAX_TTS_CHARS, asHttp, ensureVoiceAdapters, listVoices, 
 import { VOICE_RE, cleanUserPrefs, cleanVoiceSettings, withUserDefaults, type VoiceUserPrefs } from '../services/voice-settings.js';
 import { VOICE_TOOLS } from './voice-tools.js';
 import { resolveTtsVoice } from '../services/companion-prefs.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Stimme: the voice layer on top of the BYOK registry (KI-Anbieter) – settings per sub-account ("Stimme"),
@@ -144,7 +145,8 @@ export const voiceModule: Module = {
     };
 
     /** A connection id in the settings must be one this sub-account may use for that capability. */
-    const checkConnections = (locId: string, s: ReturnType<typeof loadVoiceSettings>) => {
+    const checkConnections = (ctx: Ctx, locId: string, s: ReturnType<typeof loadVoiceSettings>) => {
+      const t = tCtx(ctx);
       const tts = new Set(connectionsOf(locId, 'audio_tts').map((c) => c.id));
       const stt = new Set(connectionsOf(locId, 'stt').map((c) => c.id));
       for (const [cid, set, what] of [
@@ -153,14 +155,14 @@ export const voiceModule: Module = {
         [s.stt.connection_id, stt, 'Spracherkennung'],
         [s.phone.stt_connection_id, stt, 'Spracherkennung am Telefon'],
       ] as const) {
-        if (cid && !set.has(cid)) throw bad(`${what}: Diese Verbindung gibt es nicht oder sie kann das nicht (Einstellungen → KI-Anbieter).`);
+        if (cid && !set.has(cid)) throw bad(t('{what}: Diese Verbindung gibt es nicht oder sie kann das nicht (Einstellungen → KI-Anbieter).', { what: t(what) }));
       }
     };
 
     router.get('/api/voice/settings', 'location', (ctx) => settingsOut(ctx.locationId));
     router.put('/api/voice/settings', 'location', (ctx) => {
       const next = cleanVoiceSettings(ctx.body ?? {}, loadVoiceSettings(app, ctx.locationId));
-      checkConnections(ctx.locationId, next);
+      checkConnections(ctx, ctx.locationId, next);
       db.run('INSERT INTO voice_settings (location_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(location_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at', ctx.locationId, JSON.stringify(next), now());
       return settingsOut(ctx.locationId);
     });
@@ -184,7 +186,7 @@ export const voiceModule: Module = {
     router.post('/api/voice/test', 'location', async (ctx) => {
       throttle(ctx, 'test');
       const b = ctx.body ?? {};
-      const text = str(b.text, 'Text', { max: 300 }) || 'Guten Tag, hier spricht Ihr digitaler Assistent. Wie kann ich Ihnen helfen?';
+      const text = str(b.text, 'Text', { max: 300 }) || tCtx(ctx)('Guten Tag, hier spricht Ihr digitaler Assistent. Wie kann ich Ihnen helfen?');
       const connectionId = str(b.connection_id, 'Verbindung', { max: 120 });
       if (connectionId && !connectionsOf(ctx.locationId, 'audio_tts').some((c) => c.id === connectionId)) throw notFound('Verbindung nicht gefunden');
       try {
@@ -219,11 +221,11 @@ export const voiceModule: Module = {
       if (!buf?.length && typeof body.data === 'string') {
         const m = /^data:[\w/+.;=-]+;base64,(.+)$/s.exec(body.data);
         if (!m) throw bad('Erwarte Rohdaten oder eine data:-URL');
-        if (m[1].length > MAX_STT_BYTES * 1.4) throw new HttpError(413, `Aufnahme ist zu groß (höchstens ${Math.round(MAX_STT_BYTES / 1024 / 1024)} MB)`);
+        if (m[1].length > MAX_STT_BYTES * 1.4) throw new HttpError(413, tCtx(ctx)('Aufnahme ist zu groß (höchstens {n} MB)', { n: Math.round(MAX_STT_BYTES / 1024 / 1024) }));
         buf = Buffer.from(m[1], 'base64');
       }
       if (!buf?.length) throw bad('Aufnahme fehlt');
-      if (buf.length > MAX_STT_BYTES) throw new HttpError(413, `Aufnahme ist zu groß (höchstens ${Math.round(MAX_STT_BYTES / 1024 / 1024)} MB)`);
+      if (buf.length > MAX_STT_BYTES) throw new HttpError(413, tCtx(ctx)('Aufnahme ist zu groß (höchstens {n} MB)', { n: Math.round(MAX_STT_BYTES / 1024 / 1024) }));
       return {
         audio: buf,
         language: str(ctx.query.get('language') ?? body.language, 'Sprache', { max: 12 }) || undefined,
@@ -312,7 +314,7 @@ export const voiceModule: Module = {
       } else {
         if (!/^[a-z][a-z0-9_]{1,39}$/.test(wantProvider)) throw bad('Anbieter: ungültig');
         conn = conns.find((c) => c.provider === wantProvider && c.key_set);
-        if (!conn) throw new HttpError(409, `Keine Verbindung „${presetById(wantProvider)?.label ?? wantProvider}“ für die Sprachausgabe – unter Einstellungen → KI-Anbieter anlegen.`);
+        if (!conn) throw new HttpError(409, tCtx(ctx)('Keine Verbindung „{name}“ für die Sprachausgabe – unter Einstellungen → KI-Anbieter anlegen.', { name: presetById(wantProvider)?.label ?? wantProvider }));
       }
       // the sub-account's saved voice/model belong to its own voice connection – not to another provider's
       const own = peekConnection(app, ctx.locationId, 'audio_tts', loadVoiceSettings(app, ctx.locationId).tts.connection_id || null)?.connectionId;

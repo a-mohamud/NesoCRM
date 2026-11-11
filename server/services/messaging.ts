@@ -6,6 +6,7 @@ import { safeFetch } from './net.js';
 import { getContact, logActivity, upsertContact, type Contact } from './contacts.js';
 import { PREFERENCES_TOKEN, UNSUBSCRIBE_TOKEN, htmlToText, isFullHtmlDocument } from './email-render.js';
 import { inboundGate } from './inbound-gate.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /** %%preferences_url%% in a hand-built footer becomes the link to the preference centre (the unsubscribe link when there is none). */
 export { PREFERENCES_TOKEN };
@@ -38,7 +39,7 @@ const BUILTIN_SMS = ['twilio', 'http', 'log'];
 function extraTransport<T>(loc: LocationRow, kind: 'emailTransports' | 'smsTransports', provider: unknown): T | undefined {
   if (typeof provider !== 'string' || !provider || (kind === 'emailTransports' ? BUILTIN_EMAIL : BUILTIN_SMS).includes(provider)) return undefined;
   const list: Record<string, T> = loc.app?.services[kind] ?? {};
-  if (!Object.hasOwn(list, provider)) throw new Error(`${kind === 'emailTransports' ? 'E-Mail' : 'SMS'}-Anbieter „${provider}“ ist nicht verfügbar`);
+  if (!Object.hasOwn(list, provider)) throw new Error(kind === 'emailTransports' ? tApp()('E-Mail-Anbieter „{provider}“ ist nicht verfügbar', { provider }) : tApp()('SMS-Anbieter „{provider}“ ist nicht verfügbar', { provider }));
   return list[provider];
 }
 
@@ -85,7 +86,7 @@ export async function deliverSms(loc: LocationRow, to: string, body: string): Pr
       signal: AbortSignal.timeout(15_000),
     });
     const j: any = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.message || `Twilio ${r.status}`);
+    if (!r.ok) throw new Error(j.message || `Twilio ${r.status}`); // provider error code – i18n-ignore
     return { status: 'sent', providerId: j.sid };
   }
   if (cfg.provider === 'http') {
@@ -97,7 +98,7 @@ export async function deliverSms(loc: LocationRow, to: string, body: string): Pr
     if (cfg.token) headers.authorization = `Bearer ${cfg.token}`;
     // The gateway URL is set by the sub-account: SSRF guard, so it can't reach the server's own network.
     const r = await safeFetch(String(cfg.url ?? ''), { method: 'POST', headers, body: payload, timeoutMs: 15_000, maxBytes: 64_000 });
-    if (!r.ok) throw new Error(`SMS-Gateway ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    if (!r.ok) throw new Error(`SMS gateway ${r.status}: ${(await r.text()).slice(0, 200)}`); // provider error – i18n-ignore
     return { status: 'sent' };
   }
   return { status: 'logged' };
@@ -217,12 +218,12 @@ export async function sendToContact(app: App, locationId: string, input: SendInp
       // Optional plan limit (SaaS mode): counts the send or says why not.
       const gated: string | undefined = app.services.usageGate?.(locationId, 'email');
       if (gated) return fail(gated);
-      res = await deliverEmail(loc, { to: contact.email, subject: input.subject || '(kein Betreff)', html, text, ...(input.attachments?.length ? { attachments: input.attachments } : {}), ...(bulk ? { headers: unsubscribeHeaders(unsub) } : {}), ...(input.fromName ? { fromName: input.fromName } : {}) });
+      res = await deliverEmail(loc, { to: contact.email, subject: input.subject || tLoc(app, locationId)('(kein Betreff)'), html, text, ...(input.attachments?.length ? { attachments: input.attachments } : {}), ...(bulk ? { headers: unsubscribeHeaders(unsub) } : {}), ...(input.fromName ? { fromName: input.fromName } : {}) });
     } else if (input.channel === 'chat') {
       // Live chat: the visitor's widget picks the reply up from the conversation.
       res = { status: 'sent' };
     } else {
-      if (!contact.phone) return fail('Kontakt hat keine Telefonnummer');
+      if (!contact.phone) return fail(tLoc(app, locationId)('Kontakt hat keine Telefonnummer'));
       const gated: string | undefined = app.services.usageGate?.(locationId, 'sms');
       if (gated) return fail(gated);
       res = await deliverSms(loc, contact.phone, body);

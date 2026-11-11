@@ -12,6 +12,7 @@ import { noticePage, registrationPage, roomConfig, roomPage } from '../services/
 import { clockFor, conversationOf, ctaClick, askQuestion, ping, replayWindow, vote } from '../services/webinar-track.js';
 import { getRegistration, getWebinar, linksOf, pageUrl, type Registration, type Webinar } from '../services/webinar-store.js';
 import { parseRange } from '../services/webinar-video.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * The public side of a webinar: `/w/<slug>` (registration, also as embed), `/w/<slug>/watch?t=<token>` (the room),
@@ -134,14 +135,16 @@ export const webinarPublicModule: Module = {
       asPage(() => {
         const t = String(ctx.query.get('t') ?? '');
         const { w } = viewer(ctx.params.slug, t);
-        const body = `<div class="wrap"><div class="card"><h1>Anmeldung absagen?</h1><p class="muted">Du bekommst dann keine Erinnerungen mehr für „${esc(w.title)}“.</p><form method="post" action="${esc(pageUrl(app, w))}/cancel?t=${encodeURIComponent(t)}"><button type="submit">Ja, absagen</button> <a class="btn secondary" href="${esc(pageUrl(app, w))}/watch?t=${encodeURIComponent(t)}">Nein, zurück</a></form></div></div>`;
-        return { __raw: true, status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'content-security-policy': `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'` }, body: publicPage({ title: 'Anmeldung absagen', body }) };
+        const tr = tLoc(app, w.location_id);
+        const h = (s: string, v?: Record<string, string>) => esc(tr(s, v));
+        const body = `<div class="wrap"><div class="card"><h1>${h('Anmeldung absagen?')}</h1><p class="muted">${h('Du bekommst dann keine Erinnerungen mehr für „{title}“.', { title: w.title })}</p><form method="post" action="${esc(pageUrl(app, w))}/cancel?t=${encodeURIComponent(t)}"><button type="submit">${h('Ja, absagen')}</button> <a class="btn secondary" href="${esc(pageUrl(app, w))}/watch?t=${encodeURIComponent(t)}">${h('Nein, zurück')}</a></form></div></div>`;
+        return { __raw: true, status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'content-security-policy': `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'` }, body: publicPage({ title: tr('Anmeldung absagen'), body }) };
       })(),
     );
     router.post('/w/:slug/cancel', 'public', (ctx) =>
       asPage(() => {
         const { w, reg } = viewer(ctx.params.slug, ctx.query.get('t'));
-        cancelRegistration(app, w, reg, 'über den Link');
+        cancelRegistration(app, w, reg, tLoc(app, w.location_id)('über den Link'));
         return noticePage(app, 'Anmeldung abgesagt', 'Deine Anmeldung ist abgesagt. Du kannst dich jederzeit neu anmelden.', 200, { href: pageUrl(app, w), label: 'Neu anmelden' });
       })(),
     );
@@ -202,7 +205,7 @@ export const webinarPublicModule: Module = {
         title: w.title,
         description: w.description,
         presenter: { name: w.presenter_name, photo: w.presenter_photo },
-        label: w.settings.room.label,
+        label: tLoc(app, w.location_id)(w.settings.room.label),
         duration_s: w.duration_s,
         sessions: bookable(app, w).map((s) => ({ start: s.start, kind: s.kind, full: s.full })),
         url: pageUrl(app, w),

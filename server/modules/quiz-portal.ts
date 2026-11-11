@@ -8,6 +8,7 @@ import { completedLessonIds, courseOutline, flatLessons, getCourse, isUnlocked }
 import { renderMarkdown } from '../services/markdown.js';
 import type { AttemptRow, QuizRow } from './quiz.js';
 import type { AssignmentRow, SubmissionRow } from './quiz-assignments.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * The learner's side of quizzes and assignments, inside the member portal's lesson page (hooks lessonExtras, lessonGates):
@@ -16,7 +17,7 @@ import type { AssignmentRow, SubmissionRow } from './quiz-assignments.js';
  * active, published course seat, an unlocked lesson and an open attempt can submit. Docs: docs/quizzes-certificates.md.
  */
 
-const SCRIPT = `(function(){var MAX=5*1024*1024;document.addEventListener('change',function(e){var i=e.target;if(!i||!i.matches||!i.matches('input[type=file][data-assign]'))return;var f=i.files&&i.files[0];var d=document.getElementById('a-data'),n=document.getElementById('a-name'),m=document.getElementById('a-msg');if(d)d.value='';if(n)n.value='';if(m)m.textContent='';if(!f)return;if(f.size>MAX){if(m)m.textContent='Die Datei ist größer als 5 MB.';i.value='';return}var r=new FileReader();r.onload=function(){if(d)d.value=String(r.result);if(n)n.value=f.name;if(m)m.textContent=f.name+' ist bereit.'};r.onerror=function(){if(m)m.textContent='Die Datei konnte nicht gelesen werden.'};r.readAsDataURL(f)})})();`;
+const SCRIPT = (t: STFn) => `(function(){var MAX=5*1024*1024;document.addEventListener('change',function(e){var i=e.target;if(!i||!i.matches||!i.matches('input[type=file][data-assign]'))return;var f=i.files&&i.files[0];var d=document.getElementById('a-data'),n=document.getElementById('a-name'),m=document.getElementById('a-msg');if(d)d.value='';if(n)n.value='';if(m)m.textContent='';if(!f)return;if(f.size>MAX){if(m)m.textContent=${JSON.stringify(t('Die Datei ist größer als 5 MB.'))};i.value='';return}var r=new FileReader();r.onload=function(){if(d)d.value=String(r.result);if(n)n.value=f.name;if(m)m.textContent=${JSON.stringify(t('{name} ist bereit.'))}.replace('{name}',f.name)};r.onerror=function(){if(m)m.textContent=${JSON.stringify(t('Die Datei konnte nicht gelesen werden.'))}};r.readAsDataURL(f)})})();`;
 
 const CSS = `<style>
 .qz{margin-top:30px}.qz h2{margin:0 0 6px}.qz .q{border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 12px;background:var(--panel)}
@@ -71,35 +72,37 @@ export const quizPortalModule: Module = {
     ];
 
     function review(q: Question, a: AttemptRow, quiz: QuizRow, reveal: boolean, i: number) {
+      const t = tLoc(app, quiz.location_id);
       const g = gradeAttempt([q], a.answers, a.reviews).graded[0];
       const given = a.answers[q.id];
-      const mark = g.pending ? '<span class="muted">wartet auf Prüfung</span>' : g.correct ? '<span class="ok">✓ richtig</span>' : '<span class="bad">✗ falsch</span>';
+      const mark = g.pending ? `<span class="muted">${t('wartet auf Prüfung')}</span>` : g.correct ? `<span class="ok">✓ ${t('richtig')}</span>` : `<span class="bad">✗ ${t('falsch')}</span>`;
       let sol = '';
       if (reveal && g.correct !== true) {
         sol =
           q.kind === 'short'
-            ? q.accepted.length ? `Richtig wäre z. B.: ${escapeHtml(q.accepted[0])}` : ''
-            : `Richtig: ${q.options.filter((o) => o.correct).map((o) => escapeHtml(o.text)).join(', ')}`;
+            ? q.accepted.length ? t('Richtig wäre z. B.: {answer}', { answer: escapeHtml(q.accepted[0]) }) : ''
+            : t('Richtig: {answers}', { answers: q.options.filter((o) => o.correct).map((o) => escapeHtml(o.text)).join(', ') });
         if (q.explanation) sol += `${sol ? ' – ' : ''}${escapeHtml(q.explanation)}`;
       }
-      const note = a.reviews[q.id]?.comment ? `<div class="sol">Kursleitung: ${escapeHtml(a.reviews[q.id].comment!)}</div>` : '';
+      const note = a.reviews[q.id]?.comment ? `<div class="sol">${t('Kursleitung: {comment}', { comment: escapeHtml(a.reviews[q.id].comment!) })}</div>` : '';
       const text = q.kind === 'short' ? String(given ?? '') : (Array.isArray(given) ? given : [given]).map((v) => q.options.find((o) => o.id === v)?.text ?? '').filter(Boolean).join(', ');
-      return `<li style="margin:0 0 8px"><b>${i + 1}. ${escapeHtml(q.text)}</b> ${mark}<div class="sol">Deine Antwort: ${escapeHtml(text || '–')}</div>${sol ? `<div class="sol">${sol}</div>` : ''}${note}</li>`;
+      return `<li style="margin:0 0 8px"><b>${i + 1}. ${escapeHtml(q.text)}</b> ${mark}<div class="sol">${t('Deine Antwort: {answer}', { answer: escapeHtml(text || '–') })}</div>${sol ? `<div class="sol">${sol}</div>` : ''}${note}</li>`;
     }
 
     function quizBlock(p: any, m: any, s: any, l: any, quiz: QuizRow): string {
       const st = quizzes().standing(quiz, m.contact.id);
+      const t = tLoc(app, p.locationId);
       const last = st.last as AttemptRow | undefined;
-      const parts: string[] = [`<section class="qz" id="quiz"><h2>${escapeHtml(quiz.title || 'Quiz')}</h2>`];
+      const parts: string[] = [`<section class="qz" id="quiz"><h2>${escapeHtml(quiz.title || t('Quiz'))}</h2>`];
       if (quiz.intro) parts.push(`<div class="prose muted" style="margin:0 0 12px">${renderMarkdown(quiz.intro)}</div>`);
-      parts.push(`<p class="muted small">${quiz.questions.length} Fragen · bestanden ab ${quiz.pass_percent} %${quiz.max_attempts ? ` · ${quiz.max_attempts} Versuche${st.left !== null ? ` (noch ${st.left})` : ''}` : ''}</p>`);
+      parts.push(`<p class="muted small">${t.plural(quiz.questions.length, { one: '{n} Frage', other: '{n} Fragen' })} · ${t('bestanden ab {percent} %', { percent: quiz.pass_percent })}${quiz.max_attempts ? ` · ${t.plural(quiz.max_attempts, { one: '{n} Versuch', other: '{n} Versuche' })}${st.left !== null ? ` ${t('(noch {n})', { n: st.left })}` : ''}` : ''}</p>`);
       if (last) {
         const reveal = quiz.show_answers === 'always' || (quiz.show_answers === 'after_pass' && (!!last.passed || st.left === 0));
-        if (last.status === 'pending') parts.push(`<div class="box">Deine Antworten sind angekommen. Einige Fragen prüft die Kursleitung – du bekommst eine E-Mail, sobald das Ergebnis da ist.</div>`);
-        else parts.push(`<div class="box ${last.passed ? 'pass' : 'fail'}"><b>${last.passed ? `Bestanden – ${last.percent} %` : `Noch nicht bestanden – ${last.percent} %`}</b> <span class="muted small">(Versuch ${last.attempt_no}, ${last.score} von ${last.max_score} Punkten)</span>${last.comment ? `<div class="fb small" style="margin-top:8px">${escapeHtml(last.comment)}</div>` : ''}</div>`);
+        if (last.status === 'pending') parts.push(`<div class="box">${t('Deine Antworten sind angekommen. Einige Fragen prüft die Kursleitung – du bekommst eine E-Mail, sobald das Ergebnis da ist.')}</div>`);
+        else parts.push(`<div class="box ${last.passed ? 'pass' : 'fail'}"><b>${last.passed ? t('Bestanden – {percent} %', { percent: last.percent }) : t('Noch nicht bestanden – {percent} %', { percent: last.percent })}</b> <span class="muted small">${t('(Versuch {attempt}, {score} von {max} Punkten)', { attempt: last.attempt_no, score: last.score, max: last.max_score })}</span>${last.comment ? `<div class="fb small" style="margin-top:8px">${escapeHtml(last.comment)}</div>` : ''}</div>`);
         if (quiz.show_answers !== 'never') parts.push(`<ol class="small" style="padding-left:20px">${quiz.questions.map((q, i) => review(q, last, quiz, reveal, i)).join('')}</ol>`);
       }
-      if (st.passed) parts.push(`<p class="ok">✓ Dieses Quiz ist abgeschlossen.</p>`);
+      if (st.passed) parts.push(`<p class="ok">✓ ${t('Dieses Quiz ist abgeschlossen.')}</p>`);
       else if (st.canTry) {
         const seed = `${m.contact.id}:${quiz.id}`;
         const form = quiz.questions
@@ -107,13 +110,13 @@ export const quizPortalModule: Module = {
             const opts = quiz.shuffle ? shuffleSeeded(q.options, seed) : q.options;
             const body =
               q.kind === 'short'
-                ? `<input type="text" name="q_${q.id}" maxlength="300" autocomplete="off" aria-label="Antwort zu Frage ${i + 1}">`
+                ? `<input type="text" name="q_${q.id}" maxlength="300" autocomplete="off" aria-label="${t('Antwort zu Frage {n}', { n: i + 1 })}">`
                 : opts.map((o) => `<label class="o"><input type="${q.kind === 'multiple' ? 'checkbox' : 'radio'}" name="${q.kind === 'multiple' ? `q_${q.id}_${o.id}` : `q_${q.id}`}" value="${q.kind === 'multiple' ? '1' : escapeHtml(o.id)}"> <span>${escapeHtml(o.text)}</span></label>`).join('');
-            return `<div class="q"><h3>${i + 1}. ${escapeHtml(q.text)}</h3>${q.kind === 'multiple' ? '<div class="muted small" style="margin:-6px 0 8px">Mehrere Antworten möglich</div>' : ''}${body}</div>`;
+            return `<div class="q"><h3>${i + 1}. ${escapeHtml(q.text)}</h3>${q.kind === 'multiple' ? `<div class="muted small" style="margin:-6px 0 8px">${t('Mehrere Antworten möglich')}</div>` : ''}${body}</div>`;
           })
           .join('');
-        parts.push(`<form method="post" action="${lessonUrl(p, s.course.slug, l.id)}/quiz">${last ? '<p class="muted">Du kannst es noch einmal versuchen:</p>' : ''}${form}<button class="btn ok">Antworten abgeben</button></form>`);
-      } else if (!st.pending) parts.push(`<p class="muted">Alle Versuche sind verbraucht. Bitte melde dich bei der Kursleitung.</p>`);
+        parts.push(`<form method="post" action="${lessonUrl(p, s.course.slug, l.id)}/quiz">${last ? `<p class="muted">${t('Du kannst es noch einmal versuchen:')}</p>` : ''}${form}<button class="btn ok">${t('Antworten abgeben')}</button></form>`);
+      } else if (!st.pending) parts.push(`<p class="muted">${t('Alle Versuche sind verbraucht. Bitte melde dich bei der Kursleitung.')}</p>`);
       parts.push('</section>');
       return CSS + parts.join('');
     }
@@ -121,15 +124,17 @@ export const quizPortalModule: Module = {
     function assignmentBlock(p: any, m: any, s: any, l: any, a: AssignmentRow): string {
       const st = assignments().standing(a, m.contact.id) as { last?: SubmissionRow; passed: boolean; waiting: boolean; canSubmit: boolean };
       const tz = p.loc.timezone;
-      const parts: string[] = [`<section class="qz" id="aufgabe"><h2>${escapeHtml(a.title || 'Aufgabe')}</h2>`];
+      const t = tLoc(app, p.locationId);
+      const dateOf = (iso: string) => (t.locale === 'de' ? deDate(iso, tz) : new Date(iso).toLocaleDateString('en-GB', { timeZone: tz || 'Europe/Berlin', day: 'numeric', month: 'short', year: 'numeric' }));
+      const parts: string[] = [`<section class="qz" id="aufgabe"><h2>${escapeHtml(a.title || t('Kurs-Aufgabe'))}</h2>`];
       if (a.instructions) parts.push(`<div class="prose" style="margin:0 0 12px">${renderMarkdown(a.instructions)}</div>`);
       const last = st.last;
       if (last) {
-        const label = last.status === 'passed' ? 'Bestanden' : last.status === 'failed' ? 'Nicht bestanden' : last.status === 'revision' ? 'Bitte überarbeiten' : 'Abgegeben – wird geprüft';
-        parts.push(`<div class="box ${last.status === 'passed' ? 'pass' : last.status === 'submitted' ? '' : 'fail'}"><b>${label}</b> <span class="muted small">(Abgabe ${last.attempt_no} vom ${escapeHtml(deDate(last.submitted_at, tz))})</span>${last.feedback ? `<div class="fb small" style="margin-top:8px"><b>Rückmeldung:</b>\n${escapeHtml(last.feedback)}</div>` : ''}${last.file_name ? `<div class="small" style="margin-top:8px"><a href="${lessonUrl(p, s.course.slug, l.id)}/aufgabe/datei/${encodeURIComponent(last.id)}">${escapeHtml(last.file_name)}</a></div>` : ''}</div>`);
+        const label = last.status === 'passed' ? t('Bestanden') : last.status === 'failed' ? t('Nicht bestanden') : last.status === 'revision' ? t('Bitte überarbeiten') : t('Abgegeben – wird geprüft');
+        parts.push(`<div class="box ${last.status === 'passed' ? 'pass' : last.status === 'submitted' ? '' : 'fail'}"><b>${label}</b> <span class="muted small">${t('(Abgabe {n} vom {date})', { n: last.attempt_no, date: escapeHtml(dateOf(last.submitted_at)) })}</span>${last.feedback ? `<div class="fb small" style="margin-top:8px"><b>${t('Rückmeldung:')}</b>\n${escapeHtml(last.feedback)}</div>` : ''}${last.file_name ? `<div class="small" style="margin-top:8px"><a href="${lessonUrl(p, s.course.slug, l.id)}/aufgabe/datei/${encodeURIComponent(last.id)}">${escapeHtml(last.file_name)}</a></div>` : ''}</div>`);
       }
-      if (st.passed) parts.push('<p class="ok">✓ Diese Aufgabe ist abgeschlossen.</p>');
-      else if (st.canSubmit) parts.push(`<p><a class="btn ok" href="${lessonUrl(p, s.course.slug, l.id)}/aufgabe">${last ? 'Erneut abgeben' : 'Aufgabe bearbeiten und abgeben'}</a></p>`);
+      if (st.passed) parts.push(`<p class="ok">✓ ${t('Diese Aufgabe ist abgeschlossen.')}</p>`);
+      else if (st.canSubmit) parts.push(`<p><a class="btn ok" href="${lessonUrl(p, s.course.slug, l.id)}/aufgabe">${last ? t('Erneut abgeben') : t('Aufgabe bearbeiten und abgeben')}</a></p>`);
       parts.push('</section>');
       return CSS + parts.join('');
     }
@@ -155,13 +160,15 @@ export const quizPortalModule: Module = {
       try {
         quizzes().submit(quiz, c.seat.enrollment.id, m.contact.id, answers);
       } catch (e) {
-        return notice(k, p, m, (e as Error).message, lessonUrl(p, ctx.params.course, ctx.params.lesson));
+        return notice(k, p, m, (e as Error).message, lessonUrl(p, ctx.params.course, ctx.params.lesson)); // notice() translates
       }
       return redirect(`${lessonUrl(p, ctx.params.course, ctx.params.lesson)}#quiz`, 303);
     });
 
-    const notice = (k: any, p: any, m: any, message: string, back: string) =>
-      k.page(p, { title: 'Hinweis', member: m, status: 400, body: `<div class="panel empty"><h2>${escapeHtml(message)}</h2><p><a class="btn" href="${escapeHtml(back)}">Zurück zur Lektion</a></p></div>` }) as RawResult;
+    const notice = (k: any, p: any, m: any, message: string, back: string) => {
+      const t = tLoc(app, p.locationId);
+      return k.page(p, { title: t('Hinweis'), member: m, status: 400, body: `<div class="panel empty"><h2>${escapeHtml(t(message))}</h2><p><a class="btn" href="${escapeHtml(back)}">${t('Zurück zur Lektion')}</a></p></div>` }) as RawResult;
+    };
 
     // --- assignments --------------------------------------------------------------------------------------------------------------
     const withAssignment = (ctx: Ctx, fn: (k: any, p: any, m: any, c: NonNullable<ReturnType<typeof lessonContext>>, a: AssignmentRow) => RawResult): RawResult => {
@@ -180,7 +187,7 @@ export const quizPortalModule: Module = {
       return r;
     };
     router.get('/portal-assignments.js', 'public', () => {
-      const r = textResult(SCRIPT, 'text/javascript; charset=utf-8');
+      const r = textResult(SCRIPT(tApp()), 'text/javascript; charset=utf-8');
       r.headers['cache-control'] = 'public, max-age=3600';
       return r;
     });
@@ -190,14 +197,15 @@ export const quizPortalModule: Module = {
         const back = lessonUrl(p, ctx.params.course, ctx.params.lesson);
         if (!st.canSubmit || st.passed) return redirect(`${back}#aufgabe`, 303);
         const err = String(ctx.query.get('fehler') ?? '');
-        const text = a.kind === 'file' ? '' : `<label for="a-text" style="display:block;font-weight:600;margin:0 0 6px">Dein Text</label><textarea id="a-text" name="text" maxlength="20000"></textarea>`;
-        const file = a.kind === 'text' ? '' : `<label for="a-file" style="display:block;font-weight:600;margin:14px 0 6px">Datei (optional, bis 5 MB: PDF, Bild, Word, Excel, ZIP, Text)</label><input id="a-file" type="file" data-assign accept=".pdf,.png,.jpg,.jpeg,.zip,.txt,.csv,.docx,.xlsx,.pptx"><input type="hidden" id="a-data" name="data"><input type="hidden" id="a-name" name="file_name"><div id="a-msg" class="muted small" role="status"></div>`;
+        const t = tLoc(app, p.locationId);
+        const text = a.kind === 'file' ? '' : `<label for="a-text" style="display:block;font-weight:600;margin:0 0 6px">${t('Dein Text')}</label><textarea id="a-text" name="text" maxlength="20000"></textarea>`;
+        const file = a.kind === 'text' ? '' : `<label for="a-file" style="display:block;font-weight:600;margin:14px 0 6px">${t('Datei (optional, bis 5 MB: PDF, Bild, Word, Excel, ZIP, Text)')}</label><input id="a-file" type="file" data-assign accept=".pdf,.png,.jpg,.jpeg,.zip,.txt,.csv,.docx,.xlsx,.pptx"><input type="hidden" id="a-data" name="data"><input type="hidden" id="a-name" name="file_name"><div id="a-msg" class="muted small" role="status"></div>`;
         return withScript(
           k.page(p, {
             title: a.title,
             member: m,
             head: `${CSS}<script src="/portal-assignments.js" defer></script>`,
-            body: `<div class="qz"><div class="crumb"><a href="${escapeHtml(back)}">← Zur Lektion</a></div><h1>${escapeHtml(a.title)}</h1>${a.instructions ? `<div class="prose" style="margin:0 0 16px">${renderMarkdown(a.instructions)}</div>` : ''}${err ? `<div class="box fail">${escapeHtml(MSG[err] ?? 'Das hat nicht geklappt.')}</div>` : ''}<form method="post" action="${escapeHtml(back)}/aufgabe">${text}${file}<p style="margin-top:18px"><button class="btn ok">Abgeben</button></p></form></div>`,
+            body: `<div class="qz"><div class="crumb"><a href="${escapeHtml(back)}">← ${t('Zur Lektion')}</a></div><h1>${escapeHtml(a.title)}</h1>${a.instructions ? `<div class="prose" style="margin:0 0 16px">${renderMarkdown(a.instructions)}</div>` : ''}${err ? `<div class="box fail">${escapeHtml(t(MSG[err] ?? 'Das hat nicht geklappt.'))}</div>` : ''}<form method="post" action="${escapeHtml(back)}/aufgabe">${text}${file}<p style="margin-top:18px"><button class="btn ok">${t('Abgeben')}</button></p></form></div>`,
           }),
         );
       }),

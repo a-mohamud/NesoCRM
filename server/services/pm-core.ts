@@ -7,6 +7,10 @@ import { hmInTz, ymdInTz, zonedToUtc } from '../core/time.js';
 import { id as newId, now } from '../core/util.js';
 import { addDays, isYmd } from './pm-schedule.js';
 import { hiddenUser } from '../core/permissions.js';
+import { tApp, tLoc } from '../i18n/index.js';
+
+/** Messages in the instance language (static ids for the catalog). */
+const tm = tApp();
 
 /**
  * Project planning, shared pieces: projects/statuses/sections/custom fields, the people who can be assigned,
@@ -27,6 +31,8 @@ export const DEFAULT_STATUSES: { name: string; category: StatusCategory; color: 
   { name: 'Erledigt', category: 'done', color: '#10b981' },
 ];
 export const DEFAULT_PROJECT_NAME = 'Allgemein';
+/** The default statuses with names in a language (a new project's columns). */
+export const localStatuses = (t: (s: string) => string) => DEFAULT_STATUSES.map((s) => ({ ...s, name: t(s.name) }));
 export const FIELD_TYPES = ['text', 'number', 'date', 'select', 'checkbox', 'url'] as const;
 const COLOR = /^#[0-9a-f]{6}$/i;
 
@@ -60,11 +66,11 @@ export function normDate(v: unknown, label: string): string | null {
   if (v === null || v === undefined || v === '') return null;
   const s = String(v).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    if (!isYmd(s)) throw bad(`${label}: ungültiges Datum`);
+    if (!isYmd(s)) throw bad(tm('{label}: ungültiges Datum', { label: tm(label) }));
     return `${s}T00:00:00.000Z`;
   }
   const t = Date.parse(s);
-  if (!Number.isFinite(t)) throw bad(`${label}: ungültiges Datum`);
+  if (!Number.isFinite(t)) throw bad(tm('{label}: ungültiges Datum', { label: tm(label) }));
   return new Date(t).toISOString();
 }
 
@@ -130,16 +136,16 @@ export const isTeamMember = (app: App, locationId: string, userId: string) => te
 /** Keeps only people who can work here; unknown ids are an error (a typo must not silently drop an assignee). */
 export function cleanPeople(app: App, locationId: string, v: unknown, label: string, max = 20): string[] {
   if (v === undefined || v === null) return [];
-  if (!Array.isArray(v)) throw bad(`${label}: Liste von Nutzer-IDs erwartet`);
+  if (!Array.isArray(v)) throw bad(tm('{label}: Liste von Nutzer-IDs erwartet', { label: tm(label) }));
   const known = new Set(team(app, locationId).map((p) => p.id));
   const out: string[] = [];
   for (const raw of v) {
     const u = String(raw ?? '');
     if (!u || out.includes(u)) continue;
-    if (!known.has(u)) throw bad(`${label}: Nutzer nicht gefunden oder ohne Zugriff`);
+    if (!known.has(u)) throw bad(tm('{label}: Nutzer nicht gefunden oder ohne Zugriff', { label: tm(label) }));
     out.push(u);
   }
-  if (out.length > max) throw bad(`${label}: höchstens ${max} Personen`);
+  if (out.length > max) throw bad(tm('{label}: höchstens {max} Personen', { label: tm(label), max }));
   return out;
 }
 
@@ -173,7 +179,7 @@ export function saveSettings(app: App, locationId: string, body: any): PmSetting
   const next: PmSettings = { ...cur };
   const int = (v: unknown, label: string, min: number, max: number) => {
     const n = Math.round(Number(v));
-    if (!Number.isFinite(n) || n < min || n > max) throw bad(`${label}: Zahl zwischen ${min} und ${max}`);
+    if (!Number.isFinite(n) || n < min || n > max) throw bad(tm('{label}: Zahl zwischen {min} und {max}', { label: tm(label), min, max }));
     return n;
   };
   if (body.capacity_hours !== undefined) next.capacity_hours = int(body.capacity_hours, 'Wochenkapazität', 1, 168);
@@ -244,9 +250,11 @@ export function ensureDefaultProject(app: App, locationId: string): string {
   let p = db.get<{ id: string }>('SELECT id FROM pm_projects WHERE location_id = ? AND is_default = 1', locationId);
   if (!p) {
     const t = now();
-    const row = { id: newId(), location_id: locationId, name: DEFAULT_PROJECT_NAME, description: 'Aufgaben ohne eigenes Projekt', color: '#64748b', status: 'active', is_default: 1, position: -1, created_at: t, updated_at: t };
+    // created in the sub-account's language
+    const tl = tLoc(app, locationId);
+    const row = { id: newId(), location_id: locationId, name: tl(DEFAULT_PROJECT_NAME), description: tl('Aufgaben ohne eigenes Projekt'), color: '#64748b', status: 'active', is_default: 1, position: -1, created_at: t, updated_at: t };
     db.tx(() => {
-      if (db.run(`INSERT OR IGNORE INTO pm_projects (id, location_id, name, description, color, status, is_default, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, row.id, row.location_id, row.name, row.description, row.color, row.status, row.is_default, row.position, row.created_at, row.updated_at).changes) insertStatuses(app, locationId, row.id, DEFAULT_STATUSES);
+      if (db.run(`INSERT OR IGNORE INTO pm_projects (id, location_id, name, description, color, status, is_default, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, row.id, row.location_id, row.name, row.description, row.color, row.status, row.is_default, row.position, row.created_at, row.updated_at).changes) insertStatuses(app, locationId, row.id, localStatuses(tl));
     });
     p = db.get<{ id: string }>('SELECT id FROM pm_projects WHERE location_id = ? AND is_default = 1', locationId)!;
   }
@@ -337,7 +345,7 @@ export function cleanCustom(app: App, locationId: string, projectId: string | nu
   const out = { ...cur };
   for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
     const f = defs.get(k);
-    if (!f) throw bad(`Eigenes Feld „${k}“ gibt es in diesem Projekt nicht`);
+    if (!f) throw bad(tm('Eigenes Feld „{field}“ gibt es in diesem Projekt nicht', { field: k }));
     if (v === null || v === '') {
       delete out[k];
       continue;
@@ -345,23 +353,23 @@ export function cleanCustom(app: App, locationId: string, projectId: string | nu
     switch (f.type) {
       case 'number': {
         const n = Number(v);
-        if (!Number.isFinite(n)) throw bad(`${f.label}: Zahl erwartet`);
+        if (!Number.isFinite(n)) throw bad(tm('{field}: Zahl erwartet', { field: f.label }));
         out[k] = n;
         break;
       }
       case 'date':
-        if (!isYmd(String(v))) throw bad(`${f.label}: Datum als JJJJ-MM-TT erwartet`);
+        if (!isYmd(String(v))) throw bad(tm('{field}: Datum als JJJJ-MM-TT erwartet', { field: f.label }));
         out[k] = String(v);
         break;
       case 'select':
-        if (!f.options.includes(String(v))) throw bad(`${f.label}: Wert nicht in der Auswahl`);
+        if (!f.options.includes(String(v))) throw bad(tm('{field}: Wert nicht in der Auswahl', { field: f.label }));
         out[k] = String(v);
         break;
       case 'checkbox':
         out[k] = v === true || v === 'true' || v === 1 || v === '1';
         break;
       case 'url':
-        if (!/^https?:\/\/[^\s]+$/i.test(String(v))) throw bad(`${f.label}: Link mit https:// erwartet`);
+        if (!/^https?:\/\/[^\s]+$/i.test(String(v))) throw bad(tm('{field}: Link mit https:// erwartet', { field: f.label }));
         out[k] = String(v).slice(0, 1000);
         break;
       default:
@@ -449,12 +457,16 @@ export function removeFiles(app: App, files: (string | null | undefined)[]) {
 
 export function requireText(v: unknown, label: string, max: number): string {
   const s = str(v, label, { required: true, max });
-  if (!s) throw bad(`${label} fehlt`);
+  if (!s) throw bad(tm('{label} fehlt', { label: tm(label) }));
   return s;
 }
 
 export function failOnTree(e: unknown): never {
-  if (e instanceof Error && ['TreeError', 'DepError', 'RecurrenceError'].includes(e.constructor.name)) throw bad(e.message);
+  // i18n-ignore (class names)
+  if (e instanceof Error && ['TreeError', 'DepError', 'RecurrenceError'].includes(e.constructor.name)) {
+    const x = e as Error & { key?: string; vars?: Record<string, string | number> };
+    throw bad(x.key ? tm(x.key, x.vars) : e.message);
+  }
   throw e;
 }
 

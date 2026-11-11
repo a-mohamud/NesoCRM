@@ -2,6 +2,7 @@ import type { App, Module } from '../core/app.js';
 import { parseJson } from '../core/db.js';
 import { HttpError, bad, notFound, str, type User } from '../core/http.js';
 import { PERMISSIONS } from '../core/permissions.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 import { id, now, normalizeEmail } from '../core/util.js';
 import {
   LIMITS,
@@ -214,21 +215,23 @@ export function fromStripeSub(app: App, sub: any, cur?: Pick<Subscription, 'stat
   };
 }
 
+/** Usage units for overage invoice lines (translated where used). */
+const UNIT_LABEL: Partial<Record<LimitKey, string>> = { emails: 'E-Mails', sms: 'SMS', ai: 'KI-Aufrufe' };
 const STATUS_LABEL: Record<SubStatus, string> = { trialing: 'Testphase', active: 'aktiv', past_due: 'Zahlung offen', paused: 'pausiert', canceled: 'beendet' };
-const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' }) : '');
+const fmtDate = (iso: string | null, t: STFn = tApp()) => (iso ? new Date(iso).toLocaleDateString(t.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: 'Europe/Berlin' }) : '');
 
-/** The banner a sub-account shows for its billing state (or null). */
-export function bannerFor(sub: Subscription, plan: Plan): { tone: 'info' | 'warn' | 'error'; text: string; action?: 'portal' | 'undo_cancel' } | null {
+/** The banner a sub-account shows for its billing state (or null), in the reader's language. */
+export function bannerFor(sub: Subscription, plan: Plan, t: STFn = tApp()): { tone: 'info' | 'warn' | 'error'; text: string; action?: 'portal' | 'undo_cancel' } | null {
   const portal = sub.billing === 'stripe' && !!sub.stripe_customer;
   if (sub.status === 'past_due')
-    return { tone: 'warn', text: `Zahlung fehlgeschlagen. Bitte aktualisiere deine Zahlungsmethode${sub.grace_until ? ` bis ${fmtDate(sub.grace_until)}` : ''} – sonst wird dein Konto pausiert.`, action: portal ? 'portal' : undefined };
+    return { tone: 'warn', text: sub.grace_until ? t('Zahlung fehlgeschlagen. Bitte aktualisiere deine Zahlungsmethode bis {date} – sonst wird dein Konto pausiert.', { date: fmtDate(sub.grace_until, t) }) : t('Zahlung fehlgeschlagen. Bitte aktualisiere deine Zahlungsmethode – sonst wird dein Konto pausiert.'), action: portal ? 'portal' : undefined };
   // A trial that ran out without payment data: nothing is overdue, a plan has to be chosen.
-  if (sub.status === 'paused' && sub.billing === 'manual' && sub.trial_end) return { tone: 'error', text: 'Deine Testphase ist abgelaufen. Alles bleibt lesbar, Änderungen sind gesperrt, bis du einen Tarif wählst (Einstellungen → Abo & Rechnung).' };
-  if (sub.status === 'paused') return { tone: 'error', text: 'Dein Konto ist pausiert, weil eine Zahlung offen ist. Alles bleibt lesbar, Änderungen sind gesperrt, bis die Zahlung da ist.', action: portal ? 'portal' : undefined };
-  if (sub.status === 'canceled') return { tone: 'error', text: 'Dein Abo ist beendet. Das Konto ist nur noch lesbar.' };
-  if (sub.cancel_at_period_end) return { tone: 'info', text: `Dein Abo „${plan.name}“ endet am ${fmtDate(sub.current_period_end) || 'Ende des Zeitraums'}.`, action: portal ? 'undo_cancel' : undefined };
+  if (sub.status === 'paused' && sub.billing === 'manual' && sub.trial_end) return { tone: 'error', text: t('Deine Testphase ist abgelaufen. Alles bleibt lesbar, Änderungen sind gesperrt, bis du einen Tarif wählst (Einstellungen → Abo & Rechnung).') };
+  if (sub.status === 'paused') return { tone: 'error', text: t('Dein Konto ist pausiert, weil eine Zahlung offen ist. Alles bleibt lesbar, Änderungen sind gesperrt, bis die Zahlung da ist.'), action: portal ? 'portal' : undefined };
+  if (sub.status === 'canceled') return { tone: 'error', text: t('Dein Abo ist beendet. Das Konto ist nur noch lesbar.') };
+  if (sub.cancel_at_period_end) return { tone: 'info', text: t('Dein Abo „{plan}“ endet am {date}.', { plan: plan.name, date: fmtDate(sub.current_period_end, t) || t('Ende des Zeitraums') }), action: portal ? 'undo_cancel' : undefined };
   if (sub.status === 'trialing' && sub.trial_end && new Date(sub.trial_end).getTime() - Date.now() < 7 * 864e5)
-    return { tone: 'info', text: sub.billing === 'manual' ? `Deine Testphase endet am ${fmtDate(sub.trial_end)}. Danach ist dein Konto schreibgeschützt – wähle vorher unter Einstellungen → Abo & Rechnung einen Tarif.` : `Deine Testphase endet am ${fmtDate(sub.trial_end)}. Danach läuft „${plan.name}“ automatisch weiter.`, action: portal ? 'portal' : undefined };
+    return { tone: 'info', text: sub.billing === 'manual' ? t('Deine Testphase endet am {date}. Danach ist dein Konto schreibgeschützt – wähle vorher unter Einstellungen → Abo & Rechnung einen Tarif.', { date: fmtDate(sub.trial_end, t) }) : t('Deine Testphase endet am {date}. Danach läuft „{plan}“ automatisch weiter.', { date: fmtDate(sub.trial_end, t), plan: plan.name }), action: portal ? 'portal' : undefined };
   return null;
 }
 
@@ -265,7 +268,7 @@ const TOOLS: Tool[] = [
       const plans: any[] = await call.api('GET', '/api/saas/plans');
       const want = String(a.plan).toLowerCase();
       const plan = plans.find((p) => p.id === a.plan) ?? plans.find((p) => p.name.toLowerCase() === want);
-      if (!plan) throw new HttpError(404, `Tarif „${a.plan}“ nicht gefunden`);
+      if (!plan) throw new HttpError(404, tApp()('Tarif „{plan}“ nicht gefunden', { plan: String(a.plan) }));
       return call.api('PUT', `/api/saas/locations/${encodeURIComponent(a.location_id)}`, { body: { plan_id: plan.id, ...(a.interval ? { interval: a.interval } : {}), ...(a.status ? { status: a.status } : {}) } });
     },
   },
@@ -381,7 +384,7 @@ export const saasModule: Module = {
         for (const k of USAGE_KEYS) {
           if (b.unit_cost[k] === undefined) continue;
           const v = Number(String(b.unit_cost[k]).replace(',', '.'));
-          if (!Number.isFinite(v) || v < 0 || v > 10000) throw bad(`Kosten je ${LIMITS[k]}: 0 bis 10.000 Cent`);
+          if (!Number.isFinite(v) || v < 0 || v > 10000) throw bad(tCtx(ctx)('Kosten je {unit}: 0 bis 10.000 Cent', { unit: tCtx(ctx)(LIMITS[k]) }));
           s.unit_cost[k] = v;
         }
       }
@@ -433,7 +436,7 @@ export const saasModule: Module = {
             priceId = '';
           }
           if (!priceId && want > 0) {
-            priceId = (await saasStripe(app, 'POST', '/v1/prices', { product: productId, currency: plan.currency.toLowerCase(), unit_amount: want, recurring: { interval }, nickname: `${plan.name} (${interval === 'month' ? 'monatlich' : 'jährlich'})`, metadata: { saas_plan_id: plan.id, interval } })).id;
+            priceId = (await saasStripe(app, 'POST', '/v1/prices', { product: productId, currency: plan.currency.toLowerCase(), unit_amount: want, recurring: { interval }, nickname: `${plan.name} (${tApp()(interval === 'month' ? 'monatlich' : 'jährlich')})`, metadata: { saas_plan_id: plan.id, interval } })).id;
           }
           next[field] = priceId;
           synced[interval] = { amount: want, currency: plan.currency };
@@ -454,7 +457,7 @@ export const saasModule: Module = {
       let p = plan;
       const field = interval === 'month' ? 'stripe_price_month' : 'stripe_price_year';
       if (!p[field]) p = await syncPlan(plan.id);
-      if (!p[field]) throw bad(p.sync_error ? `Stripe: ${p.sync_error}` : `Für „${plan.name}“ gibt es keinen ${interval === 'month' ? 'Monats' : 'Jahres'}preis`);
+      if (!p[field]) throw bad(p.sync_error ? `Stripe: ${p.sync_error}` : tApp()(interval === 'month' ? 'Für „{plan}“ gibt es keinen Monatspreis' : 'Für „{plan}“ gibt es keinen Jahrespreis', { plan: plan.name }));
       return p[field];
     }
     app.services.saasPriceId = priceIdFor;
@@ -566,8 +569,9 @@ export const saasModule: Module = {
           cancel_at_period_end: 0,
           ...life,
         });
-        logSaasEvent(app, loc.id, cur ? 'plan_changed' : 'plan_assigned', `${cur ? `${planById(app, cur.plan_id)?.name ?? '?'} → ` : ''}${plan.name} (ohne Stripe${status ? `, ${STATUS_LABEL[nextStatus]}` : ''})`);
-        if (cur && cur.status !== nextStatus) logSaasEvent(app, loc.id, nextStatus, `Status von Hand: ${STATUS_LABEL[nextStatus]}`);
+        const tl = tApp();
+        logSaasEvent(app, loc.id, cur ? 'plan_changed' : 'plan_assigned', `${cur ? `${planById(app, cur.plan_id)?.name ?? '?'} → ` : ''}${plan.name} (${status ? tl('ohne Stripe, {status}', { status: tl(STATUS_LABEL[nextStatus]) }) : tl('ohne Stripe')})`);
+        if (cur && cur.status !== nextStatus) logSaasEvent(app, loc.id, nextStatus, tl('Status von Hand: {status}', { status: tl(STATUS_LABEL[nextStatus]) }));
       }
       return accountRow(loc);
     });
@@ -597,7 +601,7 @@ export const saasModule: Module = {
         allow_promotion_codes: true,
       });
       if (!session?.url) throw new HttpError(502, 'Stripe hat keine Bezahlseite geliefert');
-      logSaasEvent(app, loc.id, 'checkout_link', `${plan.name} (${interval === 'year' ? 'jährlich' : 'monatlich'})`);
+      logSaasEvent(app, loc.id, 'checkout_link', `${plan.name} (${tApp()(interval === 'year' ? 'jährlich' : 'monatlich')})`);
       return { url: session.url, id: session.id };
     });
 
@@ -615,7 +619,7 @@ export const saasModule: Module = {
         if (!opts.now) throw bad('Ohne Stripe-Abo gibt es kein Laufzeitende – „sofort beenden“ wählen');
         upsertSubscription(app, { location_id: locationId, plan_id: cur.plan_id, ...transition(cur, 'canceled', new Date(), settings().grace_days) });
       }
-      logSaasEvent(app, locationId, opts.undo ? 'cancel_undone' : opts.now ? 'canceled' : 'cancel_scheduled', opts.undo ? 'Kündigung zurückgenommen' : opts.now ? 'Abo sofort beendet' : 'Kündigung zum Laufzeitende');
+      logSaasEvent(app, locationId, opts.undo ? 'cancel_undone' : opts.now ? 'canceled' : 'cancel_scheduled', tApp()(opts.undo ? 'Kündigung zurückgenommen' : opts.now ? 'Abo sofort beendet' : 'Kündigung zum Laufzeitende'));
       return subscriptionOf(app, locationId)!;
     }
     router.post('/api/saas/locations/:id/cancel', 'admin', async (ctx) => {
@@ -633,7 +637,7 @@ export const saasModule: Module = {
 
     // --- the sub-account's own view ("Abo & Rechnung", banner, hidden navigation) --------
     const isCustomer = (u: User | undefined) => !u || u.role !== 'admin';
-    function accountView(locationId: string, user: User | undefined) {
+    function accountView(locationId: string, user: User | undefined, t: STFn = tApp()) {
       const acc = accountOf(app, locationId);
       const brand = getBranding(app);
       if (!acc) return { plan: null, blocked: [], banner: null, support_email: brand.support_email };
@@ -643,7 +647,7 @@ export const saasModule: Module = {
       return {
         plan: { id: plan.id, name: plan.name, description: plan.description, currency: plan.currency, price_cents: priceOf(plan, sub.interval), interval: sub.interval, features: plan.features, limits: plan.limits, overage: plan.overage },
         status: sub.status,
-        status_label: STATUS_LABEL[sub.status],
+        status_label: t(STATUS_LABEL[sub.status]),
         billing: sub.billing,
         current_period_end: sub.current_period_end,
         trial_end: sub.trial_end,
@@ -652,15 +656,15 @@ export const saasModule: Module = {
         read_only: isReadOnly(sub.status),
         usage: usageOf(app, locationId),
         counts,
-        disabled_areas: off.map((k) => ({ key: k, label: PERMISSIONS[k] })),
+        disabled_areas: off.map((k) => ({ key: k, label: t(PERMISSIONS[k]) })),
         // Agency admins are never restricted; customers don't see what their plan leaves out.
         blocked: isCustomer(user) ? off : [],
-        banner: bannerFor(sub, plan),
+        banner: bannerFor(sub, plan, t),
         portal: sub.billing === 'stripe' && !!sub.stripe_customer,
         support_email: brand.support_email,
       };
     }
-    router.get('/api/saas/account', 'location', (ctx) => accountView(ctx.locationId, ctx.user));
+    router.get('/api/saas/account', 'location', (ctx) => accountView(ctx.locationId, ctx.user, tCtx(ctx)));
     router.post('/api/saas/account/portal', 'location', async (ctx) => {
       const sub = subscriptionOf(app, ctx.locationId);
       if (!sub || sub.billing !== 'stripe' || !sub.stripe_customer) throw bad('Für dieses Konto gibt es kein Stripe-Abo – bitte an deine Agentur wenden');
@@ -672,7 +676,7 @@ export const saasModule: Module = {
       const sub = subscriptionOf(app, ctx.locationId);
       if (!sub || sub.billing !== 'stripe') throw bad('Bitte wende dich zur Kündigung an deine Agentur');
       await cancel(ctx.locationId, { undo: !!ctx.body?.undo });
-      return accountView(ctx.locationId, ctx.user);
+      return accountView(ctx.locationId, ctx.user, tCtx(ctx));
     });
 
     // --- webhook (agency Stripe) --------------------------------------------------------
@@ -716,9 +720,10 @@ export const saasModule: Module = {
       const fields = fromStripeSub(app, sub, cur);
       if (cur.stripe_subscription && fields.stripe_subscription !== cur.stripe_subscription && cur.status !== 'canceled') return { handled: 'ignored' };
       const next = upsertSubscription(app, { ...fields, location_id: cur.location_id, plan_id: fields.plan_id ?? cur.plan_id });
-      if (next.status !== cur.status) logSaasEvent(app, cur.location_id, next.status === 'active' && ['past_due', 'paused'].includes(cur.status) ? 'reactivated' : next.status, `Stripe: ${STATUS_LABEL[cur.status]} → ${STATUS_LABEL[next.status]}`);
+      const tl = tApp();
+      if (next.status !== cur.status) logSaasEvent(app, cur.location_id, next.status === 'active' && ['past_due', 'paused'].includes(cur.status) ? 'reactivated' : next.status, `Stripe: ${tl(STATUS_LABEL[cur.status])} → ${tl(STATUS_LABEL[next.status])}`);
       if (next.plan_id !== cur.plan_id) logSaasEvent(app, cur.location_id, 'plan_changed', `${planById(app, cur.plan_id)?.name ?? '?'} → ${planById(app, next.plan_id)?.name ?? '?'} (Stripe)`);
-      if (next.cancel_at_period_end !== cur.cancel_at_period_end) logSaasEvent(app, cur.location_id, next.cancel_at_period_end ? 'cancel_scheduled' : 'cancel_undone', next.cancel_at_period_end ? 'Kündigung zum Laufzeitende (Stripe)' : 'Kündigung zurückgenommen (Stripe)');
+      if (next.cancel_at_period_end !== cur.cancel_at_period_end) logSaasEvent(app, cur.location_id, next.cancel_at_period_end ? 'cancel_scheduled' : 'cancel_undone', tl(next.cancel_at_period_end ? 'Kündigung zum Laufzeitende (Stripe)' : 'Kündigung zurückgenommen (Stripe)'));
       return { handled: 'subscription_synced', locationId: cur.location_id, status: next.status };
     }
 
@@ -729,11 +734,11 @@ export const saasModule: Module = {
       if (paid) {
         if (!['past_due', 'paused'].includes(cur.status)) return { handled: 'paid' };
         upsertSubscription(app, { location_id: cur.location_id, plan_id: cur.plan_id, ...transition(cur, 'active', new Date(), settings().grace_days) });
-        logSaasEvent(app, cur.location_id, 'reactivated', 'Zahlung eingegangen – Konto wieder aktiv');
+        logSaasEvent(app, cur.location_id, 'reactivated', tApp()('Zahlung eingegangen – Konto wieder aktiv'));
         return { handled: 'reactivated', locationId: cur.location_id };
       }
       const next = upsertSubscription(app, { location_id: cur.location_id, plan_id: cur.plan_id, ...transition(cur, 'past_due', new Date(), settings().grace_days) });
-      if (cur.status !== next.status) logSaasEvent(app, cur.location_id, 'past_due', `Zahlung fehlgeschlagen – Kulanz bis ${fmtDate(next.grace_until)}`);
+      if (cur.status !== next.status) logSaasEvent(app, cur.location_id, 'past_due', tApp()('Zahlung fehlgeschlagen – Kulanz bis {date}', { date: fmtDate(next.grace_until) }));
       return { handled: 'payment_failed', locationId: cur.location_id, status: next.status };
     }
 
@@ -764,7 +769,7 @@ export const saasModule: Module = {
       const s = settings();
       if (!s.webhook_secret) throw notFound('SaaS-Stripe ist nicht eingerichtet');
       const check = verifyStripeSignature(ctx.rawBody, String(ctx.req.headers['stripe-signature'] ?? ''), openSecret(app, s.webhook_secret));
-      if (!check.ok) throw bad(`Ungültige Stripe-Signatur: ${check.reason}`);
+      if (!check.ok) throw bad(tApp()('Ungültige Stripe-Signatur: {reason}', { reason: check.reason }));
       let event: any;
       try {
         event = JSON.parse(ctx.rawBody);
@@ -829,7 +834,7 @@ export const saasModule: Module = {
                   ...(sub.stripe_subscription && sub.status !== 'canceled' ? { subscription: sub.stripe_subscription } : {}),
                   currency: plan.currency.toLowerCase(),
                   amount: c.amount_cents,
-                  description: `Mehrverbrauch ${LIMITS[metric as LimitKey].replace(' pro Monat', '')} ${u.month}: ${c.qty.toLocaleString('de-DE')} über Inklusiv-Kontingent`,
+                  description: tApp()('Mehrverbrauch {unit} {month}: {qty} über Inklusiv-Kontingent', { unit: tApp()(UNIT_LABEL[metric as LimitKey] ?? metric), month: u.month, qty: c.qty.toLocaleString(tApp().locale === 'de' ? 'de-DE' : 'en-GB') }),
                   metadata: { saas_location_id: sub.location_id, month: u.month, metric, quantity: String(c.qty) },
                 },
                 { idempotencyKey: `saas-usage-${sub.location_id}-${u.month}-${metric}` },
@@ -863,7 +868,7 @@ export const saasModule: Module = {
       for (const sub of db.all<Subscription>(`SELECT * FROM saas_subscriptions WHERE status = 'past_due' AND grace_until IS NOT NULL AND grace_until <= ?`, at.toISOString())) {
         if (!graceExpired(sub, at)) continue;
         upsertSubscription(app, { location_id: sub.location_id, plan_id: sub.plan_id, ...transition(sub, 'paused', at, settings().grace_days) });
-        logSaasEvent(app, sub.location_id, 'paused', 'Kulanzzeit abgelaufen – Konto pausiert (nur lesen)');
+        logSaasEvent(app, sub.location_id, 'paused', tApp()('Kulanzzeit abgelaufen – Konto pausiert (nur lesen)'));
       }
       if (Date.now() - lastReport < 3600_000) return;
       lastReport = Date.now();

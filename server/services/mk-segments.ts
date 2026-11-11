@@ -2,6 +2,7 @@ import type { App } from '../core/app.js';
 import { parseJson, parseRows } from '../core/db.js';
 import { bad } from '../core/http.js';
 import { CONTACT_FIELDS, type Contact } from './contacts.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Behaviour segments: groups of contacts defined by what they did – opened, clicked or did not open a campaign, visited a
@@ -51,15 +52,15 @@ const days = (v: unknown, def: number | null): number | null => {
 export function cleanDefinition(input: unknown): Group {
   let count = 0;
   const walk = (raw: any, depth: number): Node => {
-    if (++count > MAX_NODES) throw bad(`Höchstens ${MAX_NODES} Bedingungen je Segment`);
+    if (++count > MAX_NODES) throw bad(tApp()('Höchstens {n} Bedingungen je Segment', { n: MAX_NODES }));
     if (!raw || typeof raw !== 'object') throw bad('Segment: ungültige Bedingung');
     if (raw.type === 'group' || Array.isArray(raw.items)) {
-      if (depth >= MAX_DEPTH) throw bad(`Segment: höchstens ${MAX_DEPTH} Ebenen verschachteln`);
+      if (depth >= MAX_DEPTH) throw bad(tApp()('Segment: höchstens {n} Ebenen verschachteln', { n: MAX_DEPTH }));
       const items = (Array.isArray(raw.items) ? raw.items : []).map((x: any) => walk(x, depth + 1));
       return { type: 'group', op: raw.op === 'or' ? 'or' : 'and', ...(raw.negate ? { negate: true } : {}), items };
     }
     const type = raw.type as ConditionType;
-    if (!CONDITION_TYPES.includes(type)) throw bad(`Segment: unbekannte Bedingung „${str(raw.type, 40)}“`);
+    if (!CONDITION_TYPES.includes(type)) throw bad(tApp()('Segment: unbekannte Bedingung „{type}“', { type: str(raw.type, 40) }));
     const out: Condition = { type };
     if (raw.negate) out.negate = true;
     switch (type) {
@@ -70,14 +71,14 @@ export function cleanDefinition(input: unknown): Group {
         break;
       case 'field': {
         const field = str(raw.field, 80);
-        if (!(FIELD_COLUMNS.includes(field) || /^custom\.[A-Za-z0-9_]{1,60}$/.test(field))) throw bad(`Segment: unbekanntes Feld „${field}“`);
+        if (!(FIELD_COLUMNS.includes(field) || /^custom\.[A-Za-z0-9_]{1,60}$/.test(field))) throw bad(tApp()('Segment: unbekanntes Feld „{field}“', { field }));
         const op = FIELD_OPS.includes(raw.op) ? raw.op : 'eq';
         out.field = field;
         out.op = op;
         out.value = str(raw.value, 300);
-        if (NUMERIC_OPS.has(op) && !Number.isFinite(Number(out.value))) throw bad(`Segment: für „${field}“ ist eine Zahl nötig`);
-        if ((op === 'before' || op === 'after') && !/^\d{4}-\d{2}-\d{2}$/.test(out.value)) throw bad(`Segment: für „${field}“ ein Datum (JJJJ-MM-TT) angeben`);
-        if (!['empty', 'not_empty'].includes(op) && !NUMERIC_OPS.has(op) && op !== 'before' && op !== 'after' && out.value === '') throw bad(`Segment: Wert für „${field}“ fehlt`);
+        if (NUMERIC_OPS.has(op) && !Number.isFinite(Number(out.value))) throw bad(tApp()('Segment: für „{field}“ ist eine Zahl nötig', { field }));
+        if ((op === 'before' || op === 'after') && !/^\d{4}-\d{2}-\d{2}$/.test(out.value)) throw bad(tApp()('Segment: für „{field}“ ein Datum (JJJJ-MM-TT) angeben', { field }));
+        if (!['empty', 'not_empty'].includes(op) && !NUMERIC_OPS.has(op) && op !== 'before' && op !== 'after' && out.value === '') throw bad(tApp()('Segment: Wert für „{field}“ fehlt', { field }));
         break;
       }
       case 'email': {
@@ -352,32 +353,49 @@ const FIELD_LABEL: Record<string, string> = { first_name: 'Vorname', last_name: 
 const OP_LABEL: Record<string, string> = { eq: 'ist', neq: 'ist nicht', contains: 'enthält', not_contains: 'enthält nicht', starts: 'beginnt mit', empty: 'ist leer', not_empty: 'ist nicht leer', gt: '>', lt: '<', gte: '≥', lte: '≤', before: 'vor', after: 'nach' };
 
 /** A German one-liner for a definition ("hat Tag „lead“ UND hat Kampagne „Herbst“ nicht geöffnet"). Names come from `names`. */
-export function describe(n: Node, names: { campaign?: (id: string) => string; form?: (id: string) => string; product?: (id: string) => string; segment?: (id: string) => string } = {}): string {
-  const wrap = (s: string, neg?: boolean) => (neg ? `NICHT (${s})` : s);
+export function describe(n: Node, names: { campaign?: (id: string) => string; form?: (id: string) => string; product?: (id: string) => string; segment?: (id: string) => string } = {}, t: STFn = tApp()): string {
+  const wrap = (s: string, neg?: boolean) => (neg ? t('NICHT ({condition})', { condition: s }) : s);
   if (n.type === 'group') {
     const g = n as Group;
-    if (!g.items.length) return 'alle Kontakte';
-    const parts = g.items.map((x) => describe(x, names));
-    return wrap(parts.length > 1 ? `(${parts.join(g.op === 'or' ? ' ODER ' : ' UND ')})` : parts[0], g.negate);
+    if (!g.items.length) return t('alle Kontakte');
+    const parts = g.items.map((x) => describe(x, names, t));
+    return wrap(parts.length > 1 ? `(${parts.join(g.op === 'or' ? ` ${t('ODER')} ` : ` ${t('UND')} `)})` : parts[0], g.negate);
   }
   const c = n as Condition;
-  const dz = c.days ? ` in den letzten ${c.days} Tagen` : '';
-  const camp = c.campaign_id ? `Kampagne „${names.campaign?.(c.campaign_id) ?? c.campaign_id}“` : 'eine E-Mail';
+  const d = c.days ?? 0;
+  // the time window is part of each sentence (word order differs between languages)
+  const within = (base: string, noDays: string, vars: Record<string, string | number> = {}) => (c.days ? t(base, { ...vars, days: d }) : t(noDays, vars));
+  const camp = c.campaign_id ? t('Kampagne „{name}“', { name: names.campaign?.(c.campaign_id) ?? c.campaign_id }) : t('eine E-Mail');
+  const extra = (id: string | undefined, name: ((id: string) => string) | undefined) => (id ? `: ${name?.(id) ?? id}` : '');
   let s = '';
   switch (c.type) {
-    case 'tag': s = c.has === false ? `hat Tag „${c.tag}“ nicht` : `hat Tag „${c.tag}“`; break;
-    case 'field': s = `${FIELD_LABEL[c.field] ?? String(c.field).replace(/^custom\./, '')} ${OP_LABEL[c.op] ?? c.op}${['empty', 'not_empty'].includes(c.op) ? '' : ` „${c.value}“`}`; break;
-    case 'email': s = c.event === 'opened' ? `hat ${camp} geöffnet${dz}` : c.event === 'clicked' ? `hat ${camp} angeklickt${dz}` : c.event === 'not_opened' ? `hat ${camp} nicht geöffnet${dz}` : `hat ${camp} erhalten${dz}`; break;
-    case 'page': s = `hat eine Seite mit „${c.url_contains}“ besucht${dz}`; break;
-    case 'purchase': s = `${c.bought === false ? 'hat nicht gekauft' : 'hat gekauft'}${c.product_id ? `: ${names.product?.(c.product_id) ?? c.product_id}` : ''}${dz}`; break;
-    case 'form': s = `${c.submitted === false ? 'hat kein Formular abgeschickt' : 'hat ein Formular abgeschickt'}${c.form_id ? `: ${names.form?.(c.form_id) ?? c.form_id}` : ''}${dz}`; break;
-    case 'consent': s = `${c.state === 'missing' ? 'ohne' : 'mit'} Einwilligung (${c.channel === 'email' ? 'E-Mail' : c.channel === 'sms' ? 'SMS' : 'WhatsApp'})`; break;
-    case 'activity': s = c.op === 'never' ? 'noch nie aktiv' : c.op === 'within' ? `aktiv in den letzten ${c.days} Tagen` : `seit ${c.days} Tagen inaktiv`; break;
-    case 'created': s = c.op === 'within' ? `angelegt in den letzten ${c.days} Tagen` : `angelegt vor mehr als ${c.days} Tagen`; break;
-    case 'engagement': s = c.state === 'active' ? `hat in den letzten ${c.days} Tagen geöffnet oder geklickt` : `hat in ${c.days} Tagen ${c.min_received ?? 3}+ Mails bekommen, aber nie geöffnet oder geklickt`; break;
-    case 'email_check': s = c.verdict === 'unchecked' ? 'E-Mail-Adresse noch nicht geprüft' : `E-Mail-Adresse ${c.verdict === 'ok' ? 'in Ordnung' : c.verdict === 'risky' ? 'riskant' : 'ungültig'}`; break;
-    case 'dnd': s = c.value === false ? 'ohne „Nicht stören“' : 'mit „Nicht stören“'; break;
-    case 'segment': s = `ist in Segment „${names.segment?.(c.segment_id) ?? c.segment_id}“`; break;
+    case 'tag': s = c.has === false ? t('hat Tag „{tag}“ nicht', { tag: c.tag }) : t('hat Tag „{tag}“', { tag: c.tag }); break;
+    case 'field': {
+      const label = FIELD_LABEL[c.field] ? t(FIELD_LABEL[c.field]) : String(c.field).replace(/^custom\./, '');
+      const op = OP_LABEL[c.op] ? t(OP_LABEL[c.op]) : c.op;
+      s = ['empty', 'not_empty'].includes(c.op) ? `${label} ${op}` : t('{field} {op} „{value}“', { field: label, op, value: c.value });
+      break;
+    }
+    case 'email':
+      s = c.event === 'opened' ? within('hat {what} in den letzten {days} Tagen geöffnet', 'hat {what} geöffnet', { what: camp })
+        : c.event === 'clicked' ? within('hat {what} in den letzten {days} Tagen angeklickt', 'hat {what} angeklickt', { what: camp })
+        : c.event === 'not_opened' ? within('hat {what} in den letzten {days} Tagen nicht geöffnet', 'hat {what} nicht geöffnet', { what: camp })
+        : within('hat {what} in den letzten {days} Tagen erhalten', 'hat {what} erhalten', { what: camp });
+      break;
+    case 'page': s = within('hat in den letzten {days} Tagen eine Seite mit „{url}“ besucht', 'hat eine Seite mit „{url}“ besucht', { url: c.url_contains }); break;
+    case 'purchase': s = within(c.bought === false ? 'hat in den letzten {days} Tagen nicht gekauft{product}' : 'hat in den letzten {days} Tagen gekauft{product}', c.bought === false ? 'hat nicht gekauft{product}' : 'hat gekauft{product}', { product: extra(c.product_id, names.product) }); break;
+    case 'form': s = within(c.submitted === false ? 'hat in den letzten {days} Tagen kein Formular abgeschickt{form}' : 'hat in den letzten {days} Tagen ein Formular abgeschickt{form}', c.submitted === false ? 'hat kein Formular abgeschickt{form}' : 'hat ein Formular abgeschickt{form}', { form: extra(c.form_id, names.form) }); break;
+    case 'consent': {
+      const channel = c.channel === 'email' ? t('E-Mail') : c.channel === 'sms' ? 'SMS' : 'WhatsApp';
+      s = c.state === 'missing' ? t('ohne Einwilligung ({channel})', { channel }) : t('mit Einwilligung ({channel})', { channel });
+      break;
+    }
+    case 'activity': s = c.op === 'never' ? t('noch nie aktiv') : c.op === 'within' ? t('aktiv in den letzten {days} Tagen', { days: d }) : t('seit {days} Tagen inaktiv', { days: d }); break;
+    case 'created': s = c.op === 'within' ? t('angelegt in den letzten {days} Tagen', { days: d }) : t('angelegt vor mehr als {days} Tagen', { days: d }); break;
+    case 'engagement': s = c.state === 'active' ? t('hat in den letzten {days} Tagen geöffnet oder geklickt', { days: d }) : t('hat in {days} Tagen {min}+ Mails bekommen, aber nie geöffnet oder geklickt', { days: d, min: c.min_received ?? 3 }); break;
+    case 'email_check': s = c.verdict === 'unchecked' ? t('E-Mail-Adresse noch nicht geprüft') : c.verdict === 'ok' ? t('E-Mail-Adresse in Ordnung') : c.verdict === 'risky' ? t('E-Mail-Adresse riskant') : t('E-Mail-Adresse ungültig'); break;
+    case 'dnd': s = c.value === false ? t('ohne „Nicht stören“') : t('mit „Nicht stören“'); break;
+    case 'segment': s = t('ist in Segment „{name}“', { name: names.segment?.(c.segment_id) ?? c.segment_id }); break;
   }
   return wrap(s, c.negate);
 }

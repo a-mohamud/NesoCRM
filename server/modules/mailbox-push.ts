@@ -9,6 +9,7 @@ import { canRead } from '../services/mailbox-kit.js';
 import { parseGraphNotices, parsePubSub, verifyPubSubJwt } from '../services/mailbox-push.js';
 import { getMailbox, kickSync, type MailboxRow } from '../services/mailbox-sync.js';
 import { mailboxManageable } from '../services/mailbox-access.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Push for native mailboxes, so mail shows up in seconds instead of at the next poll:
@@ -96,7 +97,7 @@ export const mailboxPushModule: Module = {
           endpoint_url: gmailUrl(),
           ready: !!c.gmail_topic,
         },
-        graph: { ready: graphReady(), notification_url: `${app.baseUrl()}/hooks/mailbox/graph`, lifecycle_url: `${app.baseUrl()}/hooks/mailbox/graph/lifecycle`, reason: graphReady() ? '' : 'HyperLevel braucht eine öffentliche https-Adresse (PGHL_BASE_URL), damit Microsoft Benachrichtigungen schicken kann.' },
+        graph: { ready: graphReady(), notification_url: `${app.baseUrl()}/hooks/mailbox/graph`, lifecycle_url: `${app.baseUrl()}/hooks/mailbox/graph/lifecycle`, reason: graphReady() ? '' : tApp()('HyperLevel braucht eine öffentliche https-Adresse (PGHL_BASE_URL), damit Microsoft Benachrichtigungen schicken kann.') },
         active: {
           gmail: Number(db.get(`SELECT COUNT(*) AS n FROM mailboxes WHERE json_extract(push, '$.kind') = 'gmail_watch' AND json_extract(push, '$.id') IS NOT NULL`)?.n ?? 0),
           graph: Number(db.get(`SELECT COUNT(*) AS n FROM mailboxes WHERE json_extract(push, '$.kind') = 'graph_subscription' AND json_extract(push, '$.id') IS NOT NULL`)?.n ?? 0),
@@ -145,8 +146,9 @@ export const mailboxPushModule: Module = {
     /** Starts push for one mailbox. Failure is recorded on the mailbox ("nur Abruf alle 3 Minuten"), never thrown. */
     async function register(mailboxId: string): Promise<{ ok: boolean; error?: string }> {
       const mb = getMailbox(app, mailboxId);
-      if (!mb || !mb.enabled || !canRead(mb.access)) return { ok: false, error: 'Postfach nicht bereit' };
-      const fail = (error: string) => {
+      if (!mb || !mb.enabled || !canRead(mb.access)) return { ok: false, error: tApp()('Postfach nicht bereit') };
+      const fail = (msg: string) => {
+        const error = tApp()(msg);
         savePush(mailboxId, { kind: mb.provider === 'google' ? 'gmail_watch' : 'graph_subscription', error, tried_at: new Date().toISOString() });
         return { ok: false, error };
       };
@@ -192,7 +194,7 @@ export const mailboxPushModule: Module = {
           // No push yet: try again when it could work now (topic added, https address set).
           const tried = mb.push?.tried_at ? Date.parse(mb.push.tried_at) : 0;
           const possible = mb.provider === 'google' ? !!config().gmail_topic : graphReady();
-          if (possible && Date.now() - tried > RETRY_REGISTER_MS && !/neu verbinden/.test(mb.last_error ?? '')) await register(mb.id);
+          if (possible && Date.now() - tried > RETRY_REGISTER_MS && !/neu verbinden|reconnect/i.test(mb.last_error ?? '')) await register(mb.id);
         }
       }
     }
@@ -220,7 +222,7 @@ export const mailboxPushModule: Module = {
     // --- Gmail: Pub/Sub push ----------------------------------------------------------------------------------
     const jwks = new JwksCache(async (url) => {
       const r = await fetcher()(url, { signal: AbortSignal.timeout(10_000) });
-      if (!r.ok) throw new Error(`JWKS ${r.status}`);
+      if (!r.ok) throw new Error(`JWKS ${r.status}`); // i18n-ignore
       return r.json();
     });
 

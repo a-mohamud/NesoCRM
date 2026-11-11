@@ -4,6 +4,7 @@ import { id, now } from '../core/util.js';
 import { actorOf, asUser, track, userById, type Actor, type TeamUser } from './collab-actor.js';
 import { HIT_END, HIT_START, likePattern, matchExpr, plainSnippet, searchWords, type Fts } from './collab-fts.js';
 import { MAX_SOURCE, extractRefs, markdownToText } from './wiki-markdown.js';
+import { tApp, tCtx, tUser } from '../i18n/index.js';
 
 /**
  * Data rules of the Wiki: access to spaces, the page tree (nesting, order, moving, trash), saving with
@@ -146,7 +147,7 @@ export function unindexIds(app: App, ids: string[]) {
 
 const cleanTitle = (v: unknown, fallback = 'Neue Seite') => {
   const t = String(v ?? '').replace(/\s+/g, ' ').trim();
-  if (t.length > LIMITS.title) throw bad(`Titel ist zu lang (höchstens ${LIMITS.title} Zeichen)`);
+  if (t.length > LIMITS.title) throw bad(tApp()('Titel ist zu lang (höchstens {n} Zeichen)', { n: LIMITS.title }));
   return t || fallback;
 };
 const cleanIcon = (v: unknown) => {
@@ -155,7 +156,7 @@ const cleanIcon = (v: unknown) => {
 };
 const cleanBody = (v: unknown) => {
   const s = String(v ?? '').replace(/\r\n?/g, '\n');
-  if (s.length > MAX_SOURCE) throw bad(`Die Seite ist zu lang (höchstens ${MAX_SOURCE.toLocaleString('de-DE')} Zeichen)`);
+  if (s.length > MAX_SOURCE) throw bad(tApp()('Die Seite ist zu lang (höchstens {n} Zeichen)', { n: MAX_SOURCE.toLocaleString(tApp().locale === 'de' ? 'de-DE' : 'en-GB') }));
   return s;
 };
 export { cleanTitle, cleanBody, cleanIcon };
@@ -174,12 +175,12 @@ export interface NewPage {
 export function createPage(app: App, ctx: Ctx, input: NewPage): PageRow {
   const { space } = loadSpace(app, ctx, input.spaceId, 'edit');
   const actor = actorOf(app, ctx);
-  if ((app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM wiki_pages WHERE location_id = ?', ctx.locationId)?.n ?? 0) >= LIMITS.pagesPerLocation) throw bad(`Höchstens ${LIMITS.pagesPerLocation} Seiten je Sub-Account`);
+  if ((app.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM wiki_pages WHERE location_id = ?', ctx.locationId)?.n ?? 0) >= LIMITS.pagesPerLocation) throw bad(tCtx(ctx)('Höchstens {n} Seiten je Sub-Account', { n: LIMITS.pagesPerLocation }));
   let parent: PageRow | undefined;
   if (input.parentId) {
     parent = app.db.get<PageRow>('SELECT * FROM wiki_pages WHERE id = ? AND space_id = ? AND trashed_at IS NULL', String(input.parentId), space.id);
     if (!parent) throw bad('Übergeordnete Seite nicht gefunden');
-    if (depthOf(app, parent.id) + 1 >= LIMITS.depth) throw bad(`Höchstens ${LIMITS.depth} Ebenen`);
+    if (depthOf(app, parent.id) + 1 >= LIMITS.depth) throw bad(tCtx(ctx)('Höchstens {n} Ebenen', { n: LIMITS.depth }));
   }
   const body = cleanBody(input.body ?? '');
   const page: PageRow = {
@@ -231,7 +232,12 @@ export function notifyMentions(app: App, ctx: Ctx, page: PageRow, space: SpaceRo
   }
   if (notify.length && app.services.pushNotify) {
     const text = markdownToText(extra?.body ?? page.body).replace(/\s+/g, ' ').slice(0, 200);
-    track(app, Promise.resolve(app.services.pushNotify({ userIds: notify, kind: 'wiki', title: `${actor.name} hat dich ${extra?.what ?? 'in'} „${page.title}“ erwähnt`.slice(0, 120), body: text, url: extra?.url ?? `/app/wiki/${page.id}`, tag: `wiki:${page.id}` })));
+    // one push per person: each in their own language
+    for (const uid of notify) {
+      const t = tUser(app as never, uid);
+      const title = extra?.what ? t('{name} hat dich {what} „{title}“ erwähnt', { name: actor.name, what: extra.what, title: page.title }) : t('{name} hat dich in „{title}“ erwähnt', { name: actor.name, title: page.title });
+      track(app, Promise.resolve(app.services.pushNotify({ userIds: [uid], kind: 'wiki', title: title.slice(0, 120), body: text, url: extra?.url ?? `/app/wiki/${page.id}`, tag: `wiki:${page.id}` })));
+    }
   }
   return notify;
 }
@@ -249,7 +255,7 @@ export function updatePage(app: App, ctx: Ctx, page: PageRow, space: SpaceRow, p
   const icon = patch.icon !== undefined ? cleanIcon(patch.icon) : page.icon;
   if (title === page.title && body === page.body && icon === page.icon) return page;
   if (!opts.force && opts.baseVersion !== undefined && Number(opts.baseVersion) !== page.version) {
-    throw new HttpError(409, `Die Seite wurde inzwischen von ${page.updated_by_name || 'jemand anderem'} geändert (Version ${page.version}). Bitte neu laden – oder die eigene Fassung mit „Überschreiben“ behalten.`);
+    throw new HttpError(409, tCtx(ctx)('Die Seite wurde inzwischen von {name} geändert (Version {version}). Bitte neu laden – oder die eigene Fassung mit „Überschreiben“ behalten.', { name: page.updated_by_name || tCtx(ctx)('jemand anderem'), version: page.version }));
   }
   const via = opts.via ?? String(ctx.via ?? '');
   app.db.tx(() => {
@@ -281,7 +287,7 @@ export function movePage(app: App, ctx: Ctx, page: PageRow, target: { spaceId?: 
     const parent = app.db.get<PageRow>('SELECT * FROM wiki_pages WHERE id = ? AND space_id = ? AND trashed_at IS NULL', parentId, spaceId);
     if (!parent) throw bad('Zielseite nicht gefunden');
     if (subtreeIds(app, page.id).includes(parent.id)) throw bad('Eine Seite kann nicht unter sich selbst oder ihren Unterseiten liegen');
-    if (depthOf(app, parent.id) + 1 + subtreeDepth(app, page.id) >= LIMITS.depth) throw bad(`Höchstens ${LIMITS.depth} Ebenen`);
+    if (depthOf(app, parent.id) + 1 + subtreeDepth(app, page.id) >= LIMITS.depth) throw bad(tApp()('Höchstens {n} Ebenen', { n: LIMITS.depth }));
   }
   const oldParent = page.parent_id;
   const oldSpace = page.space_id;
@@ -335,7 +341,8 @@ export function purgeIds(app: App, pageIds: string[]) {
 export function restoreVersion(app: App, ctx: Ctx, page: PageRow, space: SpaceRow, versionId: string): PageRow {
   const v = app.db.get<any>('SELECT * FROM wiki_versions WHERE id = ? AND page_id = ?', versionId, page.id);
   if (!v) throw notFound('Version nicht gefunden');
-  const label = `Wiederhergestellt aus Version vom ${new Date(v.saved_at).toLocaleString('de-DE', { timeZone: app.location(ctx.locationId)?.timezone || 'Europe/Berlin' })}`;
+  const t = tCtx(ctx);
+  const label = t('Wiederhergestellt aus Version vom {date}', { date: new Date(v.saved_at).toLocaleString(t.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: app.location(ctx.locationId)?.timezone || 'Europe/Berlin' }) });
   return updatePage(app, ctx, page, space, { title: v.title, body: v.body }, { force: true, note: label });
 }
 

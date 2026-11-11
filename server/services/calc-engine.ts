@@ -13,9 +13,10 @@
  * computed on the yearly profit (12 × the month) by legal form (calc-tax.ts). Estimates, not tax advice.
  */
 import { estGrundtarif, taxCorp, taxEinzel, type CorpTaxParams, type PersonalTaxParams, type TaxBreakdown } from './calc-tax.js';
-import { CalcInputError, DISCLAIMER, defaultInput, expandTaxYear, inputSchema, mergeInput, normalizeInput, specMarkdown, specRows, type CalcInput, type CalcPlan } from './calc-spec.js';
+import { CalcInputError, DISCLAIMER, defaultInput, expandTaxYear, inputSchema, mergeInput, normalizeInput, numLocale, plainTr, specMarkdown, specRows, type CalcInput, type CalcPlan, type Tr } from './calc-spec.js';
 
-export { CalcInputError, DISCLAIMER, defaultInput, inputSchema, mergeInput, normalizeInput, specMarkdown, specRows };
+export { CalcInputError, DISCLAIMER, defaultInput, inputSchema, mergeInput, normalizeInput, numLocale, plainTr, specMarkdown, specRows };
+export type { Tr };
 export type { CalcInput, CalcPlan, TaxBreakdown };
 export { estGrundtarif };
 
@@ -26,6 +27,8 @@ const sum = (a: number[]) => a.reduce((s, v) => s + v, 0);
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 /** 49 → "49 €", 12.5 → "12,50 €" */
 export const eur = (v: number) => `${new Intl.NumberFormat('de-DE', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }).format(v)} €`;
+/** `eur` in a translator's language ("49 €" in German, "€49" in English). */
+export const eurIn = (t: Tr, v: number) => (numLocale(t) === 'de-DE' ? eur(v) : new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'EUR', minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }).format(v));
 
 /** Weights from percentages: scaled to 1; all zero → equal weights. */
 function weights(shares: number[]): number[] {
@@ -300,22 +303,23 @@ function scalePlan(p: CalcPlan, f: number): CalcPlan {
 }
 
 /** The columns of the matrix and the input each one calculates with. `current` is the input as configured. */
-export function columnsOf(input: CalcInput): { columns: Column[]; inputs: CalcInput[] } {
+export function columnsOf(input: CalcInput, t: Tr = plainTr): { columns: Column[]; inputs: CalcInput[] } {
+  const eur = (v: number) => eurIn(t, v);
   const m = input.matrix;
   const plans = input.pricing.plans;
   const ref = Math.min(m.plan_index, plans.length - 1);
   const withPlans = (pl: CalcPlan[], addonFactor = 1): CalcInput => ({ ...input, pricing: { ...input.pricing, plans: pl, addons: addonFactor === 1 ? input.pricing.addons : input.pricing.addons.map((a) => ({ ...a, price: a.price * addonFactor })) } });
   if (m.columns === 'plan') {
-    const columns = plans.map((p, i): Column => ({ key: `plan-${i}`, label: p.name || `Tarif ${i + 1}`, price: p.base_price, plan: i }));
+    const columns = plans.map((p, i): Column => ({ key: `plan-${i}`, label: p.name || t('Tarif {n}', { n: i + 1 }), price: p.base_price, plan: i }));
     return { columns, inputs: plans.map((p) => withPlans([{ ...p, mix: 100 }])) };
   }
   if (m.columns === 'factor') {
     const r = plans[ref];
     // Besides the percentage, show what it means for the reference plan: base price, else step price, else setup fee.
-    const hint = (f: number) => (r.base_price > 0 ? eur(r.base_price * f) : r.unit_price > 0 ? `${eur(r.unit_price * f)}/Einheit` : r.setup_fee > 0 ? `${eur(r.setup_fee * f)} einmalig` : '');
+    const hint = (f: number) => (r.base_price > 0 ? eur(r.base_price * f) : r.unit_price > 0 ? t('{price}/Einheit', { price: eur(r.unit_price * f) }) : r.setup_fee > 0 ? t('{price} einmalig', { price: eur(r.setup_fee * f) }) : '');
     const columns = m.factors.map((f, i): Column => {
-      const pct = `${Math.round(f * 1000) / 10}`.replace('.', ',');
-      const label = plans.length === 1 && hint(f) ? `${pct} % (${hint(f)})` : f === 1 ? '100 % (aktuell)' : `${pct} %`;
+      const pct = numLocale(t) === 'de-DE' ? `${Math.round(f * 1000) / 10}`.replace('.', ',') : `${Math.round(f * 1000) / 10}`;
+      const label = plans.length === 1 && hint(f) ? `${pct} % (${hint(f)})` : f === 1 ? t('100 % (aktuell)') : `${pct} %`;
       return { key: `factor-${i}`, label, price: r.base_price * f, factor: f };
     });
     return { columns, inputs: m.factors.map((f) => withPlans(plans.map((p) => scalePlan(p, f)), f)) };
@@ -325,11 +329,11 @@ export function columnsOf(input: CalcInput): { columns: Column[]; inputs: CalcIn
 }
 
 /** The input as configured (the column "Aktuell"). */
-export function currentColumn(input: CalcInput): Column {
+export function currentColumn(input: CalcInput, t: Tr = plainTr): Column {
   const ref = Math.min(input.matrix.plan_index, input.pricing.plans.length - 1);
   const plans = input.pricing.plans;
   const single = plans.length === 1;
-  return { key: 'current', label: single ? eur(plans[ref].base_price) : 'Aktuelle Preise', price: plans[ref].base_price };
+  return { key: 'current', label: single ? eurIn(t, plans[ref].base_price) : t('Aktuelle Preise'), price: plans[ref].base_price };
 }
 
 // --- unit economics, break-even ---------------------------------------------------------------------------------------
@@ -528,15 +532,15 @@ export interface Step {
 }
 
 /** Revenue → USt → fees → variable → fixed → taxes → net, as steps for a waterfall chart (per month or year). */
-export function waterfall(cell: Cell, period: 'month' | 'year' = 'month'): Step[] {
+export function waterfall(cell: Cell, period: 'month' | 'year' = 'month', tr: Tr = plainTr): Step[] {
   const l = period === 'year' ? cell.y : cell.m;
   const k = period === 'year' ? 1 : 1 / 12;
   const t = cell.tax;
   const steps: Step[] = [];
-  const total = (key: string, label: string, value: number) => steps.push({ key, label, value, kind: 'total' });
-  const sub = (key: string, label: string, value: number) => steps.push({ key, label, value, kind: 'subtotal' });
+  const total = (key: string, label: string, value: number) => steps.push({ key, label: tr(label), value, kind: 'total' });
+  const sub = (key: string, label: string, value: number) => steps.push({ key, label: tr(label), value, kind: 'subtotal' });
   const cost = (key: string, label: string, value: number) => {
-    if (Math.abs(value) > 1e-9) steps.push({ key, label, value: -value, kind: 'delta' });
+    if (Math.abs(value) > 1e-9) steps.push({ key, label: tr(label), value: -value, kind: 'delta' });
   };
   total('revenue_gross', 'Kundenzahlungen (brutto)', l.revenue_gross);
   cost('vat', 'Umsatzsteuer', l.vat);
@@ -641,18 +645,18 @@ const LEVERS: { key: string; label: string; apply: (i: CalcInput, f: number) => 
 ];
 
 /** Which input moves the yearly net profit most? Every lever is varied by ±pct (plus the customer count) for the given cell. */
-export function sensitivity(input: CalcInput, customers: number, pct = input.matrix.sensitivity_pct): Tornado {
+export function sensitivity(input: CalcInput, customers: number, pct = input.matrix.sensitivity_pct, t: Tr = plainTr): Tornado {
   const p = Math.min(90, Math.max(1, pct)) / 100;
   const net = (i: CalcInput, n: number) => cellOf(i, n).y.net_profit;
   const base = net(input, customers);
-  const bars: TornadoBar[] = [{ key: 'customers', label: 'Kundenzahl', low: net(input, customers * (1 - p)), high: net(input, customers * (1 + p)), swing: 0 }];
+  const bars: TornadoBar[] = [{ key: 'customers', label: t('Kundenzahl'), low: net(input, customers * (1 - p)), high: net(input, customers * (1 + p)), swing: 0 }];
   for (const lever of LEVERS) {
     const at = (f: number) => {
       const i = clone(input);
       lever.apply(i, f);
       return net(i, customers);
     };
-    bars.push({ key: lever.key, label: lever.label, low: at(1 - p), high: at(1 + p), swing: 0 });
+    bars.push({ key: lever.key, label: t(lever.label), low: at(1 - p), high: at(1 + p), swing: 0 });
   }
   for (const b of bars) b.swing = Math.abs(b.high - b.low);
   return { pct: p * 100, base, bars: bars.filter((b) => b.swing > 0.005).sort((a, b) => b.swing - a.swing) };
@@ -692,40 +696,43 @@ export interface RunOptions {
   column?: number;
   /** Add the tornado analysis to the focus. */
   sensitivity?: boolean;
+  /** Translator for labels, warnings and the disclaimer (default: the German texts). */
+  t?: Tr;
 }
 
-function warningsOf(input: CalcInput, focus: Cell): string[] {
+function warningsOf(input: CalcInput, focus: Cell, t: Tr = plainTr): string[] {
   const w: string[] = [];
+  const pctOf = (v: number) => String(Math.round(v * 10) / 10);
   const mix = sum(input.pricing.plans.map((p) => p.mix));
-  if (Math.abs(mix - 100) > 0.5) w.push(`Der Kunden-Mix der Tarife ergibt ${Math.round(mix * 10) / 10} % – er wird auf 100 % hochgerechnet.`);
+  if (Math.abs(mix - 100) > 0.5) w.push(t('Der Kunden-Mix der Tarife ergibt {pct} % – er wird auf 100 % hochgerechnet.', { pct: pctOf(mix) }));
   const um = sum(input.customers.unit_mix.map((u) => u.share));
-  if (input.customers.unit_mix.length && Math.abs(um - 100) > 0.5) w.push(`Die Verteilung der Einheiten ergibt ${Math.round(um * 10) / 10} % – sie wird auf 100 % hochgerechnet.`);
+  if (input.customers.unit_mix.length && Math.abs(um - 100) > 0.5) w.push(t('Die Verteilung der Einheiten ergibt {pct} % – sie wird auf 100 % hochgerechnet.', { pct: pctOf(um) }));
   const pm = sum(input.costs.variable.payment.methods.map((m) => m.share));
-  if (input.costs.variable.payment.methods.length && Math.abs(pm - 100) > 0.5) w.push(`Die Zahlungsarten ergeben ${Math.round(pm * 10) / 10} % – sie werden auf 100 % hochgerechnet.`);
+  if (input.costs.variable.payment.methods.length && Math.abs(pm - 100) > 0.5) w.push(t('Die Zahlungsarten ergeben {pct} % – sie werden auf 100 % hochgerechnet.', { pct: pctOf(pm) }));
   if (input.vat.kleinunternehmer) {
-    if (focus.y.revenue_net > 100_000) w.push('Kleinunternehmer: über 100.000 € Jahresumsatz endet die Kleinunternehmerregelung sofort (§ 19 UStG).');
-    else if (focus.y.revenue_net > 25_000) w.push('Kleinunternehmer: über 25.000 € Jahresumsatz entfällt die Kleinunternehmerregelung im Folgejahr (§ 19 UStG).');
+    if (focus.y.revenue_net > 100_000) w.push(t('Kleinunternehmer: über 100.000 € Jahresumsatz endet die Kleinunternehmerregelung sofort (§ 19 UStG).'));
+    else if (focus.y.revenue_net > 25_000) w.push(t('Kleinunternehmer: über 25.000 € Jahresumsatz entfällt die Kleinunternehmerregelung im Folgejahr (§ 19 UStG).'));
   }
-  if (input.tax.legal_form === 'kapitalgesellschaft' && input.costs.fixed.salaries === 0) w.push('GmbH/UG: ein Geschäftsführer-Gehalt fehlt in den Fixkosten (Gehälter) – es mindert den Gewinn und wird privat versteuert.');
-  if (input.tax.legal_form === 'einzelunternehmen' && input.tax.vorsorge_monat === 0 && focus.y.ebit > 20_000) w.push('Einzelunternehmen: ohne Kranken-/Rentenversicherung (Vorsorge) ist der Nettogewinn zu hoch eingeschätzt.');
+  if (input.tax.legal_form === 'kapitalgesellschaft' && input.costs.fixed.salaries === 0) w.push(t('GmbH/UG: ein Geschäftsführer-Gehalt fehlt in den Fixkosten (Gehälter) – es mindert den Gewinn und wird privat versteuert.'));
+  if (input.tax.legal_form === 'einzelunternehmen' && input.tax.vorsorge_monat === 0 && focus.y.ebit > 20_000) w.push(t('Einzelunternehmen: ohne Kranken-/Rentenversicherung (Vorsorge) ist der Nettogewinn zu hoch eingeschätzt.'));
   return w;
 }
 
 /** Everything for one cell: unit economics, waterfall, projection and optionally the tornado. */
-export function detailOf(input: CalcInput, customers: number, column: number | -1 = -1, withSensitivity = false): Detail {
-  const { columns, inputs } = columnsOf(input);
+export function detailOf(input: CalcInput, customers: number, column: number | -1 = -1, withSensitivity = false, t: Tr = plainTr): Detail {
+  const { columns, inputs } = columnsOf(input, t);
   const idx = column >= 0 && column < columns.length ? column : -1;
   const vi = idx === -1 ? input : inputs[idx];
   const e = econ(vi);
   const cell = cellOf(vi, customers, e);
   return {
     customers: pos(customers),
-    column: idx === -1 ? currentColumn(input) : columns[idx],
+    column: idx === -1 ? currentColumn(input, t) : columns[idx],
     cell,
     unit: unitEcon(vi, e),
-    waterfall: waterfall(cell),
+    waterfall: waterfall(cell, 'month', t),
     projection: projection(vi, e),
-    ...(withSensitivity ? { sensitivity: sensitivity(vi, customers, input.matrix.sensitivity_pct) } : {}),
+    ...(withSensitivity ? { sensitivity: sensitivity(vi, customers, input.matrix.sensitivity_pct, t) } : {}),
     min_price: minPrice(vi, customers),
   };
 }
@@ -733,19 +740,20 @@ export function detailOf(input: CalcInput, customers: number, column: number | -
 /** The whole answer: matrix (customers × price variants), unit economics and break-even per column, and the focus cell. */
 export function run(raw: CalcInput, opts: RunOptions = {}): RunResult {
   const input = raw;
-  const { columns, inputs } = columnsOf(input);
+  const t = opts.t ?? plainTr;
+  const { columns, inputs } = columnsOf(input, t);
   const econs = inputs.map((i) => econ(i));
   const rows = input.matrix.customers;
   const matrix = rows.map((n) => econs.map((e, ci) => cellOf(inputs[ci], n, e)));
   const unit = econs.map((e, ci) => unitEcon(inputs[ci], e));
-  const focus = detailOf(input, opts.customers ?? input.customers.count, opts.column ?? -1, !!opts.sensitivity);
-  return { version: 1, disclaimer: DISCLAIMER, warnings: warningsOf(input, focus.cell), rows, columns, matrix, unit, focus };
+  const focus = detailOf(input, opts.customers ?? input.customers.count, opts.column ?? -1, !!opts.sensitivity, t);
+  return { version: 1, disclaimer: t(DISCLAIMER), warnings: warningsOf(input, focus.cell, t), rows, columns, matrix, unit, focus };
 }
 
 /** Validates a (partial) input over defaults or `base` (e.g. a preset) – the entry point for API, MCP and the UI. */
-export function resolveInput(partial: unknown, base?: CalcInput): CalcInput {
+export function resolveInput(partial: unknown, base?: CalcInput, t: Tr = plainTr): CalcInput {
   const b = base ?? defaultInput();
-  return normalizeInput(mergeInput(b, expandTaxYear(partial ?? {})));
+  return normalizeInput(mergeInput(b, expandTaxYear(partial ?? {})), undefined, t);
 }
 
 // --- text and tables --------------------------------------------------------------------------------------------------
@@ -770,16 +778,32 @@ export function metricValue(cell: Cell, metric: MetricKey, period: 'month' | 'ye
 }
 
 /** One sentence answer, e.g. "Bei 300 Kunden zu 49 €: …". */
-export function headline(input: CalcInput, d: Detail): string {
+export function headline(input: CalcInput, d: Detail, t: Tr = plainTr): string {
   const c = d.cell;
-  const price = input.pricing.plans.length === 1 && d.column.price > 0 ? ` zu ${eur(d.column.price)}` : '';
+  const num = (v: number, digits = 0) => new Intl.NumberFormat(numLocale(t), { maximumFractionDigits: digits, minimumFractionDigits: 0 }).format(v);
+  const m = (v: number | null | undefined) => (v === null || v === undefined || !Number.isFinite(v) ? '–' : numLocale(t) === 'de-DE' ? money(v) : eurIn(t, Math.round(v)));
   const be = d.unit.breakeven.customers;
-  return `Bei ${de(d.customers)} Kunden${price}: Umsatz netto ${money(c.m.revenue_net)}/Monat (${money(c.y.revenue_net)}/Jahr), nach variablen Kosten ${money(c.m.contribution)}, EBIT ${money(c.m.ebit)}/Monat, Nettogewinn ${money(c.m.net_profit)}/Monat (${money(c.y.net_profit)}/Jahr${c.margin === null ? '' : `, Marge ${de(c.margin, 1)} %`}). Break-even ${be === null ? 'nie bei diesen Preisen' : `ab ${de(be)} ${be === 1 ? 'Kunde' : 'Kunden'}`}. ${DISCLAIMER}.`;
+  const vars = {
+    customers: num(d.customers),
+    price: input.pricing.plans.length === 1 && d.column.price > 0 ? eurIn(t, d.column.price) : '',
+    rev_m: m(c.m.revenue_net),
+    rev_y: m(c.y.revenue_net),
+    contribution: m(c.m.contribution),
+    ebit: m(c.m.ebit),
+    net_m: m(c.m.net_profit),
+    net_y: m(c.y.net_profit),
+    margin: c.margin === null ? '' : t(', Marge {pct} %', { pct: num(c.margin, 1) }),
+    breakeven: be === null ? t('nie bei diesen Preisen') : be === 1 ? t('ab {n} Kunde', { n: num(be) }) : t('ab {n} Kunden', { n: num(be) }),
+    disclaimer: t(DISCLAIMER),
+  };
+  return vars.price
+    ? t('Bei {customers} Kunden zu {price}: Umsatz netto {rev_m}/Monat ({rev_y}/Jahr), nach variablen Kosten {contribution}, EBIT {ebit}/Monat, Nettogewinn {net_m}/Monat ({net_y}/Jahr{margin}). Break-even {breakeven}. {disclaimer}.', vars)
+    : t('Bei {customers} Kunden: Umsatz netto {rev_m}/Monat ({rev_y}/Jahr), nach variablen Kosten {contribution}, EBIT {ebit}/Monat, Nettogewinn {net_m}/Monat ({net_y}/Jahr{margin}). Break-even {breakeven}. {disclaimer}.', vars);
 }
 
 /** The matrix as a flat table for CSV export: one row per customers × price variant, values per month and year. */
-export function exportRows(r: RunResult): (string | number)[][] {
-  const head = ['Kunden', 'Preis', 'Umsatz brutto/Monat', 'USt/Monat', 'Umsatz netto/Monat', 'Variable Kosten/Monat', 'Nach variablen Kosten/Monat', 'Fixkosten/Monat', 'Kundengewinnung/Monat', 'EBIT/Monat', 'Steuern/Monat', 'Vorsorge/Monat', 'Nettogewinn/Monat', 'Umsatz netto/Jahr', 'EBIT/Jahr', 'Steuern/Jahr', 'Nettogewinn/Jahr', 'Marge %'];
+export function exportRows(r: RunResult, t: Tr = plainTr): (string | number)[][] {
+  const head = ['Kunden', 'Preis', 'Umsatz brutto/Monat', 'USt/Monat', 'Umsatz netto/Monat', 'Variable Kosten/Monat', 'Nach variablen Kosten/Monat', 'Fixkosten/Monat', 'Kundengewinnung/Monat', 'EBIT/Monat', 'Steuern/Monat', 'Vorsorge/Monat', 'Nettogewinn/Monat', 'Umsatz netto/Jahr', 'EBIT/Jahr', 'Steuern/Jahr', 'Nettogewinn/Jahr', 'Marge %'].map((h) => t(h));
   const r2 = (v: number) => Math.round(v * 100) / 100;
   const rows: (string | number)[][] = [head];
   r.rows.forEach((n, ri) =>
@@ -788,7 +812,7 @@ export function exportRows(r: RunResult): (string | number)[][] {
       rows.push([n, col.label, r2(c.m.revenue_gross), r2(c.m.vat), r2(c.m.revenue_net), r2(c.m.variable), r2(c.m.contribution), r2(c.m.fixed), r2(c.m.cac), r2(c.m.ebit), r2(c.m.tax), r2(c.m.vorsorge), r2(c.m.net_profit), r2(c.y.revenue_net), r2(c.y.ebit), r2(c.y.tax), r2(c.y.net_profit), c.margin === null ? '' : r2(c.margin)]);
     }),
   );
-  rows.push([], [DISCLAIMER]);
+  rows.push([], [t(DISCLAIMER)]);
   return rows;
 }
 

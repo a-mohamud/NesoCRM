@@ -8,6 +8,7 @@ import { getContact } from '../services/contacts.js';
 import type { TouchRow } from '../services/attribution.js';
 import { googleCreds, loadConnection } from '../services/ads-store.js';
 import { openSecret, sealSecret } from './mail-sync.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Ads reporting (read-only): Meta Ads (Marketing API, long-lived/system-user token + ad account)
@@ -303,7 +304,7 @@ export const adsModule: Module = {
       // Hashed e-mail, phone and name go to Meta only with the contact's marketing consent (ledger channel "Tracking", purpose
       // "Marketing" – the cookie banner writes it), like the Google Ads offline conversions; no consent module = no consent.
       if (!marketingConsent(locationId, contactId)) {
-        db.insert('ads_capi_log', { id: id(), location_id: locationId, event_name: ev.name, event_id: ev.eventId, contact_id: contactId, status: 'blocked', error: 'Keine Einwilligung (Marketing) – nicht gesendet', created_at: now() });
+        db.insert('ads_capi_log', { id: id(), location_id: locationId, event_name: ev.name, event_id: ev.eventId, contact_id: contactId, status: 'blocked', error: tLoc(app, locationId)('Keine Einwilligung (Marketing) – nicht gesendet'), created_at: now() });
         return;
       }
       const logId = id();
@@ -340,7 +341,8 @@ export const adsModule: Module = {
     app.events.on('invoice.paid', async (e) => {
       const inv = e.data.invoice;
       if (!inv?.contact_id || inv.kind !== 'invoice') return;
-      await sendConversion(e.locationId, inv.contact_id, { name: 'Purchase', eventId: `purchase_${inv.id}`, value: inv.total_cents / 100, currency: inv.currency });
+      await sendConversion(e.locationId, inv.contact_id, { name: 'Purchase', // i18n-ignore
+        eventId: `purchase_${inv.id}`, value: inv.total_cents / 100, currency: inv.currency });
     });
   },
 };

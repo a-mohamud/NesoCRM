@@ -2,6 +2,7 @@ import { FrameSlicer, Vad, ulawToPcm } from './voice-audio.js';
 import { twiml } from './twilio.js';
 import type { LiveStt, LiveSttHandlers, PhoneReply, TurnMetrics } from './voice-types.js';
 import type { WsLike } from './voice-ws.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * One phone call over a Twilio Media Stream (bidirectional WebSocket, µ-law 8 kHz): the caller's audio goes to
@@ -112,7 +113,7 @@ export class PhoneSession {
   ) {
     this.now = env.now ?? Date.now;
     this.timers.start = setTimeout(() => {
-      if (this.phase === 'wait' || this.phase === 'starting') this.stop(1008, 'Kein Start-Ereignis');
+      if (this.phase === 'wait' || this.phase === 'starting') this.stop(1008, 'no start event');
     }, phoneTiming.startMs);
     this.timers.start.unref?.();
   }
@@ -162,7 +163,7 @@ export class PhoneSession {
     const s = m.start ?? {};
     const streamSid = String(s.streamSid ?? m.streamSid ?? '');
     const callSid = String(s.callSid ?? '');
-    if (!STREAM_SID.test(streamSid) || !callSid) return this.stop(1008, 'Ungültiger Start');
+    if (!STREAM_SID.test(streamSid) || !callSid) return this.stop(1008, 'invalid start');
     this.phase = 'starting';
     this.streamSid = streamSid;
     const params: Record<string, string> = {};
@@ -220,7 +221,7 @@ export class PhoneSession {
     const retryable = (e as any).retryable === true;
     if (retryable && this.sttRetries < 2) {
       this.sttRetries++;
-      call.note('stt_retry', true, `Spracherkennung neu verbunden: ${e.message.slice(0, 160)}`);
+      call.note('stt_retry', true, tApp()('Spracherkennung neu verbunden: {error}', { error: e.message.slice(0, 160) }));
       try {
         this.stt?.close();
         this.stt = await call.openStt(this.handlers());
@@ -308,7 +309,7 @@ export class PhoneSession {
     m.llm_ms = Math.max(0, this.now() - tText);
     this.busy = false;
     if (this.phase !== 'live') return;
-    if (!reply) return void this.degradeNow('', 'Antwort des Agenten fehlt');
+    if (!reply) return void this.degradeNow('', tApp()('Antwort des Agenten fehlt'));
     await this.deliver(reply, { metrics: m, stoppedAt });
     if (this.phase === 'live' && !this.busy && this.queued) {
       const q = this.queued;

@@ -78,7 +78,7 @@ describe('wish → plan card → confirm → live progress → preview', () => {
     await chat(member, 'Hallo');
     const system = JSON.stringify(model.calls[0].body.system);
     expect(system).toContain('ghl_build_from_wish');
-    expect(system).toContain('als Karte im Chat');
+    expect(system).toContain('as a card in the chat');
     expect(system).not.toContain('ghl_plugin_admin');
     expect(toolNames()).toEqual(expect.arrayContaining(['ghl_build_from_wish', 'ghl_change_plugin', 'ghl_discard_plugin', 'ghl_plugin_status', 'ghl_list_plugins']));
     // lifecycle tools are for admins only
@@ -102,7 +102,7 @@ describe('wish → plan card → confirm → live progress → preview', () => {
     expect(r.events.find((e) => e.type === 'confirm')).toBeUndefined();
     const { status, data } = resultOf(r.events, 'tu_1');
     expect(status).toBe('ok');
-    expect(data).toMatchObject({ status: 'planned', stage: 'Mini-App', title: 'Deal-Ampel', model: 'claude-opus-5-5', denkstufe: 'maximal (xhigh)' });
+    expect(data).toMatchObject({ status: 'planned', stage: 'Mini-App', title: 'Deal traffic light', model: 'claude-opus-5-5', denkstufe: 'maximal (xhigh)' });
     expect(data.permissions[0]).toContain('opportunities:read');
     expect(data.estimated_cost_usd).toBeGreaterThan(0);
     expect(data.link).toBe(`werkstatt/${data.build_id}`);
@@ -152,7 +152,7 @@ describe('wish → plan card → confirm → live progress → preview', () => {
     clearInterval(watcher);
     const done = (await member('GET', `/api/werkstatt/builds/${planId}`)).data;
     expect(done.status, done.error).toBe('done');
-    expect(done.log.map((l: any) => l.text).join('\n')).toContain('Das Plugin „Deal-Ampel“ ist jetzt für dich aktiv');
+    expect(done.log.map((l: any) => l.text).join('\n')).toContain('Das Plugin „Deal traffic light“ ist jetzt für dich aktiv');
     pluginId = done.plugin_id;
     // the plugin is there, private, with its model and Denkstufe on the version
     const p = (await member('GET', `/api/plugins/${pluginId}`)).data;
@@ -173,9 +173,9 @@ describe('wish → plan card → confirm → live progress → preview', () => {
     const b = resultOf(r.events, 'tu_s').data;
     expect(b).toMatchObject({ build_id: planId, status: 'Fertig', plugin_id: pluginId, model: 'claude-opus-5-5', denkstufe: 'hoch' });
     const p = resultOf(r.events, 'tu_p').data;
-    expect(p.versions[0]).toContain('1.0.0 (aktiv)');
-    expect(p.versions[0]).toContain('statisch ✓');
-    expect(p.versions[0]).toContain('claude-opus-5-5, Denkstufe hoch');
+    expect(p.versions[0]).toContain('1.0.0 (active)');
+    expect(p.versions[0]).toContain('static ✓');
+    expect(p.versions[0]).toContain('claude-opus-5-5, reasoning hoch');
   });
 });
 
@@ -235,7 +235,7 @@ describe('admin lifecycle in the chat', () => {
     model.reply(sse(anthropicSse([tool('tu_o', 'ghl_plugin_overview', {})])), sse(anthropicSse([tool('tu_r', 'ghl_plugin_admin', { action: 'rollback', plugin_id: pluginId })])));
     const r = await chat(admin, 'Was gibt es Neues in der Werkstatt? Rolle bitte die Ampel zurück.');
     const overview = resultOf(r.events, 'tu_o').data;
-    expect(overview.plugins.find((p: any) => p.plugin_id === pluginId)).toMatchObject({ name: 'Deal-Ampel', version: '1.0.1', scope: 'private', link: `werkstatt/plugins/${pluginId}` });
+    expect(overview.plugins.find((p: any) => p.plugin_id === pluginId)).toMatchObject({ name: 'Deal traffic light', version: '1.0.1', scope: 'private', link: `werkstatt/plugins/${pluginId}` });
     const card = r.events.find((e) => e.type === 'confirm');
     expect(card).toMatchObject({ tool: 'ghl_plugin_admin', klass: 'sensitive' });
     expect((await admin('GET', `/api/plugins/${pluginId}`)).data.version).toBe('1.0.1');

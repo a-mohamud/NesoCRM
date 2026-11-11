@@ -1,4 +1,5 @@
 import type { App } from '../core/app.js';
+import { tApp } from '../i18n/index.js';
 import { lookup } from '../core/template.js';
 import { connectorFetch } from './connectors.js';
 import type { ActionOutcome } from './workflow-engine.js';
@@ -30,6 +31,7 @@ export function backoffMs(attempt: number, retryAfter?: string | string[] | unde
 const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 export function httpActions(app: App): ActionDef[] {
+  const tr = tApp();
   const sleep: (ms: number) => Promise<void> = (ms) => (app.services.wfxSleep ? app.services.wfxSleep(ms) : new Promise((r) => setTimeout(r, ms)));
   const TARGET: FieldDef = { key: 'to', label: 'Speichern in', type: 'target', default: 'var.' };
 
@@ -68,9 +70,9 @@ export function httpActions(app: App): ActionDef[] {
       try {
         url = new URL(rawUrl);
       } catch {
-        throw new Error('Die URL ist ungültig');
+        throw new Error(tr('Die URL ist ungültig'));
       }
-      if (!/^https?:$/.test(url.protocol)) throw new Error('Nur http(s)-Adressen');
+      if (!/^https?:$/.test(url.protocol)) throw new Error(tr('Nur http(s)-Adressen'));
       for (const q of rowsOf<{ name: string; value: string }>(step.query, ['name'], 30)) url.searchParams.append(text(q.name, vars), text(q.value, vars));
       const headers: Record<string, string> = {};
       for (const h of rowsOf<{ name: string; value: string }>(step.headers, ['name'], 30)) {
@@ -89,14 +91,14 @@ export function httpActions(app: App): ActionDef[] {
           try {
             JSON.parse(rendered);
           } catch {
-            throw new Error('Der Body ist kein gültiges JSON (nach dem Einsetzen der Platzhalter)');
+            throw new Error(tr('Der Body ist kein gültiges JSON (nach dem Einsetzen der Platzhalter)'));
           }
           headers['content-type'] ??= 'application/json';
         } else if (bt === 'form') {
           headers['content-type'] ??= 'application/x-www-form-urlencoded';
         } else headers['content-type'] ??= 'text/plain; charset=utf-8';
         body = bt === 'form' ? new URLSearchParams(rendered.split(/\r?\n|&/).filter(Boolean).map((l) => l.split(/=(.*)/s).slice(0, 2) as [string, string])).toString() : rendered;
-        if (body.length > 1_000_000) throw new Error('Body zu groß (über 1 MB)');
+        if (body.length > 1_000_000) throw new Error(tr('Body zu groß (über 1 MB)'));
       }
       const retries = Math.min(MAX_RETRIES, Math.max(0, Math.floor(Number(step.retries ?? 2))));
       const timeoutMs = Math.min(30_000, Math.max(1000, (Number(step.timeout_s) || 15) * 1000));
@@ -115,11 +117,11 @@ export function httpActions(app: App): ActionDef[] {
           res = null;
           lastError = (e as Error).message;
           // a refused target (internal network) will not get better
-          if (/interne|gesperrt|Ungültige URL|Nur http/.test(lastError) || attempt === retries) break;
+          if (/interne|gesperrt|Ungültige URL|Nur http|internal|blocked|invalid URL|only http/i.test(lastError) || attempt === retries) break;
           await sleep(backoffMs(attempt + 1, undefined, app.services.wfxRandom));
         }
       }
-      if (!res) throw new Error(`${method} ${url.origin}${url.pathname}: ${lastError} (${attempts} Versuch${attempts === 1 ? '' : 'e'})`);
+      if (!res) throw new Error(`${method} ${url.origin}${url.pathname}: ${tr(lastError)} (${tr.plural(attempts, { one: '{n} Versuch', other: '{n} Versuche' })})`);
       const raw = await res.text();
       let data: unknown = raw;
       const ct = String(res.headers['content-type'] ?? '');
@@ -150,8 +152,9 @@ export function httpActions(app: App): ActionDef[] {
           mapped.push(p);
         }
       }
-      const retried = attempts > 1 ? ` nach ${attempts} Versuchen` : '';
-      out.result = `${method} ${url.host}${url.pathname} → ${res.status}${retried}${mapped.length ? ` · übernommen: ${mapped.join(', ')}` : ''}${missing.length ? ` · nicht gefunden: ${missing.join(', ')}` : ''}`;
+      const retried = attempts > 1 ? ` ${tr('nach {n} Versuchen', { n: attempts })}` : '';
+      out.result = `${method} ${url.host}${url.pathname} → ${res.status}${retried}${mapped.length ? ` · ${tr('übernommen: {paths}', { paths: mapped.join(', ') })}` : ''}${missing.length ? ` · ${tr('nicht gefunden: {paths}', { paths: missing.join(', ') })}` : ''}`;
+      // i18n-ignore (status line, no words)
       if (!res.ok && step.fail_on_error !== false) throw new Error(`${method} ${url.host}${url.pathname} → HTTP ${res.status}${retried}: ${preview(raw.replace(/\s+/g, ' '), 120)}`);
       return out;
     },

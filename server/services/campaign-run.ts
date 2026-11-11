@@ -12,6 +12,7 @@ import { getSettings } from './mk-settings.js';
 import { loadBuckets, planCampaign } from './mk-sto.js';
 import { isMarketing } from './mk-whatsapp.js';
 import { segmentMemberIds } from './mk-segments.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * The sending side of campaigns: who gets a campaign, the batches that go out per tick, and the extras around them –
@@ -140,11 +141,12 @@ export function startSending(app: App, campaign: any): number {
 async function sendOne(app: App, campaign: any, c: Contact, variant: string): Promise<{ id: string | null; status: string; error?: string }> {
   const loc = app.location(campaign.location_id)!;
   const vars = { contact: contactVars(c), location: loc };
-  const source = `Kampagne: ${campaign.name}`;
+  const tl = tLoc(app, campaign.location_id);
+  const source = tl('Kampagne: {name}', { name: campaign.name });
   if (campaign.channel === 'whatsapp') {
     const t = campaign.wa_template;
     const send: ((loc: string, i: any) => Promise<any>) | undefined = app.services.metaSend;
-    if (!t || !send) return { id: null, status: 'failed', error: 'WhatsApp ist nicht eingerichtet' };
+    if (!t || !send) return { id: null, status: 'failed', error: tl('WhatsApp ist nicht eingerichtet') };
     const values = Object.fromEntries(Object.entries((t.values ?? {}) as Record<string, string>).map(([k, v]) => [k, render(String(v), vars)]));
     try {
       const m = await send(campaign.location_id, { contactId: c.id, channel: 'whatsapp', template: { name: t.name, language: t.language, values }, source });
@@ -191,7 +193,7 @@ export async function sendBatch(app: App, campaign: any): Promise<number> {
     if (typeof room === 'number') perTick = Math.min(perTick, room);
   }
   // A send the process did not live to write down (restart, crash): the provider may well have taken it – it is not sent again.
-  app.db.run(`UPDATE campaign_recipients SET status = 'failed', error = ? WHERE campaign_id = ? AND status = 'sending' AND sent_at < ?`, SEND_INTERRUPTED, campaign.id, new Date(Date.now() - SENDING_STALE_MS).toISOString());
+  app.db.run(`UPDATE campaign_recipients SET status = 'failed', error = ? WHERE campaign_id = ? AND status = 'sending' AND sent_at < ?`, tLoc(app, campaign.location_id)(SEND_INTERRUPTED), campaign.id, new Date(Date.now() - SENDING_STALE_MS).toISOString());
   const pending = perTick > 0 ? app.db.all(`SELECT * FROM campaign_recipients WHERE campaign_id = ? AND status = 'pending' AND (send_at IS NULL OR send_at <= ?) ORDER BY COALESCE(send_at, ''), rowid LIMIT ?`, campaign.id, now(), perTick) : [];
   let taken = 0;
   for (const r of pending) {
@@ -200,7 +202,7 @@ export async function sendBatch(app: App, campaign: any): Promise<number> {
     taken++;
     const c = getContact(app, campaign.location_id, r.contact_id);
     if (!c) {
-      app.db.run(`UPDATE campaign_recipients SET status = 'skipped', error = 'gelöscht' WHERE campaign_id = ? AND contact_id = ?`, campaign.id, r.contact_id);
+      app.db.run(`UPDATE campaign_recipients SET status = 'skipped', error = ? WHERE campaign_id = ? AND contact_id = ?`, tLoc(app, campaign.location_id)('gelöscht'), campaign.id, r.contact_id);
       continue;
     }
     const m = await sendOne(app, campaign, c, r.variant ?? '');
@@ -239,7 +241,8 @@ export function releaseWinner(app: App, campaign: any, by: 'auto' | 'manual', ke
   const pick = pickWinner(stats, ab.metric);
   const winner = key && ab.variants.some((v) => v.key === key) ? key : pick.winner;
   const decidedBy = by === 'manual' ? 'manual' : pick.reason === 'no_data' ? 'fallback' : 'auto';
-  const reason = by === 'manual' ? 'von Hand gewählt' : pick.reason === 'no_data' ? 'keine Öffnungen oder Klicks – die Originalversion geht raus' : pick.reason === 'tie' ? 'Gleichstand – entschieden nach der nächsten Kennzahl' : 'beste Variante';
+  const tl = tLoc(app, campaign.location_id);
+  const reason = tl(by === 'manual' ? 'von Hand gewählt' : pick.reason === 'no_data' ? 'keine Öffnungen oder Klicks – die Originalversion geht raus' : pick.reason === 'tie' ? 'Gleichstand – entschieden nach der nächsten Kennzahl' : 'beste Variante');
   const next: AbConfig = { ...ab, phase: 'winner', winner, decided_at: now(), decided_by: decidedBy, decided_reason: reason, snapshot: stats };
   const held = app.db.all<{ contact_id: string }>(`SELECT contact_id FROM campaign_recipients WHERE campaign_id = ? AND status = 'held'`, campaign.id).map((r) => r.contact_id);
   const times = campaign.send_mode === 'sto' ? stoTimes(app, campaign.location_id, held) : new Map<string, string>();
@@ -260,7 +263,7 @@ export function createResend(app: App, parent: any): string | null {
   const cfg: ResendConfig = parent.resend;
   const left = nonOpenerIds(app, parent.id, parent.location_id);
   if (!left.length) {
-    app.db.run('UPDATE campaigns SET resend = ? WHERE id = ?', toSql({ ...cfg, status: 'skipped', note: 'Alle haben geöffnet oder geklickt – es gibt niemanden zu erinnern' }), parent.id);
+    app.db.run('UPDATE campaigns SET resend = ? WHERE id = ?', toSql({ ...cfg, status: 'skipped', note: tLoc(app, parent.location_id)('Alle haben geöffnet oder geklickt – es gibt niemanden zu erinnern') }), parent.id);
     return null;
   }
   // The winner's content when the first campaign was an A/B test.

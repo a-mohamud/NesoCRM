@@ -42,22 +42,22 @@ const ALIGN: FieldSpec = { kind: 'enum', options: ['left', 'center', 'right'] };
 
 /** The blocks the AI may use – no pictures, videos or custom code (it cannot know real ones). */
 export const AI_BLOCKS: Record<string, AiBlockSpec> = {
-  hero: { label: 'Hero', use: 'Seitenanfang: H1-Überschrift, Unterzeile, ein Button', fields: { heading: T(110, true, 'die H1 der Seite'), subheading: T(320), button_text: T(40), button_url: L(), align: ALIGN } },
-  heading: { label: 'Überschrift', use: 'Zwischenüberschrift', fields: { text: T(120, true), level: { kind: 'int', options: [1, 2, 3], hint: '1 nur, wenn die Seite keinen Hero hat' }, align: ALIGN } },
-  text: { label: 'Text', use: 'Absätze und Listen (**fett**, *kursiv*, - Liste)', fields: { text: MD(2400, true), align: ALIGN } },
-  button: { label: 'Button', use: 'ein oder zwei Buttons', fields: { text: T(40, true), url: L(true), text2: T(40), url2: L(), align: ALIGN } },
-  features: { label: 'Vorteile', use: '2–6 Vorteile mit Emoji-Icon', fields: { heading: T(110), align: ALIGN }, items: { min: 2, max: 6, fields: { icon: T(12, false, 'ein Emoji'), title: T(60, true), text: T(240) } } },
-  steps: { label: 'Ablauf', use: '2–6 nummerierte Schritte', fields: { heading: T(110), align: ALIGN }, items: { min: 2, max: 6, fields: { title: T(60, true), text: T(240) } } },
-  stats: { label: 'Zahlen', use: '2–4 Kennzahlen – nur Zahlen aus der Beschreibung, sonst Platzhalter wie „[Zahl]“', fields: { heading: T(110) }, items: { min: 2, max: 4, fields: { value: T(16, true), label: T(60, true) } } },
-  testimonial: { label: 'Kundenstimme', use: 'ein Zitat – ohne echte Stimme ein klar markierter Platzhalter', fields: { quote: T(400, true), author: T(80, true), align: ALIGN } },
-  faq: { label: 'FAQ', use: '2–10 Fragen mit Antworten', fields: { heading: T(110) }, items: { min: 2, max: 10, fields: { q: T(160, true), a: MD(700, true) } } },
-  pricing: { label: 'Preise', use: '1–4 Pakete – nur Preise aus der Beschreibung, sonst „auf Anfrage“', fields: { heading: T(110), align: ALIGN }, items: { min: 1, max: 4, fields: { name: T(40, true), price: T(30, true), features: T(600, false, 'eine Leistung pro Zeile'), button_text: T(40), button_url: L() } } },
-  cta: { label: 'Aufruf', use: 'Handlungsaufforderung mit Button(s)', fields: { heading: T(110, true), text: T(300), button_text: T(40), button_url: L(), button2_text: T(40), button2_url: L(), style: { kind: 'enum', options: ['', 'dark', 'light'] } } },
-  form: { label: 'Formular', use: 'das Formular des Sub-Accounts (Anfrage, Anmeldung)', fields: { heading: T(110), form_id: { kind: 'ref', ref: 'form', hint: 'leer = HyperLevel setzt das passende Formular ein' } } },
-  calendar: { label: 'Kalender', use: 'Terminbuchung', fields: { calendar_slug: { kind: 'ref', ref: 'calendar', hint: 'leer = der erste Kalender' } } },
-  product: { label: 'Produkt / Kasse', use: 'Produkt mit Preis und Button zur Kaufseite', fields: { product_id: { kind: 'ref', ref: 'product', hint: 'leer = später wählen' }, heading: T(110), text: T(400), button_text: T(40), badge: T(30) } },
-  divider: { label: 'Trennlinie', use: 'Linie', fields: {} },
-  spacer: { label: 'Abstand', use: 'Leerraum', fields: { height: { kind: 'int', min: 8, max: 160 } } },
+  hero: { label: 'Hero', use: 'top of the page: H1 heading, subheading, one button', fields: { heading: T(110, true, 'the H1 of the page'), subheading: T(320), button_text: T(40), button_url: L(), align: ALIGN } },
+  heading: { label: 'Überschrift', use: 'subheading', fields: { text: T(120, true), level: { kind: 'int', options: [1, 2, 3], hint: '1 only if the page has no hero' }, align: ALIGN } },
+  text: { label: 'Text', use: 'paragraphs and lists (**bold**, *italic*, - list)', fields: { text: MD(2400, true), align: ALIGN } },
+  button: { label: 'Button', use: 'one or two buttons', fields: { text: T(40, true), url: L(true), text2: T(40), url2: L(), align: ALIGN } },
+  features: { label: 'Vorteile', use: '2–6 benefits with an emoji icon', fields: { heading: T(110), align: ALIGN }, items: { min: 2, max: 6, fields: { icon: T(12, false, 'one emoji'), title: T(60, true), text: T(240) } } },
+  steps: { label: 'Ablauf', use: '2–6 numbered steps', fields: { heading: T(110), align: ALIGN }, items: { min: 2, max: 6, fields: { title: T(60, true), text: T(240) } } },
+  stats: { label: 'Zahlen', use: '2–4 key figures – only figures from the brief, otherwise placeholders such as "[Number]"', fields: { heading: T(110) }, items: { min: 2, max: 4, fields: { value: T(16, true), label: T(60, true) } } },
+  testimonial: { label: 'Kundenstimme', use: 'one quote – without a real testimonial, a clearly marked placeholder', fields: { quote: T(400, true), author: T(80, true), align: ALIGN } },
+  faq: { label: 'FAQ', use: '2–10 questions with answers', fields: { heading: T(110) }, items: { min: 2, max: 10, fields: { q: T(160, true), a: MD(700, true) } } },
+  pricing: { label: 'Preise', use: '1–4 packages – only prices from the brief, otherwise "on request"', fields: { heading: T(110), align: ALIGN }, items: { min: 1, max: 4, fields: { name: T(40, true), price: T(30, true), features: T(600, false, 'one item per line'), button_text: T(40), button_url: L() } } },
+  cta: { label: 'Aufruf', use: 'call to action with button(s)', fields: { heading: T(110, true), text: T(300), button_text: T(40), button_url: L(), button2_text: T(40), button2_url: L(), style: { kind: 'enum', options: ['', 'dark', 'light'] } } },
+  form: { label: 'Formular', use: 'the sub-account form (enquiry, sign-up)', fields: { heading: T(110), form_id: { kind: 'ref', ref: 'form', hint: 'empty = HyperLevel inserts the matching form' } } },
+  calendar: { label: 'Kalender', use: 'appointment booking', fields: { calendar_slug: { kind: 'ref', ref: 'calendar', hint: 'empty = the first calendar' } } },
+  product: { label: 'Produkt / Kasse', use: 'product with price and a button to the checkout page', fields: { product_id: { kind: 'ref', ref: 'product', hint: 'empty = choose later' }, heading: T(110), text: T(400), button_text: T(40), badge: T(30) } },
+  divider: { label: 'Trennlinie', use: 'line', fields: {} },
+  spacer: { label: 'Abstand', use: 'white space', fields: { height: { kind: 'int', min: 8, max: 160 } } },
 };
 
 export const STYLES = ['plain', 'soft', 'brand', 'dark'] as const;
@@ -83,10 +83,10 @@ export interface BlockEnv {
 
 /** The schema as one compact line per block for the prompt: `- hero · Hero: heading*:text≤110, …`. */
 export function blockCatalogText(registry: Set<string>): string {
-  const f = (k: string, s: FieldSpec) => `${k}${s.required ? '*' : ''}:${s.kind === 'enum' || (s.kind === 'int' && s.options) ? (s.options ?? []).map((o) => JSON.stringify(o)).join('|') : s.kind === 'ref' ? `<${s.ref}-id>` : s.kind === 'int' ? `zahl${s.min !== undefined ? ` ${s.min}–${s.max}` : ''}` : `${s.kind === 'link' ? 'link' : s.kind === 'md' ? 'markdown' : 'text'}≤${s.max}`}${s.hint ? ` (${s.hint})` : ''}`;
+  const f = (k: string, s: FieldSpec) => `${k}${s.required ? '*' : ''}:${s.kind === 'enum' || (s.kind === 'int' && s.options) ? (s.options ?? []).map((o) => JSON.stringify(o)).join('|') : s.kind === 'ref' ? `<${s.ref}-id>` : s.kind === 'int' ? `number${s.min !== undefined ? ` ${s.min}–${s.max}` : ''}` : `${s.kind === 'link' ? 'link' : s.kind === 'md' ? 'markdown' : 'text'}≤${s.max}`}${s.hint ? ` (${s.hint})` : ''}`;
   return Object.entries(AI_BLOCKS)
     .filter(([type]) => registry.has(type))
-    .map(([type, s]) => `- ${type} · ${s.label} – ${s.use}: ${[...Object.entries(s.fields).map(([k, v]) => f(k, v)), ...(s.items ? [`items*:[${s.items.min}–${s.items.max}× {${Object.entries(s.items.fields).map(([k, v]) => f(k, v)).join(', ')}}]`] : [])].join(', ') || '(keine Felder)'}`)
+    .map(([type, s]) => `- ${type} · ${s.label} – ${s.use}: ${[...Object.entries(s.fields).map(([k, v]) => f(k, v)), ...(s.items ? [`items*:[${s.items.min}–${s.items.max}× {${Object.entries(s.items.fields).map(([k, v]) => f(k, v)).join(', ')}}]`] : [])].join(', ') || '(no fields)'}`)
     .join('\n');
 }
 
@@ -102,43 +102,43 @@ export interface CheckedBlock {
 export function checkBlock(raw: any, env: BlockEnv, where: string): CheckedBlock {
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { errors: [`${where}: ein Block muss ein Objekt sein`], warnings };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { errors: [`${where}: a block must be an object`], warnings };
   const type = String(raw.type ?? '');
   const spec = AI_BLOCKS[type];
-  if (!spec || !env.registry.has(type)) return { errors: [`${where}: unbekannter Block-Typ „${type || '(leer)'}“ – erlaubt: ${Object.keys(AI_BLOCKS).filter((t) => env.registry.has(t)).join(', ')}`], warnings };
+  if (!spec || !env.registry.has(type)) return { errors: [`${where}: unknown block type "${type || '(empty)'}" – allowed: ${Object.keys(AI_BLOCKS).filter((t) => env.registry.has(t)).join(', ')}`], warnings };
   const out: Block = { id: typeof raw.id === 'string' && /^[A-Za-z0-9_-]{4,40}$/.test(raw.id) ? raw.id : newId(8), type };
   const field = (k: string, s: FieldSpec, v: unknown, at: string, into: Record<string, any>) => {
     if (v === undefined || v === null || v === '') {
-      if (s.required) errors.push(`${at}: „${k}“ fehlt`);
+      if (s.required) errors.push(`${at}: "${k}" is missing`);
       return;
     }
     switch (s.kind) {
       case 'text':
       case 'md': {
-        if (typeof v !== 'string' && typeof v !== 'number') return void errors.push(`${at}: „${k}“ muss Text sein`);
+        if (typeof v !== 'string' && typeof v !== 'number') return void errors.push(`${at}: "${k}" must be text`);
         const t = String(v).trim();
-        if (s.max && t.length > s.max) return void errors.push(`${at}: „${k}“ ist ${t.length} Zeichen lang, höchstens ${s.max} – kürzen`);
-        if (/<\/?[a-z][^>]*>/i.test(t)) return void errors.push(`${at}: „${k}“ enthält HTML – nur reiner Text${s.kind === 'md' ? ' bzw. **fett**, *kursiv*, - Liste' : ''}`);
+        if (s.max && t.length > s.max) return void errors.push(`${at}: "${k}" is ${t.length} characters long, at most ${s.max} – shorten it`);
+        if (/<\/?[a-z][^>]*>/i.test(t)) return void errors.push(`${at}: "${k}" contains HTML – plain text only${s.kind === 'md' ? ' or **bold**, *italic*, - list' : ''}`);
         if (t) into[k] = t;
         return;
       }
       case 'link': {
         const t = String(v).trim();
-        if (!LINK_RE.test(t)) return void errors.push(`${at}: „${k}“ = „${t.slice(0, 60)}“ ist kein erlaubter Link (page:<pfad>, #anker, https://…, mailto:, tel:)`);
-        if (t.startsWith('page:') && !env.pages.has(t.slice(5))) return void errors.push(`${at}: „${k}“ zeigt auf die Seite „${t.slice(5)}“, die es im Plan nicht gibt – erlaubt: ${[...env.pages].join(', ')}`);
+        if (!LINK_RE.test(t)) return void errors.push(`${at}: "${k}" = "${t.slice(0, 60)}" is not an allowed link (page:<path>, #anchor, https://…, mailto:, tel:)`);
+        if (t.startsWith('page:') && !env.pages.has(t.slice(5))) return void errors.push(`${at}: "${k}" points to the page "${t.slice(5)}", which is not in the plan – allowed: ${[...env.pages].join(', ')}`);
         into[k] = t;
         return;
       }
       case 'int': {
         const n = Number(v);
-        if (!Number.isInteger(n)) return void errors.push(`${at}: „${k}“ muss eine ganze Zahl sein`);
-        if (s.options && !s.options.includes(n)) return void errors.push(`${at}: „${k}“ muss ${s.options.join(' oder ')} sein`);
-        if (s.min !== undefined && (n < s.min || n > (s.max ?? n))) return void errors.push(`${at}: „${k}“ muss zwischen ${s.min} und ${s.max} liegen`);
+        if (!Number.isInteger(n)) return void errors.push(`${at}: "${k}" must be a whole number`);
+        if (s.options && !s.options.includes(n)) return void errors.push(`${at}: "${k}" must be ${s.options.join(' or ')}`);
+        if (s.min !== undefined && (n < s.min || n > (s.max ?? n))) return void errors.push(`${at}: "${k}" must be between ${s.min} and ${s.max}`);
         into[k] = n;
         return;
       }
       case 'enum': {
-        if (!s.options!.includes(v as string)) return void errors.push(`${at}: „${k}“ muss eines von ${s.options!.map((o) => JSON.stringify(o)).join(', ')} sein`);
+        if (!s.options!.includes(v as string)) return void errors.push(`${at}: "${k}" must be one of ${s.options!.map((o) => JSON.stringify(o)).join(', ')}`);
         if (v !== '') into[k] = v;
         return;
       }
@@ -146,7 +146,7 @@ export function checkBlock(raw: any, env: BlockEnv, where: string): CheckedBlock
         const t = String(v);
         const list = env.refs[s.ref!];
         const ok = s.ref === 'calendar' ? (list as AccountRefs['calendar']).some((c) => c.slug === t) : (list as { id: string }[]).some((x) => x.id === t);
-        if (!ok) return void errors.push(`${at}: „${k}“ = „${t.slice(0, 40)}“ gibt es in diesem Sub-Account nicht – nimm eine ID aus der Liste oder lass das Feld leer`);
+        if (!ok) return void errors.push(`${at}: "${k}" = "${t.slice(0, 40)}" does not exist in this sub-account – take an id from the list or leave the field empty`);
         into[k] = t;
         return;
       }
@@ -155,24 +155,24 @@ export function checkBlock(raw: any, env: BlockEnv, where: string): CheckedBlock
   for (const [k, s] of Object.entries(spec.fields)) field(k, s, raw[k], `${where} (${type})`, out);
   if (spec.items) {
     const items = raw.items;
-    if (!Array.isArray(items)) errors.push(`${where} (${type}): „items“ muss eine Liste sein`);
+    if (!Array.isArray(items)) errors.push(`${where} (${type}): "items" must be a list`);
     else {
-      if (items.length < spec.items.min || items.length > spec.items.max) errors.push(`${where} (${type}): ${items.length} Einträge, erlaubt ${spec.items.min}–${spec.items.max}`);
+      if (items.length < spec.items.min || items.length > spec.items.max) errors.push(`${where} (${type}): ${items.length} items, allowed ${spec.items.min}–${spec.items.max}`);
       out.items = items.slice(0, spec.items.max).map((it: any, i: number) => {
         const o: Record<string, any> = {};
         if (!it || typeof it !== 'object' || Array.isArray(it)) {
-          errors.push(`${where} (${type}) Eintrag ${i + 1}: muss ein Objekt sein`);
+          errors.push(`${where} (${type}) item ${i + 1}: must be an object`);
           return o;
         }
-        for (const [k, s] of Object.entries(spec.items!.fields)) field(k, s, it[k], `${where} (${type}) Eintrag ${i + 1}`, o);
+        for (const [k, s] of Object.entries(spec.items!.fields)) field(k, s, it[k], `${where} (${type}) item ${i + 1}`, o);
         const extra = Object.keys(it).filter((k) => !(k in spec.items!.fields));
-        if (extra.length) warnings.push(`${where} (${type}) Eintrag ${i + 1}: unbekannte Felder entfernt: ${extra.join(', ')}`);
+        if (extra.length) warnings.push(`${where} (${type}) item ${i + 1}: unknown fields removed: ${extra.join(', ')}`);
         return o;
       });
     }
   }
   const extra = Object.keys(raw).filter((k) => !['type', 'id', 'items'].includes(k) && !(k in spec.fields));
-  if (extra.length) warnings.push(`${where} (${type}): unbekannte Felder entfernt: ${extra.join(', ')}`);
+  if (extra.length) warnings.push(`${where} (${type}): unknown fields removed: ${extra.join(', ')}`);
   return { block: out, errors, warnings };
 }
 
@@ -202,39 +202,39 @@ export interface CheckedSection {
 export function checkSection(raw: any, env: BlockEnv, where: string, known?: Set<string>): { section?: CheckedSection; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { errors: [`${where}: ein Abschnitt muss ein Objekt sein`], warnings };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { errors: [`${where}: a section must be an object`], warnings };
   const sid = typeof raw.id === 'string' && raw.id ? raw.id : undefined;
-  if (sid && known && !known.has(sid)) errors.push(`${where}: Abschnitt „${sid}“ gibt es auf der Seite nicht – neue Abschnitte ohne id`);
+  if (sid && known && !known.has(sid)) errors.push(`${where}: section "${sid}" does not exist on the page – new sections have no id`);
   if (raw.keep === true) {
-    if (!sid) errors.push(`${where}: „keep“ nur mit der id eines vorhandenen Abschnitts`);
+    if (!sid) errors.push(`${where}: "keep" only with the id of an existing section`);
     return { section: { id: sid, keep: true, name: '', rows: [] }, errors, warnings };
   }
   const name = String(raw.name ?? '').trim().slice(0, 80);
-  const style = raw.style === undefined || raw.style === '' ? undefined : STYLES.includes(raw.style) ? (raw.style as SectionStyle) : (errors.push(`${where}: style muss ${STYLES.join(', ')} sein`), undefined);
-  const width = raw.width === undefined || raw.width === '' ? undefined : (WIDTHS as readonly string[]).includes(raw.width) ? raw.width : (errors.push(`${where}: width muss ${WIDTHS.join(', ')} sein`), undefined);
-  const anchor = raw.anchor === undefined || raw.anchor === '' ? undefined : /^[a-z][a-z0-9_-]{0,39}$/.test(String(raw.anchor)) ? String(raw.anchor) : (errors.push(`${where}: anchor nur Kleinbuchstaben, Ziffern, - und _`), undefined);
+  const style = raw.style === undefined || raw.style === '' ? undefined : STYLES.includes(raw.style) ? (raw.style as SectionStyle) : (errors.push(`${where}: style must be ${STYLES.join(', ')}`), undefined);
+  const width = raw.width === undefined || raw.width === '' ? undefined : (WIDTHS as readonly string[]).includes(raw.width) ? raw.width : (errors.push(`${where}: width must be ${WIDTHS.join(', ')}`), undefined);
+  const anchor = raw.anchor === undefined || raw.anchor === '' ? undefined : /^[a-z][a-z0-9_-]{0,39}$/.test(String(raw.anchor)) ? String(raw.anchor) : (errors.push(`${where}: anchor only lower-case letters, digits, - and _`), undefined);
   const rawRows: { layout?: string; columns: unknown }[] = Array.isArray(raw.rows) ? raw.rows : [{ layout: raw.layout, columns: raw.columns }];
-  if (!rawRows.length) errors.push(`${where}: keine Zeilen`);
-  if (rawRows.length > SECTION_LIMITS.rowsPerSection) errors.push(`${where}: höchstens ${SECTION_LIMITS.rowsPerSection} Zeilen`);
+  if (!rawRows.length) errors.push(`${where}: no rows`);
+  if (rawRows.length > SECTION_LIMITS.rowsPerSection) errors.push(`${where}: at most ${SECTION_LIMITS.rowsPerSection} rows`);
   const rows: CheckedSection['rows'] = [];
   rawRows.slice(0, SECTION_LIMITS.rowsPerSection).forEach((r, ri) => {
-    const at = rawRows.length > 1 ? `${where} Zeile ${ri + 1}` : where;
+    const at = rawRows.length > 1 ? `${where} row ${ri + 1}` : where;
     const cols = (r as any)?.columns;
-    if (!Array.isArray(cols) || !cols.length || cols.some((c: unknown) => !Array.isArray(c))) return void errors.push(`${at}: „columns“ muss eine Liste von Spalten sein, jede Spalte eine Liste von Blöcken: [[…], […]]`);
+    if (!Array.isArray(cols) || !cols.length || cols.some((c: unknown) => !Array.isArray(c))) return void errors.push(`${at}: "columns" must be a list of columns, each column a list of blocks: [[…], […]]`);
     const layout = String((r as any)?.layout ?? (cols.length === 1 ? '1' : cols.length === 2 ? '2' : cols.length === 3 ? '3' : '4'));
     const spans = LAYOUTS[layout];
-    if (!spans) return void errors.push(`${at}: layout „${layout}“ unbekannt – erlaubt: ${Object.keys(LAYOUTS).join(', ')}`);
-    if (spans.length !== cols.length) return void errors.push(`${at}: layout „${layout}“ hat ${spans.length} Spalte(n), geliefert wurden ${cols.length}`);
+    if (!spans) return void errors.push(`${at}: unknown layout "${layout}" – allowed: ${Object.keys(LAYOUTS).join(', ')}`);
+    if (spans.length !== cols.length) return void errors.push(`${at}: layout "${layout}" has ${spans.length} column(s), ${cols.length} were given`);
     const columns: Block[][] = cols.map((c: unknown[], ci: number) => {
-      if (c.length > SECTION_LIMITS.blocksPerColumn) errors.push(`${at} Spalte ${ci + 1}: höchstens ${SECTION_LIMITS.blocksPerColumn} Blöcke`);
+      if (c.length > SECTION_LIMITS.blocksPerColumn) errors.push(`${at} column ${ci + 1}: at most ${SECTION_LIMITS.blocksPerColumn} blocks`);
       return c.slice(0, SECTION_LIMITS.blocksPerColumn).flatMap((b, bi) => {
-        const r2 = checkBlock(b, env, `${at} Spalte ${ci + 1} Block ${bi + 1}`);
+        const r2 = checkBlock(b, env, `${at} column ${ci + 1} block ${bi + 1}`);
         errors.push(...r2.errors);
         warnings.push(...r2.warnings);
         return r2.block ? [r2.block] : [];
       });
     });
-    if (columns.every((c) => !c.length)) errors.push(`${at}: leer`);
+    if (columns.every((c) => !c.length)) errors.push(`${at}: empty`);
     rows.push({ spans, columns });
   });
   return { section: { id: sid, name, style, width, anchor, rows }, errors, warnings };

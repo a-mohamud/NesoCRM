@@ -11,6 +11,7 @@ import { Cancelled, buildPreview, emptyProgress, jobRow, reportLines, runJob, un
 import { FILE_KINDS, detectLabel, fileContactFields, fileCounts, fileParts, fileSteps, guessKind, isFileKind, parseUpload, tableInfo, type FileKind, type LoadedFile, type Table } from '../services/umzug-files.js';
 import { UmzugError } from '../services/umzug-http.js';
 import { SOURCES, sourceList } from '../services/umzug-sources.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Umzug zu HyperLevel: the wizard behind Einstellungen → Umzug (API connections, export files, preview with field
@@ -40,15 +41,16 @@ export function looseMapping(input: unknown): Mapping {
   return out;
 }
 
-const publicSource = (d: SourceDef) => ({
+/** The source registry is German data (services/umzug-*.ts); it is translated here, for the person asking. */
+const publicSource = (d: SourceDef, t: STFn) => ({
   key: d.key,
   label: d.label,
-  tagline: d.tagline,
-  credentials: d.credentials.map((c) => ({ key: c.key, label: c.label, secret: !!c.secret, placeholder: c.placeholder ?? '', hint: c.hint ?? '', optional: !!c.optional })),
-  howto: d.howto,
-  limits: d.limits,
-  parts: d.parts,
-  exports: d.exports,
+  tagline: t(d.tagline),
+  credentials: d.credentials.map((c) => ({ key: c.key, label: t(c.label), secret: !!c.secret, placeholder: c.placeholder ? t(c.placeholder) : '', hint: c.hint ? t(c.hint) : '', optional: !!c.optional })),
+  howto: d.howto.map((x) => t(x)),
+  limits: d.limits.map((x) => t(x)),
+  parts: d.parts.map((x) => ({ ...x, label: t(x.label), ...(x.note ? { note: t(x.note) } : {}) })),
+  exports: d.exports.map((x) => ({ ...x, label: t(x.label), describe: t(x.describe) })),
 });
 
 export const umzugModule: Module = {
@@ -116,22 +118,23 @@ export const umzugModule: Module = {
     };
 
     router.get('/api/umzug', 'location', (ctx) => ({
-      sources: sourceList().map(publicSource),
-      file_kinds: FILE_KINDS,
+      sources: sourceList().map((d) => publicSource(d, tCtx(ctx))),
+      file_kinds: FILE_KINDS.map((k) => ({ ...k, label: tCtx(ctx)(k.label), describe: tCtx(ctx)(k.describe) })),
       connections: Object.fromEntries(sourceList().map((s) => [s.key, connOut(connRow(ctx.locationId, s.key))])),
-      jobs: parseJobs(ctx.locationId, 10),
+      jobs: parseJobs(ctx.locationId, 10, tCtx(ctx)),
       files: filesOf(ctx.locationId),
       max_upload_mb: maxMb(),
     }));
 
     router.put('/api/umzug/connections/:source', 'location', async (ctx) => {
       uiOnly(ctx);
+      const t = tCtx(ctx);
       const def = sourceOf(ctx.params.source);
       const creds: Record<string, string> = {};
       for (const f of def.credentials) {
-        let v = str(ctx.body?.[f.key], f.label, { max: 400 });
+        let v = str(ctx.body?.[f.key], t(f.label), { max: 400 });
         if ((f.secret || f.key === 'api_key') && !f.password) v = v.replace(/\s+/g, '');
-        if (!v && !f.optional) throw bad(`${f.label} fehlt`);
+        if (!v && !f.optional) throw bad(t('{label} fehlt', { label: t(f.label) }));
         if (v) creds[f.key] = v;
       }
       if (running.has(ctx.locationId)) throw bad('Es läuft gerade ein Umzug – bitte erst abwarten oder pausieren');
@@ -140,7 +143,7 @@ export const umzugModule: Module = {
         acc = await def.connect(creds, deps());
       } catch (e) {
         if (e instanceof UmzugError) throw bad(e.message);
-        throw bad(`${def.label} nicht erreichbar: ${(e as Error).message}`);
+        throw bad(t('{source} nicht erreichbar: {reason}', { source: def.label, reason: (e as Error).message }));
       }
       // The hint shows the last characters of the key – never of a password.
       const secretKey = def.credentials.find((c) => c.secret && !c.password)?.key ?? (def.credentials.some((c) => c.password) ? '' : def.credentials[0].key);
@@ -171,32 +174,33 @@ export const umzugModule: Module = {
     };
     /** Parsed tables of a few recent files stay in memory (preview → dry run → import read the same file). */
     const cache = new Map<string, { at: number; tables: Table[] }>();
-    const tablesOf = (f: any): Table[] => {
+    const tablesOf = (f: any, t: STFn): Table[] => {
       const hit = cache.get(f.id);
       if (hit) return hit.tables;
       const p = filePath(f);
-      if (!existsSync(p)) throw bad(`Die Datei „${f.name}“ ist nicht mehr da – bitte noch einmal hochladen`);
+      if (!existsSync(p)) throw bad(t('Die Datei „{name}“ ist nicht mehr da – bitte noch einmal hochladen', { name: f.name }));
       const tables = parseUpload(f.name, readFileSync(p));
       cache.set(f.id, { at: Date.now(), tables });
       while (cache.size > 3) cache.delete([...cache.entries()].sort((a, b) => a[1].at - b[1].at)[0][0]);
       return tables;
     };
-    const loadFiles = (loc: string, ids: unknown): LoadedFile[] => {
+    const loadFiles = (loc: string, ids: unknown, t: STFn = tLoc(app, loc)): LoadedFile[] => {
       const list = (Array.isArray(ids) ? ids : []).map(String).slice(0, 20);
       return list.map((fid) => {
         const f = db.get<any>('SELECT * FROM umzug_files WHERE id = ? AND location_id = ?', fid, loc);
         if (!f) throw notFound('Datei nicht gefunden');
-        return { id: f.id, name: f.name, kind: f.kind as FileKind, tables: tablesOf(f) };
+        return { id: f.id, name: f.name, kind: f.kind as FileKind, tables: tablesOf(f, t) };
       });
     };
 
     router.post('/api/umzug/files', 'location', (ctx) => {
+      const t = tCtx(ctx);
       const source = ctx.query.get('source') ?? '';
       if (!isSourceKey(source)) throw bad('Quelle fehlt oder unbekannt');
-      const name = str(ctx.query.get('name'), 'Dateiname', { required: true, max: 200 }).replace(/[\\/\u0000-\u001f]/g, '_');
+      const name = str(ctx.query.get('name'), t('Dateiname'), { required: true, max: 200 }).replace(/[\\/\u0000-\u001f]/g, '_');
       const buf = ctx.rawBuffer;
       if (!buf?.length) throw bad('Die Datei fehlt (Inhalt als Rohdaten im Body)');
-      if (buf.length > maxMb() * 1024 * 1024) throw bad(`Datei größer als ${maxMb()} MB (einstellbar mit PGHL_UMZUG_MAX_MB)`);
+      if (buf.length > maxMb() * 1024 * 1024) throw bad(t('Datei größer als {mb} MB (einstellbar mit PGHL_UMZUG_MAX_MB)', { mb: maxMb() }));
       if (Number(db.get<{ n: number }>('SELECT COUNT(*) n FROM umzug_files WHERE location_id = ?', ctx.locationId)?.n ?? 0) >= 30) throw bad('Es liegen schon 30 Dateien bereit – bitte alte löschen');
       let tables: Table[];
       try {
@@ -210,7 +214,7 @@ export const umzugModule: Module = {
       const file = `${fid}-${randomBytes(6).toString('hex')}.bin`;
       mkdirSync(join(dir, ctx.locationId), { recursive: true });
       writeFileSync(join(dir, ctx.locationId, file), buf, { mode: 0o600 });
-      const meta = { detected: detectLabel(source, tables, kind), tables: tables.slice(0, 20).map(tableInfo), rows: tables.reduce((n, t) => n + t.rows.length, 0) };
+      const meta = { detected: detectLabel(source, tables, kind, t), tables: tables.slice(0, 20).map(tableInfo), rows: tables.reduce((n, t) => n + t.rows.length, 0) };
       db.insert('umzug_files', { id: fid, location_id: ctx.locationId, source, kind, name, size: buf.length, file, meta, created_at: now() });
       cache.set(fid, { at: Date.now(), tables });
       return fileOut(db.get('SELECT * FROM umzug_files WHERE id = ?', fid));
@@ -253,85 +257,97 @@ export const umzugModule: Module = {
         return { def: null, ns: `${job.source}:file`, creds: {}, meta: {}, deps: deps(), fileSteps: (parts) => fileSteps(job.source, files, parts) };
       }
       const c = job.connection_id ? db.get<any>('SELECT * FROM umzug_connections WHERE id = ? AND location_id = ?', job.connection_id, loc) : connRow(loc, job.source);
-      if (!c) throw bad(`Erst ${def.label} verbinden`);
+      if (!c) throw bad(tLoc(app, loc)('Erst {source} verbinden', { source: def.label }));
       return { def, ns: `${job.source}:${c.account}`, creds: credsOf(c), meta: JSON.parse(c.meta || '{}'), deps: deps() };
     };
 
     /** Which source, where from (connection or files) and which parts – no call to the vendor yet. */
-    const resolve = (loc: string, body: any) => {
+    const resolve = (loc: string, body: any, t: STFn) => {
       const source = sourceOf(body?.source).key;
       const def = SOURCES[source];
       const fileIds: string[] = Array.isArray(body?.file_ids) ? body.file_ids.map(String) : [];
       if (fileIds.length || body?.origin === 'file') {
-        const files = loadFiles(loc, fileIds);
+        const files = loadFiles(loc, fileIds, t);
         if (!files.length) throw bad('Bitte mindestens eine Datei hochladen');
         const parts = cleanParts(undefined, body?.parts, fileParts(files));
         return { source, def, origin: 'file' as const, connection: null as any, files, parts, ns: `${source}:file` };
       }
       const c = connRow(loc, source);
-      if (!c) throw bad(`Erst ${def.label} verbinden oder eine Export-Datei hochladen`);
+      if (!c) throw bad(t('Erst {source} verbinden oder eine Export-Datei hochladen', { source: def.label }));
       return { source, def, origin: 'api' as const, connection: c, files: [] as LoadedFile[], parts: cleanParts(def, body?.parts, def.parts.map((p) => p.key)), ns: `${source}:${c.account}` };
     };
 
-    const previewOf = async (loc: string, body: any): Promise<{ preview: PreviewResult; origin: 'api' | 'file'; connection_id: string | null; file_ids: string[]; parts: PartKey[] }> => {
-      const r = resolve(loc, body);
+    const previewOf = async (loc: string, body: any, t: STFn): Promise<{ preview: PreviewResult; origin: 'api' | 'file'; connection_id: string | null; file_ids: string[]; parts: PartKey[] }> => {
+      const r = resolve(loc, body, t);
       if (r.origin === 'file') {
         const counts = fileCounts(r.files).filter((c) => r.parts.includes(c.part));
-        const fields = fileContactFields(r.files.filter((f) => f.kind === 'contacts').flatMap((f) => f.tables));
-        const preview = buildPreview(app, loc, r.source, 'file', { counts, fields: r.parts.includes('contacts') ? fields : [], warnings: fileWarnings(r.files, r.def) }, r.ns, body?.mapping);
+        const fields = fileContactFields(r.files.filter((f) => f.kind === 'contacts').flatMap((f) => f.tables), t);
+        const preview = buildPreview(app, loc, r.source, 'file', translateDescribed({ counts, fields: r.parts.includes('contacts') ? fields : [], warnings: fileWarnings(r.files, r.def, t) }, t), r.ns, body?.mapping);
         return { preview, origin: 'file', connection_id: null, file_ids: r.files.map((f) => f.id), parts: r.parts };
       }
       const creds = credsOf(r.connection);
       const meta = JSON.parse(r.connection.meta || '{}');
       let described: { counts: CountRow[]; fields: SourceField[]; warnings: string[] };
       try {
-        described = await r.def.describe(r.def.http(creds, meta, deps()), r.parts, { creds, meta });
+        described = await r.def.describe(r.def.http(creds, meta, deps()), r.parts, { creds, meta, lang: t.locale });
       } catch (e) {
-        throw bad(e instanceof UmzugError ? e.message : `${r.def.label}: ${(e as Error).message}`);
+        throw bad(e instanceof UmzugError ? e.message : t('{source}: {reason}', { source: r.def.label, reason: (e as Error).message }));
       }
-      const preview = buildPreview(app, loc, r.source, 'api', described, r.ns, body?.mapping);
-      if (r.parts.includes('students') && !r.parts.includes('contacts') && !preview.existing.contact) preview.warnings.push('Zugänge werden nur für Personen angelegt, die schon übernommen wurden – nimm „Kontakte“ mit dazu.');
+      const preview = buildPreview(app, loc, r.source, 'api', translateDescribed(described, t), r.ns, body?.mapping);
+      if (r.parts.includes('students') && !r.parts.includes('contacts') && !preview.existing.contact) preview.warnings.push(t('Zugänge werden nur für Personen angelegt, die schon übernommen wurden – nimm „Kontakte“ mit dazu.'));
       return { preview, origin: 'api', connection_id: r.connection.id, file_ids: [], parts: r.parts };
     };
-    const fileWarnings = (files: LoadedFile[], def: SourceDef) => {
+    /**
+     * Labels and fixed warnings of a source are German catalog keys; texts built with a translator pass unchanged. Before
+     * the automatic mapping, so a new custom field gets the label in the person's language.
+     */
+    const translateDescribed = (p: { counts: CountRow[]; fields: SourceField[]; warnings: string[] }, t: STFn) => ({
+      ...p,
+      counts: p.counts.map((c) => ({ ...c, label: t(c.label) })),
+      fields: p.fields.map((f) => ({ ...f, label: t(f.label) })),
+      warnings: p.warnings.map((w) => t(w)),
+    });
+    const fileWarnings = (files: LoadedFile[], def: SourceDef, t: STFn) => {
       const w: string[] = [];
-      for (const f of files) if (f.kind === 'contacts' && !f.tables.some((t) => t.header.some((h) => /e-?mail/i.test(h)))) w.push(`In „${f.name}“ habe ich keine E-Mail-Spalte gefunden – Kontakte ohne E-Mail und Telefon werden übersprungen.`);
-      if (files.some((f) => f.kind === 'students') && !files.some((f) => f.kind === 'contacts')) w.push('Zugänge legen die Personen bei Bedarf selbst an (per E-Mail).');
+      for (const f of files) if (f.kind === 'contacts' && !f.tables.some((tb) => tb.header.some((h) => /e-?mail/i.test(h)))) w.push(t('In „{name}“ habe ich keine E-Mail-Spalte gefunden – Kontakte ohne E-Mail und Telefon werden übersprungen.', { name: f.name }));
+      if (files.some((f) => f.kind === 'students') && !files.some((f) => f.kind === 'contacts')) w.push(t('Zugänge legen die Personen bei Bedarf selbst an (per E-Mail).'));
       void def;
       return w;
     };
 
     router.post('/api/umzug/preview', 'location', async (ctx) => {
       throttle(ctx.locationId);
-      const r = await previewOf(ctx.locationId, ctx.body);
+      const r = await previewOf(ctx.locationId, ctx.body, tCtx(ctx));
       return { ...r.preview, parts: r.parts, file_ids: r.file_ids };
     });
 
     // --- jobs -----------------------------------------------------------------------------------------------------------------------
-    const parseJobs = (loc: string, limit = 20) =>
+    const parseJobs = (loc: string, limit: number, t: STFn) =>
       db
         .all<any>(`SELECT id, source, kind, status, origin, parts, progress, result, error, created_at, updated_at, finished_at, undone_at FROM umzug_jobs WHERE location_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`, loc, limit)
-        .map((j) => jobSummary(parseJson({ ...j }, ['parts', 'progress', 'result'])));
-    const jobSummary = (j: any) => ({ id: j.id, source: j.source, source_label: SOURCES[j.source as SourceKey]?.label ?? j.source, kind: j.kind, status: j.status, origin: j.origin, parts: j.parts, error: j.error, created_at: j.created_at, updated_at: j.updated_at, finished_at: j.finished_at, undone_at: j.undone_at, ...progressOut(j.progress), report: j.result?.report ?? (j.progress?.stats ? reportLines(j.progress.stats) : []), undo: j.result?.undo ?? null });
-    const progressOut = (p: Progress) => {
+        .map((j) => jobSummary(parseJson({ ...j }, ['parts', 'progress', 'result']), t));
+    // Stored labels (steps, report) are translated again on the way out: rows written in another language still read right.
+    const jobSummary = (j: any, t: STFn) => ({ id: j.id, source: j.source, source_label: SOURCES[j.source as SourceKey]?.label ?? j.source, kind: j.kind, status: j.status, origin: j.origin, parts: j.parts, error: j.error ? t(j.error) : j.error, created_at: j.created_at, updated_at: j.updated_at, finished_at: j.finished_at, undone_at: j.undone_at, ...progressOut(j.progress, t), report: (j.result?.report ?? (j.progress?.stats ? reportLines(j.progress.stats, t) : [])).map((l: any) => ({ ...l, label: t(l.label) })), undo: j.result?.undo ? { ...j.result.undo, notes: (j.result.undo.notes ?? []).map((n: string) => t(n)) } : null });
+    const progressOut = (p: Progress, t: STFn) => {
       const steps = p?.steps ?? [];
       const done = p?.done_steps ?? [];
       const real = steps.filter((s) => s.id !== 'fields');
-      return { step: p?.step ?? '', step_label: steps.find((s) => s.id === p?.step)?.label ?? p?.step ?? '', processed: p?.processed ?? 0, total: p?.total ?? null, percent: real.length ? Math.round((real.filter((s) => done.includes(s.id)).length / real.length) * 100) : 0, steps: real.map((s) => ({ ...s, done: done.includes(s.id) })), notes: p?.notes ?? [] };
+      const stepLabel = steps.find((s) => s.id === p?.step)?.label;
+      return { step: p?.step ?? '', step_label: stepLabel ? t(stepLabel) : p?.step === 'fertig' ? t('Fertig') : (p?.step ?? ''), processed: p?.processed ?? 0, total: p?.total ?? null, percent: real.length ? Math.round((real.filter((s) => done.includes(s.id)).length / real.length) * 100) : 0, steps: real.map((s) => ({ ...s, label: t(s.label), done: done.includes(s.id) })), notes: (p?.notes ?? []).map((n) => t(n)) };
     };
-    const jobOut = (loc: string, jobId: string) => {
+    const jobOut = (loc: string, jobId: string, t: STFn) => {
       const j = jobRow(app, jobId, loc);
       if (!j) throw notFound();
-      return { ...jobSummary(j), warnings: j.warnings ?? [], log: (j.log ?? []).slice(-200), options: j.options, mapping_size: Object.keys(j.mapping ?? {}).length };
+      return { ...jobSummary(j, t), warnings: (j.warnings ?? []).map((w) => t(w)), log: (j.log ?? []).slice(-200), options: j.options, mapping_size: Object.keys(j.mapping ?? {}).length };
     };
 
     const save = (jobId: string, p: Progress, warnings: string[], log?: string[]) =>
       db.run(`UPDATE umzug_jobs SET progress = ?, warnings = ?${log ? ', log = ?' : ''}, updated_at = ? WHERE id = ?`, JSON.stringify(p), JSON.stringify(warnings.slice(0, 300)), ...(log ? [JSON.stringify(log.slice(-200))] : []), now(), jobId);
-    const audit = (job: JobRow, action: string, summary: string, userId?: string | null) => app.services.audit?.({ action, locationId: job.location_id, entityId: job.id, summary: summary.slice(0, 400), userId: userId ?? job.created_by, actor: userId || job.created_by ? undefined : 'Umzug' });
-    const summaryLine = (p: Progress) =>
-      reportLines(p.stats)
+    const audit = (job: JobRow, action: string, summary: string, userId?: string | null) => app.services.audit?.({ action, locationId: job.location_id, entityId: job.id, summary: summary.slice(0, 400), userId: userId ?? job.created_by, actor: userId || job.created_by ? undefined : tLoc(app, job.location_id)('Umzug') });
+    const summaryLine = (p: Progress, t: STFn) =>
+      reportLines(p.stats, t)
         .filter((l) => l.created + l.updated > 0 || l.failed)
-        .map((l) => `${l.label}: ${l.created} neu, ${l.updated} aktualisiert${l.failed ? `, ${l.failed} Fehler` : ''}`)
+        .map((l) => (l.failed ? t('{label}: {created} neu, {updated} aktualisiert, {failed} Fehler', { label: l.label, created: l.created, updated: l.updated, failed: l.failed }) : t('{label}: {created} neu, {updated} aktualisiert', { label: l.label, created: l.created, updated: l.updated })))
         .join('; ');
 
     const pending = new Set<Promise<unknown>>();
@@ -347,8 +363,9 @@ export const umzugModule: Module = {
       const flag = { jobId, cancel: false };
       running.set(loc, flag);
       const log: string[] = [...(job.log ?? [])];
+      const t = tLoc(app, loc);
       const say = (s: string) => {
-        log.push(`${new Date().toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin' })} ${s}`);
+        log.push(`${new Date().toLocaleTimeString(t.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: 'Europe/Berlin' })} ${s}`);
         db.run('UPDATE umzug_jobs SET log = ?, updated_at = ? WHERE id = ?', JSON.stringify(log.slice(-200)), now(), jobId);
       };
       db.run(`UPDATE umzug_jobs SET status = 'running', error = NULL, updated_at = ? WHERE id = ?`, now(), jobId);
@@ -356,12 +373,12 @@ export const umzugModule: Module = {
         try {
           job = jobRow(app, jobId)!;
           const input = inputFor(loc, job);
-          say(job.progress?.done_steps?.length ? `Fortgesetzt bei „${job.progress.step}“` : job.kind === 'dry_run' ? 'Probelauf gestartet' : 'Import gestartet');
+          say(job.progress?.done_steps?.length ? t('Fortgesetzt bei „{step}“', { step: t(job.progress.steps?.find((s) => s.id === job.progress.step)?.label ?? job.progress.step) }) : job.kind === 'dry_run' ? t('Probelauf gestartet') : t('Import gestartet'));
           const p = await runJob(app, job, input, { cancelled: () => flag.cancel, log: say, save: (pr, w) => save(jobId, pr, w) });
-          const report = reportLines(p.stats);
+          const report = reportLines(p.stats, t);
           db.run(`UPDATE umzug_jobs SET status = 'done', finished_at = ?, updated_at = ?, result = ? WHERE id = ?`, now(), now(), JSON.stringify({ report }), jobId);
-          say(job.kind === 'dry_run' ? 'Probelauf fertig – es wurde nichts geschrieben' : 'Fertig');
-          audit(job, job.kind === 'dry_run' ? 'umzug.dryrun.done' : 'umzug.import.done', `${SOURCES[job.source].label}: ${summaryLine(p) || 'nichts zu tun'}`);
+          say(job.kind === 'dry_run' ? t('Probelauf fertig – es wurde nichts geschrieben') : t('Fertig'));
+          audit(job, job.kind === 'dry_run' ? 'umzug.dryrun.done' : 'umzug.import.done', `${SOURCES[job.source].label}: ${summaryLine(p, t) || t('nichts zu tun')}`);
           // Uploaded exports hold personal data: they go once the import is through (a dry run keeps them).
           if (job.kind === 'import' && job.origin === 'file' && !job.options?.keep_files) for (const fid of job.file_ids) {
             const f = db.get<any>('SELECT * FROM umzug_files WHERE id = ?', fid);
@@ -369,8 +386,8 @@ export const umzugModule: Module = {
           }
         } catch (e) {
           const paused = e instanceof Cancelled;
-          const msg = (e as Error).message;
-          say(paused ? 'Pausiert – mit „Fortsetzen“ geht es an derselben Stelle weiter' : `Abgebrochen: ${msg}`);
+          const msg = t((e as Error).message);
+          say(paused ? t('Pausiert – mit „Fortsetzen“ geht es an derselben Stelle weiter') : t('Abgebrochen: {reason}', { reason: msg }));
           db.run(`UPDATE umzug_jobs SET status = ?, error = ?, updated_at = ? WHERE id = ?`, paused ? 'interrupted' : 'failed', paused ? null : msg.slice(0, 500), now(), jobId);
           if (!paused) audit(job, job.kind === 'dry_run' ? 'umzug.dryrun.failed' : 'umzug.import.failed', msg);
         } finally {
@@ -382,21 +399,22 @@ export const umzugModule: Module = {
 
     const create = async (ctx: Ctx, kind: 'dry_run' | 'import') => {
       if (running.has(ctx.locationId)) throw bad('Es läuft schon ein Umzug in diesem Sub-Account');
-      const r = resolve(ctx.locationId, ctx.body);
+      const t = tCtx(ctx);
+      const r = resolve(ctx.locationId, ctx.body, t);
       // Without a mapping from the wizard (MCP, API) the automatic one is used – that needs the source's field list.
-      const mapping = ctx.body?.mapping ? looseMapping(ctx.body.mapping) : looseMapping((await previewOf(ctx.locationId, ctx.body)).preview.mapping);
+      const mapping = ctx.body?.mapping ? looseMapping(ctx.body.mapping) : looseMapping((await previewOf(ctx.locationId, ctx.body, t)).preview.mapping);
       if (running.has(ctx.locationId)) throw bad('Es läuft schon ein Umzug in diesem Sub-Account');
       const options = cleanOptions(ctx.body?.options);
       const jobId = id();
       db.insert('umzug_jobs', { id: jobId, location_id: ctx.locationId, source: r.source, kind, status: 'running', origin: r.origin, connection_id: r.connection?.id ?? null, file_ids: r.files.map((f) => f.id), parts: r.parts, options, mapping, progress: emptyProgress(), log: [], warnings: [], created_by: actor(ctx), created_at: now(), updated_at: now() });
       audit(jobRow(app, jobId)!, kind === 'dry_run' ? 'umzug.dryrun.start' : 'umzug.import.start', `${r.def.label}: ${r.parts.join(', ')}`, actor(ctx));
       void start(jobId);
-      return jobOut(ctx.locationId, jobId);
+      return jobOut(ctx.locationId, jobId, t);
     };
     router.post('/api/umzug/dry-run', 'location', (ctx) => create(ctx, 'dry_run'));
     router.post('/api/umzug/jobs', 'location', (ctx) => create(ctx, 'import'));
-    router.get('/api/umzug/jobs', 'location', (ctx) => parseJobs(ctx.locationId, clampLimit(ctx.query.get('limit'), 20, 50)));
-    router.get('/api/umzug/jobs/:id', 'location', (ctx) => jobOut(ctx.locationId, ctx.params.id));
+    router.get('/api/umzug/jobs', 'location', (ctx) => parseJobs(ctx.locationId, clampLimit(ctx.query.get('limit'), 20, 50), tCtx(ctx)));
+    router.get('/api/umzug/jobs/:id', 'location', (ctx) => jobOut(ctx.locationId, ctx.params.id, tCtx(ctx)));
 
     router.post('/api/umzug/jobs/:id/pause', 'location', (ctx) => {
       const r = running.get(ctx.locationId);
@@ -410,7 +428,7 @@ export const umzugModule: Module = {
       if (running.has(ctx.locationId)) throw bad('Es läuft schon ein Umzug in diesem Sub-Account');
       if (!['failed', 'interrupted'].includes(j.status) || j.result?.phase === 'undo') throw bad('Nur abgebrochene oder pausierte Umzüge lassen sich fortsetzen');
       void start(j.id);
-      return jobOut(ctx.locationId, j.id);
+      return jobOut(ctx.locationId, j.id, tCtx(ctx));
     });
 
     router.post('/api/umzug/jobs/:id/undo', 'location', (ctx) => {
@@ -420,23 +438,24 @@ export const umzugModule: Module = {
       if (running.has(ctx.locationId)) throw bad('Es läuft gerade ein Umzug in diesem Sub-Account');
       if (j.status === 'undone') throw bad('Dieser Umzug ist schon rückgängig gemacht');
       if (!['done', 'failed', 'interrupted'].includes(j.status)) throw bad('Dieser Umzug läuft noch');
+      const t = tLoc(app, ctx.locationId);
       const flag = { jobId: j.id, cancel: false };
       running.set(ctx.locationId, flag);
       db.run(`UPDATE umzug_jobs SET status = 'undoing', result = ?, updated_at = ? WHERE id = ?`, JSON.stringify({ ...(j.result ?? {}), phase: 'undo' }), now(), j.id);
-      audit(j, 'umzug.undo.start', `${SOURCES[j.source].label}: Umzug vom ${j.created_at.slice(0, 10)} wird rückgängig gemacht`, actor(ctx));
+      audit(j, 'umzug.undo.start', t('{source}: Umzug vom {date} wird rückgängig gemacht', { source: SOURCES[j.source].label, date: j.created_at.slice(0, 10) }), actor(ctx));
       track(
         undoJob(app, j, (done, total) => db.run('UPDATE umzug_jobs SET updated_at = ?, progress = ? WHERE id = ?', now(), JSON.stringify({ ...j.progress, undo: { done, total } }), j.id))
           .then((res) => {
             db.run(`UPDATE umzug_jobs SET status = 'undone', undone_at = ?, updated_at = ?, result = ? WHERE id = ?`, now(), now(), JSON.stringify({ ...(j.result ?? {}), undo: res }), j.id);
-            audit(j, 'umzug.undo.done', `${Object.entries(res.deleted).map(([k, n]) => `${n} ${k}`).join(', ') || 'nichts'} gelöscht, ${res.restored} Kontakte zurückgesetzt`, actor(ctx));
+            audit(j, 'umzug.undo.done', t('{deleted} gelöscht, {restored} Kontakte zurückgesetzt', { deleted: Object.entries(res.deleted).map(([k, n]) => `${n} ${k}`).join(', ') || t('nichts'), restored: res.restored }), actor(ctx));
           })
           .catch((e) => {
-            db.run(`UPDATE umzug_jobs SET status = 'failed', error = ?, updated_at = ? WHERE id = ?`, `Rückgängig: ${(e as Error).message}`.slice(0, 500), now(), j.id);
+            db.run(`UPDATE umzug_jobs SET status = 'failed', error = ?, updated_at = ? WHERE id = ?`, t('Rückgängig: {reason}', { reason: t((e as Error).message) }).slice(0, 500), now(), j.id);
             audit(j, 'umzug.undo.failed', (e as Error).message, actor(ctx));
           })
           .finally(() => running.delete(ctx.locationId)),
       );
-      return jobOut(ctx.locationId, j.id);
+      return jobOut(ctx.locationId, j.id, tCtx(ctx));
     });
 
     // --- housekeeping: uploaded files do not stay forever ---------------------------------------------------------------------------

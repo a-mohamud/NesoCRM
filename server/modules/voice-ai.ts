@@ -39,6 +39,7 @@ import type { PhoneReply, VoiceBrain } from '../services/voice-types.js';
 import { bookAppointment, type CalendarRow } from './calendars.js';
 import { freeDays as sharedFreeDays } from '../services/ai-booking.js';
 import { finalizeCall, syncMessage, telephonyConfig, verifyTwilio, type DialTargets, type VoiceAgentInput } from './telephony.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * KI-Telefonagent: Claude answers inbound calls (always, outside business hours or when nobody picks
@@ -177,7 +178,7 @@ export const voiceAiModule: Module = {
       db.insert('voice_ai_sessions', ses);
       db.run(`UPDATE calls SET answered = 1, answered_at = ?, status = 'in-progress', reason = 'ai', updated_at = ? WHERE id = ?`, t, t, call.id);
       syncMessage(app, getCall(call.id)!);
-      if (call.contact_id) logActivity(app, loc.id, call.contact_id, 'call.ai_started', stage === 'outbound' ? 'KI-Telefonagent ruft an – Kontakt hat abgenommen' : 'KI-Telefonagent hat den Anruf angenommen');
+      if (call.contact_id) logActivity(app, loc.id, call.contact_id, 'call.ai_started', stage === 'outbound' ? tLoc(app, loc.id)('KI-Telefonagent ruft an – Kontakt hat abgenommen') : tLoc(app, loc.id)('KI-Telefonagent hat den Anruf angenommen'));
       // The voice layer (modules/voice-phone.ts) may carry the call with the sub-account's own voice and speech recognition.
       const own: string | undefined = app.services.voiceTransport?.({ loc, call, sessionId: ses.id, greeting });
       return own ?? gatherTwiml({ say: greeting, voice: s.voice, action: `${hook('voice-ai', loc.id)}?t=0` });
@@ -205,7 +206,8 @@ export const voiceAiModule: Module = {
       const call = getCall(ses.call_id);
       const cfg = telephonyConfig(app, loc.id);
       db.run(`UPDATE calls SET answered = 0, answered_at = NULL, status = 'ringing', reason = 'ai_error', updated_at = ? WHERE id = ?`, now(), ses.call_id);
-      const line = `Entschuldigung, ich habe gerade eine technische Störung. ${cfg.s.voicemail ? 'Bitte hinterlassen Sie nach dem Signalton Ihren Namen, Ihre Nummer und Ihr Anliegen – wir rufen zurück.' : 'Bitte rufen Sie später noch einmal an.'}`;
+      const t = tLoc(app, loc.id);
+      const line = `${t('Entschuldigung, ich habe gerade eine technische Störung.')} ${cfg.s.voicemail ? t('Bitte hinterlassen Sie nach dem Signalton Ihren Namen, Ihre Nummer und Ihr Anliegen – wir rufen zurück.') : t('Bitte rufen Sie später noch einmal an.')}`;
       say(ses, 'agent', line);
       if (!cfg.s.voicemail) {
         if (call) finalizeCall(app, getCall(ses.call_id)!, 'missed', { reason: 'ai_error' });
@@ -219,26 +221,27 @@ export const voiceAiModule: Module = {
     // --- prompt context --------------------------------------------------------------
     // The free times are the shared booking logic (services/ai-booking.ts) – the chat bot and the agents' auto-replies ask the same.
     const freeDays = (cal: CalendarRow, from: string, days: number, perDay: number, maxDays: number) => sharedFreeDays(app, cal, from, days, perDay, maxDays);
-    const calLabel = (c: CalendarRow) => `Kalender „${c.name}“ (calendar_id: ${c.id}, ${c.duration} Minuten, Zeitzone ${c.timezone})`;
+    // Prompt blocks and tool results are read by the model: English (the agent speaks the call's language, see voiceTask).
+    const calLabel = (c: CalendarRow) => `Calendar "${c.name}" (calendar_id: ${c.id}, ${c.duration} minutes, time zone ${c.timezone})`;
     const slotsBlock = (cals: CalendarRow[]) => {
       const parts = cals.map((c) => {
         const lines = slotLines(freeDays(c, ymdInTz(new Date(), c.timezone), 14, 4, 5));
-        return `${calLabel(c)}:\n${lines || 'in den nächsten 14 Tagen nichts frei'}`;
+        return `${calLabel(c)}:\n${lines || 'nothing free in the next 14 days'}`;
       });
-      return `<freie_termine>\n${parts.join('\n\n')}\nWeitere Zeiten eines Tages liefert "check_slots".\n</freie_termine>`;
+      return `<free_slots>\n${parts.join('\n\n')}\nMore times on a given day come from "check_slots".\n</free_slots>`;
     };
-    const STAGE_TEXT: Record<string, string> = { inbound: 'der Agent nimmt Anrufe direkt an', unanswered: 'niemand aus dem Team konnte abnehmen', outbound: 'DU rufst an (ausgehender Anruf) – der Kontakt hat abgenommen' };
+    const STAGE_TEXT: Record<string, string> = { inbound: 'the agent answers calls directly', unanswered: 'nobody from the team could pick up', outbound: 'YOU are calling (outbound call) – the contact has picked up' };
     const DONE_TYPES = ['book_appointment', 'take_message', 'create_task', 'create_opportunity', 'send_booking_link', 'transfer_done'];
     const callBlock = (ses: Session, s: VoiceAiSettings, tools: VoiceAction[]) => {
       const done = ses.actions.filter((a) => a.ok && DONE_TYPES.includes(a.type)).map((a) => a.detail);
       const lines = [
-        `Anrufer-Nummer: ${callerPhone(ses) || 'unterdrückt'}`,
-        `Angenommen, weil: ${STAGE_TEXT[ses.stage] ?? STAGE_TEXT.unanswered}`,
-        `Gesprächsrunde ${ses.turns} von höchstens ${s.max_turns}`,
-        done.length ? `Schon erledigt: ${done.join('; ')}` : '',
-        !tools.includes('transfer') ? 'Weiterverbinden: nicht möglich – gerade ist niemand erreichbar. Biete stattdessen an, eine Nachricht aufzunehmen.' : '',
+        `Caller number: ${callerPhone(ses) || 'withheld'}`,
+        `Answered because: ${STAGE_TEXT[ses.stage] ?? STAGE_TEXT.unanswered}`,
+        `Turn ${ses.turns} of at most ${s.max_turns}`,
+        done.length ? `Already done: ${done.join('; ')}` : '',
+        !tools.includes('transfer') ? 'Transfer: not possible – nobody is available right now. Offer to take a message instead.' : '',
       ].filter(Boolean);
-      return `<anruf>\n${lines.join('\n')}\n</anruf>`;
+      return `<call>\n${lines.join('\n')}\n</call>`;
     };
     const pipelineFor = (locId: string, s: VoiceAiSettings) => (s.pipeline_id ? getPipeline(app, locId, s.pipeline_id) : undefined);
     const toolsFor = (loc: LocationRow, s: VoiceAiSettings, ses: Session, cals: CalendarRow[]): VoiceAction[] => {
@@ -265,7 +268,7 @@ export const voiceAiModule: Module = {
         ...extras,
         contactBlock(contact),
         tools.includes('book_appointment') ? slotsBlock(cals) : '',
-        toolResult ? `<werkzeug_ergebnis>\n${toolResult}\n</werkzeug_ergebnis>` : '',
+        toolResult ? `<tool_result>\n${toolResult}\n</tool_result>` : '',
         dialogue(ses.transcript),
         nowLine(loc.timezone, isOpen(cfg.s.hours_mode, cfg.s.hours, loc.timezone)),
         voiceTask(s, loc.name, tools),
@@ -328,42 +331,45 @@ export const voiceAiModule: Module = {
 
     const runTool = async (loc: LocationRow, s: VoiceAiSettings, ses: Session, out: VoiceOutput, cals: CalendarRow[]): Promise<Step> => {
       const a = out.args;
+      // What is stored or sent belongs to the sub-account (its language); followUp texts are for the model (English).
+      const t = tLoc(app, loc.id);
+      const SRC = t(SOURCE);
       const contact = applyLead(loc, ses, a);
-      const who = contact ? contactName(contact) : callerPhone(ses) || 'Anrufer';
+      const who = contact ? contactName(contact) : callerPhone(ses) || t('Anrufende Person');
       switch (out.action) {
         case 'none':
           return { line: out.say };
         case 'check_slots': {
           const cal = pickCalendar(cals, a.calendar_id);
-          if (!cal) return { followUp: `Kalender unbekannt. Erlaubt: ${cals.map((c) => `${c.name} (${c.id})`).join(', ')}` };
+          if (!cal) return { followUp: `Calendar unknown. Allowed: ${cals.map((c) => `${c.name} (${c.id})`).join(', ')}` };
           const day = freeDays(cal, a.date, 1, 16, 1)[0];
           const next = day ? [] : freeDays(cal, addDaysYmd(a.date, 1), 14, 4, 3);
-          record(ses, 'check_slots', true, `Freie Zeiten am ${a.date} nachgesehen`);
+          record(ses, 'check_slots', true, t('Freie Zeiten am {date} nachgesehen', { date: a.date }));
           return {
             followUp: day
-              ? `Freie Zeiten in ${calLabel(cal)}:\n${slotLines([day])}`
-              : `Am ${a.date} ist in ${calLabel(cal)} nichts frei.${next.length ? ` Nächste freie Tage:\n${slotLines(next)}` : ' In den 14 Tagen danach auch nicht.'}`,
+              ? `Free times in ${calLabel(cal)}:\n${slotLines([day])}`
+              : `Nothing is free on ${a.date} in ${calLabel(cal)}.${next.length ? ` Next free days:\n${slotLines(next)}` : ' Nor in the 14 days after that.'}`,
           };
         }
         case 'book_appointment': {
           const cal = pickCalendar(cals, a.calendar_id);
-          if (!cal) return { followUp: `Buchung nicht möglich: Kalender unbekannt. Erlaubt: ${cals.map((c) => `${c.name} (${c.id})`).join(', ')}` };
-          if (!contact?.first_name && !contact?.last_name && !a.first_name && !a.last_name) return { followUp: 'Buchung nicht möglich: Der Name des Anrufers fehlt – bitte erst nach Vor- und Nachnamen fragen.' };
-          if (ses.outcomes.includes('booked') && ses.actions.filter((x) => x.type === 'book_appointment' && x.ok).length >= 2) return { followUp: 'Buchung nicht möglich: In diesem Anruf wurden schon zwei Termine gebucht. Weitere Wünsche bitte als Nachricht aufnehmen.' };
+          if (!cal) return { followUp: `Booking not possible: calendar unknown. Allowed: ${cals.map((c) => `${c.name} (${c.id})`).join(', ')}` };
+          if (!contact?.first_name && !contact?.last_name && !a.first_name && !a.last_name) return { followUp: "Booking not possible: the caller's name is missing – ask for their first and last name first." };
+          if (ses.outcomes.includes('booked') && ses.actions.filter((x) => x.type === 'book_appointment' && x.ok).length >= 2) return { followUp: 'Booking not possible: two appointments have already been booked in this call. Take any further requests as a message.' };
           const start = zonedToUtc(a.date, a.time, cal.timezone);
           try {
             const appt = bookAppointment(app, cal, {
               start: start.toISOString(),
               contact: contact ? { id: contact.id } : { first_name: a.first_name, last_name: a.last_name, email: a.email, phone: callerPhone(ses) },
-              notes: [a.message && `Anliegen: ${a.message}`, `Gebucht am Telefon vom ${SOURCE}.`].filter(Boolean).join('\n'),
-              source: SOURCE,
+              notes: [a.message && t('Anliegen: {message}', { message: a.message }), t('Gebucht am Telefon vom {source}.', { source: SRC })].filter(Boolean).join('\n'),
+              source: SRC,
               // What a caller says is not proven: a known e-mail address must not get this caller's number.
               publicInput: true,
             });
             if (!ses.contact_id && appt.contact_id) attachContact(ses, appt.contact_id);
             const when = spokenWhen(appt.start_at, cal.timezone);
             save(ses, { appointment_id: appt.id });
-            record(ses, 'book_appointment', true, `Termin gebucht: ${cal.name}, ${formatInTz(appt.start_at, cal.timezone)}`, 'booked');
+            record(ses, 'book_appointment', true, t('Termin gebucht: {name}, {date}', { name: cal.name, date: formatInTz(appt.start_at, cal.timezone) }), 'booked');
             const booked = getContact(app, loc.id, appt.contact_id);
             let sms = false;
             // Only to the number that is calling (never to a contact matched by a claimed e-mail).
@@ -372,73 +378,73 @@ export const voiceAiModule: Module = {
               void sendToContact(app, loc.id, {
                 contactId: booked.id,
                 channel: 'sms',
-                body: `Ihr Termin bei ${loc.name}: ${formatInTz(appt.start_at, cal.timezone, { weekday: 'long' })} Uhr (${cal.name}). Verwalten oder absagen: ${app.baseUrl()}/book/manage/${appt.manage_token}`,
-                source: SOURCE,
+                body: t('Ihr Termin bei {business}: {time} Uhr ({calendar}). Verwalten oder absagen: {url}', { business: loc.name, time: formatInTz(appt.start_at, cal.timezone, { weekday: 'long' }), calendar: cal.name, url: `${app.baseUrl()}/book/manage/${appt.manage_token}` }),
+                source: SRC,
                 ignoreDnd: true,
               }).catch(() => undefined);
             }
-            return { line: `Ich habe Ihren Termin eingetragen: ${when}.${sms ? ' Sie bekommen gleich eine SMS mit den Details.' : ''} Kann ich sonst noch etwas für Sie tun?` };
+            return { line: [t('Ich habe Ihren Termin eingetragen: {when}.', { when }), sms ? t('Sie bekommen gleich eine SMS mit den Details.') : '', t('Kann ich sonst noch etwas für Sie tun?')].filter(Boolean).join(' ') };
           } catch (e) {
-            const msg = e instanceof HttpError && e.status === 409 ? 'Dieser Termin ist leider nicht (mehr) frei.' : (e as Error).message;
-            record(ses, 'book_appointment', false, `Buchung ${a.date} ${a.time} fehlgeschlagen: ${msg}`);
+            const msg = e instanceof HttpError && e.status === 409 ? 'This slot is no longer free.' : (e as Error).message;
+            record(ses, 'book_appointment', false, t('Buchung {date} {time} fehlgeschlagen: {error}', { date: a.date, time: a.time, error: msg }));
             const day = freeDays(cal, a.date, 7, 6, 2);
-            return { followUp: `Buchung fehlgeschlagen: ${msg}${day.length ? ` Freie Zeiten in ${calLabel(cal)}:\n${slotLines(day)}` : ''}` };
+            return { followUp: `Booking failed: ${msg}${day.length ? ` Free times in ${calLabel(cal)}:\n${slotLines(day)}` : ''}` };
           }
         }
         case 'take_message': {
           const message = `${ses.message ? `${ses.message}\n` : ''}${a.message}`.slice(0, 3000);
           let taskId = ses.task_id;
-          if (s.tasks && !taskId) taskId = newTask(loc.id, contact?.id ?? null, `Rückruf: ${who}${callerPhone(ses) ? ` (${callerPhone(ses)})` : ''}`, `Nachricht an den ${SOURCE}:\n${a.message}`);
-          else if (taskId) db.run('UPDATE tasks SET description = ? WHERE id = ?', `Nachricht an den ${SOURCE}:\n${message}`, taskId);
+          if (s.tasks && !taskId) taskId = newTask(loc.id, contact?.id ?? null, t('Rückruf: {name}', { name: `${who}${callerPhone(ses) ? ` (${callerPhone(ses)})` : ''}` }), `${t('Nachricht an den {source}:', { source: SRC })}\n${a.message}`);
+          else if (taskId) db.run('UPDATE tasks SET description = ? WHERE id = ?', `${t('Nachricht an den {source}:', { source: SRC })}\n${message}`, taskId);
           save(ses, { message, task_id: taskId ?? null });
-          record(ses, 'take_message', true, `Nachricht notiert: ${a.message.slice(0, 160)}`, 'message');
+          record(ses, 'take_message', true, t('Nachricht notiert: {message}', { message: a.message.slice(0, 160) }), 'message');
           return { line: out.say };
         }
         case 'create_task': {
-          const taskId = newTask(loc.id, contact?.id ?? null, a.title, [a.message, `Angelegt vom ${SOURCE} (Anrufer: ${who}).`].filter(Boolean).join('\n\n'));
+          const taskId = newTask(loc.id, contact?.id ?? null, a.title, [a.message, t('Angelegt vom {source} (Anrufer: {name}).', { source: SRC, name: who })].filter(Boolean).join('\n\n'));
           save(ses, { task_id: ses.task_id ?? taskId });
-          record(ses, 'create_task', true, `Aufgabe angelegt: ${a.title}`, 'task');
+          record(ses, 'create_task', true, t('Aufgabe angelegt: {title}', { title: a.title }), 'task');
           return { line: out.say };
         }
         case 'create_opportunity': {
           const p = pipelineFor(loc.id, s);
           let target = contact;
           if (!target && callerPhone(ses)) {
-            target = upsertContact(app, loc.id, { phone: callerPhone(ses) }, { source: SOURCE }).contact;
+            target = upsertContact(app, loc.id, { phone: callerPhone(ses) }, { source: SRC }).contact;
             attachContact(ses, target.id);
           }
-          if (!p || !target) return { followUp: 'Opportunity nicht möglich (kein Kontakt oder keine Pipeline). Nimm das Anliegen stattdessen als Nachricht auf.' };
+          if (!p || !target) return { followUp: 'Opportunity not possible (no contact or no pipeline). Take the request as a message instead.' };
           try {
-            const opp = createOpportunity(app, loc.id, { pipeline_id: p.id, stage_id: s.stage_id || undefined, contact_id: target.id, name: `${contactName(target)} – ${a.title}`.slice(0, 120), source: SOURCE });
-            if (a.message) db.insert('notes', { id: id(), location_id: loc.id, contact_id: target.id, body: `${SOURCE} – Kaufinteresse: ${a.title}\n${a.message}`, user_id: null, created_at: now() });
+            const opp = createOpportunity(app, loc.id, { pipeline_id: p.id, stage_id: s.stage_id || undefined, contact_id: target.id, name: `${contactName(target)} – ${a.title}`.slice(0, 120), source: SRC });
+            if (a.message) db.insert('notes', { id: id(), location_id: loc.id, contact_id: target.id, body: `${t('{source} – Kaufinteresse: {title}', { source: SRC, title: a.title })}\n${a.message}`, user_id: null, created_at: now() });
             save(ses, { opportunity_id: opp.id });
-            record(ses, 'create_opportunity', true, `Opportunity angelegt: ${a.title}`, 'opportunity');
+            record(ses, 'create_opportunity', true, t('Opportunity angelegt: {title}', { title: a.title }), 'opportunity');
             return { line: out.say };
           } catch (e) {
             record(ses, 'create_opportunity', false, (e as Error).message);
-            return { followUp: 'Opportunity konnte nicht angelegt werden. Nimm das Anliegen als Nachricht auf.' };
+            return { followUp: 'The opportunity could not be created. Take the request as a message.' };
           }
         }
         case 'send_booking_link': {
           const cal = pickCalendar(cals, a.calendar_id) ?? cals[0];
           let target = contact;
           if (!target && callerPhone(ses)) {
-            target = upsertContact(app, loc.id, { phone: callerPhone(ses) }, { source: SOURCE }).contact;
+            target = upsertContact(app, loc.id, { phone: callerPhone(ses) }, { source: SRC }).contact;
             attachContact(ses, target.id);
           }
-          if (!cal || !target?.phone) return { line: 'Leider kann ich Ihnen gerade keine SMS schicken. Möchten Sie den Termin direkt mit mir ausmachen?' };
-          const m = await sendToContact(app, loc.id, { contactId: target.id, channel: 'sms', body: `Hier können Sie Ihren Termin bei ${loc.name} buchen: ${app.baseUrl()}/book/${cal.slug}`, source: SOURCE, ignoreDnd: true });
+          if (!cal || !target?.phone) return { line: t('Leider kann ich Ihnen gerade keine SMS schicken. Möchten Sie den Termin direkt mit mir ausmachen?') };
+          const m = await sendToContact(app, loc.id, { contactId: target.id, channel: 'sms', body: t('Hier können Sie Ihren Termin bei {business} buchen: {url}', { business: loc.name, url: `${app.baseUrl()}/book/${cal.slug}` }), source: SRC, ignoreDnd: true });
           const ok = m.status !== 'failed';
-          record(ses, 'send_booking_link', ok, ok ? `Buchungslink per SMS geschickt (${cal.name})` : `SMS fehlgeschlagen: ${m.error}`, 'sms_link');
-          return { line: ok ? out.say : 'Die SMS ließ sich leider gerade nicht senden. Möchten Sie den Termin direkt mit mir ausmachen?' };
+          record(ses, 'send_booking_link', ok, ok ? t('Buchungslink per SMS geschickt ({calendar})', { calendar: cal.name }) : t('SMS fehlgeschlagen: {error}', { error: String(m.error) }), 'sms_link');
+          return { line: ok ? out.say : t('Die SMS ließ sich leider gerade nicht senden. Möchten Sie den Termin direkt mit mir ausmachen?') };
         }
         case 'transfer': {
           const call = getCall(ses.call_id);
           const tg = s.transfer && ses.transfer_status !== 'failed' ? transferTargets(loc, s, call) : { numbers: [], clients: [] };
-          if (!tg.numbers.length && !tg.clients.length) return { line: 'Leider kann ich gerade niemanden erreichen. Ich nehme Ihr Anliegen aber gern als Nachricht auf – worum geht es?' };
+          if (!tg.numbers.length && !tg.clients.length) return { line: t('Leider kann ich gerade niemanden erreichen. Ich nehme Ihr Anliegen aber gern als Nachricht auf – worum geht es?') };
           save(ses, { transfer_status: 'ringing', status: 'transferring' });
-          record(ses, 'transfer', true, `Weiterverbinden${a.reason ? `: ${a.reason}` : ''}`);
-          const line = speakable(out.say) || 'Ich verbinde Sie, einen Moment bitte.';
+          record(ses, 'transfer', true, `${t('Weiterverbinden')}${a.reason ? `: ${a.reason}` : ''}`);
+          const line = speakable(out.say) || t('Ich verbinde Sie, einen Moment bitte.');
           say(ses, 'agent', line);
           const cfg = telephonyConfig(app, loc.id);
           const dial = { voice: s.voice, numbers: tg.numbers, clients: tg.clients, action: `${hook('voice-ai-transfer', loc.id)}?t=${ses.turns}`, timeout: cfg.s.ring_timeout };
@@ -458,11 +464,12 @@ export const voiceAiModule: Module = {
       const loc = app.location(locId)!;
       const s = load(locId);
       let ses = sessionById(sesId)!;
+      const t = tLoc(app, locId);
       try {
         const cals = s.booking ? allowedCalendars(locId, s) : [];
         let toolResult: string | undefined;
         for (let hop = 0; hop < MAX_HOPS; hop++) {
-          const tools = toolsFor(loc, s, ses, cals).filter((t) => !(hop > 0 && t === 'check_slots'));
+          const tools = toolsFor(loc, s, ses, cals).filter((x) => !(hop > 0 && x === 'check_slots'));
           const parsed = await askClaude(loc, s, ses, tools, cals, toolResult);
           ses = sessionById(sesId)!;
           // The caller hung up meanwhile (or the fallback took over): nothing more to do.
@@ -470,9 +477,9 @@ export const voiceAiModule: Module = {
           if (!parsed.ok) {
             const errors = (ses.errors ?? 0) + 1;
             save(ses, { errors });
-            record(ses, 'invalid', false, `Ungültige KI-Antwort: ${parsed.error}`);
-            if (errors >= 2) return fallback(loc, s, ses, `KI-Antwort zweimal unbrauchbar (${parsed.error})`);
-            const line = 'Entschuldigung, das habe ich nicht ganz verstanden. Können Sie es bitte noch einmal anders sagen?';
+            record(ses, 'invalid', false, t('Ungültige KI-Antwort: {error}', { error: parsed.error }));
+            if (errors >= 2) return fallback(loc, s, ses, t('KI-Antwort zweimal unbrauchbar ({error})', { error: parsed.error }));
+            const line = t('Entschuldigung, das habe ich nicht ganz verstanden. Können Sie es bitte noch einmal anders sagen?');
             say(ses, 'agent', line);
             return listen(locId, s, ses, line);
           }
@@ -485,15 +492,15 @@ export const voiceAiModule: Module = {
             toolResult = step.followUp;
             continue;
           }
-          const line = speakable(step.line ?? (parsed.value.say || 'Wie kann ich Ihnen sonst helfen?'));
+          const line = speakable(step.line ?? (parsed.value.say || t('Wie kann ich Ihnen sonst helfen?')));
           say(ses, 'agent', line);
           return listen(locId, s, ses, line);
         }
-        const line = 'Das hat leider nicht geklappt. Soll ich es anders versuchen, oder nehme ich Ihr Anliegen als Nachricht für das Team auf?';
+        const line = t('Das hat leider nicht geklappt. Soll ich es anders versuchen, oder nehme ich Ihr Anliegen als Nachricht für das Team auf?');
         say(ses, 'agent', line);
         return listen(locId, s, ses, line);
       } catch (e) {
-        return fallback(loc, s, sessionById(sesId)!, (e as Error).message || 'Fehler');
+        return fallback(loc, s, sessionById(sesId)!, (e as Error).message || t('Fehler'));
       }
     };
 
@@ -519,9 +526,10 @@ export const voiceAiModule: Module = {
       if (r !== TIMEOUT) return r.twiml;
       if (n > 2) {
         pending.delete(ses.id);
-        return fallback(loc, s, sessionById(ses.id)!, 'Die KI hat zu lange gebraucht').twiml;
+        return fallback(loc, s, sessionById(ses.id)!, tLoc(app, loc.id)('Die KI hat zu lange gebraucht')).twiml;
       }
-      return fillerTwiml(n === 1 ? 'Einen Moment bitte.' : 'Ich bin gleich so weit.', s.voice, waitUrl(loc.id, job.turn, n));
+      const t = tLoc(app, loc.id);
+      return fillerTwiml(n === 1 ? t('Einen Moment bitte.') : t('Ich bin gleich so weit.'), s.voice, waitUrl(loc.id, job.turn, n));
     };
 
     /**
@@ -530,16 +538,17 @@ export const voiceAiModule: Module = {
      */
     const startTurn = (loc: LocationRow, s: VoiceAiSettings, ses: Session, said: string): { reply?: PhoneReply; job?: Job } => {
       const speech = said.replace(/\s+/g, ' ').trim().slice(0, 1000);
+      const t = tLoc(app, loc.id);
       if (!speech) {
         const silences = (ses.silences ?? 0) + 1;
         save(ses, { silences });
         if (silences >= 2) {
-          const line = 'Ich höre Sie leider nicht. Rufen Sie gern noch einmal an. Auf Wiederhören!';
+          const line = t('Ich höre Sie leider nicht. Rufen Sie gern noch einmal an. Auf Wiederhören!');
           say(ses, 'agent', line);
           endCall(ses, 'silence');
           return { reply: hangUp(s, line) };
         }
-        const line = 'Sind Sie noch da? Wie kann ich Ihnen helfen?';
+        const line = t('Sind Sie noch da? Wie kann ich Ihnen helfen?');
         say(ses, 'agent', line);
         return { reply: listen(loc.id, s, ses, line) };
       }
@@ -547,9 +556,9 @@ export const voiceAiModule: Module = {
       save(ses, { silences: 0, turns: ses.turns + 1 });
       const elapsed = (Date.now() - Date.parse(ses.started_at)) / 1000;
       if (ses.turns > s.max_turns || elapsed > s.max_minutes * 60) {
-        const line = 'Vielen Dank, ich habe alles notiert. Unser Team meldet sich bei Ihnen. Auf Wiederhören!';
+        const line = t('Vielen Dank, ich habe alles notiert. Unser Team meldet sich bei Ihnen. Auf Wiederhören!');
         say(ses, 'agent', line);
-        record(ses, 'limit', true, ses.turns > s.max_turns ? `Höchstzahl von ${s.max_turns} Gesprächsrunden erreicht` : `Höchstdauer von ${s.max_minutes} Minuten erreicht`);
+        record(ses, 'limit', true, ses.turns > s.max_turns ? t('Höchstzahl von {n} Gesprächsrunden erreicht', { n: s.max_turns }) : t('Höchstdauer von {n} Minuten erreicht', { n: s.max_minutes }));
         endCall(ses, 'limit');
         return { reply: hangUp(s, line) };
       }
@@ -571,7 +580,7 @@ export const voiceAiModule: Module = {
       // The same <Gather> result twice while Claude still works on it: wait for that answer.
       const running = pending.get(ses.id);
       if (running && !running.settled) return answerOrFiller(loc, s, ses, running, voiceTiming.replyMs, 1);
-      if (Number(q.get('t') ?? -1) !== ses.turns) return gather(loc.id, s, ses, 'Entschuldigung, wie bitte?');
+      if (Number(q.get('t') ?? -1) !== ses.turns) return gather(loc.id, s, ses, tLoc(app, loc.id)('Entschuldigung, wie bitte?'));
       const started = startTurn(loc, s, ses, String(p.SpeechResult ?? ''));
       if (started.reply) return started.reply.twiml;
       return answerOrFiller(loc, s, ses, started.job!, voiceTiming.replyMs, 1);
@@ -586,7 +595,7 @@ export const voiceAiModule: Module = {
       const turn = Number(q.get('t') ?? -1);
       if (!job || job.turn !== turn) {
         if (ses.status !== 'active') return sayHangup('', s.voice);
-        return gather(loc.id, s, ses, 'Entschuldigung, da ist etwas schiefgegangen. Können Sie das bitte noch einmal sagen?');
+        return gather(loc.id, s, ses, tLoc(app, loc.id)('Entschuldigung, da ist etwas schiefgegangen. Können Sie das bitte noch einmal sagen?'));
       }
       return answerOrFiller(loc, s, ses, job, voiceTiming.waitMs, Math.max(1, Math.round(num(q.get('n'), 1))) + 1);
     });
@@ -619,8 +628,9 @@ export const voiceAiModule: Module = {
         const loc = app.location(locId);
         const ses = sessionBySid(locId, callSid);
         if (!loc || !ses || ses.status !== 'active' || ses.ended_at) return null;
-        record(ses, 'voice_fallback', true, `Eigene Stimme ausgefallen (${reason.slice(0, 200)}) – weiter mit der Twilio-Stimme`);
-        const text = line.trim() || 'Entschuldigung, ich habe Sie gerade nicht verstanden. Können Sie das bitte noch einmal sagen?';
+        const t = tLoc(app, locId);
+        record(ses, 'voice_fallback', true, t('Eigene Stimme ausgefallen ({reason}) – weiter mit der Twilio-Stimme', { reason: reason.slice(0, 200) }));
+        const text = line.trim() || t('Entschuldigung, ich habe Sie gerade nicht verstanden. Können Sie das bitte noch einmal sagen?');
         if (!line.trim()) say(ses, 'agent', text);
         return listen(locId, load(locId), ses, text);
       },
@@ -639,27 +649,32 @@ export const voiceAiModule: Module = {
       const call = getCall(ses.call_id);
       if (call && app.services.voiceDialHeld?.(call)) return twiml('');
       const st = String(p.DialCallStatus ?? '');
+      const t = tLoc(app, loc.id);
       if (st === 'completed' || st === 'answered') {
         save(ses, { transfer_status: 'answered' });
-        record(ses, 'transfer_done', true, 'An das Team weiterverbunden', 'transferred');
+        record(ses, 'transfer_done', true, t('An das Team weiterverbunden'), 'transferred');
         endCall(ses, 'transfer');
         return sayHangup('', s.voice);
       }
       save(ses, { transfer_status: 'failed', status: 'active' });
-      record(ses, 'transfer_failed', false, `Weiterverbinden ohne Erfolg (${st || 'keine Antwort'})`);
-      say(ses, 'system', 'Weiterverbinden hat nicht geklappt – niemand hat abgenommen.');
-      const line = 'Leider ist gerade niemand erreichbar. Ich nehme Ihr Anliegen aber gern als Nachricht für das Team auf. Worum geht es?';
+      record(ses, 'transfer_failed', false, t('Weiterverbinden ohne Erfolg ({status})', { status: st || t('keine Antwort') }));
+      say(ses, 'system', t('Weiterverbinden hat nicht geklappt – niemand hat abgenommen.'));
+      const line = t('Leider ist gerade niemand erreichbar. Ich nehme Ihr Anliegen aber gern als Nachricht für das Team auf. Worum geht es?');
       say(ses, 'agent', line);
       return gather(loc.id, s, ses, line);
     });
 
     // --- after the call --------------------------------------------------------------------
     const fallbackSummary = (ses: Session, outcome: string) => {
-      if (!ses.turns) return 'Der Anrufer hat nichts gesagt.';
-      const firstCaller = ses.transcript.find((t) => t.role === 'caller')?.text ?? '';
-      return `${OUTCOMES[outcome] ?? outcome}. ${ses.message ? `Nachricht: ${ses.message}` : firstCaller ? `Anliegen: ${firstCaller.slice(0, 300)}` : ''}`.trim();
+      const t = tLoc(app, ses.location_id);
+      if (!ses.turns) return t('Der Anrufer hat nichts gesagt.');
+      const firstCaller = ses.transcript.find((x) => x.role === 'caller')?.text ?? '';
+      return `${OUTCOMES[outcome] ? t(OUTCOMES[outcome]) : outcome}. ${ses.message ? t('Nachricht: {message}', { message: ses.message }) : firstCaller ? t('Anliegen: {message}', { message: firstCaller.slice(0, 300) }) : ''}`.trim();
     };
-    const transcriptText = (ses: Session) => ses.transcript.map((t) => `${t.role === 'caller' ? 'Anrufer' : t.role === 'agent' ? 'Assistent' : '·'}: ${t.text}`).join('\n');
+    const transcriptText = (ses: Session) => {
+      const t = tLoc(app, ses.location_id);
+      return ses.transcript.map((x) => `${x.role === 'caller' ? t('Anrufende Person') : x.role === 'agent' ? t('Assistent') : '·'}: ${x.text}`).join('\n');
+    };
 
     /** Summary, note, timeline, trigger and notifications – exactly once per call. */
     const finishSession = async (sesId: string) => {
@@ -684,7 +699,7 @@ export const voiceAiModule: Module = {
           const r = await app.services.aiRun({
             locationId: loc.id,
             purpose: 'voice_agent',
-            user: [contactBlock(contact), `<anruf>\nErgebnis: ${OUTCOMES[outcome]}\n${ses.actions.filter((a) => a.ok).map((a) => a.detail).join('\n')}\n</anruf>`, dialogue(ses.transcript, 80), SUMMARY_TASK_VOICE].join('\n\n'),
+            user: [contactBlock(contact), `<call>\nOutcome: ${outcome}\n${ses.actions.filter((a) => a.ok).map((a) => a.detail).join('\n')}\n</call>`, dialogue(ses.transcript, 80), SUMMARY_TASK_VOICE].join('\n\n'),
             schema: SUMMARY_SCHEMA,
             maxTokens: 1200,
             contactId: ses.contact_id,
@@ -697,11 +712,14 @@ export const voiceAiModule: Module = {
         }
       }
       if (!summary) summary = fallbackSummary(ses, outcome);
+      const t = tLoc(app, loc.id);
+      const SRC = t(SOURCE);
+      const outcomeLabel = OUTCOMES[outcome] ? t(OUTCOMES[outcome]) : outcome;
       const duration = call?.duration || Math.round((Date.now() - Date.parse(ses.started_at)) / 1000);
       db.update('voice_ai_sessions', ses.id, { outcome, outcomes: ses.outcomes, summary, next_step: next, end_reason: end });
       if (call) {
         // A voicemail keeps its own transcription; otherwise the call entry shows the summary.
-        if (call.status !== 'voicemail' || !call.transcription) db.run('UPDATE calls SET transcription = ?, updated_at = ? WHERE id = ?', `${SOURCE} · ${OUTCOMES[outcome]}: ${summary}`.slice(0, 5000), now(), call.id);
+        if (call.status !== 'voicemail' || !call.transcription) db.run('UPDATE calls SET transcription = ?, updated_at = ? WHERE id = ?', `${SRC} · ${outcomeLabel}: ${summary}`.slice(0, 5000), now(), call.id);
         syncMessage(app, getCall(call.id)!);
       }
       const appt = ses.appointment_id ? db.get('SELECT a.*, k.timezone FROM appointments a JOIN calendars k ON k.id = a.calendar_id WHERE a.id = ?', ses.appointment_id) : undefined;
@@ -710,13 +728,13 @@ export const voiceAiModule: Module = {
           id: id(),
           location_id: loc.id,
           contact_id: contact.id,
-          body: `${SOURCE} – Anruf vom ${formatInTz(ses.started_at, loc.timezone)}\nErgebnis: ${OUTCOMES[outcome]}\n\n${summary}${next ? `\nNächster Schritt: ${next}` : ''}\n\nVerlauf:\n${transcriptText(ses)}`.slice(0, 20_000),
+          body: `${t('{source} – Anruf vom {date}', { source: SRC, date: formatInTz(ses.started_at, loc.timezone) })}\n${t('Ergebnis: {outcome}', { outcome: outcomeLabel })}\n\n${summary}${next ? `\n${t('Nächster Schritt: {step}', { step: next })}` : ''}\n\n${t('Verlauf:')}\n${transcriptText(ses)}`.slice(0, 20_000),
           user_id: null,
           created_at: now(),
         });
-        logActivity(app, loc.id, contact.id, 'call.ai', `KI-Anruf: ${OUTCOMES[outcome]} – ${summary.slice(0, 160)}`, { callId: ses.call_id, outcome });
+        logActivity(app, loc.id, contact.id, 'call.ai', t('KI-Anruf: {outcome} – {summary}', { outcome: outcomeLabel, summary: summary.slice(0, 160) }), { callId: ses.call_id, outcome });
       }
-      const who = contact ? contactName(contact) : callerPhone(ses) || 'Unbekannt';
+      const who = contact ? contactName(contact) : callerPhone(ses) || t('Unbekannt');
       app.events.emit(loc.id, VOICE_TRIGGER, {
         contactId: ses.contact_id ?? undefined,
         callId: ses.call_id,
@@ -734,14 +752,14 @@ export const voiceAiModule: Module = {
         duration,
         from: callerPhone(ses),
       });
-      const subject = `KI-Anruf: ${who} – ${OUTCOMES[outcome]}`;
+      const subject = t('KI-Anruf: {name} – {outcome}', { name: who, outcome: outcomeLabel });
       const body = [
         summary,
-        next && `Nächster Schritt: ${next}`,
-        appt && `Termin: ${formatInTz(appt.start_at, appt.timezone)} (${appt.title})`,
-        ses.message && `Nachricht: ${ses.message}`,
-        `Anrufer: ${callerPhone(ses) || 'Nummer unterdrückt'}`,
-        `Verlauf: ${app.baseUrl()}/app/calls`,
+        next && t('Nächster Schritt: {step}', { step: next }),
+        appt && t('Termin: {date} ({title})', { date: formatInTz(appt.start_at, appt.timezone), title: appt.title }),
+        ses.message && t('Nachricht: {message}', { message: ses.message }),
+        t('Anrufer: {phone}', { phone: callerPhone(ses) || t('Nummer unterdrückt') }),
+        t('Verlauf: {url}', { url: `${app.baseUrl()}/app/calls` }),
       ]
         .filter(Boolean)
         .join('\n\n');
@@ -774,16 +792,16 @@ export const voiceAiModule: Module = {
     });
 
     // --- API -----------------------------------------------------------------------------------
-    const settingsOut = (locId: string) => {
+    const settingsOut = (locId: string, t = tLoc(app, locId)) => {
       const s = load(locId);
       const cfg = telephonyConfig(app, locId);
-      const problem: string | null = app.services.aiReady ? app.services.aiReady(locId) : 'Das Modul KI-Assistent fehlt.';
+      const problem: string | null = app.services.aiReady ? app.services.aiReady(locId) : t('Das Modul KI-Assistent fehlt.');
       const since = new Date(Date.now() - 30 * 864e5).toISOString();
       const stats = db.all<{ outcome: string; n: number }>(`SELECT outcome, COUNT(*) n FROM voice_ai_sessions WHERE location_id = ? AND started_at >= ? AND ended_at IS NOT NULL GROUP BY outcome`, locId, since);
       return {
         settings: s,
         voices: VOICES,
-        outcomes: OUTCOMES,
+        outcomes: Object.fromEntries(Object.entries(OUTCOMES).map(([k, v]) => [k, t(v)])),
         calendars: db.all('SELECT id, name, active, slug FROM calendars WHERE location_id = ? ORDER BY name', locId),
         pipelines: parseRows(db.all('SELECT id, name, stages FROM pipelines WHERE location_id = ? ORDER BY name', locId), ['stages']),
         ai_ready: !problem,
@@ -794,14 +812,14 @@ export const voiceAiModule: Module = {
         stats: Object.fromEntries(stats.map((r) => [r.outcome, r.n])),
       };
     };
-    router.get('/api/voice-ai/settings', 'location', (ctx) => settingsOut(ctx.locationId));
+    router.get('/api/voice-ai/settings', 'location', (ctx) => settingsOut(ctx.locationId, tCtx(ctx)));
     router.put('/api/voice-ai/settings', 'location', (ctx) => {
       const next = cleanVoiceSettings(ctx.body ?? {}, load(ctx.locationId));
       for (const cid of next.calendar_ids) if (!db.get('SELECT id FROM calendars WHERE id = ? AND location_id = ?', cid, ctx.locationId)) throw bad('Kalender nicht gefunden');
       if (next.pipeline_id) {
         const p = getPipeline(app, ctx.locationId, next.pipeline_id);
         if (!p) throw bad('Pipeline nicht gefunden');
-        if (next.stage_id && !p.stages.some((st: any) => st.id === next.stage_id)) throw bad('Stufe nicht gefunden');
+        if (next.stage_id && !p.stages.some((st: any) => st.id === next.stage_id)) throw bad('Pipeline-Stufe nicht gefunden');
       } else next.stage_id = '';
       const cfg = telephonyConfig(app, ctx.locationId);
       if (next.transfer_number && cfg.numbers.includes(next.transfer_number)) throw bad('Die Weiterleitung darf nicht auf die Twilio-Nummer selbst zeigen');
@@ -811,7 +829,7 @@ export const voiceAiModule: Module = {
         JSON.stringify(next),
         now(),
       );
-      return settingsOut(ctx.locationId);
+      return settingsOut(ctx.locationId, tCtx(ctx));
     });
 
     const sessionOut = (r: any, full = false) => {
@@ -825,7 +843,7 @@ export const voiceAiModule: Module = {
         stage: ses.stage,
         status: ses.status,
         outcome: ses.outcome,
-        outcome_label: OUTCOMES[ses.outcome] ?? '',
+        outcome_label: OUTCOMES[ses.outcome] ? tLoc(app, ses.location_id)(OUTCOMES[ses.outcome]) : '',
         outcomes: ses.outcomes,
         summary: ses.summary,
         next_step: ses.next_step,

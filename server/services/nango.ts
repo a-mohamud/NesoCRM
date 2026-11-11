@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { SafeResponse } from './net.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Nango (nango.dev) over its REST API – plain fetch, no SDK. Every Nango HTTP call HyperLevel makes lives
@@ -43,22 +44,23 @@ export function nangoErrorFor(status: number, body: any): NangoError {
   const details = Array.isArray(e?.errors) ? e.errors.map((x: any) => `${(x.path ?? []).join('.')}: ${x.message ?? ''}`).join('; ') : '';
   const msg = `${raw}${details ? ` (${details})` : ''}`.trim().slice(0, 300);
   const detail = msg ? `: ${msg}` : '';
+  const t = tApp();
   switch (status) {
     case 400:
     case 422:
-      return new NangoError(`Nango hat die Anfrage abgelehnt${detail}`, 400, status, code);
+      return new NangoError(t('Nango hat die Anfrage abgelehnt{detail}', { detail }), 400, status, code);
     case 401:
       return new NangoError('Der Nango-Secret-Key ist ungültig (Agentur → Integrationen → Nango prüfen).', 502, status, code);
     case 403:
-      return new NangoError(`Nango verweigert den Zugriff${detail}`, 403, status, code);
+      return new NangoError(t('Nango verweigert den Zugriff{detail}', { detail }), 403, status, code);
     case 404:
-      return new NangoError(`Bei Nango nicht gefunden${detail}`, 404, status, code);
+      return new NangoError(t('Bei Nango nicht gefunden{detail}', { detail }), 404, status, code);
     case 424:
       return new NangoError('Die Verbindung ist abgelaufen – bitte neu verbinden.', 409, status, code || 'refresh_exhausted');
     case 429:
       return new NangoError('Zu viele Anfragen bei Nango – bitte kurz warten.', 429, status, code);
     default:
-      return status >= 500 ? new NangoError(`Nango hat gerade ein Problem${detail}`, 503, status, code) : new NangoError(`Fehler von Nango (${status})${detail}`, 502, status, code);
+      return status >= 500 ? new NangoError(t('Nango hat gerade ein Problem{detail}', { detail }), 503, status, code) : new NangoError(t('Fehler von Nango ({status}){detail}', { status, detail }), 502, status, code);
   }
 }
 
@@ -279,11 +281,11 @@ export function cleanNangoAllow(v: unknown): AllowEntry[] {
   const out: AllowEntry[] = [];
   for (const x of v) {
     const integration = String(x?.integration ?? '').trim();
-    if (!INTEGRATION_RE.test(integration)) throw new Error(`Unbekannte Integration: ${integration.slice(0, 40)}`);
+    if (!INTEGRATION_RE.test(integration)) throw new Error(tApp()('Unbekannte Integration: {name}', { name: integration.slice(0, 40) }));
     const methods = (Array.isArray(x?.methods) && x.methods.length ? x.methods : ['*']).map((m: unknown) => String(m).toUpperCase());
     if (methods.some((m: string) => m !== '*' && !(METHODS as readonly string[]).includes(m))) throw new Error('Erlaubte Methoden: GET, POST, PUT, PATCH, DELETE oder *');
     const path = String(x?.path ?? '').trim();
-    if (path && (!path.startsWith('/') || path.length > 300 || /[\s?#]/.test(path))) throw new Error(`Pfad-Muster ungültig: ${path.slice(0, 40)} (beginnt mit /, ohne Leerzeichen und ?)`);
+    if (path && (!path.startsWith('/') || path.length > 300 || /[\s?#]/.test(path))) throw new Error(tApp()('Pfad-Muster ungültig: {path} (beginnt mit /, ohne Leerzeichen und ?)', { path: path.slice(0, 40) }));
     out.push({ integration, methods: methods.includes('*') ? ['*'] : [...new Set<string>(methods)], path });
   }
   return out;
@@ -348,10 +350,10 @@ export function cleanHeaders(v: unknown): Record<string, string> {
   if (typeof v !== 'object' || Array.isArray(v)) throw new Error('Header müssen ein Objekt sein');
   const out: Record<string, string> = {};
   for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, 20)) {
-    if (!/^[A-Za-z0-9-]{1,60}$/.test(k)) throw new Error(`Header-Name ungültig: ${k.slice(0, 30)}`);
-    if (BLOCKED_HEADERS.test(k)) throw new Error(`Header ${k} ist nicht erlaubt – die Anmeldung übernimmt Nango`);
+    if (!/^[A-Za-z0-9-]{1,60}$/.test(k)) throw new Error(tApp()('Header-Name ungültig: {name}', { name: k.slice(0, 30) }));
+    if (BLOCKED_HEADERS.test(k)) throw new Error(tApp()('Header {name} ist nicht erlaubt – die Anmeldung übernimmt Nango', { name: k }));
     const s = String(x ?? '');
-    if (/[\r\n]/.test(s) || s.length > 1000) throw new Error(`Header ${k}: Wert ungültig`);
+    if (/[\r\n]/.test(s) || s.length > 1000) throw new Error(tApp()('Header {name}: Wert ungültig', { name: k }));
     out[k] = s;
   }
   return out;

@@ -1,6 +1,7 @@
 import type { App, Module } from '../core/app.js';
 import { HttpError, bad, notFound, str, type Ctx, type User } from '../core/http.js';
 import { now } from '../core/util.js';
+import { tApp, tCtx, tUser } from '../i18n/index.js';
 import {
   AREAS,
   SCREENSHOT_MAX,
@@ -82,7 +83,7 @@ export function reportOut(app: App, f: FeedbackRow, ctx: Ctx) {
     id: f.id,
     kind: f.kind,
     number: t?.number ?? null,
-    title: autoForMember ? 'Automatisch erfasster Fehler' : f.title,
+    title: autoForMember ? tCtx(ctx)('Automatisch erfasster Fehler') : f.title,
     status: st,
     severity: f.severity,
     area: f.area,
@@ -115,7 +116,7 @@ export function wishOut(app: App, r: any, ctx: Ctx) {
     my_vote: !!r.my_vote,
     comments: Number(r.comments ?? 0),
     mine,
-    author: admin ? (r.author_name ?? '') : mine ? 'Du' : '',
+    author: admin ? (r.author_name ?? '') : mine ? tCtx(ctx)('Du') : '',
     origin: admin ? (r.origin_name ?? '') : '',
     version: st.board === 'done' ? r.version : '',
     reason: st.board === 'declined' ? r.public_note : '',
@@ -231,7 +232,7 @@ export function createReport(app: App, ctx: Ctx, kindIn?: FeedbackKind) {
     const admins = app.db.all(`SELECT id FROM users WHERE role = 'admin'`).map((r) => r.id as string).filter((u) => u !== user.id);
     const t = ticketOf(app, f);
     if (admins.length && t)
-      void Promise.resolve(app.services.pushNotify?.({ userIds: admins, kind: 'feedback', title: `${kind === 'question' ? 'Neue Frage' : 'Neue Fehlermeldung'} #${t.number} von ${user.name || user.email}`, body: f.title, url: `/app/tickets/${t.id}`, tag: `ticket-${t.id}` })).catch(() => {});
+      void Promise.resolve(app.services.pushNotify?.({ userIds: admins, kind: 'feedback', title: tApp()(kind === 'question' ? 'Neue Frage #{number} von {name}' : 'Neue Fehlermeldung #{number} von {name}', { number: t.number, name: user.name || user.email }), body: f.title, url: `/app/tickets/${t.id}`, tag: `ticket-${t.id}` })).catch(() => {});
   }
   return f;
 }
@@ -399,7 +400,8 @@ export const feedbackModule: Module = {
       const d = reportDetail(ctx, f);
       if (!d.can_reopen) throw bad('Diese Meldung kann nicht wieder geöffnet werden');
       const reason = str(ctx.body?.reason, 'Grund', { max: 5000 });
-      addUserMessage(app, f, ctx.user!, reason ? `Wieder geöffnet: ${reason}` : 'Wieder geöffnet – das Problem besteht noch.');
+      const tr = tCtx(ctx);
+      addUserMessage(app, f, ctx.user!, reason ? tr('Wieder geöffnet: {reason}', { reason }) : tr('Wieder geöffnet – das Problem besteht noch.'));
       excludeOnce(f.ticket_id, ctx.user!.id);
       setStatus(app, f, 'neu', { userId: ctx.user!.id, via: 'feedback' });
       return reportDetail(ctx, getItem(app, f.id)!);
@@ -449,7 +451,7 @@ export const feedbackModule: Module = {
       if (!commentLimit.take(ctx.user!.id)) throw new HttpError(429, 'Bitte kurz warten');
       addUserMessage(app, f, ctx.user!, ctx.body?.body);
       // The author hears about comments from others (in the app and by push, no email).
-      if (f.user_id && f.user_id !== ctx.user!.id) await notifyUsers(app, f, [f.user_id], { kind: 'comment', title: `Neuer Kommentar zu deinem Wunsch „${f.title}“`, body: str(ctx.body?.body, 'Kommentar', { max: 300 }), url: urlOf(f) });
+      if (f.user_id && f.user_id !== ctx.user!.id) await notifyUsers(app, f, [f.user_id], { kind: 'comment', title: tUser(app as never, f.user_id)('Neuer Kommentar zu deinem Wunsch „{title}“', { title: f.title }), body: str(ctx.body?.body, 'Kommentar', { max: 300 }), url: urlOf(f) });
       return wishDetail(ctx, f);
     });
     router.get('/api/feedback/changelog', 'user', (ctx) => ({ entries: changelog(), new_count: newSince(ctx.user!.id) }));

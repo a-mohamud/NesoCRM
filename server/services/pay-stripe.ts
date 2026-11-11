@@ -15,7 +15,7 @@ const wrap = (e: unknown) => (e instanceof StripeError ? new PayError(e.status, 
 export const stripeProvider: PayProvider = {
   id: 'stripe',
   label: 'Stripe',
-  methods: () => ['Karte', 'SEPA-Lastschrift', 'Apple Pay', 'Google Pay'],
+  methods: () => ['Kartenzahlung', 'SEPA-Lastschrift', 'Apple Pay', 'Google Pay'], // German message ids, translated where shown
   ready: (app, locationId) => !!keyOf(app, locationId),
   async create(app: App, s: PaySession) {
     const base = app.baseUrl();

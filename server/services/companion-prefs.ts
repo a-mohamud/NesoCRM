@@ -2,6 +2,7 @@ import { addDaysYmd, hmInTz, isValidTz, weekdayKey, ymdInTz, zonedToUtc } from '
 import { presetById } from './ai-presets.js';
 import { TRIGGER_IDS, type TriggerPriority } from './companion-triggers.js';
 import { VOICE_RE } from './voice-settings.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Fokus-Modus mit Companion: one person's choices per sub-account – which agent answers (the built-in HyperLevel Agent as
@@ -285,7 +286,7 @@ export function cleanPrefs(body: unknown, cur: CompanionPrefs): CompanionPrefs {
       if (!Array.isArray(c.times) || c.times.some((x: unknown) => !HM.test(String(x).trim()))) throw new Error('Uhrzeiten bitte als HH:MM, z. B. 08:30');
       const times = cleanTimes(c.times);
       if (!times.length) throw new Error('Mindestens eine Uhrzeit');
-      if (c.times.length > MAX_DAILY_TIMES) throw new Error(`Höchstens ${MAX_DAILY_TIMES} Uhrzeiten am Tag`);
+      if (c.times.length > MAX_DAILY_TIMES) throw new Error(tApp()('Höchstens {n} Uhrzeiten am Tag', { n: MAX_DAILY_TIMES }));
       out.checkin.times = times;
     }
     for (const k of ['quiet_from', 'quiet_to'] as const) {

@@ -1,4 +1,5 @@
 import type { App, Module } from '../core/app.js';
+import { tLoc } from '../i18n/index.js';
 import { HttpError } from '../core/http.js';
 import { now } from '../core/util.js';
 import { notifyTeam } from '../services/messaging.js';
@@ -65,12 +66,16 @@ export const publicUploadQuotaModule: Module = {
     /** Tells the sub-account once per level; a level that is no longer reached is armed again. */
     const alert = (locationId: string, m: Meter, level: number) => {
       if (!db.run('INSERT OR IGNORE INTO public_upload_alerts (location_id, scope, level, at) VALUES (?, ?, ?, ?)', locationId, m.scope, level, now()).changes) return;
-      const what = m.scope === 'plan' ? 'Der Medien-Speicher deines Tarifs' : 'Der Speicher für Datei-Uploads aus öffentlichen Formularen';
-      const title = level >= 100 ? `${what} ist voll` : `${what} ist zu ${level} % belegt`;
+      const t = tLoc(app, locationId);
+      const what = m.scope === 'plan' ? t('Der Medien-Speicher deines Tarifs') : t('Der Speicher für Datei-Uploads aus öffentlichen Formularen');
+      const vars = { what, level, used: fmt(m.used), limit: fmt(m.limit) };
+      const title = level >= 100 ? t('{what} ist voll', vars) : t('{what} ist zu {level} % belegt', vars);
       const body =
         level >= 100
-          ? `${what} ist voll (${fmt(m.used)} von ${fmt(m.limit)}). Formulare mit Datei-Upload werden abgelehnt, bis du alte Einsendungen mit Dateien löschst${m.scope === 'plan' ? ' oder mehr Speicher bekommst' : ' oder der Betreiber das Limit (PGHL_PUBLIC_UPLOADS_MB) erhöht'}.`
-          : `${what} ist zu ${level} % belegt (${fmt(m.used)} von ${fmt(m.limit)}). Ist er voll, werden Formulare mit Datei-Upload abgelehnt. Lösche alte Einsendungen mit Dateien, um Platz zu schaffen.`;
+          ? m.scope === 'plan'
+            ? t('{what} ist voll ({used} von {limit}). Formulare mit Datei-Upload werden abgelehnt, bis du alte Einsendungen mit Dateien löschst oder mehr Speicher bekommst.', vars)
+            : t('{what} ist voll ({used} von {limit}). Formulare mit Datei-Upload werden abgelehnt, bis du alte Einsendungen mit Dateien löschst oder der Betreiber das Limit (PGHL_PUBLIC_UPLOADS_MB) erhöht.', vars)
+          : t('{what} ist zu {level} % belegt ({used} von {limit}). Ist er voll, werden Formulare mit Datei-Upload abgelehnt. Lösche alte Einsendungen mit Dateien, um Platz zu schaffen.', vars);
       void notifyTeam(app, locationId, title, `${body}\n\n${app.baseUrl()}/app/forms`).catch(() => undefined);
       void Promise.resolve(app.services.pushNotify?.({ locationId, kind: 'storage', title, body, url: '/app/forms', tag: `upload-quota-${m.scope}`, urgency: level >= 100 ? 'high' : 'normal' })).catch(() => undefined);
     };

@@ -1,5 +1,6 @@
 import type { App, Module } from '../core/app.js';
 import { render } from '../core/template.js';
+import { tApp, tLoc } from '../i18n/index.js';
 import { NOTION_TOKEN, NOTION_VERSION, connectorFetch, notionBlocks, notionPageId, readJson, registerConnector, type ConnectorConfig } from '../services/connectors.js';
 
 /**
@@ -26,9 +27,9 @@ async function test(app: App, cfg: ConnectorConfig): Promise<string> {
     const id = notionPageId(cfg.page_id);
     if (!id) throw new Error('Seiten-ID ungültig');
     await notion(app, cfg.token, 'GET', `/pages/${id}`);
-    page = ' · Seite erreichbar';
+    page = tApp()(' · Seite erreichbar');
   }
-  return `Verbunden als ${String(me?.name ?? me?.bot?.owner?.workspace_name ?? 'Integration').slice(0, 60)}${page}`;
+  return tApp()('Verbunden als {name}', { name: String(me?.name ?? me?.bot?.owner?.workspace_name ?? 'Integration').slice(0, 60) }) + page;
 }
 
 export const connectorNotionModule: Module = {
@@ -49,13 +50,14 @@ export const connectorNotionModule: Module = {
       steps: ['Notion-Seite ergänzen'],
       guide: ['notion.so/my-integrations: neue interne Integration anlegen und das Secret kopieren.', 'Die Zielseite in Notion öffnen → ••• → Verbindungen → Integration hinzufügen.', 'Token und Seiten-Link unter Apps → Direkt-Verbindungen → Notion eintragen und testen.'],
       actions: {
-        notion_append: async (a, cfg, _run, step, vars) => {
+        notion_append: async (a, cfg, run, step, vars) => {
           const page = notionPageId(step.page_id ? render(String(step.page_id), vars) : cfg.page_id);
           if (!page) throw new Error('Notion-Seite fehlt oder ist ungültig');
           const blocks = notionBlocks(render(String(step.text ?? ''), vars), step.heading ? render(String(step.heading), vars) : undefined);
           if (!blocks.length) throw new Error('Kein Text für Notion');
           await notion(a, cfg.token, 'PATCH', `/blocks/${page}/children`, { children: blocks });
-          return `Notion: ${blocks.length} ${blocks.length === 1 ? 'Block' : 'Blöcke'} angehängt`;
+          const tl = tLoc(a, run?.location_id);
+          return tl.plural(blocks.length, { one: 'Notion: {n} Block angehängt', other: 'Notion: {n} Blöcke angehängt' });
         },
       },
     });

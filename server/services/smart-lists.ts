@@ -1,5 +1,6 @@
 import type { App } from '../core/app.js';
 import { bad } from '../core/http.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Smart Lists 2.0 – the pure parts (docs/sales.md#smart-lists): which columns a saved contact view may show and sort by, and the
@@ -71,7 +72,7 @@ export function cleanSort(app: App, locationId: string, v: unknown): string {
   const key = String(v ?? '').trim();
   if (!key) return '';
   if (BUILTIN[key] || app.services.contactSorts?.[key] || customField(app, locationId, key)) return key;
-  throw bad(`Sortierung „${key.slice(0, 60)}“ gibt es nicht`);
+  throw bad(tApp()('Sortierung „{key}“ gibt es nicht', { key: key.slice(0, 60) }));
 }
 
 /** Columns to show: known keys and existing custom fields, in the given order, without duplicates (unknown ones dropped). */

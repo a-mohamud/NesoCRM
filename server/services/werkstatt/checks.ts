@@ -2,6 +2,7 @@ import { OPS } from './ops.js';
 import { NAMES } from './names.js';
 import { hasUi, needsServer, type Manifest } from './manifest.js';
 import { validateSteps } from './declarative.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * Static checks before a plugin version may become active: size limits, forbidden APIs, external URLs
@@ -124,8 +125,8 @@ const NAMESPACES = new Set(Object.keys(OPS).map((o) => o.split('.')[0]));
 
 export function staticChecks(files: PluginFiles, opts: CheckOptions): CheckResult {
   const issues: CheckIssue[] = [];
-  const err = (code: string, message: string) => issues.push({ level: 'error', code, message });
-  const warn = (code: string, message: string) => issues.push({ level: 'warn', code, message });
+  const err = (code: string, message: string) => issues.push({ level: 'error', code, message: tApp()(message) });
+  const warn = (code: string, message: string) => issues.push({ level: 'warn', code, message: tApp()(message) });
   const m = files.manifest;
   const ui = files.ui_html ?? '';
   const server = files.server_js ?? '';
@@ -133,11 +134,11 @@ export function staticChecks(files: PluginFiles, opts: CheckOptions): CheckResul
 
   // --- sizes ----------------------------------------------------------------------------------
   const manifestSize = JSON.stringify(m).length;
-  if (manifestSize > SIZE_LIMITS.manifest) err('size-manifest', `Das Manifest ist zu groß (${manifestSize} von ${SIZE_LIMITS.manifest} Zeichen).`);
-  if (ui.length > SIZE_LIMITS.ui) err('size-ui', `Die Oberfläche ist zu groß (${Math.round(ui.length / 1000)} von ${SIZE_LIMITS.ui / 1000} KB).`);
-  if (server.length > SIZE_LIMITS.server) err('size-server', `Der Server-Code ist zu groß (${Math.round(server.length / 1000)} von ${SIZE_LIMITS.server / 1000} KB).`);
-  if (stepsJson.length > SIZE_LIMITS.steps) err('size-steps', `Die Schritte sind zu groß (${Math.round(stepsJson.length / 1000)} von ${SIZE_LIMITS.steps / 1000} KB).`);
-  if (manifestSize + ui.length + server.length + stepsJson.length > SIZE_LIMITS.total) err('size-total', `Das Plugin ist insgesamt zu groß (höchstens ${SIZE_LIMITS.total / 1000} KB).`);
+  if (manifestSize > SIZE_LIMITS.manifest) err('size-manifest', tApp()('Das Manifest ist zu groß ({manifestSize} von {manifest} Zeichen).', { manifestSize, manifest: SIZE_LIMITS.manifest }));
+  if (ui.length > SIZE_LIMITS.ui) err('size-ui', tApp()('Die Oberfläche ist zu groß ({x} von {x2} KB).', { x: Math.round(ui.length / 1000), x2: SIZE_LIMITS.ui / 1000 }));
+  if (server.length > SIZE_LIMITS.server) err('size-server', tApp()('Der Server-Code ist zu groß ({x} von {x2} KB).', { x: Math.round(server.length / 1000), x2: SIZE_LIMITS.server / 1000 }));
+  if (stepsJson.length > SIZE_LIMITS.steps) err('size-steps', tApp()('Die Schritte sind zu groß ({x} von {x2} KB).', { x: Math.round(stepsJson.length / 1000), x2: SIZE_LIMITS.steps / 1000 }));
+  if (manifestSize + ui.length + server.length + stepsJson.length > SIZE_LIMITS.total) err('size-total', tApp()('Das Plugin ist insgesamt zu groß (höchstens {x} KB).', { x: SIZE_LIMITS.total / 1000 }));
 
   // --- entry points vs. code --------------------------------------------------------------------
   if (hasUi(m) && ui.trim().length < 20) err('ui-missing', 'Das Manifest hat eine Oberfläche (page, panels oder widgets), aber ui_html ist leer.');
@@ -149,8 +150,8 @@ export function staticChecks(files: PluginFiles, opts: CheckOptions): CheckResul
       if (opts.serverLogic === 'declarative') err('server-script-off', 'Die Richtlinie erlaubt nur deklarative Schritte (server.mode "declarative"), keine Skripte.');
       else if (!opts.sandboxOk) err('sandbox', 'Die Skript-Sandbox ist auf diesem Server nicht verfügbar (Node-Rechtemodell) – bitte server.mode "declarative" nutzen.');
       if (server.trim().length < 20) err('server-missing', 'server.mode ist "script", aber server_js ist leer.');
-      for (const a of m.entries.actions ?? []) if (!new RegExp(`gohigh\\s*\\.\\s*action\\s*\\(\\s*['"\`]${a.id}['"\`]`).test(server)) err('action-missing', `Aktion „${a.id}“ steht im Manifest, aber server_js ruft gohigh.action('${a.id}', …) nicht auf.`);
-      for (const j of m.entries.jobs ?? []) if (!new RegExp(`gohigh\\s*\\.\\s*job\\s*\\(\\s*['"\`]${j.id}['"\`]`).test(server)) err('job-missing', `Job „${j.id}“ steht im Manifest, aber server_js ruft gohigh.job('${j.id}', …) nicht auf.`);
+      for (const a of m.entries.actions ?? []) if (!new RegExp(`gohigh\\s*\\.\\s*action\\s*\\(\\s*['"\`]${a.id}['"\`]`).test(server)) err('action-missing', tApp()('Aktion „{id}“ steht im Manifest, aber server_js ruft gohigh.action(\'{id}\', …) nicht auf.', { id: a.id }));
+      for (const j of m.entries.jobs ?? []) if (!new RegExp(`gohigh\\s*\\.\\s*job\\s*\\(\\s*['"\`]${j.id}['"\`]`).test(server)) err('job-missing', tApp()('Job „{id}“ steht im Manifest, aber server_js ruft gohigh.job(\'{id}\', …) nicht auf.', { id: j.id }));
     } else if (mode === 'declarative') {
       const v = validateSteps(files.steps, m);
       for (const e of v.errors) err('steps', e);
@@ -164,14 +165,14 @@ export function staticChecks(files: PluginFiles, opts: CheckOptions): CheckResul
   const attrCode = markup.replace(STYLE_RE, ' ');
   const serverCode = stripJsComments(server);
   const flag = (where: string, rules: Rule[], text: string) => {
-    for (const r of rules) if (r.re.test(text)) err(`${where}-${r.code}`, `${where === 'ui' ? 'Oberfläche' : 'Server-Code'}: ${r.message}`);
+    for (const r of rules) if (r.re.test(text)) err(`${where}-${r.code}`, `${tApp()(where === 'ui' ? 'Oberfläche' : 'Server-Code')}: ${tApp()(r.message)}`);
   };
   flag('ui', [...COMMON, ...UI_ONLY], uiCode);
   // Inline event handlers (onclick="…") are code, too.
   const handlers = [...attrCode.matchAll(/\son[a-z]+\s*=\s*("([^"]*)"|'([^']*)')/gi)].map((x) => x[2] ?? x[3] ?? '').join('\n;\n');
   if (handlers) flag('ui', [...COMMON, ...UI_ONLY], stripJsComments(handlers));
   flag('server', [...COMMON, ...SERVER_ONLY], serverCode);
-  for (const tag of FORBIDDEN_TAGS) if (new RegExp(`<\\s*${tag}\\b`, 'i').test(markup)) err('ui-tag', `Oberfläche: <${tag}> ist nicht erlaubt (nur ein Body-Fragment ohne iframe/object/embed/base/meta/link).`);
+  for (const tag of FORBIDDEN_TAGS) if (new RegExp(`<\\s*${tag}\\b`, 'i').test(markup)) err('ui-tag', tApp()('Oberfläche: <{tag}> ist nicht erlaubt (nur ein Body-Fragment ohne iframe/object/embed/base/meta/link).', { tag }));
   if (/<\s*script\b[^>]*\btype\s*=\s*["']?module/i.test(markup + ui)) err('ui-module', 'Oberfläche: <script type="module"> ist nicht erlaubt.');
   if (/(?:href|src|action|formaction|xlink:href)\s*=\s*["']?\s*(?:javascript|vbscript)\s*:/i.test(attrCode)) err('ui-js-url', 'Oberfläche: javascript:-Adressen sind nicht erlaubt.');
   if (FORBIDDEN_ATTRS.test(attrCode)) err('ui-attr', 'Oberfläche: srcdoc, formaction, http-equiv und ping sind nicht erlaubt.');
@@ -182,9 +183,9 @@ export function staticChecks(files: PluginFiles, opts: CheckOptions): CheckResul
   const found = [...new Set([...hostsIn(stripHtmlComments(ui).replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, (s) => stripJsComments(s))), ...hostsIn(serverCode)])];
   const declared = m.externalHosts ?? [];
   for (const h of found) {
-    if (!declared.includes(h)) err('url-undeclared', `Externe Adresse ${h} – Hosts müssen im Manifest unter externalHosts stehen (und ein Admin muss sie freigeben).`);
+    if (!declared.includes(h)) err('url-undeclared', tApp()('Externe Adresse {h} – Hosts müssen im Manifest unter externalHosts stehen (und ein Admin muss sie freigeben).', { h }));
   }
-  for (const h of declared) if (!opts.allowedHosts.includes(h)) err('url-not-allowed', `Der Host ${h} ist nicht freigegeben – ein Admin kann ihn unter ${NAMES.werkstatt} → Richtlinien erlauben.`);
+  for (const h of declared) if (!opts.allowedHosts.includes(h)) err('url-not-allowed', tApp()('Der Host {h} ist nicht freigegeben – ein Admin kann ihn unter {werkstatt} → Richtlinien erlauben.', { h, werkstatt: tApp()(NAMES.werkstatt) }));
   if (server && hostsIn(serverCode).length) err('url-server', 'Server-Code hat keinen Netzwerkzugriff – Adressen darin sind nicht erlaubt.');
   if (/<a\b[^>]*\shref\s*=\s*["'](?!#|https?:|\/\/)/i.test(attrCode)) warn('ui-relative-link', 'Links zu internen Seiten bitte mit gohigh.navigate("contacts/…") statt href lösen.');
 
@@ -194,15 +195,15 @@ export function staticChecks(files: PluginFiles, opts: CheckOptions): CheckResul
   for (const op of used) {
     const def = OPS[op];
     if (!def) {
-      if (NAMESPACES.has(op.split('.')[0])) err('op-unknown', `Unbekannte Funktion ${op} – verfügbar sind nur die Funktionen der Referenz.`);
+      if (NAMESPACES.has(op.split('.')[0])) err('op-unknown', tApp()('Unbekannte Funktion {op} – verfügbar sind nur die Funktionen der Referenz.', { op }));
       continue;
     }
     if (def.scope) {
       scopesUsed.add(def.scope);
-      if (!m.scopes.includes(def.scope)) err('scope-missing', `${op}() braucht die Berechtigung „${def.scope}“ im Manifest (scopes).`);
+      if (!m.scopes.includes(def.scope)) err('scope-missing', tApp()('{op}() braucht die Berechtigung „{scope}“ im Manifest (scopes).', { op, scope: def.scope }));
     }
   }
-  for (const s of m.scopes) if (!scopesUsed.has(s)) warn('scope-unused', `Die Berechtigung „${s}“ wird im Code nicht benutzt – bitte nur anfragen, was nötig ist.`);
+  for (const s of m.scopes) if (!scopesUsed.has(s)) warn('scope-unused', tApp()('Die Berechtigung „{s}“ wird im Code nicht benutzt – bitte nur anfragen, was nötig ist.', { s }));
 
   return {
     ok: !issues.some((i) => i.level === 'error'),

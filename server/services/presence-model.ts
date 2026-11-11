@@ -43,7 +43,7 @@ export function cleanPresencePrefs(input: unknown): Partial<PresencePrefs> {
   const out: Partial<PresencePrefs> = {};
   for (const k of ['invisible', 'menu'] as const) {
     if (!(k in src)) continue;
-    if (typeof src[k] !== 'boolean') throw new Error(`${k} muss wahr oder falsch sein`);
+    if (typeof src[k] !== 'boolean') throw new Error(k === 'invisible' ? 'invisible muss wahr oder falsch sein' : 'menu muss wahr oder falsch sein');
     out[k] = src[k] as boolean;
   }
   if ('cursors' in src) {

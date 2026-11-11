@@ -3,6 +3,7 @@ import { bad } from '../core/http.js';
 import { GROUP_LABELS, GROUP_ORDER, type AccKind } from './acc-chart.js';
 import { chartMap, getSettings, monthRange, type AccountRow, type Posting } from './acc-ledger.js';
 import { TAX_CODES, type TaxCode } from './acc-vat.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Reports of the light accounting – overviews to prepare the tax advisor's work, not tax returns.
@@ -65,7 +66,7 @@ export function susa(app: App, locationId: string, from: string, to: string) {
       // Balance sheet accounts carry their balance forward; revenue and expense accounts start the fiscal year at zero.
       const pl = acc?.type === 'income' || acc?.type === 'expense';
       const opening = pl ? r.opening_fy : r.opening_all;
-      return { account: r.account, name: acc?.name ?? '(Konto gelöscht)', type: acc?.type ?? '', opening_cents: opening, debit_cents: r.debit, credit_cents: r.credit, closing_cents: opening + r.debit - r.credit };
+      return { account: r.account, name: acc?.name ?? tApp()('(Konto gelöscht)'), type: acc?.type ?? '', opening_cents: opening, debit_cents: r.debit, credit_cents: r.credit, closing_cents: opening + r.debit - r.credit };
     })
     .filter((r) => r.opening_cents || r.debit_cents || r.credit_cents)
     .sort((a, b) => a.account.localeCompare(b.account));
@@ -102,7 +103,7 @@ export function bwa(app: App, locationId: string, from: string, to: string, opts
     const sign = acc.type === 'income' ? -1 : 1; // debit-positive → income/cost positive
     const cents = sign * r.net;
     let g = groups.get(grp);
-    if (!g) groups.set(grp, (g = { group: grp, label: GROUP_LABELS[grp] ?? grp, type: acc.type, cents: 0, accounts: [], ...(opts.months ? { months: months.map(() => 0) } : {}) }));
+    if (!g) groups.set(grp, (g = { group: grp, label: GROUP_LABELS[grp] ? tApp()(GROUP_LABELS[grp]) : grp, type: acc.type, cents: 0, accounts: [], ...(opts.months ? { months: months.map(() => 0) } : {}) }));
     g.cents += cents;
     let a = g.accounts.find((x) => x.account === r.account);
     if (!a) g.accounts.push((a = { account: r.account, name: acc.name, cents: 0 }));
@@ -273,7 +274,7 @@ export function euer(app: App, locationId: string, from: string, to: string) {
       if (x.type !== type) continue;
       const grp = x.group || (type === 'income' ? 'other_income' : 'other_costs');
       let g = map.get(grp);
-      if (!g) map.set(grp, (g = { group: grp, label: GROUP_LABELS[grp] ?? grp, net_cents: 0, accounts: [] }));
+      if (!g) map.set(grp, (g = { group: grp, label: GROUP_LABELS[grp] ? tApp()(GROUP_LABELS[grp]) : grp, net_cents: 0, accounts: [] }));
       g.net_cents += x.net;
       let a = g.accounts.find((y) => y.account === x.account);
       if (!a) g.accounts.push((a = { account: x.account, name: chart.get(x.account)?.name ?? x.account, net_cents: 0 }));
@@ -329,7 +330,7 @@ export function vatPeriod(period: string): { from: string; to: string; label: st
     const first = (Number(m[2]) - 1) * 3 + 1;
     const lastMonth = first + 2;
     const last = new Date(Date.UTC(Number(m[1]), lastMonth, 0)).getUTCDate();
-    return { from: `${m[1]}-${String(first).padStart(2, '0')}-01`, to: `${m[1]}-${String(lastMonth).padStart(2, '0')}-${last}`, label: `${m[2]}. Quartal ${m[1]}` };
+    return { from: `${m[1]}-${String(first).padStart(2, '0')}-01`, to: `${m[1]}-${String(lastMonth).padStart(2, '0')}-${last}`, label: tApp()('{q}. Quartal {year}', { q: m[2], year: m[1] }) };
   }
   m = /^(\d{4})$/.exec(period);
   if (m) return { from: `${m[1]}-01-01`, to: `${m[1]}-12-31`, label: m[1] };
@@ -361,6 +362,7 @@ export function ustva(app: App, locationId: string, period: string) {
   const small = sumBy(out, ['kl'], 'net');
   const outputTax = tax19 + tax7 + rcTax;
   const inputTax = input + rcTax;
+  const t = tApp();
   const lines: VatLine[] = [
     { kz: '81', label: 'Lieferungen und sonstige Leistungen zu 19 %', base_cents: base19, tax_cents: tax19 },
     { kz: '86', label: 'Lieferungen und sonstige Leistungen zu 7 %', base_cents: base7, tax_cents: tax7 },
@@ -376,9 +378,9 @@ export function ustva(app: App, locationId: string, period: string) {
     label,
     from,
     to,
-    method: settings.vat_method === 'ist' ? 'Ist-Versteuerung (nach vereinnahmten Entgelten)' : 'Soll-Versteuerung (nach vereinbarten Entgelten)',
+    method: t(settings.vat_method === 'ist' ? 'Ist-Versteuerung (nach vereinnahmten Entgelten)' : 'Soll-Versteuerung (nach vereinbarten Entgelten)'),
     small_business: settings.vat_mode === 'small',
-    lines,
+    lines: lines.map((l) => ({ ...l, label: t(l.label) })),
     tax_free_cents: free,
     small_business_revenue_cents: small,
     output_tax_cents: outputTax,
@@ -386,7 +388,7 @@ export function ustva(app: App, locationId: string, period: string) {
     // Kennzahl 83: Umsatzsteuer minus Vorsteuer; positive = Zahllast, negative = Erstattung.
     balance_cents: outputTax - inputTax,
     kz83_cents: outputTax - inputTax,
-    note: 'Übersicht zur Vorbereitung für den Steuerberater – keine Übermittlung an ELSTER, keine Steuerberatung.',
+    note: t('Übersicht zur Vorbereitung für den Steuerberater – keine Übermittlung an ELSTER, keine Steuerberatung.'),
   };
 }
 

@@ -6,6 +6,7 @@ import { publicPage } from '../core/page.js';
 import { escapeHtml } from '../core/template.js';
 import { hashPasswordAsync, id, now, safeEqual, verifyPasswordAsync } from '../core/util.js';
 import type { Tool } from './mcp.js';
+import { tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Passwortgeschützte Seiten – docs/sites.md#password-protection. A password for one page or the whole site (members' price
@@ -47,17 +48,18 @@ const triesDone = (key: string) => void tries.delete(key);
 export const lockCookieName = (lockId: string) => `pghl_sl_${lockId.replace(/[^A-Za-z0-9]/g, '')}`;
 export const lockCookieValue = (secret: string, lockId: string, version: number) => createHmac('sha256', secret).update(`site-lock:${lockId}:${version}`).digest('base64url');
 
-function lockForm(o: { lockId: string; back: string; hint: string; title: string; error?: string; color?: string }): string {
+function lockForm(o: { lockId: string; back: string; hint: string; title: string; error?: string; color?: string; t: STFn }): string {
+  const t = o.t;
   const body = `<div class="wrap"><div class="card" style="max-width:420px;margin:12vh auto">
 <h1>🔒 ${escapeHtml(o.title)}</h1>
-<p class="muted">Diese Seite ist passwortgeschützt.${o.hint ? ` ${escapeHtml(o.hint)}` : ''}</p>
+<p class="muted">${escapeHtml(t('Diese Seite ist passwortgeschützt.'))}${o.hint ? ` ${escapeHtml(o.hint)}` : ''}</p>
 ${o.error ? `<p role="alert" style="color:#b91c1c">${escapeHtml(o.error)}</p>` : ''}
 <form method="post" action="/api/site-unlock">
 <input type="hidden" name="lock" value="${escapeHtml(o.lockId)}">
 <input type="hidden" name="back" value="${escapeHtml(o.back)}">
-<label for="pw">Passwort</label>
+<label for="pw">${escapeHtml(t('Passwort'))}</label>
 <input id="pw" name="password" type="password" required autocomplete="current-password" autofocus>
-<button type="submit" style="margin-top:12px">Öffnen</button>
+<button type="submit" style="margin-top:12px">${escapeHtml(t('Öffnen'))}</button>
 </form></div></div>`;
   return publicPage({ title: o.title, body, color: o.color, head: '<meta name="robots" content="noindex, nofollow">' });
 }
@@ -133,16 +135,17 @@ export const siteProtectModule: Module = {
           return undefined;
         }
       })();
-      const title = lock.page_name || lock.site_name || 'Geschützte Seite';
+      const t = tLoc(app, lock.location_id);
+      const title = lock.page_name || lock.site_name || t('Geschützte Seite');
       // Counted before the comparison (see tooMany); verifyPasswordAsync compares in constant time.
       if (tooMany(key)) {
-        const r = html(lockForm({ lockId: lock.id, back, hint: lock.hint, title, color, error: 'Zu viele Versuche – bitte in einigen Minuten erneut.' }), 429);
+        const r = html(lockForm({ lockId: lock.id, back, hint: lock.hint, title, color, error: t('Zu viele Versuche – bitte in einigen Minuten erneut.'), t }), 429);
         r.headers['cache-control'] = 'no-store';
         return r;
       }
       const ok = await verifyPasswordAsync(String(ctx.body?.password ?? ''), lock.password_hash);
       if (!ok) {
-        const r = html(lockForm({ lockId: lock.id, back, hint: lock.hint, title, color, error: 'Das Passwort stimmt nicht.' }), 401);
+        const r = html(lockForm({ lockId: lock.id, back, hint: lock.hint, title, color, error: t('Das Passwort stimmt nicht.'), t }), 401);
         r.headers['cache-control'] = 'no-store';
         return r;
       }
@@ -153,7 +156,7 @@ export const siteProtectModule: Module = {
 
     const lockedHeaders = () => ({ 'cache-control': 'private, no-store', 'x-robots-tag': 'noindex' });
     const opened = (ctx: Ctx, lock: any) => safeEqual(ctx.cookies?.[lockCookieName(lock.id)] ?? '', lockCookieValue(secret, lock.id, lock.version));
-    const formFor = (ctx: Ctx, f: any, lock: any, title: string) => lockForm({ lockId: lock.id, back: safeBack(`${ctx.url.pathname}${ctx.url.search}`), hint: lock.hint, title, color: f.settings?.color });
+    const formFor = (ctx: Ctx, f: any, lock: any, title: string) => lockForm({ lockId: lock.id, back: safeBack(`${ctx.url.pathname}${ctx.url.search}`), hint: lock.hint, title, color: f.settings?.color, t: tLoc(app, f.location_id) });
 
     // A page's own lock wins over the site's; the right cookie lets the page through.
     app.services.pageServe = [
@@ -180,7 +183,7 @@ export const siteProtectModule: Module = {
       const site = f?.id ? db.get<any>('SELECT id, hint, version FROM site_locks WHERE funnel_id = ? AND page_id IS NULL', f.id) : undefined;
       if (site && !(segments.length === 1 && OPEN_PATHS.has(segments[0]))) {
         let lock = site;
-        let title = String(f.settings?.site_name || f.name || 'Geschützte Seite');
+        let title = String(f.settings?.site_name || f.name || tLoc(app, f.location_id)('Geschützte Seite'));
         if (segments.length <= 1) {
           const page = parseJson(
             segments.length

@@ -4,6 +4,7 @@ import { addDaysYmd, ymdInTz, zonedToUtc } from '../core/time.js';
 import { now } from '../core/util.js';
 import { notifyTeam } from '../services/messaging.js';
 import { PRIORITIES, raisePriority, validTz } from '../services/helpdesk.js';
+import { tCtx, tLoc, tUser } from '../i18n/index.js';
 import { SLA_BREACHED_SQL, SLA_WARNING_SQL, addTicketEvent, agentsOf, getTicketRow, loadHelpdeskSettings, ticketBrief, ticketPipelines, updateTicket } from '../services/tickets.js';
 
 /**
@@ -15,6 +16,7 @@ import { SLA_BREACHED_SQL, SLA_WARNING_SQL, addTicketEvent, agentsOf, getTicketR
 
 const TRIGGERS = ['sla.warning', 'sla.breached'];
 const KIND_LABEL: Record<string, string> = { first_response: 'Erste Antwort', resolution: 'Lösung' };
+const PRIO_LABEL: Record<string, string> = { niedrig: 'Niedrig', normal: 'Normal', hoch: 'Hoch', dringend: 'Dringend' };
 
 export const helpdeskSlaModule: Module = {
   name: 'helpdesk-sla',
@@ -54,31 +56,37 @@ export const helpdeskSlaModule: Module = {
           const col = kind === 'first_response' ? 'sla_first_state' : 'sla_resolution_state';
           // Claim the transition so a parallel tick can't fire it twice.
           if (!db.run(`UPDATE tickets SET ${col} = ? WHERE id = ? AND ${col} != ?${type === 'warning' ? ` AND ${col} = ''` : ''}`, type, t.id, type).changes) continue;
-          const label = `${KIND_LABEL[kind]}: SLA ${type === 'warning' ? 'läuft bald ab' : 'überschritten'}`;
+          // The timeline entry is a record of the sub-account; the owner's notifications read in the owner's language.
+          const tl = tLoc(app, t.location_id);
+          const slaLabel = (tx: typeof tl) => tx(type === 'warning' ? '{kind}: SLA läuft bald ab' : '{kind}: SLA überschritten', { kind: tx(KIND_LABEL[kind]) });
+          const label = slaLabel(tl);
           addTicketEvent(app, t, type === 'warning' ? 'sla_warning' : 'sla_breached', { body: label, data: { kind, due } });
           const fresh = getTicketRow(app, t.location_id, t.id);
           app.events.emit(t.location_id, `sla.${type}`, { contactId: fresh.contact_id, ticketId: fresh.id, ticket: ticketBrief(app, fresh), slaKind: kind, dueAt: due });
           out.push({ ticketId: t.id, kind, type });
           if (type === 'warning' && fresh.owner_id) {
-            void Promise.resolve(app.services.pushNotify?.({ userIds: [fresh.owner_id], kind: 'tasks', title: `SLA läuft bald ab: #${fresh.number}`, body: `${KIND_LABEL[kind]} – ${fresh.subject}`, url: `/app/tickets/${fresh.id}`, tag: `sla-${fresh.id}` })).catch(() => {});
+            const tu = tUser(app as never, fresh.owner_id);
+            void Promise.resolve(app.services.pushNotify?.({ userIds: [fresh.owner_id], kind: 'tasks', title: tu('SLA läuft bald ab: #{number}', { number: fresh.number }), body: `${tu(KIND_LABEL[kind])} – ${fresh.subject}`, url: `/app/tickets/${fresh.id}`, tag: `sla-${fresh.id}` })).catch(() => {});
           }
           if (type !== 'breached') continue;
           // Built-in escalation (more via workflows on sla.breached).
           if (s.sla.raise_priority_on_breach && fresh.priority !== 'dringend') {
             const p = raisePriority(fresh.priority);
             db.run('UPDATE tickets SET priority = ?, updated_at = ? WHERE id = ?', p, now(), fresh.id);
-            addTicketEvent(app, fresh, 'priority', { body: `Priorität: ${fresh.priority} → ${p} (SLA überschritten)`, data: { from: fresh.priority, to: p, via: 'sla' } });
+            addTicketEvent(app, fresh, 'priority', { body: tl('Priorität: {from} → {to} (SLA überschritten)', { from: tl(PRIO_LABEL[fresh.priority] ?? fresh.priority), to: tl(PRIO_LABEL[p] ?? p) }), data: { from: fresh.priority, to: p, via: 'sla' } });
           }
           if (s.sla.breach_team_id && fresh.team_id !== s.sla.breach_team_id && db.get('SELECT 1 FROM helpdesk_teams WHERE id = ? AND location_id = ?', s.sla.breach_team_id, t.location_id)) {
             updateTicket(app, t.location_id, fresh.id, { team_id: s.sla.breach_team_id, owner_id: 'round_robin' }, { via: 'sla' });
           }
           const owner = fresh.owner_id ? db.get('SELECT id, email FROM users WHERE id = ?', fresh.owner_id) : undefined;
           if (s.sla.notify_owner) {
-            const text = `${label}\n\n#${fresh.number} ${fresh.subject}\n${app.baseUrl()}/app/tickets/${fresh.id}`;
-            if (owner?.email) await notifyTeam(app, t.location_id, `SLA überschritten: Ticket #${fresh.number}`, text, owner.email).catch(() => undefined);
-            else await notifyTeam(app, t.location_id, `SLA überschritten: Ticket #${fresh.number}`, text).catch(() => undefined);
+            const tn = owner ? tUser(app as never, owner.id) : tl;
+            const text = `${slaLabel(tn)}\n\n#${fresh.number} ${fresh.subject}\n${app.baseUrl()}/app/tickets/${fresh.id}`;
+            const subject = tn('SLA überschritten: Ticket #{number}', { number: fresh.number });
+            if (owner?.email) await notifyTeam(app, t.location_id, subject, text, owner.email).catch(() => undefined);
+            else await notifyTeam(app, t.location_id, subject, text).catch(() => undefined);
             void Promise.resolve(
-              app.services.pushNotify?.({ ...(owner ? { userIds: [owner.id] } : { locationId: t.location_id }), kind: 'tasks', title: `SLA überschritten: #${fresh.number}`, body: fresh.subject, url: `/app/tickets/${fresh.id}`, tag: `sla-${fresh.id}`, urgency: 'high' }),
+              app.services.pushNotify?.({ ...(owner ? { userIds: [owner.id] } : { locationId: t.location_id }), kind: 'tasks', title: tn('SLA überschritten: #{number}', { number: fresh.number }), body: fresh.subject, url: `/app/tickets/${fresh.id}`, tag: `sla-${fresh.id}`, urgency: 'high' }),
             ).catch(() => {});
           }
         }
@@ -158,7 +166,7 @@ export const helpdeskSlaModule: Module = {
         warning_open: warning,
         by_status: [...byStatus.entries()].map(([name, n]) => ({ name, n })),
         by_priority: byPriority,
-        by_owner: [...byOwner.entries()].map(([oid, n]) => ({ owner_id: oid || null, name: oid ? (agents.get(oid) ?? 'Unbekannt') : 'Nicht zugewiesen', n })).sort((a, b) => b.n - a.n),
+        by_owner: [...byOwner.entries()].map(([oid, n]) => ({ owner_id: oid || null, name: oid ? (agents.get(oid) ?? tCtx(ctx)('Unbekannt')) : tCtx(ctx)('Nicht zugewiesen'), n })).sort((a, b) => b.n - a.n),
         created: period.length,
         resolved: period.filter((r) => r.resolved_at).length,
         sla: { first_response: compliance(period, 'first_response_at', 'first_response_due_at', 'sla_first_state'), resolution: compliance(period, 'resolved_at', 'resolution_due_at', 'sla_resolution_state') },

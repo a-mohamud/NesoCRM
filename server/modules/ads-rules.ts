@@ -5,6 +5,7 @@ import { id, now } from '../core/util.js';
 import { applyStatus, localOf, refreshRemote } from '../services/ads-ops.js';
 import { cleanRule, describeRule, evaluate, type Rule } from '../services/ads-rules.js';
 import { PLATFORMS, activity, audit, connected, loadConnection, type Platform } from '../services/ads-store.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Rules for running campaigns ("pause when the cost per lead is above 30 €"): checked every 30 minutes against fresh
@@ -68,6 +69,7 @@ export const adsRulesModule: Module = {
     };
 
     async function run(locationId: string, o: { dryRun?: boolean; fresh?: boolean } = {}): Promise<{ checked: number; hits: RuleHit[] }> {
+      const tl = tLoc(app, locationId);
       const rules = db.all<Rule>('SELECT * FROM ads_rules WHERE location_id = ? AND enabled = 1', locationId);
       const hits: RuleHit[] = [];
       if (!rules.length) return { checked: 0, hits };
@@ -96,22 +98,22 @@ export const adsRulesModule: Module = {
           if (!res.hit) continue;
           const recent = db.get('SELECT 1 FROM ads_rule_log WHERE rule_id = ? AND platform = ? AND campaign_id = ? AND created_at > ?', rule.id, c.platform, c.campaign_id, new Date(Date.now() - COOLDOWN_MS).toISOString());
           if (recent && !o.dryRun) continue;
-          const hit: RuleHit = { rule_id: rule.id, rule: rule.name, platform: c.platform, campaign_id: c.campaign_id, campaign: c.name, value: res.value, action: rule.action, result: o.dryRun ? 'würde ausgelöst' : '' };
+          const hit: RuleHit = { rule_id: rule.id, rule: rule.name, platform: c.platform, campaign_id: c.campaign_id, campaign: c.name, value: res.value, action: rule.action, result: o.dryRun ? tl('würde ausgelöst') : '' };
           if (!o.dryRun) {
             try {
               if (rule.action === 'pause') {
-                await applyStatus(app, undefined, { locationId, platform: c.platform, remoteId: c.campaign_id, status: 'paused', actor: `Regel „${rule.name}“`, why: describeRule(rule, row.currency) });
-                hit.result = 'pausiert';
-              } else hit.result = 'gemeldet';
+                await applyStatus(app, undefined, { locationId, platform: c.platform, remoteId: c.campaign_id, status: 'paused', actor: tl('Regel „{name}“', { name: rule.name }), why: describeRule(rule, row.currency) });
+                hit.result = tl('pausiert');
+              } else hit.result = tl('gemeldet');
             } catch (e) {
-              hit.result = `Fehler: ${(e as Error).message}`.slice(0, 300);
+              hit.result = tl('Fehler: {error}', { error: (e as Error).message }).slice(0, 300);
             }
             db.insert('ads_rule_log', { id: id(), location_id: locationId, rule_id: rule.id, rule_name: rule.name, platform: c.platform, campaign_id: c.campaign_id, campaign_name: c.name, value: res.value, action: rule.action, result: hit.result, created_at: now() });
             db.run('UPDATE ads_rules SET last_triggered_at = ?, times_triggered = times_triggered + 1 WHERE id = ?', now(), rule.id);
             const local = localOf(app, locationId, c.platform, c.campaign_id);
-            const summary = `Regel „${rule.name}“ hat bei „${c.name}“ ausgelöst: ${hit.result}`;
-            audit(app, undefined, 'ads.rule.trigger', summary, { locationId, entityId: rule.id, actor: `Regel „${rule.name}“` });
-            activity(app, locationId, { campaignId: local?.id, platform: c.platform, remoteId: c.campaign_id, kind: 'rule', summary, actor: `Regel „${rule.name}“`, via: 'system' });
+            const summary = tl('Regel „{name}“ hat bei „{campaign}“ ausgelöst: {result}', { name: rule.name, campaign: c.name, result: hit.result });
+            audit(app, undefined, 'ads.rule.trigger', summary, { locationId, entityId: rule.id, actor: tl('Regel „{name}“', { name: rule.name }) });
+            activity(app, locationId, { campaignId: local?.id, platform: c.platform, remoteId: c.campaign_id, kind: 'rule', summary, actor: tl('Regel „{name}“', { name: rule.name }), via: 'system' });
             app.events.emit(locationId, 'ads.rule_triggered', { ruleId: rule.id, rule: rule.name, platform: c.platform, campaignId: c.campaign_id, campaign: c.name, value: res.value, action: rule.action, result: hit.result });
           }
           hits.push(hit);
@@ -132,7 +134,7 @@ export const adsRulesModule: Module = {
       if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM ads_rules WHERE location_id = ?', ctx.locationId)!.n >= 50) throw bad('Höchstens 50 Regeln je Sub-Account');
       const row = { id: id(), location_id: ctx.locationId, ...r, enabled: ctx.body?.enabled === false ? 0 : 1, created_by: ctx.user?.id ?? null, created_at: now(), updated_at: now() };
       db.insert('ads_rules', row);
-      audit(app, ctx, 'ads.rule.create', `Regel „${row.name}“: ${describeRule(row)}`, { locationId: ctx.locationId, entityId: row.id });
+      audit(app, ctx, 'ads.rule.create', tApp()('Regel „{name}“: {rule}', { name: row.name, rule: describeRule(row) }), { locationId: ctx.locationId, entityId: row.id });
       return outRule(db.get('SELECT * FROM ads_rules WHERE id = ?', row.id));
     });
 

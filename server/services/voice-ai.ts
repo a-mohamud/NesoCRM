@@ -3,6 +3,7 @@ import { hmInTz } from '../core/time.js';
 import { normalizePhone } from '../core/util.js';
 import { EMAIL_RE, redactSecrets } from './ai-context.js';
 import { E164, attrs, clientNoun, twiml, xml, type DialClient } from './twilio.js';
+import { defaultLocale, tApp } from '../i18n/index.js';
 
 /**
  * Pure building blocks of the KI-Telefonagent: settings, TwiML for the speech loop (<Gather> →
@@ -16,17 +17,33 @@ export const VOICE_MODES = ['off', 'always', 'after_hours', 'no_answer'] as cons
 export type VoiceMode = (typeof VOICE_MODES)[number];
 
 /** German neural voices Twilio's <Say> offers (Amazon Polly and Google). */
-export const VOICES: { id: string; label: string }[] = [
-  { id: 'Polly.Vicki-Neural', label: 'Vicki – weiblich (Amazon Polly, neural)' },
-  { id: 'Polly.Daniel-Neural', label: 'Daniel – männlich (Amazon Polly, neural)' },
-  { id: 'Google.de-DE-Neural2-F', label: 'Google Neural2 F – weiblich' },
-  { id: 'Google.de-DE-Neural2-C', label: 'Google Neural2 C – weiblich' },
-  { id: 'Google.de-DE-Neural2-B', label: 'Google Neural2 B – männlich' },
-  { id: 'Google.de-DE-Neural2-D', label: 'Google Neural2 D – männlich' },
-  { id: 'Google.de-DE-Wavenet-F', label: 'Google WaveNet F – weiblich' },
-  { id: 'Google.de-DE-Wavenet-B', label: 'Google WaveNet B – männlich' },
+const VOICES_DE: { id: string; label: string }[] = [ // i18n-ignore – German voices
+  { id: 'Polly.Vicki-Neural', label: 'Vicki – weiblich (Amazon Polly, neural)' }, // i18n-ignore – German voices
+  { id: 'Polly.Daniel-Neural', label: 'Daniel – männlich (Amazon Polly, neural)' }, // i18n-ignore – German voices
+  { id: 'Google.de-DE-Neural2-F', label: 'Google Neural2 F – weiblich' }, // i18n-ignore – German voices
+  { id: 'Google.de-DE-Neural2-C', label: 'Google Neural2 C – weiblich' }, // i18n-ignore – German voices
+  { id: 'Google.de-DE-Neural2-B', label: 'Google Neural2 B – männlich' }, // i18n-ignore – German voices
+  { id: 'Google.de-DE-Neural2-D', label: 'Google Neural2 D – männlich' }, // i18n-ignore – German voices
+  { id: 'Google.de-DE-Wavenet-F', label: 'Google WaveNet F – weiblich' }, // i18n-ignore – German voices
+  { id: 'Google.de-DE-Wavenet-B', label: 'Google WaveNet B – männlich' }, // i18n-ignore – German voices
 ];
-export const LANGUAGE = 'de-DE';
+/** Neso fork: British English neural voices for an English-speaking instance (PGHL_LOCALE=en). */
+const VOICES_EN: { id: string; label: string }[] = [
+  { id: 'Polly.Amy-Neural', label: 'Amy – female (Amazon Polly, neural)' },
+  { id: 'Polly.Brian-Neural', label: 'Brian – male (Amazon Polly, neural)' },
+  { id: 'Polly.Emma-Neural', label: 'Emma – female (Amazon Polly, neural)' },
+  { id: 'Google.en-GB-Neural2-A', label: 'Google Neural2 A – female' },
+  { id: 'Google.en-GB-Neural2-B', label: 'Google Neural2 B – male' },
+  { id: 'Google.en-GB-Neural2-C', label: 'Google Neural2 C – female' },
+  { id: 'Google.en-GB-Neural2-D', label: 'Google Neural2 D – male' },
+  { id: 'Google.en-GB-Wavenet-A', label: 'Google WaveNet A – female' },
+];
+/** The phone agent speaks and listens in the instance language (sub-accounts use it too – i18n tLoc). */
+const GERMAN = defaultLocale() === 'de';
+export const VOICES: { id: string; label: string }[] = GERMAN ? VOICES_DE : VOICES_EN;
+export const LANGUAGE = GERMAN ? 'de-DE' : 'en-GB';
+/** The name of that language, for the model's instructions. */
+export const LANGUAGE_NAME = GERMAN ? 'German' : 'English'; // i18n-ignore – for the model
 
 export interface VoiceAiSettings {
   mode: VoiceMode;
@@ -55,9 +72,10 @@ export const DEFAULT_GREETING = 'Guten Tag, Sie sprechen mit dem digitalen Assis
 export const DEFAULT_GOODBYE = 'Vielen Dank für Ihren Anruf. Auf Wiederhören!';
 
 export function defaultVoiceSettings(): VoiceAiSettings {
+  const t = tApp();
   return {
     mode: 'off',
-    greeting: DEFAULT_GREETING,
+    greeting: t(DEFAULT_GREETING),
     persona: '',
     instructions: '',
     voice: VOICES[0].id,
@@ -75,7 +93,7 @@ export function defaultVoiceSettings(): VoiceAiSettings {
     stage_id: '',
     notify_email: true,
     notify_push: true,
-    goodbye: DEFAULT_GOODBYE,
+    goodbye: t(DEFAULT_GOODBYE),
   };
 }
 
@@ -89,7 +107,7 @@ export function withVoiceDefaults(stored: Partial<VoiceAiSettings> | null | unde
 const bool = (v: unknown) => v === true || v === 'true' || v === 1;
 const clampInt = (v: unknown, min: number, max: number, field: string) => {
   const n = Math.round(num(v, NaN));
-  if (!Number.isFinite(n) || n < min || n > max) throw bad(`${field}: ${min} bis ${max}`);
+  if (!Number.isFinite(n) || n < min || n > max) throw bad(tApp()('{field}: {min} bis {max}', { field: tApp()(field), min, max }));
   return n;
 };
 
@@ -100,15 +118,15 @@ export function cleanVoiceSettings(b: any, cur: VoiceAiSettings): VoiceAiSetting
     if (!VOICE_MODES.includes(b.mode)) throw bad('Unbekannter Modus');
     out.mode = b.mode;
   }
-  if (b.greeting !== undefined) out.greeting = str(b.greeting, 'Begrüßung', { max: 500 }) || DEFAULT_GREETING;
-  if (b.goodbye !== undefined) out.goodbye = str(b.goodbye, 'Verabschiedung', { max: 300 }) || DEFAULT_GOODBYE;
+  if (b.greeting !== undefined) out.greeting = str(b.greeting, 'Begrüßung', { max: 500 }) || tApp()(DEFAULT_GREETING);
+  if (b.goodbye !== undefined) out.goodbye = str(b.goodbye, 'Verabschiedung', { max: 300 }) || tApp()(DEFAULT_GOODBYE);
   if (b.persona !== undefined) out.persona = str(b.persona, 'Persona', { max: 2000 });
   if (b.instructions !== undefined) out.instructions = str(b.instructions, 'Anweisungen', { max: 6000 });
   if (b.voice !== undefined) {
     if (!VOICES.some((v) => v.id === b.voice)) throw bad('Unbekannte Stimme');
     out.voice = b.voice;
   }
-  if (b.language !== undefined && b.language !== LANGUAGE) throw bad('Sprache: nur Deutsch (de-DE)');
+  if (b.language !== undefined && b.language !== LANGUAGE) throw bad(tApp()('Sprache: nur {language}', { language: LANGUAGE }));
   if (b.max_minutes !== undefined) out.max_minutes = clampInt(b.max_minutes, 1, 30, 'Höchstdauer (Minuten)');
   if (b.max_turns !== undefined) out.max_turns = clampInt(b.max_turns, 2, 40, 'Höchstzahl Gesprächsrunden');
   if (b.transfer_number !== undefined) {
@@ -178,15 +196,15 @@ export function speakable(text: string, max = 600): string {
   return s;
 }
 
-/** "Montag, 5. Oktober, um 10 Uhr 30" in the calendar's zone. */
+/** "Montag, 5. Oktober, um 10 Uhr 30" (English: "Monday 5 October at 10:30") in the calendar's zone. */
 export function spokenWhen(at: Date | string, tz: string): string {
   const d = typeof at === 'string' ? new Date(at) : at;
-  const date = new Intl.DateTimeFormat('de-DE', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long' }).format(d);
+  const date = new Intl.DateTimeFormat(GERMAN ? 'de-DE' : 'en-GB', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long' }).format(d);
   const [h, m] = hmInTz(d, tz).split(':').map(Number);
-  return `${date}, um ${h} Uhr${m ? ` ${m}` : ''}`;
+  return GERMAN ? `${date}, um ${h} Uhr${m ? ` ${m}` : ''}` : `${date} at ${h}:${String(m).padStart(2, '0')}`; // i18n-ignore – spoken date format
 }
 
-const WEEKDAY = new Intl.DateTimeFormat('de-DE', { weekday: 'long', timeZone: 'UTC' });
+const WEEKDAY = new Intl.DateTimeFormat(GERMAN ? 'de-DE' : 'en-GB', { weekday: 'long', timeZone: 'UTC' });
 /** Free slots per day for the prompt: "2026-10-05 (Montag): 09:00, 09:30". */
 export function slotLines(days: { date: string; times: string[] }[]): string {
   return days
@@ -248,35 +266,36 @@ export function parseVoiceOutput(raw: string, allowed: readonly VoiceAction[] = 
   try {
     v = JSON.parse(String(raw ?? '').trim());
   } catch {
-    return { ok: false, error: 'Kein gültiges JSON' };
+    return { ok: false, error: 'no valid JSON' };
   }
-  if (!isObj(v)) return { ok: false, error: 'JSON-Objekt erwartet' };
+  // Diagnostics of the model's answer (shown in the call log as they are).
+  if (!isObj(v)) return { ok: false, error: 'JSON object expected' };
   const keys = Object.keys(v);
-  if (keys.length !== 3 || !['say', 'action', 'args'].every((k) => k in v)) return { ok: false, error: 'Felder say, action, args erwartet' };
+  if (keys.length !== 3 || !['say', 'action', 'args'].every((k) => k in v)) return { ok: false, error: 'fields say, action, args expected' };
   const { say, action, args } = v as Record<string, unknown>;
-  if (typeof say !== 'string' || say.length > 800) return { ok: false, error: 'say ungültig' };
-  if (typeof action !== 'string' || !(VOICE_ACTIONS as readonly string[]).includes(action)) return { ok: false, error: 'action unbekannt' };
-  if (!allowed.includes(action as VoiceAction)) return { ok: false, error: `Werkzeug ${action} ist hier nicht erlaubt` };
-  if (!isObj(args)) return { ok: false, error: 'args ungültig' };
+  if (typeof say !== 'string' || say.length > 800) return { ok: false, error: 'say invalid' };
+  if (typeof action !== 'string' || !(VOICE_ACTIONS as readonly string[]).includes(action)) return { ok: false, error: 'action unknown' };
+  if (!allowed.includes(action as VoiceAction)) return { ok: false, error: `tool ${action} is not allowed here` };
+  if (!isObj(args)) return { ok: false, error: 'args invalid' };
   const extra = Object.keys(args).filter((k) => !(ARG_KEYS as string[]).includes(k));
-  if (extra.length) return { ok: false, error: `args: unbekanntes Feld ${extra[0]}` };
+  if (extra.length) return { ok: false, error: `args: unknown field ${extra[0]}` };
   const a = {} as VoiceArgs;
   for (const k of ARG_KEYS) {
     const x = args[k] ?? '';
-    if (typeof x !== 'string') return { ok: false, error: `args.${k} ungültig` };
+    if (typeof x !== 'string') return { ok: false, error: `args.${k} invalid` };
     const t = x.trim();
-    if (t.length > ARG_MAX[k]) return { ok: false, error: `args.${k} zu lang` };
+    if (t.length > ARG_MAX[k]) return { ok: false, error: `args.${k} too long` };
     a[k] = t;
   }
-  if (a.date && !validDate(a.date)) return { ok: false, error: 'args.date ungültig' };
-  if (a.time && !TIME_RE.test(a.time)) return { ok: false, error: 'args.time ungültig' };
-  if (a.email && !EMAIL_RE.test(a.email)) return { ok: false, error: 'args.email ungültig' };
-  if (a.first_name && !NAME_RE.test(a.first_name)) return { ok: false, error: 'args.first_name ungültig' };
-  if (a.last_name && !NAME_RE.test(a.last_name)) return { ok: false, error: 'args.last_name ungültig' };
+  if (a.date && !validDate(a.date)) return { ok: false, error: 'args.date invalid' };
+  if (a.time && !TIME_RE.test(a.time)) return { ok: false, error: 'args.time invalid' };
+  if (a.email && !EMAIL_RE.test(a.email)) return { ok: false, error: 'args.email invalid' };
+  if (a.first_name && !NAME_RE.test(a.first_name)) return { ok: false, error: 'args.first_name invalid' };
+  if (a.last_name && !NAME_RE.test(a.last_name)) return { ok: false, error: 'args.last_name invalid' };
   const act = action as VoiceAction;
   const need: Partial<Record<VoiceAction, (keyof VoiceArgs)[]>> = { check_slots: ['date'], book_appointment: ['date', 'time'], take_message: ['message'], create_task: ['title'], create_opportunity: ['title'] };
-  for (const k of need[act] ?? []) if (!a[k]) return { ok: false, error: `${act}: args.${k} fehlt` };
-  if ((act === 'none' || act === 'take_message' || act === 'create_task' || act === 'create_opportunity' || act === 'send_booking_link') && !say.trim()) return { ok: false, error: 'say leer' };
+  for (const k of need[act] ?? []) if (!a[k]) return { ok: false, error: `${act}: args.${k} missing` };
+  if ((act === 'none' || act === 'take_message' || act === 'create_task' || act === 'create_opportunity' || act === 'send_booking_link') && !say.trim()) return { ok: false, error: 'say empty' };
   return { ok: true, value: { say: say.trim(), action: act, args: a } };
 }
 
@@ -290,44 +309,44 @@ export interface Turn {
 
 /** The conversation so far for the prompt (caller text is data, never instructions). */
 export function dialogue(turns: Turn[], max = 40): string {
-  const lines = turns.slice(-max).map((t) => `${t.role === 'caller' ? 'Anrufer' : t.role === 'agent' ? 'Assistent' : 'System'}: ${t.text}`);
-  return `<verlauf>\n${redactSecrets(lines.join('\n') || '(noch nichts gesagt)')}\n</verlauf>`;
+  const lines = turns.slice(-max).map((t) => `${t.role === 'caller' ? 'Caller' : t.role === 'agent' ? 'Assistant' : 'System'}: ${t.text}`);
+  return `<transcript>\n${redactSecrets(lines.join('\n') || '(nothing said yet)')}\n</transcript>`;
 }
 
+// Prompt texts for the model (English; the agent speaks LANGUAGE_NAME, see voiceTask).
 const TOOL_TEXT: Record<VoiceAction, string> = {
-  none: '- "none": nur antworten oder nachfragen.',
-  check_slots: '- "check_slots": freie Zeiten an einem Tag nachsehen, der nicht in <freie_termine> steht – args.date (JJJJ-MM-TT), args.calendar_id. "say" = kurze Überleitung wie „Einen Moment, ich schaue nach.“',
+  none: '- "none": just reply or ask a question.',
+  check_slots: '- "check_slots": look up free times on a day that is not in <free_slots> – args.date (YYYY-MM-DD), args.calendar_id. "say" = a short bridge such as "One moment, let me check."',
   book_appointment:
-    '- "book_appointment": Termin verbindlich buchen – erst, wenn der Anrufer Tag und Uhrzeit ausdrücklich bestätigt hat und sein Name bekannt ist. args.calendar_id, args.date (JJJJ-MM-TT), args.time (HH:MM, Ortszeit), args.first_name, args.last_name, optional args.email und args.message (Anliegen). Nur Zeiten aus <freie_termine> oder einem Werkzeug-Ergebnis. Die Bestätigung mit Datum und Uhrzeit spricht das System selbst – "say" leer lassen.',
-  take_message: '- "take_message": Nachricht für das Team aufnehmen (z. B. Rückrufwunsch): args.message mit Anliegen und wann der Anrufer erreichbar ist. Danach in "say" bestätigen, dass sich das Team meldet.',
-  create_task: '- "create_task": Aufgabe fürs Team anlegen (z. B. Angebot vorbereiten, Unterlagen schicken): args.title, Details in args.message.',
-  create_opportunity: '- "create_opportunity": bei konkretem Kaufinteresse (Angebot, Auftrag): args.title = was der Anrufer möchte, Details in args.message.',
-  send_booking_link: '- "send_booking_link": Link zur Online-Terminbuchung per SMS an die Anrufernummer schicken (args.calendar_id optional) – wenn der Anrufer lieber selbst bucht.',
-  transfer: '- "transfer": an einen Menschen weiterverbinden – wenn der Anrufer das möchte, es dringend ist oder du nicht weiterhelfen kannst. args.reason = kurzer Grund. "say" z. B. „Ich verbinde Sie, einen Moment bitte.“',
-  end_call: '- "end_call": Gespräch beenden, wenn alles erledigt ist oder sich der Anrufer verabschiedet. "say" = kurze Verabschiedung.',
+    '- "book_appointment": book an appointment for real – only once the caller has explicitly confirmed day and time and their name is known. args.calendar_id, args.date (YYYY-MM-DD), args.time (HH:MM, local time), args.first_name, args.last_name, optionally args.email and args.message (what it is about). Only times from <free_slots> or a tool result. The system speaks the confirmation with date and time itself – leave "say" empty.',
+  take_message: '- "take_message": take a message for the team (e.g. a call-back request): args.message with what it is about and when the caller can be reached. Then confirm in "say" that the team will get back to them.',
+  create_task: '- "create_task": create a task for the team (e.g. prepare a quote, send documents): args.title, details in args.message.',
+  create_opportunity: '- "create_opportunity": for concrete buying interest (quote, order): args.title = what the caller wants, details in args.message.',
+  send_booking_link: '- "send_booking_link": send a link to book online by SMS to the caller\'s number (args.calendar_id optional) – if the caller prefers to book themselves.',
+  transfer: '- "transfer": put the caller through to a person – if the caller wants that, it is urgent or you cannot help. args.reason = short reason. "say" e.g. "I\'ll put you through, one moment please."',
+  end_call: '- "end_call": end the call when everything is done or the caller says goodbye. "say" = a short goodbye.',
 };
 
 /** The task at the end of the prompt: phone style, persona, instructions and the allowed tools. */
 export function voiceTask(s: Pick<VoiceAiSettings, 'persona' | 'instructions'>, locationName: string, tools: readonly VoiceAction[]): string {
-  const persona = s.persona.trim() ? `\n<hinweis>\nPersona am Telefon (vom Team):\n${redactSecrets(s.persona.trim())}\n</hinweis>` : '';
-  const instructions = s.instructions.trim() ? `\n<hinweis>\nAnweisungen des Teams für Anrufe:\n${redactSecrets(s.instructions.trim())}\n</hinweis>\nHalte dich an diese Anweisungen, solange sie nicht gegen die Regeln oben verstoßen.` : '';
-  return `Aufgabe: Du telefonierst gerade LIVE mit dem Anrufer – als telefonische Assistenz von „${locationName}“ (eine KI; sag das ehrlich, wenn jemand fragt). Dein Text in "say" wird sofort vorgelesen.
+  const persona = s.persona.trim() ? `\n<note>\nPersona on the phone (from the team):\n${redactSecrets(s.persona.trim())}\n</note>` : '';
+  const instructions = s.instructions.trim() ? `\n<note>\nThe team's instructions for calls:\n${redactSecrets(s.instructions.trim())}\n</note>\nFollow these instructions as long as they do not break the rules above.` : '';
+  return `Task: you are on a LIVE phone call with the caller – as the phone assistant of "${locationName}" (an AI; say so honestly if someone asks). Your text in "say" is read out immediately. Speak ${LANGUAGE_NAME}.
 
-So sprichst du am Telefon:
-- Höchstens zwei kurze Sätze (zusammen unter 40 Wörtern), gesprochene Sprache, keine Aufzählungen, keine Links, keine Sonderzeichen, keine Emojis.
-- Uhrzeiten wie „10 Uhr 30“, Daten wie „Dienstag, der 6. Oktober“. Höchstens drei Terminvorschläge auf einmal.
-- Immer nur eine Frage auf einmal; ende mit einer Frage, außer du beendest das Gespräch.
-- Ist etwas unklar oder schlecht verstanden, frag kurz nach, statt zu raten. Namen und E-Mail-Adressen zur Kontrolle wiederholen.
-- Sprich den Anrufer so an, wie es die Persona vorgibt (sonst mit „Sie“).${persona}${instructions}
+How you speak on the phone:
+- At most two short sentences (together under 40 words), spoken language, no lists, no links, no special characters, no emojis.
+- Times like "10:30", dates like "Tuesday the 6th of October". At most three appointment suggestions at once.
+- Only one question at a time; end with a question unless you are ending the call.
+- If something is unclear or hard to understand, ask briefly instead of guessing. Repeat names and email addresses back to check them.
+- Address the caller as the persona says (otherwise politely and formally).${persona}${instructions}
 
-Werkzeuge – Feld "action", Angaben in "args" (nicht benötigte Felder als ""):
+Tools – field "action", details in "args" (fields you don't need as ""):
 ${tools.map((t) => TOOL_TEXT[t]).join('\n')}
-Nennt der Anrufer Vor- und Nachnamen oder E-Mail, trag sie bei jeder Aktion in args.first_name, args.last_name und args.email ein.
-Antworte nur als JSON: {"say": "…", "action": "…", "args": {…}}.`;
+If the caller gives their first and last name or email, put them into args.first_name, args.last_name and args.email with every action.
+Answer only as JSON: {"say": "…", "action": "…", "args": {…}}.`;
 }
 
-export const SUMMARY_TASK_VOICE =
-  'Aufgabe: Fasse dieses Telefonat zwischen dem KI-Telefonassistenten und dem Anrufer für das Team zusammen. "summary": 2–4 Sätze (wer, Anliegen, was erledigt wurde, was offen ist). "next_step": der sinnvollste nächste Schritt fürs Team in einem Satz (leer, wenn nichts zu tun ist).';
+export const SUMMARY_TASK_VOICE = `Task: summarise this phone call between the AI phone assistant and the caller for the team, in ${LANGUAGE_NAME}. "summary": 2–4 sentences (who, what it was about, what was done, what is still open). "next_step": the most useful next step for the team in one sentence (empty if there is nothing to do).`;
 
 // --- outcome -------------------------------------------------------------------------------
 

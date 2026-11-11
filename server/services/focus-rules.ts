@@ -171,16 +171,16 @@ function sayFor(intent: Intent, m: Mods, L: (de: string, en: string) => string, 
       return m.mine ? L('Hier sind deine offenen Deals und der Wert deiner Pipeline.', 'Here are your open deals and the value of your pipeline.') : L('Hier sind die offenen Deals und der Wert der Pipeline.', 'Here are the open deals and the value of the pipeline.');
     case 'revenue': {
       const r = rangeWords(m.range ?? 'this_month', lang);
-      return L(`So steht dein Umsatz ${r}.`, `This is your revenue ${r}.`);
+      return L(`So steht dein Umsatz ${r}.`, `This is your revenue ${r}.`); // i18n-ignore (de/en pair)
     }
     case 'overdue':
-      return L('Das ist überfällig: Aufgaben, Rechnungen und Deals, die liegen geblieben sind.', 'This is overdue: tasks, invoices and deals that have been left lying.');
+      return L('Das ist überfällig: Aufgaben, Rechnungen und Deals, die liegen geblieben sind.', "Here's what's overdue: tasks, invoices and deals that have slipped.");
     case 'tasks':
       return L('Deine Aufgaben – was heute ansteht und was überfällig ist.', 'Your tasks – what is due today and what is overdue.');
     case 'appointments':
       return m.range === 'today' ? L('Das sind deine Termine für heute.', 'These are your appointments for today.') : m.tomorrow ? L('Das sind deine Termine für heute und morgen.', 'These are your appointments for today and tomorrow.') : L('Das sind deine nächsten Termine.', 'These are your next appointments.');
     case 'contacts':
-      return L(`Das sind die neuen Kontakte ${rangeWords(m.range ?? 'last_7_days', lang)}.`, `These are the new contacts ${rangeWords(m.range ?? 'last_7_days', 'en')}.`);
+      return L(`Das sind die neuen Kontakte ${rangeWords(m.range ?? 'last_7_days', lang)}.`, `These are the new contacts ${rangeWords(m.range ?? 'last_7_days', 'en')}.`); // i18n-ignore (de/en pair)
     case 'inbox':
       return L('Das sind deine ungelesenen Nachrichten.', 'These are your unread messages.');
     case 'tickets':
@@ -229,7 +229,7 @@ export function planRules(text: string, lang: Lang = 'de', history: string[] = [
   const ordered = [...tiles.filter((x) => x.type === 'kpi').slice(0, 4), ...tiles.filter((x) => x.type !== 'kpi')].slice(0, 8);
   let say: string;
   if (wantsAction) say = L('Fokus zeigt nur an und ändert nichts. Das kann der HyperLevel Agent für dich erledigen – mit „Im Agent fortsetzen“.', 'Focus only shows things and never changes anything. The HyperLevel Agent can do this for you – use “Continue in Agent”.');
-  else if (fallback) say = L('Dazu habe ich keine passende Ansicht gefunden – hier ist deine Übersicht für heute.', 'I could not find a matching view for that – here is your overview for today.');
+  else if (fallback) say = L('Dazu habe ich keine passende Ansicht gefunden – hier ist deine Übersicht für heute.', "I couldn't find a matching view for that – here's your overview for today.");
   else say = intents.slice(0, 2).map((i) => sayFor(i, mods, L, lang)).join(' ');
   return { intents, fallback, say, tiles: ordered, action: wantsAction ? text.trim().slice(0, 300) : null };
 }

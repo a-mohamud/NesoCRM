@@ -8,6 +8,7 @@ import { now } from '../core/util.js';
 import { logActivity } from './contacts.js';
 import { groupSettings, leaderboard, memberPoints, type Level } from './community.js';
 import { award, notify } from './community-actions.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Gamification on top of points and levels: badges (by hand or by rule), perks that unlock with a level (coupon code, file, link,
@@ -71,7 +72,7 @@ export function cleanBadge(input: any, cur: Partial<Badge> = {}) {
   }
   if (b.rule !== undefined) {
     const type = String(b.rule?.type ?? 'manual') as RuleType;
-    if (!(type in RULE_LABELS)) throw bad(`Regel: ${Object.keys(RULE_LABELS).join(', ')}`);
+    if (!(type in RULE_LABELS)) throw bad(tApp()('Regel: {types}', { types: Object.keys(RULE_LABELS).join(', ') }));
     const value = Math.round(Number(b.rule?.value ?? 0));
     if (type !== 'manual' && (!Number.isFinite(value) || value < 1 || value > 1_000_000)) throw bad('Regel: der Wert muss mindestens 1 sein');
     out.rule = { type, value: type === 'manual' ? 0 : value };
@@ -152,9 +153,10 @@ export function awardBadge(app: App, g: any, contactId: string, badge: Badge, by
   if (!app.db.get('SELECT 1 FROM community_members WHERE group_id = ? AND contact_id = ?', g.id, contactId)) throw new HttpError(409, 'Diese Person ist kein Mitglied der Gruppe');
   const r = app.db.run('INSERT OR IGNORE INTO community_badge_awards (badge_id, contact_id, location_id, group_id, awarded_at, awarded_by, reason) VALUES (?, ?, ?, ?, ?, ?, ?)', badge.id, contactId, g.location_id, g.id, now(), by, reason.slice(0, 300));
   if (!r.changes) return false;
-  logActivity(app, g.location_id, contactId, 'community.badge', `Abzeichen „${badge.name}“ erhalten (${g.name})`);
+  const t = tLoc(app, g.location_id);
+  logActivity(app, g.location_id, contactId, 'community.badge', t('Abzeichen „{badge}“ erhalten ({group})', { badge: badge.name, group: g.name }));
   if (badge.points) award(app, g, contactId, badge.points, 'badge', badge.id);
-  notify(app, g, [contactId], { kind: 'badge', text: `Neues Abzeichen: ${badge.emoji ? `${badge.emoji} ` : ''}${badge.name}` });
+  notify(app, g, [contactId], { kind: 'badge', text: t('Neues Abzeichen: {badge}', { badge: `${badge.emoji ? `${badge.emoji} ` : ''}${badge.name}` }) });
   app.events.emit(g.location_id, 'community.badge_earned', { contactId, groupId: g.id, group: { id: g.id, name: g.name }, badge: { id: badge.id, name: badge.name, emoji: badge.emoji }, by });
   return true;
 }
@@ -209,11 +211,11 @@ export function cleanPerk(input: any, levels: Level[], cur: Partial<Perk> = {}) 
   const b = input ?? {};
   const out: Record<string, any> = {};
   const kind = (b.kind ?? cur.kind ?? 'coupon') as PerkKind;
-  if (!(kind in PERK_KINDS)) throw bad(`Art: ${Object.keys(PERK_KINDS).join(', ')}`);
+  if (!(kind in PERK_KINDS)) throw bad(tApp()('Art: {kinds}', { kinds: Object.keys(PERK_KINDS).join(', ') }));
   out.kind = kind;
   if (b.level !== undefined || !cur.level) {
     const l = Math.round(Number(b.level ?? 2));
-    if (!Number.isFinite(l) || l < 1 || l > levels.length) throw bad(`Level: 1 bis ${levels.length}`);
+    if (!Number.isFinite(l) || l < 1 || l > levels.length) throw bad(tApp()('Level: 1 bis {max}', { max: levels.length }));
     out.level = l;
   }
   if (b.title !== undefined || !cur.title) out.title = str(b.title, 'Titel', { required: true, max: 120 });
@@ -270,7 +272,7 @@ const perkDir = (app: App) => join(app.config.dataDir, 'community', 'perks');
 export function savePerkFile(app: App, perk: Perk, name: unknown, data: unknown): Partial<Perk> {
   const filename = String(name ?? '').replace(/[\\/\0]/g, '_').replace(/[^\p{L}\p{N} ._()+-]/gu, '').trim().slice(0, 120);
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-  if (!filename || !FILE_TYPES[ext]) throw bad(`Dateityp nicht erlaubt (erlaubt: ${Object.keys(FILE_TYPES).join(', ')})`);
+  if (!filename || !FILE_TYPES[ext]) throw bad(tApp()('Dateityp nicht erlaubt (erlaubt: {types})', { types: Object.keys(FILE_TYPES).join(', ') }));
   const m = /^data:[^;,]*;base64,(.*)$/s.exec(String(data ?? ''));
   const buf = Buffer.from(m ? m[1] : String(data ?? ''), 'base64');
   if (!buf.length) throw bad('Die Datei ist leer');
@@ -322,7 +324,7 @@ export function channelRules(app: App, groupId: string): ChannelRule[] {
 export function cleanRule(app: App, g: { id: string; location_id: string }, input: any): { min_level: number; tier_ids: string[] } {
   const levels = groupSettings(g as any).levels.length || 9;
   const lvl = Math.round(Number(input?.min_level ?? 1));
-  if (!Number.isFinite(lvl) || lvl < 1 || lvl > Math.max(levels, 9)) throw bad(`Level: 1 bis ${levels}`);
+  if (!Number.isFinite(lvl) || lvl < 1 || lvl > Math.max(levels, 9)) throw bad(tApp()('Level: 1 bis {max}', { max: levels }));
   const tiers: string[] = Array.isArray(input?.tier_ids) ? [...new Set<string>(input.tier_ids.map(String))] : [];
   if (tiers.length) {
     const ok = new Set(app.db.all<{ id: string }>('SELECT id FROM community_tiers WHERE group_id = ?', g.id).map((r) => r.id));
@@ -332,8 +334,9 @@ export function cleanRule(app: App, g: { id: string; location_id: string }, inpu
 }
 
 /** channel id → why this member can't open it (levels and tiers). */
-export function closedByRules(app: App, g: { id: string }, contactId: string): Map<string, string> {
+export function closedByRules(app: App, g: { id: string; location_id?: string }, contactId: string): Map<string, string> {
   const out = new Map<string, string>();
+  const t = tLoc(app, g.location_id);
   const rules = channelRules(app, g.id).filter((r) => r.min_level > 1 || r.tier_ids.length);
   if (!rules.length) return out;
   const lvl = app.db.get<{ level: number }>('SELECT level FROM community_members WHERE group_id = ? AND contact_id = ?', g.id, contactId)?.level ?? 1;
@@ -341,9 +344,10 @@ export function closedByRules(app: App, g: { id: string }, contactId: string): M
   for (const r of rules) {
     if (r.tier_ids.length && !r.tier_ids.includes(tier)) {
       const names = r.tier_ids.map((t) => app.db.get<{ name: string }>('SELECT name FROM community_tiers WHERE id = ?', t)?.name).filter(Boolean);
-      out.set(r.channel_id, `Dieser Kanal gehört zu ${names.length > 1 ? 'den Stufen' : 'der Stufe'} ${names.map((n) => `„${n}“`).join(', ')}.`);
+      const list = names.map((n) => `„${n}“`).join(', ');
+      out.set(r.channel_id, names.length > 1 ? t('Dieser Kanal gehört zu den Stufen {tiers}.', { tiers: list }) : t('Dieser Kanal gehört zu der Stufe {tiers}.', { tiers: list }));
     } else if (lvl < r.min_level) {
-      out.set(r.channel_id, `Dieser Kanal öffnet sich ab Level ${r.min_level}. Du bist auf Level ${lvl} – sammle Punkte mit Beiträgen, Kommentaren und Check-ins.`);
+      out.set(r.channel_id, t('Dieser Kanal öffnet sich ab Level {min}. Du bist auf Level {level} – sammle Punkte mit Beiträgen, Kommentaren und Check-ins.', { min: r.min_level, level: lvl }));
     }
   }
   return out;
@@ -361,8 +365,9 @@ export function shiftMonth(key: string, by: number): string {
 }
 export const monthStart = (key: string, tz: string) => zonedToUtc(`${key}-01`, '00:00', tz);
 
-export const MONTHS_DE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-export const monthLabel = (key: string) => `${MONTHS_DE[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
+/** "2026-03" → "March 2026" (or "März 2026" in German). */
+export const monthLabel = (key: string, locale: string = tApp().locale) =>
+  new Date(Date.UTC(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, 1)).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
 export function boardBetween(app: App, groupId: string, from: Date, to: Date, limit = 50) {
   return app.db.all<{ contact_id: string; points: number }>(
@@ -398,7 +403,8 @@ export function archiveMonths(app: App, at = new Date()): number {
     const rows = boardBetween(app, g.id, monthStart(last, tz), monthStart(shiftMonth(last, 1), tz), 10);
     app.db.run('INSERT OR IGNORE INTO community_leaderboard_archive (group_id, location_id, month, rows, created_at) VALUES (?, ?, ?, ?, ?)', g.id, g.location_id, last, JSON.stringify(rows), now());
     n++;
-    rows.slice(0, 3).forEach((r, i) => notify(app, g, [r.contact_id], { kind: 'level', text: `${['🥇', '🥈', '🥉'][i]} Platz ${i + 1} im ${monthLabel(last)} – ${r.points} Punkte. Glückwunsch!` }));
+    const t = tLoc(app, g.location_id);
+    rows.slice(0, 3).forEach((r, i) => notify(app, g, [r.contact_id], { kind: 'level', text: t('{medal} Platz {place} im {month} – {points} Punkte. Glückwunsch!', { medal: ['🥇', '🥈', '🥉'][i], place: i + 1, month: monthLabel(last, t.locale), points: r.points }) }));
   }
   return n;
 }

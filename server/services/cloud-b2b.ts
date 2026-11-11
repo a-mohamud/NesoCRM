@@ -1,3 +1,4 @@
+import { tApp } from '../i18n/index.js';
 /**
  * B2B-only signup of the hosted service (docs/cloud.md#b2b-only-signup): with `b2b_only` on (the default) the signup needs the
  * company name and either a VAT ID or the confirmation "I order as a business (§ 14 BGB)". Format check only – Stripe Tax
@@ -24,4 +25,4 @@ export function checkBusiness(b: Record<string, unknown>, on: boolean): { error?
 }
 
 /** The line for the customer's history. */
-export const businessNote = (d: Business) => [d.confirmed ? 'Bestellung als Unternehmen bestätigt (§ 14 BGB)' : '', d.vat_id ? `USt-IdNr. ${d.vat_id}` : ''].filter(Boolean).join(' · ');
+export const businessNote = (d: Business) => [d.confirmed ? tApp()('Bestellung als Unternehmen bestätigt (§ 14 BGB)') : '', d.vat_id ? tApp()('USt-IdNr. {id}', { id: d.vat_id }) : ''].filter(Boolean).join(' · ');

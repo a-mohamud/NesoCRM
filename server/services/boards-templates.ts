@@ -11,6 +11,7 @@ import { cleanAccent, cleanIcon, cleanLine, emptySpec, LIMITS, type BoardState }
 import { applyPatch, type Op, type PatchEnv } from './boards-patch.js';
 import { cleanConfig, type WidgetRegistry } from './boards-widgets.js';
 import { KPI_PRESETS, CHART_PRESETS } from './boards-presets.js';
+import { tApp, translator, type STFn } from '../i18n/index.js';
 
 export interface TemplateWidget {
   type: string;
@@ -62,7 +63,7 @@ export const STARTERS: Starter[] = [
       w('inbox', 8, 2, 4, 4, { limit: 6 }),
       w('chart', 0, 6, 6, 4, { preset: 'revenue_by_month' }),
       w('actions', 6, 6, 6, 2, { actions: [{ label: 'Neue Aufgabe', kind: 'task' }, { label: 'Neuer Kontakt', kind: 'contact' }, { label: 'Kalender', kind: 'page', page: 'calendars' }, { label: 'Rechnungen', kind: 'page', page: 'invoices' }] }, 'Schnellaktionen'),
-      w('notes', 6, 8, 6, 2, { text: '**Heute im Fokus**\n\n- Wichtigstes Gespräch führen\n- Offene Angebote nachfassen\n- Eine Sache abschließen, die seit Tagen liegt' }, 'Heute im Fokus'),
+      w('notes', 6, 8, 6, 2, { text: ['**Heute im Fokus**', '', '- Wichtigstes Gespräch führen', '- Offene Angebote nachfassen', '- Eine Sache abschließen, die seit Tagen liegt'].join('\n') }, 'Heute im Fokus'),
     ],
   },
   {
@@ -70,7 +71,7 @@ export const STARTERS: Starter[] = [
     name: 'Vertrieb',
     description: 'Pipeline, Prognose, Win-Rate und die Deals, die Aufmerksamkeit brauchen.',
     icon: 'deal',
-    accent: 'grün',
+    accent: 'grün', // i18n-ignore (accent code)
     widgets: [
       kpi('open_pipeline_value', 0),
       kpi('pipeline_forecast', 3),
@@ -97,23 +98,42 @@ export const STARTERS: Starter[] = [
     description: 'Tickets, Fristen und Zufriedenheit: was offen ist, was brennt und wie es läuft.',
     icon: 'ticket',
     accent: 'orange',
-    widgets: [kpi('tickets_open', 0), kpi('ticket_sla', 3), kpi('csat', 6), kpi('unread_conversations', 9), w('list', 0, 2, 6, 5, { entity: 'tickets', ticket_state: 'open', sort: 'priority', limit: 10 }, 'Offene Tickets'), w('chart', 6, 2, 6, 5, { preset: 'tickets_by_week' }), w('inbox', 0, 7, 6, 4, { limit: 6, only_unread: true }), w('chart', 6, 7, 3, 4, { preset: 'tickets_by_kind' }), w('notes', 9, 7, 3, 4, { text: '**Regeln für dringende Tickets**\n\n1. Innerhalb einer Stunde antworten\n2. Bei Ausfall: Team informieren\n3. Nach der Lösung nachfragen' }, 'Eskalation')],
+    widgets: [kpi('tickets_open', 0), kpi('ticket_sla', 3), kpi('csat', 6), kpi('unread_conversations', 9), w('list', 0, 2, 6, 5, { entity: 'tickets', ticket_state: 'open', sort: 'priority', limit: 10 }, 'Offene Tickets'), w('chart', 6, 2, 6, 5, { preset: 'tickets_by_week' }), w('inbox', 0, 7, 6, 4, { limit: 6, only_unread: true }), w('chart', 6, 7, 3, 4, { preset: 'tickets_by_kind' }), w('notes', 9, 7, 3, 4, { text: ['**Regeln für dringende Tickets**', '', '1. Innerhalb einer Stunde antworten', '2. Bei Ausfall: Team informieren', '3. Nach der Lösung nachfragen'].join('\n') }, 'Eskalation')],
   },
   {
     key: 'projekte',
     name: 'Projekte',
     description: 'Aufgaben, Termine und Fristen der Projektplanung – wer hat was, was ist überfällig.',
     icon: 'project',
-    accent: 'türkis',
+    accent: 'türkis', // i18n-ignore (accent code)
     widgets: [kpi('open_tasks', 0), kpi('overdue_tasks', 3), kpi('tasks_done', 6), kpi('appointments', 9), w('tasks', 0, 2, 6, 5, { due: 'week', mine: false, limit: 10 }, 'Fällig in den nächsten 7 Tagen'), w('chart', 6, 2, 6, 5, { preset: 'tasks_by_user' }), w('agenda', 0, 7, 6, 4, { days: 10 }), w('tasks', 6, 7, 6, 4, { due: 'today_overdue', mine: true }, 'Meine Aufgaben')],
   },
 ];
 
 export const starterByKey = (key: string) => STARTERS.find((s) => s.key === key);
 
+/**
+ * A starter in a language: name, description, widget titles, button labels and the lines of its notes (the German texts
+ * are the catalog keys). Boards made from it are records of the sub-account, so the caller passes the sub-account's translator.
+ */
+export function localizeStarter(s: Starter, t: STFn): Starter {
+  const lines = (text: string) => text.split('\n').map((l) => (l.trim() ? t(l) : l)).join('\n');
+  return {
+    ...s,
+    name: t(s.name),
+    description: t(s.description),
+    widgets: s.widgets.map((x) => {
+      const config = { ...(x.config ?? {}) };
+      if (x.type === 'notes' && typeof config.text === 'string') config.text = lines(config.text);
+      if (x.type === 'actions' && Array.isArray(config.actions)) config.actions = (config.actions as Record<string, unknown>[]).map((a) => ({ ...a, label: t(String(a.label ?? '')) }));
+      return { ...x, config, ...(x.title ? { title: t(x.title) } : {}) };
+    }),
+  };
+}
+
 /** The state a new board gets from template widgets, through the patch engine (up to 25 widgets per round). */
 export function stateFromTemplate(t: { name: string; icon: string; accent: string; widgets: TemplateWidget[] }, p: PatchEnv): { state: BoardState; errors: string[] } {
-  let state: BoardState = { name: cleanLine(t.name, LIMITS.name) || 'Neues Board', icon: cleanIcon(t.icon), accent: cleanAccent(t.accent) ?? '', spec: emptySpec() };
+  let state: BoardState = { name: cleanLine(t.name, LIMITS.name) || tApp()('Neues Board'), icon: cleanIcon(t.icon), accent: cleanAccent(t.accent) ?? '', spec: emptySpec() };
   const errors: string[] = [];
   const ops: Op[] = t.widgets.slice(0, LIMITS.widgets).map((x) => ({ op: 'add', type: x.type, ...(x.title ? { title: x.title } : {}), config: x.config ?? {}, x: x.x, y: x.y, w: x.w, h: x.h }));
   for (let i = 0; i < ops.length; i += LIMITS.ops) {
@@ -128,7 +148,7 @@ export function stateFromTemplate(t: { name: string; icon: string; accent: strin
 }
 
 /** Template widgets from a board: desktop cells, config without the ids of this sub-account. */
-export function templateFromState(state: BoardState, reg: WidgetRegistry): { widgets: TemplateWidget[]; stripped: string[] } {
+export function templateFromState(state: BoardState, reg: WidgetRegistry, tr: STFn = tApp()): { widgets: TemplateWidget[]; stripped: string[] } {
   const stripped: string[] = [];
   const widgets = state.spec.widgets.map((wd) => {
     const def = reg.get(wd.type);
@@ -136,7 +156,7 @@ export function templateFromState(state: BoardState, reg: WidgetRegistry): { wid
     for (const [k, v] of Object.entries(wd.config)) {
       const f = def?.fields.find((x) => x.key === k);
       if (f?.local) {
-        if (v) stripped.push(`${def?.label ?? wd.type}: ${f.label}`);
+        if (v) stripped.push(`${def?.label ? tr(def.label) : wd.type}: ${tr(f.label)}`);
         continue;
       }
       config[k] = v;
@@ -181,23 +201,24 @@ export interface TemplateReview {
 }
 
 /** Static review of a template: nothing to run, only config to look at. */
-export function reviewTemplate(t: { widgets: TemplateWidget[] }, p: { reg: WidgetRegistry; env: PatchEnv['env']; hostOf: (url: string) => string | null }): TemplateReview {
+export function reviewTemplate(t: { widgets: TemplateWidget[] }, p: { reg: WidgetRegistry; env: PatchEnv['env']; hostOf: (url: string) => string | null; t?: STFn }): TemplateReview {
+  const tr = translator(p.t?.locale);
   const checks: TemplateReview['checks'] = [];
   const areas = new Set<string>();
   const hosts = new Set<string>();
   let actions = false;
   let notes = 0;
-  if (!t.widgets.length) checks.push({ level: 'fail', text: 'Das Board hat keine Widgets.' });
-  if (t.widgets.length > LIMITS.widgets) checks.push({ level: 'fail', text: `Höchstens ${LIMITS.widgets} Widgets.` });
+  if (!t.widgets.length) checks.push({ level: 'fail', text: tr('Das Board hat keine Widgets.') });
+  if (t.widgets.length > LIMITS.widgets) checks.push({ level: 'fail', text: tr('Höchstens {n} Widgets.', { n: LIMITS.widgets }) });
   for (const x of t.widgets) {
     const def = p.reg.get(x.type);
     if (!def) {
-      checks.push({ level: 'fail', text: `Das Widget „${x.type}“ gibt es nicht.` });
+      checks.push({ level: 'fail', text: tr('Das Widget „{type}“ gibt es nicht.', { type: x.type }) });
       continue;
     }
-    const cfg = cleanConfig(def, x.config ?? {}, { strict: true, where: `„${def.label}“` });
+    const cfg = cleanConfig(def, x.config ?? {}, { strict: true, where: `„${tr(def.label)}“` });
     for (const e of cfg.errors) checks.push({ level: 'fail', text: e });
-    if (!cfg.errors.length) for (const e of def.validate?.(cfg.config, p.env) ?? []) checks.push({ level: 'fail', text: e });
+    if (!cfg.errors.length) for (const e of def.validate?.(cfg.config, p.env) ?? []) checks.push({ level: 'fail', text: tr(e) });
     if (def.accessLabel) areas.add(def.accessLabel);
     if (def.type === 'kpi' || def.type === 'chart') {
       const preset = (def.type === 'kpi' ? KPI_PRESETS : CHART_PRESETS)[String(cfg.config.preset ?? '')];
@@ -211,19 +232,20 @@ export function reviewTemplate(t: { widgets: TemplateWidget[] }, p: { reg: Widge
     }
     if (def.type === 'actions' && Array.isArray(cfg.config.actions) && cfg.config.actions.length) actions = true;
     if (def.type === 'notes' && String(cfg.config.text ?? '').trim()) notes++;
-    if (def.type === 'plugin' && cfg.config.ref) checks.push({ level: 'ok', text: `Nutzt das Plugin-Widget „${String(cfg.config.ref)}“ – es muss beim Installieren schon vorhanden sein.` });
+    if (def.type === 'plugin' && cfg.config.ref) checks.push({ level: 'ok', text: tr('Nutzt das Plugin-Widget „{ref}“ – es muss beim Installieren schon vorhanden sein.', { ref: String(cfg.config.ref) }) });
   }
-  if (notes) checks.push({ level: 'warn', text: `${notes} Notiz${notes === 1 ? '' : 'en'} mit Text werden mitveröffentlicht – bitte prüfe, dass keine Namen, Kontaktdaten oder internen Informationen darin stehen.` });
-  if (hosts.size) checks.push({ level: 'warn', text: `Bettet Seiten von ${[...hosts].join(', ')} ein. Wer das Board installiert, sieht sie nur, wenn der Admin die Adresse freigegeben hat.` });
-  if (actions) checks.push({ level: 'warn', text: 'Enthält Schnellaktions-Knöpfe. Automationen und Formulare des Sub-Accounts, in dem das Board installiert wird, müssen neu zugeordnet werden.' });
+  if (notes) checks.push({ level: 'warn', text: tr.plural(notes, { one: '{n} Notiz mit Text wird mitveröffentlicht – bitte prüfe, dass keine Namen, Kontaktdaten oder internen Informationen darin stehen.', other: '{n} Notizen mit Text werden mitveröffentlicht – bitte prüfe, dass keine Namen, Kontaktdaten oder internen Informationen darin stehen.' }) });
+  if (hosts.size) checks.push({ level: 'warn', text: tr('Bettet Seiten von {hosts} ein. Wer das Board installiert, sieht sie nur, wenn der Admin die Adresse freigegeben hat.', { hosts: [...hosts].join(', ') }) });
+  if (actions) checks.push({ level: 'warn', text: tr('Enthält Schnellaktions-Knöpfe. Automationen und Formulare des Sub-Accounts, in dem das Board installiert wird, müssen neu zugeordnet werden.') });
   const verdict = checks.some((c) => c.level === 'fail') ? 'fail' : checks.some((c) => c.level === 'warn') ? 'warn' : 'ok';
-  if (verdict === 'ok') checks.push({ level: 'ok', text: 'Nur Konfiguration, kein Code. Die Zahlen und Listen holt sich jede Person mit ihren eigenen Rechten.' });
+  if (verdict === 'ok') checks.push({ level: 'ok', text: tr('Nur Konfiguration, kein Code. Die Zahlen und Listen holt sich jede Person mit ihren eigenen Rechten.') });
   const needs = [
-    ...[...areas].sort().map((a) => ({ key: `area:${a}`, label: `Liest Daten aus „${a}“ (nur, was die Person selbst sehen darf)` })),
-    ...[...hosts].sort().map((h) => ({ key: `host:${h}`, label: `Zeigt Seiten von ${h}` })),
-    ...(actions ? [{ key: 'actions', label: 'Hat Schnellaktions-Knöpfe' }] : []),
+    // the key stays German: it is what an installer's consent is compared with
+    ...[...areas].sort().map((a) => ({ key: `area:${a}`, label: tr('Liest Daten aus „{area}“ (nur, was die Person selbst sehen darf)', { area: tr(a) }) })),
+    ...[...hosts].sort().map((h) => ({ key: `host:${h}`, label: tr('Zeigt Seiten von {host}', { host: h }) })),
+    ...(actions ? [{ key: 'actions', label: tr('Hat Schnellaktions-Knöpfe') }] : []),
   ];
-  return { verdict, checks, needs, areas: [...areas].sort(), hosts: [...hosts].sort(), actions, widgets: t.widgets.length };
+  return { verdict, checks, needs, areas: [...areas].sort().map((a) => tr(a)), hosts: [...hosts].sort(), actions, widgets: t.widgets.length };
 }
 
 /** Cleans what comes in as a template (import, API): shapes and bounds only; the patch engine checks the rest at install. */
@@ -231,7 +253,7 @@ export function cleanTemplateInput(v: unknown): { widgets: TemplateWidget[]; err
   const errors: string[] = [];
   if (!v || typeof v !== 'object' || !Array.isArray((v as any).widgets)) return { widgets: [], errors: ['widgets fehlt'] };
   const list = (v as any).widgets as unknown[];
-  if (list.length > LIMITS.widgets) errors.push(`Höchstens ${LIMITS.widgets} Widgets`);
+  if (list.length > LIMITS.widgets) errors.push(tApp()('Höchstens {n} Widgets', { n: LIMITS.widgets }));
   const widgets: TemplateWidget[] = [];
   for (const x of list.slice(0, LIMITS.widgets)) {
     const o = x as Record<string, any>;

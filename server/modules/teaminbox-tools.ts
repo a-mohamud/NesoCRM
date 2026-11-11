@@ -3,6 +3,7 @@ import { HttpError, bad, clampLimit, str, type Ctx } from '../core/http.js';
 import { callRoute, ownLocation, scope } from '../services/mobile.js';
 import { PRIORITIES, STATUSES, VIEWS } from '../services/teaminbox-model.js';
 import type { Caller, Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * MCP tools of the Team-Posteingang (HyperLevel Agent, Claude, ChatGPT, Codex) and its endpoints for the native app. Both are thin
@@ -21,6 +22,7 @@ const q = (params: Record<string, unknown>) => {
 };
 const link = (id?: string) => `/app/conversations${id ? `/${id}` : ''}`;
 
+// i18n-ignore – only a part: the catalog has the full tool descriptions that include it.
 const NOTE =
   'Interne Notizen sieht nur das Team – sie werden nie an den Kontakt gesendet. Status: open (offen), waiting (wartet auf den Kontakt), closed (erledigt); eine neue Nachricht des Kontakts öffnet die Konversation wieder.';
 
@@ -36,13 +38,15 @@ async function person(call: Caller, location: string, who: unknown): Promise<str
   const exact = people.filter((p) => p.id === s || p.email.toLowerCase() === lower || p.name.toLowerCase() === lower);
   const pool = exact.length ? exact : people.filter((p) => p.name.toLowerCase().includes(lower) || p.name.toLowerCase().split(/\s+/)[0] === lower);
   if (pool.length === 1) return pool[0].id;
-  throw new HttpError(400, pool.length ? `„${s}“ ist nicht eindeutig – gemeint sein könnten: ${pool.map((p) => `${p.name} (${p.id})`).join(', ')}` : `Keine Person „${s}“ gefunden – möglich: ${people.map((p) => p.name).join(', ')}`);
+  const t = tApp();
+  throw new HttpError(400, pool.length ? t('„{name}“ ist nicht eindeutig – gemeint sein könnten: {list}', { name: s, list: pool.map((p) => `${p.name} (${p.id})`).join(', ') }) : t('Keine Person „{name}“ gefunden – möglich: {list}', { name: s, list: people.map((p) => p.name).join(', ') }));
 }
 
 export const INBOX_TOOLS: Tool[] = [
   {
     name: 'ghl_inbox_queue',
     title: 'Posteingang: Warteschlange',
+    // i18n-ignore – composed with NOTE; the catalog key is the full text (mcp.ts translates it on tools/list).
     description: `Die Konversationen des Team-Posteingangs, sortiert wie in der Oberfläche: Kontakt, Kanal, letzte Nachricht, Bearbeiter, Status, Priorität, Antwortfrist (sla.state: ok, warning, breached) und Zurückstellung. view: open (offen), mine (mir zugewiesen), unassigned (nicht zugewiesen), team, waiting, done (erledigt), snoozed (zurückgestellt), sla (Antwortfrist gefährdet oder überschritten), mentions (Erwähnungen von mir), all. ${NOTE}`,
     inputSchema: obj(
       {
@@ -67,6 +71,7 @@ export const INBOX_TOOLS: Tool[] = [
   {
     name: 'ghl_inbox_assign',
     title: 'Posteingang: Konversation zuweisen',
+    // i18n-ignore – composed with NOTE; the catalog key is the full text (mcp.ts translates it on tools/list).
     description: `Weist eine Konversation einer Person zu. assignee: ID, E-Mail oder Name der Person, „me“ (die Person hinter dem Zugang) oder „none“, um die Zuweisung aufzuheben. team_id weist zusätzlich einem Team zu (Service → Teams). Die Person bekommt eine Push-Nachricht, wenn jemand anderes zuweist. ${NOTE}`,
     inputSchema: obj({ ...LOC, ...CONV, assignee: { type: 'string', description: 'Person: ID, E-Mail, Name, „me“ oder „none“' }, team_id: { type: 'string', description: 'Team-ID oder leer' } }, ['location_id', 'conversation_id']),
     annotations: { ...W, idempotentHint: true },
@@ -80,6 +85,7 @@ export const INBOX_TOOLS: Tool[] = [
   {
     name: 'ghl_inbox_set_status',
     title: 'Posteingang: Status, Zurückstellen, Priorität',
+    // i18n-ignore – composed with NOTE; the catalog key is the full text (mcp.ts translates it on tools/list).
     description: `Setzt den Status einer Konversation (open, waiting, closed) und/oder stellt sie bis zu einem Zeitpunkt zurück (snooze_until, ISO-Zeitstempel in der Zukunft; sie kommt dann von selbst wieder, auch bei einer neuen Nachricht des Kontakts) und/oder ändert die Priorität (low, normal, high, urgent). ${NOTE}`,
     inputSchema: obj(
       {
@@ -104,6 +110,7 @@ export const INBOX_TOOLS: Tool[] = [
   {
     name: 'ghl_inbox_note',
     title: 'Posteingang: Interne Notiz',
+    // i18n-ignore – composed with NOTE; the catalog key is the full text (mcp.ts translates it on tools/list).
     description: `Schreibt eine interne Notiz in eine Konversation. Mit @Name (ganzer Name oder eindeutiger Vorname) werden Kolleginnen und Kollegen erwähnt und per App, Push und – wenn eingeschaltet – E-Mail benachrichtigt. ${NOTE}`,
     inputSchema: obj({ ...LOC, ...CONV, body: { type: 'string', description: 'Text der Notiz, bis 10.000 Zeichen' } }, ['location_id', 'conversation_id', 'body']),
     annotations: W,

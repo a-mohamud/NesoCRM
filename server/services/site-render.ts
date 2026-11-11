@@ -7,6 +7,7 @@ import { blockCss, imgTag, miniMarkdown, renderBlocks, siteBlocks, type Block, t
 import { pageUrl, resolveHref, safeUrl } from './site-url.js';
 import { registerLayout, walkBlocks } from './site-layout.js';
 import { HIDE_CSS, Rules, minify, tokensCss, tokensOf, type Tokens } from './site-style.js';
+import { defaultLocale, tLoc } from '../i18n/index.js';
 
 /**
  * Site builder: renders a page of a site into one self-contained HTML document – the pipeline behind `renderPage`.
@@ -27,8 +28,8 @@ export function sitePages(app: App, funnelId: string): any[] {
 
 const LANG = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/;
 export const langOf = (funnel: any, page: any): string => {
-  const l = String(page?.layout?.lang || funnel?.settings?.languages?.default || 'de');
-  return LANG.test(l) ? l : 'de';
+  const l = String(page?.layout?.lang || funnel?.settings?.languages?.default || defaultLocale());
+  return LANG.test(l) ? l : defaultLocale();
 };
 
 export function firstImage(blocks: Block[]): string {
@@ -88,7 +89,7 @@ export function hreflangLinks(app: App, funnel: any, page: any, pages: any[]): s
   if (same.length < 2) return '';
   const first = pages[0];
   const links = same.map((p) => `<link rel="alternate" hreflang="${langOf(funnel, p)}" href="${escapeHtml(pageUrl(app, funnel, p, p.id === first?.id))}">`);
-  const def = same.find((p) => langOf(funnel, p) === (funnel.settings?.languages?.default || 'de')) ?? same[0];
+  const def = same.find((p) => langOf(funnel, p) === (funnel.settings?.languages?.default || defaultLocale())) ?? same[0];
   links.push(`<link rel="alternate" hreflang="x-default" href="${escapeHtml(pageUrl(app, funnel, def, def.id === first?.id))}">`);
   return links.join('');
 }
@@ -136,6 +137,7 @@ const SLUG_LEGAL: [string, string][] = [
 ];
 
 function header(env: BlockEnv, here: string): string {
+  const t = tLoc(env.app, env.locationId);
   const h = (env.funnel.settings ?? {}).header ?? {};
   const s = env.funnel.settings ?? {};
   const menus = s.menus ?? {};
@@ -143,11 +145,11 @@ function header(env: BlockEnv, here: string): string {
   const home = pageUrl(env.app, env.funnel, undefined, true);
   const brand = String(h.brand || s.site_name || env.funnel.name || '');
   const logo = h.logo ? imgTag(env, { src: h.logo, alt: '', eager: 'auto', count: false, w: Number(h.logo_w) || undefined, h: Number(h.logo_h) || undefined }) : '';
-  const search = s.search?.enabled && h.search !== false ? `<form class="gs" role="search" action="${escapeHtml(pageUrl(env.app, env.funnel, { slug: 'search' }))}" method="get"><input type="search" name="q" aria-label="Website durchsuchen" placeholder="Suchen …" maxlength="80"><button type="submit">Suchen</button></form>` : '';
+  const search = s.search?.enabled && h.search !== false ? `<form class="gs" role="search" action="${escapeHtml(pageUrl(env.app, env.funnel, { slug: 'search' }))}" method="get"><input type="search" name="q" aria-label="${escapeHtml(t('Website durchsuchen'))}" placeholder="${escapeHtml(t('Suchen …'))}" maxlength="80"><button type="submit">${escapeHtml(t('Suchen'))}</button></form>` : '';
   const alt = languageLinks(env);
   const cta = h.cta_text ? `<a class="btn cta-h" href="${escapeHtml(menuUrl(env, h.cta_url || '#'))}">${escapeHtml(h.cta_text)}</a>` : '';
   const nav = menuHtml(env, items, here);
-  return `<a class="skip" href="#main">Zum Inhalt springen</a><header class="gh${h.sticky ? ' sticky' : ''}" id="gh"><div class="ghi"><a class="brand" href="${escapeHtml(home)}">${logo}${brand ? `<span>${escapeHtml(brand)}</span>` : ''}</a>${nav ? `<button class="nt" id="nt" type="button" aria-expanded="false" aria-controls="gn" aria-label="Menü">☰</button><nav class="gn" id="gn" aria-label="Hauptnavigation">${nav}</nav>` : '<span style="flex:1"></span>'}${alt}${search}${cta}</div></header><script>(function(){var b=document.getElementById('nt');if(!b)return;document.documentElement.classList.add('js');b.addEventListener('click',function(){var o=document.getElementById('gh').classList.toggle('open');b.setAttribute('aria-expanded',o)})})()</script>`;
+  return `<a class="skip" href="#main">${escapeHtml(t('Zum Inhalt springen'))}</a><header class="gh${h.sticky ? ' sticky' : ''}" id="gh"><div class="ghi"><a class="brand" href="${escapeHtml(home)}">${logo}${brand ? `<span>${escapeHtml(brand)}</span>` : ''}</a>${nav ? `<button class="nt" id="nt" type="button" aria-expanded="false" aria-controls="gn" aria-label="${escapeHtml(t('Menü'))}">☰</button><nav class="gn" id="gn" aria-label="${escapeHtml(t('Hauptnavigation'))}">${nav}</nav>` : '<span style="flex:1"></span>'}${alt}${search}${cta}</div></header><script>(function(){var b=document.getElementById('nt');if(!b)return;document.documentElement.classList.add('js');b.addEventListener('click',function(){var o=document.getElementById('gh').classList.toggle('open');b.setAttribute('aria-expanded',o)})})()</script>`;
 }
 
 function languageLinks(env: BlockEnv): string {
@@ -178,11 +180,12 @@ function footer(env: BlockEnv, here: string): string {
     })
     .join('');
   const pages = env.pages();
-  const legal = SLUG_LEGAL.filter(([slug]) => pages.some((p) => p.slug === slug)).map(([slug, label]) => `<a href="${escapeHtml(pageUrl(env.app, env.funnel, { slug }))}">${label}</a>`);
-  if (env.app.services.cmp?.active?.(env.locationId)) legal.push('<a href="#cookie-settings">Cookie-Einstellungen</a>');
+  const t = tLoc(env.app, env.locationId);
+  const legal = SLUG_LEGAL.filter(([slug]) => pages.some((p) => p.slug === slug)).map(([slug, label]) => `<a href="${escapeHtml(pageUrl(env.app, env.funnel, { slug }))}">${escapeHtml(t(label))}</a>`);
+  if (env.app.services.cmp?.active?.(env.locationId)) legal.push(`<a href="#cookie-settings">${escapeHtml(t('Cookie-Einstellungen'))}</a>`);
   const text = String(f.text || s.footer_text || '');
   const site = s.site_name || env.funnel.name;
-  return `<footer class="gf"><div class="gfi">${colsHtml ? `<div class="gfc">${colsHtml}</div>` : ''}<div class="gfb"><p>${text ? miniMarkdown(text, (u) => resolveHref(env, u)).replace(/^<p>|<\/p>$/g, '') : `© ${new Date().getFullYear()} ${escapeHtml(site)}`}</p>${legal.length ? `<nav aria-label="Rechtliches">${legal.join(' · ')}</nav>` : ''}</div></div></footer>`;
+  return `<footer class="gf"><div class="gfi">${colsHtml ? `<div class="gfc">${colsHtml}</div>` : ''}<div class="gfb"><p>${text ? miniMarkdown(text, (u) => resolveHref(env, u)).replace(/^<p>|<\/p>$/g, '') : `© ${new Date().getFullYear()} ${escapeHtml(site)}`}</p>${legal.length ? `<nav aria-label="${escapeHtml(t('Rechtliches'))}">${legal.join(' · ')}</nav>` : ''}</div></div></footer>`;
 }
 
 // --- the page ------------------------------------------------------------------------------------------------------------

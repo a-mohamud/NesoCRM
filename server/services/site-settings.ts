@@ -1,5 +1,6 @@
 import { bad } from '../core/http.js';
 import { cleanTokens, tokensOf, isColor } from './site-style.js';
+import { defaultLocale, tApp } from '../i18n/index.js';
 
 /**
  * Site builder: what may be stored in a site's `settings` besides the older keys (color, font, head_code …):
@@ -47,7 +48,7 @@ export function cleanMenus(v: unknown): Record<string, MenuItem[]> {
   if (!v || typeof v !== 'object') return {};
   const out: Record<string, MenuItem[]> = {};
   for (const [name, items] of Object.entries(v as Record<string, unknown>).slice(0, 8)) {
-    if (!MENU_NAME.test(name)) throw bad(`Menü-Name „${name}“: nur Kleinbuchstaben, Ziffern, - und _`);
+    if (!MENU_NAME.test(name)) throw bad(tApp()('Menü-Name „{name}“: nur Kleinbuchstaben, Ziffern, - und _', { name }));
     out[name] = cleanMenuItems(items);
   }
   return out;
@@ -80,13 +81,13 @@ export function cleanFooter(v: any, cur: Record<string, any> = {}) {
 }
 
 export function cleanLanguages(v: any) {
-  const def = LANG.test(String(v?.default ?? '')) ? String(v.default) : 'de';
+  const def = LANG.test(String(v?.default ?? '')) ? String(v.default) : defaultLocale();
   const seen = new Set<string>();
   const list = (Array.isArray(v?.list) ? v.list : [])
     .slice(0, 8)
     .map((l: any) => ({ code: String(l?.code ?? '').trim(), label: str(l?.label, 30) }))
     .filter((l: any) => LANG.test(l.code) && !seen.has(l.code) && (seen.add(l.code), true));
-  if (!list.some((l: any) => l.code === def)) list.unshift({ code: def, label: def === 'de' ? 'Deutsch' : def.toUpperCase() });
+  if (!list.some((l: any) => l.code === def)) list.unshift({ code: def, label: def === 'de' ? 'Deutsch' : def === 'en' ? 'English' : def.toUpperCase() });
   return { default: def, list };
 }
 

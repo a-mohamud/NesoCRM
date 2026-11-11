@@ -88,8 +88,8 @@ describe('MCP tools and the agent', () => {
     const memberUser = { id: 'm', email: '', name: 'M', role: 'member', locations: [A], permissions: null };
     const texts = (u: any, automatic = false) => extras.map((f) => f({ user: u, locationId: A, automatic })).filter(Boolean).join('\n');
     expect(texts(adminUser)).toContain('ghl_build_from_wish');
-    expect(texts(adminUser)).toContain('als Karte im Chat');
-    expect(texts(adminUser)).toContain('Bestätige den Plan nie selbst');
+    expect(texts(adminUser)).toContain('as a card in the chat');
+    expect(texts(adminUser)).toContain('Never confirm the plan yourself');
     expect(texts(adminUser)).toContain('ghl_plugin_admin'); // lifecycle help for admins
     expect(texts(adminUser, true)).toBe('');
     expect(texts(memberUser)).toContain('ghl_build_from_wish'); // policy "everyone"
@@ -102,8 +102,8 @@ describe('MCP tools and the agent', () => {
     const rev = (await admin('POST', `/api/marktplatz/${wish.id}/security-review`, {})).data;
     expect((await admin('POST', `/api/marktplatz/${wish.id}/publish`, { review_id: rev.id, approve: true, accept_warnings: true })).status).toBe(200);
     const installed = await rpc('ghl_list_plugins', { location_id: A });
-    expect(installed.data.plugins.map((p: any) => p.name)).toContain('Kontakt-Notizen-Zusammenfassung');
-    const shop = await rpc('ghl_list_plugins', { location_id: A, scope: 'marktplatz', query: 'notizen' });
+    expect(installed.data.plugins.map((p: any) => p.name)).toContain('Contact notes summary');
+    const shop = await rpc('ghl_list_plugins', { location_id: A, scope: 'marktplatz', query: 'notes' });
     expect(shop.data.plugins[0]).toMatchObject({ id: wish.id, risk: 'medium' });
     const loc2 = (await admin('POST', '/api/locations', { name: 'Zweitfirma' })).data.id;
     const ask = await rpc('ghl_install_plugin', { location_id: loc2, plugin_id: wish.id });
@@ -185,9 +185,9 @@ describe('stage 3 „Kernfeature“: spec, GitHub issue for a coding agent, trac
     expect(issue.url).toBe('https://api.github.com/repos/acme/gohigh/issues');
     expect(issue.body.title).toBe('[Kernfeature] Geburtstags-Erinnerungen im Kern');
     expect(issue.body.body).toContain('Geburtstage gehören zu den Kontakten.');
-    expect(issue.body.body).toContain('Geburtstags-Erinnerungen');
+    expect(issue.body.body).toContain('Birthday reminders');
     expect(issue.body.body).toContain('core.');
-    expect(issue.body.body).toMatch(/\n\n@codex Setze die oben beschriebene Spezifikation/);
+    expect(issue.body.body).toMatch(/\n\n@codex Implement the specification above/);
     expect(issue.body.labels).toEqual(['kernfeature', 'plugin']);
     expect((await admin('GET', `/api/plugins/${pid}`)).data.core_status).toBe('proposed');
     // tracking: the issue is open, then a pull request mentions it, then it merges
@@ -217,7 +217,7 @@ describe('stage 3 „Kernfeature“: spec, GitHub issue for a coding agent, trac
     timeline = [];
     const prop = await admin('POST', `/api/werkstatt/plugins/${id}/core-proposal`, { agent: 'claude', repo: 'https://github.com/acme/gohigh.git', core_action: 'retire' });
     expect(prop.data).toMatchObject({ status: 'issue_open', agent: 'claude' });
-    expect(ghCalls.find((c) => c.method === 'POST')!.body.body).toContain('@claude Setze');
+    expect(ghCalls.find((c) => c.method === 'POST')!.body.body).toContain('@claude Implement');
     await admin('POST', `/api/plugins/${id}/call`, { op: 'storage.set', args: { key: 'a', value: 1 } });
     (t.app.services.werkstattCore as any).ship(prop.data.id, '0.0.31', 'retire');
     expect(t.app.db.all('SELECT 1 FROM plugin_installs WHERE plugin_id = ?', id)).toHaveLength(0);

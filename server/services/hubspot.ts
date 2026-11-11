@@ -2,6 +2,7 @@ import type { App } from '../core/app.js';
 import { parseJson } from '../core/db.js';
 import { id, now, slugify } from '../core/util.js';
 import { getContact, upsertContact } from './contacts.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * HubSpot → HyperLevel import: owners (→ users by email), contact properties (→ custom fields),
@@ -97,14 +98,14 @@ export class HubSpotClient {
           signal: AbortSignal.timeout(this.opts.timeoutMs ?? 30_000),
         });
       } catch (e) {
-        if (attempt >= max) throw new HubSpotError(0, `HubSpot nicht erreichbar: ${(e as Error).message}`, path);
+        if (attempt >= max) throw new HubSpotError(0, tApp()('HubSpot nicht erreichbar: {error}', { error: (e as Error).message }), path);
         const wait = Math.min(1000 * 2 ** attempt, 30_000);
         this.waits.push(wait);
         await sleep(wait);
         continue;
       }
       if (r.status === 429 || r.status >= 500) {
-        if (attempt >= max) throw new HubSpotError(r.status, r.status === 429 ? 'HubSpot-Limit erreicht – bitte später fortsetzen' : `HubSpot antwortet mit ${r.status}`, path);
+        if (attempt >= max) throw new HubSpotError(r.status, r.status === 429 ? tApp()('HubSpot-Limit erreicht – bitte später fortsetzen') : tApp()('HubSpot antwortet mit {status}', { status: r.status }), path);
         const ra = Number(r.headers.get('retry-after'));
         const wait = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 60_000) : Math.min(1000 * 2 ** attempt, 30_000);
         this.waits.push(wait);
@@ -113,7 +114,8 @@ export class HubSpotClient {
       }
       const j: any = await r.json().catch(() => ({}));
       if (!r.ok) {
-        const msg = r.status === 401 ? 'HubSpot-Token ungültig oder abgelaufen' : r.status === 403 ? `Fehlende Berechtigung (Scope) für ${path.split('?')[0]}` : r.status === 404 ? `Bei HubSpot nicht vorhanden (${path.split('?')[0]})` : j.message || `HTTP ${r.status}`;
+        const t = tApp();
+        const msg = r.status === 401 ? t('HubSpot-Token ungültig oder abgelaufen') : r.status === 403 ? t('Fehlende Berechtigung (Scope) für {path}', { path: path.split('?')[0] }) : r.status === 404 ? t('Bei HubSpot nicht vorhanden ({path})', { path: path.split('?')[0] }) : j.message || `HTTP ${r.status}`;
         throw new HubSpotError(r.status, msg, path, j.category);
       }
       if (this.opts.pauseMs) await sleep(this.opts.pauseMs);
@@ -293,6 +295,7 @@ async function paged(client: HubSpotClient, path: string, query: Record<string, 
 
 export async function runHubSpotImport(app: App, locationId: string, client: HubSpotClient, parts: HubSpotPart[], p: HubSpotProgress, hooks: RunHooks) {
   const db = app.db;
+  const t = tLoc(app, locationId);
   const ids = idMap(app, locationId);
   const count = (k: string, n = 1) => (p.counts[k] = (p.counts[k] ?? 0) + n);
   const skip = (k: string, n = 1) => (p.skipped[k] = (p.skipped[k] ?? 0) + n);
@@ -324,7 +327,7 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
     } catch (e) {
       if (e instanceof Cancelled) throw e;
       if (e instanceof HubSpotError && (e.status === 403 || e.status === 404)) {
-        note(`${step}: übersprungen – ${e.message}`);
+        note(t('{step}: übersprungen – {error}', { step, error: e.message }));
       } else throw e;
     }
     p.done_steps.push(step);
@@ -346,10 +349,10 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
             count('owners');
           } else {
             skip('owners');
-            note(`Owner ohne passenden Nutzer: ${[o.firstName, o.lastName].filter(Boolean).join(' ') || o.email || o.id}`);
+            note(t('Owner ohne passenden Nutzer: {owner}', { owner: [o.firstName, o.lastName].filter(Boolean).join(' ') || o.email || o.id }));
           }
         });
-        hooks.log(`Owner: ${p.counts.owners ?? 0} zugeordnet, ${p.skipped.owners ?? 0} ohne Nutzer`);
+        hooks.log(t('Owner: {n} zugeordnet, {skipped} ohne Nutzer', { n: p.counts.owners ?? 0, skipped: p.skipped.owners ?? 0 }));
         return;
       }
       case 'properties': {
@@ -367,7 +370,7 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
               id(),
               locationId,
               key,
-              extra ?? String(prop.label || prop.name),
+              extra ? t(extra) : String(prop.label || prop.name),
               mapPropertyType(prop),
               JSON.stringify(options),
               Number(prop.displayOrder) > 0 ? Number(prop.displayOrder) : 100,
@@ -378,7 +381,7 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
           }
         });
         count('custom_fields', n);
-        hooks.log(`Eigenschaften → eigene Felder: ${n}`);
+        hooks.log(t('Eigenschaften → eigene Felder: {n}', { n }));
         return;
       }
       case 'companies': {
@@ -406,8 +409,8 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
           ids.set('company', o.id, local, name);
           count('companies');
         });
-        if (!companies) note('Firmen: kein Firmen-Modul – der Firmenname wird beim Kontakt (Feld „Firma“) eingetragen');
-        hooks.log(`Firmen: ${p.counts.companies ?? 0}`);
+        if (!companies) note(t('Firmen: kein Firmen-Modul – der Firmenname wird beim Kontakt (Feld „Firma“) eingetragen'));
+        hooks.log(t('Firmen: {n}', { n: p.counts.companies ?? 0 }));
         return;
       }
       case 'contacts': {
@@ -434,7 +437,7 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
             if (name) input.company = name;
           }
           const existing = ids.get('contact', o.id)?.local_id;
-          const { contact } = db.tx(() => upsertContact(app, locationId, { ...input, id: existing }, { source: 'HubSpot-Import', quiet: true }));
+          const { contact } = db.tx(() => upsertContact(app, locationId, { ...input, id: existing }, { source: t('HubSpot-Import'), quiet: true }));
           ids.set('contact', o.id, contact.id);
           if (companies) {
             for (const cid of compIds) {
@@ -444,7 +447,7 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
           }
           count('contacts');
         });
-        hooks.log(`Kontakte: ${p.counts.contacts ?? 0}`);
+        hooks.log(t('Kontakte: {n}', { n: p.counts.contacts ?? 0 }));
         return;
       }
       case 'lists': {
@@ -478,7 +481,7 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
           count('lists');
           count('list_members', members);
         }
-        hooks.log(`Listen → Tags: ${p.counts.lists ?? 0} (${p.counts.list_members ?? 0} Zuordnungen)`);
+        hooks.log(t('Listen → Tags: {n} ({members} Zuordnungen)', { n: p.counts.lists ?? 0, members: p.counts.list_members ?? 0 }));
         return;
       }
       case 'pipelines': {
@@ -502,7 +505,7 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
             count('pipelines');
           }
         });
-        hooks.log(`Pipelines: ${p.counts.pipelines ?? 0}`);
+        hooks.log(t('Pipelines: {n}', { n: p.counts.pipelines ?? 0 }));
         return;
       }
       case 'deals': {
@@ -537,7 +540,7 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
           }
           count('deals');
         });
-        hooks.log(`Deals: ${p.counts.deals ?? 0}${p.skipped.deals_no_contact ? ` (${p.skipped.deals_no_contact} ohne Kontakt übersprungen)` : ''}`);
+        hooks.log(`${t('Deals: {n}', { n: p.counts.deals ?? 0 })}${p.skipped.deals_no_contact ? ` ${t('({n} ohne Kontakt übersprungen)', { n: p.skipped.deals_no_contact })}` : ''}`);
         return;
       }
       case 'notes': {
@@ -559,7 +562,7 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
           }
           count('notes');
         });
-        hooks.log(`Notizen: ${p.counts.notes ?? 0}`);
+        hooks.log(t('Notizen: {n}', { n: p.counts.notes ?? 0 }));
         return;
       }
       case 'tasks': {
@@ -584,16 +587,16 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
           }
           count('tasks');
         });
-        hooks.log(`Aufgaben: ${p.counts.tasks ?? 0}`);
+        hooks.log(t('Aufgaben: {n}', { n: p.counts.tasks ?? 0 }));
         return;
       }
       case 'calls':
       case 'emails':
       case 'meetings': {
         const cfg = {
-          calls: { props: 'hs_call_title,hs_call_body,hs_call_direction,hs_call_duration,hs_call_status,hs_timestamp', label: 'Anruf', title: 'hs_call_title', body: 'hs_call_body' },
-          emails: { props: 'hs_email_subject,hs_email_text,hs_email_direction,hs_timestamp', label: 'E-Mail', title: 'hs_email_subject', body: 'hs_email_text' },
-          meetings: { props: 'hs_meeting_title,hs_meeting_body,hs_meeting_start_time,hs_meeting_end_time,hs_timestamp', label: 'Meeting', title: 'hs_meeting_title', body: 'hs_meeting_body' },
+          calls: { props: 'hs_call_title,hs_call_body,hs_call_direction,hs_call_duration,hs_call_status,hs_timestamp', label: t('Anruf'), many: t('Anrufe'), title: 'hs_call_title', body: 'hs_call_body' },
+          emails: { props: 'hs_email_subject,hs_email_text,hs_email_direction,hs_timestamp', label: t('E-Mail'), many: t('E-Mails'), title: 'hs_email_subject', body: 'hs_email_text' },
+          meetings: { props: 'hs_meeting_title,hs_meeting_body,hs_meeting_start_time,hs_meeting_end_time,hs_timestamp', label: t('Meeting'), many: t('Meetings'), title: 'hs_meeting_title', body: 'hs_meeting_body' },
         }[step]!;
         const type = `hubspot.${step.slice(0, -1)}`;
         await paged(client, `/crm/v3/objects/${step}`, { properties: cfg.props, associations: 'contacts' }, p, hooks, (o) => {
@@ -614,13 +617,13 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
           }
           count(step);
         });
-        hooks.log(`${cfg.label}s: ${p.counts[step] ?? 0}`);
+        hooks.log(`${cfg.many}: ${p.counts[step] ?? 0}`);
         return;
       }
       case 'tickets': {
         const importer = app.services.ticketsImport;
         if (typeof importer !== 'function') {
-          note('Tickets übersprungen – kein Helpdesk-Modul installiert (app.services.ticketsImport fehlt)');
+          note(t('Tickets übersprungen – kein Helpdesk-Modul installiert (app.services.ticketsImport fehlt)'));
           return;
         }
         const tp = await client.req('GET', '/crm/v3/pipelines/tickets').catch(() => ({ results: [] }));
@@ -645,7 +648,7 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
           if (local) ids.set('ticket', o.id, String(local));
           count('tickets');
         });
-        hooks.log(`Tickets: ${p.counts.tickets ?? 0}`);
+        hooks.log(t('Tickets: {n}', { n: p.counts.tickets ?? 0 }));
         return;
       }
     }
@@ -655,12 +658,14 @@ export async function runHubSpotImport(app: App, locationId: string, client: Hub
 /** Dry run: how many records each part has in HubSpot and how many are already here. */
 export async function hubspotDryRun(app: App, locationId: string, client: HubSpotClient, parts: HubSpotPart[]) {
   const ids = idMap(app, locationId);
+  const t = tLoc(app, locationId);
   const total = async (object: string) => {
     const j = await client.req('POST', `/crm/v3/objects/${object}/search`, { body: { limit: 1, properties: ['hs_object_id'] } });
     return Number(j.total ?? 0);
   };
   const rows: { part: HubSpotPart; object: string; label: string; hubspot: number | null; imported: number; error?: string }[] = [];
-  const add = async (part: HubSpotPart, object: string, label: string, fn: () => Promise<number>, mapped = object.replace(/s$/, '')) => {
+  const add = async (part: HubSpotPart, object: string, labelDe: string, fn: () => Promise<number>, mapped = object.replace(/s$/, '')) => {
+    const label = t(labelDe);
     try {
       rows.push({ part, object, label, hubspot: await fn(), imported: ids.count(mapped) });
     } catch (e) {

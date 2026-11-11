@@ -317,9 +317,16 @@ export const LOCK_OF: Record<keyof Prefs, LockKey | null> = {
   tile_order: null,
 };
 
+/** "Invalid value for <field>" – the field travels separately so the server can translate the sentence (this file is shared with the web app). */
+export class InvalidPref extends Error {
+  constructor(readonly field: string) {
+    super(`Ungültiger Wert für ${field}`); // i18n-ignore
+  }
+}
+
 const oneOf = <T extends string>(list: readonly T[], v: unknown, label: string): T => {
   if (typeof v === 'string' && (list as readonly string[]).includes(v)) return v as T;
-  throw new Error(`Ungültiger Wert für ${label}`);
+  throw new InvalidPref(label);
 };
 
 /** Colours as #rrggbb (lower case); '' stays '' (= the theme's own). */
@@ -377,7 +384,7 @@ export function cleanPrefs(input: unknown): Partial<{ [K in keyof Prefs]: Prefs[
       case 'dept_tint':
       case 'asked':
       case 'goal_asked':
-        if (typeof v !== 'boolean') throw new Error(`Ungültiger Wert für ${key}`);
+        if (typeof v !== 'boolean') throw new InvalidPref(key);
         out[key] = v;
         break;
       case 'hidden': {
@@ -393,7 +400,7 @@ export function cleanPrefs(input: unknown): Partial<{ [K in keyof Prefs]: Prefs[
       case 'pinned':
       case 'unpinned':
       case 'pro': {
-        if (!Array.isArray(v)) throw new Error(`Ungültiger Wert für ${key}`);
+        if (!Array.isArray(v)) throw new InvalidPref(key);
         const known: readonly string[] = key === 'goals' ? GOAL_IDS : key === 'pro' ? PRO_KEYS : [...MODULE_IDS, ...ALWAYS_VISIBLE];
         // Unknown ids (an area or feature that no longer exists) are dropped, not an error – like `hidden`.
         out[key] = [...new Set(v.map(String).filter((id) => known.includes(id)))];
@@ -402,7 +409,7 @@ export function cleanPrefs(input: unknown): Partial<{ [K in keyof Prefs]: Prefs[
       case 'tile_order':
         // Only the shape here: the grids and keys are checked by the server (cleanTileOrder in services/tile-order.ts, called
         // by modules/appearance.ts) – the browser's look cache does not need it, and its first download stays small.
-        if (typeof v !== 'object' || Array.isArray(v)) throw new Error(`Ungültiger Wert für ${key}`);
+        if (typeof v !== 'object' || Array.isArray(v)) throw new InvalidPref(key);
         out.tile_order = v as TileOrder;
         break;
     }

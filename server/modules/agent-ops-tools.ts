@@ -130,8 +130,7 @@ export const OPS_TOOLS: Tool[] = [
     name: 'ghl_update_contact',
     title: 'Kontakt ändern',
     description:
-      'Ändert Felder eines bestimmten Kontakts (per ID): Name, E-Mail, Telefon, Firma, Adresse, Quelle, zuständige Person (assigned_to), dnd, eigene Felder (custom: {schluessel: wert}). Tags: ghl_tag_contact. ' +
-      'Wiedervorlage: follow_up_at (YYYY-MM-DD oder ISO-Zeitpunkt; null hebt auf) stellt den Kontakt bis dahin zurück, follow_up_note sagt warum; fällige: ghl_follow_ups.',
+      'Ändert Felder eines bestimmten Kontakts (per ID): Name, E-Mail, Telefon, Firma, Adresse, Quelle, zuständige Person (assigned_to), dnd, eigene Felder (custom: {schluessel: wert}). Tags: ghl_tag_contact. Wiedervorlage: follow_up_at (YYYY-MM-DD oder ISO-Zeitpunkt; null hebt auf) stellt den Kontakt bis dahin zurück, follow_up_note sagt warum; fällige: ghl_follow_ups.',
     inputSchema: obj(
       {
         contact_id: { type: 'string' },

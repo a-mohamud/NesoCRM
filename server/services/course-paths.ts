@@ -1,3 +1,5 @@
+import { tApp, type STFn } from '../i18n/index.js';
+
 /**
  * Learning paths (a sequence of courses with unlock rules) and cohorts (a start date everybody's drip counts from) – the pure rules.
  */
@@ -20,7 +22,7 @@ export interface PathStep extends PathItem {
  * least `unlockPercent` % done (100 = finished); a member who is not enrolled in a course counts as through it (nobody is locked
  * out forever by a course that was taken out of their access).
  */
-export function pathSteps(items: PathItem[], opts: { sequential: boolean; unlockPercent: number }): PathStep[] {
+export function pathSteps(items: PathItem[], opts: { sequential: boolean; unlockPercent: number }, t: STFn = tApp()): PathStep[] {
   const need = Math.min(Math.max(Math.round(opts.unlockPercent) || 100, 1), 100);
   let blocker: PathItem | undefined;
   return items.map((it) => {
@@ -29,7 +31,7 @@ export function pathSteps(items: PathItem[], opts: { sequential: boolean; unlock
     const step: PathStep = {
       ...it,
       state: pct >= 100 ? 'done' : locked ? 'locked' : 'open',
-      reason: locked ? `Schließe zuerst den Kurs „${blocker!.title}“ ab (${blocker!.percent ?? 0} % von ${need} %).` : '',
+      reason: locked ? t('Schließe zuerst den Kurs „{course}“ ab ({pct} % von {need} %).', { course: blocker!.title, pct: blocker!.percent ?? 0, need }) : '',
     };
     if (!blocker && pct < need) blocker = it;
     return step;
@@ -48,11 +50,11 @@ export const YMD = /^\d{4}-\d{2}-\d{2}$/;
 export function cleanYmd(v: unknown, what: string, required = true): string {
   const s = String(v ?? '').trim();
   if (!s) {
-    if (required) throw new Error(`${what} fehlt`);
+    if (required) throw new Error(tApp()('{field} fehlt', { field: tApp()(what) }));
     return '';
   }
   const d = new Date(`${s}T00:00:00Z`);
-  if (!YMD.test(s) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) throw new Error(`${what}: bitte als JJJJ-MM-TT angeben`);
+  if (!YMD.test(s) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) throw new Error(tApp()('{field}: bitte als JJJJ-MM-TT angeben', { field: tApp()(what) }));
   return s;
 }
 

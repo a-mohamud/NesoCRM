@@ -4,8 +4,9 @@ import type { App, Module } from '../core/app.js';
 import { normalizeDomain } from '../core/domains.js';
 import { HttpError, bad, notFound, str, type Ctx } from '../core/http.js';
 import { id, now } from '../core/util.js';
-import { LOCK_LABELS, LOCK_OF, cleanLocks, cleanPrefs, effectivePrefs, type Locks, type Prefs } from '../services/appearance-model.js';
+import { InvalidPref, LOCK_LABELS, LOCK_OF, cleanLocks, cleanPrefs, effectivePrefs, type Locks, type Prefs } from '../services/appearance-model.js';
 import { checkLogoDataUrl } from '../services/svg-safe.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 import { cleanTileOrder, mergeTileOrder, trimTileOrder, type TileOrderPatch } from '../services/tile-order.js';
 
 /**
@@ -140,9 +141,14 @@ function applyChanges(target: Record<string, unknown>, changes: Record<string, u
   }
 }
 
-const lockMessage = (keys: string[]) => {
-  const groups = [...new Set(keys.map((k) => LOCK_OF[k as keyof Prefs]).filter(Boolean))].map((l) => LOCK_LABELS[l!]);
-  return `Von deiner Agentur festgelegt: ${groups.join(', ')}`;
+/** A validation error of the shared model as a translated 400. */
+const prefError = (t: STFn, e: unknown) => {
+  return bad(e instanceof InvalidPref ? t('Ungültiger Wert für {field}', { field: e.field }) : (e as Error).message);
+};
+
+const lockMessage = (t: STFn, keys: string[]) => {
+  const groups = [...new Set(keys.map((k) => LOCK_OF[k as keyof Prefs]).filter(Boolean))].map((l) => t(LOCK_LABELS[l!]));
+  return t('Von deiner Agentur festgelegt: {groups}', { groups: groups.join(', ') });
 };
 
 export const appearanceModule: Module = {
@@ -168,7 +174,7 @@ export const appearanceModule: Module = {
       try {
         changes = checkPrefs(ctx.body);
       } catch (e) {
-        throw bad((e as Error).message);
+        throw prefError(tCtx(ctx), e);
       }
       const keys = Object.keys(changes);
       if (!keys.length) throw bad('Nichts zu speichern');
@@ -182,7 +188,7 @@ export const appearanceModule: Module = {
           const v = (changes as any)[k];
           return v === null || JSON.stringify(v) !== JSON.stringify((before.effective as any)[k]);
         });
-        if (refused.length) throw new HttpError(403, lockMessage(refused));
+        if (refused.length) throw new HttpError(403, lockMessage(tCtx(ctx), refused));
         for (const k of keys) {
           const lock = LOCK_OF[k as keyof Prefs];
           if (lock && locks[lock]) delete (changes as any)[k];
@@ -207,7 +213,7 @@ export const appearanceModule: Module = {
         try {
           d = cleanPrefs(body.defaults);
         } catch (e) {
-          throw bad((e as Error).message);
+          throw prefError(tApp(), e);
         }
         for (const k of PERSONAL) delete (d as any)[k];
         applyChanges(next.defaults as Record<string, unknown>, d);

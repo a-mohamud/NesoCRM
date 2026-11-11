@@ -2,6 +2,7 @@ import { EU_COUNTRIES, type AdSpec, type GeoTarget } from './ads-manager.js';
 import { AdsError } from './ads.js';
 import { META_SCHEMA } from './ads-hash.js';
 import { MetaApiError, graphCall, type FetchLike } from './meta.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Meta Marketing API (Graph API): the payloads of the three levels campaign → ad set → ad (+ creative), audiences,
@@ -30,11 +31,11 @@ export function metaApi(f: FetchLike, version: string, token: string, timeoutMs 
 /** Meta's text plus what usually helps with the ads-specific codes. */
 function adsHint(e: MetaApiError): string {
   const code = e.code;
-  if (code === 200 || code === 10 || code === 283) return `${e.message} – dem Zugang fehlt eine Berechtigung (ads_management bzw. Seitenrechte); neu verbinden und alle Rechte erlauben`;
-  if (code === 2635 || code === 2690) return `${e.message} – das Werbekonto ist deaktiviert oder gesperrt`;
-  if (code === 17 || code === 80004 || code === 613) return 'Meta drosselt gerade die Anfragen – bitte in ein paar Minuten noch einmal';
-  if (code === 2667 || code === 3858081) return `${e.message} – für Ziele in der EU braucht Meta Angaben zu Begünstigtem und Zahler`;
-  if (code === 190) return 'Der Meta-Zugang ist abgelaufen oder wurde entzogen – bitte unter Anzeigen → Verbindungen neu verbinden';
+  if (code === 200 || code === 10 || code === 283) return tApp()('{error} – dem Zugang fehlt eine Berechtigung (ads_management bzw. Seitenrechte); neu verbinden und alle Rechte erlauben', { error: e.message });
+  if (code === 2635 || code === 2690) return tApp()('{error} – das Werbekonto ist deaktiviert oder gesperrt', { error: e.message });
+  if (code === 17 || code === 80004 || code === 613) return tApp()('Meta drosselt gerade die Anfragen – bitte in ein paar Minuten noch einmal');
+  if (code === 2667 || code === 3858081) return tApp()('{error} – für Ziele in der EU braucht Meta Angaben zu Begünstigtem und Zahler', { error: e.message });
+  if (code === 190) return tApp()('Der Meta-Zugang ist abgelaufen oder wurde entzogen – bitte unter Anzeigen → Verbindungen neu verbinden');
   return e.message;
 }
 
@@ -129,7 +130,7 @@ export function adsetPayload(spec: AdSpec, campaignId: string, ctx: MetaContext)
   const opt = optimisation(spec, ctx);
   const amount = Math.round((spec.budget.amount_cents / 100) * ctx.divisor);
   const p: Record<string, any> = {
-    name: `${spec.name} – Anzeigengruppe`,
+    name: tApp()('{name} – Anzeigengruppe', { name: spec.name }),
     campaign_id: campaignId,
     status: 'PAUSED',
     billing_event: 'IMPRESSIONS',
@@ -174,10 +175,10 @@ export function creativePayload(spec: AdSpec, ctx: MetaContext) {
       call_to_action,
     };
   }
-  return { name: `${spec.name} – Creative`, object_story_spec: story, ...(ctx.urlTags ? { url_tags: ctx.urlTags } : {}) };
+  return { name: tApp()('{name} – Creative', { name: spec.name }), object_story_spec: story, ...(ctx.urlTags ? { url_tags: ctx.urlTags } : {}) };
 }
 
-export const adPayload = (spec: AdSpec, adsetId: string, creativeId: string) => ({ name: `${spec.name} – Anzeige`, adset_id: adsetId, creative: { creative_id: creativeId }, status: 'PAUSED' });
+export const adPayload = (spec: AdSpec, adsetId: string, creativeId: string) => ({ name: tApp()('{name} – Anzeige', { name: spec.name }), adset_id: adsetId, creative: { creative_id: creativeId }, status: 'PAUSED' });
 
 // --- publishing ----------------------------------------------------------------------------------------
 
@@ -202,7 +203,7 @@ export interface MediaFile {
 
 const idOf = (r: any, what: string): string => {
   const v = String(r?.id ?? '');
-  if (!v) throw new AdsError(`Meta hat keine ${what}-ID geliefert`);
+  if (!v) throw new AdsError(tApp()('Meta hat keine {what}-ID geliefert', { what: tApp()(what) }));
   return v;
 };
 
@@ -336,7 +337,7 @@ export async function discover(api: MetaApi): Promise<MetaOptions> {
   const pages = await api.call<any>('GET', 'me/accounts?fields=id,name,access_token&limit=100').catch(() => ({ data: [] }));
   return {
     user: { id: String(me?.id ?? ''), name: String(me?.name ?? '') },
-    ad_accounts: (Array.isArray(accounts?.data) ? accounts.data : []).map((a: any) => ({ id: String(a.account_id ?? '').replace(/^act_/, ''), name: String(a.name ?? ''), currency: String(a.currency ?? 'EUR'), status: ACCOUNT_STATUS[Number(a.account_status)] ?? 'unbekannt', business: String(a.business?.name ?? '') })).filter((a: any) => a.id),
+    ad_accounts: (Array.isArray(accounts?.data) ? accounts.data : []).map((a: any) => ({ id: String(a.account_id ?? '').replace(/^act_/, ''), name: String(a.name ?? ''), currency: String(a.currency ?? 'EUR'), status: tApp()(ACCOUNT_STATUS[Number(a.account_status)] ?? 'unbekannt'), business: String(a.business?.name ?? '') })).filter((a: any) => a.id),
     pages: (Array.isArray(pages?.data) ? pages.data : []).map((p: any) => ({ id: String(p.id), name: String(p.name ?? ''), token: String(p.access_token ?? '') })),
   };
 }
@@ -472,7 +473,7 @@ async function tokenCall(f: FetchLike, version: string, params: Record<string, s
   try {
     r = await f(`https://graph.facebook.com/${version}/oauth/access_token?${new URLSearchParams(params)}`, { signal: AbortSignal.timeout(20_000) });
   } catch (e) {
-    throw new AdsError(`Meta nicht erreichbar: ${(e as Error).message}`);
+    throw new AdsError(tApp()('Meta nicht erreichbar: {error}', { error: (e as Error).message }));
   }
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j.access_token) throw new AdsError(`Meta: ${j.error?.message ?? `Anmeldung fehlgeschlagen (HTTP ${r.status})`}`.slice(0, 300));

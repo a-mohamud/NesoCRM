@@ -1,9 +1,10 @@
 import type { Module } from '../core/app.js';
-import { HttpError, bad, str } from '../core/http.js';
+import { HttpError, bad, str, type Ctx } from '../core/http.js';
 import { render } from '../core/template.js';
 import { now } from '../core/util.js';
 import { contactName, getContact, logActivity } from '../services/contacts.js';
 import { openSecret, sealSecret } from './mail-sync.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Workflow action "GitHub-Issue für Codex anlegen": creates an issue in a repository of the sub-account's
@@ -40,21 +41,23 @@ export const githubCodexModule: Module = {
         return null;
       }
     };
-    const headers = (tok: string) => ({ authorization: `Bearer ${tok}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'HyperLevel-CRM', 'content-type': 'application/json' });
+    const headers = (tok: string) => ({ authorization: `Bearer ${tok}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'HyperLevel-CRM', 'content-type': 'application/json' }); // i18n-ignore
     const repoOf = (v: unknown, fallback = '') => {
       const r = str(v, 'Repository', { max: 201 }).replace(/^https:\/\/github\.com\//i, '').replace(/\.git$/, '').replace(/\/$/, '') || fallback;
       if (r && !REPO_RE.test(r)) throw bad('Repository bitte als besitzer/name angeben, z. B. acme/website');
       return r;
     };
-    const ghError = (status: number, msg: string) =>
-      status === 401 ? 'GitHub-Token ist ungültig oder abgelaufen.' : status === 403 ? `GitHub verweigert den Zugriff (Rechte des Tokens: Issues lesen & schreiben?)${msg ? `: ${msg}` : ''}` : status === 404 ? 'Repository nicht gefunden – oder der Token darf es nicht sehen.' : status === 410 ? 'In diesem Repository sind Issues ausgeschaltet.' : `Fehler von GitHub (${status})${msg ? `: ${msg}` : ''}`;
+    const ghError = (status: number, msg: string, t = tApp()) => {
+      const detail = msg ? `: ${msg}` : '';
+      return status === 401 ? t('GitHub-Token ist ungültig oder abgelaufen.') : status === 403 ? t('GitHub verweigert den Zugriff (Rechte des Tokens: Issues lesen & schreiben?){detail}', { detail }) : status === 404 ? t('Repository nicht gefunden – oder der Token darf es nicht sehen.') : status === 410 ? t('In diesem Repository sind Issues ausgeschaltet.') : t('Fehler von GitHub ({status}){detail}', { status, detail });
+    };
 
-    const out = (locId: string) => {
+    const out = (locId: string, ctx: Ctx) => {
       const s = load(locId);
       const tok = tokenOf(locId);
-      return { token_set: !!s.token, token_hint: tok ? `…${tok.slice(-4)}` : s.token ? '(nicht lesbar – bitte neu eintragen)' : '', default_repo: s.default_repo };
+      return { token_set: !!s.token, token_hint: tok ? `…${tok.slice(-4)}` : s.token ? tCtx(ctx)('(nicht lesbar – bitte neu eintragen)') : '', default_repo: s.default_repo };
     };
-    router.get('/api/github-codex/settings', 'location', (ctx) => out(ctx.locationId));
+    router.get('/api/github-codex/settings', 'location', (ctx) => out(ctx.locationId, ctx));
     router.put('/api/github-codex/settings', 'location', (ctx) => {
       const b = ctx.body ?? {};
       const cur = load(ctx.locationId);
@@ -74,7 +77,7 @@ export const githubCodexModule: Module = {
         repo,
         now(),
       );
-      return out(ctx.locationId);
+      return out(ctx.locationId, ctx);
     });
     /** Checks token + repository (GET /repos/{repo}) – creates nothing. */
     router.post('/api/github-codex/test', 'location', async (ctx) => {
@@ -89,8 +92,8 @@ export const githubCodexModule: Module = {
         throw new HttpError(504, 'GitHub ist nicht erreichbar.');
       }
       const data: any = await r.json().catch(() => null);
-      if (!r.ok) throw new HttpError(502, ghError(r.status, String(data?.message ?? '')));
-      if (data?.has_issues === false) throw new HttpError(502, ghError(410, ''));
+      if (!r.ok) throw new HttpError(502, ghError(r.status, String(data?.message ?? ''), tCtx(ctx)));
+      if (data?.has_issues === false) throw new HttpError(502, ghError(410, '', tCtx(ctx)));
       return { ok: true, repo: String(data?.full_name ?? repo), private: !!data?.private };
     });
 
@@ -107,14 +110,15 @@ export const githubCodexModule: Module = {
     }
     /** Creates an issue with the sub-account's token: shared by the workflow action and other modules (Werkstatt → Kernfeature). */
     const createIssue = async (locId: string, o: NewIssue): Promise<{ repo: string; number: number | string; url: string; title: string }> => {
+      const t = tLoc(app, locId);
       const tok = tokenOf(locId);
-      if (!tok) throw new Error('Kein GitHub-Token (Einstellungen → KI-Werkzeuge → GitHub für Codex)');
+      if (!tok) throw new Error(t('Kein GitHub-Token (Einstellungen → KI-Werkzeuge → GitHub für Codex)'));
       const repo = repoOf(o.repo ?? '', load(locId).default_repo);
-      if (!repo) throw new Error('Repository fehlt');
+      if (!repo) throw new Error(t('Repository fehlt'));
       const title = String(o.title ?? '').trim().slice(0, 250);
-      if (!title) throw new Error('Titel fehlt');
+      if (!title) throw new Error(t('Titel fehlt'));
       const prompt = String(o.prompt ?? '').replace(/\s+/g, ' ').trim().slice(0, 2000);
-      if (!prompt) throw new Error('Auftrag an Codex fehlt');
+      if (!prompt) throw new Error(t('Auftrag an Codex fehlt'));
       const handle = o.agent === 'claude' ? '@claude' : '@codex';
       const body = [String(o.body ?? '').trim(), o.context ?? '', `${handle} ${prompt}`].filter(Boolean).join('\n\n').slice(0, 60_000);
       const labels = (o.labels ?? []).map((l) => String(l).trim()).filter(Boolean).slice(0, 10);
@@ -122,16 +126,16 @@ export const githubCodexModule: Module = {
       try {
         r = await gh(`${API}/repos/${repo}/issues`, { method: 'POST', headers: headers(tok), body: JSON.stringify({ title, body, ...(labels.length ? { labels } : {}) }), signal: AbortSignal.timeout(20_000) });
       } catch {
-        throw new Error('GitHub ist nicht erreichbar');
+        throw new Error(t('GitHub ist nicht erreichbar'));
       }
       const data: any = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(ghError(r.status, String(data?.message ?? '')));
+      if (!r.ok) throw new Error(ghError(r.status, String(data?.message ?? ''), t));
       return { repo, number: data?.number ?? '?', url: String(data?.html_url ?? ''), title };
     };
     /** State of an issue and of pull requests that reference it (for status tracking). */
     const issueStatus = async (locId: string, repo: string, number: number): Promise<{ state: string; closed: boolean; prs: { number: number; url: string; state: string; merged: boolean }[] }> => {
       const tok = tokenOf(locId);
-      if (!tok) throw new Error('Kein GitHub-Token');
+      if (!tok) throw new Error(tLoc(app, locId)('Kein GitHub-Token'));
       const r = repoOf(repo);
       const get = async (path: string) => {
         const res = await gh(`${API}/repos/${r}/${path}`, { method: 'GET', headers: headers(tok), signal: AbortSignal.timeout(15_000) });
@@ -154,11 +158,12 @@ export const githubCodexModule: Module = {
       github_issue: async (run: any, step: any, vars: Record<string, any>) => {
         const locId = run.location_id;
         const contact = run.contact_id ? getContact(app, locId, run.contact_id) : undefined;
-        const context = contact ? [`**Kontakt:** ${contactName(contact)}${contact.email ? ` <${contact.email}>` : ''}`, contact.company ? `**Firma:** ${contact.company}` : '', `**CRM:** ${app.baseUrl()}/app/contacts/${contact.id}`].filter(Boolean).join('\n') : '';
+        const t = tLoc(app, locId);
+        const context = contact ? [`**${t('Kontakt')}:** ${contactName(contact)}${contact.email ? ` <${contact.email}>` : ''}`, contact.company ? `**${t('Firma')}:** ${contact.company}` : '', `**CRM:** ${app.baseUrl()}/app/contacts/${contact.id}`].filter(Boolean).join('\n') : '';
         const labels = (Array.isArray(step.labels) ? step.labels : String(step.labels ?? '').split(',')).map((l: unknown) => String(l).trim()).filter(Boolean);
         const i = await createIssue(locId, { repo: render(String(step.repo ?? ''), vars).trim(), title: render(String(step.title ?? ''), vars), body: render(String(step.body ?? ''), vars), prompt: render(String(step.prompt ?? ''), vars), labels, agent: step.agent === 'claude' ? 'claude' : 'codex', context });
-        if (contact) logActivity(app, locId, contact.id, 'github.issue', `GitHub-Issue für Codex angelegt: ${i.repo}#${i.number} ${i.title}`, { url: i.url });
-        return `Issue ${i.repo}#${i.number} angelegt${i.url ? `: ${i.url}` : ''}`;
+        if (contact) logActivity(app, locId, contact.id, 'github.issue', t('GitHub-Issue für Codex angelegt: {ref} {title}', { ref: `${i.repo}#${i.number}`, title: i.title }), { url: i.url });
+        return `${t('Issue {ref} angelegt', { ref: `${i.repo}#${i.number}` })}${i.url ? `: ${i.url}` : ''}`;
       },
     };
   },

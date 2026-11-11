@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { tApp } from '../i18n/index.js';
 import { deflateSync, inflateSync } from 'node:zlib';
 import { XRECHNUNG_CUSTOMIZATION } from './einvoice-model.js';
 import { SRGB_NAME, srgbIcc } from './srgb-icc.js';
@@ -71,7 +72,7 @@ export function indexPdf(pdf: Buffer): PdfIndex {
   const sorted = [...offsets].sort((a, b) => a[1] - b[1]);
   const objects = new Map<number, { start: number; end: number }>();
   sorted.forEach(([num, start], i) => {
-    if (!new RegExp(`^${num}\\s+0\\s+obj\\b`).test(s.slice(start, start + 24))) throw new Error(`PDF-Objekt ${num} steht nicht an seiner Adresse`);
+    if (!new RegExp(`^${num}\\s+0\\s+obj\\b`).test(s.slice(start, start + 24))) throw new Error(tApp()('PDF-Objekt {num} steht nicht an seiner Adresse', { num }));
     objects.set(num, { start, end: i + 1 < sorted.length ? sorted[i + 1][1] : xref });
   });
   return { objects, root, info: infoM ? Number(infoM[1]) : null, size, xref };
@@ -80,7 +81,7 @@ export function indexPdf(pdf: Buffer): PdfIndex {
 /** The text of an object without its stream data ("<< … >>" or a plain value). */
 export function objectText(pdf: Buffer, idx: PdfIndex, num: number): string {
   const r = idx.objects.get(num);
-  if (!r) throw new Error(`PDF-Objekt ${num} fehlt`);
+  if (!r) throw new Error(tApp()('PDF-Objekt {num} fehlt', { num }));
   const s = pdf.subarray(r.start, r.end).toString('latin1');
   const body = s.replace(/^\d+\s+0\s+obj\s*/, '');
   const st = body.search(/\bstream\r?\n/);
@@ -90,12 +91,12 @@ export function objectText(pdf: Buffer, idx: PdfIndex, num: number): string {
 /** The decoded data of a stream object (FlateDecode or none). */
 export function streamData(pdf: Buffer, idx: PdfIndex, num: number): Buffer {
   const r = idx.objects.get(num);
-  if (!r) throw new Error(`PDF-Objekt ${num} fehlt`);
+  if (!r) throw new Error(tApp()('PDF-Objekt {num} fehlt', { num }));
   const s = pdf.subarray(r.start, r.end).toString('latin1');
   const dict = objectText(pdf, idx, num);
   const len = Number(/\/Length\s+(\d+)/.exec(dict)?.[1]);
   const m = /\bstream(\r?\n)/.exec(s);
-  if (!m || !Number.isFinite(len)) throw new Error(`PDF-Objekt ${num} ist kein Stream`);
+  if (!m || !Number.isFinite(len)) throw new Error(tApp()('PDF-Objekt {num} ist kein Stream', { num }));
   const raw = pdf.subarray(r.start + m.index + m[0].length, r.start + m.index + m[0].length + len);
   return /\/Filter\s*\/FlateDecode/.test(dict) ? inflateSync(raw) : Buffer.from(raw);
 }
@@ -155,10 +156,15 @@ export interface HybridMeta {
   date: string;
 }
 
+// XMP schema identifiers and their fixed English descriptions (not translated).
 const FX_PROPS: [string, string][] = [
+  // i18n-ignore
   ['DocumentFileName', 'The name of the embedded XML document'],
+  // i18n-ignore
   ['DocumentType', 'The type of the hybrid document in capital letters, e.g. INVOICE or ORDER'],
+  // i18n-ignore
   ['Version', 'The actual version of the standard applying to the embedded XML document'],
+  // i18n-ignore
   ['ConformanceLevel', 'The conformance level of the embedded XML document'],
 ];
 

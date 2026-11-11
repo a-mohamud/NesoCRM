@@ -1,4 +1,5 @@
 import type { FormField } from './form-fields.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Per-field form analytics: what the form page reports (open, view, answer, submit, leave – no cookies, no address, a random id per page
@@ -49,7 +50,7 @@ export interface Aggregates {
 
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 
-export function assemble(fields: FormField[], a: Aggregates) {
+export function assemble(fields: FormField[], a: Aggregates, t: STFn = tApp()) {
   const asked = fields.filter((f) => !['heading', 'page_break', 'hidden'].includes(f.type));
   const rows = asked.map((f, i) => {
     const views = a.views[f.id] ?? 0;
@@ -68,10 +69,10 @@ export function assemble(fields: FormField[], a: Aggregates) {
     };
   });
   const funnel = [
-    { step: 'Geöffnet', count: a.opened, percent: a.opened ? 100 : 0 },
-    ...(a.started ? [{ step: 'Begonnen', count: a.started, percent: pct(a.started, a.opened) }] : []),
+    { step: t('Geöffnet'), count: a.opened, percent: a.opened ? 100 : 0 },
+    ...(a.started ? [{ step: t('Begonnen'), count: a.started, percent: pct(a.started, a.opened) }] : []),
     ...rows.map((r) => ({ step: r.label, field: r.id, count: r.views, percent: pct(r.views, a.opened) })),
-    { step: 'Abgeschickt', count: a.submitted, percent: pct(a.submitted, a.opened) },
+    { step: t('Abgeschickt'), count: a.submitted, percent: pct(a.submitted, a.opened) },
   ];
   const worst = rows.filter((r) => r.dropoffs > 0).sort((x, y) => y.dropoffs - x.dropoffs)[0];
   const slowest = rows.filter((r) => r.answered >= 3).sort((x, y) => y.avg_seconds - x.avg_seconds)[0];

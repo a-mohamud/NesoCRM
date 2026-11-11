@@ -8,6 +8,7 @@ import { getSettings, type EntryRow } from './acc-ledger.js';
 import { moneyDe, semicolonCsv } from './bo-common.js';
 import { loadInvoice } from './invoice-flow.js';
 import { invoicePdfOf } from './invoice-render.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * The documents for DATEV: a ZIP for "Belegtransfer" / DATEV Unternehmen online with DATEV's document.xml (schema
@@ -175,7 +176,9 @@ export function datevDocumentsArchive(app: App, loc: string, from: string, to: s
   );
   const files: { name: string; data: Buffer }[] = [];
   const docs: DatevDoc[] = [];
-  const index: (string | number)[][] = [['Buchungsnummer', 'Buchungsdatum', 'Belegdatum', 'Belegnummer', 'Partner', 'Betrag', 'Datei', 'SHA-256', 'Prüfung', 'Art', 'Beleglink (GUID)']];
+  // document.xml follows DATEV's format; the index.csv is for people and uses the sub-account's language.
+  const t = tLoc(app, loc);
+  const index: (string | number)[][] = [['Buchungsnummer', 'Buchungsdatum', 'Belegdatum', 'Belegnummer', 'Partner', 'Betrag', 'Datei', 'SHA-256', 'Prüfung', 'Art', 'Beleglink (GUID)'].map((h) => t(h))];
   const byKey = new Map<string, { file: string; guid: string; f: Found }>();
   const used = new Set<string>(['document.xml', 'index.csv']);
   let missing = 0;
@@ -196,7 +199,7 @@ export function datevDocumentsArchive(app: App, loc: string, from: string, to: s
         for (let i = 2; used.has(file); i++) file = `${stem}_${i}${ext}`;
         used.add(file);
         files.push({ name: file, data: f.data });
-        docs.push({ guid, type: b.type, file, description: x.text || x.doc_ref || x.number, keywords: [x.party_name, `Buchung ${x.number}`, x.doc_date].filter(Boolean).join('; ') });
+        docs.push({ guid, type: b.type, file, description: x.text || x.doc_ref || x.number, keywords: [x.party_name, t('Buchung {number}', { number: x.number }), x.doc_date].filter(Boolean).join('; ') });
       } else missing++;
       d = { file, guid, f };
       byKey.set(b.key, d);
@@ -207,14 +210,14 @@ export function datevDocumentsArchive(app: App, loc: string, from: string, to: s
     } catch {
       /* no amount */
     }
-    index.push([x.number, x.date, x.doc_date, x.doc_ref, x.party_name, moneyDe(gross), d.file || '(Datei fehlt)', d.f.sha256, d.f.check, b.type === 1 ? 'Rechnungseingang' : b.type === 2 ? 'Rechnungsausgang' : '', d.file ? d.guid : '']);
+    index.push([x.number, x.date, x.doc_date, x.doc_ref, x.party_name, moneyDe(gross), d.file || t('(Datei fehlt)'), d.f.sha256, t(d.f.check), b.type === 1 ? t('Rechnungseingang') : b.type === 2 ? t('Rechnungsausgang') : '', d.file ? d.guid : '']);
   }
   if (index.length === 1) throw bad('Im Zeitraum gibt es keine Belege zu Buchungen');
-  if (docs.length > DATEV_MAX_DOCUMENTS) throw bad(`DATEV nimmt höchstens ${DATEV_MAX_DOCUMENTS} Belege je Archiv – bitte einen kürzeren Zeitraum wählen`);
+  if (docs.length > DATEV_MAX_DOCUMENTS) throw bad(t('DATEV nimmt höchstens {max} Belege je Archiv – bitte einen kürzeren Zeitraum wählen', { max: DATEV_MAX_DOCUMENTS }));
   const s = getSettings(app, loc);
   const out: { name: string; data: Buffer }[] = [];
   if (docs.length) {
-    const xml = documentXml({ docs, date: o.now ?? new Date(), description: `Belege ${from} bis ${to}`, consultant: s.datev.berater, client: s.datev.mandant, clientName: app.location(loc)?.name, process: o.process });
+    const xml = documentXml({ docs, date: o.now ?? new Date(), description: t('Belege {from} bis {to}', { from, to }), consultant: s.datev.berater, client: s.datev.mandant, clientName: app.location(loc)?.name, process: o.process });
     out.push({ name: 'document.xml', data: Buffer.from(xml, 'utf8') });
   }
   if (o.index !== false) out.push({ name: 'index.csv', data: Buffer.from(semicolonCsv(index), 'utf8') });

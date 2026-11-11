@@ -1,3 +1,4 @@
+import { defaultLocale, tApp } from '../i18n/index.js';
 import type { Block } from './site-blocks.js';
 import { blockText, walkBlocks } from './site-layout.js';
 import { TEMPLATES } from './site-templates.js';
@@ -56,7 +57,7 @@ export function cleanBrief(b: any): Brief {
     audience: clipText(b?.audience, LIMITS.audience),
     tone: pick(b?.tone, TONES, 'freundlich'),
     address: b?.address === 'sie' ? 'sie' : 'du',
-    language: pick(b?.language, LANGS, 'de'),
+    language: pick(b?.language, LANGS, defaultLocale()),
     page_type,
     goal: pick(b?.goal, GOALS, page_type === 'website' ? 'info' : 'leads'),
     pages: (Array.isArray(b?.pages) ? b.pages : typeof b?.pages === 'string' ? b.pages.split(/[,\n]/) : []).map((x: unknown) => clipText(x, 60)).filter(Boolean).slice(0, 8),
@@ -64,75 +65,79 @@ export function cleanBrief(b: any): Brief {
     style: typeof b?.style === 'string' && styleOf(b.style) ? b.style : undefined,
   };
 }
-export const briefProblem = (b: Brief) => (b.business.length + b.offer.length + b.extra.length < 12 ? 'Bitte beschreibe kurz dein Unternehmen und dein Angebot (oder schreibe, was die Seite tun soll).' : null);
+export const briefProblem = (b: Brief) => (b.business.length + b.offer.length + b.extra.length < 12 ? tApp()('Bitte beschreibe kurz dein Unternehmen und dein Angebot (oder schreibe, was die Seite tun soll).') : null);
 
-const LANG_RULE: Record<Lang, string> = { de: 'Alle Texte auf Deutsch.', en: 'All page texts in English (British spelling is fine).' };
-const ADDRESS_RULE = { du: 'Sprich Besucher mit „du“ an (klein geschrieben).', sie: 'Sprich Besucher mit „Sie“ an.' };
+const LANG_RULE: Record<Lang, string> = { de: 'Write all page texts in German.', en: 'Write all page texts in English (British spelling is fine).' };
+// i18n-ignore – model instructions in English; „du“/„Sie“ name the German forms
+const ADDRESS_RULE = { du: 'Address visitors as "you" in a friendly, informal tone (in German: „du“, lower case).', sie: 'Address visitors as "you" in a polite, formal tone (in German: „Sie“).' };
 const TYPE_RULE: Record<PageType, string> = {
-  landing: 'Eine Landingpage: eine Seite (optional eine Danke-Seite „danke“) mit genau einem Ziel.',
-  funnel: 'Ein Funnel: 2–6 Schritte, jeder Schritt eine Seite in Reihenfolge (z. B. Opt-in → Danke, oder Verkaufsseite → Kasse → Danke).',
-  website: 'Eine Website mit 2–8 Seiten (Startseite zuerst; z. B. Leistungen, Über uns, Kontakt).',
+  landing: 'A landing page: one page (optionally a thank-you page "danke") with exactly one goal.',
+  funnel: 'A funnel: 2–6 steps, each step one page, in order (e.g. opt-in → thank you, or sales page → checkout → thank you).',
+  website: 'A website with 2–8 pages (home page first; e.g. services, about us, contact).',
 };
 const GOAL_RULE: Record<Goal, string> = {
-  leads: 'Ziel: Anfragen/Anmeldungen einsammeln – ein Formular-Block auf der ersten Seite, Buttons verlinken auf #formular.',
-  booking: 'Ziel: Termine – ein Kalender-Block, Buttons verlinken auf #termin.',
-  sale: 'Ziel: Verkauf – ein Produkt-Block (Kasse) und eine Danke-Seite.',
-  info: 'Ziel: informieren und Kontakt – ein Kontaktformular auf der Kontaktseite.',
+  leads: 'Goal: collect enquiries/sign-ups – a form block on the first page, buttons link to #formular.',
+  booking: 'Goal: appointments – a calendar block, buttons link to #termin.',
+  sale: 'Goal: sales – a product block (checkout) and a thank-you page.',
+  info: 'Goal: inform and get in touch – a contact form on the contact page.',
 };
 
 export const RULES_COMMON = [
-  'Du baust Seiten für den Website-Baukasten von HyperLevel. Antworte ausschließlich mit EINEM JSON-Objekt, ohne Erklärungen.',
-  'Erfinde keine Fakten: keine Preise, Zahlen, Auszeichnungen, Kundennamen oder Zitate, die nicht in der Beschreibung stehen. Fehlt etwas, schreibe einen klar erkennbaren Platzhalter in eckigen Klammern, z. B. „[Preis]“, „[Kundenstimme einfügen]“.',
-  'Keine Rechtstexte (Impressum, Datenschutz, Widerruf, AGB) – die erzeugt HyperLevel selbst aus den Firmendaten.',
-  'Keine Bilder, Videos, HTML oder Skripte. Kurze, konkrete Sätze; Nutzen vor Merkmalen; jede Seite hat genau eine H1 (der Hero oder eine Überschrift mit level 1).',
+  'You build pages for the HyperLevel website builder. Reply with exactly ONE JSON object and nothing else – no explanations.',
+  'Do not invent facts: no prices, figures, awards, client names or quotes that are not in the brief. If something is missing, write a clearly recognisable placeholder in square brackets, e.g. "[Price]", "[Add testimonial]".',
+  'No legal texts (legal notice/Impressum, privacy policy, cancellation policy, terms and conditions) – HyperLevel generates them itself from the company details.',
+  'No images, videos, HTML or scripts. Short, concrete sentences; benefits before features; every page has exactly one H1 (the hero or a heading with level 1).',
 ].join('\n');
 
 export const RULES_PLAN = `${RULES_COMMON}
 
-AUFGABE: Erstelle zuerst nur den SEITENPLAN.
-Format: {"site_name": "…", "style": "<style-id>", "summary": "ein Satz", "pages": [{"slug": "start", "name": "Start", "purpose": "ein Satz", "sections": ["hero", "benefits", …]}]}
-- slug: Kleinbuchstaben, Ziffern und Bindestriche, eindeutig; die erste Seite ist die Startseite.
-- sections: in Reihenfolge, je 3–9 aus: ${PLAN_SECTIONS.join(', ')}.
-- style: eine der Design-IDs aus der Liste (passend zur Branche).`;
+TASK: First create only the PAGE PLAN.
+Format: {"site_name": "…", "style": "<style-id>", "summary": "one sentence", "pages": [{"slug": "start", "name": "Home", "purpose": "one sentence", "sections": ["hero", "benefits", …]}]}
+- slug: lower-case letters, digits and hyphens, unique; the first page is the home page.
+- sections: in order, 3–9 each from: ${PLAN_SECTIONS.join(', ')}.
+- style: one of the design ids from the list (matching the industry).
+- Page names and the site name are in the language of the page texts.`;
 
 export const RULES_BLOCKS = `${RULES_COMMON}
 
-AUFGABE: Schreibe die Seiten des Plans aus.
-Format: {"pages": [{"slug": "<aus dem Plan>", "seo": {"title": "≤ 60 Zeichen", "description": "≤ 155 Zeichen"}, "sections": [ABSCHNITT, …]}], "notes": ["was die Person noch tun muss", …]}
-ABSCHNITT = {"name": "Hero", "style": "plain|soft|brand|dark", "width": "narrow|normal|wide", "anchor": "optional", "layout": "1|2|3|4|7-5|5-7|8-4|4-8", "columns": [[BLOCK, …], [BLOCK, …]]}
-- layout bestimmt die Spalten (Zwölftel): "1" = eine Spalte, "2" = zwei gleiche, "7-5" = breit + schmal. Die Zahl der Spalten in columns muss passen.
-- Ein Abschnitt mit dem Formular bekommt anchor "formular", einer mit dem Kalender "termin"; Buttons verlinken mit "#formular"/"#termin" darauf, auf andere Seiten mit "page:<slug>".
-- Abwechselnde Hintergründe (plain, soft) lesen sich gut; höchstens ein Abschnitt "brand" oder "dark" pro Seite (z. B. der Aufruf am Ende).
-- BLOCK ist ein Objekt mit "type" und den Feldern unten (* = Pflicht); andere Felder gibt es nicht.
+TASK: Write out the pages of the plan.
+Format: {"pages": [{"slug": "<from the plan>", "seo": {"title": "≤ 60 characters", "description": "≤ 155 characters"}, "sections": [SECTION, …]}], "notes": ["what the person still has to do", …]}
+SECTION = {"name": "Hero", "style": "plain|soft|brand|dark", "width": "narrow|normal|wide", "anchor": "optional", "layout": "1|2|3|4|7-5|5-7|8-4|4-8", "columns": [[BLOCK, …], [BLOCK, …]]}
+- layout sets the columns (twelfths): "1" = one column, "2" = two equal ones, "7-5" = wide + narrow. The number of columns in columns must match.
+- A section with the form gets anchor "formular", one with the calendar "termin"; buttons link to them with "#formular"/"#termin", to other pages with "page:<slug>".
+- Alternating backgrounds (plain, soft) read well; at most one "brand" or "dark" section per page (e.g. the call to action at the end).
+- BLOCK is an object with "type" and the fields below (* = required); there are no other fields.
+- The notes are written in the language of the person's brief.
 
-BLÖCKE
+BLOCKS
 `;
 
 export const RULES_SECTION = `${RULES_COMMON}
 
-AUFGABE: Ändere einen Abschnitt einer bestehenden Seite nach dem Auftrag.
-Format: {"sections": [ABSCHNITT, …], "summary": "was du geändert hast, ein Satz"}
-- Die Liste ersetzt den gewählten Abschnitt. Den geänderten Abschnitt gibst du mit seiner "id" zurück, Blöcke behalten ihre "id"; neue Abschnitte (z. B. eine FAQ) und neue Blöcke haben keine id.
-- Soll der gewählte Abschnitt unverändert bleiben und nur etwas dazukommen: {"id": "<id>", "keep": true} an seiner Stelle.
-- Vorhandene Abschnitte im Format {"id", "name", "style", "rows": [{"layout", "columns": [[BLOCK, …]]}]}, neue wie auf einer neuen Seite mit "layout" und "columns".
-ABSCHNITT = {"name", "style": "plain|soft|brand|dark", "layout": "1|2|3|4|7-5|5-7|8-4|4-8", "columns": [[BLOCK, …]]} oder mit "rows" wie oben.
+TASK: Change one section of an existing page as instructed.
+Format: {"sections": [SECTION, …], "summary": "what you changed, one sentence, in the language of the instruction"}
+- The list replaces the selected section. Return the changed section with its "id"; blocks keep their "id"; new sections (e.g. an FAQ) and new blocks have no id.
+- If the selected section should stay unchanged and something is only added: put {"id": "<id>", "keep": true} in its place.
+- Existing sections in the format {"id", "name", "style", "rows": [{"layout", "columns": [[BLOCK, …]]}]}, new ones as on a new page with "layout" and "columns".
+- Keep the language of the existing page texts unless the instruction asks for another language.
+SECTION = {"name", "style": "plain|soft|brand|dark", "layout": "1|2|3|4|7-5|5-7|8-4|4-8", "columns": [[BLOCK, …]]} or with "rows" as above.
 
-BLÖCKE
+BLOCKS
 `;
 
 /** The person's brief as the AI reads it. */
 export function briefText(b: Brief): string {
   return [
-    `Art: ${b.page_type} – ${TYPE_RULE[b.page_type]}`,
+    `Type: ${b.page_type} – ${TYPE_RULE[b.page_type]}`,
     GOAL_RULE[b.goal],
     LANG_RULE[b.language],
     ADDRESS_RULE[b.address],
-    `Tonalität: ${b.tone}`,
-    b.business && `Unternehmen: ${b.business}`,
-    b.offer && `Angebot: ${b.offer}`,
-    b.audience && `Zielgruppe: ${b.audience}`,
-    b.pages.length ? `Gewünschte Seiten/Schritte: ${b.pages.join(', ')}` : '',
-    b.extra && `Weitere Wünsche: ${b.extra}`,
+    `Tone: ${b.tone}`,
+    b.business && `Business: ${b.business}`,
+    b.offer && `Offer: ${b.offer}`,
+    b.audience && `Target audience: ${b.audience}`,
+    b.pages.length ? `Requested pages/steps: ${b.pages.join(', ')}` : '',
+    b.extra && `Further wishes: ${b.extra}`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -140,10 +145,13 @@ export function briefText(b: Brief): string {
 
 /** Account context: the ids the AI may use (forms, calendars, products) – names only, nothing about contacts. */
 export function refsText(refs: AccountRefs): string {
-  const list = <T>(label: string, items: T[], fmt: (x: T) => string) => `${label}: ${items.length ? items.slice(0, 30).map(fmt).join('; ') : 'keine vorhanden (Feld leer lassen)'}`;
-  return [list('Formulare (form_id)', refs.form, (f) => `${f.id} = „${f.name}“`), list('Kalender (calendar_slug)', refs.calendar, (c) => `${c.slug} = „${c.name}“`), list('Produkte (product_id)', refs.product, (p) => `${p.id} = „${p.name}“${p.price ? ` (${p.price})` : ''}`)].join('\n');
+  const list = <T>(label: string, items: T[], fmt: (x: T) => string) => `${label}: ${items.length ? items.slice(0, 30).map(fmt).join('; ') : 'none available (leave the field empty)'}`;
+  return [list('Forms (form_id)', refs.form, (f) => `${f.id} = "${f.name}"`), list('Calendars (calendar_slug)', refs.calendar, (c) => `${c.slug} = "${c.name}"`), list('Products (product_id)', refs.product, (p) => `${p.id} = "${p.name}"${p.price ? ` (${p.price})` : ''}`)].join('\n');
 }
-export const stylesText = () => STYLE_CHOICES.map((s) => `${s.id} = ${s.name} (${s.category})`).join('; ');
+export const stylesText = () => {
+  const t = tApp();
+  return STYLE_CHOICES.map((s) => `${s.id} = ${t(s.name)} (${t(s.category)})`).join('; ');
+};
 export const catalogFor = (registry: Set<string>) => blockCatalogText(registry);
 
 // --- stage 1: the plan ---------------------------------------------------------------------------------------------------
@@ -164,39 +172,39 @@ export interface Plan {
 export function checkPlan(raw: any, brief: Brief): { plan?: Plan; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (!raw || typeof raw !== 'object') return { errors: ['Die Antwort war kein JSON-Objekt.'], warnings };
+  if (!raw || typeof raw !== 'object') return { errors: ['The answer was not a JSON object.'], warnings };
   const pages: PlanPage[] = [];
   const list = Array.isArray(raw.pages) ? raw.pages : [];
   const [min, max] = LIMITS.pages[brief.page_type];
-  if (list.length < min || list.length > max) errors.push(`${list.length} Seiten – für „${brief.page_type}“ sind ${min}–${max} erlaubt`);
+  if (list.length < min || list.length > max) errors.push(`${list.length} pages – "${brief.page_type}" allows ${min}–${max}`);
   const seen = new Set<string>();
   list.slice(0, max).forEach((p: any, i: number) => {
-    const at = `Seite ${i + 1}`;
+    const at = `Page ${i + 1}`;
     const slug = String(p?.slug ?? '').trim();
-    if (!/^[a-z0-9][a-z0-9-]{0,59}$/.test(slug)) return void errors.push(`${at}: slug „${slug}“ – nur Kleinbuchstaben, Ziffern und Bindestriche`);
-    if (seen.has(slug)) return void errors.push(`${at}: slug „${slug}“ doppelt`);
-    if (LEGAL.includes(slug)) return void errors.push(`${at}: „${slug}“ ist eine Rechtsseite – die erzeugt HyperLevel selbst, bitte weglassen`);
+    if (!/^[a-z0-9][a-z0-9-]{0,59}$/.test(slug)) return void errors.push(`${at}: slug "${slug}" – only lower-case letters, digits and hyphens`);
+    if (seen.has(slug)) return void errors.push(`${at}: slug "${slug}" is used twice`);
+    if (LEGAL.includes(slug)) return void errors.push(`${at}: "${slug}" is a legal page – HyperLevel generates it itself, please leave it out`);
     seen.add(slug);
     const name = clipText(p?.name, 60) || slug;
     const sections = (Array.isArray(p?.sections) ? p.sections : []).map((s: unknown) => String(s));
     const unknown = sections.filter((s: string) => !(PLAN_SECTIONS as readonly string[]).includes(s));
-    if (unknown.length) warnings.push(`${at}: unbekannte Bausteine ignoriert: ${unknown.join(', ')}`);
+    if (unknown.length) warnings.push(`${at}: unknown sections ignored: ${unknown.join(', ')}`);
     const known = sections.filter((s: string) => (PLAN_SECTIONS as readonly string[]).includes(s)).slice(0, 10);
-    if (!known.length) errors.push(`${at}: keine Bausteine in „sections“`);
+    if (!known.length) errors.push(`${at}: no sections in "sections"`);
     pages.push({ slug, name, purpose: clipText(p?.purpose, 200), sections: known });
   });
   let style = String(raw.style ?? '');
   if (!styleOf(style)) {
-    if (style) warnings.push(`Design „${style}“ unbekannt – Standard gewählt`);
+    if (style) warnings.push(`Unknown design "${style}" – the default was used`);
     style = brief.style ?? defaultStyle(brief.page_type, brief.goal);
   }
   if (brief.style) style = brief.style;
-  const site_name = clipText(raw.site_name, 80) || brief.business.split(/[,.–-]/)[0].trim().slice(0, 80) || 'Neue Seite';
+  const site_name = clipText(raw.site_name, 80) || brief.business.split(/[,.–-]/)[0].trim().slice(0, 80) || tApp()('Neue Seite');
   return { plan: errors.length ? undefined : { site_name, style, summary: clipText(raw.summary, 300), pages }, errors, warnings };
 }
 
 export function planText(plan: Plan): string {
-  return [`Name: ${plan.site_name}`, ...plan.pages.map((p, i) => `${i + 1}. ${p.slug} „${p.name}“ – ${p.purpose || 'ohne Beschreibung'} – Bausteine: ${p.sections.join(', ')}`)].join('\n');
+  return [`Name: ${plan.site_name}`, ...plan.pages.map((p, i) => `${i + 1}. ${p.slug} "${p.name}" – ${p.purpose || 'no description'} – sections: ${p.sections.join(', ')}`)].join('\n');
 }
 
 // --- stage 2: the pages --------------------------------------------------------------------------------------------------
@@ -212,24 +220,24 @@ export interface DraftPage {
 export function checkPages(raw: any, plan: Plan, env: Omit<BlockEnv, 'pages'>): { pages?: DraftPage[]; notes: string[]; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.pages)) return { errors: ['Erwartet: {"pages": [...]}'], warnings, notes: [] };
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.pages)) return { errors: ['Expected: {"pages": [...]}'], warnings, notes: [] };
   const benv: BlockEnv = { ...env, pages: new Set(plan.pages.map((p) => p.slug)) };
   const bySlug = new Map<string, any>();
   for (const p of raw.pages) if (p && typeof p.slug === 'string') bySlug.set(p.slug, p);
   const extra = [...bySlug.keys()].filter((s) => !benv.pages.has(s));
-  if (extra.length) errors.push(`Seiten, die nicht im Plan stehen: ${extra.join(', ')}`);
+  if (extra.length) errors.push(`Pages that are not in the plan: ${extra.join(', ')}`);
   const pages: DraftPage[] = [];
   for (const pp of plan.pages) {
     const p = bySlug.get(pp.slug);
     if (!p) {
-      errors.push(`Seite „${pp.slug}“ fehlt`);
+      errors.push(`Page "${pp.slug}" is missing`);
       continue;
     }
-    const r = checkPageSections(p.sections, benv, `Seite „${pp.slug}“`);
+    const r = checkPageSections(p.sections, benv, `Page "${pp.slug}"`);
     errors.push(...r.errors);
     warnings.push(...r.warnings);
     const title = clipText(p.seo?.title, 70) || pp.name;
-    if (String(p.seo?.title ?? '').length > 70) warnings.push(`Seite „${pp.slug}“: SEO-Titel gekürzt`);
+    if (String(p.seo?.title ?? '').length > 70) warnings.push(`Page "${pp.slug}": SEO title shortened`);
     pages.push({ slug: pp.slug, name: pp.name, seo: { title, description: clipText(p.seo?.description, 160) }, blocks: r.blocks });
   }
   const notes = (Array.isArray(raw.notes) ? raw.notes : []).map((n: unknown) => clipText(n, 240)).filter(Boolean).slice(0, 8);
@@ -240,17 +248,17 @@ export function checkPages(raw: any, plan: Plan, env: Omit<BlockEnv, 'pages'>): 
 export function checkPageSections(list: unknown, env: BlockEnv, where: string): { blocks: Block[]; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (!Array.isArray(list) || !list.length) return { blocks: [], errors: [`${where}: „sections“ fehlt oder ist leer`], warnings };
-  if (list.length > SECTION_LIMITS.sectionsPerPage) errors.push(`${where}: höchstens ${SECTION_LIMITS.sectionsPerPage} Abschnitte`);
+  if (!Array.isArray(list) || !list.length) return { blocks: [], errors: [`${where}: "sections" is missing or empty`], warnings };
+  if (list.length > SECTION_LIMITS.sectionsPerPage) errors.push(`${where}: at most ${SECTION_LIMITS.sectionsPerPage} sections`);
   const blocks: Block[] = [];
   list.slice(0, SECTION_LIMITS.sectionsPerPage).forEach((s, i) => {
-    const r = checkSection(s, env, `${where} Abschnitt ${i + 1}`);
+    const r = checkSection(s, env, `${where} section ${i + 1}`);
     errors.push(...r.errors);
     warnings.push(...r.warnings);
     if (r.section && !r.section.keep) blocks.push(compileSection(r.section, { first: i === 0 }));
   });
   const h1 = h1Count(blocks);
-  if (!errors.length && h1 !== 1) errors.push(`${where}: ${h1} H1-Überschriften – genau eine (Hero oder Überschrift level 1), alle anderen level 2 oder 3`);
+  if (!errors.length && h1 !== 1) errors.push(`${where}: ${h1} H1 headings – exactly one (hero or heading level 1), all others level 2 or 3`);
   return { blocks, errors, warnings };
 }
 
@@ -258,12 +266,14 @@ export function checkPageSections(list: unknown, env: BlockEnv, where: string): 
 
 /** Ready-made commands of the builder panel (chips); free text works the same way. */
 export const SECTION_COMMANDS = [
-  { id: 'shorter', label: 'Kürzer machen', prompt: 'Mach diesen Abschnitt deutlich kürzer und prägnanter, ohne Inhalt zu erfinden.' },
-  { id: 'faq', label: 'FAQ hinzufügen', prompt: 'Füge nach diesem Abschnitt einen FAQ-Abschnitt mit 4–6 passenden Fragen und Antworten hinzu (der Abschnitt selbst bleibt unverändert).' },
-  { id: 'du', label: 'In Du-Form umschreiben', prompt: 'Schreibe alle Texte dieses Abschnitts in die Du-Form um (Inhalt und Länge bleiben).' },
-  { id: 'sie', label: 'In Sie-Form umschreiben', prompt: 'Schreibe alle Texte dieses Abschnitts in die Sie-Form um (Inhalt und Länge bleiben).' },
-  { id: 'benefits', label: 'Nutzen betonen', prompt: 'Formuliere diesen Abschnitt nutzenorientierter: was hat der Besucher davon?' },
-  { id: 'cta', label: 'Aufruf ergänzen', prompt: 'Füge nach diesem Abschnitt einen kurzen Aufruf-Abschnitt (cta) hinzu, der zum Ziel der Seite führt.' },
+  { id: 'shorter', label: 'Kürzer machen', prompt: 'Make this section much shorter and punchier without inventing content.' },
+  { id: 'faq', label: 'FAQ hinzufügen', prompt: 'Add an FAQ section with 4–6 fitting questions and answers after this section (the section itself stays unchanged).' },
+  // i18n-ignore – the prompt names the German form
+  { id: 'du', label: 'In Du-Form umschreiben', prompt: 'Rewrite all texts of this section in a friendly, informal tone (German: „du“ form); content and length stay the same.' },
+  // i18n-ignore – the prompt names the German form
+  { id: 'sie', label: 'In Sie-Form umschreiben', prompt: 'Rewrite all texts of this section in a polite, formal tone (German: „Sie“ form); content and length stay the same.' },
+  { id: 'benefits', label: 'Nutzen betonen', prompt: 'Rewrite this section to focus on benefits: what does the visitor get out of it?' },
+  { id: 'cta', label: 'Aufruf ergänzen', prompt: 'Add a short call-to-action section (cta) after this section that leads to the goal of the page.' },
 ] as const;
 
 /** What the AI gets for a section command: the section (simple format, with ids) and the page around it. */
@@ -289,17 +299,17 @@ export function sectionContext(page: Block[], sectionId: string): { section: Ret
 export function checkSectionAnswer(raw: any, page: Block[], sectionId: string, env: BlockEnv): { sections?: CheckedSection[]; summary: string; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.sections) || !raw.sections.length) return { errors: ['Erwartet: {"sections": [...]} mit mindestens einem Abschnitt'], warnings, summary: '' };
-  if (raw.sections.length > 4) errors.push('Höchstens 4 Abschnitte als Ersatz');
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.sections) || !raw.sections.length) return { errors: ['Expected: {"sections": [...]} with at least one section'], warnings, summary: '' };
+  if (raw.sections.length > 4) errors.push('At most 4 sections as a replacement');
   const known = new Set([sectionId]);
   const sections: CheckedSection[] = [];
   raw.sections.slice(0, 4).forEach((s: any, i: number) => {
-    const r = checkSection(s, env, `Abschnitt ${i + 1}`, known);
+    const r = checkSection(s, env, `Section ${i + 1}`, known);
     errors.push(...r.errors);
     warnings.push(...r.warnings);
     if (r.section) sections.push(r.section);
   });
-  if (sections.filter((s) => s.id === sectionId).length > 1) errors.push('Der gewählte Abschnitt darf nur einmal vorkommen');
+  if (sections.filter((s) => s.id === sectionId).length > 1) errors.push('The selected section may appear only once');
   return { sections: errors.length ? undefined : sections, summary: clipText(raw.summary, 300), errors, warnings };
 }
 
@@ -342,7 +352,7 @@ export function diffPage(before: Block[], after: Block[]): { sections: SectionDi
   const sections: SectionDiff[] = [];
   for (const b of after) {
     const prev = old.get(String(b.id));
-    sections.push({ id: String(b.id), name: String(b.name || AI_BLOCKS[b.type]?.label || b.type), change: !prev ? 'new' : sectionKey(prev) === sectionKey(b) && JSON.stringify(prev.bg ?? '') === JSON.stringify(b.bg ?? '') ? 'same' : 'changed', blocks: blockCount(b), preview: firstText(b) });
+    sections.push({ id: String(b.id), name: String(b.name || (AI_BLOCKS[b.type]?.label ? tApp()(AI_BLOCKS[b.type].label) : '') || b.type), change: !prev ? 'new' : sectionKey(prev) === sectionKey(b) && JSON.stringify(prev.bg ?? '') === JSON.stringify(b.bg ?? '') ? 'same' : 'changed', blocks: blockCount(b), preview: firstText(b) });
     old.delete(String(b.id));
   }
   for (const b of before) if (old.has(String(b.id))) sections.push({ id: String(b.id), name: String(b.name || b.type), change: 'removed', blocks: blockCount(b), preview: firstText(b) });
@@ -378,7 +388,7 @@ export function estimateTokens(o: { mode: 'site' | 'page' | 'section' | 'write';
 export const expectedPages = (b: Brief) => (b.pages.length ? Math.min(LIMITS.pages[b.page_type][1], Math.max(LIMITS.pages[b.page_type][0], b.pages.length)) : b.page_type === 'landing' ? 2 : b.page_type === 'funnel' ? 3 : 4);
 
 export function retryText(base: string, previous: string, errors: string[]): string {
-  return `${base}\n\nDEINE LETZTE ANTWORT WAR NICHT GÜLTIG:\n${previous.slice(0, 16_000)}\n\nFEHLER:\n${errors.slice(0, 20).map((e) => `- ${e}`).join('\n')}\n\nKorrigiere genau diese Punkte und gib die VOLLSTÄNDIGE Antwort erneut als ein JSON-Objekt aus.`;
+  return `${base}\n\nYOUR LAST ANSWER WAS NOT VALID:\n${previous.slice(0, 16_000)}\n\nERRORS:\n${errors.slice(0, 20).map((e) => `- ${e}`).join('\n')}\n\nFix exactly these points and output the COMPLETE answer again as one JSON object.`;
 }
 
 // --- writer (blog posts, e-mail text blocks) ----------------------------------------------------------------------------------
@@ -388,18 +398,18 @@ export type WriteKind = (typeof WRITE_KINDS)[number];
 export function writerRules(kind: WriteKind, lang: Lang, address: 'du' | 'sie', tone: string): string {
   return [
     kind === 'blog'
-      ? 'Du schreibst einen Blog-Beitrag. Antworte nur mit JSON: {"title": "≤ 80 Zeichen", "excerpt": "≤ 200 Zeichen", "markdown": "der Beitrag in Markdown mit ## Zwischenüberschriften, Absätzen und Listen"}.'
-      : 'Du schreibst den Text eines Textblocks einer E-Mail. Antworte nur mit JSON: {"text": "2–4 kurze Absätze, getrennt durch eine Leerzeile, ohne Betreff, ohne Gruß-Floskeln am Ende, Platzhalter wie {{contact.first_name|du}} sind erlaubt"}.',
-    'Keine erfundenen Fakten, Zahlen, Preise, Studien oder Zitate; Unbekanntes als [Platzhalter]. Kein HTML.',
+      ? 'You write a blog post. Reply only with JSON: {"title": "≤ 80 characters", "excerpt": "≤ 200 characters", "markdown": "the post in Markdown with ## subheadings, paragraphs and lists"}.'
+      : 'You write the text of a text block in an email. Reply only with JSON: {"text": "2–4 short paragraphs separated by a blank line, no subject line, no sign-off at the end; placeholders such as {{contact.first_name|there}} are allowed"}.',
+    'No invented facts, figures, prices, studies or quotes; write anything unknown as a [placeholder]. No HTML.',
     LANG_RULE[lang],
     ADDRESS_RULE[address],
-    `Tonalität: ${tone}`,
+    `Tone: ${tone}`,
   ].join('\n');
 }
 export function checkWritten(raw: any, kind: WriteKind): { out?: { title?: string; excerpt?: string; text: string }; errors: string[] } {
-  if (!raw || typeof raw !== 'object') return { errors: ['Die Antwort war kein JSON-Objekt.'] };
+  if (!raw || typeof raw !== 'object') return { errors: ['The answer was not a JSON object.'] };
   const text = clipText(kind === 'blog' ? raw.markdown : raw.text, kind === 'blog' ? 20_000 : 4000);
-  if (text.length < 40) return { errors: ['Der Text fehlt oder ist zu kurz.'] };
-  if (/<\/?(script|iframe|style|div|p|span|br)\b/i.test(text)) return { errors: ['Kein HTML – nur Markdown bzw. reiner Text.'] };
+  if (text.length < 40) return { errors: ['The text is missing or too short.'] };
+  if (/<\/?(script|iframe|style|div|p|span|br)\b/i.test(text)) return { errors: ['No HTML – only Markdown or plain text.'] };
   return { out: kind === 'blog' ? { title: clipText(raw.title, 80), excerpt: clipText(raw.excerpt, 200), text } : { text }, errors: [] };
 }

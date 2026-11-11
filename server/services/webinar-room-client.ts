@@ -8,9 +8,47 @@
  *  replay   free playback with a scrubber, resumes where the viewer stopped.
  *  preview  like live, for the team: starts at a chosen second, nothing is counted or stored.
  */
+/** Every text the room script shows (German message ids); roomConfig sends their translations as C.l. */
+export const ROOM_TEXTS = [
+  'Fehler',
+  'Dein Browser kann dieses Videoformat (HLS) nicht abspielen.',
+  'Dein Browser kann dieses Videoformat (HLS) nicht abspielen. Bitte nimm Safari oder wende dich an das Team.',
+  'Ton an',
+  'Für dieses Webinar ist noch kein Video hinterlegt.',
+  'Ton aus',
+  'Umfrage',
+  'Umfrage schließen',
+  'Danke für deine Antwort!',
+  'Abschicken',
+  'Bitte eine Antwort wählen.',
+  'Vorschau: Antworten werden nicht gespeichert.',
+  'Webinar-Angebot',
+  'Angebot schließen',
+  'Das Angebot ist beendet.',
+  'Vorschau: Fragen werden nicht gesendet.',
+  'Du',
+  'Danke! Deine Frage ist beim Team angekommen.',
+  'Antwort vom Team',
+  'Die Aufzeichnung ist leider nicht mehr verfügbar.',
+  'Die Aufzeichnung steht nach dem Webinar bereit.',
+  'Pause',
+  'Fortsetzen',
+  'Nochmal',
+  'Vorschau: Hier ginge es weiter zu {target}.',
+  'deinem Angebot',
+  'Das Angebot gilt noch {time}',
+  '{n} Person im Raum',
+  '{n} Personen im Raum',
+  '{n} T'
+];
+
+// i18n-ignore – script code; its texts are in ROOM_TEXTS
 export const ROOM_SCRIPT = String.raw`(function () {
   'use strict';
   var C = JSON.parse(document.getElementById('wb-cfg').textContent);
+  // The page's own words come translated in C.l (German text → the viewer's language), see ROOM_TEXTS.
+  var L = C.l || {};
+  var T = function (s, v) { var r = L[s] || s; if (v) for (var k in v) r = r.split('{' + k + '}').join(String(v[k])); return r; };
   var $ = function (id) { return document.getElementById(id); };
   var live = C.mode !== 'replay';
   var preview = C.mode === 'preview';
@@ -26,7 +64,7 @@ export const ROOM_SCRIPT = String.raw`(function () {
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
   function post(url, body) {
     return fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { var e = new Error(j.error || 'Fehler'); e.status = r.status; throw e; } return j; });
+      return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { var e = new Error(j.error || T('Fehler')); e.status = r.status; throw e; } return j; });
     });
   }
   function show(v) {
@@ -42,9 +80,9 @@ export const ROOM_SCRIPT = String.raw`(function () {
     var s = document.createElement('script');
     s.src = '/w/_hls.js';
     s.onload = function () {
-      if (window.Hls && window.Hls.isSupported()) { var h = new window.Hls(); h.loadSource(src); h.attachMedia(video); done(); } else fail('Dein Browser kann dieses Videoformat (HLS) nicht abspielen.');
+      if (window.Hls && window.Hls.isSupported()) { var h = new window.Hls(); h.loadSource(src); h.attachMedia(video); done(); } else fail(T('Dein Browser kann dieses Videoformat (HLS) nicht abspielen.'));
     };
-    s.onerror = function () { fail('Dein Browser kann dieses Videoformat (HLS) nicht abspielen. Bitte nimm Safari oder wende dich an das Team.'); };
+    s.onerror = function () { fail(T('Dein Browser kann dieses Videoformat (HLS) nicht abspielen. Bitte nimm Safari oder wende dich an das Team.')); };
     document.head.appendChild(s);
   }
   function fail(t) { $('player-msg').textContent = t; $('player-msg').hidden = false; }
@@ -52,7 +90,7 @@ export const ROOM_SCRIPT = String.raw`(function () {
     try { var d = video.duration; video.currentTime = isFinite(d) && d > 1 ? Math.max(0, Math.min(t, d - 0.25)) : Math.max(0, t); } catch (e) { /* not seekable yet */ }
   }
   function playFrom(t) {
-    video.muted = true; $('mute').setAttribute('aria-pressed', 'true'); $('mute').textContent = 'Ton an';
+    video.muted = true; $('mute').setAttribute('aria-pressed', 'true'); $('mute').textContent = T('Ton an');
     var go = function () { seekTo(t); var p = video.play(); if (p && p.catch) p.catch(function () { tapShown = true; $('tap').hidden = false; }); };
     if (video.readyState >= 1) go(); else video.addEventListener('loadedmetadata', go, { once: true });
   }
@@ -70,7 +108,7 @@ export const ROOM_SCRIPT = String.raw`(function () {
       frame.src = src; frame.title = C.title; frame.allow = 'autoplay; fullscreen; picture-in-picture'; frame.setAttribute('allowfullscreen', '');
       $('embed').appendChild(frame); $('embed').hidden = false;
       $('shield').hidden = !live;
-    } else fail('Für dieses Webinar ist noch kein Video hinterlegt.');
+    } else fail(T('Für dieses Webinar ist noch kein Video hinterlegt.'));
     $('mute').hidden = pb.kind === 'none';
     $('fs').hidden = !($('stage').requestFullscreen);
   }
@@ -83,7 +121,7 @@ export const ROOM_SCRIPT = String.raw`(function () {
     }
     video.muted = !video.muted;
     $('mute').setAttribute('aria-pressed', String(video.muted));
-    $('mute').textContent = video.muted ? 'Ton an' : 'Ton aus';
+    $('mute').textContent = video.muted ? T('Ton an') : T('Ton aus');
   }
   $('mute').addEventListener('click', toggleMute);
   $('tap').addEventListener('click', function () { $('tap').hidden = true; tapShown = false; if (live) seekTo(offset()); video.play(); });
@@ -105,7 +143,7 @@ export const ROOM_SCRIPT = String.raw`(function () {
   function countdown(sec) {
     sec = Math.max(0, Math.ceil(sec));
     var d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
-    return (d ? d + ' T ' : '') + (d || h ? pad(h) + ':' : '') + pad(m) + ':' + pad(s);
+    return (d ? T('{n} T', { n: d }) + ' ' : '') + (d || h ? pad(h) + ':' : '') + pad(m) + ':' + pad(s);
   }
   function enterWaiting() {
     show('waiting');
@@ -163,7 +201,7 @@ export const ROOM_SCRIPT = String.raw`(function () {
   function showPoll(p) {
     openPoll = p;
     var box = $('poll'); box.textContent = '';
-    var head = el('div', 'bar'); head.appendChild(el('b', '', 'Umfrage')); var x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Umfrage schließen'); x.addEventListener('click', closePoll); head.appendChild(x);
+    var head = el('div', 'bar'); head.appendChild(el('b', '', T('Umfrage'))); var x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', T('Umfrage schließen')); x.addEventListener('click', closePoll); head.appendChild(x);
     box.appendChild(head); box.appendChild(el('p', 'q', p.question));
     var form = el('form'), picked = [];
     var results = function (counts) {
@@ -175,20 +213,20 @@ export const ROOM_SCRIPT = String.raw`(function () {
         form.appendChild(row);
       });
     };
-    if (p.mine && p.mine.length) { if (p.counts && p.show_results) results(p.counts); else form.appendChild(el('p', 'muted', 'Danke für deine Antwort!')); }
+    if (p.mine && p.mine.length) { if (p.counts && p.show_results) results(p.counts); else form.appendChild(el('p', 'muted', T('Danke für deine Antwort!'))); }
     else {
       p.options.forEach(function (o, i) {
         var lab = el('label', 'opt'); var inp = document.createElement('input'); inp.type = p.multiple ? 'checkbox' : 'radio'; inp.name = 'o'; inp.value = String(i);
         inp.addEventListener('change', function () { picked = [].slice.call(form.querySelectorAll('input:checked')).map(function (c) { return Number(c.value); }); });
         lab.appendChild(inp); lab.appendChild(document.createTextNode(' ' + o)); form.appendChild(lab);
       });
-      var send = el('button', 'btn', 'Abschicken'); send.type = 'submit'; form.appendChild(send);
+      var send = el('button', 'btn', T('Abschicken')); send.type = 'submit'; form.appendChild(send);
       var err = el('div', 'err'); form.appendChild(err);
       form.addEventListener('submit', function (e) {
         e.preventDefault();
-        if (!picked.length) { err.textContent = 'Bitte eine Antwort wählen.'; return; }
-        if (preview) { toast('Vorschau: Antworten werden nicht gespeichert.'); return closePoll(); }
-        post(C.urls.vote, { t: C.token, poll_id: p.id, choice: picked }).then(function (r) { p.mine = r.mine; if (p.show_results) results(r.counts); else { form.textContent = ''; form.appendChild(el('p', 'muted', 'Danke für deine Antwort!')); } setTimeout(closePoll, 6000); }).catch(function (e2) { err.textContent = e2.message; });
+        if (!picked.length) { err.textContent = T('Bitte eine Antwort wählen.'); return; }
+        if (preview) { toast(T('Vorschau: Antworten werden nicht gespeichert.')); return closePoll(); }
+        post(C.urls.vote, { t: C.token, poll_id: p.id, choice: picked }).then(function (r) { p.mine = r.mine; if (p.show_results) results(r.counts); else { form.textContent = ''; form.appendChild(el('p', 'muted', T('Danke für deine Antwort!'))); } setTimeout(closePoll, 6000); }).catch(function (e2) { err.textContent = e2.message; });
       });
     }
     box.appendChild(form); box.hidden = false;
@@ -199,11 +237,11 @@ export const ROOM_SCRIPT = String.raw`(function () {
   function showOffer() {
     offerOpen = true;
     var o = C.offer, box = $('offer'); box.textContent = '';
-    var head = el('div', 'bar'); head.appendChild(el('b', '', o.title || 'Angebot')); var x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Angebot schließen'); x.addEventListener('click', function () { box.hidden = true; }); head.appendChild(x);
+    var head = el('div', 'bar'); head.appendChild(el('b', '', o.title || T('Webinar-Angebot'))); var x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', T('Angebot schließen')); x.addEventListener('click', function () { box.hidden = true; }); head.appendChild(x);
     box.appendChild(head);
     if (o.text) box.appendChild(el('p', '', o.text));
     var a = el('a', 'btn', o.button_text); a.id = 'offer-btn'; a.target = '_blank'; a.rel = 'noopener';
-    if (preview) { a.href = '#'; a.addEventListener('click', function (e) { e.preventDefault(); toast('Vorschau: Hier ginge es weiter zu ' + (o.preview_url || 'deinem Angebot') + '.'); }); } else a.href = C.urls.go;
+    if (preview) { a.href = '#'; a.addEventListener('click', function (e) { e.preventDefault(); toast(T('Vorschau: Hier ginge es weiter zu {target}.', { target: o.preview_url || T('deinem Angebot') })); }); } else a.href = C.urls.go;
     box.appendChild(a);
     if (o.deadline_ms !== null && o.deadline_ms !== undefined) { var c = el('div', 'deadline'); c.id = 'offer-count'; box.appendChild(c); }
     box.hidden = false; tickOffer();
@@ -211,8 +249,8 @@ export const ROOM_SCRIPT = String.raw`(function () {
   function tickOffer() {
     var c = $('offer-count'); if (!c) return;
     var left = (C.offer.deadline_ms - now()) / 1000;
-    if (left > 0) { c.textContent = 'Das Angebot gilt noch ' + countdown(left); return; }
-    c.textContent = 'Das Angebot ist beendet.';
+    if (left > 0) { c.textContent = T('Das Angebot gilt noch {time}', { time: countdown(left) }); return; }
+    c.textContent = T('Das Angebot ist beendet.');
     var b = $('offer-btn'); if (b) b.hidden = true;
   }
 
@@ -222,13 +260,13 @@ export const ROOM_SCRIPT = String.raw`(function () {
     e.preventDefault();
     var ta = $('q-text'), err = $('q-err'), text = ta.value.trim(); err.textContent = '';
     if (!text) return;
-    if (preview) { toast('Vorschau: Fragen werden nicht gesendet.'); return; }
+    if (preview) { toast(T('Vorschau: Fragen werden nicht gesendet.')); return; }
     $('q-send').disabled = true;
-    post(C.urls.question, { t: C.token, text: text }).then(function () { addChat('me', 'Du', text, false); ta.value = ''; toast('Danke! Deine Frage ist beim Team angekommen.'); }).catch(function (e2) { err.textContent = e2.message; }).then(function () { $('q-send').disabled = false; });
+    post(C.urls.question, { t: C.token, text: text }).then(function () { addChat('me', T('Du'), text, false); ta.value = ''; toast(T('Danke! Deine Frage ist beim Team angekommen.')); }).catch(function (e2) { err.textContent = e2.message; }).then(function () { $('q-send').disabled = false; });
   });
   function renderAnswers(list) {
     if (!list || list.length <= answersShown) return;
-    for (var i = answersShown; i < list.length; i++) addChat('team', 'Antwort vom Team', list[i].body, false);
+    for (var i = answersShown; i < list.length; i++) addChat('team', T('Antwort vom Team'), list[i].body, false);
     answersShown = list.length;
   }
 
@@ -242,7 +280,7 @@ export const ROOM_SCRIPT = String.raw`(function () {
     if (preview) return Promise.resolve();
     return post(C.urls.ping, body()).then(function (r) {
       if (r.server_now) { s0 = r.server_now; t0 = performance.now(); }
-      if (r.counter !== undefined) { $('counter').textContent = r.counter + (r.counter === 1 ? ' Person im Raum' : ' Personen im Raum'); $('counter').hidden = false; }
+      if (r.counter !== undefined) { $('counter').textContent = T(r.counter === 1 ? '{n} Person im Raum' : '{n} Personen im Raum', { n: r.counter }); $('counter').hidden = false; }
       if (r.replay) { C.replay = r.replay; renderReplay(); }
       renderAnswers(r.answers);
       if (live && r.clock) {
@@ -254,7 +292,7 @@ export const ROOM_SCRIPT = String.raw`(function () {
   function renderReplay() {
     var r = C.replay, links = document.querySelectorAll('[data-replay]');
     [].forEach.call(links, function (a) { a.hidden = !r.available; if (r.available) a.href = r.url; });
-    ['replay-note', 'replay-note-late'].forEach(function (id) { var note = $(id); if (note) note.textContent = r.available ? '' : r.reason === 'expired' ? 'Die Aufzeichnung ist leider nicht mehr verfügbar.' : r.reason === 'not_yet' ? 'Die Aufzeichnung steht nach dem Webinar bereit.' : ''; });
+    ['replay-note', 'replay-note-late'].forEach(function (id) { var note = $(id); if (note) note.textContent = r.available ? '' : r.reason === 'expired' ? T('Die Aufzeichnung ist leider nicht mehr verfügbar.') : r.reason === 'not_yet' ? T('Die Aufzeichnung steht nach dem Webinar bereit.') : ''; });
   }
   window.addEventListener('pagehide', function () { if (preview) return; try { navigator.sendBeacon(C.urls.ping, new Blob([JSON.stringify(body())], { type: 'application/json' })); } catch (e) { /* none */ } });
 
@@ -263,13 +301,13 @@ export const ROOM_SCRIPT = String.raw`(function () {
     var sc = $('scrub'); sc.max = String(C.duration_s);
     sc.addEventListener('input', function () { seekTo(Number(sc.value)); });
     $('pp').addEventListener('click', function () { if (video.paused) video.play(); else video.pause(); });
-    video.addEventListener('play', function () { $('pp').textContent = 'Pause'; });
-    video.addEventListener('pause', function () { $('pp').textContent = 'Weiter'; });
-    video.addEventListener('ended', function () { $('pp').textContent = 'Nochmal'; beat(); });
+    video.addEventListener('play', function () { $('pp').textContent = T('Pause'); });
+    video.addEventListener('pause', function () { $('pp').textContent = T('Fortsetzen'); });
+    video.addEventListener('ended', function () { $('pp').textContent = T('Nochmal'); beat(); });
   }
 
   // --- go -----------------------------------------------------------------------------------------------------
-  (C.conversation && C.conversation.questions || []).forEach(function (q) { addChat('me', 'Du', q.body, false); });
+  (C.conversation && C.conversation.questions || []).forEach(function (q) { addChat('me', T('Du'), q.body, false); });
   renderAnswers(C.conversation && C.conversation.answers);
   renderReplay();
   var st = C.clock.state;

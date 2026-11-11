@@ -7,6 +7,7 @@ import { getOrCreateConversation } from '../services/messaging.js';
 import { autoAssign } from '../services/teaminbox-assign.js';
 import { PRIORITY_LABEL, STATUS_LABEL, isStatus } from '../services/teaminbox-model.js';
 import { addNote, getConv, setAssignee, setPriority, setStatus, settingsOf, type Who } from '../services/teaminbox-store.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Team-Posteingang in the automations and in Berichte:
@@ -147,7 +148,7 @@ export const teamInboxAutomationModule: Module = {
 
     /** The conversation of the run's contact (created when the contact has none yet), and the steps' author. */
     const convOf = (run: { location_id: string; contact_id: string }) => {
-      if (!run.contact_id) throw new Error('Dieser Schritt braucht einen Kontakt');
+      if (!run.contact_id) throw new Error(tLoc(app, run.location_id)('Dieser Schritt braucht einen Kontakt'));
       const cid = getOrCreateConversation(app, run.location_id, run.contact_id);
       return getConv(app, run.location_id, cid);
     };
@@ -174,6 +175,7 @@ export const teamInboxAutomationModule: Module = {
         sample: { mode: 'auto' },
       },
       run: (run, step) => {
+        const t = tLoc(app, run.location_id);
         try {
           const conv = convOf(run);
           const who = workflow();
@@ -181,15 +183,15 @@ export const teamInboxAutomationModule: Module = {
           if (step.mode === 'none') next = setAssignee(app, who, conv, { userId: null, teamId: null, quiet: true });
           else if (step.mode === 'auto') {
             const s = settingsOf(app, run.location_id);
-            if (s.assignment.mode === 'manual') throw new Error('Die automatische Zuweisung ist ausgeschaltet (Einstellungen → Team-Posteingang)');
+            if (s.assignment.mode === 'manual') throw new Error(t('Die automatische Zuweisung ist ausgeschaltet (Einstellungen → Team-Posteingang)'));
             next = autoAssign(app, conv.id, run.location_id, s, { ...who, via: 'workflow' });
           } else {
             const uid = String(step.assignee_id ?? '').trim();
-            if (!uid) throw new Error('Bitte eine Person wählen');
+            if (!uid) throw new Error(t('Bitte eine Person wählen'));
             next = setAssignee(app, who, conv, { userId: uid, quiet: true });
           }
           const name = next.assignee_id ? (app.db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', next.assignee_id)?.name ?? '') : '';
-          return { result: next.assignee_id ? `Zugewiesen an ${name}` : 'Niemand zugewiesen', vars: { inbox_assignee: name } };
+          return { result: next.assignee_id ? t('Zugewiesen an {name}', { name }) : t('Niemand zugewiesen'), vars: { inbox_assignee: name } };
         } catch (e) {
           return fail(e);
         }
@@ -213,6 +215,7 @@ export const teamInboxAutomationModule: Module = {
         sample: { status: 'closed' },
       },
       run: (run, step) => {
+        const t = tLoc(app, run.location_id);
         try {
           let conv = convOf(run);
           const who = workflow();
@@ -221,9 +224,9 @@ export const teamInboxAutomationModule: Module = {
             const hours = Math.min(24 * 365, Math.max(1, Number(step.snooze_hours) || 24));
             conv = setStatus(app, who, conv, { snoozeUntil: new Date(Date.now() + hours * 3600_000).toISOString() });
           } else if (isStatus(st)) conv = setStatus(app, who, conv, { status: st, snoozeUntil: null });
-          else throw new Error('Unbekannter Status');
+          else throw new Error(t('Unbekannter Status'));
           if (step.priority) conv = setPriority(app, who, conv, step.priority);
-          return { result: st === 'snooze' ? `Zurückgestellt bis ${conv.snoozed_until}` : `Status: ${STATUS_LABEL[conv.inbox_status]}` };
+          return { result: st === 'snooze' ? t('Zurückgestellt bis {date}', { date: String(conv.snoozed_until) }) : t('Status: {status}', { status: t(STATUS_LABEL[conv.inbox_status]) }) };
         } catch (e) {
           return fail(e);
         }
@@ -242,12 +245,13 @@ export const teamInboxAutomationModule: Module = {
         sample: { body: '@Anna bitte nachfassen' },
       },
       run: (run, step, vars) => {
+        const t = tLoc(app, run.location_id);
         try {
           const conv = convOf(run);
           const body = renderText(step.body, vars).trim();
-          if (!body) throw new Error('Die Notiz ist leer');
+          if (!body) throw new Error(t('Die Notiz ist leer'));
           const r = addNote(app, workflow(), conv, body);
-          return { result: `Notiz gespeichert${r.mentioned.length ? ` (${r.mentioned.length} erwähnt)` : ''}` };
+          return { result: r.mentioned.length ? t.plural(r.mentioned.length, { one: 'Notiz gespeichert ({n} erwähnt)', other: 'Notiz gespeichert ({n} erwähnt)' }) : t('Notiz gespeichert') };
         } catch (e) {
           return fail(e);
         }

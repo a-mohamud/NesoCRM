@@ -5,6 +5,7 @@ import { getSettings } from './mk-settings.js';
 import { cleanDefinition, countMembers, type Group } from './mk-segments.js';
 import { checkStatic, validateEmail, type Check } from './mk-validate.js';
 import type { DnsResolver } from './umzug-mailcheck.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * List hygiene: addresses that keep failing softly (full mailbox, server trouble) are put on "Nicht stören" after a few
@@ -55,7 +56,7 @@ export function suppress(app: App, locationId: string, contactIds: string[], why
   let n = 0;
   for (const cid of contactIds) {
     if (!app.db.run('UPDATE contacts SET dnd = 1, updated_at = ? WHERE id = ? AND location_id = ? AND dnd = 0', now(), cid, locationId).changes) continue;
-    logActivity(app, locationId, cid, 'contact.dnd', `„Nicht stören“: ${why}`);
+    logActivity(app, locationId, cid, 'contact.dnd', tLoc(app, locationId)('„Nicht stören“: {why}', { why }));
     n++;
   }
   return n;
@@ -65,26 +66,29 @@ export function suppress(app: App, locationId: string, contactIds: string[], why
 export function suppressSoftBounces(app: App, locationId: string, only?: string[]): { suppressed: number; limit: number } {
   const limit = getSettings(app, locationId).hygiene.soft_bounce_limit;
   const list = softBounceSuspects(app, locationId, limit).filter((s) => !only || only.includes(s.contact_id));
-  return { suppressed: suppress(app, locationId, list.map((s) => s.contact_id), `${limit} Zustellversuche in Folge fehlgeschlagen (Soft Bounce)`), limit };
+  return { suppressed: suppress(app, locationId, list.map((s) => s.contact_id), tLoc(app, locationId)('{n} Zustellversuche in Folge fehlgeschlagen (Soft Bounce)', { n: limit })), limit };
 }
 
 /** Segment definition of the sunset list: mail for N months, nothing opened or clicked. */
 export const sunsetDefinition = (months: number): Group => cleanDefinition({ type: 'group', op: 'and', items: [{ type: 'engagement', state: 'inactive', days: Math.round(months * 30), min_received: 3 }, { type: 'dnd', value: false }] });
 
 export const SUNSET_NAME = 'Sunset: lange nicht geöffnet';
+/** The sunset segment is found by its name: the German source name (older data) or the name in the sub-account's language. */
+export const sunsetNames = (app: App, locationId: string): [string, string] => [SUNSET_NAME, tLoc(app, locationId)(SUNSET_NAME)];
 
 /** Creates (or updates) the saved segment of contacts who have not engaged for N months. */
 export function ensureSunsetSegment(app: App, locationId: string, months: number): { id: string; count: number } {
   const def = sunsetDefinition(months);
   const count = countMembers(app, locationId, def);
-  const row = app.db.get<{ id: string }>('SELECT id FROM mk_segments WHERE location_id = ? AND name = ?', locationId, SUNSET_NAME);
-  const description = `Automatisch angelegt: bekommen seit ${months} Monaten Mails, öffnen oder klicken aber nie. Vor dem Entfernen eine Re-Engagement-Mail senden.`;
+  const t = tLoc(app, locationId);
+  const row = app.db.get<{ id: string }>('SELECT id FROM mk_segments WHERE location_id = ? AND name IN (?, ?)', locationId, ...sunsetNames(app, locationId));
+  const description = t('Automatisch angelegt: bekommen seit {n} Monaten Mails, öffnen oder klicken aber nie. Vor dem Entfernen eine Re-Engagement-Mail senden.', { n: months });
   if (row) {
     app.db.run('UPDATE mk_segments SET definition = ?, description = ?, count = ?, counted_at = ?, updated_at = ? WHERE id = ?', JSON.stringify(def), description, count, now(), now(), row.id);
     return { id: row.id, count };
   }
   const sid = id();
-  app.db.run(`INSERT INTO mk_segments (id, location_id, name, description, definition, watch, count, counted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`, sid, locationId, SUNSET_NAME, description, JSON.stringify(def), count, now(), now(), now());
+  app.db.run(`INSERT INTO mk_segments (id, location_id, name, description, definition, watch, count, counted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`, sid, locationId, t(SUNSET_NAME), description, JSON.stringify(def), count, now(), now(), now());
   return { id: sid, count };
 }
 
@@ -151,6 +155,7 @@ export function addressBlocks(app: App, locationId: string, contacts: { id: stri
   const s = getSettings(app, locationId).validation;
   const out = new Map<string, string>();
   if (!s.exclude_invalid && !s.exclude_disposable && !s.exclude_role) return out;
+  const t = tLoc(app, locationId);
   const stored = new Map<string, { email: string; verdict: string; issues: string }>();
   for (let i = 0; i < contacts.length; i += 400) {
     const chunk = contacts.slice(i, i + 400);
@@ -161,18 +166,19 @@ export function addressBlocks(app: App, locationId: string, contacts: { id: stri
     if (s.exclude_invalid) {
       const err = st.issues.find((i) => i.level === 'error');
       if (err) {
-        out.set(c.id, `E-Mail-Adresse ungültig: ${err.text}`);
+        out.set(c.id, t('E-Mail-Adresse ungültig: {why}', { why: t(err.text) }));
         continue;
       }
       const row = stored.get(c.id);
       if (row && row.email === c.email && row.verdict === 'invalid') {
         const issues: Check['issues'] = JSON.parse(row.issues || '[]');
-        out.set(c.id, `E-Mail-Adresse ungültig: ${issues.find((i) => i.level === 'error')?.text ?? 'kann keine E-Mails empfangen'}`);
+        const why = issues.find((i) => i.level === 'error')?.text;
+        out.set(c.id, t('E-Mail-Adresse ungültig: {why}', { why: why ? t(why) : t('kann keine E-Mails empfangen') }));
         continue;
       }
     }
-    if (s.exclude_disposable && st.disposable) out.set(c.id, 'E-Mail-Adresse ist eine Wegwerf-Adresse');
-    else if (s.exclude_role && st.role) out.set(c.id, 'E-Mail-Adresse ist eine Funktionsadresse (z. B. info@)');
+    if (s.exclude_disposable && st.disposable) out.set(c.id, t('E-Mail-Adresse ist eine Wegwerf-Adresse'));
+    else if (s.exclude_role && st.role) out.set(c.id, t('E-Mail-Adresse ist eine Funktionsadresse (z. B. info@)'));
   }
   return out;
 }

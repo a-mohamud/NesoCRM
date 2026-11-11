@@ -4,6 +4,7 @@ import { getCalendarBySlug, type CalendarRow } from './calendars.js';
 import { getConfig } from '../services/teamcal-engine.js';
 import { bookTeam, cancelAppointment } from '../services/teamcal-book.js';
 import { durationChoices, multiAllowed } from '../services/teamcal-model.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Several appointments in one booking (HighLevel parity, docs/team-calendars.md#several-appointments-at-once): a calendar with
@@ -44,7 +45,10 @@ export const bookingMultiModule: Module = {
       if (starts.some((d: Date) => Number.isNaN(d.getTime()))) throw bad('Ungültige Startzeit');
       const sorted = [...new Set<number>(starts.map((d: Date) => d.getTime()))].sort((x, y) => x - y);
       if (sorted.length < 2) throw bad('Bitte mindestens zwei verschiedene Zeiten wählen');
-      if (sorted.length > max) throw bad(`Höchstens ${max} Termine auf einmal`);
+      if (sorted.length > max) {
+        const t = tCtx(ctx);
+        throw bad(t('Höchstens {max} Termine auf einmal', { max }));
+      }
       for (let i = 1; i < sorted.length; i++) if (sorted[i] < sorted[i - 1] + cal.duration * 60_000) throw bad('Die gewählten Zeiten überschneiden sich');
       const booked: any[] = [];
       try {
@@ -61,7 +65,10 @@ export const bookingMultiModule: Module = {
             console.error('[booking-multi] rollback', (err as Error).message);
           }
         }
-        if (e instanceof HttpError && e.status === 409) throw new HttpError(409, `${e.message} (${booked.length + 1}. Zeit) – bitte die Zeiten neu wählen`);
+        if (e instanceof HttpError && e.status === 409) {
+          const t = tCtx(ctx);
+          throw new HttpError(409, t('{error} ({n}. Zeit) – bitte die Zeiten neu wählen', { error: t(e.message), n: booked.length + 1 }));
+        }
         throw e;
       }
       return {

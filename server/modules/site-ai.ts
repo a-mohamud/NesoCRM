@@ -42,6 +42,7 @@ import { siteBlocks, type Block } from '../services/site-blocks.js';
 import { cleanBlocks } from '../services/site-layout.js';
 import { pageUrl, renderPage } from '../services/site-render.js';
 import { formSpec, settingsOf, wireBlocks, type Wiring } from '../services/site-templates.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 import { PURPOSES } from './ai-assistant.js';
 import type { Tool } from './mcp.js';
 import { siteAiDraftsModule } from './site-ai-drafts.js';
@@ -131,7 +132,7 @@ const TOOLS: Tool[] = [
         attempts: r.attempts,
         cost_usd: r.cost_usd,
         applied,
-        hint: applied ? 'Als Entwurf angelegt – nicht öffentlich. Im Editor prüfen und „Veröffentlichen“ klicken.' : 'Nur eine Vorschau. Mit apply=true (oder in der Oberfläche) als Entwurf anlegen.',
+        hint: tApp()(applied ? 'Als Entwurf angelegt – nicht öffentlich. Im Editor prüfen und „Veröffentlichen“ klicken.' : 'Nur eine Vorschau. Mit apply=true (oder in der Oberfläche) als Entwurf anlegen.'),
       };
     },
   },
@@ -179,7 +180,7 @@ export const siteAiModule: Module = {
         product: safe(() => db.all<{ id: string; name: string; price_cents: number; currency: string }>('SELECT id, name, price_cents, currency FROM products WHERE location_id = ? ORDER BY name LIMIT 30', loc).map((p) => ({ id: p.id, name: p.name, price: `${(Number(p.price_cents) / 100).toFixed(2).replace('.', ',')} ${p.currency || 'EUR'}` })), []),
       };
     };
-    const system = (rules: string, refs: AccountRefs): SystemBlock[] => [{ text: `${rules}${catalogFor(registry())}`, cache: true }, { text: `KONTO (nur diese IDs gibt es)\n${refsText(refs)}` }];
+    const system = (rules: string, refs: AccountRefs): SystemBlock[] => [{ text: `${rules}${catalogFor(registry())}`, cache: true }, { text: `ACCOUNT (only these ids exist)\n${refsText(refs)}` }];
     const funnelOf = (ctx: Ctx, fid: string) => {
       const f = parseJson(db.get('SELECT * FROM funnels WHERE id = ? AND location_id = ?', fid, ctx.locationId), ['settings']);
       if (!f) throw notFound('Website/Funnel nicht gefunden');
@@ -229,16 +230,17 @@ export const siteAiModule: Module = {
     const pageEstimate = (ctx: Ctx, mode: 'page' | 'section', chars: number) => estimate(app, ctx.locationId, PURPOSE, ctx.user?.id, estimateTokens({ mode, systemChars: (mode === 'page' ? RULES_BLOCKS : RULES_SECTION).length + catalogFor(registry()).length, userChars: chars }));
 
     router.get('/api/site-ai/status', 'location', (ctx) => {
+      const t = tCtx(ctx);
       const reason: string | null = app.services.aiReady?.(ctx.locationId) ?? (app.services.aiRun ? null : 'Der KI-Assistent ist nicht verfügbar.');
       const m = modelInfo(app, ctx.locationId, PURPOSE, ctx.user?.id);
       return {
         ready: !reason,
-        reason,
+        reason: reason && t(reason),
         provider: { label: m.label, model: m.model, byok: m.byok },
         budget: budget(app, ctx.locationId),
-        examples: EXAMPLES,
-        options: { page_types: PAGE_TYPES, goals: GOALS, tones: TONES, languages: LANGS, styles: STYLE_CHOICES },
-        commands: SECTION_COMMANDS.map((c) => ({ id: c.id, label: c.label })),
+        examples: EXAMPLES.map((x) => t(x)),
+        options: { page_types: PAGE_TYPES, goals: GOALS, tones: TONES, languages: LANGS, styles: STYLE_CHOICES.map((x) => ({ ...x, name: t(x.name), category: t(x.category) })) },
+        commands: SECTION_COMMANDS.map((c) => ({ id: c.id, label: t(c.label) })),
         blocks: Object.keys(AI_BLOCKS).filter((t) => registry().has(t)),
         limits: { per_hour: 30, attempts: 3 },
       };
@@ -291,7 +293,7 @@ export const siteAiModule: Module = {
       let tokens = 0;
       if (ctx.body?.plan) {
         const checked = checkPlan(ctx.body.plan, brief);
-        if (!checked.plan) throw bad(`Der Seitenplan ist nicht gültig: ${checked.errors.slice(0, 3).join(' · ')}`);
+        if (!checked.plan) throw bad(tCtx(ctx)('Der Seitenplan ist nicht gültig: {errors}', { errors: checked.errors.slice(0, 3).join(' · ') }));
         plan = checked.plan;
       } else {
         const p = await planFor(ctx, brief);
@@ -318,22 +320,22 @@ export const siteAiModule: Module = {
       cost += r.cost_micros;
       tokens += r.tokens;
       warnings = [...warnings, ...r.warnings];
-      const notes = [...r.value.notes, ...siteNotes(r.value.pages, refs, brief)];
+      const notes = [...r.value.notes, ...siteNotes(r.value.pages, refs, brief, tCtx(ctx))];
       const result = { plan, pages: r.value.pages, notes, warnings };
       const rid = saveRun(ctx, { mode: 'site', funnel_id: null, page_id: null, section_id: null, prompt: brief.extra || `${brief.business} – ${brief.offer}`.slice(0, 2000), brief: JSON.stringify(brief), attempts, model: r.model, tokens, cost_micros: cost, estimate_micros: Math.round(est.usd * 1e6), result: JSON.stringify(result) });
       return { run_id: rid, mode: 'site', plan, pages: r.value.pages.map((p) => ({ ...p, sections: p.blocks.map((b) => String(b.name || b.type)) })), notes, warnings, attempts, model: r.model, cost_usd: usd(cost), estimate_usd: est.usd };
     });
 
     /** What the person still has to set up for the site to work (form, calendar, product, Stripe, company data). */
-    function siteNotes(pages: DraftPage[], refs: AccountRefs, brief: Brief): string[] {
+    function siteNotes(pages: DraftPage[], refs: AccountRefs, brief: Brief, t: ReturnType<typeof tCtx>): string[] {
       const used = new Set<string>();
       for (const p of pages) JSON.stringify(p.blocks).replace(/"type":"(form|calendar|product)"/g, (_m, t) => (used.add(t), ''));
       const out: string[] = [];
-      if (used.has('form') && !refs.form.length) out.push('Ein Formular (Name, E-Mail, Einwilligung) wird beim Anlegen erstellt – Felder unter „Formulare“ anpassen.');
-      if (used.has('calendar') && !refs.calendar.length) out.push('Es gibt noch keinen Kalender: unter „Kalender“ anlegen und im Block „Kalender“ wählen.');
-      if (used.has('product')) out.push(refs.product.length ? 'Prüfe im Block „Produkt“, ob das richtige Produkt gewählt ist (Stripe muss verbunden sein).' : 'Lege unter „Rechnungen → Produkte“ das Produkt an und wähle es im Block „Produkt“.');
-      if (brief.language === 'en') out.push('Rechtstexte erzeugt HyperLevel auf Deutsch – für eine englische Seite bitte prüfen.');
-      out.push('Texte in [eckigen Klammern] sind Platzhalter: durch echte Angaben ersetzen, keine erfundenen Kundenstimmen veröffentlichen.');
+      if (used.has('form') && !refs.form.length) out.push(t('Ein Formular (Name, E-Mail, Einwilligung) wird beim Anlegen erstellt – Felder unter „Formulare“ anpassen.'));
+      if (used.has('calendar') && !refs.calendar.length) out.push(t('Es gibt noch keinen Kalender: unter „Kalender“ anlegen und im Block „Kalender“ wählen.'));
+      if (used.has('product')) out.push(t(refs.product.length ? 'Prüfe im Block „Produkt“, ob das richtige Produkt gewählt ist (Stripe muss verbunden sein).' : 'Lege unter „Rechnungen → Produkte“ das Produkt an und wähle es im Block „Produkt“.'));
+      if (brief.language === 'en') out.push(t('Rechtstexte erzeugt HyperLevel auf Deutsch – für eine englische Seite bitte prüfen.'));
+      out.push(t('Texte in [eckigen Klammern] sind Platzhalter: durch echte Angaben ersetzen, keine erfundenen Kundenstimmen veröffentlichen.'));
       return out;
     }
 
@@ -349,7 +351,7 @@ export const siteAiModule: Module = {
       if (prompt.length < 6 && briefProblem(brief)) throw bad('Bitte beschreibe kurz, was auf der Seite stehen soll.');
       const before = currentBlocks(ctx.body?.current_blocks, page.blocks);
       const outline = before.length ? sectionOutline(before) : '';
-      const user = `BRIEFING\n${briefText(brief)}\n\nSEITE: ${page.slug} „${page.name}“ der ${f.kind === 'website' ? 'Website' : 'Funnel'} „${f.name}“. Andere Seiten (für page:-Links): ${siblings.map((p) => p.slug).join(', ')}\n${outline ? `BISHERIGE GLIEDERUNG\n${outline}\n` : ''}\nAUFTRAG: ${prompt || 'Schreibe diese Seite passend zum Briefing.'}\n\nAntworte mit {"sections": [...], "summary": "ein Satz"}.`;
+      const user = `BRIEF\n${briefText(brief)}\n\nPAGE: ${page.slug} "${page.name}" of the ${f.kind === 'website' ? 'website' : 'funnel'} "${f.name}". Other pages (for page: links): ${siblings.map((p) => p.slug).join(', ')}\n${outline ? `CURRENT OUTLINE\n${outline}\n` : ''}\nINSTRUCTION: ${prompt || 'Write this page to match the brief.'}\n\nReply with {"sections": [...], "summary": "one sentence in the language of the instruction"}.`;
       const est = pageEstimate(ctx, 'page', user.length);
       gate(ctx, est);
       const refs = refsOf(ctx.locationId);
@@ -362,7 +364,7 @@ export const siteAiModule: Module = {
         maxTokens: 6000,
         timeoutMs: 150_000,
         check: (raw) => {
-          const c = checkPageSections(raw.sections ?? raw.pages?.[0]?.sections, env, `Seite „${page.slug}“`);
+          const c = checkPageSections(raw.sections ?? raw.pages?.[0]?.sections, env, `Page "${page.slug}"`);
           return { value: c.errors.length ? undefined : { blocks: c.blocks, summary: String(raw.summary ?? '').slice(0, 300) }, errors: c.errors, warnings: c.warnings };
         },
       });
@@ -390,7 +392,7 @@ export const siteAiModule: Module = {
       const sc = sectionContext(before, sectionId);
       if (!sc) throw bad('Bitte einen Abschnitt der Seite wählen (Seiten ohne Abschnitte: erst „In Abschnitte umwandeln“).');
       const brief = briefFor(ctx, ctx.body?.brief, page);
-      const user = `BRIEFING\n${briefText(brief)}\n\nSEITE (Gliederung, >> = gewählter Abschnitt)\n${sc.outline}\nAndere Seiten (für page:-Links): ${siblings.map((p) => p.slug).join(', ')}\n\nGEWÄHLTER ABSCHNITT\n${JSON.stringify(relink(sc.section, toSlug))}\n\nAUFTRAG: ${command}`;
+      const user = `BRIEF\n${briefText(brief)}\n\nPAGE (outline, >> = selected section)\n${sc.outline}\nOther pages (for page: links): ${siblings.map((p) => p.slug).join(', ')}\n\nSELECTED SECTION\n${JSON.stringify(relink(sc.section, toSlug))}\n\nINSTRUCTION: ${command}`;
       const est = pageEstimate(ctx, 'section', user.length);
       gate(ctx, est);
       const refs = refsOf(ctx.locationId);
@@ -407,7 +409,7 @@ export const siteAiModule: Module = {
           if (c.sections && !c.errors.length) {
             // the H1 rule over the whole page after the change
             const next = applySectionAnswer(before, sectionId, c.sections, mergeSection);
-            if (h1Count(next) > 1) return { errors: ['Die Seite hätte danach mehr als eine H1 – neue Überschriften mit level 2 oder 3, kein zweiter Hero'], warnings: c.warnings };
+            if (h1Count(next) > 1) return { errors: ['The page would then have more than one H1 – new headings with level 2 or 3, no second hero'], warnings: c.warnings };
           }
           return { value: c.sections ? { sections: c.sections, summary: c.summary } : undefined, errors: c.errors, warnings: c.warnings };
         },
@@ -498,10 +500,13 @@ export const siteAiModule: Module = {
       const needs = { form: /"type":"form"/.test(json1), calendar: /"type":"calendar"/.test(json1), product: /"type":"product"/.test(json1) };
       if (needs.calendar) wiring.calendar_slug = db.get<{ slug: string }>('SELECT slug FROM calendars WHERE location_id = ? ORDER BY created_at LIMIT 1', loc)?.slug ?? '';
       const legalKinds = ['impressum', 'datenschutz', ...(brief.goal === 'sale' || needs.product ? ['widerruf'] : [])];
+      // placeholder legal pages in the sub-account's language (the legal generator replaces them once the company data is there)
+      const tl = tLoc(app, loc);
+      const tu = tCtx(ctx);
       const LEGAL_PLACEHOLDER: Record<string, { name: string; blocks: Block[] }> = {
-        impressum: { name: 'Impressum', blocks: [{ id: id(8), type: 'heading', text: 'Impressum', level: 1 }, { id: id(8), type: 'text', text: 'Angaben gemäß § 5 DDG\n\nName\nStraße\nPLZ Ort' }] },
-        datenschutz: { name: 'Datenschutz', blocks: [{ id: id(8), type: 'heading', text: 'Datenschutzerklärung', level: 1 }, { id: id(8), type: 'text', text: 'Hier deine Datenschutzerklärung einfügen.' }] },
-        widerruf: { name: 'Widerruf', blocks: [{ id: id(8), type: 'heading', text: 'Widerrufsbelehrung', level: 1 }, { id: id(8), type: 'text', text: 'Hier deine Widerrufsbelehrung einfügen.' }] },
+        impressum: { name: tl('Impressum'), blocks: [{ id: id(8), type: 'heading', text: tl('Impressum'), level: 1 }, { id: id(8), type: 'text', text: tl('Angaben gemäß § 5 DDG\n\nName\nStraße\nPLZ Ort') }] },
+        datenschutz: { name: tl('Datenschutz'), blocks: [{ id: id(8), type: 'heading', text: tl('Datenschutzerklärung'), level: 1 }, { id: id(8), type: 'text', text: tl('Hier deine Datenschutzerklärung einfügen.') }] },
+        widerruf: { name: tl('Widerruf'), blocks: [{ id: id(8), type: 'heading', text: tl('Widerrufsbelehrung'), level: 1 }, { id: id(8), type: 'text', text: tl('Hier deine Widerrufsbelehrung einfügen.') }] },
       };
       const fid = id();
       const root = slugify(plan.site_name) || 'website';
@@ -516,12 +521,12 @@ export const siteAiModule: Module = {
       try {
         if (needs.form) {
           try {
-            const spec = formSpec(brief.goal === 'leads' && kind !== 'website' ? 'optin' : 'contact', plan.site_name);
+            const spec = formSpec(brief.goal === 'leads' && kind !== 'website' ? 'optin' : 'contact', plan.site_name, tl);
             const form = await callRoute(app, ctx, 'POST', '/api/forms', { name: spec.name, fields: spec.fields, settings: { ...spec.settings, tags: ['ki-website'] } });
             wiring.form_id = form.id;
             createdForm = true;
           } catch (e) {
-            notes.push(`Das Formular konnte nicht angelegt werden (${(e as Error).message}): wähle in den Formular-Blöcken ein Formular aus.`);
+            notes.push(tu('Das Formular konnte nicht angelegt werden ({error}): wähle in den Formular-Blöcken ein Formular aus.', { error: tu((e as Error).message) }));
           }
         }
         db.update('funnels', fid, { settings: siteSettings(t, wiring, pages, kind) });
@@ -543,12 +548,12 @@ export const siteAiModule: Module = {
           const lr = await callRoute(app, ctx, 'POST', `/api/legal/funnels/${fid}/apply`, { kinds: legalKinds, overwrite: true });
           legal = { applied: Array.isArray(lr?.pages) && lr.pages.length > 0, kinds: (lr?.pages ?? []).map((x: any) => x.kind) };
         } catch (e) {
-          notes.push((e as Error).message);
+          notes.push(tu((e as Error).message));
         }
-        if (!legal.applied) notes.push('Impressum und Datenschutz enthalten noch Platzhalter: trage unter „Einwilligung & Recht“ die Firmendaten ein und erzeuge die Texte dort mit einem Klick.');
-        if (needs.calendar && !wiring.calendar_slug) notes.push('Lege unter „Kalender“ einen Kalender an und wähle ihn im Block „Kalender“.');
+        if (!legal.applied) notes.push(tu('Impressum und Datenschutz enthalten noch Platzhalter: trage unter „Einwilligung & Recht“ die Firmendaten ein und erzeuge die Texte dort mit einem Klick.'));
+        if (needs.calendar && !wiring.calendar_slug) notes.push(tu('Lege unter „Kalender“ einen Kalender an und wähle ihn im Block „Kalender“.'));
         db.run(`UPDATE site_ai_runs SET status = 'applied', applied_funnel_id = ?, applied_at = ? WHERE id = ?`, fid, now(), r.id);
-        auditLog(app, ctx, loc, 'site_ai.apply', `KI-Entwurf „${plan.site_name}“ als unveröffentlichte ${kind === 'website' ? 'Website' : 'Funnel'} angelegt`, fid);
+        auditLog(app, ctx, loc, 'site_ai.apply', tApp()(kind === 'website' ? 'KI-Entwurf „{name}“ als unveröffentlichte Website angelegt' : 'KI-Entwurf „{name}“ als unveröffentlichter Funnel angelegt', { name: plan.site_name }), fid);
         const out = db.get('SELECT * FROM funnels WHERE id = ?', fid)!;
         return {
           ok: true,
@@ -559,7 +564,7 @@ export const siteAiModule: Module = {
           wiring: { form_id: wiring.form_id, form_created: createdForm, calendar_slug: wiring.calendar_slug },
           legal,
           notes: [...(res.notes ?? []), ...notes],
-          message: 'Als Entwurf angelegt – nicht öffentlich, bis du im Editor „Veröffentlichen“ klickst.',
+          message: tu('Als Entwurf angelegt – nicht öffentlich, bis du im Editor „Veröffentlichen“ klickst.'),
         };
       } catch (e) {
         db.run('DELETE FROM funnels WHERE id = ?', fid);
@@ -579,9 +584,9 @@ export const siteAiModule: Module = {
         blocks = applySectionAnswer(current, String(r.section_id), res.sections ?? [], mergeSection);
       }
       blocks = cleanBlocks(blocks);
-      const point = app.services.siteAiDrafts?.restorePoint(ctx, { page, blocks: current, runId: r.id, label: r.mode === 'section' ? `Vor KI: ${r.prompt.slice(0, 60)}` : 'Vor KI-Seitenentwurf' });
+      const point = app.services.siteAiDrafts?.restorePoint(ctx, { page, blocks: current, runId: r.id, label: r.mode === 'section' ? tApp()('Vor KI: {prompt}', { prompt: r.prompt.slice(0, 60) }) : tApp()('Vor KI-Seitenentwurf') });
       db.run(`UPDATE site_ai_runs SET status = 'applied', applied_at = ? WHERE id = ?`, now(), r.id);
-      return { ok: true, mode: r.mode, page_id: page.id, blocks, restore_point_id: point?.id ?? null, diff: diffPage(current, blocks), message: 'Im Editor übernommen – noch nicht gespeichert. „Speichern“ macht die Änderung live, der Wiederherstellungspunkt holt den alten Stand zurück.' };
+      return { ok: true, mode: r.mode, page_id: page.id, blocks, restore_point_id: point?.id ?? null, diff: diffPage(current, blocks), message: tCtx(ctx)('Im Editor übernommen – noch nicht gespeichert. „Speichern“ macht die Änderung live, der Wiederherstellungspunkt holt den alten Stand zurück.') };
     }
 
     // --- the HyperLevel Agent ---------------------------------------------------------------------------------------------------
@@ -591,8 +596,8 @@ export const siteAiModule: Module = {
         i.automatic
           ? ''
           : [
-              '# Funnels & Websites mit KI',
-              'Soll eine Landingpage, ein Funnel oder eine Website entstehen („bau mir eine Landingpage für …“): ghl_site_generate mit prompt (und page_type, goal, language, falls bekannt). Zeig der Person Plan, Seiten, Hinweise und Kosten; erst nach ihrem Okay mit apply=true – das legt einen unveröffentlichten Entwurf an, den sie im Editor prüft und selbst veröffentlicht. Erfinde keine Fakten, Preise oder Kundenstimmen.',
+              '# Funnels & websites with AI',
+              'If a landing page, funnel or website is to be built ("build me a landing page for …"): call ghl_site_generate with prompt (and page_type, goal, language if known). Show the person the plan, pages, notes and cost; only after their OK call it with apply=true – that creates an unpublished draft which they review in the editor and publish themselves. Do not invent facts, prices or testimonials. Talk to the person in their language.',
             ].join('\n'),
     ];
     app.onTick(() => {

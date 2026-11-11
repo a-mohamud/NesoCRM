@@ -3,6 +3,7 @@ import { parseJson } from '../core/db.js';
 import { HttpError, bad } from '../core/http.js';
 import { now } from '../core/util.js';
 import { BUILTIN_ACTION_META } from './wfx-catalog.js';
+import { tApp, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Error handling of workflows: what happens when a step fails.
@@ -47,8 +48,8 @@ export function cleanErrorSettings(app: App, locationId: string, next: Record<st
 }
 
 /** The step's name in the editor's words (the catalog's label, then the step's own name, then the type). */
-export function stepLabel(app: App, step: { type: string; name?: string }): string {
-  const label = app.services.workflowActionMeta?.[step.type]?.label ?? BUILTIN_ACTION_META[step.type]?.label ?? step.type;
+export function stepLabel(app: App, step: { type: string; name?: string }, t: STFn = tApp()): string {
+  const label = t(app.services.workflowActionMeta?.[step.type]?.label ?? BUILTIN_ACTION_META[step.type]?.label ?? step.type);
   return step.name ? `${label} („${step.name}“)` : label;
 }
 
@@ -74,7 +75,7 @@ export function reportStepError(app: App, run: { id: string; location_id: string
   if (!s.on_error_workflow_id && !s.error_bell && !s.error_email) return;
   if (run.vars._err_reported) return;
   run.vars._err_reported = now();
-  const failure: StepFailure = { workflowId: run.workflow_id, workflowName: String(wf.name ?? ''), runId: run.id, stepId: step.id, stepType: step.type, step: stepLabel(app, step), message: String(message).slice(0, 500), stopped: !!s.stop_on_error, at: now() };
+  const failure: StepFailure = { workflowId: run.workflow_id, workflowName: String(wf.name ?? ''), runId: run.id, stepId: step.id, stepType: step.type, step: stepLabel(app, step, tLoc(app, run.location_id)), message: String(message).slice(0, 500), stopped: !!s.stop_on_error, at: now() };
   app.events.emit(run.location_id, STEP_FAILED_EVENT, { contactId: run.contact_id, failure, errorOf: run.event?.errorOf ?? null, wfDepth: Number(run.event?.wfDepth ?? 0) });
 }
 
@@ -92,7 +93,7 @@ export async function retryRun(app: App, locationId: string, runId: string, proc
   // A fresh step budget and a fresh report: another failure is announced again.
   vars._steps = 0;
   delete vars._err_reported;
-  log.push({ at: now(), step: failed?.step ?? '', type: 'retry', result: `Wiederholung ab dem fehlgeschlagenen Schritt${failed?.type ? ` (${failed.type})` : ''}` });
+  log.push({ at: now(), step: failed?.step ?? '', type: 'retry', result: `${tLoc(app, locationId)('Wiederholung ab dem fehlgeschlagenen Schritt')}${failed?.type ? ` (${failed.type})` : ''}` });
   app.db.update('workflow_runs', run.id, { status: 'active', vars, log: log.slice(-200), next_run_at: null, updated_at: now() });
   await processRun(app, run.id);
   const after = app.db.get<{ status: string }>('SELECT status FROM workflow_runs WHERE id = ?', run.id);

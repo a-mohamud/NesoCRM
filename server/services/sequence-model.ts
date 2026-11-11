@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { addDaysYmd, hmInTz, weekdayKey, ymdInTz, zonedToUtc, type DayKey } from '../core/time.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * The pure rules of sales sequences (no database, no HTTP): what a step is, how a list of steps is cleaned, the business-hours
@@ -56,7 +57,7 @@ const ID = /^[A-Za-z0-9_-]{4,24}$/;
  */
 export function cleanSteps(input: unknown, mint: () => string): Step[] {
   if (!Array.isArray(input) || !input.length) throw new SequenceError('Mindestens ein Schritt');
-  if (input.length > MAX_STEPS) throw new SequenceError(`Höchstens ${MAX_STEPS} Schritte`);
+  if (input.length > MAX_STEPS) throw new SequenceError(tApp()('Höchstens {n} Schritte', { n: MAX_STEPS }));
   const seen = new Set<string>();
   const unique = (v: unknown) => {
     let id = typeof v === 'string' && ID.test(v) && !seen.has(v) ? v : mint();
@@ -66,7 +67,7 @@ export function cleanSteps(input: unknown, mint: () => string): Step[] {
   };
   return input.map((raw: any, i): Step => {
     const type = STEP_TYPES.includes(raw?.type) ? (raw.type as StepType) : null;
-    if (!type) throw new SequenceError(`Schritt ${i + 1}: Art ist E-Mail, Aufgabe, Anruf oder LinkedIn`);
+    if (!type) throw new SequenceError(tApp()('Schritt {n}: Art ist E-Mail, Aufgabe, Anruf oder LinkedIn', { n: i + 1 }));
     const step: Step = {
       id: unique(raw.id),
       type,
@@ -91,9 +92,9 @@ export function cleanSteps(input: unknown, mint: () => string): Step[] {
         subject: text(v?.subject, 300).replace(/\n/g, ' ').trim() || step.subject,
         body: text(v?.body, 20_000).trim() ? text(v?.body, 20_000) : step.body,
       }));
-      if (!step.body.trim()) throw new SequenceError(`Schritt ${i + 1}: Der Text der E-Mail fehlt`);
-      if (!step.subject && !step.reply_in_thread) throw new SequenceError(`Schritt ${i + 1}: Der Betreff fehlt`);
-    } else if (!step.title) throw new SequenceError(`Schritt ${i + 1}: Der Titel der Aufgabe fehlt`);
+      if (!step.body.trim()) throw new SequenceError(tApp()('Schritt {n}: Der Text der E-Mail fehlt', { n: i + 1 }));
+      if (!step.subject && !step.reply_in_thread) throw new SequenceError(tApp()('Schritt {n}: Der Betreff fehlt', { n: i + 1 }));
+    } else if (!step.title) throw new SequenceError(tApp()('Schritt {n}: Der Titel der Aufgabe fehlt', { n: i + 1 }));
     return step;
   });
 }
@@ -217,4 +218,4 @@ export function pickVariant(step: Pick<Step, 'id' | 'subject' | 'body' | 'varian
 }
 
 /** The unsubscribe line: plain text, short, in German. */
-export const footerText = (url: string) => `\n\n—\nKeine weiteren Nachrichten von mir? Hier abmelden: ${url}`;
+export const footerText = (url: string, t: STFn = tApp()) => `\n\n—\n${t('Keine weiteren Nachrichten von mir? Hier abmelden: {url}', { url })}`;

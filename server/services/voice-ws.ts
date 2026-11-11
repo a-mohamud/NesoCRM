@@ -65,7 +65,7 @@ export class FrameParser {
       if (b[0] & 0x70) throw new WsProtocolError(1002, 'Reservierte Bits');
       const opcode = b[0] & 0x0f;
       const masked = !!(b[1] & 0x80);
-      if (!masked) throw new WsProtocolError(1002, 'Client-Frames müssen maskiert sein');
+      if (!masked) throw new WsProtocolError(1002, 'client frames must be masked');
       let len = b[1] & 0x7f;
       let pos = 2;
       if (len === 126) {
@@ -75,13 +75,13 @@ export class FrameParser {
       } else if (len === 127) {
         if (b.length < 10) break;
         const big = b.readBigUInt64BE(2);
-        if (big > BigInt(this.maxPayload)) throw new WsProtocolError(1009, 'Nachricht zu groß');
+        if (big > BigInt(this.maxPayload)) throw new WsProtocolError(1009, 'message too big');
         len = Number(big);
         pos = 10;
       }
-      if (len > this.maxPayload) throw new WsProtocolError(1009, 'Nachricht zu groß');
+      if (len > this.maxPayload) throw new WsProtocolError(1009, 'message too big');
       const isControl = opcode >= 0x8;
-      if (isControl && (!fin || len > 125)) throw new WsProtocolError(1002, 'Ungültiger Steuer-Frame');
+      if (isControl && (!fin || len > 125)) throw new WsProtocolError(1002, 'invalid control frame');
       if (![0x0, 0x1, 0x2, 0x8, 0x9, 0xa].includes(opcode)) throw new WsProtocolError(1002, 'Unbekannter Opcode');
       if (b.length < pos + 4 + len) break;
       const mask = b.subarray(pos, pos + 4);
@@ -210,12 +210,12 @@ export class ServerWs implements WsLike {
         if (f.opcode === 0x0) {
           if (!this.fragmentOpcode) return this.fail(new WsProtocolError(1002, 'Unerwartete Fortsetzung'));
         } else {
-          if (this.fragmentOpcode) return this.fail(new WsProtocolError(1002, 'Neue Nachricht in einer unvollständigen'));
+          if (this.fragmentOpcode) return this.fail(new WsProtocolError(1002, 'new message inside an unfinished one'));
           this.fragmentOpcode = f.opcode;
         }
         this.fragments.push(f.payload);
         this.fragmentBytes += f.payload.length;
-        if (this.fragmentBytes > (this.opts.maxPayload ?? 1024 * 1024)) return this.fail(new WsProtocolError(1009, 'Nachricht zu groß'));
+        if (this.fragmentBytes > (this.opts.maxPayload ?? 1024 * 1024)) return this.fail(new WsProtocolError(1009, 'message too big'));
         if (f.fin) {
           const data = Buffer.concat(this.fragments);
           const binary = this.fragmentOpcode === 0x2;

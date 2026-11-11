@@ -3,6 +3,7 @@ import { bad, notFound, str } from '../core/http.js';
 import { now } from '../core/util.js';
 import { licenseInfo, requirePro } from '../services/werkstatt/license.js';
 import { FLAG_NAME_RE, FLAG_STAGES, PRO_STAGES, decide, type FlagContext, type FlagRow, type FlagStage } from '../services/flags.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Feature flags for core features: `app.services.flags.enabled(name, { locationId, userId })` decides by the
@@ -62,7 +63,7 @@ export const flagsModule: Module = {
         patch.percent = n;
       }
       const ids = (v: unknown, what: string) => {
-        if (!Array.isArray(v)) throw bad(`${what} als Liste angeben.`);
+        if (!Array.isArray(v)) throw bad(tApp()('{what} als Liste angeben.', { what: tApp()(what) }));
         return [...new Set(v.map((x) => String(x).trim()).filter(Boolean))].slice(0, 500);
       };
       if (b.users !== undefined) patch.users = JSON.stringify(ids(b.users, 'Nutzer').filter((u) => db.get('SELECT 1 FROM users WHERE id = ?', u)));
@@ -71,7 +72,7 @@ export const flagsModule: Module = {
     };
 
     router.get('/api/flags', 'admin', (ctx) => ({
-      stages: FLAG_STAGES,
+      stages: FLAG_STAGES.map(([k, label]) => [k, tCtx(ctx)(label)]),
       pro_stages: PRO_STAGES,
       license: licenseInfo(app),
       flags: list().map((f) => ({ ...f, on_for_me: decide(f, { userId: ctx.user?.id, locationId: ctx.locationId || undefined }), locations_named: f.locations.map((id) => ({ id, name: app.location(id)?.name ?? id })) })),

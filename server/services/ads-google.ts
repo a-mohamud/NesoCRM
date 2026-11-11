@@ -3,6 +3,7 @@ import { chunks } from './ads-hash.js';
 import type { AdSpec } from './ads-manager.js';
 import type { RemoteCampaign } from './ads-meta.js';
 import type { GoogleAuth } from './ads-store.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Google Ads API (REST): campaigns are created in ONE atomic `googleAds:mutate` call (budget, campaign, targeting,
@@ -37,7 +38,7 @@ const errorText = (j: any, status: number) => {
     AUTHENTICATION_ERROR: 'Google lehnt die Anmeldung ab – bitte neu verbinden',
     RESOURCE_EXHAUSTED: 'Google drosselt gerade die Anfragen – bitte später noch einmal',
   };
-  const hint = known[String(code)] ?? '';
+  const hint = known[String(code)] ? tApp()(known[String(code)]) : '';
   return `Google Ads: ${hint || first?.message || e?.message || `HTTP ${status}`}${first?.location?.fieldPathElements?.length && !hint ? ` (${first.location.fieldPathElements.map((x: any) => x.fieldName).join('.')})` : ''}`.slice(0, 500);
 };
 
@@ -74,14 +75,14 @@ export function googleApi(f: typeof fetch, auth: GoogleAuth): GoogleApi {
           signal: AbortSignal.timeout(TIMEOUT_MS),
         });
       } catch (e) {
-        throw new AdsError(`Google Ads nicht erreichbar: ${(e as Error).message}`);
+        throw new AdsError(tApp()('Google Ads nicht erreichbar: {error}', { error: (e as Error).message }));
       }
       const t = await r.text();
       let j: any = {};
       try {
         j = t ? JSON.parse(t) : {};
       } catch {
-        throw new AdsError(`Google Ads: Antwort ist kein JSON (HTTP ${r.status})`);
+        throw new AdsError(tApp()('Google Ads: Antwort ist kein JSON (HTTP {status})', { status: r.status }));
       }
       if (!r.ok || (Array.isArray(j) ? j.some((x) => x?.error) : j?.error)) throw new AdsError(errorText(j, r.status));
       return j;
@@ -185,7 +186,7 @@ export function searchMutate(spec: AdSpec, ctx: GoogleBuildContext) {
   const ops = sharedOps(spec, ctx, 'SEARCH');
   ops.push({
     adGroupOperation: {
-      create: { resourceName: adGroup, name: `${spec.name} – Anzeigengruppe`, campaign: tmp(cid, 'campaigns', 2), status: 'PAUSED', type: 'SEARCH_STANDARD', ...(spec.max_cpc_cents ? { cpcBidMicros: micros(spec.max_cpc_cents) } : {}) },
+      create: { resourceName: adGroup, name: tApp()('{name} – Anzeigengruppe', { name: spec.name }), campaign: tmp(cid, 'campaigns', 2), status: 'PAUSED', type: 'SEARCH_STANDARD', ...(spec.max_cpc_cents ? { cpcBidMicros: micros(spec.max_cpc_cents) } : {}) },
     },
   });
   for (const k of spec.audience.keywords ?? []) ops.push({ adGroupCriterionOperation: { create: { adGroup, status: 'ENABLED', keyword: { text: k.text, matchType: k.match } } } });
@@ -219,7 +220,7 @@ export function pmaxMutate(spec: AdSpec, ctx: GoogleBuildContext) {
   const assetGroup = tmp(cid, 'assetGroups', 3);
   const ops = sharedOps(spec, ctx, 'PERFORMANCE_MAX');
   const c = spec.creative;
-  ops.push({ assetGroupOperation: { create: { resourceName: assetGroup, name: `${spec.name} – Asset-Gruppe`, campaign: tmp(cid, 'campaigns', 2), finalUrls: [ctx.finalUrl], status: 'PAUSED', ...(c.path1 ? { path1: c.path1 } : {}), ...(c.path2 ? { path2: c.path2 } : {}) } } });
+  ops.push({ assetGroupOperation: { create: { resourceName: assetGroup, name: tApp()('{name} – Asset-Gruppe', { name: spec.name }), campaign: tmp(cid, 'campaigns', 2), finalUrls: [ctx.finalUrl], status: 'PAUSED', ...(c.path1 ? { path1: c.path1 } : {}), ...(c.path2 ? { path2: c.path2 } : {}) } } });
   let n = 10;
   const link = (field: string, assetOp: Record<string, any>) => {
     const resourceName = tmp(cid, 'assets', n++);
@@ -345,10 +346,10 @@ export async function discoverCustomers(api: GoogleApi, loginCustomerId?: string
     try {
       const rows = await queryOn(api, cid, 'SELECT customer.id, customer.descriptive_name, customer.manager, customer.currency_code, customer.time_zone, customer.test_account FROM customer');
       const c = rows[0]?.customer ?? {};
-      out.set(cid, { id: cid, name: String(c.descriptiveName ?? c.descriptive_name ?? `Konto ${cid}`), manager: !!c.manager, currency: String(c.currencyCode ?? c.currency_code ?? 'EUR'), time_zone: String(c.timeZone ?? c.time_zone ?? ''), test: !!(c.testAccount ?? c.test_account) });
+      out.set(cid, { id: cid, name: String(c.descriptiveName ?? c.descriptive_name ?? tApp()('Konto {id}', { id: cid })), manager: !!c.manager, currency: String(c.currencyCode ?? c.currency_code ?? 'EUR'), time_zone: String(c.timeZone ?? c.time_zone ?? ''), test: !!(c.testAccount ?? c.test_account) });
     } catch {
       // Not reachable without the manager account's login id, or not enabled: still offered by id.
-      out.set(cid, { id: cid, name: `Konto ${cid}`, manager: false, currency: 'EUR', time_zone: '', test: false });
+      out.set(cid, { id: cid, name: tApp()('Konto {id}', { id: cid }), manager: false, currency: 'EUR', time_zone: '', test: false });
     }
   }
   if (loginCustomerId && /^\d{10}$/.test(loginCustomerId)) {
@@ -358,7 +359,7 @@ export async function discoverCustomers(api: GoogleApi, loginCustomerId?: string
         const c = r.customerClient ?? r.customer_client ?? {};
         const cid = String(c.id ?? '');
         if (!/^\d{10}$/.test(cid) || (c.manager ?? false)) continue;
-        out.set(cid, { id: cid, name: String(c.descriptiveName ?? c.descriptive_name ?? `Konto ${cid}`), manager: false, currency: String(c.currencyCode ?? c.currency_code ?? 'EUR'), time_zone: String(c.timeZone ?? c.time_zone ?? ''), test: !!(c.testAccount ?? c.test_account), via_mcc: true });
+        out.set(cid, { id: cid, name: String(c.descriptiveName ?? c.descriptive_name ?? tApp()('Konto {id}', { id: cid })), manager: false, currency: String(c.currencyCode ?? c.currency_code ?? 'EUR'), time_zone: String(c.timeZone ?? c.time_zone ?? ''), test: !!(c.testAccount ?? c.test_account), via_mcc: true });
       }
     } catch {
       /* the list of accessible accounts above still works */

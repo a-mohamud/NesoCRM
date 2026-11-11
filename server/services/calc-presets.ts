@@ -2,7 +2,7 @@
  * Gewinnrechner: starting points (presets). Each is a partial input over the documented defaults (calc-spec.ts);
  * all numbers are example values to be replaced with your own. Pure data, usable in the browser and on the server.
  */
-import { resolveInput, type CalcInput } from './calc-engine.js';
+import { plainTr, resolveInput, type CalcInput, type Tr } from './calc-engine.js';
 
 export interface CalcPreset {
   key: string;
@@ -175,7 +175,19 @@ export const PRESETS: CalcPreset[] = [
 export const presetByKey = (key: string) => PRESETS.find((p) => p.key === key);
 
 /** The complete, validated input of a preset. */
-export function presetInput(key: string): CalcInput | null {
+export function presetInput(key: string, t: Tr = plainTr): CalcInput | null {
   const p = presetByKey(key);
-  return p ? resolveInput(p.input) : null;
+  if (!p) return null;
+  return localizeNames(resolveInput(p.input), t);
 }
+
+/** The example names of an input (plans, notes, add-ons, payment methods) in the language of the one who starts from it. */
+export function localizeNames(input: CalcInput, t: Tr = plainTr): CalcInput {
+  input.pricing.plans = input.pricing.plans.map((pl) => ({ ...pl, name: t(pl.name), note: pl.note ? t(pl.note) : pl.note }));
+  input.pricing.addons = input.pricing.addons.map((a) => ({ ...a, name: t(a.name) }));
+  input.costs.variable.payment.methods = input.costs.variable.payment.methods.map((m) => ({ ...m, label: t(m.label) }));
+  return input;
+}
+
+/** A preset's name and description in a language (the list of presets). */
+export const presetText = (p: CalcPreset, t: Tr = plainTr) => ({ key: p.key, name: t(p.name), description: t(p.description) });

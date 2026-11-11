@@ -22,6 +22,7 @@ import {
   type Tenant,
 } from './cloud.js';
 import { fromStripeSub, logSaasEvent, planById, saasStripe, stripeKeyOf, stockCount, upsertSubscription } from './saas.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Cloud billing: what a customer can do about money (choose or change the plan with proration, start paying after a trial
@@ -46,8 +47,8 @@ export async function reconcileTenant(app: App, t: Tenant, at: Date, s: CloudSet
   // 1. A trial without payment data ran out → read-only, nothing is overdue.
   if (sub.billing === 'manual' && sub.status === 'trialing' && sub.trial_end && sub.trial_end <= iso) {
     sub = upsertSubscription(app, { location_id: t.location_id, plan_id: sub.plan_id, ...transition(sub, 'paused', at, s.grace_days) });
-    logCloudEvent(app, t.id, 'trial_expired', `Testphase ohne Abo beendet (${fmtDay(sub.trial_end)})`);
-    logSaasEvent(app, t.location_id, 'paused', 'Testphase abgelaufen – Konto schreibgeschützt');
+    logCloudEvent(app, t.id, 'trial_expired', tApp()('Testphase ohne Abo beendet ({date})', { date: fmtDay(sub.trial_end) }));
+    logSaasEvent(app, t.location_id, 'paused', tApp()('Testphase abgelaufen – Konto schreibgeschützt'));
     void sendCloudMail(app, 'trial_expired', to, { ...who, retention_days: s.retention_days, link }, { tenantId: t.id, dedupe: 'trial_expired' });
   }
   // 2. …and a reminder three days before.
@@ -59,7 +60,7 @@ export async function reconcileTenant(app: App, t: Tenant, at: Date, s: CloudSet
     sub = upsertSubscription(app, { location_id: t.location_id, plan_id: sub.plan_id, ...transition(sub, 'paused', at, s.grace_days) });
     db.run('UPDATE cloud_tenants SET comped = 0, comp_until = NULL, updated_at = ? WHERE id = ?', iso, t.id);
     logCloudEvent(app, t.id, 'comp_ended', 'Geschenkter Tarif ausgelaufen');
-    void sendCloudMail(app, 'read_only', to, { ...who, reason: 'Dein geschenkter Tarif ist ausgelaufen.', link }, { tenantId: t.id, dedupe: `comp_ended:${t.comp_until}` });
+    void sendCloudMail(app, 'read_only', to, { ...who, reason: tApp()('Dein geschenkter Tarif ist ausgelaufen.'), link }, { tenantId: t.id, dedupe: `comp_ended:${t.comp_until}` });
     t = { ...t, comped: 0, comp_until: null };
   }
   // 4. Reminders while a payment is open.
@@ -76,14 +77,14 @@ export async function reconcileTenant(app: App, t: Tenant, at: Date, s: CloudSet
       db.run('UPDATE cloud_tenants SET read_only_since = ?, updated_at = ? WHERE id = ?', since, iso, t.id);
       t = { ...t, read_only_since: since };
       logCloudEvent(app, t.id, 'read_only', sub.status === 'canceled' ? 'Abo beendet' : 'Konto schreibgeschützt');
-      void sendCloudMail(app, 'read_only', to, { ...who, reason: sub.status === 'canceled' ? 'Dein Abo ist beendet.' : 'Dein Konto ist schreibgeschützt, weil keine Zahlung eingegangen ist.', link }, { tenantId: t.id, dedupe: `read_only:${since}` });
+      void sendCloudMail(app, 'read_only', to, { ...who, reason: sub.status === 'canceled' ? tApp()('Dein Abo ist beendet.') : tApp()('Dein Konto ist schreibgeschützt, weil keine Zahlung eingegangen ist.'), link }, { tenantId: t.id, dedupe: `read_only:${since}` });
     }
     const tl = deletionTimeline(since, s);
     if (!t.deletion_at && iso >= tl.schedule_at) {
       const deleteAt = new Date(at.getTime() + s.deletion_notice_days * 864e5).toISOString();
       db.run(`UPDATE cloud_tenants SET deletion_at = ?, deletion_reason = 'timeline', schedule_notified_at = ?, updated_at = ? WHERE id = ?`, deleteAt, iso, iso, t.id);
       t = { ...t, deletion_at: deleteAt, deletion_reason: 'timeline' };
-      logCloudEvent(app, t.id, 'deletion_scheduled', `Löschung am ${fmtDay(deleteAt)} geplant (Export angeboten)`);
+      logCloudEvent(app, t.id, 'deletion_scheduled', tApp()('Löschung am {date} geplant (Export angeboten)', { date: fmtDay(deleteAt) }));
       void sendCloudMail(app, 'deletion_scheduled', to, { ...who, delete_at: fmtDay(deleteAt), link }, { tenantId: t.id, dedupe: `deletion:${deleteAt.slice(0, 10)}` });
     }
   } else if (t.read_only_since || (t.deletion_at && t.deletion_reason !== 'self')) {
@@ -94,7 +95,7 @@ export async function reconcileTenant(app: App, t: Tenant, at: Date, s: CloudSet
   }
   // 6. The hard delete (scheduled by the clock above or by the customer).
   if (t.deletion_at && t.deletion_at <= iso) {
-    await eraseTenant(app, t, t.deletion_reason === 'self' ? 'Löschung auf Wunsch des Kunden' : 'Löschung nach Nur-Lesen-Frist');
+    await eraseTenant(app, t, t.deletion_reason === 'self' ? tApp()('Löschung auf Wunsch des Kunden') : tApp()('Löschung nach Nur-Lesen-Frist'));
     return;
   }
   syncChildren(app, t);
@@ -109,9 +110,9 @@ export async function changePlan(app: App, t: Tenant, key: PlanKey, intervalIn: 
   const s = cloudSettings(app);
   const ent = entitlements(key, s);
   const users = stockCount(app, t.location_id, 'users');
-  if (ent.users !== null && users > ent.users) throw new HttpError(409, `${PLAN_INFO[key].name} ist für ${ent.users} Nutzer – das Konto hat ${users}. Entferne zuerst Nutzer unter Cloud-Konto → Team.`);
+  if (ent.users !== null && users > ent.users) throw new HttpError(409, tApp()('{plan} ist für {max} Nutzer – das Konto hat {n}. Entferne zuerst Nutzer unter Cloud-Konto → Team.', { plan: PLAN_INFO[key].name, max: ent.users, n: users }));
   const clients = Math.max(0, tenantSummary(app, t).counts.clients);
-  if (!ent.client_accounts && clients > 0) throw new HttpError(409, `${PLAN_INFO[key].name} hat keine Kunden-Accounts – das Konto hat ${clients}. Lösche sie zuerst unter Cloud-Konto → Kunden.`);
+  if (!ent.client_accounts && clients > 0) throw new HttpError(409, tApp()('{plan} hat keine Kunden-Accounts – das Konto hat {n}. Lösche sie zuerst unter Cloud-Konto → Kunden.', { plan: PLAN_INFO[key].name, n: clients }));
   const before = tenantPlanKey(app, t);
   if (key === before && interval === sub.interval) return tenantSummary(app, t);
   const plan = planById(app, planIdOf(key))!;
@@ -130,7 +131,8 @@ export async function changePlan(app: App, t: Tenant, key: PlanKey, intervalIn: 
     upsertSubscription(app, { location_id: t.location_id, plan_id: plan.id, interval });
   }
   if (!ent.white_label && PLAN_INFO[before].white_label) resetWhiteLabel(app, t);
-  logCloudEvent(app, t.id, 'plan_changed', `${PLAN_INFO[before].name} → ${PLAN_INFO[key].name} (${interval === 'year' ? 'jährlich' : 'monatlich'})${o.operator ? ' durch den Betreiber' : ''}`);
+  const tr = tApp();
+  logCloudEvent(app, t.id, 'plan_changed', `${PLAN_INFO[before].name} → ${PLAN_INFO[key].name} (${interval === 'year' ? tr('jährlich') : tr('monatlich')})${o.operator ? ` ${tr('durch den Betreiber')}` : ''}`);
   logSaasEvent(app, t.location_id, 'plan_changed', `${PLAN_INFO[before].name} → ${PLAN_INFO[key].name}`);
   app.services.audit?.({ ctx: o.ctx, action: 'cloud.plan.change', summary: `${PLAN_INFO[before].name} → ${PLAN_INFO[key].name}`, locationId: t.location_id });
   syncChildren(app, t);
@@ -372,7 +374,7 @@ export const cloudBillingModule: Module = {
         db.run('UPDATE cloud_tenants SET cancel_reason = ?, cancel_comment = ?, updated_at = ? WHERE id = ?', reason, comment, now(), t.id);
         logCloudEvent(app, t.id, 'cancel_scheduled', `${CANCEL_REASONS[reason]}${comment ? `: ${comment.slice(0, 120)}` : ''}`);
         const end = tenantSub(app, t)?.current_period_end ?? tenantSub(app, t)?.trial_end;
-        void sendCloudMail(app, 'cancel_scheduled', t.email, { company: t.name, end: end ? fmtDay(end) : 'dem Ende des Zeitraums', link: billingLink(app) });
+        void sendCloudMail(app, 'cancel_scheduled', t.email, { company: t.name, end: end ? fmtDay(end) : '', link: billingLink(app) });
       }
       app.services.audit?.({ ctx, action: undo ? 'cloud.cancel.undo' : 'cloud.cancel', summary: undo ? '' : `${CANCEL_REASONS[reason]}`, locationId: t.location_id });
       syncChildren(app, t);

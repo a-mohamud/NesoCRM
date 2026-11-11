@@ -2,6 +2,7 @@ import type { App } from '../core/app.js';
 import { parseJson } from '../core/db.js';
 import { ymdInTz, zonedToUtc } from '../core/time.js';
 import type { Contact } from './contacts.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Community (groups in the member portal): the rules shared by the admin module (community.ts),
@@ -71,7 +72,7 @@ export function cleanGroupSettings(input: any, cur: Partial<GroupSettings> = {})
   const pts = { ...DEFAULT_SETTINGS.points, ...base.points, ...(v.points ?? {}) };
   let levels: Level[] = Array.isArray(v.levels) && v.levels.length ? v.levels : base.levels;
   levels = levels.slice(0, 12).map((l: any, i: number) => ({ name: String(l?.name ?? '').trim().slice(0, 40) || `Level ${i + 1}`, points: i === 0 ? 0 : int(l?.points, 1, 10_000_000, 0) }));
-  for (let i = 1; i < levels.length; i++) if (levels[i].points <= levels[i - 1].points) throw new Error(`Level ${i + 1} braucht mehr Punkte als Level ${i}`);
+  for (let i = 1; i < levels.length; i++) if (levels[i].points <= levels[i - 1].points) throw new Error(tApp()('Level {level} braucht mehr Punkte als Level {previous}', { level: i + 1, previous: i }));
   return {
     word_filter: list(v.word_filter, 300, 60).map((w) => w.toLowerCase()),
     filter_mode: v.filter_mode === 'block' ? 'block' : 'mask',
@@ -132,20 +133,20 @@ export function mentionHandles(text: string): string[] {
 /** Members can't embed outside images (tracking pixels); their ![x](url) turns into a plain link. */
 export const stripMarkdownImages = (md: string) => String(md ?? '').replace(/!\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (_m, alt, u) => `[${alt || 'Bild'}](${u})`);
 
-/** "vor 5 Min." – short German relative time. */
-export function relTime(iso: string | null | undefined, at = Date.now()): string {
+/** "5 min ago" / "vor 5 Min." – short relative time in the given language. */
+export function relTime(iso: string | null | undefined, at = Date.now(), t: STFn = tApp()): string {
   if (!iso) return '';
   const m = Math.round((at - Date.parse(iso)) / 60_000);
-  if (m < 1) return 'gerade eben';
-  if (m < 60) return `vor ${m} Min.`;
+  if (m < 1) return t('gerade eben');
+  if (m < 60) return t('vor {n} Min.', { n: m });
   const h = Math.round(m / 60);
-  if (h < 24) return `vor ${h} Std.`;
+  if (h < 24) return t('vor {n} Std.', { n: h });
   const d = Math.round(h / 24);
-  if (d < 30) return `vor ${d} ${d === 1 ? 'Tag' : 'Tagen'}`;
+  if (d < 30) return t.plural(d, { one: 'vor {n} Tag', other: 'vor {n} Tagen' });
   const mo = Math.round(d / 30);
-  if (mo < 12) return `vor ${mo} ${mo === 1 ? 'Monat' : 'Monaten'}`;
+  if (mo < 12) return t.plural(mo, { one: 'vor {n} Monat', other: 'vor {n} Monaten' });
   const y = Math.round(mo / 12);
-  return `vor ${y} ${y === 1 ? 'Jahr' : 'Jahren'}`;
+  return t.plural(y, { one: 'vor {n} Jahr', other: 'vor {n} Jahren' });
 }
 
 export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
@@ -167,9 +168,9 @@ export function decodeImage(dataUrl: string, maxBytes = MAX_IMAGE_BYTES): { mime
   if (!m) throw new Error('Bild konnte nicht gelesen werden');
   if (!(IMAGE_TYPES as readonly string[]).includes(m[1])) throw new Error('Nur Bilder als PNG, JPG, GIF oder WebP');
   // Rough size check before decoding (base64 is 4/3 of the bytes).
-  if (m[2].length * 0.74 > maxBytes + 1024) throw new Error(`Bild größer als ${Math.round(maxBytes / 1024 / 1024)} MB`);
+  if (m[2].length * 0.74 > maxBytes + 1024) throw new Error(tApp()('Bild größer als {n} MB', { n: Math.round(maxBytes / 1024 / 1024) }));
   const buf = Buffer.from(m[2], 'base64');
-  if (buf.length > maxBytes) throw new Error(`Bild größer als ${Math.round(maxBytes / 1024 / 1024)} MB`);
+  if (buf.length > maxBytes) throw new Error(tApp()('Bild größer als {n} MB', { n: Math.round(maxBytes / 1024 / 1024) }));
   const real = sniffImage(buf);
   if (!real || real !== m[1]) throw new Error('Dateiinhalt passt nicht zum Bildtyp');
   return { mime: real, buf, ext: { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp' }[real] };

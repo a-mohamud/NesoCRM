@@ -31,6 +31,7 @@ import {
 import { mapResult } from './composio-automation.js';
 import type { CatalogExtra } from './integrations-catalog.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Nango as a second connector backend next to Composio (docs/nango.md). The agency enters the Nango
@@ -212,7 +213,7 @@ export const nangoModule: Module = {
       const remote = (await call(() => client(cfg).listConnections(uid))).filter((c) => c.end_user_id === uid && c.connection_id && INTEGRATION_RE.test(c.integration));
       for (const r of remote) {
         const failed = r.errors.some((e) => e.type === 'auth');
-        upsertConnection(loc, { integration: r.integration, connection_id: r.connection_id, provider: r.provider, status: failed ? 'error' : 'active', reason: failed ? 'Anmeldung abgelaufen oder ungültig – bitte neu verbinden.' : '' });
+        upsertConnection(loc, { integration: r.integration, connection_id: r.connection_id, provider: r.provider, status: failed ? 'error' : 'active', reason: failed ? tLoc(app, loc)('Anmeldung abgelaufen oder ungültig – bitte neu verbinden.') : '' });
       }
       for (const l of connections(loc)) if (!remote.some((r) => r.connection_id === l.connection_id && r.integration === l.integration)) db.run('DELETE FROM nango_connections WHERE id = ?', l.id);
       db.run(`UPDATE nango_attempts SET status = 'expired' WHERE location_id = ? AND status = 'pending' AND expires_at < ?`, loc, now());
@@ -239,9 +240,9 @@ export const nangoModule: Module = {
         throw bad((e as Error).message);
       }
       if (body !== undefined && JSON.stringify(body).length > BODY_MAX) throw bad('Body zu groß (höchstens 256 KB)');
-      if (opts.enforceAllow && !isNangoAllowed(allowOf(loc), integration, method, path)) throw new HttpError(403, `${method} ${path} über ${integration} ist für KI & MCP nicht freigegeben (Apps → Nango → Freigaben).`);
+      if (opts.enforceAllow && !isNangoAllowed(allowOf(loc), integration, method, path)) throw new HttpError(403, tApp()('{method} {path} über {integration} ist für KI & MCP nicht freigegeben (Apps → Nango → Freigaben).', { method, path, integration }));
       const conn = activeConnection(loc, integration);
-      if (!conn) throw new HttpError(409, `${integration} ist in diesem Sub-Account nicht verbunden (Apps → Nango → Verbinden).`);
+      if (!conn) throw new HttpError(409, tApp()('{integration} ist in diesem Sub-Account nicht verbunden (Apps → Nango → Verbinden).', { integration }));
       const started = Date.now();
       try {
         const r = await client(cfg).proxy({ method, path, query, body, headers, connectionId: conn.connection_id, integration });
@@ -317,14 +318,14 @@ export const nangoModule: Module = {
       if (ctx.body.allow_private !== undefined) next.allow_private = ctx.body.allow_private === true;
       saveAgency(next);
       cache.clear();
-      app.services.audit?.({ ctx, action: 'nango.settings', summary: `Nango eingerichtet: ${base}` });
+      app.services.audit?.({ ctx, action: 'nango.settings', summary: tCtx(ctx)('Nango eingerichtet: {base}', { base }) });
       return agencyView();
     });
     router.delete('/api/agency/nango', 'admin', (ctx) => {
       if (ctx.viaApiKey) throw new HttpError(403, 'Nango-Zugang nur angemeldet ändern');
       saveAgency({});
       cache.clear();
-      app.services.audit?.({ ctx, action: 'nango.settings', summary: 'Nango-Zugang entfernt' });
+      app.services.audit?.({ ctx, action: 'nango.settings', summary: tCtx(ctx)('Nango-Zugang entfernt') });
       return agencyView();
     });
     router.post('/api/agency/nango/test', 'admin', async () => {
@@ -387,7 +388,7 @@ export const nangoModule: Module = {
       db.run(`DELETE FROM nango_attempts WHERE location_id = ? AND created_at < ?`, loc.id, new Date(Date.now() - 7 * 864e5).toISOString());
       const attempt = { id: id(), location_id: loc.id, integration, mode, user_id: ctx.user.id, status: 'pending', expires_at: new Date(Date.now() + LINK_TTL_MS).toISOString(), created_at: now() };
       db.insert('nango_attempts', attempt);
-      app.services.audit?.({ ctx, action: 'nango.connect', summary: `Nango-Verbindung gestartet: ${integ.name}`, locationId: loc.id, entityId: attempt.id });
+      app.services.audit?.({ ctx, action: 'nango.connect', summary: tCtx(ctx)('Nango-Verbindung gestartet: {name}', { name: integ.name }), locationId: loc.id, entityId: attempt.id });
       return { url, mode, attempt_id: attempt.id, expires_at: attempt.expires_at };
     });
     router.get('/api/nango/attempts/:id', 'location', async (ctx) => {
@@ -410,7 +411,7 @@ export const nangoModule: Module = {
       const cfg = config();
       if (cfg) await call(() => client(cfg).deleteConnection(row.connection_id, row.integration));
       db.run('DELETE FROM nango_connections WHERE id = ?', row.id);
-      app.services.audit?.({ ctx, action: 'nango.disconnect', summary: `Nango-Verbindung getrennt: ${row.integration}`, locationId: ctx.locationId, entityId: row.id });
+      app.services.audit?.({ ctx, action: 'nango.disconnect', summary: tCtx(ctx)('Nango-Verbindung getrennt: {name}', { name: row.integration }), locationId: ctx.locationId, entityId: row.id });
       return { ok: true };
     });
     router.put('/api/nango/allow', 'location', (ctx) => {
@@ -464,7 +465,7 @@ export const nangoModule: Module = {
         upsertConnection(loc, { integration, connection_id: connectionId, provider: String(p.provider ?? '').slice(0, 100), status: 'active', reason: '' });
       } else if (op === 'refresh') {
         const row = db.get('SELECT id FROM nango_connections WHERE location_id = ? AND integration = ? AND connection_id = ?', loc, integration, connectionId);
-        if (row) db.run('UPDATE nango_connections SET status = ?, status_reason = ?, updated_at = ? WHERE id = ?', p.success ? 'active' : 'error', p.success ? '' : stripControl(String(p.error?.description ?? p.error?.message ?? 'Token-Erneuerung fehlgeschlagen – bitte neu verbinden.')).slice(0, 300), now(), row.id);
+        if (row) db.run('UPDATE nango_connections SET status = ?, status_reason = ?, updated_at = ? WHERE id = ?', p.success ? 'active' : 'error', p.success ? '' : stripControl(String(p.error?.description ?? p.error?.message ?? tLoc(app, loc)('Token-Erneuerung fehlgeschlagen – bitte neu verbinden.'))).slice(0, 300), now(), row.id);
       } else if (op === 'creation' && p.success === false) {
         db.run(`UPDATE nango_attempts SET status = 'failed' WHERE location_id = ? AND integration = ? AND status = 'pending'`, loc, integration);
       }
@@ -485,16 +486,16 @@ export const nangoModule: Module = {
       } catch {
         /* odd payload – the log still has it */
       }
-      if (!r.ok && step.fail_on_error !== false) throw new Error(`${r.integration}: ${r.method} ${r.path} → HTTP ${r.status} ${clip(r.data, 200)}`);
+      if (!r.ok && step.fail_on_error !== false) throw new Error(`${r.integration}: ${r.method} ${r.path} → HTTP ${r.status} ${clip(r.data, 200)}`); // i18n-ignore (technical)
       let mapped = '';
       if (Array.isArray(step.map) && step.map.length) {
         const m = mapResult(r.data, step.map);
         const c = getContact(app, run.location_id, run.contact_id);
         if (c && (Object.keys(m.fields).length || Object.keys(m.custom).length)) {
           app.db.update('contacts', c.id, { ...m.fields, ...(Object.keys(m.custom).length ? { custom: { ...c.custom, ...m.custom } } : {}), updated_at: now() });
-          mapped = ` · übernommen: ${[...Object.keys(m.fields), ...Object.keys(m.custom).map((k) => `custom.${k}`)].join(', ')}`;
+          mapped = ` · ${tLoc(app, run.location_id)('übernommen: {fields}', { fields: [...Object.keys(m.fields), ...Object.keys(m.custom).map((k) => `custom.${k}`)].join(', ') })}`;
         }
-        if (m.skipped.length) mapped += ` · nicht gefunden: ${m.skipped.join(', ')}`;
+        if (m.skipped.length) mapped += ` · ${tLoc(app, run.location_id)('nicht gefunden: {fields}', { fields: m.skipped.join(', ') })}`;
       }
       return `${r.integration}: ${r.method} ${r.path} → ${r.status}${mapped} · ${clip(r.data, 300)}`;
     };
@@ -510,23 +511,24 @@ export const nangoModule: Module = {
       const connected = [...new Set(connections(locationId).filter((c) => c.status === 'active').map((c) => String(c.integration)))].filter((k) => allow.some((a) => a.integration === k));
       if (!connected.length) return [];
       const mine = allow.filter((a) => connected.includes(a.integration));
-      const rules = mine.map((a) => `${a.integration}: ${a.methods.join('/')} ${a.path || '(alle Pfade)'}`);
+      const t = tLoc(app, locationId);
+      const rules = mine.map((a) => `${a.integration}: ${a.methods.join('/')} ${a.path || t('(alle Pfade)')}`);
       // Read-only for the agent only when every allowed rule is GET-only (the allow-list enforces it).
       const readOnly = mine.every((a) => a.methods.length === 1 && a.methods[0] === 'GET');
       return [
         {
           name: 'nango_request',
-          title: 'API-Aufruf über Nango',
+          title: t('API-Aufruf über Nango'),
           annotations: readOnly ? { readOnlyHint: true } : { openWorldHint: true },
-          description: `API-Aufruf über Nango in einer verbundenen App dieses Sub-Accounts (Nango übernimmt die Anmeldung). Erlaubt: ${rules.join('; ')}. Pfade sind die der jeweiligen API (z. B. /user).`,
+          description: t('API-Aufruf über Nango in einer verbundenen App dieses Sub-Accounts (Nango übernimmt die Anmeldung). Erlaubt: {rules}. Pfade sind die der jeweiligen API (z. B. /user).', { rules: rules.join('; ') }),
           input_schema: {
             type: 'object',
             properties: {
               integration: { type: 'string', enum: connected },
               method: { type: 'string', enum: readOnly ? ['GET'] : [...METHODS] },
-              path: { type: 'string', description: 'API-Pfad, beginnt mit /' },
-              query: { type: 'object', description: 'Query-Parameter', additionalProperties: { type: 'string' } },
-              body: { type: 'object', description: 'JSON-Body (POST/PUT/PATCH)' },
+              path: { type: 'string', description: t('API-Pfad, beginnt mit /') },
+              query: { type: 'object', description: t('Query-Parameter'), additionalProperties: { type: 'string' } },
+              body: { type: 'object', description: t('JSON-Body (POST/PUT/PATCH)') },
             },
             required: ['integration', 'method', 'path'],
             additionalProperties: false,
@@ -536,7 +538,7 @@ export const nangoModule: Module = {
               const r = await request(locationId, args as unknown as NangoRequestInput, { enforceAllow: true, source: 'ai' });
               return { content: untrustedData(`nango:${r.integration}`, { status: r.status, data: r.data }), is_error: !r.ok, data: r };
             } catch (e) {
-              return { content: `Fehler: ${(e as Error).message}`, is_error: true };
+              return { content: `Error: ${(e as Error).message}`, is_error: true }; // i18n-ignore (tool output for the model)
             }
           },
         },
@@ -562,14 +564,16 @@ export const nangoModule: Module = {
           'Im Sub-Account Apps → Nango: Integration wählen, „Verbinden“. Danach Workflow-Schritt „API-Aufruf über Nango“ nutzen.',
         ],
       },
-      location: (_ctx, loc) => {
-        if (!config()) return { status: 'missing', detail: 'Nango nicht eingerichtet' };
+      location: (ctx, loc) => {
+        const t = tCtx(ctx);
+        if (!config()) return { status: 'missing', detail: t('Nango nicht eingerichtet') };
         const on = db.all(`SELECT DISTINCT integration FROM nango_connections WHERE location_id = ? AND status = 'active'`, loc).map((r) => String(r.integration));
-        return on.length ? { status: 'ok', detail: `${on.length} verbunden: ${on.slice(0, 4).join(', ')}${on.length > 4 ? ' …' : ''}` } : { status: 'info', detail: 'Bereit – noch nichts verbunden' };
+        return on.length ? { status: 'ok', detail: t('{n} verbunden: {list}', { n: on.length, list: `${on.slice(0, 4).join(', ')}${on.length > 4 ? ' …' : ''}` }) } : { status: 'info', detail: t('Bereit – noch nichts verbunden') };
       },
-      agency: () => {
+      agency: (ctx) => {
         const cfg = config();
-        return cfg ? { status: 'ok', detail: `${cfg.base === NANGO_CLOUD ? 'Nango Cloud' : cfg.base} · Schlüssel ${cfg.hint}` } : { status: 'missing', detail: 'Kein Nango-Zugang' };
+        const t = tCtx(ctx);
+        return cfg ? { status: 'ok', detail: `${cfg.base === NANGO_CLOUD ? 'Nango Cloud' : cfg.base} · ${t('Schlüssel {hint}', { hint: cfg.hint })}` } : { status: 'missing', detail: t('Kein Nango-Zugang') };
       },
     };
     app.services.catalogExtra = [...(app.services.catalogExtra ?? []), catalog];
@@ -608,7 +612,7 @@ function mcpTool(): Tool {
         return {
           integrations: (st.connections ?? []).filter((c: any) => c.status === 'active').map((c: any) => ({ integration: c.integration, provider: c.provider })),
           allowed: st.allow ?? [],
-          hint: (st.allow ?? []).length ? undefined : 'Noch nichts freigegeben – im Projekt unter Apps → Nango → Freigaben erlauben.',
+          hint: (st.allow ?? []).length ? undefined : 'Nothing allowed yet – allow calls in the project under Apps → Nango → Approvals.',
         };
       }
       if (a.mode === 'request') return call.api('POST', '/api/nango/request', { location, body: { integration: a.integration, method: a.method ?? 'GET', path: a.path, query: a.query, body: a.body } });

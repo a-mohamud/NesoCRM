@@ -59,6 +59,7 @@ import {
   type Tier,
 } from '../services/community-tiers.js';
 import { escapeHtml } from '../core/template.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Joining a community from its public page. /c/<slug> is the About page (cover or video, description, price, admins, SEO tags),
@@ -68,7 +69,7 @@ import { escapeHtml } from '../core/template.js';
  * `product.purchased` arrives – and out again when the subscription ends or a payment fails.
  */
 
-const JOIN_JS = `(function(){
+const JOIN_JS = (invalid: string) => `(function(){
 var f=document.querySelector('form.join');if(!f)return;
 function sync(){var t=f.querySelector('input[name=tier]:checked')||f.querySelector('input[name=tier]');var id=t&&t.value;
 f.querySelectorAll('[data-billing] label.opt').forEach(function(l){var show=!l.getAttribute('data-tier')||l.getAttribute('data-tier')===id;l.hidden=!show;
@@ -80,7 +81,7 @@ var c=f.querySelector('input[name=coupon]');if(c){var msg=f.querySelector('[data
 c.addEventListener('input',function(){clearTimeout(t);msg.textContent='';var v=c.value.trim();if(!v)return;
 t=setTimeout(function(){var tier=(f.querySelector('input[name=tier]:checked')||f.querySelector('input[name=tier]')||{}).value||'';
 fetch(c.getAttribute('data-coupon-url')+'?code='+encodeURIComponent(v)+'&tier='+encodeURIComponent(tier)).then(function(r){return r.json()}).then(function(j){
-msg.style.color=j.ok?'#059669':'#dc2626';msg.textContent=j.ok?'✓ '+j.label:(j.error||'Code ungültig')}).catch(function(){})},400)})}
+msg.style.color=j.ok?'#059669':'#dc2626';msg.textContent=j.ok?'✓ '+j.label:(j.error||${JSON.stringify(invalid)})}).catch(function(){})},400)})}
 })();`;
 
 type G = { id: string; location_id: string; name: string; slug: string; description: string; cover_image: string; status: string; access: any; settings: any };
@@ -202,7 +203,8 @@ export const communityPagesModule: Module = {
       return g && loc ? { page, g, loc } : undefined;
     };
     const missing = () => {
-      const r = layout(app, { id: '', name: 'Community', timezone: '', settings: {} } as any, { title: 'Nicht gefunden', robots: 'noindex, nofollow', status: 404, body: '<div class="center panel"><h1 style="font-size:28px">Nicht gefunden</h1><p class="muted">Diese Community gibt es nicht (mehr).</p><p><a class="btn" href="/communities">Alle Communities</a></p></div>' });
+      const t = tApp();
+      const r = layout(app, { id: '', name: t('Community'), timezone: '', settings: {} } as any, { title: t('Nicht gefunden'), robots: 'noindex, nofollow', status: 404, body: `<div class="center panel"><h1 style="font-size:28px">${t('Nicht gefunden')}</h1><p class="muted">${t('Diese Community gibt es nicht (mehr).')}</p><p><a class="btn" href="/communities">${t('Alle Communities')}</a></p></div>` });
       return r;
     };
 
@@ -232,7 +234,9 @@ export const communityPagesModule: Module = {
         if (!m || !tier || ![tier.product_id, tier.annual_product_id].includes(p.id)) return '';
         const g = getGroup(app, m.location_id, m.group_id);
         const trial = m.status === 'awaiting_payment' && tier.trial_days > 0 && p.recurring;
-        return `<input type="hidden" name="_cm" value="${escapeHtml(signMembership(app, m.id))}"><div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;margin:0 0 14px;font-size:14px">Beitritt zu <strong>${escapeHtml(g?.name ?? '')}</strong> · ${escapeHtml(tier.name)}${trial ? ` · <strong>${tier.trial_days} Tage kostenlos testen</strong>, danach ${escapeHtml(centsToMoney(sb()?.grossOf(p).gross ?? p.price_cents, p.currency))} / ${p.recurring === 'year' ? 'Jahr' : 'Monat'}` : ''}${m.coupon_code ? ` · Code ${escapeHtml(m.coupon_code)}` : ''}</div>`;
+        const t = tLoc(app, p.location_id);
+        const price = escapeHtml(centsToMoney(sb()?.grossOf(p).gross ?? p.price_cents, p.currency));
+        return `<input type="hidden" name="_cm" value="${escapeHtml(signMembership(app, m.id))}"><div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;margin:0 0 14px;font-size:14px">${t('Beitritt zu {group}', { group: `<strong>${escapeHtml(g?.name ?? '')}</strong>` })} · ${escapeHtml(tier.name)}${trial ? ` · <strong>${t.plural(tier.trial_days, { one: '{n} Tag kostenlos testen', other: '{n} Tage kostenlos testen' })}</strong>, ${p.recurring === 'year' ? t('danach {price} / Jahr', { price }) : t('danach {price} / Monat', { price })}` : ''}${m.coupon_code ? ` · ${t('Code {code}', { code: escapeHtml(m.coupon_code) })}` : ''}</div>`;
       },
     ];
     const sb = () => app.services.stripeBuy;
@@ -288,7 +292,8 @@ export const communityPagesModule: Module = {
       ...(app.services.buyInvoiceItems ?? []),
       (_loc: string, session: any, items: any[]) => {
         if (!session?.metadata?.community_trial) return items;
-        return items.map((it, i) => (i === 0 ? { ...it, name: `${it.name} (Testphase, ${session.metadata.community_trial} Tage kostenlos)`, price_cents: 0 } : it));
+        const t = tLoc(app, _loc);
+        return items.map((it, i) => (i === 0 ? { ...it, name: `${it.name} (${t.plural(Number(session.metadata.community_trial), { one: 'Testphase, {n} Tag kostenlos', other: 'Testphase, {n} Tage kostenlos' })})`, price_cents: 0 } : it));
       },
     ];
 
@@ -369,7 +374,8 @@ export const communityPagesModule: Module = {
         const g = groupOf(m);
         if (!g || m.billing === 'once') continue;
         markPastDue(app, g, m);
-        void communityMail(app, e.locationId, getContact(app, e.locationId, m.contact_id)?.email ?? '', `Zahlung für „${g.name}“ fehlgeschlagen`, [`Deine letzte Zahlung für „${g.name}“ konnte nicht abgebucht werden.`, 'Bitte prüfe deine Zahlungsart, damit dein Zugang erhalten bleibt.']);
+        const t = tLoc(app, e.locationId);
+        void communityMail(app, e.locationId, getContact(app, e.locationId, m.contact_id)?.email ?? '', t('Zahlung für „{group}“ fehlgeschlagen', { group: g.name }), [t('Deine letzte Zahlung für „{group}“ konnte nicht abgebucht werden.', { group: g.name }), t('Bitte prüfe deine Zahlungsart, damit dein Zugang erhalten bleibt.')]);
       }
     });
     app.events.on('invoice.paid', (e) => {
@@ -472,7 +478,7 @@ export const communityPagesModule: Module = {
     router.delete('/api/community/tiers/:tid', 'location', (ctx) => {
       const t = tierRow(ctx.locationId, ctx.params.tid);
       const live = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM community_memberships WHERE tier_id = ? AND status IN ('active','trialing','past_due','pending','awaiting_payment')`, t.id)!.n;
-      if (live) throw bad(`Diese Stufe hat noch ${live} Mitglieder bzw. offene Anfragen – bitte deaktiviere sie stattdessen`);
+      if (live) throw bad(tCtx(ctx)('Diese Stufe hat noch {n} Mitglieder bzw. offene Anfragen – bitte deaktiviere sie stattdessen', { n: live }));
       db.run('DELETE FROM community_tiers WHERE id = ?', t.id);
       return { ok: true };
     });
@@ -566,7 +572,8 @@ export const communityPagesModule: Module = {
       else if (action === 'reject') {
         if (m.status !== 'pending') throw bad('Diese Anfrage ist nicht mehr offen');
         rejectMembership(app, g, m, actor(ctx), String(b.note ?? ''));
-        if (b.notify !== false && contact?.email) await communityMail(app, ctx.locationId, contact.email, `Dein Beitritt zu „${g.name}“`, [`Leider können wir deine Anfrage für „${g.name}“ im Moment nicht annehmen.`, ...(b.note ? [String(b.note).slice(0, 300)] : [])]);
+        const t = tLoc(app, ctx.locationId);
+        if (b.notify !== false && contact?.email) await communityMail(app, ctx.locationId, contact.email, t('Dein Beitritt zu „{group}“', { group: g.name }), [t('Leider können wir deine Anfrage für „{group}“ im Moment nicht annehmen.', { group: g.name }), ...(b.note ? [String(b.note).slice(0, 300)] : [])]);
       } else if (action === 'end') {
         if (!LIVE_STATUSES.includes(m.status)) throw bad('Diese Mitgliedschaft läuft nicht');
         endMembership(app, g, m, 'removed', { by: actor(ctx) });
@@ -647,7 +654,7 @@ export const communityPagesModule: Module = {
 
     // --- public pages ----------------------------------------------------------------------------------------------------------------
     router.get('/community-join.js', 'public', () => {
-      const r = text(JOIN_JS, 'text/javascript; charset=utf-8');
+      const r = text(JOIN_JS(tApp()('Code ungültig')), 'text/javascript; charset=utf-8');
       r.headers['cache-control'] = 'public, max-age=3600';
       return r;
     });
@@ -716,25 +723,28 @@ export const communityPagesModule: Module = {
       return joinHtml(app, f.loc, formData(ctx, f));
     });
 
-    const mailedNotice = (f: NonNullable<ReturnType<typeof findPublic>>, text?: string) =>
-      noticeHtml(app, f.loc, { title: 'Fast geschafft – schau in dein Postfach', text: text ?? `Wir haben dir einen Login-Link für „${f.g.name}“ geschickt. Er gilt 30 Minuten.`, button: ['Zum Mitgliederbereich', loginUrl(f.g)] });
+    const mailedNotice = (f: NonNullable<ReturnType<typeof findPublic>>, text?: string) => {
+      const t = tLoc(app, f.g.location_id);
+      return noticeHtml(app, f.loc, { title: t('Fast geschafft – schau in dein Postfach'), text: text ?? t('Wir haben dir einen Login-Link für „{group}“ geschickt. Er gilt 30 Minuten.', { group: f.g.name }), button: [t('Zum Mitgliederbereich'), loginUrl(f.g)] });
+    };
 
     router.post('/c/:slug/join', 'public', async (ctx) => {
       const f = findPublic(ctx.params.slug);
       if (!f) return missing();
       const { page, g } = f;
       const b = ctx.body ?? {};
+      const t = tLoc(app, g.location_id);
       const fail = (status: number, error: string, values = b) => {
         const r = joinHtml(app, f.loc, formData(ctx, f, { error, values: Object.fromEntries(Object.entries(values).map(([k, v]) => [k, String(v ?? '').slice(0, 500)])) }));
         r.status = status;
         return r;
       };
-      if (!sameOrigin(ctx)) return fail(403, 'Bitte lade die Seite neu und versuche es noch einmal.');
-      if (limited(`join:${ctx.ip}`, app.services.communityLimits?.join ?? LIMIT_DEFAULTS.join, 3600_000)) return fail(429, 'Zu viele Versuche – bitte in einer Stunde noch einmal.');
-      if (!formTokenOk(page.slug, b._t)) return fail(400, 'Das Formular war zu lange offen. Bitte noch einmal absenden.');
+      if (!sameOrigin(ctx)) return fail(403, t('Bitte lade die Seite neu und versuche es noch einmal.'));
+      if (limited(`join:${ctx.ip}`, app.services.communityLimits?.join ?? LIMIT_DEFAULTS.join, 3600_000)) return fail(429, t('Zu viele Versuche – bitte in einer Stunde noch einmal.'));
+      if (!formTokenOk(page.slug, b._t)) return fail(400, t('Das Formular war zu lange offen. Bitte noch einmal absenden.'));
       // A bot filled the hidden field: it gets the friendly answer and nothing happens.
       if (String(b.website ?? '').trim()) return mailedNotice(f);
-      if ((page.terms_url || page.privacy_url) && !b.terms) return fail(400, 'Bitte bestätige AGB und Datenschutzhinweise.');
+      if ((page.terms_url || page.privacy_url) && !b.terms) return fail(400, t('Bitte bestätige AGB und Datenschutzhinweise.'));
       const answers: Record<string, string> = {};
       for (const q of page.questions) answers[q.id] = String(b[`q_${q.id}`] ?? '');
       try {
@@ -743,12 +753,12 @@ export const communityPagesModule: Module = {
         // The consent box of the page goes into the consent ledger (modules/consent-capture.ts).
         app.services.consent?.captureCommunity?.(ctx, g, page, r.contact, b);
         if (r.next === 'checkout' && r.url) return redirect(r.url, 303);
-        if (r.next === 'pending') return noticeHtml(app, f.loc, { title: 'Anfrage eingegangen', text: page.success_text || `Danke, ${String(b.name).split(' ')[0]}! Das Team schaut sich deine Anfrage an. Du bekommst eine E-Mail, sobald es weitergeht.`, button: ['Zurück zur Seite', `/c/${encodeURIComponent(page.slug)}`] });
+        if (r.next === 'pending') return noticeHtml(app, f.loc, { title: t('Anfrage eingegangen'), text: page.success_text || t('Danke, {name}! Das Team schaut sich deine Anfrage an. Du bekommst eine E-Mail, sobald es weitergeht.', { name: String(b.name).split(' ')[0] }), button: [t('Zurück zur Seite'), `/c/${encodeURIComponent(page.slug)}`] });
         // Free join (or somebody who is in already): the login link goes to the address – never an instant session.
         if (!limited(`join-mail:${normalizeEmail(b.email)}`, 3, 15 * 60_000)) await sendWelcome(app, g, r.contact);
         return mailedNotice(f, page.success_text || undefined);
       } catch (e) {
-        if (e instanceof HttpError) return fail(e.status, e.message);
+        if (e instanceof HttpError) return fail(e.status, t(e.message));
         throw e;
       }
     });
@@ -756,21 +766,22 @@ export const communityPagesModule: Module = {
     router.get('/c/:slug/willkommen', 'public', async (ctx) => {
       const f = findPublic(ctx.params.slug);
       if (!f) return missing();
+      const t = tLoc(app, f.g.location_id);
       let m = membershipFrom(f.g.location_id, ctx.query.get('cm'));
-      if (!m || m.group_id !== f.g.id) return noticeHtml(app, f.loc, { title: 'Link ungültig', text: 'Dieser Link ist abgelaufen oder gehört nicht zu dieser Community.', button: ['Zur Community-Seite', `/c/${encodeURIComponent(f.page.slug)}`], status: 400 });
+      if (!m || m.group_id !== f.g.id) return noticeHtml(app, f.loc, { title: t('Link ungültig'), text: t('Dieser Link ist abgelaufen oder gehört nicht zu dieser Community.'), button: [t('Zur Community-Seite'), `/c/${encodeURIComponent(f.page.slug)}`], status: 400 });
       // The payment event may be a moment behind: settle from the paid checkout right here (idempotent).
       if (!grants(app, m)) {
         const paid = db.get<any>(`SELECT * FROM stripe_checkouts WHERE location_id = ? AND kind = 'product' AND status = 'paid' AND json_extract(meta, '$.community_membership') = ? ORDER BY created_at DESC LIMIT 1`, f.g.location_id, m.id);
         if (paid) settlePurchase(f.g.location_id, { contactId: paid.contact_id, productId: paid.product_id, metadata: parseJson({ meta: paid.meta }, ['meta']).meta, sessionId: paid.id });
         m = membershipById(app, f.g.location_id, m.id)!;
       }
-      if (!grants(app, m)) return noticeHtml(app, f.loc, { title: 'Wir bestätigen deine Zahlung', text: 'Das dauert normalerweise nur einen Moment. Du bekommst eine E-Mail mit deinem Login-Link, sobald alles durch ist.', button: ['Seite neu laden', ctx.url.pathname + ctx.url.search] });
+      if (!grants(app, m)) return noticeHtml(app, f.loc, { title: t('Wir bestätigen deine Zahlung'), text: t('Das dauert normalerweise nur einen Moment. Du bekommst eine E-Mail mit deinem Login-Link, sobald alles durch ist.'), button: [t('Seite neu laden'), ctx.url.pathname + ctx.url.search] });
       const contact = getContact(app, f.g.location_id, m.contact_id);
       if (contact && !limited(`welcome-mail:${m.id}`, 2, 15 * 60_000)) await sendWelcome(app, f.g, contact);
       return noticeHtml(app, f.loc, {
-        title: m.status === 'trialing' ? 'Deine Testphase läuft' : 'Willkommen – du bist dabei!',
-        text: `${f.page.success_text || `Schön, dass du da bist.`} Wir haben dir einen Login-Link per E-Mail geschickt – damit kommst du in den Mitgliederbereich.`,
-        button: ['Zum Mitgliederbereich', loginUrl(f.g)],
+        title: m.status === 'trialing' ? t('Deine Testphase läuft') : t('Willkommen – du bist dabei!'),
+        text: `${f.page.success_text || t('Schön, dass du da bist.')} ${t('Wir haben dir einen Login-Link per E-Mail geschickt – damit kommst du in den Mitgliederbereich.')}`,
+        button: [t('Zum Mitgliederbereich'), loginUrl(f.g)],
       });
     });
 
@@ -793,7 +804,8 @@ export const communityPagesModule: Module = {
       const f = findPublic(ctx.params.slug);
       if (!f) throw notFound();
       const r = usableCoupon(app, f.g.id, ctx.query.get('code'), ctx.query.get('tier'));
-      if ('error' in r) return { ok: false, error: r.error };
+      const t = tLoc(app, f.g.location_id);
+      if ('error' in r) return { ok: false, error: t(r.error) };
       return { ok: true, label: `${r.coupon.label || r.coupon.code}: ${couponLabel(r.coupon)}` };
     });
 
@@ -811,13 +823,14 @@ export const communityPagesModule: Module = {
         .filter((r) => (!category || r.category === category) && (!q || `${r.g_name} ${r.tagline} ${r.category}`.toLowerCase().includes(q)))
         .map((r) => {
           const views = tiersOf(app, r.group_id, true).map(tierView);
-          const prices = views.flatMap((v) => (v.prices.free ? [{ c: 0, t: 'Kostenlos' }] : (['month', 'year', 'once'] as const).filter((x) => v.prices[x]).map((x) => ({ c: v.prices[x]!.gross_cents / (x === 'year' ? 12 : 1), t: priceText(v.prices[x]!) }))));
+          const t = tLoc(app, r.loc);
+          const prices = views.flatMap((v) => (v.prices.free ? [{ c: 0, t: t('Kostenlos') }] : (['month', 'year', 'once'] as const).filter((x) => v.prices[x]).map((x) => ({ c: v.prices[x]!.gross_cents / (x === 'year' ? 12 : 1), t: priceText(v.prices[x]!) }))));
           const min = prices.sort((a, b) => a.c - b.c)[0];
           const loc = app.location(r.loc);
-          return { slug: r.slug, name: r.g_name, tagline: r.tagline || '', cover: r.cover_image || r.g_cover || '', color: loc ? publicBrand(loc).color : '#2563eb', members: r.show_member_count ? memberCount(app, r.group_id) : 0, from: min ? (views.length > 1 && min.c > 0 ? `ab ${min.t}` : min.t) : 'Kostenlos', category: r.category || '', brand: loc ? publicBrand(loc).name : '' };
+          return { slug: r.slug, name: r.g_name, tagline: r.tagline || '', cover: r.cover_image || r.g_cover || '', color: loc ? publicBrand(loc).color : '#2563eb', members: r.show_member_count ? memberCount(app, r.group_id) : 0, from: min ? (views.length > 1 && min.c > 0 ? t('ab {price}', { price: min.t }) : min.t) : t('Kostenlos'), category: r.category || '', brand: loc ? publicBrand(loc).name : '' };
         })
         .sort((a, b) => b.members - a.members || a.name.localeCompare(b.name));
-      return discoverHtml(app, { items, q, category, categories, title: 'Communities' });
+      return discoverHtml(app, { items, q, category, categories, title: tApp()('Communities') });
     });
   },
 };

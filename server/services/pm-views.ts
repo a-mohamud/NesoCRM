@@ -7,6 +7,7 @@ import { addDays, autoSchedule, criticalPath, diffDays, isWorkday, mondayOf, vio
 import { calendarOf, decorate, depsOf, listTasks, planned, type TaskOut, type TaskRow } from './pm-tasks.js';
 import { resolve, scopeClause, type Who } from './record-access.js';
 import { flatten } from './pm-tree.js';
+import { tLoc } from '../i18n/index.js';
 
 /** Data for the views: Gantt (with critical path and baseline), workload, "Meine Aufgaben". */
 
@@ -148,12 +149,13 @@ export function autoScheduleProject(app: App, locationId: string, projectId: str
     throw bad((e as Error).message);
   }
   if (!dryRun) {
+    const tl = tLoc(app, locationId);
     app.db.tx(() => {
       for (const [id, to] of Object.entries(changes)) {
         const r = rows.find((x) => x.id === id)!;
         const sets = { start_at: r.start_at ? withDay(r.start_at, to.start, tz) : null, due_at: withDay(r.due_at ?? r.start_at, to.end, tz), updated_at: now() };
         app.db.update('tasks', id, sets, locationId);
-        logTask(app, r, actor, 'dates', { from: [r.start_at, r.due_at], to: [sets.start_at, sets.due_at], cause: 'Automatisch geplant' });
+        logTask(app, r, actor, 'dates', { from: [r.start_at, r.due_at], to: [sets.start_at, sets.due_at], cause: tl('Automatisch geplant') });
       }
     });
   }

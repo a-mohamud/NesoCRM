@@ -1,6 +1,6 @@
 import type { App, Module } from '../core/app.js';
 import { HttpError, bad, html, notFound, num, str } from '../core/http.js';
-import { jsonForScript, messagePage, noscriptNotice, publicPage } from '../core/page.js';
+import { jsonForScript, messagePage, publicPage } from '../core/page.js';
 import { escapeHtml } from '../core/template.js';
 import { addDaysYmd, ymdInTz } from '../core/time.js';
 import { id, now } from '../core/util.js';
@@ -8,6 +8,7 @@ import { busyFor, computeSlots, type CalendarRow } from './calendars.js';
 import type { Tool } from './mcp.js';
 import { getConfig, membersOf, slotsOfDay } from '../services/teamcal-engine.js';
 import { bookTeam, calendarById } from '../services/teamcal-book.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Leistungsmenü (HighLevel "Service Menu" / services booking, docs/booking.md#service-menu): one public page `/book/s/<slug>` that
@@ -48,7 +49,7 @@ export const SERVICE_MENU_TOOLS: Tool[] = [
   {
     name: 'ghl_service_menu_save',
     title: 'Leistungsmenü anlegen oder ändern',
-    description: `Legt ein Leistungsmenü an (ohne menu_id) oder ändert es: Name, Kurzname für den Link, Einleitung und Kategorien mit den IDs der Buchungskalender (aus ghl_calendar_types; höchstens ${MAX_CATS} Kategorien mit je ${MAX_ITEMS} Leistungen). staff_choice=false blendet die Personenwahl aus.`,
+    description: tApp()('Legt ein Leistungsmenü an (ohne menu_id) oder ändert es: Name, Kurzname für den Link, Einleitung und Kategorien mit den IDs der Buchungskalender (aus ghl_calendar_types; höchstens {cats} Kategorien mit je {items} Leistungen). staff_choice=false blendet die Personenwahl aus.', { cats: MAX_CATS, items: MAX_ITEMS }),
     inputSchema: obj(
       {
         ...LOC,
@@ -104,13 +105,14 @@ export const serviceMenuModule: Module = {
 
     function cleanCats(locationId: string, raw: unknown): Category[] {
       if (!Array.isArray(raw)) throw bad('Kategorien fehlen');
-      if (raw.length > MAX_CATS) throw bad(`Höchstens ${MAX_CATS} Kategorien`);
+      const t = tApp();
+      if (raw.length > MAX_CATS) throw bad(t('Höchstens {n} Kategorien', { n: MAX_CATS }));
       return raw.map((c: any, i) => {
-        if (!c || typeof c !== 'object') throw bad(`Kategorie ${i + 1}: ungültig`);
+        if (!c || typeof c !== 'object') throw bad(t('Kategorie {n}: ungültig', { n: i + 1 }));
         const ids: string[] = Array.isArray(c.calendar_ids) ? [...new Set<string>(c.calendar_ids.map(String))] : [];
-        if (ids.length > MAX_ITEMS) throw bad(`Kategorie ${i + 1}: höchstens ${MAX_ITEMS} Leistungen`);
-        for (const cid of ids) if (!db.get('SELECT 1 FROM calendars WHERE id = ? AND location_id = ?', cid, locationId)) throw bad(`Kategorie ${i + 1}: Kalender „${cid}“ gibt es nicht`);
-        return { name: str(c.name, `Kategorie ${i + 1}: Name`, { required: true, max: 80 }), calendar_ids: ids as string[] };
+        if (ids.length > MAX_ITEMS) throw bad(t('Kategorie {n}: höchstens {max} Leistungen', { n: i + 1, max: MAX_ITEMS }));
+        for (const cid of ids) if (!db.get('SELECT 1 FROM calendars WHERE id = ? AND location_id = ?', cid, locationId)) throw bad(t('Kategorie {n}: Kalender „{id}“ gibt es nicht', { n: i + 1, id: cid }));
+        return { name: str(c.name, t('Kategorie {n}: Name', { n: i + 1 }), { required: true, max: 80 }), calendar_ids: ids as string[] };
       });
     }
     function cleanSlug(raw: unknown, except?: string): string {
@@ -265,7 +267,7 @@ export const serviceMenuModule: Module = {
         app,
         cal,
         { start: String(b.start ?? ''), first_name: b.first_name, last_name: b.last_name, email: b.email, phone: b.phone, notes: b.notes, answers: b.answers, consent: b.consent === true, meta: { service_menu: m.slug } },
-        { hostId, source: 'Leistungsmenü' },
+        { hostId, source: tLoc(app, m.location_id)('Leistungsmenü') },
       );
       if (r.status === 'confirmed') return { status: 'confirmed', start_at: r.appointment.start_at, manageUrl: r.manage_url, icsUrl: r.ics_url, meetingUrl: r.meeting_url, hosts: r.hosts.map((h) => h.name) };
       if (r.status === 'payment_required') return { status: r.status, checkout_url: r.checkout_url, expires_at: r.expires_at, due_cents: r.due_cents, currency: r.currency };
@@ -274,43 +276,74 @@ export const serviceMenuModule: Module = {
 
     router.get('/book/s/:slug', 'public', (ctx) => {
       const m = db.get<any>('SELECT * FROM service_menus WHERE slug = ? AND active = 1', ctx.params.slug);
-      if (!m) return html(messagePage('Nicht gefunden', 'Dieses Leistungsmenü gibt es nicht (mehr).'), 404);
+      if (!m) {
+        const t0 = tApp();
+        return html(messagePage(t0('Nicht gefunden'), t0('Dieses Leistungsmenü gibt es nicht (mehr).')), 404);
+      }
       const loc = app.location(m.location_id)!;
       return html(menuPage(m, loc, ctx.query.get('embed') === '1'));
     });
 
     function menuPage(m: any, loc: any, embed: boolean) {
+      // Neso fork: the booking page speaks the sub-account's customer language; the script gets its texts as data.
+      const t = tLoc(app, m.location_id);
+      const L = {
+        error: t('booking|Fehler') === 'booking|Fehler' ? t('Fehler') : t('booking|Fehler'),
+        back: t('← Zurück'),
+        min: t('{n} Min.'),
+        none: t('Gerade sind keine Leistungen buchbar.'),
+        who: t('{service}: Wer soll es sein?'),
+        pick: t('Person wählen'),
+        any: t('Egal – nächste freie Person'),
+        next: t('Weiter'),
+        slotTitle: t('{service}: Termin wählen'),
+        loading: t('Lädt…'),
+        days: t('Tage'),
+        nothing: t('In den nächsten zwei Wochen ist nichts frei.'),
+        first: t('Vorname'),
+        last: t('Nachname'),
+        email: t('E-Mail'),
+        phone: t('Telefon'),
+        note: t('Anmerkung'),
+        pay: t('Weiter zur Zahlung'),
+        book: t('Verbindlich buchen'),
+        booked: t('Gebucht!'),
+        confirm: t('Die Bestätigung kommt per E-Mail.'),
+        ics: t('In den Kalender'),
+        manage: t('Verschieben oder absagen'),
+      };
+      const lang = t.locale === 'de' ? 'de-DE' : 'en-GB';
       const body = `<div class="wrap" style="max-width:760px"><div class="card">
   <h1>${escapeHtml(m.name)}</h1>
   ${m.intro ? `<p class="muted">${escapeHtml(m.intro)}</p>` : ''}
-  ${noscriptNotice('einen Termin zu buchen')}
+  <noscript><p class="error">${escapeHtml(t('Bitte JavaScript einschalten, um einen Termin zu buchen.'))}</p></noscript>
   <div id="steps" aria-live="polite"></div>
   <p class="error" id="err" role="alert"></p>
 </div></div>
 <script>
 (function(){
-  var SLUG=${jsonForScript(m.slug)},S={},data=null,el=document.getElementById('steps'),err=document.getElementById('err');
+  var SLUG=${jsonForScript(m.slug)},L=${jsonForScript(L)},LANG=${jsonForScript(lang)},S={},data=null,el=document.getElementById('steps'),err=document.getElementById('err');
   function h(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-  function money(c,cur){return (c/100).toLocaleString('de-DE',{style:'currency',currency:cur||'EUR'})}
-  function api(p,o){return fetch('/api/public/service-menus/'+SLUG+p,o).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||'Fehler');return j})})}
-  function back(to){return '<p><button type="button" class="btn secondary" data-back="'+to+'">← Zurück</button></p>'}
+  function money(c,cur){return (c/100).toLocaleString(LANG,{style:'currency',currency:cur||'EUR'})}
+  function api(p,o){return fetch('/api/public/service-menus/'+SLUG+p,o).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||L.error);return j})})}
+  function back(to){return '<p><button type="button" class="btn secondary" data-back="'+to+'">'+h(L.back)+'</button></p>'}
   function wire(){el.querySelectorAll('[data-back]').forEach(function(b){b.onclick=function(){render(b.getAttribute('data-back'))}})}
-  function fmtT(iso,tz){return new Date(iso).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit',timeZone:tz})}
-  function fmtD(ymd){var p=ymd.split('-');return new Date(Date.UTC(+p[0],+p[1]-1,+p[2],12)).toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'})}
+  function fmtT(iso,tz){return new Date(iso).toLocaleTimeString(LANG,{hour:'2-digit',minute:'2-digit',timeZone:tz})}
+  function fmtD(ymd){var p=ymd.split('-');return new Date(Date.UTC(+p[0],+p[1]-1,+p[2],12)).toLocaleDateString(LANG,{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'})}
   function render(step){err.textContent='';
     if(step==='service'){var out='';data.categories.forEach(function(c){out+='<h2>'+h(c.name)+'</h2>';c.services.forEach(function(s){
-      out+='<button type="button" class="svc" data-svc="'+h(s.id)+'" style="display:block;width:100%;text-align:left;margin:8px 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit;cursor:pointer"><strong>'+h(s.name)+'</strong><span style="float:right">'+(s.price_cents?money(s.price_cents,s.currency):'')+'</span><br><span class="muted">'+s.duration+' Min.'+(s.description?' · '+h(s.description):'')+'</span></button>'})});
-      el.innerHTML=out||'<p class="muted">Gerade sind keine Leistungen buchbar.</p>';
+      out+='<button type="button" class="svc" data-svc="'+h(s.id)+'" style="display:block;width:100%;text-align:left;margin:8px 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit;cursor:pointer"><strong>'+h(s.name)+'</strong><span style="float:right">'+(s.price_cents?money(s.price_cents,s.currency):'')+'</span><br><span class="muted">'+h(L.min.replace('{n}',s.duration))+(s.description?' · '+h(s.description):'')+'</span></button>'})});
+      el.innerHTML=out||'<p class="muted">'+h(L.none)+'</p>';
       el.querySelectorAll('[data-svc]').forEach(function(b){b.onclick=function(){data.categories.forEach(function(c){c.services.forEach(function(s){if(s.id===b.getAttribute('data-svc'))S.svc=s})});S.host='';render(S.svc.team.length>1?'staff':'slot')}});return}
-    if(step==='staff'){var o='<h2>'+h(S.svc.name)+': Wer soll es sein?</h2><fieldset style="border:0;padding:0"><legend class="muted">Person wählen</legend><label class="check"><input type="radio" name="host" value="" checked> Egal – nächste freie Person</label>';
+    if(step==='staff'){var o='<h2>'+h(L.who.replace('{service}',S.svc.name))+'</h2><fieldset style="border:0;padding:0"><legend class="muted">'+h(L.pick)+'</legend><label class="check"><input type="radio" name="host" value="" checked> '+h(L.any)+'</label>';
       S.svc.team.forEach(function(p){o+='<label class="check"><input type="radio" name="host" value="'+h(p.id)+'"> '+h(p.name)+'</label>'});
-      el.innerHTML=o+'</fieldset><p><button type="button" id="next">Weiter</button></p>'+back('service');wire();
+      el.innerHTML=o+'</fieldset><p><button type="button" id="next">'+h(L.next)+'</button></p>'+back('service');wire();
       document.getElementById('next').onclick=function(){var c=el.querySelector('input[name=host]:checked');S.host=c?c.value:'';render('slot')};return}
-    if(step==='slot'){el.innerHTML='<h2>'+h(S.svc.name)+': Termin wählen</h2><p class="muted">Lädt…</p>'+back(S.svc.team.length>1?'staff':'service');wire();
-      api('/slots?calendar_id='+encodeURIComponent(S.svc.id)+'&host_id='+encodeURIComponent(S.host)+'&days=14').then(function(r){var o='<h2>'+h(S.svc.name)+': Termin wählen</h2>',any=false;
+    if(step==='slot'){el.innerHTML='<h2>'+h(L.slotTitle.replace('{service}',S.svc.name))+'</h2><p class="muted">'+h(L.loading)+'</p>'+back(S.svc.team.length>1?'staff':'service');wire();
+      api('/slots?calendar_id='+encodeURIComponent(S.svc.id)+'&host_id='+encodeURIComponent(S.host)+'&days=14').then(function(r){var o='<h2>'+h(L.slotTitle.replace('{service}',S.svc.name))+'</h2>',any=false;
         var chips='',panels='';r.days.forEach(function(d,i){if(!d.slots.length)return;var first=!any;any=true;chips+='<button type="button" class="btn secondary" data-day="'+i+'" aria-pressed="'+first+'" style="flex:0 0 auto">'+h(fmtD(d.date))+'</button>';panels+='<div class="row" data-panel="'+i+'" role="group" aria-label="'+h(fmtD(d.date))+'" style="flex-wrap:wrap;gap:6px;margin-top:12px;display:'+(first?'flex':'none')+'">';d.slots.forEach(function(t){panels+='<button type="button" class="btn secondary" data-t="'+h(t)+'" style="flex:0 0 auto">'+h(fmtT(t,r.timezone))+'</button>'});panels+='</div>'});
-        o+='<div class="row" role="group" aria-label="Tage" style="flex-wrap:wrap;gap:6px">'+chips+'</div>'+panels;
-        el.innerHTML=o+(any?'':'<p class="muted">In den nächsten zwei Wochen ist nichts frei.</p>')+back(S.svc.team.length>1?'staff':'service');wire();
+        o+='<div class="row" role="group" aria-label="'+h(L.days)+'" style="flex-wrap:wrap;gap:6px">'+chips+'</div>'+panels;
+        el.innerHTML=o+(any?'':'<p class="muted">'+h(L.nothing)+'</p>')+back(S.svc.team.length>1?'staff':'service');wire();
         el.querySelectorAll('[data-day]').forEach(function(b){b.onclick=function(){el.querySelectorAll('[data-day]').forEach(function(x){x.setAttribute('aria-pressed',String(x===b));x.style.outline=x===b?'2px solid currentColor':''});el.querySelectorAll('[data-panel]').forEach(function(p){p.style.display=p.getAttribute('data-panel')===b.getAttribute('data-day')?'flex':'none'})}});
         var f0=el.querySelector('[data-day]');if(f0)f0.style.outline='2px solid currentColor';
         el.querySelectorAll('[data-t]').forEach(function(b){b.onclick=function(){S.start=b.getAttribute('data-t');S.label=fmtD(r.days.filter(function(d){return d.slots.indexOf(S.start)>=0})[0].date)+', '+fmtT(S.start,r.timezone);render('details')}})}).catch(function(e){err.textContent=e.message});return}
@@ -321,9 +354,9 @@ export const serviceMenuModule: Module = {
         else if(x.type==='checkbox')q+='<label class="check"><input type="checkbox" data-qc="'+h(x.id)+'"'+req+'> '+h(x.label)+'</label>';
         else q+=lab+'<input id="q_'+h(x.id)+'" data-q="'+h(x.id)+'"'+req+'>';
         if(x.help)q+='<p class="muted" style="margin:2px 0 8px;font-size:13px">'+h(x.help)+'</p>';q+='</div>'});
-      el.innerHTML='<h2>'+h(S.svc.name)+'</h2><p>'+h(S.label)+'</p><form id="f"><label for="fn">Vorname *</label><input id="fn" name="first_name" required autocomplete="given-name"><label for="ln">Nachname</label><input id="ln" name="last_name" autocomplete="family-name"><label for="em">E-Mail *</label><input id="em" name="email" type="email" required autocomplete="email"><label for="ph">Telefon</label><input id="ph" name="phone" type="tel" autocomplete="tel"><label for="no">Anmerkung</label><textarea id="no" name="notes"></textarea>'+q+
+      el.innerHTML='<h2>'+h(S.svc.name)+'</h2><p>'+h(S.label)+'</p><form id="f"><label for="fn">'+h(L.first)+' *</label><input id="fn" name="first_name" required autocomplete="given-name"><label for="ln">'+h(L.last)+'</label><input id="ln" name="last_name" autocomplete="family-name"><label for="em">'+h(L.email)+' *</label><input id="em" name="email" type="email" required autocomplete="email"><label for="ph">'+h(L.phone)+'</label><input id="ph" name="phone" type="tel" autocomplete="tel"><label for="no">'+h(L.note)+'</label><textarea id="no" name="notes"></textarea>'+q+
         '<input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true"><label class="check" style="margin-top:12px"><input type="checkbox" name="consent" required> '+h(S.svc.consent_text)+'</label>'+(S.svc.policy_text?'<p class="muted" style="font-size:13px">'+h(S.svc.policy_text)+'</p>':'')+
-        '<p><button type="submit">'+(S.svc.price_cents?'Weiter zur Zahlung':'Verbindlich buchen')+'</button></p></form>'+back('slot');wire();
+        '<p><button type="submit">'+h(S.svc.price_cents?L.pay:L.book)+'</button></p></form>'+back('slot');wire();
       var f=document.getElementById('f');
       function answersOf(){var ans={};
         f.querySelectorAll('[data-q]').forEach(function(i){if(!i.disabled)ans[i.getAttribute('data-q')]=i.value});
@@ -335,7 +368,7 @@ export const serviceMenuModule: Module = {
       f.onsubmit=function(e){e.preventDefault();var ans=answersOf();
         api('/book',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({calendar_id:S.svc.id,host_id:S.host,start:S.start,first_name:f.first_name.value,last_name:f.last_name.value,email:f.email.value,phone:f.phone.value,notes:f.notes.value,answers:ans,consent:f.consent.checked,website:f.website.value})})
           .then(function(r){if(r.status==='payment_required'){location.href=r.checkout_url;return}
-            el.innerHTML='<h2>Gebucht!</h2><p>'+h(S.svc.name)+' · '+h(S.label)+(r.hosts&&r.hosts.length?' · '+h(r.hosts.join(', ')):'')+'</p><p>Die Bestätigung kommt per E-Mail.</p><p><a class="btn secondary" href="'+h(r.icsUrl)+'">In den Kalender</a> <a class="btn secondary" href="'+h(r.manageUrl)+'">Verschieben oder absagen</a></p>'})
+            el.innerHTML='<h2>'+h(L.booked)+'</h2><p>'+h(S.svc.name)+' · '+h(S.label)+(r.hosts&&r.hosts.length?' · '+h(r.hosts.join(', ')):'')+'</p><p>'+h(L.confirm)+'</p><p><a class="btn secondary" href="'+h(r.icsUrl)+'">'+h(L.ics)+'</a> <a class="btn secondary" href="'+h(r.manageUrl)+'">'+h(L.manage)+'</a></p>'})
           .catch(function(e){err.textContent=e.message})};return}
   }
   api('').then(function(j){data=j;render('service')}).catch(function(e){err.textContent=e.message});

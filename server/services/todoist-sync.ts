@@ -4,6 +4,7 @@ import type { Row } from '../core/db.js';
 import { bad } from '../core/http.js';
 import { id, now, sha256 } from '../core/util.js';
 import { openSecret } from '../modules/mail-sync.js';
+import { tApp } from '../i18n/index.js';
 import {
   command,
   commandError,
@@ -132,7 +133,7 @@ export function log(app: App, level: 'info' | 'warn' | 'error' | 'conflict', mes
 }
 
 function hitLimit(state: TodoistState, what: string, s: CommandStatus | undefined, counts: RunCounts) {
-  state.limit_error = `Todoist-Limit erreicht: ${what} (${commandError(s)}). Im kostenlosen Todoist-Plan gibt es höchstens 5 Projekte und 20 Abschnitte je Projekt – nimm das Layout „Ein Projekt mit Abschnitten“ oder wähle vorhandene Projekte/Abschnitte. Neuer Versuch nach „Jetzt abgleichen“, einer geänderten Einstellung oder in 24 Stunden.`;
+  state.limit_error = tApp()('Todoist-Limit erreicht: {what} ({error}). Im kostenlosen Todoist-Plan gibt es höchstens 5 Projekte und 20 Abschnitte je Projekt – nimm das Layout „Ein Projekt mit Abschnitten“ oder wähle vorhandene Projekte/Abschnitte. Neuer Versuch nach „Jetzt abgleichen“, einer geänderten Einstellung oder in 24 Stunden.', { what, error: commandError(s) });
   state.limit_at = now();
   counts.errors++;
 }
@@ -207,14 +208,14 @@ const dropLinks = (app: App, where: string, ...params: (string | null)[]) => app
 function projectGone(app: App, t: Target, counts: RunCounts) {
   setMapping(app, t.location_id, { mode: 'off', project_id: null });
   dropLinks(app, 'location_id = ? AND (project_id = ? OR todoist_id IS NULL)', t.location_id, t.project_id);
-  log(app, 'warn', `Todoist-Projekt „${t.project_name || t.project_id}“ gibt es nicht mehr – „${t.name}“ wird nicht mehr abgeglichen, die Aufgaben hier bleiben unverändert (unter Agentur → Integrationen neu zuordnen).`);
+  log(app, 'warn', tApp()('Todoist-Projekt „{project}“ gibt es nicht mehr – „{name}“ wird nicht mehr abgeglichen, die Aufgaben hier bleiben unverändert (unter Agentur → Integrationen neu zuordnen).', { project: t.project_name || t.project_id || '', name: t.name }));
   counts.errors++;
 }
 
 function sectionGone(app: App, t: Target, counts: RunCounts) {
   setMapping(app, t.location_id, { section_mode: 'off', section_id: null, section_name: '' });
   dropLinks(app, 'location_id = ? AND (section_id = ? OR todoist_id IS NULL)', t.location_id, t.section_id);
-  log(app, 'warn', `Todoist-Abschnitt „${t.section_name || t.section_id}“ gibt es nicht mehr – „${t.name}“ wird nicht mehr abgeglichen, die Aufgaben hier bleiben unverändert (unter Agentur → Integrationen neu zuordnen).`);
+  log(app, 'warn', tApp()('Todoist-Abschnitt „{section}“ gibt es nicht mehr – „{name}“ wird nicht mehr abgeglichen, die Aufgaben hier bleiben unverändert (unter Agentur → Integrationen neu zuordnen).', { section: t.section_name || t.section_id || '', name: t.name }));
   counts.errors++;
 }
 
@@ -226,7 +227,7 @@ function homeGone(app: App, cfg: TodoistConfig, state: TodoistState, counts: Run
   state.parent_project_id = undefined;
   app.db.run(`UPDATE todoist_projects SET section_id = NULL, section_name = '', section_mode = CASE WHEN section_mode = 'existing' THEN NULL ELSE section_mode END`);
   dropLinks(app, '(project_id = ? OR todoist_id IS NULL)', home);
-  log(app, 'error', `Das Todoist-Projekt „${homeName(cfg)}“ gibt es nicht mehr – der Abgleich ist ausgeschaltet, die Aufgaben hier bleiben unverändert. Projekt neu wählen (oder automatisch anlegen lassen) und den Abgleich wieder einschalten.`);
+  log(app, 'error', tApp()('Das Todoist-Projekt „{project}“ gibt es nicht mehr – der Abgleich ist ausgeschaltet, die Aufgaben hier bleiben unverändert. Projekt neu wählen (oder automatisch anlegen lassen) und den Abgleich wieder einschalten.', { project: homeName(cfg) }));
   counts.errors++;
 }
 
@@ -377,9 +378,9 @@ function applyPull(app: App, cfg: TodoistConfig, state: TodoistState, res: { ite
         const remoteAt = Date.parse(item.updated_at ?? item.completed_at ?? '') || 0;
         counts.conflicts++;
         if (remoteAt > localAt) {
-          log(app, 'conflict', `„${local.title}“ in beiden Systemen geändert – Todoist ist neuer und gewinnt.`, { task_id: task.id, todoist_id: item.id });
+          log(app, 'conflict', tApp()('„{title}“ in beiden Systemen geändert – Todoist ist neuer und gewinnt.', { title: local.title }), { task_id: task.id, todoist_id: item.id });
         } else {
-          log(app, 'conflict', `„${local.title}“ in beiden Systemen geändert – HyperLevel ist neuer und gewinnt.`, { task_id: task.id, todoist_id: item.id });
+          log(app, 'conflict', tApp()('„{title}“ in beiden Systemen geändert – HyperLevel ist neuer und gewinnt.', { title: local.title }), { task_id: task.id, todoist_id: item.id });
           // remember what Todoist has now; a cleared local hash makes the push send every field
           db.run('UPDATE todoist_links SET remote_hash = ?, synced_done = ?, local_hash = NULL, remote_updated_at = ?, project_id = ?, section_id = ? WHERE task_id = ?', hashFields(remote), remoteDone ? 1 : 0, item.updated_at ?? null, item.project_id, item.section_id ?? null, link.task_id);
           continue;
@@ -412,7 +413,7 @@ function applyPull(app: App, cfg: TodoistConfig, state: TodoistState, res: { ite
         if (activeIds.has(r.todoist_id) || !byLocation.has(r.location_id) || r.task_done) continue;
         db.update('tasks', r.task_id, { done: 1, completed_at: now() });
         db.run('UPDATE todoist_links SET synced_done = 1, local_changed_at = NULL, synced_at = ? WHERE task_id = ?', now(), r.task_id);
-        log(app, 'info', `„${r.title}“ ist in Todoist nicht mehr offen – hier als erledigt markiert.`, { task_id: r.task_id, todoist_id: r.todoist_id });
+        log(app, 'info', tApp()('„{title}“ ist in Todoist nicht mehr offen – hier als erledigt markiert.', { title: r.title }), { task_id: r.task_id, todoist_id: r.todoist_id });
         counts.closed_here++;
       }
     }
@@ -426,7 +427,7 @@ function remoteDeleted(app: App, cfg: TodoistConfig, link: Row, task: Row, count
     counts.closed_here++;
   }
   app.db.run(`UPDATE todoist_links SET status = 'remote_deleted', synced_at = ? WHERE task_id = ?`, now(), link.task_id);
-  log(app, 'warn', cfg.direction === 'both' ? `„${task.title}“ wurde in Todoist gelöscht – hier als erledigt markiert und abgekoppelt.` : `„${task.title}“ wurde in Todoist gelöscht – abgekoppelt.`, { task_id: task.id, todoist_id: link.todoist_id });
+  log(app, 'warn', tApp()(cfg.direction === 'both' ? '„{title}“ wurde in Todoist gelöscht – hier als erledigt markiert und abgekoppelt.' : '„{title}“ wurde in Todoist gelöscht – abgekoppelt.', { title: task.title }), { task_id: task.id, todoist_id: link.todoist_id });
 }
 
 // --- projects & sections --------------------------------------------------------------------
@@ -438,11 +439,11 @@ async function create(app: App, client: TodoistClient, state: TodoistState, cmds
   const { status, tempIds, error } = await client.commands(cmds);
   if (error) throw error;
   const limited = cmds.find((c) => isLimit(status[c.uuid]));
-  if (limited) hitLimit(state, `${limited.type === 'section_add' ? 'Abschnitt' : 'Projekt'} „${String(limited.args.name)}“ konnte nicht angelegt werden`, status[limited.uuid], counts);
+  if (limited) hitLimit(state, tApp()(limited.type === 'section_add' ? 'Abschnitt „{name}“ konnte nicht angelegt werden' : 'Projekt „{name}“ konnte nicht angelegt werden', { name: String(limited.args.name) }), status[limited.uuid], counts);
   else {
     for (const c of cmds) {
       if (status[c.uuid] === 'ok') continue;
-      log(app, 'error', `Todoist: „${String(c.args.name)}“ (${c.type}) fehlgeschlagen: ${commandError(status[c.uuid])}`);
+      log(app, 'error', tApp()('Todoist: „{name}“ ({type}) fehlgeschlagen: {error}', { name: String(c.args.name), type: c.type, error: commandError(status[c.uuid]) }));
       counts.errors++;
     }
   }
@@ -487,7 +488,7 @@ async function ensureTargets(app: App, client: TodoistClient, cfg: TodoistConfig
     const pid = tempIds[ref];
     if (!pid) continue;
     setMapping(app, t.location_id, { mode: 'auto', project_id: pid, project_name: t.name });
-    log(app, 'info', `Todoist-Projekt „${t.name}“ angelegt${cfg.parent_name ? ` (unter „${cfg.parent_name}“)` : ''}.`);
+    log(app, 'info', cfg.parent_name ? tApp()('Todoist-Projekt „{name}“ angelegt (unter „{parent}“).', { name: t.name, parent: cfg.parent_name }) : tApp()('Todoist-Projekt „{name}“ angelegt.', { name: t.name }));
   }
 }
 
@@ -534,11 +535,11 @@ async function ensureSections(app: App, client: TodoistClient, cfg: TodoistConfi
   const { status, tempIds } = await create(app, client, state, cmds, counts);
   if (newHome && tempIds[newHome]) {
     Object.assign(state, { parent_project_id: tempIds[newHome], parent_project_name: homeName(cfg) });
-    log(app, 'info', `Todoist-Projekt „${homeName(cfg)}“ angelegt.`);
+    log(app, 'info', tApp()('Todoist-Projekt „{name}“ angelegt.', { name: homeName(cfg) }));
   }
   if (renameHome && status[renameHome.uuid] === 'ok') state.parent_project_name = homeName(cfg);
   const made = planned.filter(({ t, ref }) => tempIds[ref] && (setMapping(app, t.location_id, { section_id: tempIds[ref], section_name: t.name }), true));
-  if (made.length) log(app, 'info', `${made.length === 1 ? 'Abschnitt' : `${made.length} Abschnitte`} in „${homeName(cfg)}“ angelegt: ${made.map(({ t }) => t.name).join(', ')}.`);
+  if (made.length) log(app, 'info', tApp().plural(made.length, { one: 'Abschnitt in „{project}“ angelegt: {names}.', other: '{n} Abschnitte in „{project}“ angelegt: {names}.' }, { project: homeName(cfg), names: made.map(({ t }) => t.name).join(', ') }));
   for (const { t, c } of renamed) if (status[c.uuid] === 'ok') setMapping(app, t.location_id, { section_name: t.name });
 }
 
@@ -592,7 +593,7 @@ async function push(app: App, client: TodoistClient, cfg: TodoistConfig, state: 
     else projectGone(app, t, counts);
   };
   const fail = (link: Row, s: CommandStatus | undefined, what: string) => {
-    const msg = `${what} „${link.title ?? link.task_id}“ fehlgeschlagen: ${commandError(s)}`;
+    const msg = tApp()(what, { title: link.title ?? link.task_id, error: commandError(s) });
     db.run('UPDATE todoist_links SET fail_count = fail_count + 1, last_error = ? WHERE task_id = ?', msg, link.task_id);
     log(app, 'error', msg, { task_id: link.task_id, todoist_id: link.todoist_id });
     counts.errors++;
@@ -602,7 +603,7 @@ async function push(app: App, client: TodoistClient, cfg: TodoistConfig, state: 
   const activeLinks = Number(db.get(`SELECT COUNT(*) AS n FROM todoist_links WHERE status = 'active'`)?.n ?? 0);
   if (work.deletes.length > MASS_DELETE && work.deletes.length > activeLinks / 2) {
     db.run(`UPDATE todoist_links SET status = 'orphaned' WHERE task_id IN (${work.deletes.map(() => '?').join(',')})`, ...work.deletes.map((l) => l.task_id));
-    log(app, 'error', `Sicherheitsstopp: ${work.deletes.length} von ${activeLinks} verknüpften Aufgaben fehlen hier auf einmal – sie werden in Todoist NICHT gelöscht, nur abgekoppelt.`);
+    log(app, 'error', tApp()('Sicherheitsstopp: {n} von {total} verknüpften Aufgaben fehlen hier auf einmal – sie werden in Todoist NICHT gelöscht, nur abgekoppelt.', { n: work.deletes.length, total: activeLinks }));
     counts.errors++;
   } else {
     for (const link of work.deletes) {
@@ -613,7 +614,7 @@ async function push(app: App, client: TodoistClient, cfg: TodoistConfig, state: 
         if (st[c.uuid] === 'ok' || isGone(st[c.uuid])) {
           db.run('DELETE FROM todoist_links WHERE task_id = ?', link.task_id);
           counts.deleted++;
-        } else fail(link, st[c.uuid], 'Löschen von');
+        } else fail(link, st[c.uuid], 'Löschen von „{title}“ fehlgeschlagen: {error}');
       });
     }
   }
@@ -639,7 +640,7 @@ async function push(app: App, client: TodoistClient, cfg: TodoistConfig, state: 
       if (mine.some((c) => isGone(st[c.uuid]))) {
         const task = db.get('SELECT * FROM tasks WHERE id = ?', r.task_id);
         if (task) remoteDeleted(app, cfg, r, task, counts);
-      } else fail(r, st[mine.find((c) => st[c.uuid] !== 'ok')!.uuid], 'Abgleich von');
+      } else fail(r, st[mine.find((c) => st[c.uuid] !== 'ok')!.uuid], 'Abgleich von „{title}“ fehlgeschlagen: {error}');
     });
   }
 
@@ -684,10 +685,10 @@ async function push(app: App, client: TodoistClient, cfg: TodoistConfig, state: 
       } else if (isLimit(s)) {
         // not created: forget the pending row, the task goes out once the limit is sorted out
         db.run(`DELETE FROM todoist_links WHERE task_id = ? AND status = 'pending'`, t.id);
-        if (!state.limit_error) hitLimit(state, `Aufgabe „${localFields(t).title}“ konnte nicht angelegt werden`, s, counts);
+        if (!state.limit_error) hitLimit(state, tApp()('Aufgabe „{title}“ konnte nicht angelegt werden', { title: localFields(t).title }), s, counts);
       } else if (s.error_tag === 'PROJECT_NOT_FOUND' || s.error_tag === 'SECTION_NOT_FOUND') {
         lostContainer(locationId);
-      } else fail({ ...t, task_id: t.id }, s, 'Anlegen von');
+      } else fail({ ...t, task_id: t.id }, s, 'Anlegen von „{title}“ fehlgeschlagen: {error}');
     });
   }
 

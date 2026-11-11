@@ -1,4 +1,5 @@
 import { bareModel } from '../ai-effort.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * "Mindest-Modell für die Werkstatt": writing code and security reviews are only as good as the model behind
@@ -60,8 +61,8 @@ export function cleanPatterns(list: unknown, fail: (msg: string) => Error): stri
   for (const raw of list.slice(0, 40)) {
     const p = String(raw).trim().toLowerCase();
     if (!p) continue;
-    if (!PATTERN_RE.test(p)) throw fail(`Ungültiges Muster „${p}“ (erlaubt: Buchstaben, Ziffern, . - _ : / und * als Platzhalter).`);
-    if (p.replace(/\*/g, '').length < 3) throw fail(`Das Muster „${p}“ ist zu allgemein – mindestens drei feste Zeichen, z. B. *mein-modell*.`);
+    if (!PATTERN_RE.test(p)) throw fail(tApp()('Ungültiges Muster „{p}“ (erlaubt: Buchstaben, Ziffern, . - _ : / und * als Platzhalter).', { p }));
+    if (p.replace(/\*/g, '').length < 3) throw fail(tApp()('Das Muster „{p}“ ist zu allgemein – mindestens drei feste Zeichen, z. B. *mein-modell*.', { p }));
     if (!out.includes(p)) out.push(p);
   }
   return out;
@@ -83,7 +84,7 @@ export interface GateVerdict {
 }
 
 export function checkModel(model: string, gate: ModelGate): GateVerdict {
-  if (!gate.enabled) return { ok: true, matched: 'Prüfung ausgeschaltet' };
+  if (!gate.enabled) return { ok: true, matched: tApp()('Prüfung ausgeschaltet') };
   const m = String(model ?? '').trim();
   if (!m) return { ok: false };
   const bare = bareModel(m);
@@ -99,10 +100,12 @@ export function checkModel(model: string, gate: ModelGate): GateVerdict {
 /** Where people fix it (the web route of the routing table). */
 export const GATE_LINK = '/app/settings/ai-providers';
 
-/** The German refusal. `admin` decides whether the person can fix it themselves. */
+/** The refusal, in the instance language. `admin` decides whether the person can fix it themselves. */
 export function gateMessage(model: string, admin: boolean): string {
-  const now = model ? `aktuell ist „${model}“ eingestellt` : 'aktuell ist kein Modell eingestellt';
-  return `Für die Werkstatt brauchst du ein Spitzenmodell (z. B. ${GATE_EXAMPLES}) – ${now}. ${admin ? `Wähle unter Einstellungen → KI-Anbieter bei „Werkstatt“ ein passendes Modell (${GATE_LINK}).` : `Bitte einen Admin, unter Einstellungen → KI-Anbieter (${GATE_LINK}) bei „Werkstatt“ ein passendes Modell zu hinterlegen.`}`;
+  const t = tApp();
+  const now = model ? t('aktuell ist „{model}“ eingestellt', { model }) : t('aktuell ist kein Modell eingestellt');
+  const fix = admin ? t('Wähle unter Einstellungen → KI-Anbieter bei „Werkstatt“ ein passendes Modell ({link}).', { link: GATE_LINK }) : t('Bitte einen Admin, unter Einstellungen → KI-Anbieter ({link}) bei „Werkstatt“ ein passendes Modell zu hinterlegen.', { link: GATE_LINK });
+  return t('Für die Werkstatt brauchst du ein Spitzenmodell (z. B. {examples}) – {now}. {fix}', { examples: GATE_EXAMPLES, now, fix });
 }
 
 /** Merges stored settings with the defaults (unknown family ids and junk are dropped). */

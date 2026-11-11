@@ -6,6 +6,7 @@ import { escapeHtml } from '../core/template.js';
 import { centsToMoney, id, now, token } from '../core/util.js';
 import { addTags, logActivity } from '../services/contacts.js';
 import { MIN_AMOUNT_CENTS, StripeError, lineItemParams, stripeRequest } from '../services/stripe.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Sells more on Stripe buy links (/buy/<slug>), plugged into the buy hooks of stripe.ts:
@@ -79,6 +80,8 @@ export const buyOffersModule: Module = {
     const { db, router } = app;
     const sb = () => app.services.stripeBuy as StripeBuy | undefined;
     const money = (c: number, cur: string) => centsToMoney(c, String(cur || 'EUR').toUpperCase());
+    /** "inkl. 19 % USt." in the sub-account's language (German keeps the decimal comma). */
+    const vatNote = (t: STFn, tax: number) => t('inkl. {rate} % USt.', { rate: t.locale === 'de' ? String(tax).replace('.', ',') : String(tax) });
     const offerOf = (productId: string) => db.get('SELECT * FROM buy_offers WHERE product_id = ?', productId);
     /** An active one-time product of the same sub-account and currency, for bumps and upsells. */
     const extraProduct = (pid: string | null | undefined, main: any) => {
@@ -136,13 +139,14 @@ export const buyOffersModule: Module = {
       ...(app.services.buyPageHtml ?? []),
       (_ctx: Ctx, p: any, _link: any, key: string) => {
         if (!sb()) return '';
+        const t = tLoc(app, p.location_id);
         const o = offerOf(p.id);
         const parts: string[] = [];
         const base = sb()!.grossOf(p).gross;
         const bump = extraProduct(o?.bump_product_id, p);
         if (bump) {
           const g = sb()!.grossOf(bump).gross;
-          const title = o?.bump_title || `Ja, „${bump.name}“ für ${money(g, bump.currency)} dazunehmen`;
+          const title = o?.bump_title || t('Ja, „{name}“ für {price} dazunehmen', { name: bump.name, price: money(g, bump.currency) });
           const text = o?.bump_text || bump.description || '';
           parts.push(
             `<label class="check" style="border:2px dashed var(--brand);border-radius:10px;padding:12px 14px;margin:16px 0 0;background:#fffbea"><input type="checkbox" name="bump" value="1" data-bump="${g}"> <span><strong>${escapeHtml(title)}</strong>${text ? `<br><span class="muted" style="font-size:14px;font-weight:400">${escapeHtml(text)}</span>` : ''}</span></label>`,
@@ -151,23 +155,23 @@ export const buyOffersModule: Module = {
         const coupons = !p.recurring && db.get('SELECT 1 AS x FROM buy_coupons WHERE product_id = ? AND active = 1 LIMIT 1', p.id);
         if (coupons) {
           parts.push(
-            `<details style="margin:14px 0 0"><summary style="cursor:pointer;color:var(--muted);font-size:14px">Rabattcode eingeben</summary><div class="row" style="align-items:center;margin-top:8px"><input name="coupon" autocomplete="off" placeholder="Code" style="text-transform:uppercase"><button type="button" class="btn secondary" data-coupon style="flex:0 0 auto">Einlösen</button></div><div data-coupon-msg style="font-size:14px;margin-top:6px"></div></details>`,
+            `<details style="margin:14px 0 0"><summary style="cursor:pointer;color:var(--muted);font-size:14px">${escapeHtml(t('Rabattcode eingeben'))}</summary><div class="row" style="align-items:center;margin-top:8px"><input name="coupon" autocomplete="off" placeholder="${escapeHtml(t('Code'))}" style="text-transform:uppercase"><button type="button" class="btn secondary" data-coupon style="flex:0 0 auto">${escapeHtml(t('Einlösen'))}</button></div><div data-coupon-msg style="font-size:14px;margin-top:6px"></div></details>`,
           );
         } else if (o?.stripe_promo) {
-          parts.push(`<p class="muted" style="font-size:13px;margin:12px 0 0">Gutscheincode? Den gibst du gleich auf der Bezahlseite ein.</p>`);
+          parts.push(`<p class="muted" style="font-size:13px;margin:12px 0 0">${escapeHtml(t('Gutscheincode? Den gibst du gleich auf der Bezahlseite ein.'))}</p>`);
         }
         if (!bump && !coupons) return parts.join('');
-        parts.push(`<p style="margin:14px 0 12px;font-size:15px">Gesamt: <strong data-total>${escapeHtml(money(base, p.currency))}</strong><span data-saved class="muted" style="font-size:13px"></span></p>`);
-        const cfg = { key, base, currency: p.currency };
+        parts.push(`<p style="margin:14px 0 12px;font-size:15px">${escapeHtml(t('Gesamt:'))} <strong data-total>${escapeHtml(money(base, p.currency))}</strong><span data-saved class="muted" style="font-size:13px"></span></p>`);
+        const cfg = { key, base, currency: p.currency, locale: t.locale === 'de' ? 'de-DE' : 'en-GB', saved: t('(du sparst {amount})'), invalid: t('Code ungültig'), failed: t('Prüfen gerade nicht möglich') };
         parts.push(`<script>(function(){
-const C=${jsonForScript(cfg)},f=document.currentScript.closest('form'),fmt=(c)=>new Intl.NumberFormat('de-DE',{style:'currency',currency:C.currency}).format(c/100);
+const C=${jsonForScript(cfg)},f=document.currentScript.closest('form'),fmt=(c)=>new Intl.NumberFormat(C.locale,{style:'currency',currency:C.currency}).format(c/100);
 let disc=0;const bump=f.querySelector('[data-bump]'),msg=f.querySelector('[data-coupon-msg]'),code=f.querySelector('[name=coupon]');
-const draw=()=>{f.querySelector('[data-total]').textContent=fmt(C.base-disc+(bump&&bump.checked?Number(bump.dataset.bump):0));f.querySelector('[data-saved]').textContent=disc?' (du sparst '+fmt(disc)+')':'';};
+const draw=()=>{f.querySelector('[data-total]').textContent=fmt(C.base-disc+(bump&&bump.checked?Number(bump.dataset.bump):0));f.querySelector('[data-saved]').textContent=disc?' '+C.saved.replace('{amount}',fmt(disc)):'';};
 if(bump)bump.addEventListener('change',draw);
 const btn=f.querySelector('[data-coupon]');
 if(btn)btn.addEventListener('click',async()=>{msg.textContent='';disc=0;if(!code.value.trim()){draw();return;}
  try{const r=await fetch('/api/public/buy/'+encodeURIComponent(C.key)+'/coupon?code='+encodeURIComponent(code.value));const j=await r.json();
- if(j.ok){disc=j.discount_cents;msg.style.color='#047857';msg.textContent='✓ '+j.code+': '+j.label;}else{msg.style.color='#b91c1c';msg.textContent=j.error||'Code ungültig';}}catch(e){msg.textContent='Prüfen gerade nicht möglich';}
+ if(j.ok){disc=j.discount_cents;msg.style.color='#047857';msg.textContent='✓ '+j.code+': '+j.label;}else{msg.style.color='#b91c1c';msg.textContent=j.error||C.invalid;}}catch(e){msg.textContent=C.failed;}
  draw();});
 if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefault();btn.click();}});
 })();</script>`);
@@ -203,7 +207,7 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
           const line = params.line_items[0];
           const label = couponLabel(r.coupon, p.currency);
           line.price_data.unit_amount = unit;
-          line.price_data.product_data.description = [line.price_data.product_data.description, `Rabattcode ${r.coupon.code}: ${label}`].filter(Boolean).join(' · ').slice(0, 500);
+          line.price_data.product_data.description = [line.price_data.product_data.description, tLoc(app, p.location_id)('Rabattcode {code}: {label}', { code: r.coupon.code, label })].filter(Boolean).join(' · ').slice(0, 500);
           Object.assign(meta, { coupon_code: r.coupon.code, coupon_net_cents: disc, coupon_label: label });
           if (r.coupon.max_uses) {
             // the use is held from now on (see heldUses); the page expires so an abandoned purchase frees it again
@@ -218,7 +222,7 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
         const bump = extraProduct(o?.bump_product_id, p);
         if (bump && (body.bump === '1' || body.bump === 'on' || body.bump === true)) {
           const { tax, gross } = sb()!.grossOf(bump);
-          const description = [bump.description, tax ? `inkl. ${String(tax).replace('.', ',')} % USt.` : ''].filter(Boolean).join(' · ').slice(0, 500) || undefined;
+          const description = [bump.description, tax ? vatNote(tLoc(app, p.location_id), tax) : ''].filter(Boolean).join(' · ').slice(0, 500) || undefined;
           params.line_items.push(...lineItemParams([{ name: bump.name, description, unit_amount: gross, quantity: 1 }], bump.currency));
           Object.assign(meta, {
             bump_product_id: bump.id,
@@ -240,15 +244,16 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
     // --- invoice: bump and discount lines ---------------------------------------------------
     app.services.buyInvoiceItems = [
       ...(app.services.buyInvoiceItems ?? []),
-      (_locationId: string, session: any, items: any[]) => {
+      (locationId: string, session: any, items: any[]) => {
+        const t = tLoc(app, locationId);
         const md = session.metadata ?? {};
         const main = items[0];
         const out = [...items];
         const net = Number(md.coupon_net_cents);
-        if (md.coupon_code && net) out.push({ name: `Rabatt (${md.coupon_code})`, description: String(md.coupon_label ?? ''), qty: 1, price_cents: net, tax_rate: main.tax_rate });
+        if (md.coupon_code && net) out.push({ name: t('Rabatt ({code})', { code: md.coupon_code }), description: String(md.coupon_label ?? ''), qty: 1, price_cents: net, tax_rate: main.tax_rate });
         else {
           const d = Number(session.total_details?.amount_discount ?? 0);
-          if (d > 0) out.push({ name: 'Gutschein (Stripe)', description: '', qty: 1, price_cents: netForGross(-d, main.tax_rate), tax_rate: main.tax_rate });
+          if (d > 0) out.push({ name: t('Gutschein (Stripe)'), description: '', qty: 1, price_cents: netForGross(-d, main.tax_rate), tax_rate: main.tax_rate });
         }
         if (md.bump_product_id) {
           const b = db.get('SELECT description FROM products WHERE id = ?', md.bump_product_id);
@@ -320,7 +325,10 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
     const getUpsell = (token: string) => parseJson(/^[A-Za-z0-9]{24}$/.test(token) ? db.get('SELECT * FROM buy_upsells WHERE id = ?', token) : undefined, ['carry']);
     const expired = (u: any) => Date.now() - new Date(u.created_at).getTime() > UPSELL_TTL_MS;
     const page = (title: string, body: string, status = 200) => html(publicPage({ title, body: `<div class="wrap" style="max-width:560px"><div class="card">${body}</div></div>` }), status);
-    const gone = () => page('Nicht gefunden', '<h1>Nicht gefunden</h1><p class="muted">Dieses Angebot gibt es nicht (mehr).</p>', 404);
+    const gone = () => {
+      const t = tApp();
+      return page(t('Nicht gefunden'), `<h1>${escapeHtml(t('Nicht gefunden'))}</h1><p class="muted">${escapeHtml(t('Dieses Angebot gibt es nicht (mehr).'))}</p>`, 404);
+    };
 
     router.get('/upsell/:token', 'public', (ctx) => {
       const u = getUpsell(ctx.params.token);
@@ -332,18 +340,19 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
       const loc = app.location(u.location_id)!;
       const { tax, gross } = sb()!.grossOf(up);
       const small = !!loc.settings.invoices?.small_business;
+      const tr = tLoc(app, u.location_id);
       const t = escapeHtml(u.id);
       return page(
         o.upsell_title || up.name,
-        `<p class="ok" style="margin:0 0 18px">✓ Danke, deine Bestellung ist eingegangen.</p>
-  <p class="muted" style="margin:0 0 4px;text-transform:uppercase;font-size:12px;letter-spacing:.06em">Nur jetzt – passend dazu</p>
+        `<p class="ok" style="margin:0 0 18px">✓ ${escapeHtml(tr('Danke, deine Bestellung ist eingegangen.'))}</p>
+  <p class="muted" style="margin:0 0 4px;text-transform:uppercase;font-size:12px;letter-spacing:.06em">${escapeHtml(tr('Nur jetzt – passend dazu'))}</p>
   <h1>${escapeHtml(o.upsell_title || up.name)}</h1>
   ${o.upsell_text || up.description ? `<p>${escapeHtml(o.upsell_text || up.description).replace(/\n/g, '<br>')}</p>` : ''}
   <p style="font-size:28px;font-weight:700;margin:18px 0 2px">${escapeHtml(money(gross, up.currency))}</p>
-  <p class="muted" style="font-size:13px;margin-top:0">${small ? 'Gemäß § 19 UStG ohne Umsatzsteuer' : tax ? `inkl. ${String(tax).replace('.', ',')} % USt.` : ''}</p>
-  <form method="post" action="/upsell/${t}/accept"><button type="submit" style="width:100%">Ja, hinzufügen – ${escapeHtml(money(gross, up.currency))}</button></form>
-  <p class="muted" style="font-size:12px;text-align:center">Mit einem Klick, über die eben genutzte Zahlungsart. Du bekommst eine eigene Rechnung.</p>
-  <form method="post" action="/upsell/${t}/decline" style="text-align:center"><button type="submit" class="btn secondary" style="background:none;border:0;color:var(--muted);text-decoration:underline;font-weight:400">Nein danke, weiter</button></form>`,
+  <p class="muted" style="font-size:13px;margin-top:0">${escapeHtml(small ? tr('Gemäß § 19 UStG ohne Umsatzsteuer') : tax ? vatNote(tr, tax) : '')}</p>
+  <form method="post" action="/upsell/${t}/accept"><button type="submit" style="width:100%">${escapeHtml(tr('Ja, hinzufügen – {price}', { price: money(gross, up.currency) }))}</button></form>
+  <p class="muted" style="font-size:12px;text-align:center">${escapeHtml(tr('Mit einem Klick, über die eben genutzte Zahlungsart. Du bekommst eine eigene Rechnung.'))}</p>
+  <form method="post" action="/upsell/${t}/decline" style="text-align:center"><button type="submit" class="btn secondary" style="background:none;border:0;color:var(--muted);text-decoration:underline;font-weight:400">${escapeHtml(tr('Nein danke, weiter'))}</button></form>`,
       );
     });
 
@@ -365,11 +374,12 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
       // Only one click charges: whoever flips the status first goes on.
       if (!db.run(`UPDATE buy_upsells SET status = 'processing' WHERE id = ? AND status = 'open'`, u.id).changes) return redirect(u.continue_url, 303);
       const set = (patch: Record<string, any>) => db.update('buy_upsells', u.id, patch);
+      const t = tLoc(app, u.location_id);
       const stripe = sb();
       const key = stripe?.secretKey(u.location_id) ?? '';
       const up = db.get('SELECT * FROM products WHERE id = ? AND location_id = ? AND active = 1', u.upsell_product_id, u.location_id);
       if (!stripe || !key || !up) {
-        set({ status: 'failed', error: 'Stripe oder Produkt nicht verfügbar', done_at: now() });
+        set({ status: 'failed', error: t('Stripe oder Produkt nicht verfügbar'), done_at: now() });
         return redirect(u.continue_url, 303);
       }
       const { tax, gross } = stripe.grossOf(up);
@@ -389,7 +399,7 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
         const first = await stripeRequest(key, 'GET', `/v1/payment_intents/${encodeURIComponent(u.payment_intent)}`);
         customer = String(typeof first.customer === 'string' ? first.customer : (first.customer?.id ?? ''));
         const method = String(typeof first.payment_method === 'string' ? first.payment_method : (first.payment_method?.id ?? ''));
-        if (!customer || !method) throw new StripeError(402, 'Keine gespeicherte Zahlungsart', 'no_saved_method');
+        if (!customer || !method) throw new StripeError(402, t('Keine gespeicherte Zahlungsart'), 'no_saved_method');
         const pi = await stripeRequest(
           key,
           'POST',
@@ -405,8 +415,8 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
         if (pi.status === 'processing') {
           set({ status: 'pending', upsell_payment_intent: pi.id });
           return page(
-            'Danke!',
-            `<h1>Danke!</h1><p>Die Zahlung für „${escapeHtml(up.name)}“ wird bearbeitet. Sobald sie bestätigt ist, bekommst du deine Rechnung per E-Mail.</p><p><a class="btn" href="${escapeHtml(u.continue_url)}">Weiter</a></p>`,
+            t('Danke!'),
+            `<h1>${escapeHtml(t('Danke!'))}</h1><p>${escapeHtml(t('Die Zahlung für „{name}“ wird bearbeitet. Sobald sie bestätigt ist, bekommst du deine Rechnung per E-Mail.', { name: up.name }))}</p><p><a class="btn" href="${escapeHtml(u.continue_url)}">${escapeHtml(t('Weiter'))}</a></p>`,
           );
         }
         // Needs the buyer (3-D Secure) or another card: cancel this attempt, go through Checkout.
@@ -417,8 +427,8 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
           // Stripe not reachable: try again later with the same idempotency key (never charges twice).
           set({ status: 'open', error: e.message });
           return page(
-            'Gerade nicht möglich',
-            `<h1>Gerade nicht möglich</h1><p class="muted">Stripe ist gerade nicht erreichbar. Bitte versuche es gleich noch einmal.</p><p><a class="btn" href="/upsell/${escapeHtml(u.id)}">Noch einmal</a> <a class="btn secondary" href="${escapeHtml(u.continue_url)}">Ohne weiter</a></p>`,
+            t('Gerade nicht möglich'),
+            `<h1>${escapeHtml(t('Gerade nicht möglich'))}</h1><p class="muted">${escapeHtml(t('Stripe ist gerade nicht erreichbar. Bitte versuche es gleich noch einmal.'))}</p><p><a class="btn" href="/upsell/${escapeHtml(u.id)}">${escapeHtml(t('Noch einmal'))}</a> <a class="btn secondary" href="${escapeHtml(u.continue_url)}">${escapeHtml(t('Ohne weiter'))}</a></p>`,
             502,
           );
         }
@@ -429,6 +439,7 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
     /** 3-D Secure, declined card, no saved method: a normal Checkout for the upsell product. */
     async function fallback(u: any, up: any, gross: number, meta: Record<string, any>, customer: string, key: string, reason: string) {
       const stripe = sb()!;
+      const t = tLoc(app, u.location_id);
       const base = app.baseUrl();
       const upKey = stripe.linkOf(up.id)?.slug || up.id;
       try {
@@ -440,7 +451,7 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
           {
             mode: 'payment',
             line_items: lineItemParams(
-              [{ name: up.name, description: [up.description, tax ? `inkl. ${String(tax).replace('.', ',')} % USt.` : ''].filter(Boolean).join(' · ').slice(0, 500) || undefined, unit_amount: gross, quantity: 1 }],
+              [{ name: up.name, description: [up.description, tax ? vatNote(t, tax) : ''].filter(Boolean).join(' · ').slice(0, 500) || undefined, unit_amount: gross, quantity: 1 }],
               up.currency,
             ),
             ...(customer ? { customer } : /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(u.email) ? { customer_email: u.email } : {}),
@@ -452,13 +463,13 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
           },
           { idempotencyKey: `upsell-fallback-${u.id}` },
         );
-        if (!session?.url) throw new Error('Stripe hat keine Bezahlseite geliefert');
+        if (!session?.url) throw new Error(t('Stripe hat keine Bezahlseite geliefert'));
         stripe.recordCheckout({ id: session.id, location_id: u.location_id, product_id: up.id, url: session.url, amount_cents: gross, currency: up.currency, email: u.email, meta });
         db.update('buy_upsells', u.id, { status: 'fallback', fallback_session: session.id, error: String(reason).slice(0, 300) });
         return redirect(session.url, 303);
       } catch (e) {
         db.update('buy_upsells', u.id, { status: 'failed', error: String((e as Error).message).slice(0, 300), done_at: now() });
-        return page('Nicht möglich', `<h1>Hat leider nicht geklappt</h1><p class="muted">${escapeHtml((e as Error).message)}</p><p><a class="btn" href="${escapeHtml(u.continue_url)}">Weiter</a></p>`, 400);
+        return page(t('Nicht möglich'), `<h1>${escapeHtml(t('Hat leider nicht geklappt'))}</h1><p class="muted">${escapeHtml(t((e as Error).message))}</p><p><a class="btn" href="${escapeHtml(u.continue_url)}">${escapeHtml(t('Weiter'))}</a></p>`, 400);
       }
     }
 
@@ -515,10 +526,11 @@ if(code)code.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefau
         const pid = str(b[field], label, { max: 40 });
         if (!pid) return null;
         const x = db.get('SELECT * FROM products WHERE id = ? AND location_id = ?', pid, ctx.locationId);
-        if (!x) throw bad(`${label}: Produkt nicht gefunden`);
-        if (x.id === p.id) throw bad(`${label}: bitte ein anderes Produkt wählen`);
-        if (x.recurring) throw bad(`${label}: nur Einmal-Produkte (kein Abo)`);
-        if (x.currency !== p.currency) throw bad(`${label}: gleiche Währung wie das Produkt nötig`);
+        const t = tCtx(ctx);
+        if (!x) throw bad(t('{label}: Produkt nicht gefunden', { label: t(label) }));
+        if (x.id === p.id) throw bad(t('{label}: bitte ein anderes Produkt wählen', { label: t(label) }));
+        if (x.recurring) throw bad(t('{label}: nur Einmal-Produkte (kein Abo)', { label: t(label) }));
+        if (x.currency !== p.currency) throw bad(t('{label}: gleiche Währung wie das Produkt nötig', { label: t(label) }));
         return x.id;
       };
       const bump = pick('bump_product_id', 'Order-Bump');

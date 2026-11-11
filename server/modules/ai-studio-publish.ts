@@ -5,6 +5,7 @@ import { domainAlias, normalizeDomain } from '../core/domains.js';
 import { HttpError, bad, notFound, redirect, str, type Ctx, type RawResult } from '../core/http.js';
 import { now } from '../core/util.js';
 import { Workspace, buildProject, type Stack } from '../services/ai-studio.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * AI Studio publishing (docs/ai-studio.md#publish): a project's build is copied to `<workspace>/site/` and served as static files under
@@ -88,7 +89,7 @@ export const aiStudioPublishModule: Module = {
       }
       const b = await buildProject(new Workspace(app.config.dataDir, p.location_id, p.id), p.stack as Stack);
       db.run('UPDATE studio_projects SET build_status = ?, build_log = ?, built_at = ?, updated_at = ? WHERE id = ?', b.ok ? 'ok' : 'error', [...b.errors, ...b.log].join('\n').slice(0, 8000), now(), now(), p.id);
-      if (!b.ok) throw bad(`Build fehlgeschlagen – nichts veröffentlicht: ${b.errors.slice(0, 3).join(' · ')}`);
+      if (!b.ok) throw bad(tCtx(ctx)('Build fehlgeschlagen – nichts veröffentlicht: {errors}', { errors: b.errors.slice(0, 3).join(' · ') }));
       const dir = siteDir({ location_id: p.location_id, project_id: p.id });
       const dist = join(new Workspace(app.config.dataDir, p.location_id, p.id).root, 'dist');
       rmSync(`${dir}.tmp`, { recursive: true, force: true });
@@ -98,7 +99,7 @@ export const aiStudioPublishModule: Module = {
       const row = { project_id: p.id, location_id: p.location_id, slug, domain, files: countFiles(dir), bytes: b.bytes, published_by: ctx.user?.id ?? null, published_at: now() };
       db.run('DELETE FROM studio_sites WHERE project_id = ?', p.id);
       db.insert('studio_sites', row);
-      audit(ctx, cur ? 'ai_studio.republish' : 'ai_studio.publish', `AI-Studio-App „${p.name}“ veröffentlicht: ${publicUrl(row)}`, p.id);
+      audit(ctx, cur ? 'ai_studio.republish' : 'ai_studio.publish', tApp()('AI-Studio-App „{name}“ veröffentlicht: {url}', { name: p.name, url: publicUrl(row) }), p.id);
       return view(row);
     });
 

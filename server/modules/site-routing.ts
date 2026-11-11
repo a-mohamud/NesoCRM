@@ -10,6 +10,7 @@ import { search as runSearch, type SearchDoc } from '../services/site-search.js'
 import { cleanPageLayout } from '../services/site-settings.js';
 import { renderPage, pageUrl, sitePages } from '../services/site-render.js';
 import { siteBlocks, wrap } from '../services/site-blocks.js';
+import { defaultLocale, tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Routing of a site beyond the pages themselves: redirect manager (301/302, wildcards, the list of paths visitors did not find),
@@ -47,7 +48,7 @@ export const siteRoutingModule: Module = {
   ],
   register(app: App) {
     const { db, router } = app;
-    const serve = () => app.services.siteServe as { page(ctx: Ctx, f: any, segments: string[]): unknown; bySlug(slug: string): any; gone(): RawResult; sandbox: string };
+    const serve = () => app.services.siteServe as { page(ctx: Ctx, f: any, segments: string[]): unknown; bySlug(slug: string): any; gone(ctx: Ctx): RawResult; sandbox: string };
 
     const funnelOr404 = (ctx: Ctx, fid = ctx.params.id) => {
       const f = parseJson(db.get('SELECT * FROM funnels WHERE id = ? AND location_id = ?', fid, ctx.locationId), ['settings']);
@@ -156,7 +157,7 @@ export const siteRoutingModule: Module = {
       const f = funnelOr404(ctx);
       const b = ctx.body ?? {};
       const fields = ruleFields(b);
-      if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM site_redirects WHERE funnel_id = ?', f.id)!.n >= MAX_RULES) throw bad(`Höchstens ${MAX_RULES} Umleitungen je Website`);
+      if (db.get<{ n: number }>('SELECT COUNT(*) AS n FROM site_redirects WHERE funnel_id = ?', f.id)!.n >= MAX_RULES) throw bad(tApp()('Höchstens {n} Umleitungen je Website', { n: MAX_RULES }));
       if (db.get('SELECT id FROM site_redirects WHERE funnel_id = ? AND source = ?', f.id, fields.source)) throw bad('Für diese Quelle gibt es schon eine Umleitung');
       const row = { id: id(), location_id: ctx.locationId, funnel_id: f.id, keep_query: 1, note: '', position: db.get<{ n: number }>('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM site_redirects WHERE funnel_id = ?', f.id)!.n, hits: 0, created_at: now(), updated_at: now(), ...fields } as any;
       assertNoLoop(f.id, row);
@@ -202,7 +203,7 @@ export const siteRoutingModule: Module = {
       db.tx(() => {
         for (const r of parsed.rules) {
           if (total >= MAX_RULES) {
-            errors.push(`Höchstens ${MAX_RULES} Umleitungen je Website – der Rest wurde nicht übernommen`);
+            errors.push(tCtx(ctx)('Höchstens {n} Umleitungen je Website – der Rest wurde nicht übernommen', { n: MAX_RULES }));
             break;
           }
           const { source, wildcard } = cleanSource(r.source);
@@ -238,7 +239,7 @@ export const siteRoutingModule: Module = {
       const names = ['a', 'b', 'c', 'd'].slice(0, depth);
       router.get(`/p/:funnel/${names.map((n) => `:${n}`).join('/')}`, 'public', (ctx) => {
         const f = serve().bySlug(ctx.params.funnel);
-        return f ? serve().page(ctx, f, names.map((n) => ctx.params[n])) : serve().gone();
+        return f ? serve().page(ctx, f, names.map((n) => ctx.params[n])) : serve().gone(ctx);
       });
     }
 
@@ -254,7 +255,7 @@ export const siteRoutingModule: Module = {
       const group = String(p.layout?.group || id(8));
       const taken = pagesIn(f.id);
       if (taken.some((x) => String(x.layout?.group ?? '') === group && x.layout?.lang === lang)) throw bad('Für diese Sprache gibt es die Seite schon');
-      const own = String(p.layout?.lang || f.settings?.languages?.default || 'de');
+      const own = String(p.layout?.lang || f.settings?.languages?.default || defaultLocale());
       if (lang === own) throw bad('Das ist die Sprache dieser Seite');
       let slug = slugify(String(ctx.body?.slug || `${p.slug}-${lang}`));
       for (let i = 2; db.get('SELECT id FROM funnel_pages WHERE funnel_id = ? AND slug = ?', f.id, slug); i++) slug = `${slugify(String(ctx.body?.slug || `${p.slug}-${lang}`))}-${i}`;
@@ -267,7 +268,7 @@ export const siteRoutingModule: Module = {
       // The site knows the language afterwards (header switcher, hreflang labels).
       const langs = f.settings?.languages ?? { default: own, list: [] };
       if (!langs.list?.some((l: any) => l.code === lang)) {
-        const known: { code: string; label: string }[] = langs.list?.length ? langs.list : [{ code: own, label: own === 'de' ? 'Deutsch' : own.toUpperCase() }];
+        const known: { code: string; label: string }[] = langs.list?.length ? langs.list : [{ code: own, label: own === 'de' ? 'Deutsch' : own === 'en' ? 'English' : own.toUpperCase() }];
         db.update('funnels', f.id, { settings: { ...f.settings, languages: { default: langs.default || own, list: [...known, { code: lang, label: lang.toUpperCase() }].slice(0, 8) } }, updated_at: now() });
       }
       return { ...copy, url: pageUrl(app, f, copy) };
@@ -286,7 +287,7 @@ export const siteRoutingModule: Module = {
         const pages = parseRows(db.all('SELECT id, name, slug, seo, blocks, layout FROM funnel_pages WHERE funnel_id = ? ORDER BY position, created_at LIMIT 300', f.id), ['seo', 'blocks', 'layout']);
         pages.forEach((p, i) => {
           if (p.seo?.noindex || p.slug === '404' || p.layout?.hide_search || hidden.has(p.id)) return;
-          docs.push({ kind: 'page', title: String(p.seo?.title || p.name), url: pageUrl(app, f, p, i === 0), text: `${p.seo?.description ?? ''} ${pageText(p.blocks)}`.trim(), label: 'Seite' });
+          docs.push({ kind: 'page', title: String(p.seo?.title || p.name), url: pageUrl(app, f, p, i === 0), text: `${p.seo?.description ?? ''} ${pageText(p.blocks)}`.trim(), label: tLoc(app, f.location_id)('Seite') });
         });
         // Blog posts, CMS items and others: app.services.siteSearchDocs = [(funnel) => SearchDoc[]].
         for (const fn of (app.services.siteSearchDocs ?? []) as ((f: any) => SearchDoc[])[]) {
@@ -311,11 +312,12 @@ export const siteRoutingModule: Module = {
     function searchPage(ctx: Ctx, f: any): RawResult {
       const q = String(ctx.query.get('q') ?? '').trim().slice(0, 80);
       const hits = q && !limited(ctx.ip) ? runSearch(docsOf(f), q, 20) : [];
+      const t = tLoc(app, f.location_id);
       const page = {
         id: 'search',
-        name: 'Suche',
+        name: t('Suche'),
         slug: 'search',
-        seo: { title: q ? `Suche: ${q}` : 'Suche' },
+        seo: { title: q ? t('Suche: {q}', { q }) : t('Suche') },
         layout: {},
         blocks: [{ id: 'search1', type: 'search', q, results: hits.map((h) => ({ title: h.title, url: h.url, snippet: h.snippet, label: h.label })), padding: 56 }],
       };
@@ -330,15 +332,16 @@ export const siteRoutingModule: Module = {
       type: 'search',
       css: `.sform{display:flex;gap:8px;margin:0 0 1.2em}.sform input{flex:1;min-width:0}.sres{list-style:none;padding:0;margin:0}.sres li{padding:.9em 0;border-bottom:1px solid var(--line)}.sres a{font-weight:700;font-size:1.1em}.sres small{color:var(--muted);display:block}.sres p{margin:.2em 0 0}`,
       render: (env, b, o) => {
+        const t = tLoc(app, env.locationId);
         const action = pageUrl(env.app, env.funnel, { slug: 'search' });
         const q = typeof b.q === 'string' ? b.q : '';
         const results = Array.isArray(b.results) ? b.results : null;
         const list = results
           ? results.length
             ? `<ul class="sres">${results.slice(0, 20).map((r: any) => `<li><a href="${escapeHtml(String(r.url ?? '#'))}">${escapeHtml(String(r.title ?? ''))}</a>${r.label ? `<small>${escapeHtml(String(r.label))}</small>` : ''}${r.snippet ? `<p>${escapeHtml(String(r.snippet))}</p>` : ''}</li>`).join('')}</ul>`
-            : `<p class="muted">Nichts gefunden${q ? ` zu „${escapeHtml(q)}“` : ''}. Versuch es mit einem anderen Wort.</p>`
+            : `<p class="muted">${escapeHtml(q ? t('Nichts gefunden zu „{q}“. Versuch es mit einem anderen Wort.', { q }) : t('Nichts gefunden. Versuch es mit einem anderen Wort.'))}</p>`
           : '';
-        return wrap(env, b, o.bare, `${b.heading ? `<h1>${escapeHtml(String(b.heading))}</h1>` : results ? '<h1>Suche</h1>' : ''}<form class="sform" role="search" action="${escapeHtml(action)}" method="get"><input type="search" name="q" value="${escapeHtml(q)}" aria-label="Suchbegriff" placeholder="${escapeHtml(String(b.placeholder || 'Suchen …'))}" maxlength="80"><button type="submit">Suchen</button></form>${list}`);
+        return wrap(env, b, o.bare, `${b.heading ? `<h1>${escapeHtml(String(b.heading))}</h1>` : results ? `<h1>${escapeHtml(t('Suche'))}</h1>` : ''}<form class="sform" role="search" action="${escapeHtml(action)}" method="get"><input type="search" name="q" value="${escapeHtml(q)}" aria-label="${escapeHtml(t('Suchbegriff'))}" placeholder="${escapeHtml(String(b.placeholder || t('Suchen …')))}" maxlength="80"><button type="submit">${escapeHtml(t('Suchen'))}</button></form>${list}`);
       },
     });
   },

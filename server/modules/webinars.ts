@@ -12,6 +12,7 @@ import { webinarStats } from '../services/webinar-stats.js';
 import { finalizeDue } from '../services/webinar-track.js';
 import { getRegistration, getWebinar, linksOf, parseWebinar, pageUrl, urlsOf, webinarTz, type Webinar } from '../services/webinar-store.js';
 import { NO_VIDEO, VIDEO_EXT, extOf, looksLikeVideo } from '../services/webinar-video.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Webinare (Marketing): automated webinars per sub-account – video, schedules, registration page, room, reminders,
@@ -200,7 +201,7 @@ export const webinarsModule: Module = {
       if (b.slug !== undefined && String(b.slug).trim() && String(b.slug) !== w.slug) slug = uniqueSlug(String(b.slug), (s) => s !== w.slug && !!db.get('SELECT 1 FROM webinars WHERE slug = ?', s));
       if (input.status === 'published') {
         const problems = publishProblems(input);
-        if (problems.length) throw bad(`Noch nicht bereit zum Veröffentlichen: ${problems.join('; ')}`);
+        if (problems.length) throw bad(tCtx(ctx)('Noch nicht bereit zum Veröffentlichen: {problems}', { problems: problems.map((x) => tCtx(ctx)(x)).join('; ') }));
       }
       checkRefs(ctx.locationId, w.id, input);
       // The video changed away from an upload: the file goes (and with it its disk space).
@@ -349,9 +350,9 @@ export const webinarsModule: Module = {
       const w = mine(ctx);
       const name = str(ctx.body?.name, 'Dateiname', { required: true, max: 200 });
       const size = Math.round(Number(ctx.body?.size));
-      if (!VIDEO_EXT.includes(extOf(name))) throw bad(`Nur Videodateien (${VIDEO_EXT.join(', ')})`);
+      if (!VIDEO_EXT.includes(extOf(name))) throw bad(tCtx(ctx)('Nur Videodateien ({list})', { list: VIDEO_EXT.join(', ') }));
       if (!(size > 0)) throw bad('Dateigröße fehlt');
-      if (size > maxUploadMb() * 1024 * 1024) throw bad(`Datei größer als ${maxUploadMb()} MB (Grenze einstellbar mit PGHL_WEBINAR_MAX_MB)`);
+      if (size > maxUploadMb() * 1024 * 1024) throw bad(tCtx(ctx)('Datei größer als {n} MB (Grenze einstellbar mit PGHL_WEBINAR_MAX_MB)', { n: maxUploadMb() }));
       if (Number(db.get<{ n: number }>(`SELECT COUNT(*) n FROM webinar_uploads WHERE location_id = ? AND status = 'open'`, ctx.locationId)?.n ?? 0) >= 3) throw new HttpError(429, 'Es laufen schon 3 Uploads – bitte warten');
       mkdirSync(dir, { recursive: true });
       try {
@@ -378,11 +379,11 @@ export const webinarsModule: Module = {
       if (up.status !== 'open') return { id: up.id, received: up.received, complete: true };
       const buf = ctx.rawBuffer;
       if (!buf?.length) throw bad('Daten fehlen (Teil der Datei als Rohdaten im Body)');
-      if (buf.length > CHUNK) throw bad(`Höchstens ${CHUNK / 1024 / 1024} MB pro Teil`);
+      if (buf.length > CHUNK) throw bad(tCtx(ctx)('Höchstens {n} MB pro Teil', { n: CHUNK / 1024 / 1024 }));
       const offset = Number(ctx.query.get('offset') ?? up.received);
       if (offset !== up.received) {
         if (offset + buf.length === up.received) return { id: up.id, received: up.received, complete: false };
-        throw new HttpError(409, `Erwartet wird der Teil ab Byte ${up.received}`);
+        throw new HttpError(409, tCtx(ctx)('Erwartet wird der Teil ab Byte {n}', { n: up.received }));
       }
       if (offset + buf.length > up.size) throw bad('Mehr Daten als angekündigt');
       if (offset === 0 && !looksLikeVideo(buf)) {

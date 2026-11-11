@@ -3,6 +3,10 @@ import { HttpError } from '../core/http.js';
 import type { ReportSource } from '../services/report-engine.js';
 import { lookupTable, userLookup } from '../services/report-sources.js';
 import type { Caller, Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
+
+/** Messages in the instance language (static ids for the catalog). */
+const tm = tApp();
 
 /**
  * MCP tools for the planner (projects, tasks with subtasks, status moves, time, timesheets, billing) – so the
@@ -56,7 +60,7 @@ async function people(call: Caller, loc: string, list: unknown): Promise<string[
   return list.map((x) => {
     const s = String(x).trim().toLowerCase();
     const p = team.find((u) => u.id === x) ?? team.find((u) => u.email.toLowerCase() === s) ?? team.find((u) => u.name.toLowerCase() === s) ?? team.find((u) => u.name.toLowerCase().startsWith(s));
-    if (!p) throw new HttpError(400, `Person „${x}“ nicht gefunden – verfügbar: ${team.map((u) => u.name).join(', ')}`);
+    if (!p) throw new HttpError(400, tm('Person „{person}“ nicht gefunden – verfügbar: {list}', { person: x, list: team.map((u) => u.name).join(', ') }));
     return p.id as string;
   });
 }
@@ -164,7 +168,7 @@ export const TOOLS: Tool[] = [
       if (a.status && a.project_id) {
         const p = await call.api('GET', `/api/pm/projects/${encodeURIComponent(a.project_id)}`, { location: a.location_id });
         status_id = p.statuses.find((s: any) => s.name.toLowerCase() === String(a.status).toLowerCase())?.id;
-        if (!status_id) throw new HttpError(400, `Status „${a.status}“ gibt es nicht – verfügbar: ${p.statuses.map((s: any) => s.name).join(', ')}`);
+        if (!status_id) throw new HttpError(400, tm('Status „{status}“ gibt es nicht – verfügbar: {list}', { status: a.status, list: p.statuses.map((s: any) => s.name).join(', ') }));
       }
       const assignee = a.assignee && !['none', 'me'].includes(a.assignee) ? (await people(call, a.location_id, [a.assignee]))![0] : a.assignee;
       const r = await call.api('GET', `/api/pm/tasks${q({ project_id: a.project_id, status_id, category: a.category, done: a.done === 'all' ? undefined : a.done === 'done' ? '1' : '0', assignee, priority: a.priority, tag: a.tag, due: a.due, q: a.query, parent: a.top_level ? 'none' : undefined, limit: a.limit ?? 100, sort: 'position' })}`, { location: a.location_id });

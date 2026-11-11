@@ -19,13 +19,14 @@ import type { LayoutKind } from '../services/canvas-layout.js';
 import { hiddenUser } from '../core/permissions.js';
 import { userById } from '../services/collab-actor.js';
 import { loginOf, sweepOnLoginChange } from '../services/stream-login.js';
+import { tApp, tCtx, tLoc, tUser } from '../i18n/index.js';
 
 /** New elements from a request: an element the scene cannot use (unknown type, a card without data …) is the caller's mistake – 400, not 500. */
 const planAdd: typeof planAddRaw = (...args) => {
   try {
     return planAddRaw(...args);
   } catch (e) {
-    if (e instanceof SceneError) throw bad(e.message);
+    if (e instanceof SceneError) throw bad(tApp()(e.key, e.vars));
     throw e;
   }
 };
@@ -228,7 +229,7 @@ export const canvasModule: Module = {
       const cards: Record<string, CardData> = ctx ? await resolveCards(app, ctx, cardRefs(els)) : {};
       const background = o.background === null ? undefined : (o.background ?? '#ffffff');
       const scale = Math.min(4, Math.max(0.25, Number(o.scale) || (o.format === 'png' ? 2 : 1)));
-      const base = { cards, publicView: !ctx, frameId: o.frameId, ids: o.ids?.length ? o.ids : undefined, theme: o.theme, background };
+      const base = { cards, publicView: !ctx, frameId: o.frameId, ids: o.ids?.length ? o.ids : undefined, theme: o.theme, background, tr: tLoc(app, board.location_id) };
       if (o.format === 'svg') {
         const r = renderSvg(els, { ...base, imageHref: (src) => `${app.baseUrl()}${src}`, title: board.name });
         return { bytes: Buffer.from(r.svg, 'utf8'), mime: 'image/svg+xml', ext: 'svg', width: r.width, height: r.height };
@@ -336,16 +337,21 @@ export const canvasModule: Module = {
       return { boards, mentions };
     });
 
-    router.get('/api/canvas/templates', 'location', () => TEMPLATES);
+    router.get('/api/canvas/templates', 'location', (ctx) => {
+      const t = tCtx(ctx);
+      // name/description in the user's language; category stays the key the editor groups by
+      return TEMPLATES.map((x) => ({ ...x, name: t(x.name), description: t(x.description) }));
+    });
 
     router.post('/api/canvas', 'location', (ctx) => {
       const b = ctx.body ?? {};
-      const name = str(b.name, 'Name', { max: 200 }) || 'Neues Board';
+      const tl = tLoc(app, ctx.locationId);
+      const name = str(b.name, 'Name', { max: 200 }) || tl('Neues Board');
       const board = createBoard(ctx, { name, description: b.description, team_access: b.team_access, settings: b.settings });
       let list: OpIn[] = [];
       try {
         if (b.template) {
-          const els = buildTemplate(String(b.template), () => id(12), { x: 0, y: 0 });
+          const els = buildTemplate(String(b.template), () => id(12), { x: 0, y: 0 }, tl);
           if (!els) throw bad('Unbekannte Vorlage');
           list = els.map((e) => ({ op: 'add', element: e }));
         } else if (b.mermaid) {
@@ -355,7 +361,7 @@ export const canvasModule: Module = {
         }
       } catch (e) {
         db.run('DELETE FROM canvas_boards WHERE id = ?', board.id);
-        if (e instanceof MermaidError) throw bad(e.message);
+        if (e instanceof MermaidError) throw bad(tCtx(ctx)(e.key, e.vars));
         throw e;
       }
       if (list.length) applyOps(app, ctx, board, list);
@@ -389,7 +395,7 @@ export const canvasModule: Module = {
       const elements = boardElements(app, board.id);
       const out: Record<string, unknown> = { board: boardOut(board, access), access, seq: board.seq, elements, viewers: hub.viewers(board.id), me: ctx.user ? { id: ctx.user.id, name: ctx.user.name, color: colorFor(ctx.user.id) } : null };
       if (ctx.query.get('outline')) out.outline = sceneOutline(elements, board.name);
-      if (ctx.query.get('svg')) out.svg = renderSvg(elements, { cards: await resolveCards(app, ctx, cardRefs(elements)), imageHref: (src) => `${app.baseUrl()}${src}`, background: '#ffffff', maxSize: Number(ctx.query.get('max')) || undefined }).svg;
+      if (ctx.query.get('svg')) out.svg = renderSvg(elements, { cards: await resolveCards(app, ctx, cardRefs(elements)), imageHref: (src) => `${app.baseUrl()}${src}`, background: '#ffffff', maxSize: Number(ctx.query.get('max')) || undefined, tr: tCtx(ctx) }).svg;
       return out;
     });
 
@@ -507,6 +513,7 @@ export const canvasModule: Module = {
         maxSize: thumb ? 640 : undefined,
         idPrefix: `b${board.id.slice(0, 8)}`,
         title: board.name,
+        tr: tCtx(ctx),
       });
       return { __raw: true, status: 200, headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': "default-src 'none'; img-src 'self' data: https:; style-src 'unsafe-inline'" }, body: r.svg };
     });
@@ -549,7 +556,7 @@ export const canvasModule: Module = {
     router.post('/api/canvas/:id/template', 'location', (ctx) => {
       const { board } = loadBoard(app, ctx, ctx.params.id, 'edit');
       const existing = boardElements(app, board.id);
-      const els = buildTemplate(String(ctx.body?.key ?? ''), () => id(12), at(ctx.body) ?? freeSpot(existing));
+      const els = buildTemplate(String(ctx.body?.key ?? ''), () => id(12), at(ctx.body) ?? freeSpot(existing), tLoc(app, ctx.locationId));
       if (!els) throw bad('Unbekannte Vorlage');
       const r = ops(ctx, board, liftZ(existing, els).map((e) => ({ op: 'add', element: e })), { clientId: ctx.body?.clientId });
       return { id: board.id, name: board.name, seq: r.seq, created: r.elements.map((e) => e.id) };
@@ -562,7 +569,7 @@ export const canvasModule: Module = {
       try {
         res = mermaidToElements(str(ctx.body?.source ?? ctx.body?.mermaid, 'Mermaid', { required: true, max: 50_000 }), () => id(12), at(ctx.body) ?? freeSpot(existing), { sketch: !!ctx.body?.sketch });
       } catch (e) {
-        if (e instanceof MermaidError) throw bad(e.message);
+        if (e instanceof MermaidError) throw bad(tCtx(ctx)(e.key, e.vars));
         throw e;
       }
       const r = ops(ctx, board, liftZ(existing, res.elements).map((e) => ({ op: 'add', element: e })), { clientId: ctx.body?.clientId });
@@ -622,14 +629,15 @@ export const canvasModule: Module = {
     });
     router.post('/api/canvas/:id/snapshots', 'location', (ctx) => {
       const { board } = loadBoard(app, ctx, ctx.params.id, 'edit');
-      const s = createSnapshot(app, board.id, str(ctx.body?.name, 'Name', { max: 200 }) || `Version vom ${new Date().toLocaleString('de-DE', { timeZone: app.location(ctx.locationId)?.timezone || 'Europe/Berlin' })}`, false, actorOf(app, ctx));
+      const t = tLoc(app, ctx.locationId);
+      const s = createSnapshot(app, board.id, str(ctx.body?.name, 'Name', { max: 200 }) || t('Version vom {date}', { date: new Date().toLocaleString(t.locale === 'de' ? 'de-DE' : 'en-GB', { timeZone: app.location(ctx.locationId)?.timezone || 'Europe/Berlin' }) }), false, actorOf(app, ctx));
       return { ...s, name: board.name };
     });
     router.get('/api/canvas/:id/snapshots/:sid/svg', 'location', (ctx) => {
       const { board } = loadBoard(app, ctx, ctx.params.id);
       const s = db.get<{ elements: string }>('SELECT elements FROM canvas_snapshots WHERE id = ? AND board_id = ?', ctx.params.sid, board.id);
       if (!s) throw notFound('Version nicht gefunden');
-      const r = renderSvg(JSON.parse(s.elements), { publicView: true, background: '#ffffff', maxSize: 800, idPrefix: `s${ctx.params.sid.slice(0, 6)}` });
+      const r = renderSvg(JSON.parse(s.elements), { publicView: true, background: '#ffffff', maxSize: 800, idPrefix: `s${ctx.params.sid.slice(0, 6)}`, tr: tCtx(ctx) });
       return { __raw: true, status: 200, headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'content-security-policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'" }, body: r.svg };
     });
     router.post('/api/canvas/:id/snapshots/:sid/restore', 'location', (ctx) => {
@@ -694,13 +702,16 @@ export const canvasModule: Module = {
       const notify = [...mentioned].filter((u) => u !== actor.id);
       if (notify.length) {
         const link = `/app/canvas/${board.id}?comment=${row.id}`;
-        const title = `${actor.name} hat dich auf „${board.name}“ erwähnt`;
-        try {
-          await app.services.pushNotify?.({ userIds: notify, kind: 'canvas', title, body, url: link, tag: `canvas:${row.id}` });
-        } catch (e) {
-          console.error('[canvas] push', (e as Error).message);
+        // Each person gets the notification in their own language.
+        const titleFor = (u: string) => tUser(app as never, u)('{name} hat dich auf „{board}“ erwähnt', { name: actor.name, board: board.name });
+        for (const u of notify) {
+          try {
+            await app.services.pushNotify?.({ userIds: [u], kind: 'canvas', title: titleFor(u), body, url: link, tag: `canvas:${row.id}` });
+          } catch (e) {
+            console.error('[canvas] push', (e as Error).message);
+          }
         }
-        for (const u of notify) app.services.mobileFeed?.({ locationId: ctx.locationId, type: 'canvas_mention', area: '', userId: u, title, body, link, ref: `canvas:${row.id}:${u}` });
+        for (const u of notify) app.services.mobileFeed?.({ locationId: ctx.locationId, type: 'canvas_mention', area: '', userId: u, title: titleFor(u), body, link, ref: `canvas:${row.id}:${u}` });
       }
       return { ...commentOut(row), name: board.name, notified: notify.length };
     });

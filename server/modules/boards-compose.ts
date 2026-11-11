@@ -7,6 +7,7 @@ import { applyPatch, type Op, type PatchResult, type Risk } from '../services/bo
 import { PATCH_SCHEMA, SYSTEM, opsFromAi, parseAnswer, userPrompt, type Context } from '../services/boards-compose.js';
 import { stateOf, type BoardRow } from '../services/boards-store.js';
 import { callRoute } from '../services/route-call.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Living Boards, agentic: "Sag einfach, was du sehen willst" (text or push-to-talk). The request becomes a validated
@@ -17,7 +18,8 @@ import { callRoute } from '../services/route-call.js';
  */
 
 const HOURLY = 40;
-const week = (d: Date) => ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'][d.getDay()];
+const week = (d: Date, tz: string) => d.toLocaleDateString('en-GB', { weekday: 'long', timeZone: tz });
+const LANGUAGE: Record<string, string> = { en: 'English', de: 'German' }; // i18n-ignore (language names for the AI prompt)
 
 export const boardsComposeModule: Module = {
   name: 'boards-compose',
@@ -87,9 +89,9 @@ export const boardsComposeModule: Module = {
       const tz = app.location(ctx.locationId)?.timezone || 'Europe/Berlin';
       const state = stateOf(board);
       const context = await viewerContext(ctx);
-      const system = SYSTEM.replace('{brand}', String(app.services.brandName?.() ?? 'Neso CRM'));
-      const today = `${ymdInTz(new Date(), tz)}, ${week(new Date())}`;
-      const base = { today, tz, person: ctx.user?.name ?? 'Unbekannt', catalogue: reg.catalogue(), context, state, version: board.head, reg, request };
+      const system = SYSTEM.replace('{brand}', String(app.services.brandName?.() ?? 'Neso CRM')).replace('{language}', LANGUAGE[tCtx(ctx).locale] ?? 'English');
+      const today = `${ymdInTz(new Date(), tz)}, ${week(new Date(), tz)}`;
+      const base = { today, tz, person: ctx.user?.name ?? 'unknown', catalogue: reg.catalogue(tApp()), context, state, version: board.head, reg, request };
       let previous: string | undefined;
       let errors: string[] = [];
       let answer = null as ReturnType<typeof parseAnswer>;
@@ -98,7 +100,7 @@ export const boardsComposeModule: Module = {
         const r = await app.services.aiRun({ locationId: ctx.locationId, purpose: 'boards', user: userPrompt({ ...base, ...(previous ? { previous, errors } : {}) }), system: [{ text: system }], schema: PATCH_SCHEMA, maxTokens: 3500, timeoutMs: 90_000, userId: ctx.user?.id ?? null });
         answer = parseAnswer(String(r.text ?? ''));
         if (!answer) {
-          previous = 'Die Antwort war kein gültiges JSON nach dem Schema.';
+          previous = 'The answer was not valid JSON according to the schema.';
           errors = [];
           continue;
         }
@@ -109,7 +111,7 @@ export const boardsComposeModule: Module = {
         if (!errors.length) return { answer, result, errors };
         previous = JSON.stringify({ message: answer.message, ops: answer.ops });
       }
-      return { answer, result: null as PatchResult | null, errors: errors.length ? errors : ['Die KI hat keinen gültigen Vorschlag geliefert.'] };
+      return { answer, result: null as PatchResult | null, errors: errors.length ? errors : [tCtx(ctx)('Die KI hat keinen gültigen Vorschlag geliefert.')] };
     };
 
     const insertProposal = (ctx: Ctx, board: BoardRow, p: { prompt: string; message: string; ops: Op[]; risk: Risk; unsupported: unknown[]; via: string }): ProposalRow => {
@@ -133,19 +135,20 @@ export const boardsComposeModule: Module = {
       const request = str(ctx.body?.prompt, 'Wunsch', { required: true, max: LIMITS.prompt });
       if (request.length < 3) throw bad('Bitte beschreibe kurz, was du sehen möchtest.');
       const used = db.get<{ n: number }>("SELECT COUNT(*) AS n FROM ai_calls WHERE location_id = ? AND purpose = 'boards' AND user_id IS ? AND created_at > ?", ctx.locationId, ctx.user?.id ?? null, new Date(Date.now() - 3600_000).toISOString())!.n;
-      if (used >= HOURLY) throw new HttpError(429, `Du hast in der letzten Stunde schon ${HOURLY} Board-Wünsche gestellt – bitte warte etwas.`);
+      const t = tCtx(ctx);
+      if (used >= HOURLY) throw new HttpError(429, t('Du hast in der letzten Stunde schon {n} Board-Wünsche gestellt – bitte warte etwas.', { n: HOURLY }));
       const voice = ctx.body?.voice === true;
       // The wish itself is worth a line in the log (who asked for what); the change, if it is made, has its own.
       ctx.skipAfterWrite = true;
-      app.services.audit?.({ ctx, action: 'boards.compose', route: 'POST /api/boards/:id/compose', entityId: board.id, summary: `${board.name}: Wunsch${voice ? ' (gesprochen)' : ''} „${request.slice(0, 160)}“` });
+      app.services.audit?.({ ctx, action: 'boards.compose', route: 'POST /api/boards/:id/compose', entityId: board.id, summary: `${board.name}: ${voice ? tApp()('Wunsch (gesprochen) „{request}“', { request: request.slice(0, 160) }) : tApp()('Wunsch „{request}“', { request: request.slice(0, 160) })}` });
       const { answer, result, errors } = await ask(ctx, board, request);
       if (!answer) throw new HttpError(502, 'Die KI hat keine verwertbare Antwort geliefert – bitte versuche es noch einmal.');
       const unsupported = answer.unsupported;
       if (!answer.ops.length) {
         // nothing to change: a question the board cannot answer, or a wish no widget fulfils
-        return { ok: true, proposal: null, applied: false, message: answer.message || (unsupported.length ? 'Dafür gibt es noch kein Widget.' : 'Dazu muss ich nichts ändern.'), unsupported };
+        return { ok: true, proposal: null, applied: false, message: answer.message || (unsupported.length ? t('Dafür gibt es noch kein Widget.') : t('Dazu muss ich nichts ändern.')), unsupported };
       }
-      if (!result) return { ok: false, proposal: null, applied: false, message: answer.message || 'Das konnte ich nicht in eine gültige Änderung übersetzen.', errors, unsupported };
+      if (!result) return { ok: false, proposal: null, applied: false, message: answer.message || t('Das konnte ich nicht in eine gültige Änderung übersetzen.'), errors, unsupported };
       const row = insertProposal(ctx, board, { prompt: request, message: answer.message, ops: result.ops, risk: result.risk, unsupported, via: voice ? 'voice' : 'text' });
       // Low-risk layout changes can go straight through when the person wants that – never anything with addresses or buttons.
       if (prefs(ctx) === 'layout' && result.risk === 'low' && access !== 'view' && ctx.body?.preview !== true) {

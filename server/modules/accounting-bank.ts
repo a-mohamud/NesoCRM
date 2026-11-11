@@ -9,6 +9,7 @@ import { isTaxCode } from '../services/acc-vat.js';
 import { actor } from './accounting.js';
 import { markInvoicePaid } from './payments.js';
 import { recordPayment } from '../services/invoice-flow.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Bank statements: CSV (German banks) and CAMT.053 files are imported, every line is matched with open invoices (money in)
@@ -142,7 +143,8 @@ export const bankModule: Module = {
           if (r.changes) (added++, newIds.push(row.id));
         }
         db.run('UPDATE acc_bank_imports SET new_txns = ? WHERE id = ?', added, importId);
-        trail(app, ctx.locationId, a, 'bank.import', null, `${parsed.format.toUpperCase()}: ${added} neue von ${parsed.txns.length} Umsätzen`);
+        const tl = tLoc(app, ctx.locationId);
+        trail(app, ctx.locationId, a, 'bank.import', null, tl('{format}: {added} neue von {total} Umsätzen', { format: parsed.format.toUpperCase(), added, total: parsed.txns.length }));
       });
       const matched = added ? rematch(ctx.locationId) : 0;
       return { import_id: importId, format: parsed.format, total: parsed.txns.length, added, duplicates: parsed.txns.length - added, skipped: parsed.skipped, matched, errors: parsed.errors };
@@ -211,7 +213,7 @@ export const bankModule: Module = {
             console.error('[accounting] Teilzahlung', (e as Error).message);
           }
         }
-        trail(app, ctx.locationId, a, 'bank.confirm', entry?.id ?? null, `Rechnung ${inv.number}`);
+        trail(app, ctx.locationId, a, 'bank.confirm', entry?.id ?? null, tLoc(app, ctx.locationId)('Rechnung {number}', { number: inv.number }));
         return { ok: true, entry_id: entry?.id ?? null };
       }
       if (m.kind === 'receipt') {

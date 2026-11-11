@@ -1,4 +1,5 @@
 import type { Module } from '../core/app.js';
+import { tApp } from '../i18n/index.js';
 import { HttpError, bad, notFound, str, type Ctx } from '../core/http.js';
 import { id, now, sha256, token } from '../core/util.js';
 import { openSecret, sealSecret } from '../core/secrets.js';
@@ -57,7 +58,7 @@ export const pushRelayModule: Module = {
       if (!tok) throw new HttpError(401, 'Relay-Token fehlt (Authorization: Bearer ghr_…)');
       const row = db.get('SELECT * FROM push_relay_instances WHERE token_hash = ?', sha256(tok));
       if (!row) throw new HttpError(401, 'Unbekannter Relay-Token');
-      if (row.status !== 'active') throw new HttpError(403, `Relay-Zugang gesperrt${row.revoked_reason ? `: ${row.revoked_reason}` : ''}`);
+      if (row.status !== 'active') throw new HttpError(403, row.revoked_reason ? tApp()('Relay-Zugang gesperrt: {reason}', { reason: tApp()(row.revoked_reason) }) : 'Relay-Zugang gesperrt');
       return row;
     };
     const instanceOut = (r: any) => ({
@@ -102,7 +103,7 @@ export const pushRelayModule: Module = {
     router.delete('/api/push-relay/instances/me', 'public', (ctx) => {
       const inst = instanceOf(ctx);
       db.run('DELETE FROM push_relay_devices WHERE instance_id = ?', inst.id);
-      db.run(`UPDATE push_relay_instances SET status = 'revoked', revoked_reason = 'von der Instanz selbst zurückgezogen' WHERE id = ?`, inst.id);
+      db.run(`UPDATE push_relay_instances SET status = 'revoked', revoked_reason = ? WHERE id = ?`, 'von der Instanz selbst zurückgezogen', inst.id);
       return { ok: true };
     });
 
@@ -132,11 +133,11 @@ export const pushRelayModule: Module = {
       const b = ctx.body ?? {};
       const handles = [...new Set((Array.isArray(b.handles) ? b.handles : []).map(String))].slice(0, MAX_HANDLES_PER_SEND + 1) as string[];
       if (!handles.length) throw bad('handles fehlt');
-      if (handles.length > MAX_HANDLES_PER_SEND) throw bad(`Höchstens ${MAX_HANDLES_PER_SEND} Geräte je Aufruf`);
+      if (handles.length > MAX_HANDLES_PER_SEND) throw bad(tApp()('Höchstens {n} Geräte je Aufruf', { n: MAX_HANDLES_PER_SEND }));
       const limit = Number(inst.rate_per_min ?? defaultRate());
       if (!limiter.take(`i:${inst.id}`, limit, handles.length)) {
         db.run('UPDATE push_relay_instances SET rejected = rejected + ? WHERE id = ?', handles.length, inst.id);
-        throw new HttpError(429, `Limit erreicht (${limit} Mitteilungen je Minute) – bitte kurz warten`);
+        throw new HttpError(429, tApp()('Limit erreicht ({n} Mitteilungen je Minute) – bitte kurz warten', { n: limit }));
       }
       const mode: ContentMode = b.content === 'preview' ? 'preview' : 'generic';
       const msg = minimalMessage(b, mode);
@@ -148,7 +149,7 @@ export const pushRelayModule: Module = {
           continue;
         }
         if (!limiter.take(`d:${handle}`, PER_DEVICE_PER_MIN)) {
-          results.push({ handle, ok: false, error: 'Limit je Gerät erreicht' });
+          results.push({ handle, ok: false, error: tApp()('Limit je Gerät erreicht') });
           continue;
         }
         let tok = '';

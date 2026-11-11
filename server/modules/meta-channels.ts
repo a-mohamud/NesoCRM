@@ -31,6 +31,7 @@ import {
 } from '../services/meta.js';
 import { openSecret, sealSecret } from './mail-sync.js';
 import { inboundGate } from '../services/inbound-gate.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * WhatsApp Business (Cloud API), Facebook Messenger and Instagram Direct in Konversationen.
@@ -185,6 +186,8 @@ export const metaChannelsModule: Module = {
     ],
   ],
   register(app) {
+    // errors and settings feedback in the instance language (central error translation needs static texts)
+    const tm = tApp();
     const { db, router } = app;
     const fetcher = (): FetchLike => app.services.metaFetch ?? ((u: string, i?: RequestInit) => fetch(u, i));
 
@@ -359,8 +362,9 @@ export const metaChannelsModule: Module = {
         let n = 0;
         const next = nextStatus(m.status, e.status);
         if (next === 'failed') {
-          db.run(`UPDATE messages SET status = 'failed', error = ? WHERE id = ?`, e.error || 'Zustellung fehlgeschlagen', m.id);
-          logActivity(app, loc, m.contact_id, `${e.channel}.failed`, `${CHANNEL_LABEL[e.channel]}-Nachricht nicht zugestellt${e.error ? `: ${e.error}` : ''}`);
+          const tl = tLoc(app, loc);
+          db.run(`UPDATE messages SET status = 'failed', error = ? WHERE id = ?`, e.error || tl('Zustellung fehlgeschlagen'), m.id);
+          logActivity(app, loc, m.contact_id, `${e.channel}.failed`, `${tl('{channel}-Nachricht nicht zugestellt', { channel: CHANNEL_LABEL[e.channel] })}${e.error ? `: ${e.error}` : ''}`);
           n++;
         } else if (next) n += db.run('UPDATE messages SET status = ? WHERE id = ?', next, m.id).changes;
         // Instagram reports the last read message: everything before it is read as well.
@@ -426,7 +430,7 @@ export const metaChannelsModule: Module = {
         const target = route(hook, appSecret, e);
         if (!target) {
           result.skipped++;
-          if (e.kind === 'message') noteError(hook.location_id, `${CHANNEL_LABEL[e.channel]}-Nachricht an unbekannte ID ${String(e.account).slice(0, 40) || '–'} ignoriert – bitte unter Einstellungen → Kanäle prüfen`);
+          if (e.kind === 'message') noteError(hook.location_id, tm('{channel}-Nachricht an unbekannte ID {id} ignoriert – bitte unter Einstellungen → Kanäle prüfen', { channel: CHANNEL_LABEL[e.channel], id: String(e.account).slice(0, 40) || '–' }));
           continue;
         }
         try {
@@ -473,7 +477,7 @@ export const metaChannelsModule: Module = {
         const to = ident?.external_id || waRecipient(c.phone);
         return to ? { to } : { to: '', reason: 'Kontakt hat keine gültige Telefonnummer' };
       }
-      if (!ident) return { to: '', reason: `Kontakt hat noch nicht über ${CHANNEL_LABEL[ch]} geschrieben` };
+      if (!ident) return { to: '', reason: tm('Kontakt hat noch nicht über {channel} geschrieben', { channel: CHANNEL_LABEL[ch] }) };
       // Identities from before several pages existed carry no account: they belong to the (then only) primary page.
       const page = ident.account_id ? pageByAccount(loc, ch, ident.account_id) : primary(loc, ch);
       if (!pageOk(page, ch)) return { to: '', reason: ch === 'instagram' ? 'Das Instagram-Konto, an das der Kontakt geschrieben hat, ist nicht mehr verbunden' : 'Die Seite, an die der Kontakt geschrieben hat, ist nicht mehr verbunden' };
@@ -485,7 +489,7 @@ export const metaChannelsModule: Module = {
       if (!META_CHANNELS.includes(ch)) throw bad('Unbekannter Kanal');
       const label = CHANNEL_LABEL[ch];
       const a = account(loc);
-      if (!a || !configured(a, ch)) throw bad(`${label} ist nicht eingerichtet (Einstellungen → Kanäle)`);
+      if (!a || !configured(a, ch)) throw bad(tm('{channel} ist nicht eingerichtet (Einstellungen → Kanäle)', { channel: label }));
       const c = getContact(app, loc, input.contactId);
       if (!c) throw notFound('Kontakt nicht gefunden');
       const { to, reason, page } = recipient(loc, c, ch);
@@ -503,8 +507,8 @@ export const metaChannelsModule: Module = {
         const lang = str(input.template.language, 'Sprache', { max: 20 });
         const pick = (list: TemplateInfo[]) => list.find((t) => t.name === name && (!lang || t.language === lang));
         const t = pick(await templates(loc)) ?? pick(await templates(loc, true));
-        if (!t) throw bad(`Vorlage „${name}“${lang ? ` (${lang})` : ''} nicht gefunden oder nicht freigegeben`);
-        if (!t.supported) throw bad(`Vorlage „${name}“: ${t.reason}`);
+        if (!t) throw bad(tm('Vorlage „{name}“{lang} nicht gefunden oder nicht freigegeben', { name, lang: lang ? ` (${lang})` : '' }));
+        if (!t.supported) throw bad(tm('Vorlage „{name}“: {reason}', { name, reason: tm(String(t.reason ?? '')) }));
         let built: ReturnType<typeof buildTemplate>;
         try {
           built = buildTemplate(t, input.template.values && typeof input.template.values === 'object' ? input.template.values : {});
@@ -513,17 +517,18 @@ export const metaChannelsModule: Module = {
         }
         payload = { messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'template', template: { name: t.name, language: { code: t.language }, ...(built.components.length ? { components: built.components } : {}) } };
         body = built.text;
-        subject = `Vorlage: ${t.name}`;
+        const tl = tLoc(app, loc);
+        subject = tl('Vorlage: {name}', { name: t.name });
         marketing = String(t.category).toUpperCase() === 'MARKETING';
       } else {
         body = String(input.body ?? '').trim();
         if (!body) throw bad('Nachricht fehlt');
-        if (body.length > TEXT_LIMITS[ch]) throw bad(`Zu lang für ${label}: ${body.length} von max. ${TEXT_LIMITS[ch]} Zeichen`);
+        if (body.length > TEXT_LIMITS[ch]) throw bad(tm('Zu lang für {channel}: {length} von max. {max} Zeichen', { channel: label, length: body.length, max: TEXT_LIMITS[ch] }));
         if (!win.open) {
           throw bad(
             ch === 'whatsapp'
               ? 'Das 24-Stunden-Fenster ist geschlossen – bitte eine freigegebene Vorlage senden'
-              : `Das 24-Stunden-Fenster ist geschlossen – über ${label} geht es erst weiter, wenn der Kontakt wieder schreibt`,
+              : tm('Das 24-Stunden-Fenster ist geschlossen – über {channel} geht es erst weiter, wenn der Kontakt wieder schreibt', { channel: label }),
           );
         }
         payload =
@@ -586,11 +591,11 @@ export const metaChannelsModule: Module = {
       /** A Graph call with the sub-account's token; `accountId` (page ID or Instagram account ID) picks the page, else the primary one. */
       graph: (loc: string, channel: MetaChannel, method: string, path: string, body?: unknown, accountId?: string) => {
         const a = account(loc);
-        if (!a || !configured(a, channel)) throw bad(`${CHANNEL_LABEL[channel]} ist nicht eingerichtet (Einstellungen → Kanäle)`);
+        if (!a || !configured(a, channel)) throw bad(tm('{channel} ist nicht eingerichtet (Einstellungen → Kanäle)', { channel: CHANNEL_LABEL[channel] }));
         let page: Page | undefined;
         if (channel !== 'whatsapp' && accountId) {
           page = pageByAccount(loc, channel, accountId) ?? pageByAccount(loc, channel === 'instagram' ? 'messenger' : 'instagram', accountId);
-          if (!pageOk(page, channel)) throw bad(`${CHANNEL_LABEL[channel]}: Konto ${accountId.slice(0, 40)} ist nicht verbunden (Einstellungen → Kanäle)`);
+          if (!pageOk(page, channel)) throw bad(tm('{channel}: Konto {id} ist nicht verbunden (Einstellungen → Kanäle)', { channel: CHANNEL_LABEL[channel], id: accountId.slice(0, 40) }));
         }
         return relay(() => graph<any>(a, channel, method, path, body, undefined, page));
       },
@@ -663,7 +668,7 @@ export const metaChannelsModule: Module = {
         try {
           r = await fetcher()(url, { headers: new URL(url).host === firstHost ? headers : {}, redirect: 'manual', signal: AbortSignal.timeout(20_000) });
         } catch (e) {
-          throw new HttpError(502, `Datei nicht abrufbar: ${(e as Error).message}`);
+          throw new HttpError(502, tm('Datei nicht abrufbar: {error}', { error: (e as Error).message }));
         }
         const next = r.status >= 300 && r.status < 400 ? r.headers.get('location') : null;
         if (!next) break;
@@ -671,7 +676,7 @@ export const metaChannelsModule: Module = {
         r = undefined;
       }
       if (!r) throw new HttpError(502, 'Datei nicht abrufbar (zu viele Weiterleitungen)');
-      if (!r.ok) throw new HttpError(r.status === 404 ? 404 : 502, r.status === 404 ? 'Datei bei Meta nicht mehr verfügbar' : `Datei nicht abrufbar (${r.status})`);
+      if (!r.ok) throw new HttpError(r.status === 404 ? 404 : 502, r.status === 404 ? 'Datei bei Meta nicht mehr verfügbar' : tm('Datei nicht abrufbar ({status})', { status: r.status }));
       if (Number(r.headers.get('content-length') || 0) > MEDIA_MAX) throw new HttpError(413, 'Datei zu groß für die Vorschau');
       const buf = Buffer.from(await r.arrayBuffer());
       if (buf.length > MEDIA_MAX) throw new HttpError(413, 'Datei zu groß für die Vorschau');
@@ -692,14 +697,14 @@ export const metaChannelsModule: Module = {
     const ID_LABEL: Record<string, string> = { wa_phone_number_id: 'Telefonnummer-ID', wa_business_account_id: 'WhatsApp-Business-Konto-ID', page_id: 'Seiten-ID', ig_account_id: 'Instagram-Konto-ID' };
     const cleanId = (b: any, f: string) => {
       const v = str(b[f], f, { max: 40 }).replace(/\s+/g, '');
-      if (v && !/^\d{3,40}$/.test(v)) throw bad(`${ID_LABEL[f]}: nur Ziffern`);
+      if (v && !/^\d{3,40}$/.test(v)) throw bad(tm('{field}: nur Ziffern', { field: tm(ID_LABEL[f]) }));
       return v;
     };
     const cleanSecret = (b: any, f: string): string | undefined => {
       if (b[f] === null) return '';
       if (b[f] === undefined || b[f] === '' || b[f] === MASK) return undefined;
       const v = str(b[f], f, { max: 1000 });
-      if (!/^[\w|.-]{16,1000}$/.test(v)) throw bad(`${f === 'app_secret' ? 'App-Secret' : 'Zugriffstoken'} sieht ungültig aus`);
+      if (!/^[\w|.-]{16,1000}$/.test(v)) throw bad(tm('{field} sieht ungültig aus', { field: f === 'app_secret' ? tm('App-Secret') : tm('Zugriffstoken') }));
       return sealSecret(app, v);
     };
     /** The page fields of a request (page_id, ig_account_id, page_token) as a patch of one meta_pages row. */
@@ -711,7 +716,7 @@ export const metaChannelsModule: Module = {
       // A page or Instagram account belongs to one entry of the list.
       for (const f of PAGE_ID_FIELDS) {
         if (!patch[f] || patch[f] === cur?.[f]) continue;
-        if (db.get(`SELECT 1 FROM meta_pages WHERE location_id = ? AND ${f} = ? AND id != ?`, loc, patch[f], cur?.id ?? '')) throw bad(`${ID_LABEL[f]} ${patch[f]} ist schon verbunden`);
+        if (db.get(`SELECT 1 FROM meta_pages WHERE location_id = ? AND ${f} = ? AND id != ?`, loc, patch[f], cur?.id ?? '')) throw bad(tm('{field} {id} ist schon verbunden', { field: tm(ID_LABEL[f]), id: patch[f] }));
       }
       // Names read from Meta belong to the old IDs.
       if (patch.page_id !== undefined && patch.page_id !== cur?.page_id) patch.page_name = '';
@@ -724,7 +729,7 @@ export const metaChannelsModule: Module = {
         if (keys.length) db.run(`UPDATE meta_pages SET ${keys.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ?`, ...keys.map((k) => patch[k]), now(), cur.id);
         return db.get<Page>('SELECT * FROM meta_pages WHERE id = ?', cur.id)!;
       }
-      if (db.get<{ n: number }>('SELECT COUNT(*) n FROM meta_pages WHERE location_id = ?', loc)!.n >= MAX_PAGES) throw bad(`Höchstens ${MAX_PAGES} Seiten je Sub-Account`);
+      if (db.get<{ n: number }>('SELECT COUNT(*) n FROM meta_pages WHERE location_id = ?', loc)!.n >= MAX_PAGES) throw bad(tm('Höchstens {n} Seiten je Sub-Account', { n: MAX_PAGES }));
       const row = { id: id(), location_id: loc, page_id: '', page_name: '', page_token: '', ig_account_id: '', ig_username: '', ...patch, created_at: now(), updated_at: now() };
       db.insert('meta_pages', row);
       return row as Page;
@@ -816,12 +821,12 @@ export const metaChannelsModule: Module = {
         await attempt('whatsapp', async () => {
           const r = await graph<any>(a, 'whatsapp', 'GET', `${a.wa_phone_number_id}?fields=display_phone_number,verified_name,quality_rating`);
           db.run('UPDATE meta_accounts SET wa_display_phone = ?, wa_verified_name = ? WHERE location_id = ?', String(r?.display_phone_number ?? '').slice(0, 40), String(r?.verified_name ?? '').slice(0, 120), a.location_id);
-          let info = [r?.verified_name, r?.display_phone_number].filter(Boolean).join(' · ') || 'verbunden';
-          if (r?.quality_rating) info += ` · Qualität ${r.quality_rating}`;
+          let info = [r?.verified_name, r?.display_phone_number].filter(Boolean).join(' · ') || tm('verbunden');
+          if (r?.quality_rating) info += tm(' · Qualität {rating}', { rating: r.quality_rating });
           if (a.wa_business_account_id) {
             const w = await graph<any>(a, 'whatsapp', 'GET', `${a.wa_business_account_id}?fields=name`);
-            if (w?.name) info += ` · Konto „${w.name}“`;
-          } else info += ' · Business-Konto-ID fehlt (für Vorlagen nötig)';
+            if (w?.name) info += tm(' · Konto „{name}“', { name: w.name });
+          } else info += tm(' · Business-Konto-ID fehlt (für Vorlagen nötig)');
           return info;
         });
       }
@@ -833,19 +838,19 @@ export const metaChannelsModule: Module = {
           await attempt(`messenger${suffix}`, async () => {
             const r = await graph<any>(a, 'messenger', 'GET', `${p.page_id}?fields=name`, undefined, undefined, p);
             db.run('UPDATE meta_pages SET page_name = ? WHERE id = ?', String(r?.name ?? '').slice(0, 120), p.id);
-            return r?.name ? `Seite „${r.name}“` : 'verbunden';
+            return r?.name ? tm('Seite „{name}“', { name: r.name }) : tm('verbunden');
           });
         }
         if (pageOk(p, 'instagram')) {
           await attempt(`instagram${suffix}`, async () => {
             const r = await graph<any>(a, 'instagram', 'GET', `${p.ig_account_id}?fields=username,name`, undefined, undefined, p);
             db.run('UPDATE meta_pages SET ig_username = ? WHERE id = ?', String(r?.username ?? '').slice(0, 60), p.id);
-            return r?.username ? `@${r.username}` : 'verbunden';
+            return r?.username ? `@${r.username}` : tm('verbunden');
           });
         }
       }
       if (!Object.keys(res).length) throw bad('Noch kein Kanal vollständig eingetragen (ID + Token)');
-      if (!a.app_secret) res.webhook = { ok: false, error: 'App-Secret fehlt – ohne es werden eingehende Nachrichten abgelehnt' };
+      if (!a.app_secret) res.webhook = { ok: false, error: tm('App-Secret fehlt – ohne es werden eingehende Nachrichten abgelehnt') };
       return { results: res, settings: out(account(ctx.locationId)!) };
     });
 
@@ -855,8 +860,8 @@ export const metaChannelsModule: Module = {
       const res: Record<string, { ok: boolean; info?: string; error?: string }> = {};
       const url = `${app.baseUrl()}/hooks/meta/${a.location_id}`;
       if (configured(a, 'whatsapp')) {
-        if (!a.wa_business_account_id) res.whatsapp = { ok: false, error: 'WhatsApp-Business-Konto-ID fehlt' };
-        else if (!url.startsWith('https://')) res.whatsapp = { ok: false, error: 'Braucht eine öffentliche https-Adresse (PGHL_BASE_URL)' };
+        if (!a.wa_business_account_id) res.whatsapp = { ok: false, error: tm('WhatsApp-Business-Konto-ID fehlt') };
+        else if (!url.startsWith('https://')) res.whatsapp = { ok: false, error: tm('Braucht eine öffentliche https-Adresse (PGHL_BASE_URL)') };
         else {
           try {
             await graph(a, 'whatsapp', 'POST', `${a.wa_business_account_id}/subscribed_apps`, { override_callback_uri: url, verify_token: a.verify_token });
@@ -871,7 +876,7 @@ export const metaChannelsModule: Module = {
         const key = `messenger${n++ ? `:${p.page_id}` : ''}`;
         try {
           await graph(a, 'messenger', 'POST', `${p.page_id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_deliveries,message_reads,message_reactions`, undefined, undefined, p);
-          res[key] = { ok: true, info: `Seite ${p.page_name ? `„${p.page_name}“ ` : ''}abonniert (Messenger und Instagram)` };
+          res[key] = { ok: true, info: p.page_name ? tm('Seite „{name}“ abonniert (Messenger und Instagram)', { name: p.page_name }) : tm('Seite abonniert (Messenger und Instagram)') };
         } catch (e) {
           res[key] = { ok: false, error: (e as Error).message };
         }
@@ -889,7 +894,7 @@ export const metaChannelsModule: Module = {
         const mode = step.mode === 'template' || step.mode === 'text' ? step.mode : 'auto';
         const open = windowState(run.location_id, run.contact_id, 'whatsapp').open;
         const useText = mode === 'text' || (mode === 'auto' && open && !!String(step.body ?? '').trim());
-        if (!useText && !step.template) throw new Error(open ? 'Kein Text und keine Vorlage gewählt' : 'Außerhalb des 24-Stunden-Fensters und keine Vorlage gewählt');
+        if (!useText && !step.template) throw new Error(open ? tm('Kein Text und keine Vorlage gewählt') : tm('Außerhalb des 24-Stunden-Fensters und keine Vorlage gewählt'));
         const values = Object.fromEntries(Object.entries(step.values ?? {}).map(([k, v]) => [k, t(v)]));
         const r = await sendMeta(run.location_id, {
           contactId: run.contact_id,

@@ -1,9 +1,10 @@
 import type { App, Module } from '../core/app.js';
 import { HttpError, bad, notFound, str, type Ctx } from '../core/http.js';
 import { id, now, slugify } from '../core/util.js';
-import { CalcInputError, csvDe, detailOf, exportRows, headline, inputSchema, resolveInput, rounded, run, type CalcInput, type RunOptions } from '../services/calc-engine.js';
-import { PRESETS, presetByKey, presetInput } from '../services/calc-presets.js';
+import { CalcInputError, csvDe, defaultInput, detailOf, exportRows, headline, inputSchema, resolveInput, rounded, run, type CalcInput, type RunOptions } from '../services/calc-engine.js';
+import { PRESETS, localizeNames, presetByKey, presetInput, presetText } from '../services/calc-presets.js';
 import { METRIC_KEYS, breakevenReport, compactRun, compare, kpisOf, type Kpis } from '../services/calc-summary.js';
+import { tApp, tCtx, type STFn } from '../i18n/index.js';
 
 /**
  * Gewinnrechner: "What do I earn at which price and how many customers, after all costs, fees and taxes?"
@@ -37,7 +38,7 @@ function guarded<T>(fn: () => T): T {
   try {
     return fn();
   } catch (e) {
-    if (e instanceof CalcInputError) throw bad(`Ungültige Eingabe: ${e.message}`);
+    if (e instanceof CalcInputError) throw bad(tApp()('Ungültige Eingabe: {error}', { error: e.message }));
     throw e;
   }
 }
@@ -71,11 +72,11 @@ function runOptions(body: any): RunOptions {
 
 const metricOf = (v: unknown) => {
   if (v === undefined || v === null || v === '') return undefined;
-  if (!(METRIC_KEYS as string[]).includes(String(v))) throw bad(`metric: einer von ${METRIC_KEYS.join(', ')} erwartet`);
+  if (!(METRIC_KEYS as string[]).includes(String(v))) throw bad(tApp()('metric: einer von {keys} erwartet', { keys: METRIC_KEYS.join(', ') }));
   return String(v) as (typeof METRIC_KEYS)[number];
 };
 
-export const actorOf = (ctx: Ctx) => ctx.user?.name || (ctx.via === 'mcp' ? 'MCP' : ctx.viaApiKey ? 'API-Schlüssel' : '');
+export const actorOf = (ctx: Ctx) => ctx.user?.name || (ctx.via === 'mcp' ? 'MCP' : ctx.viaApiKey ? tCtx(ctx)('API-Schlüssel') : '');
 
 const summaryOf = (r: ScenarioRow): Kpis | null => {
   try {
@@ -123,7 +124,7 @@ export const calcModule: Module = {
     };
 
     /** The input a request calculates with: defaults, a preset or a saved scenario, then the partial `input` on top. */
-    const inputOf = (loc: string, body: any, scenarioId?: string): { input: CalcInput; row?: ScenarioRow } => {
+    const inputOf = (loc: string, body: any, scenarioId?: string, t: STFn = tApp()): { input: CalcInput; row?: ScenarioRow } => {
       const b = isObj(body) ? body : {};
       let base: CalcInput | undefined;
       let row: ScenarioRow | undefined;
@@ -132,53 +133,60 @@ export const calcModule: Module = {
         row = scenario(loc, sid);
         base = storedInput(row);
       } else if (b.preset) {
-        base = presetInput(String(b.preset)) ?? undefined;
-        if (!base) throw bad(`Vorlage „${String(b.preset).slice(0, 40)}“ gibt es nicht (gültig: ${PRESETS.map((p) => p.key).join(', ')})`);
+        base = presetInput(String(b.preset), t) ?? undefined;
+        if (!base) throw bad(tApp()('Vorlage „{preset}“ gibt es nicht (gültig: {keys})', { preset: String(b.preset).slice(0, 40), keys: PRESETS.map((p) => p.key).join(', ') }));
       }
       const patch = b.input ?? b.overrides;
       if (patch !== undefined && patch !== null && !isObj(patch)) throw bad('input: Objekt erwartet');
-      return { input: guarded(() => resolveInput(patch ?? {}, base)), row };
+      // A new calculation starts from the defaults with their example names in the caller's language.
+      return { input: guarded(() => resolveInput(patch ?? {}, base ?? localizeNames(defaultInput(), t), t)), row };
     };
 
-    const answer = (input: CalcInput, body: any) => {
+    const answer = (input: CalcInput, body: any, t: STFn = tApp()) => {
       const b = isObj(body) ? body : {};
-      const r = run(input, runOptions(b));
-      if (b.compact === true) return compactRun(input, r, { metric: metricOf(b.metric), period: b.period === 'year' ? 'year' : 'month' });
-      return { ...rounded(r), headline: headline(input, r.focus), input };
+      const r = run(input, { ...runOptions(b), t });
+      if (b.compact === true) return compactRun(input, r, { metric: metricOf(b.metric), period: b.period === 'year' ? 'year' : 'month', t });
+      return { ...rounded(r), headline: headline(input, r.focus, t), input };
     };
 
     /** For the native app (calc-tools.ts): the same answers without a request of their own – no write, no audit entry. */
     app.services.calc = {
       scenarios: (loc: string) => db.all<ScenarioRow>('SELECT * FROM calc_scenarios WHERE location_id = ? ORDER BY updated_at DESC', loc).map((r) => out(r, false)),
-      run: (loc: string, scenarioId: string, body: unknown) => answer(inputOf(loc, body, scenarioId).input, { ...(isObj(body) ? body : {}), compact: true }),
+      run: (loc: string, scenarioId: string, body: unknown, t: STFn = tApp()) => answer(inputOf(loc, body, scenarioId, t).input, { ...(isObj(body) ? body : {}), compact: true }, t),
     };
 
     // --- reference data ---------------------------------------------------------------------------------------------
-    router.get('/api/calc/schema', 'location', () => inputSchema());
-    router.get('/api/calc/presets', 'location', () => PRESETS.map((p) => ({ key: p.key, name: p.name, description: p.description })));
+    router.get('/api/calc/schema', 'location', (ctx) => inputSchema(tCtx(ctx)));
+    router.get('/api/calc/presets', 'location', (ctx) => {
+      const t = tCtx(ctx);
+      return PRESETS.map((p) => presetText(p, t));
+    });
     router.get('/api/calc/presets/:key', 'location', (ctx) => {
       const p = presetByKey(ctx.params.key);
       if (!p) throw notFound('Vorlage nicht gefunden');
-      return { key: p.key, name: p.name, description: p.description, input: guarded(() => presetInput(p.key)) };
+      const t = tCtx(ctx);
+      return { ...presetText(p, t), input: guarded(() => presetInput(p.key, t)) };
     });
 
     // --- calculate (no state, no audit entry) -----------------------------------------------------------------------
     router.post('/api/calc/run', 'location', (ctx) => {
       ctx.skipAfterWrite = true;
-      const { input } = inputOf(ctx.locationId, ctx.body);
-      return answer(input, ctx.body);
+      const t = tCtx(ctx);
+      const { input } = inputOf(ctx.locationId, ctx.body, undefined, t);
+      return answer(input, ctx.body, t);
     });
     router.post('/api/calc/breakeven', 'location', (ctx) => {
       ctx.skipAfterWrite = true;
       const b = isObj(ctx.body) ? ctx.body : {};
-      const { input } = inputOf(ctx.locationId, b);
+      const t = tCtx(ctx);
+      const { input } = inputOf(ctx.locationId, b, undefined, t);
       const o = runOptions(b);
       let target: number | undefined;
       if (b.target_net_profit_month !== undefined && b.target_net_profit_month !== null && b.target_net_profit_month !== '') {
         target = Number(b.target_net_profit_month);
         if (!Number.isFinite(target) || target < 0 || target > 1e9) throw bad('target_net_profit_month: Betrag in € pro Monat (0 bis 1 Mrd.) erwartet');
       }
-      return breakevenReport(input, o.customers ?? input.customers.count, target);
+      return breakevenReport(input, o.customers ?? input.customers.count, target, t);
     });
 
     // --- scenarios (per sub-account) ----------------------------------------------------------------------------------
@@ -188,8 +196,8 @@ export const calcModule: Module = {
       const b = isObj(ctx.body) ? ctx.body : {};
       const name = str(b.name, 'Name', { required: true, max: 80 });
       const note = str(b.note, 'Notiz', { max: 500 });
-      if ((db.get<{ n: number }>('SELECT COUNT(*) AS n FROM calc_scenarios WHERE location_id = ?', ctx.locationId)?.n ?? 0) >= MAX_SCENARIOS) throw bad(`Höchstens ${MAX_SCENARIOS} Szenarien pro Sub-Account – bitte alte löschen`);
-      const { input } = inputOf(ctx.locationId, { preset: b.preset, input: b.input });
+      if ((db.get<{ n: number }>('SELECT COUNT(*) AS n FROM calc_scenarios WHERE location_id = ?', ctx.locationId)?.n ?? 0) >= MAX_SCENARIOS) throw bad(tApp()('Höchstens {n} Szenarien pro Sub-Account – bitte alte löschen', { n: MAX_SCENARIOS }));
+      const { input } = inputOf(ctx.locationId, { preset: b.preset, input: b.input }, undefined, tCtx(ctx));
       const preset = b.preset && presetByKey(String(b.preset)) ? String(b.preset) : null;
       const row: ScenarioRow = {
         id: id(),
@@ -217,7 +225,7 @@ export const calcModule: Module = {
       let input = cur.input;
       let summary = cur.summary;
       if (b.input !== undefined) {
-        const next = inputOf(ctx.locationId, { input: b.input }, cur.id).input;
+        const next = inputOf(ctx.locationId, { input: b.input }, cur.id, tCtx(ctx)).input;
         input = JSON.stringify(next);
         summary = JSON.stringify(rounded(kpisOf(detailOf(next, next.customers.count))));
       }
@@ -232,27 +240,29 @@ export const calcModule: Module = {
 
     router.post('/api/calc/scenarios/:id/run', 'location', (ctx) => {
       ctx.skipAfterWrite = true;
-      const { input } = inputOf(ctx.locationId, ctx.body, ctx.params.id);
-      return answer(input, ctx.body);
+      const t = tCtx(ctx);
+      const { input } = inputOf(ctx.locationId, ctx.body, ctx.params.id, t);
+      return answer(input, ctx.body, t);
     });
 
     router.post('/api/calc/compare', 'location', (ctx) => {
       ctx.skipAfterWrite = true;
       const ids = Array.isArray(ctx.body?.ids) ? [...new Set<string>(ctx.body.ids.map(String))] : [];
-      if (ids.length < 2 || ids.length > MAX_COMPARE) throw bad(`ids: zwei bis ${MAX_COMPARE} Szenarien zum Vergleichen angeben`);
+      if (ids.length < 2 || ids.length > MAX_COMPARE) throw bad(tApp()('ids: zwei bis {n} Szenarien zum Vergleichen angeben', { n: MAX_COMPARE }));
       // Recalculated, not read from the stored key figures: the comparison always matches the current engine.
       const items = ids.map((sid) => {
         const row = scenario(ctx.locationId, sid);
         const input = storedInput(row);
-        return { id: row.id, name: row.name, kpis: rounded(kpisOf(detailOf(input, input.customers.count))) };
+        return { id: row.id, name: row.name, kpis: rounded(kpisOf(detailOf(input, input.customers.count, -1, false, tCtx(ctx)))) };
       });
-      return compare(items);
+      return compare(items, tCtx(ctx));
     });
 
     router.get('/api/calc/scenarios/:id/export.csv', 'location', (ctx) => {
       const row = scenario(ctx.locationId, ctx.params.id);
-      const csv = csvDe(exportRows(run(storedInput(row))));
-      return { __raw: true, status: 200, headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="gewinnrechner-${slugify(row.name) || 'szenario'}.csv"` }, body: csv };
+      const t = tCtx(ctx);
+      const csv = csvDe(exportRows(run(storedInput(row), { t }), t));
+      return { __raw: true, status: 200, headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${t('gewinnrechner')}-${slugify(row.name) || t('szenario')}.csv"` }, body: csv };
     });
   },
 };

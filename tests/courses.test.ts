@@ -205,7 +205,7 @@ describe('courses', () => {
 
     // Opening the link only shows a button (mail scanners can't burn it).
     const show = await portalGet(link.pathname + link.search);
-    expect(await show.text()).toContain('Jetzt anmelden');
+    expect(await show.text()).toContain('Jetzt einloggen');
     const ok = await portalPost(`/portal/${loc}/auth`, { token: tokenValue });
     expect(ok.status).toBe(303);
     const set = ok.headers.get('set-cookie')!;

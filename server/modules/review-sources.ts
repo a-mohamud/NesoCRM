@@ -9,6 +9,7 @@ import { safeFetch } from '../services/net.js';
 import { MAX_REPLY } from '../services/review-replies.js';
 import { reviewAdapter, reviewAdapters, reviewFromRecord, reviewsFromCsv, type AdapterCtx, type Http, type ReviewIn } from '../services/review-sources.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Reviews from many platforms in Reputation. A connection per platform (adapter registry in services/review-sources.ts: Facebook,
@@ -108,7 +109,7 @@ function httpFor(app: App): Http {
     try {
       r = await f(url, { method: init.method ?? 'GET', headers, body, signal: AbortSignal.timeout(20_000) });
     } catch (e) {
-      throw new HttpError(502, `${new URL(url).host} nicht erreichbar: ${(e as Error).message}`);
+      throw new HttpError(502, tApp()('{host} nicht erreichbar: {error}', { host: new URL(url).host, error: (e as Error).message }));
     }
     const raw = await r.text();
     let data: any = null;
@@ -178,7 +179,7 @@ export const reviewSourcesModule: Module = {
         fetchUrl: async (url) => {
           if (app.services.reviewSourceFetch) return (await http(url)).text;
           const r = await safeFetch(url, { headers: { accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml' }, timeoutMs: 15_000, maxBytes: 2_000_000 });
-          if (!r.ok) throw new Error(`Feed nicht abrufbar (${r.status})`);
+          if (!r.ok) throw new Error(tApp()('Feed nicht abrufbar ({status})', { status: r.status }));
           return r.text();
         },
       };
@@ -212,7 +213,7 @@ export const reviewSourcesModule: Module = {
     /** Validates a connection's fields against its adapter; secrets are sealed, a masked or empty secret keeps the stored one. */
     const cleanFields = (source: string, b: any, cur?: Conn) => {
       const a = reviewAdapter(source);
-      if (!a) throw bad(`Unbekannte Plattform – möglich: ${reviewAdapters().map((x) => x.id).join(', ')}`);
+      if (!a) throw bad(tApp()('Unbekannte Plattform – möglich: {list}', { list: reviewAdapters().map((x) => x.id).join(', ') }));
       const config = cur ? json(cur.config) : {};
       const secrets = cur ? secretsOf(cur) : {};
       const src = b.config && typeof b.config === 'object' ? { ...b, ...b.config } : b;
@@ -224,8 +225,9 @@ export const reviewSourcesModule: Module = {
           else if (v !== '' && v !== MASK) secrets[f.key] = str(v, f.label, { max: 1000 }).trim();
         } else config[f.key] = str(v, f.label, { max: 500 }).trim();
       }
-      for (const f of a.fields) if (f.required && !(f.secret ? secrets[f.key] : config[f.key])) throw bad(`${f.label} fehlt`);
-      for (const k of ['profile_url', 'rss_url']) if (config[k] && !/^https:\/\/\S+$/.test(config[k])) throw bad(`${k === 'rss_url' ? 'Feed' : 'Profil-Link'}: nur https-Adressen`);
+      const tr = tApp();
+      for (const f of a.fields) if (f.required && !(f.secret ? secrets[f.key] : config[f.key])) throw bad(tr('{label} fehlt', { label: tr(f.label) }));
+      for (const k of ['profile_url', 'rss_url']) if (config[k] && !/^https:\/\/\S+$/.test(config[k])) throw bad(tr('{field}: nur https-Adressen', { field: k === 'rss_url' ? 'Feed' : tr('Profil-Link') }));
       if (source === 'facebook') {
         const ids = app.services.metaKit?.ids(cur?.location_id ?? b.__loc);
         if (!ids?.pages?.some((p: any) => p.page_id === config.page_id && p.messenger)) throw bad('Diese Facebook-Seite ist nicht unter Einstellungen → Kanäle verbunden');
@@ -236,7 +238,7 @@ export const reviewSourcesModule: Module = {
     // --- storing what a fetch returned ------------------------------------------------------------------------------
     /** One review name that matches exactly one contact links the review to it (as for Google). */
     const matchContact = (loc: string, author: string): string | null => {
-      if (!author.trim() || /^(anonym|.*-nutzer)$/i.test(author.trim())) return null;
+      if (!author.trim() || /^(anonym|anonymous|.*-nutzer|\S+ user)$/i.test(author.trim())) return null;
       const rows = db.all(`SELECT id FROM contacts WHERE location_id = ? AND lower(trim(first_name || ' ' || last_name)) = lower(trim(?)) LIMIT 2`, loc, author);
       return rows.length === 1 ? rows[0].id : null;
     };
@@ -281,8 +283,15 @@ export const reviewSourcesModule: Module = {
       }
       for (const r of fresh) {
         const low = r.rating !== null && r.rating <= LOW;
-        if (r.contact_id) logActivity(app, c.location_id, r.contact_id, 'review.received', `${label}-Bewertung: ${r.rating ? stars(r.rating) : ''}${r.text ? ` – ${String(r.text).slice(0, 80)}` : ''}`);
-        if (low) void notifyTeam(app, c.location_id, `Neue ${label}-Bewertung: ${r.rating}★ von ${r.author}`, `${r.author} hat ${r.rating} von 5 Sternen gegeben:\n\n${r.text || '(ohne Text)'}\n\n${r.link ? `Ansehen: ${r.link}\n` : ''}Alle Bewertungen: ${app.baseUrl()}/app/reviews`);
+        const tl = tLoc(app, c.location_id);
+        if (r.contact_id) logActivity(app, c.location_id, r.contact_id, 'review.received', `${tl('{platform}-Bewertung: {stars}', { platform: label, stars: r.rating ? stars(r.rating) : '' })}${r.text ? ` – ${String(r.text).slice(0, 80)}` : ''}`);
+        if (low)
+          void notifyTeam(
+            app,
+            c.location_id,
+            tl('Neue {platform}-Bewertung: {rating}★ von {author}', { platform: label, rating: r.rating ?? '', author: r.author }),
+            `${tl('{author} hat {rating} von 5 Sternen gegeben:', { author: r.author, rating: r.rating ?? '' })}\n\n${r.text || tl('(ohne Text)')}\n\n${r.link ? `${tl('Ansehen: {link}', { link: r.link })}\n` : ''}${tl('Alle Bewertungen: {url}', { url: `${app.baseUrl()}/app/reviews` })}`,
+          );
         app.events.emit(c.location_id, 'review.received', { contactId: r.contact_id ?? undefined, reviewId: r.id, source: c.source, platform: label, rating: r.rating, comment: r.text, author: r.author, link: r.link, low });
       }
       return { fetched: list.length, new: fresh.length };
@@ -329,7 +338,16 @@ export const reviewSourcesModule: Module = {
 
     // --- connection routes ------------------------------------------------------------------------------------------
     router.get('/api/review-sources', 'location', (ctx) => ({
-      adapters: reviewAdapters().map((a) => ({ id: a.id, label: a.label, kind: a.kind, hint: a.hint, mirror: !!a.mirror, replies: !!a.reply, fields: a.fields })),
+      adapters: ((t) =>
+        reviewAdapters().map((a) => ({
+          id: a.id,
+          label: t(a.label),
+          kind: a.kind,
+          hint: a.hint && t(a.hint),
+          mirror: !!a.mirror,
+          replies: !!a.reply,
+          fields: a.fields.map((f) => ({ ...f, label: t(f.label), ...(f.help ? { help: t(f.help) } : {}), ...(f.placeholder ? { placeholder: t(f.placeholder) } : {}) })),
+        })))(tCtx(ctx)),
       connections: db.all<Conn>('SELECT * FROM review_connections WHERE location_id = ? ORDER BY created_at', ctx.locationId).map(connOut),
       facebook_pages: (app.services.metaKit?.ids(ctx.locationId)?.pages ?? []).filter((p: any) => p.messenger).map((p: any) => ({ page_id: p.page_id, page_name: p.page_name })),
     }));
@@ -424,7 +442,7 @@ export const reviewSourcesModule: Module = {
         /* google-reviews not loaded */
       }
       const own = db.get<{ n: number; avg: number | null }>('SELECT COUNT(*) n, AVG(rating) avg FROM review_requests WHERE location_id = ? AND rating IS NOT NULL', loc);
-      if (own?.n) out.push({ source: 'own', label: 'Eigene Anfragen', rating: Math.round((own.avg ?? 0) * 10) / 10, total: own.n, url: '' });
+      if (own?.n) out.push({ source: 'own', label: tApp()('Eigene Anfragen'), rating: Math.round((own.avg ?? 0) * 10) / 10, total: own.n, url: '' });
       const rated = out.filter((x) => x.rating !== null && x.total > 0);
       const total = rated.reduce((s, x) => s + x.total, 0);
       return { platforms: out, overall: total ? { rating: Math.round((rated.reduce((s, x) => s + (x.rating ?? 0) * x.total, 0) / total) * 10) / 10, total } : null };
@@ -479,7 +497,7 @@ export const reviewSourcesModule: Module = {
       const a = reviewAdapter(r.source);
       if (!c || !a) throw notFound('Verbindung nicht gefunden');
       const out = itemOut(r, connMap(ctx.locationId));
-      if (!out.can_reply || !a.reply) throw new HttpError(409, `${labelOf(c)} erlaubt hier keine Antwort über die API – bitte auf der Plattform antworten`, { reply_link: out.reply_link });
+      if (!out.can_reply || !a.reply) throw new HttpError(409, tCtx(ctx)('{platform} erlaubt hier keine Antwort über die API – bitte auf der Plattform antworten', { platform: labelOf(c) }), { reply_link: out.reply_link });
       await a.reply(ctxFor(c), r, t).catch((e) => {
         throw e instanceof HttpError ? e : new HttpError(502, (e as Error).message);
       });

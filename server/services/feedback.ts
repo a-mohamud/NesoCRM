@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { bad } from '../core/http.js';
 import type { Stage } from './helpdesk.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Pure building blocks of „Fehler & Wünsche“ (bug reports, wish list, automatic error capture):
@@ -111,7 +112,7 @@ export function redact(input: unknown, max = 2000): string {
   s = s.slice(0, max * 2);
   s = s
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [entfernt]')
-    .replace(/\b(?:ghm|pghla|pghl|sk_live|sk_test|rk_live|pk_live|whsec|sk-ant|sk-proj|xox[abpr])[-_][A-Za-z0-9_-]{6,}/g, '[Schlüssel entfernt]')
+    .replace(/\b(?:ghm|pghla|pghl|sk_live|sk_test|rk_live|pk_live|whsec|sk-ant|sk-proj|xox[abpr])[-_][A-Za-z0-9_-]{6,}/g, tApp()('[Schlüssel entfernt]'))
     .replace(/eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, '[Token entfernt]')
     .replace(/((?:pass(?:word)?|passwort|token|secret|api[_-]?key|apikey|authorization|session|cookie|signature|otp)["']?\s*[:=]\s*["']?)[^\s"'&,;)}…]+/gi, '$1[entfernt]')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[E-Mail]')
@@ -162,7 +163,7 @@ export interface ApiFailure {
 
 export function cleanClientError(e: any): ClientError {
   return {
-    message: redact(e?.message, 500) || 'Unbekannter Fehler',
+    message: redact(e?.message, 500) || tApp()('Unbekannter Fehler'),
     stack: redact(e?.stack, 4000),
     source: cleanUrl(e?.source, 300),
     line: Math.max(0, Math.min(10_000_000, Math.round(Number(e?.line) || 0))),
@@ -293,9 +294,9 @@ export function parseScreenshot(input: unknown, max = SCREENSHOT_MAX): { mime: s
   const mime = m[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : m[1].toLowerCase();
   if (!MAGIC[mime]) throw bad('Screenshot nur als PNG, JPG oder WebP');
   // Base64 is 4/3 of the bytes – refuse oversized input before decoding it.
-  if (m[2].length > Math.ceil((max * 4) / 3) + 8) throw bad(`Screenshot ist größer als ${Math.round(max / 1024 / 1024)} MB`);
+  if (m[2].length > Math.ceil((max * 4) / 3) + 8) throw bad(tApp()('Screenshot ist größer als {mb} MB', { mb: Math.round(max / 1024 / 1024) }));
   const buf = Buffer.from(m[2], 'base64');
-  if (buf.length > max) throw bad(`Screenshot ist größer als ${Math.round(max / 1024 / 1024)} MB`);
+  if (buf.length > max) throw bad(tApp()('Screenshot ist größer als {mb} MB', { mb: Math.round(max / 1024 / 1024) }));
   if (buf.length < 16 || !MAGIC[mime](buf)) throw bad('Dateiinhalt passt nicht zum Bildtyp');
   return { mime, buf };
 }

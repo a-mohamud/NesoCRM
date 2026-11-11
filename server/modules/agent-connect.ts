@@ -5,6 +5,7 @@ import type { Tool } from './mcp.js';
 import { simplifySchema, type AgentTool } from '../services/agent-tools.js';
 import { bodyLocation } from '../services/mobile.js';
 import { uiItems, userFromRow } from './agent.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * The agent outside the web chat:
@@ -147,16 +148,16 @@ export const agentConnectModule: Module = {
             'x-openai-isConsequential': t.klass !== 'read',
             requestBody: { required: true, content: { 'application/json': { schema } } },
             responses: {
-              '200': { description: 'Ergebnis', content: { 'application/json': { schema: { type: 'object', properties: { result: {} }, additionalProperties: true } } } },
-              '401': { description: 'Schlüssel fehlt oder ungültig' },
-              '403': { description: 'Nicht erlaubt (nur lesen, fehlende Rechte)' },
+              '200': { description: 'Result', content: { 'application/json': { schema: { type: 'object', properties: { result: {} }, additionalProperties: true } } } },
+              '401': { description: 'Key missing or invalid' },
+              '403': { description: 'Not allowed (read-only, missing permissions)' },
             },
           },
         };
       }
       return {
         openapi: '3.1.0',
-        info: { title: `HyperLevel – ${locationName}`.slice(0, 100), version: '1.0.0', description: 'CRM-Aktionen für einen Custom GPT: Kontakte, Deals, Aufgaben, Posteingang, Tickets, Berichte. Jede Aktion läuft mit den Rechten des Schlüssels und landet im Protokoll.' },
+        info: { title: `HyperLevel – ${locationName}`.slice(0, 100), version: '1.0.0', description: 'CRM actions for a Custom GPT: contacts, deals, tasks, inbox, tickets, reports. Every action runs with the key\'s permissions and is recorded in the log.' },
         servers: [{ url: app.baseUrl() }],
         paths,
         components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } }, schemas: {} },
@@ -174,7 +175,8 @@ export const agentConnectModule: Module = {
     /** One action call from ChatGPT: bearer gha_ key → tool as the key's user, limited to its sub-account and tools. */
     router.post('/api/agent/gpt-actions/tools/:name', 'public', async (ctx) => {
       const bearer = String(ctx.req.headers.authorization ?? '').match(/^Bearer\s+(.+)$/i)?.[1] ?? '';
-      const fail = (status: number, error: string) => ({ __raw: true as const, status, headers: { 'content-type': 'application/json; charset=utf-8', ...(status === 401 ? { 'www-authenticate': 'Bearer realm="gpt-actions"' } : {}) }, body: JSON.stringify({ error }) });
+      // `error` is a German message id, answered in the instance language.
+      const fail = (status: number, error: string) => ({ __raw: true as const, status, headers: { 'content-type': 'application/json; charset=utf-8', ...(status === 401 ? { 'www-authenticate': 'Bearer realm="gpt-actions"' } : {}) }, body: JSON.stringify({ error: tApp()(error) }) });
       if (!bearer.startsWith(KEY_PREFIX)) return fail(401, 'Authorization: Bearer gha_… fehlt');
       const k = db.get('SELECT * FROM agent_gpt_keys WHERE key_hash = ?', sha256(bearer));
       if (!k) return fail(401, 'Ungültiger Schlüssel');

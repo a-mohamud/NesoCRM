@@ -41,7 +41,7 @@ export const DEEPGRAM_VOICES: VoiceEntry[] = [
 
 export const deepgramAdapter: Adapter = {
   id: 'deepgram',
-  label: 'Deepgram',
+  label: 'Deepgram', // i18n-ignore
   capabilities: ['audio_tts', 'stt'],
   defaultBase: DG_BASE,
   defaultAuth: 'token',
@@ -89,7 +89,7 @@ const cartesiaHeaders = (ctx: Pick<AdapterCtx, 'conn'>) => ({ 'cartesia-version'
 
 export const cartesiaAdapter: Adapter = {
   id: 'cartesia',
-  label: 'Cartesia',
+  label: 'Cartesia', // i18n-ignore
   capabilities: ['audio_tts', 'stt'],
   defaultBase: CARTESIA_BASE,
   defaultAuth: 'header:x-api-key',
@@ -99,7 +99,7 @@ export const cartesiaAdapter: Adapter = {
       { id: 'sonic-turbo', label: 'Sonic Turbo (schnellste)' },
       { id: 'sonic-3', label: 'Sonic 3 (ausdrucksstark, 40+ Sprachen)' },
     ],
-    stt: [{ id: 'ink-whisper', label: 'Ink Whisper' }],
+    stt: [{ id: 'ink-whisper', label: 'Ink Whisper' }], // i18n-ignore
   },
   async voices(ctx) {
     const q = ctx.language ? `&language=${enc(langOf(ctx.language))}` : '';
@@ -216,7 +216,7 @@ export function azureSsml(text: string, voice: string, speed?: number, language?
 
 export const azureSpeechAdapter: Adapter = {
   id: 'azure_speech',
-  label: 'Azure Speech',
+  label: 'Azure Speech', // i18n-ignore
   capabilities: ['audio_tts', 'stt'],
   defaultBase: '',
   defaultAuth: 'header:ocp-apim-subscription-key',
@@ -273,11 +273,11 @@ export function googleAudioConfig(mime: string, language: string, model: string)
 
 export const googleSpeechAdapter: Adapter = {
   id: 'google_speech',
-  label: 'Google Cloud Speech',
+  label: 'Google Cloud Speech', // i18n-ignore
   capabilities: ['audio_tts', 'stt'],
   defaultBase: GTTS,
   defaultAuth: 'header:x-goog-api-key',
-  models: { stt: [{ id: 'latest_long', label: 'Latest long' }, { id: 'latest_short', label: 'Latest short' }] },
+  models: { stt: [{ id: 'latest_long', label: 'Latest long' }, { id: 'latest_short', label: 'Latest short' }] }, // i18n-ignore
   async voices(ctx) {
     const { headers } = authFor(ctx.conn, 'header:x-goog-api-key');
     const q = ctx.language ? `?languageCode=${enc(localeOf(ctx.language))}` : '';
@@ -329,7 +329,7 @@ export const openaiCompatAdapter: Adapter = {
   capabilities: ['audio_tts', 'stt'],
   defaultBase: '',
   defaultAuth: 'bearer',
-  models: { audio_tts: [{ id: 'kokoro', label: 'Kokoro' }, { id: 'tts-1', label: 'tts-1' }], stt: [{ id: 'whisper-1', label: 'Whisper' }] },
+  models: { audio_tts: [{ id: 'kokoro', label: 'Kokoro' }, { id: 'tts-1', label: 'tts-1' }], stt: [{ id: 'whisper-1', label: 'Whisper' }] }, // i18n-ignore
   async voices(ctx) {
     // Kokoro-FastAPI and some others list their voices; everything else takes free text.
     try {

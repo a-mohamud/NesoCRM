@@ -1,11 +1,12 @@
 import type { Module } from '../core/app.js';
 import { HttpError, bad, html, notFound, num, str } from '../core/http.js';
-import { messagePage, noscriptNotice, publicPage } from '../core/page.js';
+import { jsonForScript, messagePage, publicPage } from '../core/page.js';
 import { escapeHtml } from '../core/template.js';
 import { now } from '../core/util.js';
 import { contactName, getContact, logActivity } from '../services/contacts.js';
 import { notifyTeam } from '../services/messaging.js';
 import { sendReviewRequest } from '../services/reviews.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 export const reputationModule: Module = {
   name: 'reputation',
@@ -59,27 +60,32 @@ export const reputationModule: Module = {
 
     router.get('/r/:token', 'public', (ctx) => {
       const r = db.get('SELECT * FROM review_requests WHERE token = ?', ctx.params.token);
-      if (!r) return html(messagePage('Nicht gefunden', 'Dieser Link ist nicht gültig.'), 404);
+      if (!r) {
+        const t0 = tApp();
+        return html(messagePage(t0('Nicht gefunden'), t0('Dieser Link ist nicht gültig.')), 404);
+      }
       const loc = app.location(r.location_id)!;
-      if (r.rating) return html(messagePage('Danke!', 'Deine Bewertung ist schon bei uns angekommen.'));
+      // Neso fork: the review page speaks the sub-account's customer language.
+      const t = tLoc(app, r.location_id);
+      if (r.rating) return html(messagePage(t('Danke!'), t('Deine Bewertung ist schon bei uns angekommen.')));
       const body = `<div class="wrap" style="max-width:560px"><div class="card" style="text-align:center">
-        <h1>Wie war es bei ${escapeHtml(loc.name)}?</h1><p class="muted" id="rv-hint">Tippe auf die Sterne.</p>${noscriptNotice('eine Bewertung abzugeben')}
-        <div id="stars" role="group" aria-labelledby="rv-hint" style="user-select:none">${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="rv-star" data-n="${n}" aria-pressed="false" aria-label="${n} von 5 Sternen">☆</button>`).join('')}</div>
+        <h1>${escapeHtml(t('Wie war es bei {name}?', { name: loc.name }))}</h1><p class="muted" id="rv-hint">${escapeHtml(t('Tippe auf die Sterne.'))}</p><noscript><p class="error">${escapeHtml(t('Bitte JavaScript einschalten, um eine Bewertung abzugeben.'))}</p></noscript>
+        <div id="stars" role="group" aria-labelledby="rv-hint" style="user-select:none">${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="rv-star" data-n="${n}" aria-pressed="false" aria-label="${escapeHtml(t('{n} von 5 Sternen', { n }))}">☆</button>`).join('')}</div>
         <style>.rv-star{background:none;color:inherit;border:0;border-radius:8px;padding:0 2px;font-size:44px;line-height:1;min-width:44px;min-height:44px;cursor:pointer}.rv-star:focus-visible{outline:2px solid var(--brand);outline-offset:2px}</style>
-        <form id="f" hidden style="text-align:left"><label for="rv-comment">Was können wir besser machen? (optional)</label><textarea id="rv-comment" name="comment"></textarea>
-        <label class="check"><input type="checkbox" name="public" value="1"> Meine Bewertung darf auf der Webseite gezeigt werden</label>
-        <p><button type="submit">Absenden</button></p><p class="error" id="rv-err" role="alert"></p></form><div id="done" class="ok" hidden></div></div></div>
+        <form id="f" hidden style="text-align:left"><label for="rv-comment">${escapeHtml(t('Was können wir besser machen? (optional)'))}</label><textarea id="rv-comment" name="comment"></textarea>
+        <label class="check"><input type="checkbox" name="public" value="1"> ${escapeHtml(t('Meine Bewertung darf auf der Webseite gezeigt werden'))}</label>
+        <p><button type="submit">${escapeHtml(t('Absenden'))}</button></p><p class="error" id="rv-err" role="alert"></p></form><div id="done" class="ok" hidden></div></div></div>
         <script>
         let rating = 0; const stars = [...document.querySelectorAll('#stars button')];
         stars.forEach(s => s.onclick = () => { rating = +s.dataset.n; stars.forEach(x => { x.textContent = +x.dataset.n <= rating ? '★' : '☆'; x.setAttribute('aria-pressed', String(+x.dataset.n === rating)); }); document.getElementById('f').hidden = false; });
         document.getElementById('f').onsubmit = async (e) => { e.preventDefault(); const fd = new FormData(e.target); const err = document.getElementById('rv-err'); err.textContent = '';
           const r = await fetch('/api/public/reviews/${escapeHtml(r.token)}', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rating, comment: fd.get('comment'), public: !!fd.get('public') }) }).catch(() => null);
           const j = r ? await r.json().catch(() => ({})) : {};
-          if (!r || !r.ok) { err.textContent = j.error || 'Das hat nicht geklappt – bitte versuch es noch einmal.'; return; }
+          if (!r || !r.ok) { err.textContent = j.error || ${jsonForScript(t('Das hat nicht geklappt – bitte versuch es noch einmal.'))}; return; }
           if (j.redirect) { location.href = j.redirect; return; }
-          e.target.hidden = true; document.getElementById('stars').hidden = true; const d = document.getElementById('done'); d.hidden = false; d.textContent = 'Vielen Dank für dein Feedback!'; };
+          e.target.hidden = true; document.getElementById('stars').hidden = true; const d = document.getElementById('done'); d.hidden = false; d.textContent = ${jsonForScript(t('Vielen Dank für dein Feedback!'))}; };
         </script>`;
-      return html(publicPage({ title: `Bewertung – ${loc.name}`, body }));
+      return html(publicPage({ title: t('Bewertung – {name}', { name: loc.name }), body }));
     });
     router.post('/api/public/reviews/:token', 'public', (ctx) => {
       const r = db.get('SELECT * FROM review_requests WHERE token = ?', ctx.params.token);
@@ -91,9 +97,10 @@ export const reputationModule: Module = {
       db.run('UPDATE review_requests SET rating = ?, comment = ?, public = ?, responded_at = ? WHERE id = ?', rating, comment, ctx.body.public ? 1 : 0, now(), r.id);
       const loc = app.location(r.location_id)!;
       const settings = loc.settings.reviews ?? {};
-      if (r.contact_id) logActivity(app, r.location_id, r.contact_id, 'review.received', `Bewertung: ${'★'.repeat(rating)}${comment ? ` – ${comment.slice(0, 80)}` : ''}`);
+      const t = tLoc(app, r.location_id);
+      if (r.contact_id) logActivity(app, r.location_id, r.contact_id, 'review.received', `${t('Bewertung: {stars}', { stars: '★'.repeat(rating) })}${comment ? ` – ${comment.slice(0, 80)}` : ''}`);
       const c = r.contact_id ? getContact(app, r.location_id, r.contact_id) : undefined;
-      if (rating < Number(settings.threshold ?? 4)) void notifyTeam(app, r.location_id, `Kritisches Feedback (${rating}★)`, `${contactName(c)}: ${comment || '(kein Kommentar)'}`);
+      if (rating < Number(settings.threshold ?? 4)) void notifyTeam(app, r.location_id, t('Kritisches Feedback ({rating}★)', { rating }), `${contactName(c)}: ${comment || t('(kein Kommentar)')}`);
       app.events.emit(r.location_id, 'review.received', { contactId: r.contact_id, rating, comment });
       // Happy customers go on to the public profile (Google, Trustpilot…), the rest stays internal.
       const redirect = rating >= Number(settings.threshold ?? 4) && /^https?:\/\//.test(settings.public_url ?? '') ? settings.public_url : undefined;
@@ -114,7 +121,7 @@ export const reputationModule: Module = {
       const body = `<div class="wrap" style="max-width:none">${parts.map((p) => p.header).join('')}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px">${rows
         .map((r) => `<div class="card" style="padding:18px"><div style="color:#f59e0b">${'★'.repeat(r.rating)}</div><p>${escapeHtml(r.comment)}</p><p class="muted" style="font-size:13px">${escapeHtml(r.first_name ?? '')} ${escapeHtml((r.last_name ?? '').slice(0, 1))}.</p></div>`)
         .join('')}${parts.flatMap((p) => p.cards).join('')}</div></div>`;
-      return html(publicPage({ title: `Bewertungen – ${loc.name}`, body, embed: true }));
+      return html(publicPage({ title: tLoc(app, loc.id)('Bewertungen – {name}', { name: loc.name }), body, embed: true }));
     });
   },
 };

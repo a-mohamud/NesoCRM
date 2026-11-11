@@ -9,7 +9,8 @@ import type { App } from '../core/app.js';
 import { HttpError, type Ctx } from '../core/http.js';
 import { callRoute } from './route-call.js';
 import type { BoardSpec, WidgetInst } from './boards-model.js';
-import type { View, WidgetCtx, WidgetRegistry } from './boards-widgets.js';
+import { translateView, type View, type WidgetCtx, type WidgetRegistry } from './boards-widgets.js';
+import { tCtx } from '../i18n/index.js';
 
 export interface WidgetData {
   view: View;
@@ -49,9 +50,11 @@ const message = (text: string, tone: 'gray' | 'yellow' | 'red' = 'gray'): View =
 /** One widget's view for this viewer. Never throws. */
 export async function widgetData(app: App, ctx: Ctx, w: WidgetInst, reg: WidgetRegistry): Promise<WidgetData> {
   const t0 = Date.now();
-  const done = (view: View): WidgetData => ({ view, ms: Date.now() - t0 });
+  const t = tCtx(ctx);
+  // the fixed texts of every view (also of widgets other modules registered) in the viewer's language
+  const done = (view: View): WidgetData => ({ view: translateView(view, t), ms: Date.now() - t0 });
   const def = reg.get(w.type);
-  if (!def) return done(message(`Dieses Widget („${w.type}“) ist auf diesem Server nicht verfügbar.`, 'yellow'));
+  if (!def) return done(message(t('Dieses Widget („{type}“) ist auf diesem Server nicht verfügbar.', { type: w.type }), 'yellow'));
   if (!def.data) return done(message('Dieses Widget zeigt keine Daten.'));
   if (def.access) {
     const why = denial(app, ctx, def.access);

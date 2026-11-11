@@ -4,6 +4,7 @@ import { getContact } from './contacts.js';
 import { isAway } from './team-people.js';
 import { nextAvailable, type AssignRule, type AssignTarget, type InboxSettings } from './teaminbox-model.js';
 import { agentsOf, brief, getConv, setAssignee, SYSTEM, type ConvRow, type Who } from './teaminbox-store.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Who gets a conversation: the contact's owner, a rule (channel / tag) or the default pool, taking turns or by the
@@ -85,12 +86,13 @@ export function decide(app: App, conv: ConvRow, s: InboxSettings, at = new Date(
   const agents = new Set(agentsOf(app, loc).map((a) => a.id));
   // 1. The contact's owner, when they work here and are around.
   const owner = s.assignment.prefer_contact_owner ? ((contact as any)?.assigned_to as string | undefined) : undefined;
-  if (owner && agents.has(owner) && (!s.assignment.respect_availability || !isAway(app, loc, owner, at, true))) return { userId: owner, teamId: rule?.target.type === 'team' ? rule.target.id : null, reason: 'Zuständig am Kontakt', priority: rule?.priority || undefined };
+  if (owner && agents.has(owner) && (!s.assignment.respect_availability || !isAway(app, loc, owner, at, true))) return { userId: owner, teamId: rule?.target.type === 'team' ? rule.target.id : null, reason: tLoc(app, loc)('Zuständig am Kontakt'), priority: rule?.priority || undefined };
   // 2. The first rule that fits, 3. the default pool.
   const target = rule?.target;
   const pool = poolOf(app, loc, s, target?.type === 'pool' ? undefined : target);
   const userId = pickFrom(app, loc, s, pool, at);
-  const reason = rule ? `Regel „${rule.name}“` : s.assignment.mode === 'least_busy' ? 'Geringste Auslastung' : 'Reihum';
+  const tl = tLoc(app, loc);
+  const reason = rule ? tl('Regel „{name}“', { name: rule.name }) : s.assignment.mode === 'least_busy' ? tl('Geringste Auslastung') : tl('Reihum');
   if (!userId && !pool.teamId) return rule?.priority ? { userId: null, teamId: null, reason, priority: rule.priority } : null;
   return { userId, teamId: pool.teamId, reason, priority: rule?.priority || undefined };
 }
@@ -99,7 +101,7 @@ export function decide(app: App, conv: ConvRow, s: InboxSettings, at = new Date(
  * Assigns a conversation by the rules (new conversations, and ones whose assignee is away). Returns the updated row, or the
  * unchanged one when there was nothing to do.
  */
-export function autoAssign(app: App, convId: string, locationId: string, s: InboxSettings, who: Who = { ...SYSTEM, via: 'rule', name: 'Zuweisungsregel' }, at = new Date()): ConvRow {
+export function autoAssign(app: App, convId: string, locationId: string, s: InboxSettings, who: Who = { ...SYSTEM, via: 'rule', name: tApp()('Zuweisungsregel') }, at = new Date()): ConvRow {
   let conv = getConv(app, locationId, convId);
   const pick = decide(app, conv, s, at);
   if (!pick) return conv;

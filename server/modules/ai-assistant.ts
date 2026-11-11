@@ -7,7 +7,6 @@ import { AiError, MODELS, ZERO_USAGE, callClaude, checkKey, costMicros, type Sys
 import {
   BOT_SCHEMA,
   SUMMARY_SCHEMA,
-  SUMMARY_TASK,
   botActive,
   botTask,
   budgetProblem,
@@ -17,6 +16,7 @@ import {
   handoffAfter,
   handoffBefore,
   isOpenAt,
+  isVisitorPlaceholder,
   knowledgeBlock,
   missingLead,
   monthStart,
@@ -24,6 +24,7 @@ import {
   parseBotOutput,
   parseSummary,
   suggestTask,
+  summaryTask,
   transcript,
   withDefaults,
   workflowTask,
@@ -37,6 +38,7 @@ import { createOpportunity, getPipeline } from '../services/opportunities.js';
 import { openSecret, sealSecret } from './mail-sync.js';
 import type { Tool } from './mcp.js';
 import { getProfile } from './projects.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * KI-Assistent (Conversation AI) per sub-account, on the Claude API with the customer's own key:
@@ -141,7 +143,7 @@ export const aiAssistantModule: Module = {
     // --- settings & key ---------------------------------------------------------------
     const load = (locId: string) => {
       const row = db.get('SELECT * FROM ai_settings WHERE location_id = ?', locId);
-      return { settings: withDefaults(row ? JSON.parse(row.data) : null), sealed: (row?.api_key as string | null) ?? null };
+      return { settings: withDefaults(row ? JSON.parse(row.data) : null, tLoc(app, locId)), sealed: (row?.api_key as string | null) ?? null };
     };
     const envKey = () => (process.env.PGHL_ANTHROPIC_API_KEY ?? '').trim();
     const keyFor = (locId: string): string | null => {
@@ -218,7 +220,7 @@ export const aiAssistantModule: Module = {
       if (!settings.enabled) throw new HttpError(409, 'Der KI-Assistent ist aus (Einstellungen → KI-Assistent).');
       const alt = altProvider(input.locationId, input.purpose, input.userId);
       const apiKey = alt ? alt.apiKey : keyFor(input.locationId);
-      if (!apiKey) throw new HttpError(409, `Kein ${alt ? alt.label : 'Anthropic'}-API-Schlüssel hinterlegt (Einstellungen → KI-Assistent).`);
+      if (!apiKey) throw new HttpError(409, tApp()('Kein {provider}-API-Schlüssel hinterlegt (Einstellungen → KI-Assistent).', { provider: alt ? alt.label : 'Anthropic' }));
       const model = alt ? alt.model : settings.model;
       const base = { locationId: input.locationId, purpose: input.purpose, contactId: input.contactId, conversationId: input.conversationId, userId: input.userId };
       const used = usageSince(input.locationId, monthStart(tzOf(input.locationId)));
@@ -266,8 +268,8 @@ export const aiAssistantModule: Module = {
     /** Why no AI call would go through right now (off, no key, budget used up), or null – checked before taking a phone call. */
     app.services.aiReady = (locId: string): string | null => {
       const { settings } = load(locId);
-      if (!settings.enabled) return 'Der KI-Assistent ist aus.';
-      if (!hasKey(locId)) return `Kein ${altProvider(locId)?.label ?? 'Anthropic'}-API-Schlüssel hinterlegt.`;
+      if (!settings.enabled) return tApp()('Der KI-Assistent ist aus.');
+      if (!hasKey(locId)) return tApp()('Kein {provider}-API-Schlüssel hinterlegt.', { provider: altProvider(locId)?.label ?? 'Anthropic' });
       const used = usageSince(locId, monthStart(tzOf(locId)));
       return budgetProblem(settings, { cost_micros: used.cost, tokens: used.tokens });
     };
@@ -396,7 +398,7 @@ export const aiAssistantModule: Module = {
         try {
           hint = `…${openSecret(app, sealed).slice(-4)}`;
         } catch {
-          hint = '(nicht lesbar – bitte neu eintragen)';
+          hint = tApp()('(nicht lesbar – bitte neu eintragen)');
         }
       }
       const tz = tzOf(locId);
@@ -433,7 +435,7 @@ export const aiAssistantModule: Module = {
       if (next.pipeline_id) {
         const p = getPipeline(app, ctx.locationId, next.pipeline_id);
         if (!p) throw bad('Pipeline nicht gefunden');
-        if (next.stage_id && !p.stages.some((s: any) => s.id === next.stage_id)) throw bad('Stufe nicht gefunden');
+        if (next.stage_id && !p.stages.some((s: any) => s.id === next.stage_id)) throw bad('Pipeline-Stufe nicht gefunden');
       } else next.stage_id = '';
       if (next.create_opportunity && !next.pipeline_id) throw bad('Für Opportunities bitte eine Pipeline wählen');
       let sealed = cur.sealed;
@@ -444,7 +446,7 @@ export const aiAssistantModule: Module = {
         sealed = sealSecret(app, k);
       }
       const alt = altProvider(ctx.locationId);
-      if (next.enabled && (alt ? !alt.apiKey : !sealed && !envKey())) throw bad(`Zum Einschalten bitte zuerst einen ${alt ? 'OpenAI-' : ''}API-Schlüssel eintragen.`);
+      if (next.enabled && (alt ? !alt.apiKey : !sealed && !envKey())) throw bad(alt ? 'Zum Einschalten bitte zuerst einen OpenAI-API-Schlüssel eintragen.' : 'Zum Einschalten bitte zuerst einen API-Schlüssel eintragen.');
       db.run(
         'INSERT INTO ai_settings (location_id, data, api_key, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(location_id) DO UPDATE SET data = excluded.data, api_key = excluded.api_key, updated_at = excluded.updated_at',
         ctx.locationId,
@@ -489,9 +491,10 @@ export const aiAssistantModule: Module = {
         ctx.locationId,
         Math.min(Math.max(1, num(ctx.query.get('limit'), 100)), 500),
       );
+      const t = tCtx(ctx);
       return {
         month,
-        purposes: PURPOSES,
+        purposes: Object.fromEntries(Object.entries(PURPOSES).map(([k, v]) => [k, t(v)])),
         by_purpose: byPurpose.map((p) => ({ purpose: p.purpose, calls: p.calls, cost_usd: p.cost / 1e6, tokens: p.tokens, cached_tokens: p.cached })),
         recent: recent.map((r) => ({ ...r, cost_usd: r.cost_micros / 1e6 })),
       };
@@ -509,14 +512,14 @@ export const aiAssistantModule: Module = {
       const r = await runAi({
         locationId: ctx.locationId,
         purpose: 'summary',
-        user: `${userContext(ctx.locationId, contact, messages, settings, 40)}\n\n${SUMMARY_TASK}`,
+        user: `${userContext(ctx.locationId, contact, messages, settings, 40)}\n\n${summaryTask(tCtx(ctx))}`,
         schema: SUMMARY_SCHEMA,
         contactId: contact.id,
         conversationId: conv.id,
         userId: ctx.user?.id ?? null,
       });
       const parsed = parseSummary(r.text);
-      if (!parsed.ok) throw new HttpError(502, `Die Zusammenfassung der KI war unbrauchbar (${parsed.error}) – bitte erneut versuchen.`);
+      if (!parsed.ok) throw new HttpError(502, tCtx(ctx)('Die Zusammenfassung der KI war unbrauchbar ({error}) – bitte erneut versuchen.', { error: parsed.error }));
       stateOf(ctx.locationId, conv.id);
       db.run('UPDATE ai_conversations SET summary = ?, next_step = ?, summary_at = ?, updated_at = ? WHERE conversation_id = ?', parsed.value.summary, parsed.value.next_step, now(), now(), conv.id);
       return { ...parsed.value, summary_at: now() };
@@ -557,19 +560,20 @@ export const aiAssistantModule: Module = {
     const handoff = async (locId: string, conv: any, contact: Contact, reason: string, s: AiSettings, lastText: string) => {
       db.run(`UPDATE ai_conversations SET bot_status = 'handoff', handoff_reason = ?, handoff_at = ?, updated_at = ? WHERE conversation_id = ?`, reason.slice(0, 300), now(), now(), conv.id);
       await botSay(locId, contact.id, s.handoff_message);
-      logActivity(app, locId, contact.id, 'ai.handoff', `KI-Assistent hat an das Team übergeben: ${reason}`);
+      const t = tLoc(app, locId);
+      logActivity(app, locId, contact.id, 'ai.handoff', t('KI-Assistent hat an das Team übergeben: {reason}', { reason }));
       void notifyTeam(
         app,
         locId,
-        `Chat-Übergabe: ${contactName(contact)}`,
-        `Der KI-Assistent hat ein Gespräch im Website-Chat an euch übergeben.\nGrund: ${reason}\n\nLetzte Nachricht:\n${lastText.slice(0, 1000)}\n\nAntworten: ${app.baseUrl()}/app/conversations/${conv.id}`,
+        t('Chat-Übergabe: {name}', { name: contactName(contact) }),
+        t('Der KI-Assistent hat ein Gespräch im Website-Chat an euch übergeben.\nGrund: {reason}\n\nLetzte Nachricht:\n{message}\n\nAntworten: {link}', { reason, message: lastText.slice(0, 1000), link: `${app.baseUrl()}/app/conversations/${conv.id}` }),
       ).catch(() => undefined);
       app.events.emit(locId, 'ai.handoff', { contactId: contact.id, conversationId: conv.id, reason });
     };
 
     const captureLead = (locId: string, contact: Contact, lead: BotLead) => {
       const patch: Record<string, string> = {};
-      const placeholder = !contact.first_name || contact.first_name === 'Website-Besucher';
+      const placeholder = !contact.first_name || isVisitorPlaceholder(contact.first_name);
       if (lead.first_name && placeholder) patch.first_name = lead.first_name;
       if (lead.last_name && !contact.last_name && (placeholder || lead.first_name.toLowerCase() === contact.first_name.toLowerCase())) patch.last_name = lead.last_name;
       if (lead.email && !contact.email) {
@@ -580,15 +584,17 @@ export const aiAssistantModule: Module = {
       if (lead.phone && !contact.phone) patch.phone = lead.phone;
       if (!Object.keys(patch).length) return contact;
       const { contact: updated } = upsertContact(app, locId, { id: contact.id, ...patch }, { source: 'Live-Chat', publicInput: true });
-      const labels: Record<string, string> = { first_name: 'Vorname', last_name: 'Nachname', email: 'E-Mail', phone: 'Telefon' };
-      logActivity(app, locId, contact.id, 'ai.lead', `KI-Assistent hat Kontaktdaten ergänzt: ${Object.keys(patch).map((k) => labels[k]).join(', ')}`);
+      const t = tLoc(app, locId);
+      const labels: Record<string, string> = { first_name: t('Vorname'), last_name: t('Nachname'), email: t('E-Mail'), phone: t('Telefon') };
+      logActivity(app, locId, contact.id, 'ai.lead', t('KI-Assistent hat Kontaktdaten ergänzt: {fields}', { fields: Object.keys(patch).map((k) => labels[k]).join(', ') }));
       return updated;
     };
 
     const buyingIntent = async (locId: string, conv: any, contact: Contact, out: BotOutput, s: AiSettings) => {
       const st = stateOf(locId, conv.id);
       if (st.opportunity_id || st.task_id) return;
-      const what = out.intent_summary || 'Kaufinteresse im Website-Chat';
+      const t = tLoc(app, locId);
+      const what = out.intent_summary || t('Kaufinteresse im Website-Chat');
       let oppId: string | null = null;
       let taskId: string | null = null;
       if (s.create_opportunity && s.pipeline_id) {
@@ -604,12 +610,12 @@ export const aiAssistantModule: Module = {
       }
       if (s.create_task) {
         taskId = id();
-        db.insert('tasks', { id: taskId, location_id: locId, contact_id: contact.id, title: `Chat-Lead nachfassen: ${what}`.slice(0, 200), description: 'Vom KI-Assistenten erkannt: Kaufinteresse im Website-Chat.', due_at: now(), assigned_to: null, done: 0, created_at: now() });
+        db.insert('tasks', { id: taskId, location_id: locId, contact_id: contact.id, title: t('Chat-Lead nachfassen: {what}', { what }).slice(0, 200), description: t('Vom KI-Assistenten erkannt: Kaufinteresse im Website-Chat.'), due_at: now(), assigned_to: null, done: 0, created_at: now() });
       }
       if (!oppId && !taskId) return;
       db.run('UPDATE ai_conversations SET opportunity_id = ?, task_id = ?, updated_at = ? WHERE conversation_id = ?', oppId, taskId, now(), conv.id);
-      logActivity(app, locId, contact.id, 'ai.intent', `KI-Assistent hat Kaufinteresse erkannt: ${what}`);
-      void notifyTeam(app, locId, `Kaufinteresse im Chat: ${contactName(contact)}`, `${what}\n\n${oppId ? 'Opportunity angelegt. ' : ''}${taskId ? 'Aufgabe angelegt.' : ''}\n\n${app.baseUrl()}/app/conversations/${conv.id}`).catch(() => undefined);
+      logActivity(app, locId, contact.id, 'ai.intent', t('KI-Assistent hat Kaufinteresse erkannt: {what}', { what }));
+      void notifyTeam(app, locId, t('Kaufinteresse im Chat: {name}', { name: contactName(contact) }), `${what}\n\n${oppId ? `${t('Opportunity angelegt.')} ` : ''}${taskId ? t('Aufgabe angelegt.') : ''}\n\n${app.baseUrl()}/app/conversations/${conv.id}`).catch(() => undefined);
     };
 
     /** Answers the newest chat message of a conversation, or hands it to the team. */
@@ -631,7 +637,8 @@ export const aiAssistantModule: Module = {
       if (!contact) return;
       db.run('UPDATE ai_conversations SET answered_until = ?, updated_at = ? WHERE conversation_id = ?', pending[pending.length - 1].created_at, now(), convId);
       const recentReplies = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM messages WHERE location_id = ? AND source = ? AND created_at > ?`, locId, BOT_SOURCE, new Date(Date.now() - 3600_000).toISOString())!.n;
-      const pre = recentReplies >= BOT_HOURLY_CAP ? 'Zu viele Bot-Antworten in dieser Stunde' : handoffBefore(lastText, { keywords: settings.handoff_keywords, botReplies: st.bot_replies, maxReplies: settings.max_bot_replies });
+      const t = tLoc(app, locId);
+      const pre = recentReplies >= BOT_HOURLY_CAP ? t('Zu viele Bot-Antworten in dieser Stunde') : handoffBefore(lastText, { keywords: settings.handoff_keywords, botReplies: st.bot_replies, maxReplies: settings.max_bot_replies }, t);
       if (pre) return handoff(locId, conv, contact, pre, settings, lastText);
       let raw: string;
       try {
@@ -643,14 +650,14 @@ export const aiAssistantModule: Module = {
         const r = turn ? await turn({ locationId: locId, contact, conversationId: convId, prompt, schema: BOT_SCHEMA, ask }) : await ask(prompt, BOT_SCHEMA);
         raw = r.text;
       } catch (e) {
-        return handoff(locId, conv, contact, `KI nicht verfügbar: ${(e as Error).message}`, settings, lastText);
+        return handoff(locId, conv, contact, t('KI nicht verfügbar: {error}', { error: (e as Error).message }), settings, lastText);
       }
       const parsed = parseBotOutput(raw);
-      if (!parsed.ok) return handoff(locId, conv, contact, `KI-Antwort unbrauchbar (${parsed.error})`, settings, lastText);
+      if (!parsed.ok) return handoff(locId, conv, contact, t('KI-Antwort unbrauchbar ({error})', { error: parsed.error }), settings, lastText);
       const out = parsed.value;
       if (settings.lead_capture) contact = captureLead(locId, contact, out.lead);
       if (out.buying_intent) await buyingIntent(locId, conv, contact, out, settings);
-      const post = handoffAfter(out, settings.min_confidence);
+      const post = handoffAfter(out, settings.min_confidence, t);
       if (post) return handoff(locId, conv, contact, post, settings, lastText);
       await botSay(locId, contact.id, out.reply);
       db.run('UPDATE ai_conversations SET bot_replies = bot_replies + 1, updated_at = ? WHERE conversation_id = ?', now(), convId);
@@ -708,10 +715,11 @@ export const aiAssistantModule: Module = {
       ...(app.services.workflowActions ?? {}),
       ai_text: async (run: any, step: any, vars: Record<string, any>) => {
         const locId = run.location_id;
+        const t = tLoc(app, locId);
         const prompt = render(String(step.prompt ?? ''), vars).trim();
-        if (!prompt) throw new Error('Prompt fehlt');
+        if (!prompt) throw new Error(t('Prompt fehlt'));
         const contact = getContact(app, locId, run.contact_id);
-        if (!contact) throw new Error('Kontakt nicht gefunden');
+        if (!contact) throw new Error(t('Kontakt nicht gefunden'));
         const conv = db.get('SELECT id FROM conversations WHERE location_id = ? AND contact_id = ?', locId, contact.id);
         const messages = conv ? db.all('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at', conv.id) : [];
         const { settings } = load(locId);
@@ -730,19 +738,19 @@ export const aiAssistantModule: Module = {
             db.update('contacts', contact.id, { custom: { ...c.custom, [field.slice(7)]: text }, updated_at: now() });
           } else if ((CONTACT_FIELDS as readonly string[]).includes(field) && !['assigned_to', 'date_of_birth', 'email', 'phone'].includes(field)) {
             db.update('contacts', contact.id, { [field]: text.slice(0, 500), updated_at: now() });
-          } else throw new Error(`Feld ${field || '(leer)'} geht hier nicht`);
+          } else throw new Error(t('Feld {field} geht hier nicht', { field: field || t('(leer)') }));
           return `${field} = ${short}`;
         }
         if (target === 'email_draft') {
           const cid = conv?.id ?? getOrCreateConversation(app, locId, contact.id);
           db.insert('messages', { id: id(), location_id: locId, conversation_id: cid, contact_id: contact.id, channel: 'email', direction: 'out', subject: render(String(step.subject ?? ''), vars).slice(0, 300), body: text, status: 'draft', error: '', source: DRAFT_SOURCE, user_id: null, created_at: now() });
-          return `E-Mail-Entwurf angelegt: ${short}`;
+          return t('E-Mail-Entwurf angelegt: {text}', { text: short });
         }
         if (target === 'note') {
           db.insert('notes', { id: id(), location_id: locId, contact_id: contact.id, body: text, user_id: null, created_at: now() });
-          return `Notiz angelegt: ${short}`;
+          return t('Notiz angelegt: {text}', { text: short });
         }
-        throw new Error('Ziel unbekannt');
+        throw new Error(t('Ziel unbekannt'));
       },
     };
   },

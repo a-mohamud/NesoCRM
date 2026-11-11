@@ -4,6 +4,7 @@ import { registerActions, registerTriggers, type ActionDef, type FieldDef, type 
 import { registerContact } from '../services/webinar-register.js';
 import { attributePurchase } from '../services/webinar-track.js';
 import { getWebinar, linksOf, whenText, webinarTz } from '../services/webinar-store.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Webinars in the automations: six triggers, the action "Kontakt für Webinar anmelden", forms that register their senders,
@@ -71,17 +72,18 @@ export const webinarAutomationModule: Module = {
       },
       run: async (run, step) => {
         const id = String(step.webinar_id ?? '').trim();
-        if (!id) throw new Error('Bitte ein Webinar wählen');
+        const t = tLoc(app, run.location_id);
+        if (!id) throw new Error(t('Bitte ein Webinar wählen'));
         const w = getWebinar(app, { id }, run.location_id);
-        if (!w) throw new Error('Das Webinar gibt es in diesem Sub-Account nicht');
+        if (!w) throw new Error(t('Das Webinar gibt es in diesem Sub-Account nicht'));
         try {
           const r = registerContact(app, w, { contact_id: run.contact_id, session: step.session === 'ondemand' ? 'ondemand' : '', source: 'workflow', silent: step.silent === true || step.silent === 'true' });
           app.services.audit?.({ action: 'webinars.registrations.create', actor: 'Workflow', locationId: run.location_id, entityId: r.registration.id, summary: `${w.title}: ${r.contact.email}` });
           const join = linksOf(app, w, r.registration.id).join_url;
-          return { result: `${r.created ? 'Angemeldet' : 'War schon angemeldet'}: „${w.title}“, ${whenText(r.session.start, webinarTz(app, w))}`, vars: { webinar_join_url: join, webinar_session: r.session.start } };
+          return { result: t(r.created ? 'Angemeldet: „{title}“, {when}' : 'War schon angemeldet: „{title}“, {when}', { title: w.title, when: whenText(r.session.start, webinarTz(app, w)) }), vars: { webinar_join_url: join, webinar_session: r.session.start } };
         } catch (e) {
           // A full or missing session is a message for the run log, not a crash.
-          if (e instanceof HttpError) throw new Error(e.message);
+          if (e instanceof HttpError) throw new Error(t(e.message));
           throw e;
         }
       },

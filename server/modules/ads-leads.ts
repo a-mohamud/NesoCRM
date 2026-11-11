@@ -6,6 +6,7 @@ import { DEFAULT_LEAD_TAGS, handleLeadgen, leadSettings, pollLeads, signedBy } f
 import { STANDARD_QUESTIONS, createLeadForm, metaApi, subscribeLeadgen, type LeadFormSpec, type LeadQuestion } from '../services/ads-meta.js';
 import { activity, agencyAds, audit, fetcherOf, loadConnection, metaCreds, relay, saveConnection } from '../services/ads-store.js';
 import { sameSecret } from '../services/meta.js';
+import { tApp, tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Meta Lead Ads: instant forms created from HyperLevel, and the lead import – webhook (`leadgen`, X-Hub-Signature-256)
@@ -131,10 +132,10 @@ export const adsLeadsModule: Module = {
       try {
         fields = await subscribeLeadgen(metaApi(fetcher(), c.version, c.pageToken), c.pageId, agencyAds(app).meta.app_id || undefined);
       } catch (e) {
-        warn = `Webhook-Abo bei Meta nicht gesetzt (${(e as Error).message}) – die Leads werden trotzdem alle 10 Minuten abgeholt`;
+        warn = tCtx(ctx)('Webhook-Abo bei Meta nicht gesetzt ({error}) – die Leads werden trotzdem alle 10 Minuten abgeholt', { error: (e as Error).message });
       }
       saveConnection(app, ctx.locationId, 'meta', { config: { leads: { ...(conn!.config.leads ?? {}), enabled: true, enabled_at: conn!.config.leads?.enabled_at ?? now(), tags: tags.length ? tags : DEFAULT_LEAD_TAGS, subscribed: fields } } });
-      audit(app, ctx, 'ads.leads.enable', `Lead-Import für die Seite „${conn!.config.page_name ?? c.pageId}“ eingeschaltet`, { locationId: ctx.locationId });
+      audit(app, ctx, 'ads.leads.enable', tApp()('Lead-Import für die Seite „{page}“ eingeschaltet', { page: conn!.config.page_name ?? c.pageId }), { locationId: ctx.locationId });
       return { ...status(ctx.locationId), warning: warn || undefined };
     });
 
@@ -198,13 +199,13 @@ export const adsLeadsModule: Module = {
         description: str(b.description, 'Beschreibung', { max: 500 }) || undefined,
         questions,
         privacy_url: privacy,
-        thank_you: { title: str(thank.title, 'Danke-Titel', { max: 60 }) || 'Danke!', body: str(thank.body, 'Danke-Text', { max: 200 }) || 'Wir melden uns bei dir.', button_text: str(thank.button_text, 'Button', { max: 30 }) || undefined, url: thankUrl || undefined },
+        thank_you: { title: str(thank.title, 'Danke-Titel', { max: 60 }) || tLoc(app, ctx.locationId)('Danke!'), body: str(thank.body, 'Danke-Text', { max: 200 }) || tLoc(app, ctx.locationId)('Wir melden uns bei dir.'), button_text: str(thank.button_text, 'Button', { max: 30 }) || undefined, url: thankUrl || undefined },
       };
       const formId = await relay(() => createLeadForm(metaApi(fetcher(), c.version, c.pageToken), c.pageId, spec));
       const row = { id: id(), location_id: ctx.locationId, name, page_id: c.pageId, form_id: formId, spec: JSON.stringify(spec), status: 'ready', created_by: ctx.user?.id ?? null, created_at: now(), updated_at: now() };
       db.insert('ads_leadforms', row);
-      audit(app, ctx, 'ads.leadform.create', `Sofortformular „${name}“ bei Meta angelegt (Seite ${conn!.config.page_name ?? c.pageId})`, { locationId: ctx.locationId, entityId: row.id });
-      activity(app, ctx.locationId, { platform: 'meta', kind: 'leadform', summary: `Sofortformular „${name}“ angelegt`, actor: ctx.user?.name, via: ctx.via });
+      audit(app, ctx, 'ads.leadform.create', tApp()('Sofortformular „{name}“ bei Meta angelegt (Seite {page})', { name, page: conn!.config.page_name ?? c.pageId }), { locationId: ctx.locationId, entityId: row.id });
+      activity(app, ctx.locationId, { platform: 'meta', kind: 'leadform', summary: tLoc(app, ctx.locationId)('Sofortformular „{name}“ angelegt', { name }), actor: ctx.user?.name, via: ctx.via });
       return formOut(row);
     });
 
@@ -212,13 +213,13 @@ export const adsLeadsModule: Module = {
       const f = db.get('SELECT * FROM ads_leadforms WHERE id = ? AND location_id = ?', ctx.params.id, ctx.locationId);
       if (!f) throw notFound('Formular nicht gefunden');
       for (const cmp of db.all<{ name: string; spec: string }>(`SELECT name, spec FROM ads_campaigns WHERE location_id = ? AND status != 'error'`, ctx.locationId)) {
-        if (JSON.parse(cmp.spec || '{}').lead_form_id === f.id) throw new HttpError(409, `Das Formular wird von der Kampagne „${cmp.name}“ verwendet`);
+        if (JSON.parse(cmp.spec || '{}').lead_form_id === f.id) throw new HttpError(409, tApp()('Das Formular wird von der Kampagne „{name}“ verwendet', { name: cmp.name }));
       }
       // Meta keeps forms (their leads stay readable): archiving stops new answers.
       const c = metaCreds(loadConnection(app, ctx.locationId, 'meta'));
       if (f.form_id && c.pageToken) await metaApi(fetcher(), c.version, c.pageToken).call('POST', f.form_id, { status: 'ARCHIVED' }).catch(() => undefined);
       db.run('DELETE FROM ads_leadforms WHERE id = ? AND location_id = ?', f.id, ctx.locationId);
-      audit(app, ctx, 'ads.leadform.delete', `Sofortformular „${f.name}“ archiviert`, { locationId: ctx.locationId, entityId: f.id });
+      audit(app, ctx, 'ads.leadform.delete', tApp()('Sofortformular „{name}“ archiviert', { name: f.name }), { locationId: ctx.locationId, entityId: f.id });
       return { ok: true };
     });
   },

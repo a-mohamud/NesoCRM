@@ -1,6 +1,7 @@
 import { bad } from '../core/http.js';
 import { normalizePhone } from '../core/util.js';
 import { E164, say, twiml, xml } from './twilio.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Pure building blocks of ring groups and queues: the definition and its validation, who rings next for the
@@ -112,7 +113,7 @@ export function cleanGroup(raw: any, cur: GroupDef = defaultGroup(), refs: Group
         return { type: 'user' as const, id: uid, name };
       }
       const number = normalizePhone(str(m?.id ?? m?.number, 30));
-      if (!E164.test(number)) throw bad(`${number || 'Nummer'} ist keine gültige Nummer (Format +49…)`);
+      if (!E164.test(number)) throw bad(tApp()('{number} ist keine gültige Nummer (Format +49…)', { number: number || tApp()('Nummer') }));
       return { type: 'number' as const, id: number, name: str(m?.name, 60) || number };
     }).filter((m: Member) => (seen.has(memberKey(m)) ? false : (seen.add(memberKey(m)), true)));
     g.rr_next = 0;
@@ -209,7 +210,8 @@ export function afterNoAnswer(g: Pick<GroupDef, 'kind' | 'max_wait' | 'strategy'
 /** Seconds a caller is held before the next round (a queue keeps trying often, so a free agent is found soon). */
 export const HOLD_SECONDS = 15;
 
-export const positionText = (n: number) => (n <= 1 ? 'Sie sind der nächste Anrufer. Bitte bleiben Sie in der Leitung.' : `Sie sind der ${n}. Anrufer in der Warteschlange. Bitte bleiben Sie in der Leitung.`);
+/** Spoken to the caller: `t` is the sub-account's language. */
+export const positionText = (n: number, t: STFn = tApp()) => (n <= 1 ? t('Sie sind der nächste Anrufer. Bitte bleiben Sie in der Leitung.') : t('Sie sind der {n}. Anrufer in der Warteschlange. Bitte bleiben Sie in der Leitung.', { n }));
 
 /** TwiML of the hold segment: position (if wanted), the music once, then back to the next attempt. */
 export function holdTwiml(o: { position?: string; musicUrl: string; redirect: string }): string {

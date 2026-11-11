@@ -12,6 +12,7 @@ import { getConfig, hostNames, parseJsonSafe, pickHosts, slotsOfDay, type Picked
 import { answerLines, durationChoices, guestsAllowed, itemsForGross, mayChange, validateAnswers, type Answer, type TeamCalConfig } from './teamcal-model.js';
 import { holdBy, refundPayment, startHold, type HoldRow } from './teamcal-pay.js';
 import { createVideo, moveVideo, removeVideo, resolvePending } from './teamcal-video.js';
+import { tApp, tLoc, tUser } from '../i18n/index.js';
 
 /**
  * Booking on team calendars, in one place for the public page, the team's own booking, MCP and the app: validating the
@@ -74,9 +75,9 @@ function cleanGuests(cfg: TeamCalConfig, raw: unknown, own: string): string[] {
   if (!unique.length) return [];
   const max = guestsAllowed(cfg);
   if (!max) throw bad('Bei diesem Termin sind keine Gäste vorgesehen');
-  if (unique.length > max) throw bad(`Höchstens ${max} ${max === 1 ? 'Gast' : 'Gäste'}`);
+  if (unique.length > max) throw bad(tApp().plural(max, { one: 'Höchstens {n} Gast', other: 'Höchstens {n} Gäste' }));
   const badOne = unique.find((x) => !EMAIL.test(x));
-  if (badOne) throw bad(`Ungültige E-Mail-Adresse bei den Gästen: ${badOne}`);
+  if (badOne) throw bad(tApp()('Ungültige E-Mail-Adresse bei den Gästen: {email}', { email: badOne }));
   return unique;
 }
 
@@ -162,7 +163,8 @@ async function attachVideo(app: App, cal: CalendarRow, cfg: TeamCalConfig, apptI
   if (!appt) return;
   const hosts = parseJsonSafe<string[]>(appt.host_ids, []);
   const contact = appt.contact_id ? getContact(app, appt.location_id, appt.contact_id) : undefined;
-  const description = [contact ? `${[contact.first_name, contact.last_name].filter(Boolean).join(' ')} <${contact.email}>` : '', contact?.phone, appt.notes, appt.contact_id ? `Im CRM: ${app.baseUrl()}/app/contacts/${appt.contact_id}` : ''].filter(Boolean).join('\n');
+  const t = tLoc(app, appt.location_id);
+  const description = [contact ? `${[contact.first_name, contact.last_name].filter(Boolean).join(' ')} <${contact.email}>` : '', contact?.phone, appt.notes, appt.contact_id ? t('Im CRM: {url}', { url: `${app.baseUrl()}/app/contacts/${appt.contact_id}` }) : ''].filter(Boolean).join('\n');
   const r = await createVideo(app, cfg.video, appt, cal, hosts.length ? hosts : appt.assignee_id ? [appt.assignee_id] : [], description);
   if ('url' in r) {
     app.db.run('UPDATE appointments SET meeting_url = ?, meeting_state = ?, video_ref = ? WHERE id = ?', r.url, '', r.ref ? JSON.stringify(r.ref) : null, apptId);
@@ -177,7 +179,7 @@ async function attachVideo(app: App, cal: CalendarRow, cfg: TeamCalConfig, apptI
   if (fallback) app.db.run('UPDATE appointments SET meeting_url = ? WHERE id = ?', fallback, apptId);
   if (r.error) {
     app.db.run(`UPDATE appointments SET meeting_state = 'failed' WHERE id = ?`, apptId);
-    track(app, notifyTeam(app, cal.location_id, `Video-Link fehlt: ${appt.title}`, `Für den Termin ${appt.title} (${formatInTz(appt.start_at, cal.timezone)}) konnte kein Video-Link erstellt werden.\n${r.error}${fallback ? `\nStattdessen steht der feste Ort / Link im Termin.` : ''}`).catch(() => undefined));
+    track(app, notifyTeam(app, cal.location_id, t('Video-Link fehlt: {title}', { title: appt.title }), `${t('Für den Termin {title} ({when}) konnte kein Video-Link erstellt werden.', { title: appt.title, when: formatInTz(appt.start_at, cal.timezone) })}\n${r.error}${fallback ? `\n${t('Stattdessen steht der feste Ort / Link im Termin.')}` : ''}`).catch(() => undefined));
   }
 }
 
@@ -194,7 +196,8 @@ export async function resolvePendingLinks(app: App) {
     app.db.run(`UPDATE appointments SET meeting_url = ?, meeting_state = '' WHERE id = ?`, url, a.id);
     if (a.contact_id) {
       const cal = app.db.get<any>('SELECT timezone, name FROM calendars WHERE id = ?', a.calendar_id);
-      track(app, sendToContact(app, a.location_id, { contactId: a.contact_id, channel: 'email', subject: `Dein Video-Link: ${cal?.name ?? 'Termin'}`, body: `Hallo,\n\nhier ist der Link zu deinem Termin am ${formatInTz(a.start_at, cal?.timezone ?? 'Europe/Berlin')}:\n${url}\n\nTermin verwalten: ${app.baseUrl()}/book/manage/${a.manage_token}`, source: 'Terminbestätigung', ignoreDnd: true }).then(() => undefined));
+      const t = tLoc(app, a.location_id);
+      track(app, sendToContact(app, a.location_id, { contactId: a.contact_id, channel: 'email', subject: t('Dein Video-Link: {name}', { name: cal?.name ?? t('Termin') }), body: t('Hallo,\n\nhier ist der Link zu deinem Termin am {when}:\n{url}\n\nTermin verwalten: {manage}', { when: formatInTz(a.start_at, cal?.timezone ?? 'Europe/Berlin'), url, manage: `${app.baseUrl()}/book/manage/${a.manage_token}` }), source: 'Terminbestätigung', ignoreDnd: true }).then(() => undefined));
     }
   }
 }
@@ -204,13 +207,17 @@ export function notifyHosts(app: App, cal: CalendarRow, row: any, kind: 'new' | 
   const hosts = parseJsonSafe<string[]>(row.host_ids, []).length ? parseJsonSafe<string[]>(row.host_ids, []) : row.assignee_id ? [row.assignee_id] : [];
   if (!hosts.length) return;
   const contact = row.contact_id ? getContact(app, row.location_id, row.contact_id) : undefined;
-  const who = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email : 'Neuer Kontakt';
+  const t = tLoc(app, row.location_id);
+  const who = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email : t('Neuer Kontakt');
   const when = formatInTz(row.start_at, cal.timezone);
-  track(app, Promise.resolve(app.services.pushNotify?.({ locationId: row.location_id, userIds: hosts, kind: 'booking', title: `${kind === 'moved' ? 'Termin verschoben' : 'Neuer Termin'}: ${cal.name}`, body: `${who} · ${when}`, url: '/app/calendars', tag: `booking-${row.id}` })));
+  track(app, Promise.resolve(app.services.pushNotify?.({ locationId: row.location_id, userIds: hosts, kind: 'booking', title: kind === 'moved' ? t('Termin verschoben: {name}', { name: cal.name }) : t('Neuer Termin: {name}', { name: cal.name }), body: `${who} · ${when}`, url: '/app/calendars', tag: `booking-${row.id}` })));
   if (cal.settings.notify_team !== false) {
     for (const h of hostNames(app, hosts)) {
-      const email = app.db.get<{ email: string }>('SELECT email FROM users WHERE id = ?', h.id)?.email;
-      if (email) track(app, notifyTeam(app, row.location_id, `${kind === 'moved' ? 'Termin verschoben' : 'Neuer Termin für dich'}: ${cal.name}`, `${who} ${kind === 'moved' ? 'hat den Termin verschoben' : `hat ${cal.name} gebucht`}.\n${when} (${cal.timezone})\n${row.meeting_url ? `Link: ${row.meeting_url}\n` : ''}\n${app.baseUrl()}/app/calendars`, email).catch(() => undefined));
+      const user = app.db.get<{ email: string }>('SELECT email FROM users WHERE id = ?', h.id);
+      const email = user?.email;
+      const th = tUser(app as never, h.id);
+      const what = kind === 'moved' ? th('{who} hat den Termin verschoben.', { who }) : th('{who} hat {name} gebucht.', { who, name: cal.name });
+      if (email) track(app, notifyTeam(app, row.location_id, kind === 'moved' ? th('Termin verschoben: {name}', { name: cal.name }) : th('Neuer Termin für dich: {name}', { name: cal.name }), `${what}\n${when} (${cal.timezone})\n${row.meeting_url ? `${th('Link: {url}', { url: row.meeting_url })}\n` : ''}\n${app.baseUrl()}/app/calendars`, email).catch(() => undefined));
     }
   }
 }
@@ -240,11 +247,12 @@ export async function completeHold(app: App, holdId: string, session: { id?: str
         await refundPayment(app, hold.location_id, hold.payment_intent, `teamcal-late-${hold.id}`).catch((e) => console.error('[teamcal] refund', (e as Error).message));
       }
       app.db.run(`UPDATE teamcal_holds SET status = 'refunded' WHERE id = ?`, hold.id);
-      track(app, notifyTeam(app, hold.location_id, `Zahlung ohne freien Termin erstattet: ${cal.name}`, `${hold.contact.email} hat nach Ablauf der Reservierung bezahlt, der Termin ${formatInTz(hold.start_at, cal.timezone)} war inzwischen vergeben. Die Zahlung wurde erstattet${hold.payment_intent ? '' : ' – bitte im Stripe-Dashboard prüfen'}.`).catch(() => undefined));
+      const t = tLoc(app, hold.location_id);
+      track(app, notifyTeam(app, hold.location_id, t('Zahlung ohne freien Termin erstattet: {name}', { name: cal.name }), hold.payment_intent ? t('{email} hat nach Ablauf der Reservierung bezahlt, der Termin {when} war inzwischen vergeben. Die Zahlung wurde erstattet.', { email: hold.contact.email, when: formatInTz(hold.start_at, cal.timezone) }) : t('{email} hat nach Ablauf der Reservierung bezahlt, der Termin {when} war inzwischen vergeben. Die Zahlung wurde erstattet – bitte im Stripe-Dashboard prüfen.', { email: hold.contact.email, when: formatInTz(hold.start_at, cal.timezone) })).catch(() => undefined));
       return { hold: holdBy(app, 'id', hold.id)!, refunded: true };
     }
   }
-  const { contact } = upsertContact(app, hold.location_id, hold.contact, { source: `Kalender: ${cal.name}`, publicInput: (hold.meta.source || 'Buchungsseite') !== 'manuell' });
+  const { contact } = upsertContact(app, hold.location_id, hold.contact, { source: tLoc(app, hold.location_id)('Kalender: {name}', { name: cal.name }), publicInput: (hold.meta.source || 'Buchungsseite') !== 'manuell' });
   const invoice = createPaidInvoice(app, cal, cfg, hold, contact.id);
   const payment = { status: 'paid', mode: hold.mode, amount_cents: hold.amount_cents, due_cents: hold.due_cents, currency: hold.currency, invoice_id: invoice.id, payment_intent: hold.payment_intent, paid_at: hold.paid_at };
   const appt = await bookNow(app, cal, cfg, { start: hold.start_at, contact: { ...hold.contact }, notes: hold.notes, answers: hold.answers, meta: hold.meta, source: hold.meta.source || 'Buchungsseite', extra: { assignee_id: hold.host_ids[0] ?? null, host_ids: hold.host_ids, payment }, paid: true, skipCheck: true, checked: true });
@@ -265,13 +273,14 @@ function createPaidInvoice(app: App, cal: CalendarRow, cfg: TeamCalConfig, hold:
   const rate = cfg.payment.tax_rate ?? (s.small_business ? 0 : Number(s.tax_rate ?? 19));
   const title = cfg.payment.title || cal.name;
   const when = `${formatInTz(hold.start_at, cal.timezone)} (${cal.timezone})`;
+  const t = tLoc(app, hold.location_id);
   const inv = createInvoice(app, hold.location_id, {
     kind: 'invoice',
     contact_id: contactId,
-    title: hold.mode === 'deposit' ? `Anzahlung: ${title}` : title,
-    items: itemsForGross({ name: hold.mode === 'deposit' ? `Anzahlung: ${title}` : title, description: `Termin am ${when}` }, hold.due_cents, rate),
+    title: hold.mode === 'deposit' ? t('Anzahlung: {title}', { title }) : title,
+    items: itemsForGross({ name: hold.mode === 'deposit' ? t('Anzahlung: {title}', { title }) : title, description: t('Termin am {when}', { when }) }, hold.due_cents, rate),
     currency: hold.currency,
-    notes: `Online bezahlt über Stripe.${hold.mode === 'deposit' ? ` Restbetrag ${centsToMoney(hold.amount_cents - hold.due_cents, hold.currency)} vor Ort.` : ''}`,
+    notes: t('Online bezahlt über Stripe.') + (hold.mode === 'deposit' ? ` ${t('Restbetrag {amount} vor Ort.', { amount: centsToMoney(hold.amount_cents - hold.due_cents, hold.currency) })}` : ''),
   });
   if (hold.session_id) {
     app.db.run(
@@ -317,11 +326,12 @@ export async function cancelAppointment(app: App, appt: any, o: CancelOpts): Pro
   const inTime = mayChange(cfg.cancel_cutoff_hours, appt.start_at);
   if (o.by === 'customer') {
     if (!cfg.allow_cancel) throw new HttpError(403, 'Dieser Termin kann online nicht abgesagt werden – bitte melde dich direkt');
-    if (!inTime) throw new HttpError(403, cfg.cancel_cutoff_hours ? `Online absagen geht bis ${cfg.cancel_cutoff_hours} Stunden vor dem Termin – bitte melde dich direkt` : 'Der Termin hat schon begonnen');
+    if (!inTime) throw new HttpError(403, cfg.cancel_cutoff_hours ? tApp()('Online absagen geht bis {n} Stunden vor dem Termin – bitte melde dich direkt', { n: cfg.cancel_cutoff_hours }) : 'Der Termin hat schon begonnen');
   }
   app.db.run(`UPDATE appointments SET status = 'cancelled', cancel_reason = ? WHERE id = ?`, String(o.reason ?? '').slice(0, 300), appt.id);
   const next = app.db.get<any>('SELECT * FROM appointments WHERE id = ?', appt.id)!;
-  if (appt.contact_id) logActivity(app, appt.location_id, appt.contact_id, 'appointment.status_changed', o.by === 'customer' ? 'Termin vom Kontakt abgesagt' : `Termin abgesagt${o.reason ? `: ${o.reason}` : ''}`);
+  const t = tLoc(app, appt.location_id);
+  if (appt.contact_id) logActivity(app, appt.location_id, appt.contact_id, 'appointment.status_changed', o.by === 'customer' ? t('Termin vom Kontakt abgesagt') : t('Termin abgesagt') + (o.reason ? `: ${o.reason}` : ''));
   app.events.emit(appt.location_id, 'appointment.status_changed', { contactId: appt.contact_id, appointment: { ...next, ...(app.services.teamcalPayload?.(next) ?? {}) }, status: 'cancelled', calendarId: appt.calendar_id, by: o.by });
   void removeVideo(app, next).catch((e) => console.error('[teamcal] video', (e as Error).message));
   // Money: a customer's cancellation in time is refunded when the calendar says so; staff decide by hand.
@@ -336,7 +346,7 @@ export async function cancelAppointment(app: App, appt: any, o: CancelOpts): Pro
         if (pay.invoice_id) {
           // the invoice is cancelled by a Stornorechnung (a finalised invoice is never just flipped to void)
           try {
-            stornoInvoice(app, appt.location_id, pay.invoice_id, { reason: 'Erstattet: Termin abgesagt' });
+            stornoInvoice(app, appt.location_id, pay.invoice_id, { reason: t('Erstattet: Termin abgesagt') });
           } catch (e) {
             console.error('[teamcal] Storno', (e as Error).message);
           }
@@ -344,20 +354,24 @@ export async function cancelAppointment(app: App, appt: any, o: CancelOpts): Pro
         refund = 'refunded';
       } catch (e) {
         refund = 'manual';
-        track(app, notifyTeam(app, appt.location_id, `Erstattung fehlgeschlagen: ${appt.title}`, `Die automatische Erstattung für ${appt.title} ist fehlgeschlagen (${(e as Error).message}). Bitte im Stripe-Dashboard erstatten.`).catch(() => undefined));
+        track(app, notifyTeam(app, appt.location_id, t('Erstattung fehlgeschlagen: {title}', { title: appt.title }), t('Die automatische Erstattung für {title} ist fehlgeschlagen ({error}). Bitte im Stripe-Dashboard erstatten.', { title: appt.title, error: (e as Error).message })).catch(() => undefined));
       }
     } else if (cfg.payment.refund !== 'none') {
       refund = 'manual';
       app.db.run('UPDATE appointments SET payment = ? WHERE id = ?', JSON.stringify({ ...pay, status: 'refund_pending' }), appt.id);
     }
   }
-  const who = o.by === 'customer' ? 'vom Kontakt' : o.by === 'staff' ? 'vom Team' : 'automatisch';
-  track(app, notifyTeam(app, appt.location_id, `Termin abgesagt: ${appt.title}`, `${appt.title} (${formatInTz(appt.start_at, cal.timezone)}) wurde ${who} abgesagt.${refund === 'manual' ? '\nDie Zahlung muss noch erstattet werden (Zahlungen im Stripe-Dashboard).' : refund === 'refunded' ? '\nDie Zahlung wurde erstattet.' : ''}`).catch(() => undefined));
+  const at = formatInTz(appt.start_at, cal.timezone);
+  const by = o.by === 'customer' ? t('vom Kontakt abgesagt') : o.by === 'staff' ? t('vom Team abgesagt') : t('automatisch abgesagt');
+  track(app, notifyTeam(app, appt.location_id, t('Termin abgesagt: {title}', { title: appt.title }), `${t('{title} ({when}) wurde {by}.', { title: appt.title, when: at, by })}${refund === 'manual' ? `\n${t('Die Zahlung muss noch erstattet werden (Zahlungen im Stripe-Dashboard).')}` : refund === 'refunded' ? `\n${t('Die Zahlung wurde erstattet.')}` : ''}`).catch(() => undefined));
   notifyHostsCancel(app, cal, next);
+  const bookUrl = `${app.baseUrl()}/book/${cal.slug}`;
   if (appt.contact_id && o.by !== 'customer') {
-    track(app, sendToContact(app, appt.location_id, { contactId: appt.contact_id, channel: 'email', subject: `Termin abgesagt: ${cal.name}`, body: `Hallo,\n\nleider müssen wir deinen Termin am ${formatInTz(appt.start_at, cal.timezone)} (${cal.timezone}) absagen.${o.reason ? `\n${o.reason}` : ''}${refund === 'refunded' ? '\nDeine Zahlung wird erstattet.' : ''}\n\nEinen neuen Termin findest du hier: ${app.baseUrl()}/book/${cal.slug}`, source: 'Terminabsage', ignoreDnd: true }).then(() => undefined));
+    const body = `${t('Hallo,\n\nleider müssen wir deinen Termin am {when} ({tz}) absagen.', { when: at, tz: cal.timezone })}${o.reason ? `\n${o.reason}` : ''}${refund === 'refunded' ? `\n${t('Deine Zahlung wird erstattet.')}` : ''}\n\n${t('Einen neuen Termin findest du hier: {url}', { url: bookUrl })}`;
+    track(app, sendToContact(app, appt.location_id, { contactId: appt.contact_id, channel: 'email', subject: t('Termin abgesagt: {name}', { name: cal.name }), body, source: 'Terminabsage', ignoreDnd: true }).then(() => undefined));
   } else if (appt.contact_id) {
-    track(app, sendToContact(app, appt.location_id, { contactId: appt.contact_id, channel: 'email', subject: `Termin abgesagt: ${cal.name}`, body: `Hallo,\n\ndein Termin am ${formatInTz(appt.start_at, cal.timezone)} (${cal.timezone}) ist abgesagt.${refund === 'refunded' ? '\nDeine Zahlung wird erstattet (das dauert bei der Bank ein paar Tage).' : ''}${refund === 'manual' ? '\nÜber eine mögliche Erstattung melden wir uns.' : ''}\n\nNeuen Termin buchen: ${app.baseUrl()}/book/${cal.slug}`, source: 'Terminabsage', ignoreDnd: true }).then(() => undefined));
+    const body = `${t('Hallo,\n\ndein Termin am {when} ({tz}) ist abgesagt.', { when: at, tz: cal.timezone })}${refund === 'refunded' ? `\n${t('Deine Zahlung wird erstattet (das dauert bei der Bank ein paar Tage).')}` : ''}${refund === 'manual' ? `\n${t('Über eine mögliche Erstattung melden wir uns.')}` : ''}\n\n${t('Neuen Termin buchen: {url}', { url: bookUrl })}`;
+    track(app, sendToContact(app, appt.location_id, { contactId: appt.contact_id, channel: 'email', subject: t('Termin abgesagt: {name}', { name: cal.name }), body, source: 'Terminabsage', ignoreDnd: true }).then(() => undefined));
   }
   if (cfg.kind === 'group') void offerNext(app, cal, cfg, appt.start_at).catch(() => undefined);
   return { ok: true, status: 'cancelled', refund };
@@ -365,7 +379,7 @@ export async function cancelAppointment(app: App, appt: any, o: CancelOpts): Pro
 
 function notifyHostsCancel(app: App, cal: CalendarRow, row: any) {
   const hosts = parseJsonSafe<string[]>(row.host_ids, []).length ? parseJsonSafe<string[]>(row.host_ids, []) : row.assignee_id ? [row.assignee_id] : [];
-  if (hosts.length) track(app, Promise.resolve(app.services.pushNotify?.({ locationId: row.location_id, userIds: hosts, kind: 'booking', title: `Termin abgesagt: ${cal.name}`, body: formatInTz(row.start_at, cal.timezone), url: '/app/calendars', tag: `booking-${row.id}` })));
+  if (hosts.length) track(app, Promise.resolve(app.services.pushNotify?.({ locationId: row.location_id, userIds: hosts, kind: 'booking', title: tLoc(app, row.location_id)('Termin abgesagt: {name}', { name: cal.name }), body: formatInTz(row.start_at, cal.timezone), url: '/app/calendars', tag: `booking-${row.id}` })));
 }
 
 /** Moves an appointment; customers within the cutoff only. Keeps the host when they are free, otherwise takes another. */
@@ -378,7 +392,7 @@ export async function rescheduleAppointment(app: App, appt: any, startIso: strin
   if (appt.status !== 'confirmed') throw bad('Dieser Termin kann nicht mehr verschoben werden');
   if (o.by === 'customer') {
     if (!cfg.allow_reschedule) throw new HttpError(403, 'Dieser Termin kann online nicht verschoben werden – bitte melde dich direkt');
-    if (!mayChange(cfg.reschedule_cutoff_hours, appt.start_at)) throw new HttpError(403, cfg.reschedule_cutoff_hours ? `Online verschieben geht bis ${cfg.reschedule_cutoff_hours} Stunden vor dem Termin – bitte melde dich direkt` : 'Der Termin hat schon begonnen');
+    if (!mayChange(cfg.reschedule_cutoff_hours, appt.start_at)) throw new HttpError(403, cfg.reschedule_cutoff_hours ? tApp()('Online verschieben geht bis {n} Stunden vor dem Termin – bitte melde dich direkt', { n: cfg.reschedule_cutoff_hours }) : 'Der Termin hat schon begonnen');
   }
   const start = new Date(startIso);
   if (Number.isNaN(start.getTime())) throw bad('Ungültige Startzeit');
@@ -399,11 +413,15 @@ export async function rescheduleAppointment(app: App, appt: any, startIso: strin
   const end = new Date(start.getTime() + cal.duration * 60_000);
   app.db.run(`UPDATE appointments SET start_at = ?, end_at = ?, reminder_sent = 0 ${Object.keys(extra).map((k) => `, ${k} = ?`).join('')} WHERE id = ?`, start.toISOString(), end.toISOString(), ...Object.values(extra), appt.id);
   const next = app.db.get<any>('SELECT * FROM appointments WHERE id = ?', appt.id)!;
-  if (appt.contact_id) logActivity(app, appt.location_id, appt.contact_id, 'appointment.rescheduled', `Termin verschoben: ${formatInTz(next.start_at, cal.timezone)}`);
+  const t = tLoc(app, appt.location_id);
+  if (appt.contact_id) logActivity(app, appt.location_id, appt.contact_id, 'appointment.rescheduled', t('Termin verschoben: {when}', { when: formatInTz(next.start_at, cal.timezone) }));
   app.events.emit(appt.location_id, 'appointment.rescheduled', { contactId: appt.contact_id, appointment: { ...next, ...(app.services.teamcalPayload?.(next) ?? {}) }, previousStart: appt.start_at, calendarId: appt.calendar_id, by: o.by });
   void moveVideo(app, next).catch((e) => console.error('[teamcal] video', (e as Error).message));
   notifyHosts(app, cal, next, 'moved');
-  if (appt.contact_id) track(app, sendToContact(app, appt.location_id, { contactId: appt.contact_id, channel: 'email', subject: `Termin verschoben: ${cal.name}`, body: `Hallo,\n\ndein Termin findet jetzt am ${formatInTz(next.start_at, cal.timezone)} (${cal.timezone}) statt.${next.meeting_url ? `\nLink: ${next.meeting_url}` : ''}\n\nTermin verwalten: ${app.baseUrl()}/book/manage/${next.manage_token}`, source: 'Terminbestätigung', ignoreDnd: true }).then(() => undefined));
+  if (appt.contact_id) {
+    const body = `${t('Hallo,\n\ndein Termin findet jetzt am {when} ({tz}) statt.', { when: formatInTz(next.start_at, cal.timezone), tz: cal.timezone })}${next.meeting_url ? `\n${t('Link: {url}', { url: next.meeting_url })}` : ''}\n\n${t('Termin verwalten: {url}', { url: `${app.baseUrl()}/book/manage/${next.manage_token}` })}`;
+    track(app, sendToContact(app, appt.location_id, { contactId: appt.contact_id, channel: 'email', subject: t('Termin verschoben: {name}', { name: cal.name }), body, source: 'Terminbestätigung', ignoreDnd: true }).then(() => undefined));
+  }
   if (cfg.kind === 'group') void offerNext(app, cal, cfg, appt.start_at).catch(() => undefined);
   return next;
 }
@@ -419,7 +437,8 @@ function joinWaitlist(app: App, cal: CalendarRow, cfg: TeamCalConfig, start: Dat
   if (dup) throw bad('Du stehst für diesen Termin schon auf der Warteliste');
   const row = { id: id(), location_id: cal.location_id, calendar_id: cal.id, start_at: iso, contact: form.contact, notes: form.notes, answers, token: token(18), status: 'waiting', created_at: now() };
   app.db.insert('teamcal_waitlist', row);
-  if (form.contact.email) track(app, notifyTeam(app, cal.location_id, `Warteliste: ${cal.name}`, `${form.contact.email} steht für ${formatInTz(iso, cal.timezone)} auf der Warteliste.`).catch(() => undefined));
+  const t = tLoc(app, cal.location_id);
+  if (form.contact.email) track(app, notifyTeam(app, cal.location_id, t('Warteliste: {name}', { name: cal.name }), t('{email} steht für {when} auf der Warteliste.', { email: form.contact.email, when: formatInTz(iso, cal.timezone) })).catch(() => undefined));
   return { status: 'waitlisted', token: row.token };
 }
 
@@ -433,18 +452,27 @@ export async function offerNext(app: App, cal: CalendarRow, cfg: TeamCalConfig, 
   const contact = JSON.parse(w.contact);
   const expires = new Date(Date.now() + 24 * 3600_000).toISOString();
   app.db.run(`UPDATE teamcal_waitlist SET status = 'offered', offered_at = ?, offer_expires_at = ? WHERE id = ?`, now(), expires, w.id);
-  const { contact: c } = upsertContact(app, cal.location_id, contact, { source: `Kalender: ${cal.name}`, publicInput: true });
-  await sendToContact(app, cal.location_id, { contactId: c.id, channel: 'email', subject: `Platz frei: ${cal.name}`, body: `Hallo ${contact.first_name || ''},\n\nbei ${cal.name} am ${formatInTz(startIso, cal.timezone)} (${cal.timezone}) ist ein Platz frei geworden. Du kannst ihn 24 Stunden lang buchen:\n${app.baseUrl()}/book/waitlist/${w.token}\n\nWer zuerst bucht, bekommt den Platz.`, source: 'Warteliste', ignoreDnd: true });
+  const t = tLoc(app, cal.location_id);
+  const { contact: c } = upsertContact(app, cal.location_id, contact, { source: t('Kalender: {name}', { name: cal.name }), publicInput: true });
+  await sendToContact(app, cal.location_id, {
+    contactId: c.id,
+    channel: 'email',
+    subject: t('Platz frei: {name}', { name: cal.name }),
+    body: t('Hallo {first_name},\n\nbei {name} am {when} ({tz}) ist ein Platz frei geworden. Du kannst ihn 24 Stunden lang buchen:\n{url}\n\nWer zuerst bucht, bekommt den Platz.', { first_name: contact.first_name || '', name: cal.name, when: formatInTz(startIso, cal.timezone), tz: cal.timezone, url: `${app.baseUrl()}/book/waitlist/${w.token}` }),
+    source: 'Warteliste',
+    ignoreDnd: true,
+  });
 }
 
 /** The offer link: books the seat for the person on the waiting list, if it is still theirs and still free. */
 export async function bookFromWaitlist(app: App, tokenValue: string): Promise<{ appointment: any } | { checkout_url: string; hold_token: string } | { error: string }> {
   const w = app.db.get<any>('SELECT * FROM teamcal_waitlist WHERE token = ?', tokenValue);
-  if (!w) return { error: 'Dieses Angebot gibt es nicht.' };
+  const t = tLoc(app, w?.location_id);
+  if (!w) return { error: t('Dieses Angebot gibt es nicht.') };
   if (w.status === 'booked') return { appointment: app.db.get('SELECT * FROM appointments WHERE id = ?', w.appointment_id) };
-  if (w.status !== 'offered' || (w.offer_expires_at && w.offer_expires_at < now())) return { error: 'Das Angebot ist abgelaufen.' };
+  if (w.status !== 'offered' || (w.offer_expires_at && w.offer_expires_at < now())) return { error: t('Das Angebot ist abgelaufen.') };
   const cal = parseCal(app, w.calendar_id);
-  if (!cal) return { error: 'Diesen Kalender gibt es nicht mehr.' };
+  if (!cal) return { error: t('Diesen Kalender gibt es nicht mehr.') };
   const cfg = getConfig(app, cal.id);
   // A paid class stays paid: the seat is held and the person goes to Stripe; the entry is "booked" once the money arrives (completeHold).
   if (cfg.payment.mode !== 'none') {
@@ -454,18 +482,18 @@ export async function bookFromWaitlist(app: App, tokenValue: string): Promise<{ 
       const hold = await startHold(app, cal, cfg, { start, picked, contact: JSON.parse(w.contact), notes: w.notes ?? '', answers: JSON.parse(w.answers || '[]'), meta: { source: 'Warteliste', waitlist_id: w.id } });
       return { checkout_url: hold.session_url!, hold_token: hold.token };
     } catch (e) {
-      return { error: e instanceof HttpError ? e.message : 'Der Platz ist leider nicht mehr frei.' };
+      return { error: e instanceof HttpError ? e.message : t('Der Platz ist leider nicht mehr frei.') };
     }
   }
   try {
     const claimed = app.db.run(`UPDATE teamcal_waitlist SET status = 'booked' WHERE id = ? AND status = 'offered'`, w.id).changes;
-    if (!claimed) return { error: 'Das Angebot wurde schon benutzt.' };
+    if (!claimed) return { error: t('Das Angebot wurde schon benutzt.') };
     const appt = await bookNow(app, cal, cfg, { start: w.start_at, contact: JSON.parse(w.contact), notes: w.notes, answers: JSON.parse(w.answers || '[]'), source: 'Warteliste' });
     app.db.run('UPDATE teamcal_waitlist SET appointment_id = ? WHERE id = ?', appt.id, w.id);
     return { appointment: appt };
   } catch (e) {
     app.db.run(`UPDATE teamcal_waitlist SET status = 'offered' WHERE id = ? AND status = 'booked' AND appointment_id IS NULL`, w.id);
-    return { error: e instanceof HttpError ? e.message : 'Der Platz ist leider nicht mehr frei.' };
+    return { error: e instanceof HttpError ? e.message : t('Der Platz ist leider nicht mehr frei.') };
   }
 }
 

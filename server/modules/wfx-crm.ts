@@ -13,6 +13,7 @@ import { preview, requireText, rowsOf, text, tzOf, type ActionDef, type FieldDef
 import { bookAppointment, type CalendarRow } from './calendars.js';
 import { createInvoice, sendInvoice } from './payments.js';
 import { ensureFinal } from '../services/invoice-flow.js';
+import { tApp, tLoc, tUser } from '../i18n/index.js';
 
 /**
  * CRM and business steps in their own module: update deal/task/appointment, DND per channel, tags with conditions,
@@ -55,6 +56,7 @@ export function nextWeighted(app: App, locationId: string, key: string, candidat
 
 export function crmActions(app: App): ActionDef[] {
   const db = app.db;
+  const tr = tApp();
   const defs: ActionDef[] = [];
   const add = (d: ActionDef) => defs.push(d);
   const userMap = (loc: string) => new Map(teamOf(app, loc).map((u) => [u.id, u]));
@@ -72,7 +74,7 @@ export function crmActions(app: App): ActionDef[] {
     let d: Date | null;
     if (step[`${prefix}when`] === 'at') {
       d = parseDate(text(step[`${prefix}date`], vars), tz);
-      if (!d) throw new Error('Datum/Zeit ist ungültig');
+      if (!d) throw new Error(tr('Datum/Zeit ist ungültig'));
     } else {
       d = addToDate(new Date(), Number(step[`${prefix}amount`] ?? 1) || 0, String(step[`${prefix}unit`] ?? 'days'), tz);
     }
@@ -131,20 +133,20 @@ export function crmActions(app: App): ActionDef[] {
       // A cleared field (null, as the editor saves it) means "leave the value alone".
       if (step.value !== undefined && step.value !== null && String(step.value).trim() !== '') {
         const n = parseNumber(text(step.value, vars));
-        if (Number.isNaN(n)) throw new Error(text(step.value, vars).trim() ? `Wert „${preview(text(step.value, vars), 30)}“ ist keine Zahl` : 'Wert ist leer');
+        if (Number.isNaN(n)) throw new Error(text(step.value, vars).trim() ? tr('Wert „{value}“ ist keine Zahl', { value: preview(text(step.value, vars), 30) }) : tr('Wert ist leer'));
         patch.value = step.value_mode === 'add' ? Number(opp?.value ?? 0) + n : step.value_mode === 'multiply' ? Number(opp?.value ?? 0) * n : n;
       }
       if (!opp) {
         if (step.if_missing === 'create' && step.pipeline_id) {
           const o = createOpportunity(app, loc, { pipeline_id: step.pipeline_id, stage_id: step.stage_id, contact_id: run.contact_id, name: patch.name, value: patch.value, status: patch.status, lost_reason: patch.lost_reason, currency: patch.currency, expected_close_date: patch.expected_close_date, assigned_to: patch.assigned_to, source: 'Workflow' });
-          return { result: `Deal angelegt: ${o.name}`, vars: { deal_id: o.id }, output: o };
+          return { result: tr('Deal angelegt: {name}', { name: o.name }), vars: { deal_id: o.id }, output: o };
         }
-        if (step.if_missing === 'error') throw new Error('Kein Deal gefunden');
-        return { result: 'Kein Deal gefunden – übersprungen' };
+        if (step.if_missing === 'error') throw new Error(tr('Kein Deal gefunden'));
+        return { result: tr('Kein Deal gefunden – übersprungen') };
       }
-      if (!Object.keys(patch).length) return { result: 'Keine Änderung angegeben' };
+      if (!Object.keys(patch).length) return { result: tr('Keine Änderung angegeben') };
       const next = updateOpportunity(app, loc, opp.id, patch);
-      return { result: `Deal „${next.name}“ geändert: ${Object.keys(patch).join(', ')}`, vars: { deal_id: next.id }, output: next };
+      return { result: tr('Deal „{name}“ geändert: {fields}', { name: next.name, fields: Object.keys(patch).join(', ') }), vars: { deal_id: next.id }, output: next };
     },
   });
 
@@ -179,7 +181,7 @@ export function crmActions(app: App): ActionDef[] {
         if (step.action !== 'reopen') tasks = tasks.filter((t) => !t.done);
         else tasks = tasks.filter((t) => t.done);
       }
-      if (!tasks.length) return { result: 'Keine passende Aufgabe' };
+      if (!tasks.length) return { result: tr('Keine passende Aufgabe') };
       let n = 0;
       for (const t of tasks) {
         const patch: Record<string, any> = {};
@@ -195,7 +197,7 @@ export function crmActions(app: App): ActionDef[] {
         n++;
         if (step.action === 'complete') app.events.emit(loc, 'task.completed', { contactId: t.contact_id ?? undefined, task: { ...t, ...patch }, viaWorkflow: run.workflow_id, wfDepth: Number(run.event?.wfDepth ?? 0) + 1 });
       }
-      return { result: `${n} Aufgabe${n === 1 ? '' : 'n'} ${step.action === 'complete' ? 'abgehakt' : step.action === 'reopen' ? 'geöffnet' : 'geändert'}` };
+      return { result: step.action === 'complete' ? tr.plural(n, { one: '{n} Aufgabe abgehakt', other: '{n} Aufgaben abgehakt' }) : step.action === 'reopen' ? tr.plural(n, { one: '{n} Aufgabe geöffnet', other: '{n} Aufgaben geöffnet' }) : tr.plural(n, { one: '{n} Aufgabe geändert', other: '{n} Aufgaben geändert' }) };
     },
   });
 
@@ -220,10 +222,10 @@ export function crmActions(app: App): ActionDef[] {
     },
     run: (run, step, vars) => {
       const cal = parseJson(db.get<any>('SELECT * FROM calendars WHERE id = ? AND location_id = ?', step.calendar_id, run.location_id), ['availability', 'settings']) as CalendarRow | undefined;
-      if (!cal) throw new Error('Kalender nicht gefunden');
+      if (!cal) throw new Error(tr('Kalender nicht gefunden'));
       const start = whenDate(run, step, vars);
       const appt = bookAppointment(app, cal, { start: start.toISOString(), contact: { id: run.contact_id }, notes: text(step.notes, vars), source: 'Workflow', skipCheck: !step.check });
-      return { result: `Termin gebucht: ${start.toISOString()}`, vars: { appointment_id: appt.id }, output: { id: appt.id, start_at: appt.start_at } };
+      return { result: tr('Termin gebucht: {at}', { at: start.toISOString() }), vars: { appointment_id: appt.id }, output: { id: appt.id, start_at: appt.start_at } };
     },
   });
 
@@ -250,23 +252,23 @@ export function crmActions(app: App): ActionDef[] {
       if (step.which === 'id') a = db.get('SELECT * FROM appointments WHERE id = ? AND location_id = ?', text(step.appointment_id, vars).trim(), loc);
       else if (step.which === 'last') a = db.get(`SELECT * FROM appointments WHERE contact_id = ? AND location_id = ? AND status != 'blocked' ORDER BY start_at DESC LIMIT 1`, run.contact_id, loc);
       else a = db.get(`SELECT * FROM appointments WHERE contact_id = ? AND location_id = ? AND status = 'confirmed' AND start_at >= ? ORDER BY start_at LIMIT 1`, run.contact_id, loc, now());
-      if (!a) return { result: 'Kein passender Termin' };
+      if (!a) return { result: tr('Kein passender Termin') };
       const action = String(step.action ?? 'cancelled');
       if (action === 'reschedule') {
         const start = whenDate(run, step, vars, 'new_');
         const dur = Date.parse(a.end_at) - Date.parse(a.start_at);
         db.update('appointments', a.id, { start_at: start.toISOString(), end_at: new Date(start.getTime() + dur).toISOString(), reminder_sent: 0 });
         const next = db.get<any>('SELECT * FROM appointments WHERE id = ?', a.id)!;
-        logActivity(app, loc, a.contact_id, 'appointment.rescheduled', `Termin verschoben auf ${start.toISOString()}`);
+        logActivity(app, loc, a.contact_id, 'appointment.rescheduled', tLoc(app, loc)('Termin verschoben auf {at}', { at: start.toISOString() }));
         app.events.emit(loc, 'appointment.rescheduled', { contactId: a.contact_id, appointment: next, previousStart: a.start_at, calendarId: a.calendar_id, viaWorkflow: run.workflow_id, wfDepth: Number(run.event?.wfDepth ?? 0) + 1 });
-        return { result: `Termin verschoben auf ${start.toISOString()}`, output: next };
+        return { result: tr('Termin verschoben auf {at}', { at: start.toISOString() }), output: next };
       }
-      if (!['cancelled', 'confirmed', 'showed', 'noshow'].includes(action)) throw new Error('Unbekannte Aktion');
-      if (a.status === action) return { result: `Termin ist schon „${action}“` };
+      if (!['cancelled', 'confirmed', 'showed', 'noshow'].includes(action)) throw new Error(tr('Unbekannte Aktion'));
+      if (a.status === action) return { result: tr('Termin ist schon „{status}“', { status: action }) };
       db.update('appointments', a.id, { status: action });
-      logActivity(app, loc, a.contact_id, 'appointment.status_changed', `Termin: ${action}`);
+      logActivity(app, loc, a.contact_id, 'appointment.status_changed', tLoc(app, loc)('Termin: {status}', { status: action }));
       app.events.emit(loc, 'appointment.status_changed', { contactId: a.contact_id, appointment: { ...a, status: action }, status: action, calendarId: a.calendar_id, viaWorkflow: run.workflow_id, wfDepth: Number(run.event?.wfDepth ?? 0) + 1 });
-      return { result: `Termin: ${action}` };
+      return { result: tr('Termin: {status}', { status: action }) };
     },
   });
 
@@ -290,7 +292,7 @@ export function crmActions(app: App): ActionDef[] {
     run: (run, step) => {
       const on = step.value !== 'off';
       const chosen: string[] = (Array.isArray(step.channels) && step.channels.length ? step.channels : ['all']).map((c: unknown) => String(c).trim().toLowerCase()).filter((c: string) => DND_CHANNELS.some((d) => d[0] === c));
-      if (!chosen.length) throw new Error('Kein gültiger Kanal (all, email, sms, whatsapp, call, chat)');
+      if (!chosen.length) throw new Error(tr('Kein gültiger Kanal (all, email, sms, whatsapp, call, chat)'));
       for (const ch of chosen) {
         if (ch === 'all') {
           db.update('contacts', run.contact_id, { dnd: on ? 1 : 0, updated_at: now() }, run.location_id);
@@ -298,8 +300,8 @@ export function crmActions(app: App): ActionDef[] {
         } else if (on) db.run('INSERT OR REPLACE INTO wfx_dnd (contact_id, channel, at) VALUES (?, ?, ?)', run.contact_id, ch, now());
         else db.run('DELETE FROM wfx_dnd WHERE contact_id = ? AND channel = ?', run.contact_id, ch);
       }
-      logActivity(app, run.location_id, run.contact_id, 'dnd.changed', `Nicht stören ${on ? 'an' : 'aus'}: ${chosen.join(', ')}`);
-      return { result: `Nicht stören ${on ? 'an' : 'aus'} (${chosen.join(', ')})` };
+      logActivity(app, run.location_id, run.contact_id, 'dnd.changed', tLoc(app, run.location_id)(on ? 'Nicht stören an: {channels}' : 'Nicht stören aus: {channels}', { channels: chosen.join(', ') }));
+      return { result: tr(on ? 'Nicht stören an ({channels})' : 'Nicht stören aus ({channels})', { channels: chosen.join(', ') }) };
     },
   });
 
@@ -329,7 +331,7 @@ export function crmActions(app: App): ActionDef[] {
       const clean = (l: unknown[]) => l.map((t) => text(t, vars).trim()).filter(Boolean);
       if (clean(addT).length) addTags(app, run.location_id, run.contact_id, clean(addT));
       if (clean(rem).length) removeTags(app, run.location_id, run.contact_id, clean(rem));
-      return { result: `${ok ? 'Bedingung erfüllt' : 'Bedingung nicht erfüllt'}: +${clean(addT).join(', ') || '–'} −${clean(rem).join(', ') || '–'}` };
+      return { result: `${ok ? tr('Bedingung erfüllt') : tr('Bedingung nicht erfüllt')}: +${clean(addT).join(', ') || '–'} −${clean(rem).join(', ') || '–'}` };
     },
   });
 
@@ -357,18 +359,18 @@ export function crmActions(app: App): ActionDef[] {
       const team = userMap(loc);
       const rows = rowsOf<{ user_id: string; weight: number }>(step.rows, ['user_id']);
       const cands = (rows.length ? rows.map((r) => ({ id: String(r.user_id), weight: Math.max(0, Number(r.weight ?? 1)) })) : [...team.keys()].map((id) => ({ id, weight: 1 }))).filter((c) => team.has(c.id) || db.get('SELECT 1 FROM users WHERE id = ?', c.id));
-      if (!cands.length) throw new Error('Kein Teammitglied zum Zuweisen');
+      if (!cands.length) throw new Error(tr('Kein Teammitglied zum Zuweisen'));
       const contact = getContact(app, loc, run.contact_id);
-      if (step.skip_if_assigned && contact?.assigned_to) return { result: 'Schon zugewiesen – nicht geändert' };
+      if (step.skip_if_assigned && contact?.assigned_to) return { result: tr('Schon zugewiesen – nicht geändert') };
       const uid = nextWeighted(app, loc, `${run.workflow_id}:${step.id}`, cands);
-      if (!uid) throw new Error('Alle Gewichte sind 0');
+      if (!uid) throw new Error(tr('Alle Gewichte sind 0'));
       const user = db.get<any>('SELECT id, name, email FROM users WHERE id = ?', uid)!;
       const target = String(step.target ?? 'contact');
       if (target === 'contact' || target === 'both') db.update('contacts', run.contact_id, { assigned_to: uid, updated_at: now() }, loc);
       if (target === 'opportunity' || target === 'both') db.run(`UPDATE opportunities SET assigned_to = ?, updated_at = ? WHERE contact_id = ? AND location_id = ? AND status = 'open'`, uid, now(), run.contact_id, loc);
-      logActivity(app, loc, run.contact_id, 'assigned', `Zugewiesen an ${user.name}`);
-      if (step.task_notify) void Promise.resolve(app.services.pushNotify?.({ userIds: [uid], kind: 'tasks', title: 'Neu zugewiesen', body: String(vars.contact?.name ?? ''), url: `/app/contacts/${run.contact_id}`, tag: `assign-${run.contact_id}` })).catch(() => {});
-      return { result: `Zugewiesen an ${user.name}`, vars: { assigned_user: { id: user.id, name: user.name, email: user.email } }, output: { id: user.id, name: user.name } };
+      logActivity(app, loc, run.contact_id, 'assigned', tLoc(app, loc)('Zugewiesen an {name}', { name: user.name }));
+      if (step.task_notify) void Promise.resolve(app.services.pushNotify?.({ userIds: [uid], kind: 'tasks', title: tUser(app as never, uid)('Neu zugewiesen'), body: String(vars.contact?.name ?? ''), url: `/app/contacts/${run.contact_id}`, tag: `assign-${run.contact_id}` })).catch(() => {});
+      return { result: tr('Zugewiesen an {name}', { name: user.name }), vars: { assigned_user: { id: user.id, name: user.name, email: user.email } }, output: { id: user.id, name: user.name } };
     },
   });
 
@@ -388,7 +390,7 @@ export function crmActions(app: App): ActionDef[] {
     run: (run, step) => {
       const keep = step.keep_current !== false;
       const r = db.run(`UPDATE workflow_runs SET status = 'stopped', updated_at = ? WHERE contact_id = ? AND location_id = ? AND status IN ('active','waiting') ${keep ? 'AND id != ?' : ''}`, now(), run.contact_id, run.location_id, ...(keep ? [run.id] : []));
-      return { result: `${r.changes} Durchlauf${r.changes === 1 ? '' : 'läufe'} gestoppt` };
+      return { result: tr.plural(r.changes, { one: '{n} Durchlauf gestoppt', other: '{n} Durchläufe gestoppt' }) };
     },
   });
 
@@ -439,7 +441,7 @@ export function crmActions(app: App): ActionDef[] {
       if (channels.includes('email')) {
         const emails = ids.map((u) => team.get(u)?.email ?? db.get<any>('SELECT email FROM users WHERE id = ?', u)?.email).filter(Boolean);
         for (const e of emails.length ? emails : [undefined]) await notifyTeam(app, loc, title, `${body}\n\n${app.baseUrl()}${link}`, e);
-        done.push(`E-Mail (${emails.length || 1})`);
+        done.push(`${tr('E-Mail')} (${emails.length || 1})`);
       }
       if (channels.includes('sms')) {
         const numbers = text(step.sms_to, vars).split(/[,;\s]+/).filter(Boolean);
@@ -450,12 +452,12 @@ export function crmActions(app: App): ActionDef[] {
             await deliverSms(l!, n, `${title}: ${body}`.slice(0, 480));
             sent++;
           } catch (e) {
-            throw new Error(`SMS an ${n}: ${(e as Error).message}`);
+            throw new Error(tr('SMS an {to}: {error}', { to: n, error: (e as Error).message }));
           }
         }
         done.push(`SMS (${sent})`);
       }
-      return { result: done.length ? `Gemeldet über ${done.join(', ')}` : 'Niemand zu benachrichtigen', output: { users: ids.length, channels: done } };
+      return { result: done.length ? tr('Gemeldet über {channels}', { channels: done.join(', ') }) : tr('Niemand zu benachrichtigen'), output: { users: ids.length, channels: done } };
     },
   });
 
@@ -485,18 +487,18 @@ export function crmActions(app: App): ActionDef[] {
           if (j && typeof j === 'object' && !Array.isArray(j)) data = j;
           else throw new Error('x');
         } catch {
-          throw new Error('Die Daten sind kein gültiges JSON-Objekt');
+          throw new Error(tr('Die Daten sind kein gültiges JSON-Objekt'));
         }
       }
       app.events.emit(run.location_id, 'event.custom', { ...data, name, data, contactId: run.contact_id, viaWorkflow: run.workflow_id, wfDepth: Number(run.event?.wfDepth ?? 0) + 1 });
-      return { result: `Ereignis „${name}“ ausgelöst`, output: { name, data } };
+      return { result: tr('Ereignis „{name}“ ausgelöst', { name }), output: { name, data } };
     },
   });
 
   // --- invoices & payment links -------------------------------------------------------------------
   const euro = (v: unknown, vars: Record<string, any>) => {
     const n = parseNumber(text(v, vars));
-    if (Number.isNaN(n)) throw new Error(text(v, vars).trim() ? `„${preview(text(v, vars), 30)}“ ist keine Zahl` : 'Betrag fehlt');
+    if (Number.isNaN(n)) throw new Error(text(v, vars).trim() ? tr('„{value}“ ist keine Zahl', { value: preview(text(v, vars), 30) }) : tr('Betrag fehlt'));
     return Math.round(n * 100);
   };
   const invoiceUrl = (inv: any) => `${app.baseUrl()}/i/${inv.public_token}`;
@@ -525,12 +527,12 @@ export function crmActions(app: App): ActionDef[] {
     run: async (run, step, vars) => {
       const loc = run.location_id;
       const items = rowsOf<any>(step.rows, ['name']).map((r) => ({ name: text(r.name, vars), qty: Number(text(r.qty ?? 1, vars)) || 1, price_cents: euro(r.price ?? 0, vars), ...(r.tax !== undefined && String(r.tax).trim() !== '' ? { tax_rate: Number(parseNumber(text(r.tax, vars))) } : {}) }));
-      if (!items.length) throw new Error('Mindestens eine Position angeben');
+      if (!items.length) throw new Error(tr('Mindestens eine Position angeben'));
       const issued = now();
       let inv: any = createInvoice(app, loc, { kind: step.kind === 'estimate' ? 'estimate' : 'invoice', contact_id: run.contact_id, title: text(step.title, vars), items, due_at: step.due_days ? new Date(Date.now() + Number(step.due_days) * 864e5).toISOString() : undefined, issued_at: issued });
       // Sending finalises the invoice (it gets its number then), so the outcome is read afterwards.
       if (step.send !== false) inv = await sendInvoice(app, loc, inv, { channel: step.channel, subject: step.subject ? text(step.subject, vars) : undefined, body: step.message ? text(step.message, vars) : undefined });
-      const out: ActionOutcome = { result: `${inv.kind === 'estimate' ? 'Angebot' : 'Rechnung'}${inv.number ? ` ${inv.number}` : ''} erstellt${step.send !== false ? ' und gesendet' : ''}`, vars: { invoice_url: invoiceUrl(inv), invoice_number: inv.number, invoice_id: inv.id }, output: { id: inv.id, number: inv.number, total_cents: inv.total_cents } };
+      const out: ActionOutcome = { result: tr(inv.kind === 'estimate' ? (step.send !== false ? 'Angebot {number} erstellt und gesendet' : 'Angebot {number} erstellt') : step.send !== false ? 'Rechnung {number} erstellt und gesendet' : 'Rechnung {number} erstellt', { number: inv.number ?? '' }).replace(/\s+/g, ' '), vars: { invoice_url: invoiceUrl(inv), invoice_number: inv.number, invoice_id: inv.id }, output: { id: inv.id, number: inv.number, total_cents: inv.total_cents } };
       return out;
     },
   });
@@ -562,14 +564,15 @@ export function crmActions(app: App): ActionDef[] {
       const out: ActionOutcome = { result: '' };
       if (step.mode === 'product') {
         const p = db.get<any>('SELECT * FROM products WHERE (id = ? OR id = ?) AND location_id = ?', text(step.product_id, vars).trim(), String(step.product_id ?? ''), loc);
-        if (!p) throw new Error('Produkt nicht gefunden');
+        if (!p) throw new Error(tr('Produkt nicht gefunden'));
         url = p.payment_link || `${app.baseUrl()}/buy/${encodeURIComponent(p.id)}`;
       } else {
         const gross = euro(step.amount, vars);
-        if (gross <= 0) throw new Error('Betrag muss größer als 0 sein');
+        if (gross <= 0) throw new Error(tr('Betrag muss größer als 0 sein'));
         const settings = app.location(loc)?.settings.invoices ?? {};
         const rate = settings.small_business ? 0 : Number(settings.tax_rate ?? 19);
-        const draft = createInvoice(app, loc, { kind: 'invoice', contact_id: run.contact_id, title: text(step.title, vars) || 'Zahlung', items: [{ name: text(step.title, vars) || 'Zahlung', qty: 1, price_cents: Math.round(gross / (1 + rate / 100)), tax_rate: rate }] });
+        const tl = tLoc(app, loc);
+        const draft = createInvoice(app, loc, { kind: 'invoice', contact_id: run.contact_id, title: text(step.title, vars) || tl('Zahlung'), items: [{ name: text(step.title, vars) || tl('Zahlung'), qty: 1, price_cents: Math.round(gross / (1 + rate / 100)), tax_rate: rate }] });
         // The customer sees this invoice: it is finalised now (number, freeze).
         const inv = ensureFinal(app, loc, draft.id);
         url = invoiceUrl(inv);
@@ -579,10 +582,11 @@ export function crmActions(app: App): ActionDef[] {
       out.vars = { ...(out.vars ?? {}), payment_url: url };
       if (step.send) {
         const vv = { ...vars, var: { ...(vars.var ?? {}), payment_url: url } };
-        const m = await sendToContact(app, loc, { contactId: run.contact_id, channel: step.channel === 'sms' ? 'sms' : 'email', subject: 'Zahlungslink', body: render(String(step.message ?? 'Hier kannst du bezahlen: {{var.payment_url}}'), vv), source: 'Zahlungslink' });
+        const tl = tLoc(app, loc);
+        const m = await sendToContact(app, loc, { contactId: run.contact_id, channel: step.channel === 'sms' ? 'sms' : 'email', subject: tl('Zahlungslink'), body: render(String(step.message ?? tl('Hier kannst du bezahlen: {{var.payment_url}}')), vv), source: tl('Zahlungslink') });
         if (m.status === 'failed') throw new Error(m.error);
       }
-      out.result = `Zahlungslink erstellt${step.send ? ' und gesendet' : ''}`;
+      out.result = step.send ? tr('Zahlungslink erstellt und gesendet') : tr('Zahlungslink erstellt');
       out.output = { url };
       return out;
     },
@@ -610,19 +614,21 @@ export function crmActions(app: App): ActionDef[] {
     run: async (run, step, vars) => {
       const loc = run.location_id;
       const tpl = db.get<any>(`SELECT * FROM contracts WHERE id = ? AND location_id = ? AND kind = 'template'`, String(step.template_id ?? ''), loc);
-      if (!tpl) throw new Error('Vertragsvorlage nicht gefunden');
+      if (!tpl) throw new Error(tr('Vertragsvorlage nicht gefunden'));
       const contact = getContact(app, loc, run.contact_id)!;
       const url = (c: any) => `${app.baseUrl()}/s/${c.public_token}`;
       const row = { id: newId(), location_id: loc, kind: 'contract', contact_id: contact.id, title: text(step.title || tpl.title, vars).slice(0, 200), content: render(tpl.content, vars), status: 'draft', public_token: token(24), created_at: now(), updated_at: now() };
       db.insert('contracts', row);
-      const out: ActionOutcome = { result: `Vertrag „${row.title}“ angelegt`, vars: { contract_url: url(row), contract_id: row.id }, output: { id: row.id, url: url(row) } };
+      const out: ActionOutcome = { result: tr('Vertrag „{title}“ angelegt', { title: row.title }), vars: { contract_url: url(row), contract_id: row.id }, output: { id: row.id, url: url(row) } };
       if (step.send !== false) {
         db.update('contracts', row.id, { status: 'sent', sent_at: now(), updated_at: now() });
         const v = { contact: contactVars(contact), location: app.location(loc), contract: { title: row.title, url: url(row) } };
-        const m = await sendToContact(app, loc, { contactId: contact.id, channel: step.channel === 'sms' ? 'sms' : 'email', subject: render('Bitte unterschreiben: {{contract.title}}', v), body: render('Hallo {{contact.first_name|}},\n\nhier ist der Vertrag „{{contract.title}}“ zum Lesen und Unterschreiben:\n{{contract.url}}\n\nViele Grüße\n{{location.name}}', v), source: 'Vertrag' });
+        const tl = tLoc(app, loc);
+        const body = [tl('Hallo {{contact.first_name|}},'), '', tl('hier ist der Vertrag „{{contract.title}}“ zum Lesen und Unterschreiben:'), '{{contract.url}}', '', tl('Viele Grüße'), '{{location.name}}'].join('\n');
+        const m = await sendToContact(app, loc, { contactId: contact.id, channel: step.channel === 'sms' ? 'sms' : 'email', subject: render(tl('Bitte unterschreiben: {{contract.title}}'), v), body: render(body, v), source: tl('Vertrag') });
         if (m.status === 'failed') throw new Error(m.error);
-        logActivity(app, loc, contact.id, 'contract.sent', `Vertrag „${row.title}“ gesendet`);
-        out.result += ' und gesendet';
+        logActivity(app, loc, contact.id, 'contract.sent', tLoc(app, loc)('Vertrag „{title}“ gesendet', { title: row.title }));
+        out.result = tr('Vertrag „{title}“ angelegt und gesendet', { title: row.title });
       }
       return out;
     },
@@ -644,13 +650,13 @@ export function crmActions(app: App): ActionDef[] {
     },
     run: (run, step) => {
       const g = group(run.location_id, step.group_id);
-      if (!g) throw new Error('Community-Gruppe nicht gefunden');
+      if (!g) throw new Error(tr('Community-Gruppe nicht gefunden'));
       const contact = getContact(app, run.location_id, run.contact_id)!;
       // Groups that let people in by joining (page, tiers, payments) take a real membership.
       const kit = app.services.communityMembers;
       if (kit?.joinMode(g)) return { result: `${g.name}: ${kit.add(g, contact, String(step.tier ?? '').trim())}` };
       const joined = joinGroup(app, g, contact);
-      return { result: joined ? `Aufgenommen in „${g.name}“` : `Schon Mitglied in „${g.name}“` };
+      return { result: joined ? tr('Aufgenommen in „{group}“', { group: g.name }) : tr('Schon Mitglied in „{group}“', { group: g.name }) };
     },
   });
   add({
@@ -667,11 +673,11 @@ export function crmActions(app: App): ActionDef[] {
     },
     run: (run, step) => {
       const g = group(run.location_id, step.group_id);
-      if (!g) throw new Error('Community-Gruppe nicht gefunden');
+      if (!g) throw new Error(tr('Community-Gruppe nicht gefunden'));
       const kit = app.services.communityMembers;
       if (kit?.joinMode(g)) return { result: kit.remove(g, { id: run.contact_id }) };
       const r = db.run('DELETE FROM community_members WHERE group_id = ? AND contact_id = ? AND location_id = ?', g.id, run.contact_id, run.location_id);
-      return { result: r.changes ? `Entfernt aus „${g.name}“` : `Nicht Mitglied in „${g.name}“` };
+      return { result: r.changes ? tr('Entfernt aus „{group}“', { group: g.name }) : tr('Nicht Mitglied in „{group}“', { group: g.name }) };
     },
   });
 
@@ -694,17 +700,17 @@ export function crmActions(app: App): ActionDef[] {
       sample: { mode: 'ai', prompt: 'Schreibe einen kurzen Danke-Post für diese Bewertung: {{event.comment}}' },
     },
     run: async (run, step, vars) => {
-      if (!app.services.socialPost) throw new Error('Der Social Planner ist nicht verfügbar');
+      if (!app.services.socialPost) throw new Error(tr('Der Social Planner ist nicht verfügbar'));
       let body = text(step.body, vars).trim();
       if (step.mode === 'ai') {
-        if (!app.services.aiRun) throw new Error('Der KI-Assistent ist nicht verfügbar');
+        if (!app.services.aiRun) throw new Error(tr('Der KI-Assistent ist nicht verfügbar'));
         const prompt = requireText(text(step.prompt, vars), 'Prompt');
-        const r = await app.services.aiRun({ locationId: run.location_id, purpose: 'workflow', user: `Schreibe einen Social-Media-Beitrag auf Deutsch. Nur den fertigen Text, ohne Erklärungen.\n\n${prompt}`, maxTokens: 700, contactId: run.contact_id });
+        const r = await app.services.aiRun({ locationId: run.location_id, purpose: 'workflow', user: `${tLoc(app, run.location_id)('Schreibe einen Social-Media-Beitrag auf Deutsch. Nur den fertigen Text, ohne Erklärungen.')}\n\n${prompt}`, maxTokens: 700, contactId: run.contact_id });
         body = String(r.text ?? '').trim();
       }
-      if (!body) throw new Error('Kein Text für den Post');
+      if (!body) throw new Error(tr('Kein Text für den Post'));
       const post = await app.services.socialPost(run.location_id, { integrationIds: Array.isArray(step.channels) ? step.channels : [], content: body, type: 'draft', source: 'Workflow' });
-      return { result: `Entwurf angelegt: ${preview(body, 60)}`, output: { id: post?.id, content: body } };
+      return { result: tr('Entwurf angelegt: {text}', { text: preview(body, 60) }), output: { id: post?.id, content: body } };
     },
   });
 

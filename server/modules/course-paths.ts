@@ -9,6 +9,7 @@ import { cleanAccess, enrollmentProgress, getCourse, getEnrollment, grantAccess,
 import { cleanYmd, cohortState, pathPercent, pathSteps, pickCohort } from '../services/course-paths.js';
 import { deDate } from '../services/creator-kit.js';
 import { registerTriggers } from '../services/wfx-kit.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * Bundles & learning paths (a sequence of courses with unlock rules, granted by tag, purchase or by hand) and cohorts of a course (a
@@ -102,7 +103,7 @@ export const courseCohortModule: Module = {
 
     // --- paths: helpers ----------------------------------------------------------------------------------------------------------------
     const uniqueSlug = (loc: string, base: string, except = '') => {
-      const root = slugify(base) || 'pfad';
+      const root = slugify(base) || slugify(tLoc(app, loc)('pfad')) || 'pfad';
       let slug = root;
       for (let i = 2; db.get('SELECT id FROM course_paths WHERE location_id = ? AND slug = ? AND id != ?', loc, slug, except); i++) slug = `${root}-${i}`;
       return slug;
@@ -142,7 +143,7 @@ export const courseCohortModule: Module = {
       if (!had) db.insert('course_path_members', { path_id: pid, contact_id: contactId, location_id: loc, source, source_ref: ref, enrolled_at: now(), completed_at: null });
       for (const it of itemsOf(pid)) grantAccess(app, loc, it.course_id, contactId, 'path', pid);
       if (!had) {
-        logActivity(app, loc, contactId, 'course.path_enrolled', `Lernpfad „${p.title}“ freigeschaltet (${source})`);
+        logActivity(app, loc, contactId, 'course.path_enrolled', tLoc(app, loc)('Lernpfad „{path}“ freigeschaltet ({source})', { path: p.title, source }));
         app.events.emit(loc, 'course.path_enrolled', { contactId, pathId: pid, path: { id: pid, title: p.title }, source });
       }
       return { changed: !had };
@@ -154,7 +155,7 @@ export const courseCohortModule: Module = {
       // Only access that came from this path goes with it.
       for (const it of itemsOf(pid)) {
         const e = getEnrollment(app, it.course_id, contactId);
-        if (e?.status === 'active' && e.source === 'path' && e.source_ref === pid) revokeAccess(app, loc, it.course_id, contactId, why || 'Lernpfad entzogen');
+        if (e?.status === 'active' && e.source === 'path' && e.source_ref === pid) revokeAccess(app, loc, it.course_id, contactId, why || tLoc(app, loc)('Lernpfad entzogen'));
       }
       return true;
     }
@@ -183,7 +184,8 @@ export const courseCohortModule: Module = {
         status: 'draft',
         sequential: ctx.body?.sequential === false ? 0 : 1,
         unlock_percent: cleanUnlock(ctx.body?.unlock_percent),
-        access: cleanAccess({ tags: [`pfad:${slug}`], ...(ctx.body?.access ?? {}) }),
+        // The default access tag of a new path, named in the sub-account's language (a stored value, compared as is afterwards).
+        access: cleanAccess({ tags: [`${tLoc(app, ctx.locationId)('pfad')}:${slug}`], ...(ctx.body?.access ?? {}) }),
         position: db.get<{ n: number }>('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM course_paths WHERE location_id = ?', ctx.locationId)!.n,
         created_at: now(),
         updated_at: now(),
@@ -252,13 +254,13 @@ export const courseCohortModule: Module = {
     router.post('/api/courses/paths/:pid/members', 'location', (ctx) => {
       const p = mustPath(ctx.locationId, ctx.params.pid);
       if (!itemsOf(p.id).length) throw bad('Der Lernpfad hat noch keine Kurse');
-      const contactId = contactFrom(ctx.locationId, ctx.body, 'Lernpfade');
+      const contactId = contactFrom(ctx.locationId, ctx.body, tLoc(app, ctx.locationId)('Lernpfade'));
       const r = grantPath(ctx.locationId, p.id, contactId, ctx.viaApiKey ? 'api' : 'manual', ctx.user?.name ?? '');
       return { contact_id: contactId, changed: r.changed };
     });
     router.delete('/api/courses/paths/:pid/members/:contactId', 'location', (ctx) => {
       const p = mustPath(ctx.locationId, ctx.params.pid);
-      if (!revokePath(ctx.locationId, p.id, ctx.params.contactId, ctx.user?.name ? `von ${ctx.user.name}` : '')) throw notFound('Kein Zugang zum Lernpfad');
+      if (!revokePath(ctx.locationId, p.id, ctx.params.contactId, ctx.user?.name ? tLoc(app, ctx.locationId)('von {name}', { name: ctx.user.name }) : '')) throw notFound('Kein Zugang zum Lernpfad');
       return { ok: true };
     });
 
@@ -280,7 +282,7 @@ export const courseCohortModule: Module = {
         const m = db.get<any>('SELECT * FROM course_path_members WHERE path_id = ? AND contact_id = ?', p.id, contactId);
         if (!m || m.source !== 'tag' || p.access?.revoke_on_tag_removal === false) continue;
         if ((p.access?.tags ?? []).some((t: string) => contact.tags.includes(t))) continue;
-        revokePath(e.locationId, p.id, contactId, `Tag „${tag}“ entfernt`);
+        revokePath(e.locationId, p.id, contactId, tLoc(app, e.locationId)('Tag „{tag}“ entfernt', { tag: String(tag) }));
       }
     });
     app.events.on('product.purchased', (e) => {
@@ -299,7 +301,7 @@ export const courseCohortModule: Module = {
           return !en || en.status !== 'active' || en.completed_at;
         });
         if (all && items.length && db.run('UPDATE course_path_members SET completed_at = ? WHERE path_id = ? AND contact_id = ? AND completed_at IS NULL', now(), m.path_id, contactId).changes) {
-          logActivity(app, e.locationId, contactId, 'course.path_completed', `Lernpfad „${m.title}“ abgeschlossen`);
+          logActivity(app, e.locationId, contactId, 'course.path_completed', tLoc(app, e.locationId)('Lernpfad „{path}“ abgeschlossen', { path: m.title }));
           app.events.emit(e.locationId, 'course.path_completed', { contactId, pathId: m.path_id, path: { id: m.path_id, title: m.title } });
         }
       }
@@ -322,6 +324,7 @@ export const courseCohortModule: Module = {
               return { course_id: it.course_id, title: it.title, percent: en?.status === 'active' ? enrollmentProgress(app, en).percent : undefined };
             }),
             { sequential: true, unlockPercent: p.unlock_percent },
+            tLoc(app, e.location_id),
           );
           why = steps.find((x) => x.course_id === s.course.id)?.reason ?? '';
         }
@@ -336,6 +339,7 @@ export const courseCohortModule: Module = {
       (p: any, m: any): string => {
         const rows = db.all<any>(`SELECT p.* FROM course_paths p JOIN course_path_members x ON x.path_id = p.id WHERE x.contact_id = ? AND p.location_id = ? AND p.status = 'published' ORDER BY p.position, p.created_at`, m.contact.id, p.locationId);
         if (!rows.length) return '';
+        const t = tLoc(app, p.locationId);
         const cards = rows
           .map((raw) => {
             const path = parseJson(raw, ['access']);
@@ -346,22 +350,23 @@ export const courseCohortModule: Module = {
                 return { course_id: it.course_id, title: it.title, percent: en?.status === 'active' ? enrollmentProgress(app, en).percent : undefined };
               }),
               { sequential: !!path.sequential, unlockPercent: path.unlock_percent },
+              t,
             );
             const next = steps.find((x) => x.state === 'open');
             const list = steps
               .map((x, i) => {
                 const slug = items[i].slug;
                 const icon = x.state === 'done' ? '✓' : x.state === 'locked' ? '🔒' : '▶';
-                const note = x.state === 'locked' ? 'gesperrt' : x.percent !== undefined ? `${x.percent} %` : '';
+                const note = x.state === 'locked' ? t('gesperrt') : x.percent !== undefined ? `${x.percent} %` : '';
                 const inner = `<span class="st" aria-hidden="true">${icon}</span><span class="t">${escapeHtml(x.title)}</span><span class="d">${escapeHtml(note)}</span>`;
                 return x.state === 'locked' ? `<li><span class="s locked" title="${escapeHtml(x.reason)}">${inner}</span></li>` : `<li><a class="${x.state === 'done' ? 'done' : ''}${x === next ? ' current' : ''}" href="${p.base}/c/${encodeURIComponent(slug)}">${inner}</a></li>`;
               })
               .join('');
             const pct = pathPercent(steps);
-            return `<div class="panel path"><h3>${escapeHtml(path.title)}</h3>${path.description ? `<p class="muted small" style="margin:0">${escapeHtml(path.description)}</p>` : ''}<div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" style="margin-top:10px"><i style="width:${pct}%"></i></div><p class="muted small" style="margin:6px 0 0">${steps.filter((x) => x.state === 'done').length} von ${steps.length} Kursen abgeschlossen${path.sequential ? ' · der Reihe nach' : ''}</p><ol class="steps">${list}</ol></div>`;
+            return `<div class="panel path"><h3>${escapeHtml(path.title)}</h3>${path.description ? `<p class="muted small" style="margin:0">${escapeHtml(path.description)}</p>` : ''}<div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" style="margin-top:10px"><i style="width:${pct}%"></i></div><p class="muted small" style="margin:6px 0 0">${escapeHtml(t('{done} von {n} Kursen abgeschlossen', { done: steps.filter((x) => x.state === 'done').length, n: steps.length }))}${path.sequential ? ` · ${escapeHtml(t('der Reihe nach'))}` : ''}</p><ol class="steps">${list}</ol></div>`;
           })
           .join('');
-        return `${CSS}<section class="lp"><h2>Deine Lernpfade</h2>${cards}</section>`;
+        return `${CSS}<section class="lp"><h2>${escapeHtml(t('Deine Lernpfade'))}</h2>${cards}</section>`;
       },
     ];
 
@@ -448,7 +453,7 @@ export const courseCohortModule: Module = {
     router.post('/api/courses/:id/cohorts/:cid/members', 'location', (ctx) => {
       const c = mustCourse(ctx.locationId, ctx.params.id);
       const k = mustCohort(c.id, ctx.params.cid);
-      const contactId = contactFrom(ctx.locationId, ctx.body, 'Kurse');
+      const contactId = contactFrom(ctx.locationId, ctx.body, tLoc(app, ctx.locationId)('Kurse'));
       const cur = getEnrollment(app, c.id, contactId);
       if (!(cur?.cohort_id === k.id) && k.capacity && countOf(k.id) >= k.capacity) throw new HttpError(409, 'Dieser Cohort ist voll');
       grantAccess(app, ctx.locationId, c.id, contactId, ctx.viaApiKey ? 'api' : 'manual', ctx.user?.name ?? '');
@@ -486,11 +491,13 @@ export const courseCohortModule: Module = {
         if (!k) return undefined;
         const tz = p.loc.timezone;
         const state = cohortState(k, ymdInTz(new Date(), tz));
-        const when = state === 'upcoming' ? `startet am ${deDate(dripOrigin(app, s.enrollment), tz)}` : state === 'running' ? `läuft seit ${deDate(dripOrigin(app, s.enrollment), tz)}` : 'ist beendet';
+        const t = tLoc(app, p.locationId);
+        const day = deDate(dripOrigin(app, s.enrollment), tz);
+        const when = state === 'upcoming' ? t('startet am {date}', { date: day }) : state === 'running' ? t('läuft seit {date}', { date: day }) : t('ist beendet');
         const g = k.group_id && db.get<any>('SELECT slug FROM community_groups WHERE id = ? AND location_id = ?', k.group_id, p.locationId);
         const ch = g && k.channel_id && db.get<any>('SELECT slug FROM community_channels WHERE id = ? AND group_id = ?', k.channel_id, k.group_id);
-        const link = g ? `<a class="btn ghost" href="${p.base}/community/g/${encodeURIComponent(g.slug)}${ch ? `?ch=${encodeURIComponent(ch.slug)}` : ''}">Zum Cohort-Chat</a>` : '';
-        return { top: `${CSS}<div class="panel ch"><span><strong>Dein Cohort: ${escapeHtml(k.name)}</strong> <span class="muted">– ${escapeHtml(when)}</span></span>${link}</div>` };
+        const link = g ? `<a class="btn ghost" href="${p.base}/community/g/${encodeURIComponent(g.slug)}${ch ? `?ch=${encodeURIComponent(ch.slug)}` : ''}">${escapeHtml(t('Zum Cohort-Chat'))}</a>` : '';
+        return { top: `${CSS}<div class="panel ch"><span><strong>${escapeHtml(t('Dein Cohort: {name}', { name: k.name }))}</strong> <span class="muted">– ${escapeHtml(when)}</span></span>${link}</div>` };
       },
     ];
     app.services.coursePaths = { grantPath, revokePath };

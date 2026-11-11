@@ -1,5 +1,6 @@
 import type { App } from '../../core/app.js';
 import type { VersionRow } from './store.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * The badge row on every plugin version ("Sicherheitsnetz"): static checks ✓, self-tests ✓, review ✓ (and the
@@ -39,7 +40,7 @@ export function versionBadges(app: App, v: VersionRow): Badges {
   return {
     static: !!c.static?.ok,
     tests: ran ? !!st.ok : null,
-    tests_detail: ran ? [`${handlers.filter((h) => h.ok).length}/${handlers.length} Handler`, st.ui?.ran ? `Oberfläche ${st.ui.errors?.length ? 'mit Fehlern' : 'ok'}` : '', entries.length ? `${entries.filter((e) => e.ok).length}/${entries.length} Einstiegspunkte` : ''].filter(Boolean).join(' · ') : '',
+    tests_detail: ran ? [tApp()('{ok}/{total} Handler', { ok: handlers.filter((h) => h.ok).length, total: handlers.length }), st.ui?.ran ? (st.ui.errors?.length ? tApp()('Oberfläche mit Fehlern') : tApp()('Oberfläche ok')) : '', entries.length ? tApp()('{ok}/{total} Einstiegspunkte', { ok: entries.filter((e) => e.ok).length, total: entries.length }) : ''].filter(Boolean).join(' · ') : '',
     review: first ? { verdict: first.verdict, model: first.model } : null,
     second_opinion: second ? { verdict: second.verdict, model: second.model } : null,
     signature: v.meta?.signature ? { state: v.meta.signature.state, label: v.meta.signature.label, gohigh: v.meta.signature.gohigh } : null,

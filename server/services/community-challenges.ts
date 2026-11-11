@@ -6,6 +6,7 @@ import { logActivity } from './contacts.js';
 import { award, notify } from './community-actions.js';
 import { extOf } from './community-ext.js';
 import { awardBadge, badgeById } from './community-gamify.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Challenges: a time-boxed task for the group ("30 Tage Schreiben"). Members join, check in once a day (optionally with a note),
@@ -60,7 +61,7 @@ export function cleanChallenge(app: App, g: { id: string; location_id: string },
   for (const k of ['starts_on', 'ends_on'] as const) {
     if (b[k] !== undefined || !cur[k]) {
       const v = String(b[k] ?? '').trim();
-      if (!validYmd(v)) throw bad(`${k === 'starts_on' ? 'Start' : 'Ende'}: bitte ein Datum (JJJJ-MM-TT)`);
+      if (!validYmd(v)) throw bad(k === 'starts_on' ? 'Start: bitte ein Datum (JJJJ-MM-TT)' : 'Ende: bitte ein Datum (JJJJ-MM-TT)');
       out[k] = v;
     }
   }
@@ -68,7 +69,7 @@ export function cleanChallenge(app: App, g: { id: string; location_id: string },
   const end = out.ends_on ?? cur.ends_on;
   if (start && end) {
     if (end < start) throw bad('Das Ende liegt vor dem Start');
-    if (daysBetween(start, end) + 1 > MAX_DAYS) throw bad(`Eine Challenge dauert höchstens ${MAX_DAYS} Tage`);
+    if (daysBetween(start, end) + 1 > MAX_DAYS) throw bad(tApp()('Eine Challenge dauert höchstens {n} Tage', { n: MAX_DAYS }));
   }
   const days = start && end ? daysBetween(start, end) + 1 : 1;
   if (b.goal_days !== undefined || !cur.goal_days || out.starts_on || out.ends_on) {
@@ -115,8 +116,8 @@ export function cleanTasks(input: unknown, days: number): { day: number; title: 
   const out: { day: number; title: string; body: string }[] = [];
   for (const t of input.slice(0, MAX_DAYS)) {
     const day = Math.round(Number(t?.day));
-    if (!Number.isFinite(day) || day < 1 || day > days) throw bad(`Aufgabe: Tag 1 bis ${days}`);
-    if (seen.has(day)) throw bad(`Für Tag ${day} gibt es zwei Aufgaben`);
+    if (!Number.isFinite(day) || day < 1 || day > days) throw bad(tApp()('Aufgabe: Tag 1 bis {n}', { n: days }));
+    if (seen.has(day)) throw bad(tApp()('Für Tag {day} gibt es zwei Aufgaben', { day }));
     seen.add(day);
     const title = str(t?.title, 'Aufgabe', { required: true, max: 160 });
     out.push({ day, title, body: str(t?.body, 'Beschreibung', { max: 2000 }) });
@@ -151,7 +152,7 @@ export function joinChallenge(app: App, g: any, c: Challenge, contactId: string)
   const cur = participantOf(app, c.id, contactId);
   if (cur) return cur;
   app.db.run('INSERT OR IGNORE INTO community_challenge_members (challenge_id, contact_id, location_id, joined_at, checkins, streak, best_streak, last_day) VALUES (?, ?, ?, ?, 0, 0, 0, \'\')', c.id, contactId, c.location_id, now());
-  logActivity(app, c.location_id, contactId, 'community.challenge_joined', `Challenge „${c.title}“ gestartet`);
+  logActivity(app, c.location_id, contactId, 'community.challenge_joined', tLoc(app, c.location_id)('Challenge „{title}“ gestartet', { title: c.title }));
   app.events.emit(c.location_id, 'community.challenge_joined', { contactId, groupId: g.id, group: { id: g.id, name: g.name }, challenge: { id: c.id, title: c.title } });
   return participantOf(app, c.id, contactId)!;
 }
@@ -190,13 +191,14 @@ export function checkIn(app: App, g: any, c: Challenge, contactId: string, note:
     const bonus = c.points_complete ?? ext.challenge_complete;
     if (bonus) award(app, g, contactId, bonus, 'challenge_complete', c.id);
     points += bonus;
-    logActivity(app, c.location_id, contactId, 'community.challenge_completed', `Challenge „${c.title}“ geschafft`);
-    notify(app, g, [contactId], { kind: 'challenge', text: `Geschafft! Du hast die Challenge „${c.title}“ abgeschlossen.` });
+    const t = tLoc(app, c.location_id);
+    logActivity(app, c.location_id, contactId, 'community.challenge_completed', t('Challenge „{title}“ geschafft', { title: c.title }));
+    notify(app, g, [contactId], { kind: 'challenge', text: t('Geschafft! Du hast die Challenge „{title}“ abgeschlossen.', { title: c.title }) });
     const badge = c.badge_id ? badgeById(app, c.location_id, c.badge_id) : undefined;
-    if (badge) awardBadge(app, g, contactId, badge, '', `Challenge „${c.title}“`);
+    if (badge) awardBadge(app, g, contactId, badge, '', t('Challenge „{title}“', { title: c.title }));
     app.events.emit(c.location_id, 'community.challenge_completed', { contactId, groupId: g.id, group: { id: g.id, name: g.name }, challenge: { id: c.id, title: c.title }, checkins });
   }
-  logActivity(app, c.location_id, contactId, 'community.challenge_checkin', `Check-in „${c.title}“ (${checkins}/${c.goal_days})`);
+  logActivity(app, c.location_id, contactId, 'community.challenge_checkin', tLoc(app, c.location_id)('Check-in „{title}“ ({n}/{goal})', { title: c.title, n: checkins, goal: c.goal_days }));
   return { checkin: { id: rowId, day: today, note: text }, participant: participantOf(app, c.id, contactId)!, completed: done, points };
 }
 
@@ -258,7 +260,7 @@ export function sendReminders(app: App, at = new Date()): number {
       .map((r) => r.contact_id);
     if (!who.length) continue;
     const day = daysBetween(c.starts_on, today) + 1;
-    notify(app, g, who, { kind: 'challenge', text: `Tag ${day} von „${c.title}“: Dein Check-in wartet.`, postId: c.id });
+    notify(app, g, who, { kind: 'challenge', text: tLoc(app, c.location_id)('Tag {day} von „{title}“: Dein Check-in wartet.', { day, title: c.title }), postId: c.id });
     sent += who.length;
   }
   return sent;

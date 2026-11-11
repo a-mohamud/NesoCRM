@@ -1,6 +1,7 @@
 import { escapeHtml } from '../core/template.js';
 import { addDaysYmd, ymdInTz, zonedToUtc } from '../core/time.js';
 import { deltaPercent, formatValue, lowerIsBetter, type Format, type ReportResult } from './report-engine.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /** Scheduled report e-mails: when they run next and the HTML/text they send (tables, no images). */
 
@@ -40,34 +41,35 @@ export interface EmailWidget {
 }
 
 const C = { ink: '#111827', muted: '#6b7280', line: '#e5e7eb', bar: '#2a78d6', up: '#047857', down: '#b91c1c', bg: '#f4f6fa' };
-const pct = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 });
-const signed = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1, signDisplay: 'exceptZero' });
+const numLocale = (t: STFn) => (t.locale === 'de' ? 'de-DE' : 'en-GB');
+const pct = (t: STFn) => new Intl.NumberFormat(numLocale(t), { maximumFractionDigits: 1 });
+const signed = (t: STFn) => new Intl.NumberFormat(numLocale(t), { maximumFractionDigits: 1, signDisplay: 'exceptZero' });
 
-/** "▲ 12,5 % ggü. Vorperiode" – arrow = direction, colour = good/bad for this measure. */
-function deltaHtml(key: string, cur: number | null | undefined, prev: number | null | undefined, format: Format): string {
+/** "▲ 12.5% vs. previous period" – arrow = direction, colour = good/bad for this measure. */
+function deltaHtml(key: string, cur: number | null | undefined, prev: number | null | undefined, format: Format, t: STFn): string {
   const tone = (up: boolean) => (up !== lowerIsBetter(key) ? C.up : C.down);
   if (format === 'percent' && cur !== null && cur !== undefined && prev !== null && prev !== undefined) {
     const diff = cur - prev;
-    return `<span style="color:${tone(diff >= 0)};font-size:13px">${diff >= 0 ? '▲' : '▼'} ${pct.format(Math.abs(diff))} Pkt. ggü. Vorperiode</span>`;
+    return `<span style="color:${tone(diff >= 0)};font-size:13px">${diff >= 0 ? '▲' : '▼'} ${escapeHtml(t('{value} Pkt. ggü. Vorperiode', { value: pct(t).format(Math.abs(diff)) }))}</span>`;
   }
   const d = deltaPercent(cur, prev);
-  if (d === null) return prev !== undefined ? `<span style="color:${C.muted};font-size:13px">Vorperiode: ${escapeHtml(formatValue(prev ?? null, format))}</span>` : '';
-  return `<span style="color:${tone(d >= 0)};font-size:13px">${d >= 0 ? '▲' : '▼'} ${pct.format(Math.abs(d))} % ggü. Vorperiode</span>`;
+  if (d === null) return prev !== undefined ? `<span style="color:${C.muted};font-size:13px">${escapeHtml(t('Vorperiode: {value}', { value: formatValue(prev ?? null, format, t) }))}</span>` : '';
+  return `<span style="color:${tone(d >= 0)};font-size:13px">${d >= 0 ? '▲' : '▼'} ${escapeHtml(t('{value} % ggü. Vorperiode', { value: pct(t).format(Math.abs(d)) }))}</span>`;
 }
 
-function kpiHtml(w: EmailWidget, r: ReportResult): string {
+function kpiHtml(w: EmailWidget, r: ReportResult, t: STFn): string {
   const m = r.measures[0];
   return `<td style="padding:12px;border:1px solid ${C.line};border-radius:8px;vertical-align:top;width:50%">
     <div style="color:${C.muted};font-size:13px">${escapeHtml(w.title)}</div>
-    <div style="font-size:26px;font-weight:700;color:${C.ink};margin:4px 0">${escapeHtml(formatValue(r.totals.v[0], m.format))}</div>
-    ${r.totals.p ? deltaHtml(m.key, r.totals.v[0], r.totals.p[0], m.format) : ''}
+    <div style="font-size:26px;font-weight:700;color:${C.ink};margin:4px 0">${escapeHtml(formatValue(r.totals.v[0], m.format, t))}</div>
+    ${r.totals.p ? deltaHtml(m.key, r.totals.v[0], r.totals.p[0], m.format, t) : ''}
   </td>`;
 }
 
 /** A chart as a table: label, a bar drawn with a cell width, the value. */
-function tableHtml(w: EmailWidget, r: ReportResult): string {
+function tableHtml(w: EmailWidget, r: ReportResult, t: STFn): string {
   const m = r.measures[0];
-  let rows = r.rows.map((row) => ({ label: row.l.filter(Boolean).join(' · ') || 'Gesamt', v: row.v[0] ?? 0, rest: row.v.slice(1) }));
+  let rows = r.rows.map((row) => ({ label: row.l.filter(Boolean).join(' · ') || t('Gesamt'), v: row.v[0] ?? 0, rest: row.v.slice(1) }));
   if (r.dims[0]?.type === 'date' && r.dims.length === 1) rows = rows.slice(-12);
   else rows = rows.slice(0, 10);
   const max = Math.max(1e-9, ...rows.map((x) => Math.abs(x.v)));
@@ -78,52 +80,54 @@ function tableHtml(w: EmailWidget, r: ReportResult): string {
       return `<tr>
         <td style="padding:5px 8px 5px 0;color:${C.ink};font-size:13px;border-bottom:1px solid ${C.line}">${escapeHtml(x.label)}</td>
         <td style="padding:5px 8px;width:40%;border-bottom:1px solid ${C.line}"><table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr><td style="background:${C.bar};height:10px;width:${width}%;border-radius:0 4px 4px 0;font-size:0;line-height:0">&nbsp;</td><td style="font-size:0;line-height:0">&nbsp;</td></tr></table></td>
-        <td style="padding:5px 0;text-align:right;color:${C.ink};font-size:13px;white-space:nowrap;border-bottom:1px solid ${C.line}">${escapeHtml(formatValue(x.v, m.format))}</td>
-        ${extra.map((e, i) => `<td style="padding:5px 0 5px 10px;text-align:right;color:${C.muted};font-size:13px;white-space:nowrap;border-bottom:1px solid ${C.line}">${escapeHtml(formatValue(x.rest[i] ?? null, e.format))}</td>`).join('')}
+        <td style="padding:5px 0;text-align:right;color:${C.ink};font-size:13px;white-space:nowrap;border-bottom:1px solid ${C.line}">${escapeHtml(formatValue(x.v, m.format, t))}</td>
+        ${extra.map((e, i) => `<td style="padding:5px 0 5px 10px;text-align:right;color:${C.muted};font-size:13px;white-space:nowrap;border-bottom:1px solid ${C.line}">${escapeHtml(formatValue(x.rest[i] ?? null, e.format, t))}</td>`).join('')}
       </tr>`;
     })
     .join('');
   const head = `<tr><th style="text-align:left;color:${C.muted};font-size:12px;font-weight:600;padding:0 8px 4px 0">${escapeHtml(r.dims.map((d) => d.label).join(' · '))}</th><th></th><th style="text-align:right;color:${C.muted};font-size:12px;font-weight:600;padding:0 0 4px">${escapeHtml(m.label)}</th>${extra.map((e) => `<th style="text-align:right;color:${C.muted};font-size:12px;font-weight:600;padding:0 0 4px 10px">${escapeHtml(e.label)}</th>`).join('')}</tr>`;
   return `<div style="margin:18px 0 6px;font-weight:700;font-size:15px;color:${C.ink}">${escapeHtml(w.title)}</div>
-    ${rows.length ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse">${head}${body}</table>` : `<div style="color:${C.muted};font-size:13px">Keine Daten im Zeitraum.</div>`}
-    ${r.dims.length && r.rows.length > rows.length ? `<div style="color:${C.muted};font-size:12px;margin-top:4px">… ${r.rows.length - rows.length} weitere Zeilen im Dashboard</div>` : ''}`;
+    ${rows.length ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse">${head}${body}</table>` : `<div style="color:${C.muted};font-size:13px">${escapeHtml(t('Keine Daten im Zeitraum.'))}</div>`}
+    ${r.dims.length && r.rows.length > rows.length ? `<div style="color:${C.muted};font-size:12px;margin-top:4px">… ${escapeHtml(t('{n} weitere Zeilen im Dashboard', { n: r.rows.length - rows.length }))}</div>` : ''}`;
 }
 
-export function renderReportEmail(input: { title: string; rangeLabel: string; link: string; brand: string; widgets: EmailWidget[] }): { html: string; text: string } {
+/** `t`: the recipient's language (default: the instance language). */
+export function renderReportEmail(input: { title: string; rangeLabel: string; link: string; brand: string; widgets: EmailWidget[]; t?: STFn }): { html: string; text: string } {
+  const t = input.t ?? tApp();
   const kpis = input.widgets.filter((w) => w.result && (w.viz === 'kpi' || !w.result.dims.length));
   const charts = input.widgets.filter((w) => !kpis.includes(w));
   const kpiRows: string[] = [];
-  for (let i = 0; i < kpis.length; i += 2) kpiRows.push(`<tr>${kpis.slice(i, i + 2).map((w) => kpiHtml(w, w.result!)).join('<td style="width:10px"></td>')}</tr><tr><td style="height:10px"></td></tr>`);
-  const chartHtml = charts.map((w) => (w.result ? tableHtml(w, w.result) : `<div style="margin:18px 0 6px;font-weight:700;font-size:15px">${escapeHtml(w.title)}</div><div style="color:${C.down};font-size:13px">${escapeHtml(w.error ?? 'Fehler')}</div>`)).join('');
-  const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(input.title)}</title></head>
+  for (let i = 0; i < kpis.length; i += 2) kpiRows.push(`<tr>${kpis.slice(i, i + 2).map((w) => kpiHtml(w, w.result!, t)).join('<td style="width:10px"></td>')}</tr><tr><td style="height:10px"></td></tr>`);
+  const chartHtml = charts.map((w) => (w.result ? tableHtml(w, w.result, t) : `<div style="margin:18px 0 6px;font-weight:700;font-size:15px">${escapeHtml(w.title)}</div><div style="color:${C.down};font-size:13px">${escapeHtml(w.error ?? t('Fehler beim Laden'))}</div>`)).join('');
+  const html = `<!doctype html><html lang="${t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(input.title)}</title></head>
 <body style="margin:0;background:${C.bg};font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${C.ink}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.bg}"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border-radius:12px;border:1px solid ${C.line}"><tr><td style="padding:24px">
-  <div style="color:${C.muted};font-size:12px;text-transform:uppercase;letter-spacing:.05em">${escapeHtml(input.brand)} · Bericht</div>
+  <div style="color:${C.muted};font-size:12px;text-transform:uppercase;letter-spacing:.05em">${escapeHtml(input.brand)} · ${escapeHtml(t('Bericht'))}</div>
   <h1 style="font-size:22px;margin:4px 0 2px">${escapeHtml(input.title)}</h1>
   <div style="color:${C.muted};font-size:13px;margin-bottom:16px">${escapeHtml(input.rangeLabel)}</div>
   ${kpiRows.length ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate">${kpiRows.join('')}</table>` : ''}
   ${chartHtml}
-  <div style="margin-top:24px"><a href="${escapeHtml(input.link)}" style="display:inline-block;background:${C.bar};color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600">Im Dashboard ansehen</a></div>
+  <div style="margin-top:24px"><a href="${escapeHtml(input.link)}" style="display:inline-block;background:${C.bar};color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600">${escapeHtml(t('Im Dashboard ansehen'))}</a></div>
 </td></tr></table>
-<div style="color:${C.muted};font-size:12px;margin-top:12px">Du bekommst diese E-Mail, weil sie unter Berichte → Zeitpläne eingerichtet ist.</div>
+<div style="color:${C.muted};font-size:12px;margin-top:12px">${escapeHtml(t('Du bekommst diese E-Mail, weil sie unter Berichte → Zeitpläne eingerichtet ist.'))}</div>
 </td></tr></table></body></html>`;
   const lines = [`${input.title} – ${input.rangeLabel}`, ''];
   for (const w of input.widgets) {
     if (!w.result) {
-      lines.push(`${w.title}: ${w.error ?? 'Fehler'}`);
+      lines.push(`${w.title}: ${w.error ?? t('Fehler beim Laden')}`);
       continue;
     }
     const r = w.result;
     if (w.viz === 'kpi' || !r.dims.length) {
       const d = r.totals.p ? deltaPercent(r.totals.v[0], r.totals.p[0]) : null;
-      lines.push(`${w.title}: ${formatValue(r.totals.v[0], r.measures[0].format)}${d !== null ? ` (${signed.format(d)} % ggü. Vorperiode)` : ''}`);
+      lines.push(`${w.title}: ${formatValue(r.totals.v[0], r.measures[0].format, t)}${d !== null ? ` (${t('{value} % ggü. Vorperiode', { value: signed(t).format(d) })})` : ''}`);
     } else {
       lines.push(`${w.title}:`);
-      for (const row of r.rows.slice(0, 10)) lines.push(`  ${row.l.filter(Boolean).join(' · ')}: ${formatValue(row.v[0], r.measures[0].format)}`);
+      for (const row of r.rows.slice(0, 10)) lines.push(`  ${row.l.filter(Boolean).join(' · ')}: ${formatValue(row.v[0], r.measures[0].format, t)}`);
     }
     lines.push('');
   }
-  lines.push(`Im Dashboard ansehen: ${input.link}`);
+  lines.push(t('Im Dashboard ansehen: {link}', { link: input.link }));
   return { html, text: lines.join('\n') };
 }

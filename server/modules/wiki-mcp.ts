@@ -1,6 +1,7 @@
 import type { Module } from '../core/app.js';
 import { HIT_END, HIT_START } from '../services/collab-fts.js';
 import type { Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * MCP tools for the Wiki – agents (Claude, ChatGPT, the in-app HyperLevel Agent) search, read and write pages.
@@ -41,7 +42,7 @@ const TOOLS: Tool[] = [
         const hits: any[] = await call.api('GET', `/api/wiki/search?${new URLSearchParams({ q: String(a.title), titles: '1', limit: '20', ...(a.space ? { space_id: String(a.space) } : {}) })}`, { location: a.location_id });
         const exact = hits.filter((h) => h.title.toLowerCase() === String(a.title).toLowerCase());
         const pick = exact[0] ?? hits[0];
-        if (!pick) throw new Error(`Keine Seite „${a.title}“ gefunden`);
+        if (!pick) throw new Error(tApp()('Keine Seite „{title}“ gefunden', { title: String(a.title) }));
         pid = pick.id;
       }
       const p = await call.api('GET', `/api/wiki/pages/${encodeURIComponent(pid)}`, { location: a.location_id });

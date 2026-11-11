@@ -10,6 +10,7 @@ import type { App } from '../core/app.js';
 import { HttpError, notFound, type Ctx } from '../core/http.js';
 import { id as newId, now, sha256 } from '../core/util.js';
 import { LIMITS, parseSpec, type BoardState } from './boards-model.js';
+import { tLoc } from '../i18n/index.js';
 
 export type Access = 'owner' | 'edit' | 'view';
 const RANK: Record<Access, number> = { view: 1, edit: 2, owner: 3 };
@@ -155,7 +156,7 @@ export function createBoard(app: App, ctx: Ctx, input: { name: string; scope: 'p
     updated_at: t,
     updated_by: actor.name.slice(0, 200),
   };
-  const version: VersionRow = { id: newId(), board_id: board.id, location_id: board.location_id, n: 1, parent_n: null, kind: input.kind ?? 'create', summary: input.summary ?? 'Board angelegt', ops: '[]', state: JSON.stringify(input.state), prompt: '', actor_id: actor.id, actor_name: actor.name.slice(0, 200), via: actor.via, created_at: t };
+  const version: VersionRow = { id: newId(), board_id: board.id, location_id: board.location_id, n: 1, parent_n: null, kind: input.kind ?? 'create', summary: input.summary ?? tLoc(app, board.location_id)('Board angelegt'), ops: '[]', state: JSON.stringify(input.state), prompt: '', actor_id: actor.id, actor_name: actor.name.slice(0, 200), via: actor.via, created_at: t };
   app.db.tx(() => {
     app.db.insert('boards', board);
     app.db.insert('board_versions', version);
@@ -214,7 +215,7 @@ export function restoreVersion(app: App, ctx: Ctx, board: BoardRow, n: number): 
   const v = versionRow(app, board.id, n);
   if (!v) throw notFound('Version nicht gefunden');
   const st = JSON.parse(v.state) as BoardState;
-  return saveState(app, ctx, board, { name: st.name, icon: st.icon, accent: st.accent, spec: parseSpec(st.spec) }, { kind: 'restore', summary: `Version ${n} wiederhergestellt` });
+  return saveState(app, ctx, board, { name: st.name, icon: st.icon, accent: st.accent, spec: parseSpec(st.spec) }, { kind: 'restore', summary: tLoc(app, board.location_id)('Version {n} wiederhergestellt', { n }) });
 }
 
 export interface VersionOut {

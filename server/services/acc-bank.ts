@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { parseCsv } from '../core/csv.js';
 import { allAt, at, deepAll, parseXml, textAt, type XNode } from './xml-lite.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Bank statements for the light accounting: CSV exports of German banks and CAMT.053 (ISO 20022 XML) are parsed
@@ -113,7 +114,7 @@ export function parseBankCsv(text: string): CsvParse {
       cols = found;
     }
   }
-  if (headerAt < 0) return { txns: [], skipped: rows.length, columns: {}, errors: ['Keine Kopfzeile mit Datum und Betrag gefunden – bitte CSV-Export der Bank (Umsätze) wählen.'] };
+  if (headerAt < 0) return { txns: [], skipped: rows.length, columns: {}, errors: [tApp()('Keine Kopfzeile mit Datum und Betrag gefunden – bitte CSV-Export der Bank (Umsätze) wählen.')] };
   const get = (r: string[], k: string) => (cols[k] === undefined ? '' : String(r[cols[k]] ?? '').trim());
   const txns: BankTxn[] = [];
   let skipped = 0;
@@ -143,7 +144,7 @@ export function parseBankCsv(text: string): CsvParse {
       account_iban: get(r, 'account').replace(/\s+/g, '').toUpperCase().slice(0, 34),
     });
   }
-  if (!txns.length && !errors.length) errors.push('Keine Umsätze in der Datei gefunden.');
+  if (!txns.length && !errors.length) errors.push(tApp()('Keine Umsätze in der Datei gefunden.'));
   return { txns, skipped, columns: Object.fromEntries(Object.entries(cols).map(([k, v]) => [k, String(rows[headerAt][v])])), errors };
 }
 
@@ -153,10 +154,10 @@ export function parseCamt(xml: string): { txns: BankTxn[]; errors: string[] } {
   try {
     root = parseXml(xml);
   } catch (e) {
-    return { txns: [], errors: [`Die Datei ist kein gültiges XML (${(e as Error).message}).`] };
+    return { txns: [], errors: [tApp()('Die Datei ist kein gültiges XML ({error}).', { error: (e as Error).message })] };
   }
   const stmts = [...deepAll(root, 'Stmt'), ...deepAll(root, 'Rpt'), ...deepAll(root, 'Ntfctn')];
-  if (!stmts.length) return { txns: [], errors: ['Kein CAMT-Kontoauszug erkannt (erwartet: Document/BkToCstmrStmt/Stmt).'] };
+  if (!stmts.length) return { txns: [], errors: [tApp()('Kein CAMT-Kontoauszug erkannt (erwartet: Document/BkToCstmrStmt/Stmt).')] };
   const txns: BankTxn[] = [];
   const day = (n: XNode | undefined) => parseBankDate(textAt(n, 'Dt') || textAt(n, 'DtTm'));
   for (const st of stmts) {
@@ -258,11 +259,11 @@ export function matchTxn(t: Pick<BankTxn, 'amount_cents' | 'purpose' | 'counterp
     if (refN.length >= 4 && purposeN.includes(refN)) {
       // Pure digits must not be part of a longer number.
       const digits = /^\d+$/.test(c.ref) ? new RegExp(`(?<!\\d)${c.ref}(?!\\d)`).test(t.purpose) : true;
-      if (digits) (score += 60, reasons.push(`Belegnummer ${c.ref} im Verwendungszweck`));
+      if (digits) (score += 60, reasons.push(tApp()('Belegnummer {ref} im Verwendungszweck', { ref: c.ref })));
     }
-    if (c.amount_cents === amount) (score += 35, reasons.push('Betrag stimmt'));
+    if (c.amount_cents === amount) (score += 35, reasons.push(tApp()('Betrag stimmt')));
     const hay = `${t.counterparty} ${t.purpose}`.toLowerCase();
-    if (c.party && words(c.party).some((w) => hay.includes(w))) (score += 15, reasons.push('Name passt'));
+    if (c.party && words(c.party).some((w) => hay.includes(w))) (score += 15, reasons.push(tApp()('Name passt')));
     // Document number alone (60), or exact amount and name together (50), is worth proposing.
     if (score < 50) continue;
     const m: Match = { kind: c.kind, id: c.id, ref: c.ref, party: c.party, score, reasons, partial: c.amount_cents !== amount };

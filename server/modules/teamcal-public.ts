@@ -9,6 +9,7 @@ import { durationChoices, needsTeamPage } from '../services/teamcal-model.js';
 import { bookFromWaitlist, bookTeam, calendarById, cancelAppointment, completeHold, rescheduleAppointment, type BookResult } from '../services/teamcal-book.js';
 import { bookingPage, managePage, paidPage, routingPage, waitlistPage } from '../services/teamcal-pages.js';
 import { fetchSession, holdBy } from '../services/teamcal-pay.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * The public side of the Team-Kalender: the booking page of a team calendar (server-rendered, questions, price, policy), its slots and
@@ -108,9 +109,9 @@ export const teamCalPublicModule: Module = {
     // --- paying -----------------------------------------------------------------------------------------------------
     router.get('/book/paid/:token', 'public', (ctx) => {
       const hold = holdBy(app, 'token', ctx.params.token);
-      if (!hold) return html(messagePage('Nicht gefunden', 'Diese Buchung gibt es nicht (mehr).'), 404);
+      if (!hold) return html(messagePage(tApp()('Nicht gefunden'), tApp()('Diese Buchung gibt es nicht (mehr).')), 404);
       const cal = calendarById(app, hold.calendar_id);
-      if (!cal) return html(messagePage('Nicht gefunden', 'Diesen Kalender gibt es nicht mehr.'), 404);
+      if (!cal) return html(messagePage(tApp()('Nicht gefunden'), tApp()('Diesen Kalender gibt es nicht mehr.')), 404);
       const sid = String(ctx.query.get('session_id') ?? '');
       return html(paidPage(app, hold, cal, ctx.query.get('cancelled') === '1', /^cs_[A-Za-z0-9_]+$/.test(sid) ? sid : ''));
     });
@@ -172,22 +173,22 @@ export const teamCalPublicModule: Module = {
     // --- routing forms ------------------------------------------------------------------------------------------------
     router.get('/book/r/:slug', 'public', (ctx) => {
       const r = db.get<any>('SELECT * FROM teamcal_routes WHERE slug = ? AND active = 1', ctx.params.slug);
-      if (!r) return html(messagePage('Nicht gefunden', 'Dieses Formular gibt es nicht (mehr).'), 404);
+      if (!r) return html(messagePage(tApp()('Nicht gefunden'), tApp()('Dieses Formular gibt es nicht (mehr).')), 404);
       const options = parseJsonSafe<{ id: string; label: string; calendar_id: string }[]>(r.options, []);
       const slugs: Record<string, string> = {};
       for (const o of options) {
         const c = db.get<{ slug: string }>('SELECT slug FROM calendars WHERE id = ? AND location_id = ? AND active = 1', o.calendar_id, r.location_id);
         if (c) slugs[o.calendar_id] = c.slug;
       }
-      return html(routingPage({ ...r, options: options.filter((o) => slugs[o.calendar_id]) }, slugs, ctx.query.get('embed') === '1'));
+      return html(routingPage({ ...r, options: options.filter((o) => slugs[o.calendar_id]) }, slugs, ctx.query.get('embed') === '1', tLoc(app, r.location_id)));
     });
 
     // --- waiting list ------------------------------------------------------------------------------------------------
     router.get('/book/waitlist/:token', 'public', (ctx) => {
       const w = db.get<any>('SELECT * FROM teamcal_waitlist WHERE token = ?', ctx.params.token);
-      if (!w) return html(messagePage('Nicht gefunden', 'Dieses Angebot gibt es nicht.'), 404);
+      if (!w) return html(messagePage(tApp()('Nicht gefunden'), tApp()('Dieses Angebot gibt es nicht.')), 404);
       const cal = calendarById(app, w.calendar_id);
-      if (!cal) return html(messagePage('Nicht gefunden', 'Diesen Kalender gibt es nicht mehr.'), 404);
+      if (!cal) return html(messagePage(tApp()('Nicht gefunden'), tApp()('Diesen Kalender gibt es nicht mehr.')), 404);
       const state = w.status === 'booked' ? 'booked' : w.status === 'offered' && (!w.offer_expires_at || w.offer_expires_at > new Date().toISOString()) ? 'offer' : 'expired';
       return html(waitlistPage(app, w, cal, state));
     });

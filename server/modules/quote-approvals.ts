@@ -4,6 +4,7 @@ import { canConfigure, denyUnless, permits, resolve, scopeClause } from '../serv
 import { getQuote, type QuoteRow } from '../services/quote-engine.js';
 import { APPROVER_LABEL, APPROVER_ROLES, approvalOut, approvalState, approvalWithQuote, approversOf, assertSendable, decide, holdsRole, requestApproval, ruleOf, saveRule, withdraw, type Actor, type ApprovalRow } from '../services/quote-approval.js';
 import { registerTriggers } from '../services/wfx-kit.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Internal approval of quotes (docs/sales.md#internal-approval). The rule per sub-account, requests, approve/reject with a comment,
@@ -64,7 +65,7 @@ export const quoteApprovalsModule: Module = {
     router.get('/api/quote-approvals/settings', 'location', (ctx) => {
       const rule = ruleOf(app, ctx.locationId);
       const teams = db.all<{ id: string; name: string }>('SELECT id, name FROM sales_teams WHERE location_id = ? ORDER BY name', ctx.locationId);
-      return { rule, roles: APPROVER_ROLES.map((r) => ({ value: r, label: APPROVER_LABEL[r] })), teams, approvers: approversOf(app, ctx.locationId, rule).length, can_configure: !!person(ctx) && canConfigure(app, ctx) };
+      return { rule, roles: APPROVER_ROLES.map((r) => ({ value: r, label: tCtx(ctx)(APPROVER_LABEL[r]) })), teams, approvers: approversOf(app, ctx.locationId, rule).length, can_configure: !!person(ctx) && canConfigure(app, ctx) };
     });
     router.put('/api/quote-approvals/settings', 'location', (ctx) => {
       // Keys and AI tools could otherwise switch the rule off and send: only a signed-in person with the settings area changes it.

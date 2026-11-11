@@ -5,6 +5,7 @@ import { publicPage } from '../core/page.js';
 import { escapeHtml } from '../core/template.js';
 import { id, now, sha256, token } from '../core/util.js';
 import type { Tool } from './mcp.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Kunden-Freigabe von Social-Posts per Magic-Link – docs/social-planner.md#client-approval. The team prepares one or more posts and
@@ -41,17 +42,17 @@ export const socialApprovalModule: Module = {
   register(app: App) {
     const { db, router } = app;
     const rows = (where: string, ...args: any[]): any[] => parseRows(db.all(`SELECT a.*, l.title AS link_title, l.expires_at FROM social_approvals a JOIN social_approval_links l ON l.id = a.link_id WHERE ${where} ORDER BY a.created_at`, ...args), ['integration_ids', 'upload_ids']);
-    const out = (a: any) => ({ ...a, status_label: LABEL[a.status as Status] ?? a.status });
+    const out = (a: any, t: STFn = tApp()) => ({ ...a, status_label: LABEL[a.status as Status] ? t(LABEL[a.status as Status]) : a.status });
 
     /** Hands an approved post to the social planner; on failure the reason is kept and the post stays approved. */
     const schedule = async (a: any): Promise<void> => {
       if (!app.services.socialPost) {
-        db.run("UPDATE social_approvals SET error = ?, updated_at = ? WHERE id = ?", 'Social Planner nicht verfügbar', now(), a.id);
+        db.run("UPDATE social_approvals SET error = ?, updated_at = ? WHERE id = ?", tLoc(app, a.location_id)('Social Planner nicht verfügbar'), now(), a.id);
         return;
       }
       try {
         const future = a.publish_at && new Date(a.publish_at).getTime() > Date.now() + 120_000;
-        const post = await app.services.socialPost(a.location_id, { integrationIds: a.integration_ids, content: a.content, type: future ? 'schedule' : 'draft', date: a.publish_at ?? undefined, uploadIds: a.upload_ids, source: 'Kunden-Freigabe' });
+        const post = await app.services.socialPost(a.location_id, { integrationIds: a.integration_ids, content: a.content, type: future ? 'schedule' : 'draft', date: a.publish_at ?? undefined, uploadIds: a.upload_ids, source: tLoc(app, a.location_id)('Kunden-Freigabe') });
         db.run("UPDATE social_approvals SET status = 'scheduled', post_id = ?, error = '', updated_at = ? WHERE id = ?", post?.id ?? null, now(), a.id);
       } catch (e) {
         db.run('UPDATE social_approvals SET error = ?, updated_at = ? WHERE id = ?', String((e as Error).message).slice(0, 300), now(), a.id);
@@ -59,17 +60,18 @@ export const socialApprovalModule: Module = {
     };
 
     // --- team side -----------------------------------------------------------------------------------------------------------
-    router.get('/api/social-approvals', 'location', (ctx) => rows('a.location_id = ?', ctx.locationId).reverse().slice(0, 200).map(out));
+    router.get('/api/social-approvals', 'location', (ctx) => rows('a.location_id = ?', ctx.locationId).reverse().slice(0, 200).map((a) => out(a, tCtx(ctx))));
     /** `{ title?, posts: [{ content, integration_ids, date?, upload_ids? }] }` (or one post's fields directly) → one link for all. */
     router.post('/api/social-approvals', 'location', (ctx) => {
       if (ctx.scope === 'read') throw new HttpError(403, 'Dieser Schlüssel darf nur lesen');
       const list: any[] = Array.isArray(ctx.body?.posts) ? ctx.body.posts : [ctx.body ?? {}];
       if (!list.length || list.length > 30) throw bad('1 bis 30 Posts je Freigabe-Link');
+      const t = tCtx(ctx);
       const posts = list.map((p, i) => {
-        const content = str(p?.content, `Text (Post ${i + 1})`, { required: true, max: 63_000 });
+        const content = str(p?.content, t('Text (Post {n})', { n: i + 1 }), { required: true, max: 63_000 });
         const integration_ids = Array.isArray(p?.integration_ids) ? p.integration_ids.map(String).slice(0, 20) : [];
         const date = p?.date ? new Date(String(p.date)) : null;
-        if (date && Number.isNaN(date.getTime())) throw bad(`Zeitpunkt ungültig (Post ${i + 1})`);
+        if (date && Number.isNaN(date.getTime())) throw bad(t('Zeitpunkt ungültig (Post {n})', { n: i + 1 }));
         return { content, integration_ids, upload_ids: Array.isArray(p?.upload_ids) ? p.upload_ids.map(String).slice(0, 4) : [], publish_at: date ? date.toISOString() : null };
       });
       const raw = token(24);
@@ -78,14 +80,14 @@ export const socialApprovalModule: Module = {
         db.insert('social_approval_links', link);
         for (const p of posts) db.insert('social_approvals', { id: id(), location_id: ctx.locationId, link_id: link.id, ...p, status: 'pending', created_at: now(), updated_at: now() });
       });
-      return { url: `${app.baseUrl()}/social-review/${raw}`, expires_at: link.expires_at, approvals: rows('a.link_id = ?', link.id).map(out) };
+      return { url: `${app.baseUrl()}/social-review/${raw}`, expires_at: link.expires_at, approvals: rows('a.link_id = ?', link.id).map((a) => out(a, t)) };
     });
     router.post('/api/social-approvals/:id/schedule', 'location', async (ctx) => {
       const a = rows('a.id = ? AND a.location_id = ?', ctx.params.id, ctx.locationId)[0];
       if (!a) throw notFound('Freigabe nicht gefunden');
       if (a.status !== 'approved') throw bad('Nur freigegebene Posts lassen sich einplanen');
       await schedule(a);
-      return out(rows('a.id = ?', a.id)[0]);
+      return out(rows('a.id = ?', a.id)[0], tCtx(ctx));
     });
     router.delete('/api/social-approvals/:id', 'location', (ctx) => {
       if (!db.run('DELETE FROM social_approvals WHERE id = ? AND location_id = ?', ctx.params.id, ctx.locationId).changes) throw notFound('Freigabe nicht gefunden');
@@ -98,8 +100,11 @@ export const socialApprovalModule: Module = {
       const l = db.get<any>('SELECT * FROM social_approval_links WHERE token_hash = ?', sha256(String(raw ?? '')));
       return l && l.expires_at > now() ? l : undefined;
     };
-    const fmt = (iso: string | null, tz: string) => (iso ? new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short', timeZone: tz }).format(new Date(iso)) : 'Zeitpunkt offen');
+    const fmt = (iso: string | null, tz: string, t: STFn) => (iso ? new Intl.DateTimeFormat(t.locale === 'de' ? 'de-DE' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: tz }).format(new Date(iso)) : t('Zeitpunkt offen'));
+    /** The client's page, in the sub-account's language; `notice` is a German message id. */
     const reviewPage = (raw: string, l: any, notice = '') => {
+      const t = tLoc(app, l.location_id);
+      const e = (s: string) => escapeHtml(t(s));
       const loc = app.location(l.location_id);
       const tz = loc?.timezone || 'Europe/Berlin';
       const items = rows('a.link_id = ?', l.id);
@@ -109,30 +114,33 @@ export const socialApprovalModule: Module = {
           const imgs = (a.upload_ids as string[])
             .map((u) => db.get<any>("SELECT file FROM uploads WHERE id = ? AND location_id = ? AND mime LIKE 'image/%'", u, l.location_id))
             .filter(Boolean)
-            .map((u: any) => `<img src="/uploads/${escapeHtml(u.file)}" alt="Bild zu Post ${i + 1}" style="max-width:100%;border-radius:8px;margin-top:8px">`)
+            .map((u: any) => `<img src="/uploads/${escapeHtml(u.file)}" alt="${escapeHtml(t('Bild zu Post {n}', { n: i + 1 }))}" style="max-width:100%;border-radius:8px;margin-top:8px">`)
             .join('');
-          return `<div class="card" style="margin-bottom:16px"><p class="muted" style="margin:0 0 6px">Post ${i + 1} · ${escapeHtml(fmt(a.publish_at, tz))} · <strong>${escapeHtml(LABEL[a.status as Status])}</strong></p>
+          return `<div class="card" style="margin-bottom:16px"><p class="muted" style="margin:0 0 6px">${escapeHtml(t('Post {n}', { n: i + 1 }))} · ${escapeHtml(fmt(a.publish_at, tz, t))} · <strong>${e(LABEL[a.status as Status])}</strong></p>
 <div style="white-space:pre-wrap">${escapeHtml(a.content)}</div>${imgs}
-${a.note ? `<p class="muted">Anmerkung: ${escapeHtml(a.note)}</p>` : ''}
+${a.note ? `<p class="muted">${e('Anmerkung')}: ${escapeHtml(a.note)}</p>` : ''}
 ${done ? '' : `<form method="post" action="/social-review/${escapeHtml(raw)}/${escapeHtml(a.id)}">
-<label for="n-${escapeHtml(a.id)}">Anmerkung (optional)</label><textarea id="n-${escapeHtml(a.id)}" name="note" rows="2"></textarea>
-<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button name="decision" value="approved">✓ Freigeben</button><button name="decision" value="changes" class="secondary">Änderung wünschen</button><button name="decision" value="rejected" class="secondary">Ablehnen</button></div></form>`}</div>`;
+<label for="n-${escapeHtml(a.id)}">${e('Anmerkung (optional)')}</label><textarea id="n-${escapeHtml(a.id)}" name="note" rows="2"></textarea>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button name="decision" value="approved">✓ ${e('Freigeben')}</button><button name="decision" value="changes" class="secondary">${e('Änderung wünschen')}</button><button name="decision" value="rejected" class="secondary">${e('Ablehnen')}</button></div></form>`}</div>`;
         })
         .join('');
-      const body = `<div class="wrap" style="max-width:640px"><h1>${escapeHtml(l.title || 'Social-Posts zur Freigabe')}</h1><p class="muted">${escapeHtml(loc?.name ?? '')} bittet dich, diese Posts zu prüfen.</p>${notice ? `<p role="status"><strong>${escapeHtml(notice)}</strong></p>` : ''}${cards || '<p>Keine Posts mehr offen.</p>'}</div>`;
-      const r = html(publicPage({ title: 'Freigabe', body, head: '<meta name="robots" content="noindex, nofollow">' }));
+      const body = `<div class="wrap" style="max-width:640px"><h1>${escapeHtml(l.title || t('Social-Posts zur Freigabe'))}</h1><p class="muted">${escapeHtml(t('{name} bittet dich, diese Posts zu prüfen.', { name: loc?.name ?? '' }))}</p>${notice ? `<p role="status"><strong>${e(notice)}</strong></p>` : ''}${cards || `<p>${e('Keine Posts mehr offen.')}</p>`}</div>`;
+      const r = html(publicPage({ title: t('Freigabe'), body, head: '<meta name="robots" content="noindex, nofollow">' }));
       r.headers['cache-control'] = 'no-store';
       r.headers['referrer-policy'] = 'no-referrer';
       return r;
     };
-    const gone = () => html(publicPage({ title: 'Link abgelaufen', body: '<div class="wrap"><div class="card"><h1>Link abgelaufen</h1><p class="muted">Bitte frag nach einem neuen Freigabe-Link.</p></div></div>' }), 404);
+    const gone = (ctx: Ctx) => {
+      const t = tCtx(ctx);
+      return html(publicPage({ title: t('Link abgelaufen'), body: `<div class="wrap"><div class="card"><h1>${escapeHtml(t('Link abgelaufen'))}</h1><p class="muted">${escapeHtml(t('Bitte frag nach einem neuen Freigabe-Link.'))}</p></div></div>` }), 404);
+    };
     router.get('/social-review/:token', 'public', (ctx) => {
       const l = linkOf(ctx.params.token);
-      return l ? reviewPage(ctx.params.token, l) : gone();
+      return l ? reviewPage(ctx.params.token, l) : gone(ctx);
     });
     router.post('/social-review/:token/:id', 'public', async (ctx: Ctx) => {
       const l = linkOf(ctx.params.token);
-      if (!l) return gone();
+      if (!l) return gone(ctx);
       const a = rows('a.id = ? AND a.link_id = ?', ctx.params.id, l.id)[0];
       if (!a) return reviewPage(ctx.params.token, l, 'Post nicht gefunden.');
       const decision = String(ctx.body?.decision ?? '') as Status;

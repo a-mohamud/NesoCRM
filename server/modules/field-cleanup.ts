@@ -2,6 +2,7 @@ import type { Module } from '../core/app.js';
 import { bad, type Ctx } from '../core/http.js';
 import { tableEntity } from '../services/undo-table.js';
 import type { Tool } from './mcp.js';
+import { tCtx } from '../i18n/index.js';
 
 /**
  * Custom field clean-up (docs/api.md#custom-fields-clean-up): how much each contact field is used – contacts with a value, forms that
@@ -111,7 +112,7 @@ export const fieldCleanupModule: Module = {
         entity: 'custom_field',
         targets: (ctx: Ctx) => bodyIds(ctx.body).map((id) => ({ id })),
         action: (_b: unknown, a: unknown) => (!a ? 'delete' : 'update'),
-        groupLabel: (_ctx: Ctx, rows: unknown[]) => `${rows.length} ${rows.length === 1 ? 'Kontaktfeld' : 'Kontaktfelder'} gelöscht`,
+        groupLabel: (ctx: Ctx, rows: unknown[]) => tCtx(ctx).plural(rows.length, { one: '{n} Kontaktfeld gelöscht', other: '{n} Kontaktfelder gelöscht' }),
       });
     }
   },

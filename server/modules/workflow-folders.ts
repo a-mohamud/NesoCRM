@@ -4,6 +4,7 @@ import { id, now } from '../core/util.js';
 import { callRoute } from '../services/route-call.js';
 import type { SnapshotPart } from '../services/snapshots.js';
 import type { Tool } from './mcp.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Folders and bulk actions for the workflow list (docs/workflow-actions.md#folders-and-bulk-actions): nested folders per
@@ -99,7 +100,7 @@ export const workflowFoldersModule: Module = {
       if (!all.has(parent)) throw bad('Übergeordneter Ordner nicht gefunden');
       const chain = ancestors(all, parent);
       if (self && chain.includes(self)) throw bad('Ein Ordner kann nicht in sich selbst liegen');
-      if (chain.length >= MAX_DEPTH) throw bad(`Höchstens ${MAX_DEPTH} Ebenen`);
+      if (chain.length >= MAX_DEPTH) throw bad(tApp()('Höchstens {n} Ebenen', { n: MAX_DEPTH }));
       return parent;
     };
 

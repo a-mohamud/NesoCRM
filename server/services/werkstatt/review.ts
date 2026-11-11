@@ -2,6 +2,7 @@ import { REVIEW_CHECKS, type Review } from './generate.js';
 import type { CheckResult, PluginFiles } from './checks.js';
 import { SCOPES } from './manifest.js';
 import type { Verification } from './logic.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * The automatic security review before a plugin may go to the Marktplatz: a checklist an AI agent works
@@ -22,13 +23,13 @@ export function autoChecks(files: PluginFiles, v: Pick<Verification, 'ok' | 'sta
   const c = (id: string, ok: boolean, note: string): Check => ({ id, label: label(id), ok, note, source: 'auto' });
   const hasHosts = (m.externalHosts?.length ?? 0) > 0 || st.stats.external_hosts.length > 0;
   return [
-    c('scopes-minimal', unused.length === 0, unused.length ? `Nicht benutzte Berechtigungen: ${unused.join(', ')}.` : `${m.scopes.length} Berechtigung${m.scopes.length === 1 ? '' : 'en'}, alle im Code benutzt.`),
-    c('no-exfiltration', st.ok && !hasHosts, !st.ok ? 'Die automatische Prüfung hat verbotene Zugriffe gefunden.' : hasHosts ? 'Das Plugin deklariert externe Hosts.' : 'Kein Netzwerk, keine Navigation, keine externen Adressen im Code.'),
-    c('no-external-resources', !hasHosts, hasHosts ? `Externe Hosts: ${[...new Set([...(m.externalHosts ?? []), ...st.stats.external_hosts])].join(', ')}.` : 'Keine externen Ressourcen.'),
-    c('no-dangerous-apis', st.ok, st.ok ? 'Keine verbotenen APIs gefunden.' : st.issues.filter((i) => i.level === 'error').slice(0, 3).map((i) => i.message).join(' ')),
-    c('writes-justified', writes.length <= 2, writes.length ? `Schreibende Berechtigungen: ${writes.join(', ')}.` : 'Nur lesender Zugriff.'),
-    c('ai-injection', !(m.scopes.includes('ai:run') && writes.length > 0), m.scopes.includes('ai:run') && writes.length ? 'Das Plugin nutzt KI und darf schreiben – KI-Antworten dürfen keine Schreibzugriffe auslösen.' : 'Kein Zusammenspiel von KI und Schreibzugriff.'),
-    c('robustness', !!v.selftest?.ok, v.selftest?.ok ? 'Der Selbsttest in der Sandbox lief ohne Fehler.' : 'Der Selbsttest hat Fehler gemeldet.'),
+    c('scopes-minimal', unused.length === 0, unused.length ? tApp()('Nicht benutzte Berechtigungen: {list}.', { list: unused.join(', ') }) : tApp().plural(m.scopes.length, { one: '{n} Berechtigung, im Code benutzt.', other: '{n} Berechtigungen, alle im Code benutzt.' })),
+    c('no-exfiltration', st.ok && !hasHosts, !st.ok ? tApp()('Die automatische Prüfung hat verbotene Zugriffe gefunden.') : hasHosts ? tApp()('Das Plugin deklariert externe Hosts.') : tApp()('Kein Netzwerk, keine Navigation, keine externen Adressen im Code.')),
+    c('no-external-resources', !hasHosts, hasHosts ? `Externe Hosts: ${[...new Set([...(m.externalHosts ?? []), ...st.stats.external_hosts])].join(', ')}.` : tApp()('Keine externen Ressourcen.')),
+    c('no-dangerous-apis', st.ok, st.ok ? tApp()('Keine verbotenen APIs gefunden.') : st.issues.filter((i) => i.level === 'error').slice(0, 3).map((i) => i.message).join(' ')),
+    c('writes-justified', writes.length <= 2, writes.length ? `Schreibende Berechtigungen: ${writes.join(', ')}.` : tApp()('Nur lesender Zugriff.')),
+    c('ai-injection', !(m.scopes.includes('ai:run') && writes.length > 0), m.scopes.includes('ai:run') && writes.length ? tApp()('Das Plugin nutzt KI und darf schreiben – KI-Antworten dürfen keine Schreibzugriffe auslösen.') : tApp()('Kein Zusammenspiel von KI und Schreibzugriff.')),
+    c('robustness', !!v.selftest?.ok, v.selftest?.ok ? tApp()('Der Selbsttest in der Sandbox lief ohne Fehler.') : tApp()('Der Selbsttest hat Fehler gemeldet.')),
   ];
 }
 

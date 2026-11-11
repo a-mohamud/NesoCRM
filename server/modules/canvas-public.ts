@@ -6,6 +6,7 @@ import { renderSvg, esc } from '../services/canvas-render.js';
 import { resolveCards, areaAllowed } from '../services/canvas-cards.js';
 import { type BoardRow, accessOf, boardElements } from '../services/canvas-store.js';
 import { visibleLocations } from '../services/mobile.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Canvas outside the editor:
@@ -20,7 +21,7 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{20,64}$/;
 
 /** Pan/zoom + auto-refresh of the public page (inline, allowed by its hash in the CSP). */
 const VIEWER_JS = `(function(){
-var wrap=document.getElementById('wrap'),stage=document.getElementById('stage'),tok=document.body.getAttribute('data-token'),seq=Number(document.body.getAttribute('data-seq'));
+var wrap=document.getElementById('wrap'),stage=document.getElementById('stage'),tok=document.body.getAttribute('data-token'),seq=Number(document.body.getAttribute('data-seq')),txtGone=document.body.getAttribute('data-gone'),txtUpd=document.body.getAttribute('data-updated');
 var s=1,x=0,y=0,drag=null,pts={};
 function svg(){return stage.querySelector('svg');}
 function apply(){stage.style.transform='translate('+x+'px,'+y+'px) scale('+s+')';}
@@ -35,12 +36,12 @@ document.getElementById('zin').onclick=function(){zoom(1.25,wrap.clientWidth/2,w
 document.getElementById('zout').onclick=function(){zoom(0.8,wrap.clientWidth/2,wrap.clientHeight/2);};
 document.getElementById('zfit').onclick=fit;
 window.addEventListener('resize',fit);fit();
-setInterval(function(){if(document.hidden)return;fetch('/api/public/canvas/'+tok+'?seq='+seq).then(function(r){return r.ok?r.json():null;}).then(function(d){if(!d){document.getElementById('state').textContent='Link nicht mehr gültig';return;}if(d.unchanged)return;seq=d.seq;stage.innerHTML=d.svg;document.getElementById('state').textContent='aktualisiert';}).catch(function(){});},15000);
+setInterval(function(){if(document.hidden)return;fetch('/api/public/canvas/'+tok+'?seq='+seq).then(function(r){return r.ok?r.json():null;}).then(function(d){if(!d){document.getElementById('state').textContent=txtGone;return;}if(d.unchanged)return;seq=d.seq;stage.innerHTML=d.svg;document.getElementById('state').textContent=txtUpd;}).catch(function(){});},15000);
 })();`;
 const VIEWER_HASH = `sha256-${createHash('sha256').update(VIEWER_JS).digest('base64')}`;
 
-function page(title: string, body: string, opts: { token?: string; seq?: number; brand: string }): RawResult {
-  const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+function page(title: string, body: string, opts: { token?: string; seq?: number; brand: string; t: STFn }): RawResult {
+  const html = `<!doctype html><html lang="${opts.t.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>${esc(title)} – ${esc(opts.brand)}</title>
 <style>
 :root{--bg:#f4f6fa;--panel:#fff;--text:#111827;--muted:#6b7280;--line:#e5e7eb}
@@ -55,7 +56,7 @@ header h1{font-size:16px;margin:0;flex:1;overflow:hidden;text-overflow:ellipsis;
 .tools{position:absolute;right:16px;bottom:16px;display:flex;gap:6px}
 .tools button{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:18px;cursor:pointer}
 .msg{max-width:420px;margin:15vh auto;text-align:center;padding:24px}
-</style></head><body${opts.token ? ` data-token="${esc(opts.token)}" data-seq="${opts.seq ?? 0}"` : ''}>${body}${opts.token ? `<script>${VIEWER_JS}</script>` : ''}</body></html>`;
+</style></head><body${opts.token ? ` data-token="${esc(opts.token)}" data-seq="${opts.seq ?? 0}" data-gone="${esc(opts.t('Link nicht mehr gültig'))}" data-updated="${esc(opts.t('aktualisiert'))}"` : ''}>${body}${opts.token ? `<script>${VIEWER_JS}</script>` : ''}</body></html>`;
   return {
     __raw: true,
     status: opts.token ? 200 : 404,
@@ -83,17 +84,21 @@ export const canvasPublicModule: Module = {
       const b = s && db.get<BoardRow>('SELECT * FROM canvas_boards WHERE id = ? AND location_id = ?', s.board_id, s.location_id);
       return s && b ? { share: s, board: b } : undefined;
     };
-    const publicSvg = (b: BoardRow) => renderSvg(boardElements(app, b.id), { publicView: true, imageHref: (src) => src, background: '#ffffff', title: b.name, idPrefix: 'pub' }).svg;
+    const publicSvg = (b: BoardRow) => renderSvg(boardElements(app, b.id), { publicView: true, imageHref: (src) => src, background: '#ffffff', title: b.name, idPrefix: 'pub', tr: tLoc(app, b.location_id) }).svg;
 
     router.get('/canvas/s/:token', 'public', (ctx) => {
       const hit = shared(ctx.params.token);
-      if (!hit) return page('Link ungültig', `<div class="msg"><h1>Link ungültig</h1><p>Dieser Link ist abgelaufen oder wurde widerrufen.</p></div>`, { brand: brand() });
+      if (!hit) {
+        const t = tCtx(ctx);
+        return page(t('Link ungültig'), `<div class="msg"><h1>${esc(t('Link ungültig'))}</h1><p>${esc(t('Dieser Link ist abgelaufen oder wurde widerrufen.'))}</p></div>`, { brand: brand(), t });
+      }
       db.run('UPDATE canvas_shares SET views = views + 1, last_used_at = ? WHERE id = ?', now(), hit.share.id);
       const b = hit.board;
+      const t = tLoc(app, b.location_id);
       return page(
         b.name,
-        `<header><h1>${esc(b.name)}</h1><span class="badge">Nur ansehen</span><span class="badge" id="state">live</span></header><div id="wrap"><div id="stage">${publicSvg(b)}</div><div class="tools"><button id="zout" aria-label="Verkleinern">−</button><button id="zfit" aria-label="Einpassen">⤢</button><button id="zin" aria-label="Vergrößern">+</button></div></div>`,
-        { token: ctx.params.token, seq: b.seq, brand: brand() },
+        `<header><h1>${esc(b.name)}</h1><span class="badge">${esc(t('Nur ansehen'))}</span><span class="badge" id="state">live</span></header><div id="wrap"><div id="stage">${publicSvg(b)}</div><div class="tools"><button id="zout" aria-label="${esc(t('Verkleinern'))}">−</button><button id="zfit" aria-label="${esc(t('Einpassen'))}">⤢</button><button id="zin" aria-label="${esc(t('Vergrößern'))}">+</button></div></div>`,
+        { token: ctx.params.token, seq: b.seq, brand: brand(), t },
       );
     });
 
@@ -132,7 +137,7 @@ export const canvasPublicModule: Module = {
       const cards = await resolveCards(app, inLocation(ctx, b.location_id), els.filter((e) => e.type === 'card' && e.card).map((e) => e.card!));
       const theme = ctx.query.get('theme') === 'dark' ? 'dark' : 'light';
       const max = Math.min(4096, Math.max(0, Number(ctx.query.get('max')) || 0)) || undefined;
-      const svg = renderSvg(els, { cards, imageHref: (src) => `${app.baseUrl()}${src}`, background: '#ffffff', theme, maxSize: max, title: b.name }).svg;
+      const svg = renderSvg(els, { cards, imageHref: (src) => `${app.baseUrl()}${src}`, background: '#ffffff', theme, maxSize: max, title: b.name, tr: tCtx(ctx) }).svg;
       return { __raw: true, status: 200, headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': "default-src 'none'; img-src 'self' data: https:; style-src 'unsafe-inline'" }, body: svg };
     });
   },

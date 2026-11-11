@@ -1,6 +1,7 @@
 import type { App } from '../core/app.js';
 import { parseJson } from '../core/db.js';
 import { bad } from '../core/http.js';
+import { tApp } from '../i18n/index.js';
 import { slugify } from '../core/util.js';
 import { invoiceSettings } from '../modules/payments.js';
 import { DEFAULT_SETTINGS, cleanSettings, type ProductKind, type QuoteProduct, type StoreSettings } from './store-model.js';
@@ -140,7 +141,7 @@ export function catalog(app: App, locationId: string, o: { publishedOnly?: boole
 /** One line of a cart → what the quote needs; the variant must be one of the product's (and is required when it has some). */
 export function quoteProduct(p: CatalogProduct, articleId?: string | null): QuoteProduct {
   const v = p.variants.length ? p.variants.find((x) => x.article_id === articleId) : undefined;
-  if (p.variants.length && !v) throw bad(`Bitte eine Variante von „${p.name}“ wählen`);
+  if (p.variants.length && !v) throw bad(tApp()('Bitte eine Variante von „{name}“ wählen', { name: p.name }));
   const stock = v ? v.stock : p.stock;
   return {
     product_id: p.id,

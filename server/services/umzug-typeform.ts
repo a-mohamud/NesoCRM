@@ -3,6 +3,7 @@ import type { Json } from './umzug-flow.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { counter, nameParts, seg, stubCtx } from './umzug-lib.js';
 import { clip, toIso } from './umzug-text.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * Typeform (REST API, https://api.typeform.com or api.eu.typeform.com, a personal access token): forms → forms in HyperLevel (saved as drafts
@@ -47,7 +48,8 @@ export function flatFields(fields: unknown, depth = 0): Json[] {
 }
 
 export function typeformField(f: Json): NonNullable<RForm['fields']>[number] | undefined {
-  const label = recall(f.title) || 'Frage';
+  const t = tApp();
+  const label = recall(f.title) || t('Frage');
   const required = !!f.validations?.required;
   const choices = (): string[] => (Array.isArray(f.properties?.choices) ? f.properties.choices.map((c: Json) => String(c.label ?? '')).filter(Boolean) : []);
   switch (f.type) {
@@ -66,7 +68,7 @@ export function typeformField(f: Json): NonNullable<RForm['fields']>[number] | u
     case 'nps':
       return { label, type: 'number', required };
     case 'yes_no':
-      return { label, type: 'radio', required, options: ['Ja', 'Nein'] };
+      return { label, type: 'radio', required, options: [t('Ja'), t('Nein')] };
     case 'legal':
       return { label, type: 'checkbox', required };
     case 'multiple_choice':
@@ -79,7 +81,7 @@ export function typeformField(f: Json): NonNullable<RForm['fields']>[number] | u
     case 'file_upload':
     case 'matrix':
     case 'ranking':
-      return { label: `${label} (${f.type === 'file_upload' ? 'Datei-Upload bei Typeform' : f.type === 'matrix' ? 'Matrix-Frage' : 'Rangfolge'}: bitte ersetzen)`, type: 'text', required: false };
+      return { label: t('{label} ({kind}: bitte ersetzen)', { label, kind: f.type === 'file_upload' ? t('Datei-Upload bei Typeform') : f.type === 'matrix' ? t('Matrix-Frage') : t('Rangfolge') }), type: 'text', required: false };
     default:
       // statement, payment, … carry no answer
       return undefined;
@@ -87,15 +89,16 @@ export function typeformField(f: Json): NonNullable<RForm['fields']>[number] | u
 }
 
 export function typeformForm(def: Json): RForm {
+  const t = tApp();
   const fields = flatFields(def.fields).map(typeformField).filter((x): x is NonNullable<ReturnType<typeof typeformField>> => !!x);
   const skipped = flatFields(def.fields).filter((f) => !typeformField(f)).length;
   const logic = Array.isArray(def.logic) && def.logic.length;
   return {
     kind: 'form',
     ext: `f:${def.id}`,
-    name: String(def.title ?? `Formular ${def.id}`),
+    name: String(def.title ?? t('Formular {id}', { id: def.id })),
     fields,
-    note: ['Aus Typeform – bitte prüfen', logic ? 'Typeform-Logik (Sprünge) wurde nicht übernommen' : '', skipped ? `${skipped} Blöcke ohne Antwort (Erklärungen, Zahlung) fehlen` : ''].filter(Boolean).join(' · '),
+    note: [t('Aus Typeform – bitte prüfen'), logic ? t('Typeform-Logik (Sprünge) wurde nicht übernommen') : '', skipped ? t('{skipped} Blöcke ohne Antwort (Erklärungen, Zahlung) fehlen', { skipped }) : ''].filter(Boolean).join(' · '),
   };
 }
 
@@ -114,6 +117,7 @@ async function* pagedForms(h: VendorHttp, ctx: StepCtx): AsyncGenerator<Json[]> 
 
 /** One answer as text (a list for several choices). */
 export function answerText(a: Json): string | string[] | undefined {
+  const t = tApp();
   switch (a?.type) {
     case 'text':
       return a.text;
@@ -126,7 +130,7 @@ export function answerText(a: Json): string | string[] | undefined {
     case 'number':
       return a.number === undefined ? undefined : String(a.number);
     case 'boolean':
-      return a.boolean === undefined ? undefined : a.boolean ? 'Ja' : 'Nein';
+      return a.boolean === undefined ? undefined : a.boolean ? t('Ja') : t('Nein');
     case 'date':
       return a.date ? String(a.date).slice(0, 10) : undefined;
     case 'choice':
@@ -136,7 +140,7 @@ export function answerText(a: Json): string | string[] | undefined {
       return list.length ? list : undefined;
     }
     case 'file_url':
-      return a.file_url ? `Datei bei Typeform: ${a.file_url}` : undefined;
+      return a.file_url ? t('Datei bei Typeform: {file_url}', { file_url: a.file_url }) : undefined;
     case 'payment':
       return a.payment ? `${a.payment.amount ?? ''} ${a.payment.currency ?? ''}`.trim() : undefined;
     default:
@@ -145,13 +149,14 @@ export function answerText(a: Json): string | string[] | undefined {
 }
 
 export function typeformResponse(r: Json, def: Json, wantContact: boolean): { submission: RSubmission; contact?: RContact } {
-  const titles = new Map<string, string>(flatFields(def.fields).map((f) => [String(f.id), recall(f.title) || 'Frage']));
+  const t = tApp();
+  const titles = new Map<string, string>(flatFields(def.fields).map((f) => [String(f.id), recall(f.title) || t('Frage')]));
   const answers: Record<string, string | string[]> = {};
   let email: string | undefined;
   let phone: string | undefined;
   let name: string | undefined;
   for (const a of Array.isArray(r.answers) ? r.answers : []) {
-    const q = titles.get(String(a.field?.id)) ?? recall(a.field?.ref) ?? 'Frage';
+    const q = titles.get(String(a.field?.id)) ?? recall(a.field?.ref) ?? t('Frage');
     const v = answerText(a);
     if (v === undefined || v === '') continue;
     let key = q;
@@ -161,7 +166,7 @@ export function typeformResponse(r: Json, def: Json, wantContact: boolean): { su
     else if (a.type === 'phone_number' && !phone) phone = String(a.phone_number);
     else if (a.type === 'text' && !name && /name|heiß|heiss/i.test(q) && !/firma|company|unternehm|nutzer|user|benutzer/i.test(q)) name = String(a.text);
   }
-  for (const [k, v] of Object.entries((r.hidden ?? {}) as Record<string, unknown>)) if (v !== undefined && v !== null && v !== '') answers[`Verstecktes Feld: ${k}`] = String(v);
+  for (const [k, v] of Object.entries((r.hidden ?? {}) as Record<string, unknown>)) if (v !== undefined && v !== null && v !== '') answers[t('Verstecktes Feld: {name}', { name: k })] = String(v);
   const meta: Record<string, string> = {};
   for (const k of ['referer', 'platform', 'browser']) if (r.metadata?.[k]) meta[k] = clip(r.metadata[k], 300);
   const form = `f:${def.id}`;
@@ -177,7 +182,7 @@ export function typeformResponse(r: Json, def: Json, wantContact: boolean): { su
       values: { email, first_name: n.first, last_name: n.last, phone },
       consent: 'unknown',
       created_at: toIso(r.submitted_at ?? r.landed_at),
-      proof: [{ basis: 'none', method: `Antwort im Typeform-Formular „${clip(def.title, 80)}“ (Typeform kennt keine Werbeeinwilligung)`, channel: 'email' }],
+      proof: [{ basis: 'none', method: t('Antwort im Typeform-Formular „{title}“ (Typeform kennt keine Werbeeinwilligung)', { title: clip(def.title, 80) }), channel: 'email' }],
     },
   };
 }

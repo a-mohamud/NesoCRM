@@ -3,6 +3,7 @@ import { HttpError, type Ctx, type RawResult } from '../core/http.js';
 import { escapeHtml } from '../core/template.js';
 import { formatInTz } from '../core/time.js';
 import type { Member, Portal } from './portal.js';
+import { tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * "Meine Termine" in the customer portal (HighLevel parity, docs/booking.md#appointments-in-the-customer-portal): the customer sees
@@ -62,21 +63,26 @@ export const portalAppointmentsModule: Module = {
       }
       return a.meeting_url || s.meeting_location || '';
     };
-    const card = (a: any, past: boolean) => {
+    const card = (t: STFn, a: any, past: boolean) => {
       const where = place(a);
-      const link = /^https?:\/\//.test(where) ? `<a href="${escapeHtml(where)}" target="_blank" rel="noopener noreferrer">${a.meeting_url ? 'Zum Videocall' : escapeHtml(where)}</a>` : escapeHtml(where);
-      const manage = !past && a.status === 'confirmed' ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn secondary" href="/book/ticket/${encodeURIComponent(a.manage_token)}">Ticket</a><a class="btn secondary" href="/book/manage/${encodeURIComponent(a.manage_token)}">Verschieben oder absagen</a></div>` : '';
-      return `<div class="ap-card${past ? ' past' : ''}"><div><div class="when">${escapeHtml(when(a))} Uhr</div><div>${escapeHtml(a.calendar)}${a.title && a.title !== a.calendar ? ` · ${escapeHtml(a.title)}` : ''}</div>${where ? `<div class="ap-st">${link}</div>` : ''}<div class="ap-st">${escapeHtml(STATUS[a.status] ?? a.status)}</div></div>${manage}</div>`;
+      const link = /^https?:\/\//.test(where) ? `<a href="${escapeHtml(where)}" target="_blank" rel="noopener noreferrer">${a.meeting_url ? escapeHtml(t('Zum Videocall')) : escapeHtml(where)}</a>` : escapeHtml(where);
+      const manage = !past && a.status === 'confirmed' ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn secondary" href="/book/ticket/${encodeURIComponent(a.manage_token)}">${escapeHtml(t('Ticket'))}</a><a class="btn secondary" href="/book/manage/${encodeURIComponent(a.manage_token)}">${escapeHtml(t('Verschieben oder absagen'))}</a></div>` : '';
+      return `<div class="ap-card${past ? ' past' : ''}"><div><div class="when">${escapeHtml(t('{time} Uhr', { time: when(a) }))}</div><div>${escapeHtml(a.calendar)}${a.title && a.title !== a.calendar ? ` · ${escapeHtml(a.title)}` : ''}</div>${where ? `<div class="ap-st">${link}</div>` : ''}<div class="ap-st">${escapeHtml(STATUS[a.status] ? t(STATUS[a.status]) : a.status)}</div></div>${manage}</div>`;
     };
 
-    app.services.portalHeader = [...(app.services.portalHeader ?? []), (p: Portal, m: Member) => (hasAny(p.locationId, m.contact.id) ? `<a class="ap-link" href="${base(p)}" aria-label="Meine Termine">${ICON}<span>Meine Termine</span></a>` : '')];
+    app.services.portalHeader = [...(app.services.portalHeader ?? []), (p: Portal, m: Member) => {
+        if (!hasAny(p.locationId, m.contact.id)) return '';
+        const label = escapeHtml(tLoc(app, p.locationId)('Meine Termine'));
+        return `<a class="ap-link" href="${base(p)}" aria-label="${label}">${ICON}<span>${label}</span></a>`;
+      }];
     app.services.portalHead = [...(app.services.portalHead ?? []), () => HEAD];
     app.services.portalDashboard = [
       ...(app.services.portalDashboard ?? []),
       (p: Portal, m: Member) => {
         const next = appointmentsOf(p.locationId, m.contact.id).find((a) => a.status === 'confirmed' && a.end_at >= new Date().toISOString());
         if (!next) return '';
-        return `<section class="ap-dash"><h2>${ICON} Nächster Termin</h2>${card(next, false)}<a href="${base(p)}">Alle Termine</a></section>`;
+        const t = tLoc(app, p.locationId);
+        return `<section class="ap-dash"><h2>${ICON} ${escapeHtml(t('Nächster Termin'))}</h2>${card(t, next, false)}<a href="${base(p)}">${escapeHtml(t('Alle Termine'))}</a></section>`;
       },
     ];
     app.services.portalMemberCheck = [...(app.services.portalMemberCheck ?? []), (loc: string, cid: string) => hasAny(loc, cid)];
@@ -88,6 +94,7 @@ export const portalAppointmentsModule: Module = {
       if (!p) return k.unknownPortal();
       const m = k.memberOf(ctx, p);
       if (!m) return k.loginPage(p, { status: 401, next: ctx.path });
+      const t = tLoc(app, p.locationId);
       const nowIso = new Date().toISOString();
       const list = appointmentsOf(p.locationId, m.contact.id);
       const upcoming = list.filter((a) => a.end_at >= nowIso && a.status !== 'cancelled');
@@ -101,13 +108,13 @@ export const portalAppointmentsModule: Module = {
       }
       const book = [
         ...menus.map((x) => `<a class="ap-tile" href="/book/s/${encodeURIComponent(x.slug)}"><strong>${escapeHtml(x.name)}</strong>${x.intro ? `<div class="ap-st">${escapeHtml(String(x.intro).slice(0, 120))}</div>` : ''}</a>`),
-        ...calendars.map((c) => `<a class="ap-tile" href="/book/${encodeURIComponent(c.slug)}"><strong>${escapeHtml(c.name)}</strong><div class="ap-st">${c.duration} Min.${c.description ? ` · ${escapeHtml(String(c.description).slice(0, 100))}` : ''}</div></a>`),
+        ...calendars.map((c) => `<a class="ap-tile" href="/book/${encodeURIComponent(c.slug)}"><strong>${escapeHtml(c.name)}</strong><div class="ap-st">${escapeHtml(t('{n} Min.', { n: c.duration }))}${c.description ? ` · ${escapeHtml(String(c.description).slice(0, 100))}` : ''}</div></a>`),
       ].join('');
-      const body = `<div class="crumb"><a href="${p.base}">Start</a></div><h1>Meine Termine</h1>
-${upcoming.length ? upcoming.map((a) => card(a, false)).join('') : '<div class="panel empty"><p class="muted">Gerade steht kein Termin an.</p></div>'}
-${book ? `<h2 class="ap-h" style="margin-top:28px">${ICON} Neuen Termin buchen</h2><div class="ap-grid">${book}</div>` : ''}
-${past.length ? `<h2 style="margin-top:28px">Vergangene Termine</h2>${past.map((a) => card(a, true)).join('')}` : ''}`;
-      return k.page(p, { title: 'Meine Termine', body, member: m });
+      const body = `<div class="crumb"><a href="${p.base}">${escapeHtml(t('Start'))}</a></div><h1>${escapeHtml(t('Meine Termine'))}</h1>
+${upcoming.length ? upcoming.map((a) => card(t, a, false)).join('') : `<div class="panel empty"><p class="muted">${escapeHtml(t('Gerade steht kein Termin an.'))}</p></div>`}
+${book ? `<h2 class="ap-h" style="margin-top:28px">${ICON} ${escapeHtml(t('Neuen Termin buchen'))}</h2><div class="ap-grid">${book}</div>` : ''}
+${past.length ? `<h2 style="margin-top:28px">${escapeHtml(t('Vergangene Termine'))}</h2>${past.map((a) => card(t, a, true)).join('')}` : ''}`;
+      return k.page(p, { title: t('Meine Termine'), body, member: m });
     });
   },
 };

@@ -2,6 +2,7 @@ import type { Module } from '../core/app.js';
 import { isRelay } from '../core/app.js';
 import { HttpError, notFound, redirect, str, type Ctx, type RawResult, type User } from '../core/http.js';
 import { messagePage } from '../core/page.js';
+import { tApp, tCtx } from '../i18n/index.js';
 import { id, now, sha256, token } from '../core/util.js';
 import {
   ACCESS_PREFIX,
@@ -50,7 +51,7 @@ const json = (status: number, body: unknown, extra: Record<string, string> = {})
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', pragma: 'no-cache', ...CORS, ...extra },
   body: JSON.stringify(body),
 });
-const oauthError = (status: number, error: string, description: string, extra: Record<string, string> = {}) => json(status, { error, error_description: description }, extra);
+const oauthError = (status: number, error: string, description: string, extra: Record<string, string> = {}) => json(status, { error, error_description: tApp()(description) }, extra);
 const iso = (secondsFromNow: number) => new Date(Date.now() + secondsFromNow * 1000).toISOString();
 
 /** Fixed-window limits per IP (or user) and bucket. */
@@ -189,25 +190,25 @@ export const mcpOAuthModule: Module = {
     });
 
     // --- authorization endpoint -----------------------------------------------------------
-    const errorPage = (title: string, message: string): RawResult => ({ __raw: true, status: 400, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-frame-options': 'DENY' }, body: messagePage(title, message) });
+    const errorPage = (ctx: Ctx, title: string, message: string): RawResult => ({ __raw: true, status: 400, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-frame-options': 'DENY' }, body: messagePage(tCtx(ctx)(title), tCtx(ctx)(message)) });
     const back = (redirectUri: string, params: Record<string, string | null | undefined>) => {
       const u = new URL(redirectUri);
       for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') u.searchParams.set(k, v);
       return u.toString();
     };
     router.get('/oauth/authorize', 'public', (ctx) => {
-      if (limited('authorize', ctx.ip)) return errorPage('Zu viele Anfragen', 'Bitte kurz warten und in der App erneut verbinden.');
+      if (limited('authorize', ctx.ip)) return errorPage(ctx, 'Zu viele Anfragen', 'Bitte kurz warten und in der App erneut verbinden.');
       const q = ctx.query;
       const client = db.get('SELECT * FROM mcp_oauth_clients WHERE id = ?', q.get('client_id') ?? '');
       // Without a known client and an exactly registered redirect URI nothing is sent anywhere.
-      if (!client) return errorPage('Unbekannte App', 'Diese App ist nicht (mehr) registriert. Bitte die Verbindung in der App neu einrichten.');
+      if (!client) return errorPage(ctx, 'Unbekannte App', 'Diese App ist nicht (mehr) registriert. Bitte die Verbindung in der App neu einrichten.');
       const uris: string[] = JSON.parse(client.redirect_uris);
       const given = q.get('redirect_uri');
       const redirectUri = given ?? (uris.length === 1 ? uris[0] : null);
-      if (!redirectUri || !uris.includes(redirectUri)) return errorPage('Ungültige Weiterleitung', 'Die Rücksprung-Adresse dieser App stimmt nicht mit der registrierten überein. Aus Sicherheitsgründen wird nicht weitergeleitet.');
+      if (!redirectUri || !uris.includes(redirectUri)) return errorPage(ctx, 'Ungültige Weiterleitung', 'Die Rücksprung-Adresse dieser App stimmt nicht mit der registrierten überein. Aus Sicherheitsgründen wird nicht weitergeleitet.');
       const state = q.get('state');
       const issuer = originOf(ctx);
-      const fail = (error: string, description: string) => redirect(back(redirectUri, { error, error_description: description, state, iss: issuer }));
+      const fail = (error: string, description: string) => redirect(back(redirectUri, { error, error_description: tCtx(ctx)(description), state, iss: issuer }));
       if (state && state.length > 1000) return fail('invalid_request', 'state ist zu lang');
       if (q.get('response_type') !== 'code') return fail('unsupported_response_type', 'Nur response_type=code');
       const challenge = q.get('code_challenge') ?? '';
@@ -245,7 +246,7 @@ export const mcpOAuthModule: Module = {
       return {
         id: r.id,
         client: { name: r.client_name, uri: r.client_uri },
-        redirect: redirectLabel(r.redirect_uri),
+        redirect: ((l) => ({ ...l, known: l.known && tCtx(ctx)(l.known) }))(redirectLabel(r.redirect_uri)),
         access_requested: r.access,
         can_agency: u.role === 'admin',
         locations: choices(u),
@@ -274,7 +275,7 @@ export const mcpOAuthModule: Module = {
       const code = token(32);
       db.insert('mcp_oauth_codes', { code_hash: sha256(code), grant_id: grantId, client_id: r.client_id, redirect_uri: r.redirect_uri, redirect_given: r.redirect_given, code_challenge: r.code_challenge, resource: r.resource, expires_at: iso(CODE_TTL_S) });
       db.run('DELETE FROM mcp_oauth_requests WHERE id = ?', r.id);
-      audit({ ctx, action: 'mcp_oauth.consent', summary: `${r.client_name}: ${locationId ? app.location(locationId)!.name : 'ganze Agentur'} (${access === 'read' ? 'nur lesen' : 'lesen & schreiben'})`, locationId, entityId: grantId });
+      audit({ ctx, action: 'mcp_oauth.consent', summary: `${r.client_name}: ${locationId ? app.location(locationId)!.name : tApp()('ganze Agentur')} (${access === 'read' ? tApp()('nur lesen') : tApp()('lesen & schreiben')})`, locationId, entityId: grantId });
       return { redirect: back(r.redirect_uri, { code, state: r.state, iss: r.issuer }) };
     });
     router.post('/api/mcp-oauth/requests/:id/deny', 'user', (ctx) => {
@@ -282,7 +283,7 @@ export const mcpOAuthModule: Module = {
       const r = pending(ctx.params.id);
       db.run('DELETE FROM mcp_oauth_requests WHERE id = ?', r.id);
       audit({ ctx, action: 'mcp_oauth.deny', summary: r.client_name });
-      return { redirect: back(r.redirect_uri, { error: 'access_denied', error_description: 'Zugriff abgelehnt', state: r.state, iss: r.issuer }) };
+      return { redirect: back(r.redirect_uri, { error: 'access_denied', error_description: tCtx(ctx)('Zugriff abgelehnt'), state: r.state, iss: r.issuer }) };
     });
 
     // --- client authentication at the token/revocation endpoints -------------------------
@@ -316,7 +317,7 @@ export const mcpOAuthModule: Module = {
       db.run('UPDATE mcp_oauth_grants SET revoked_at = COALESCE(revoked_at, ?) WHERE id = ?', now(), grantId);
       db.run('DELETE FROM mcp_oauth_tokens WHERE grant_id = ?', grantId);
       db.run('DELETE FROM mcp_oauth_codes WHERE grant_id = ?', grantId);
-      audit({ ctx, action: 'mcp_oauth.revoke', summary: `${g.client_name}: ${why}`, locationId: g.location_id, entityId: grantId });
+      audit({ ctx, action: 'mcp_oauth.revoke', summary: `${g.client_name}: ${tApp()(why)}`, locationId: g.location_id, entityId: grantId });
       return true;
     };
 
@@ -475,7 +476,7 @@ export const mcpOAuthModule: Module = {
         )
         .map((g) => {
           const label = redirectLabel(JSON.parse(g.redirect_uris)[0] ?? '');
-          return { id: g.id, client_name: g.client_name, redirect_host: label.host, known: label.known, user_name: g.user_name, location_id: g.location_id, location_name: g.location_name, access: g.access, created_at: g.created_at, last_used_at: g.last_used_at };
+          return { id: g.id, client_name: g.client_name, redirect_host: label.host, known: label.known && tApp()(label.known), user_name: g.user_name, location_id: g.location_id, location_name: g.location_name, access: g.access, created_at: g.created_at, last_used_at: g.last_used_at };
         });
     };
     app.services.mcpOAuth = {

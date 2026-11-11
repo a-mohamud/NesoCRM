@@ -4,6 +4,7 @@ import type { Json } from './umzug-flow.js';
 import { UmzugError, VendorHttp } from './umzug-http.js';
 import { counter } from './umzug-lib.js';
 import { toIso } from './umzug-text.js';
+import { tApp } from '../i18n/index.js';
 
 /**
  * sevDesk (REST API v1, https://my.sevdesk.de/api/v1, the account's API token): customers and prospects → contacts (an organisation
@@ -71,6 +72,7 @@ async function waysOf(h: VendorHttp, ctx: StepCtx): Promise<Map<string, Ways>> {
 }
 
 export function sevdeskContact(c: Json, ways: Ways | undefined): { company?: RCompany; contact: RContact } | undefined {
+  const t = tApp();
   const cat = String(c.category?.id ?? '');
   if (cat === SUPPLIER) return undefined;
   const orgName = c.name ? String(c.name).trim() : '';
@@ -92,7 +94,7 @@ export function sevdeskContact(c: Json, ways: Ways | undefined): { company?: RCo
     kind: 'contact',
     ext: `c:${c.id}`,
     values,
-    tags: cat === PROSPECT ? ['Interessent'] : undefined,
+    tags: cat === PROSPECT ? [t('Interessent')] : undefined,
     consent: 'unknown',
     created_at: toIso(c.create),
     org: orgName ? `co:${c.id}` : parent ? `co:${parent}` : undefined,

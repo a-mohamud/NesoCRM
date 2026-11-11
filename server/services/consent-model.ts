@@ -1,6 +1,7 @@
 import { createHash, createHmac } from 'node:crypto';
 import { isIP } from 'node:net';
 import { safeEqual } from '../core/util.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Consent ledger – the pure part (no database, no HTTP): channels, purposes, how the status of a contact is derived from its
@@ -186,18 +187,19 @@ export interface GateResult {
 }
 
 /** The send gate: may advertising go to a contact whose channel has this state? */
-export function gateDecision(state: Pick<PurposeState, 'status' | 'legacy' | 'reason'>, policy: SendPolicy): GateResult {
+export function gateDecision(state: Pick<PurposeState, 'status' | 'legacy' | 'reason'>, policy: SendPolicy, t: STFn = tApp()): GateResult {
+  // state.reason is the German id from deriveChannel (compared here); the reason given back is in the language of `t`.
   switch (state.status) {
     case 'confirmed':
       return { allow: true, basis: 'confirmed', reason: '' };
     case 'pending':
-      return { allow: false, basis: '', reason: 'Einwilligung noch nicht bestätigt (Double-Opt-in ausstehend)' };
+      return { allow: false, basis: '', reason: t('Einwilligung noch nicht bestätigt (Double-Opt-in ausstehend)') };
     case 'revoked':
-      return { allow: false, basis: '', reason: state.reason && state.reason !== 'Widerrufen' ? `Keine Werbung erlaubt: ${state.reason}` : 'Einwilligung widerrufen' };
+      return { allow: false, basis: '', reason: state.reason && state.reason !== 'Widerrufen' ? t('Keine Werbung erlaubt: {reason}', { reason: t(state.reason) }) : t('Einwilligung widerrufen') };
     default:
       if (state.legacy && policy === 'legacy') return { allow: true, basis: 'legacy', reason: '' };
-      if (state.legacy) return { allow: false, basis: '', reason: 'Keine nachgewiesene Einwilligung (nur bestätigte Kontakte)' };
-      return { allow: false, basis: '', reason: state.reason === 'Bestätigung abgelaufen' ? 'Bestätigung der Einwilligung abgelaufen' : 'Keine gültige Einwilligung' };
+      if (state.legacy) return { allow: false, basis: '', reason: t('Keine nachgewiesene Einwilligung (nur bestätigte Kontakte)') };
+      return { allow: false, basis: '', reason: state.reason === 'Bestätigung abgelaufen' ? t('Bestätigung der Einwilligung abgelaufen') : t('Keine gültige Einwilligung') };
   }
 }
 
@@ -301,6 +303,7 @@ export interface ConsentSettings {
 }
 
 export const DEFAULT_DOI_SUBJECT = 'Bitte bestätige deine Anmeldung bei {{location.name}}';
+// i18n-ignore – a multi-line catalog key: cleanConsentSettings translates it with the exact text.
 export const DEFAULT_DOI_BODY = `Hallo {{contact.first_name|}},
 
 bitte bestätige mit einem Klick, dass {{location.name}} dir {{purpose_text}} per E-Mail schicken darf:
@@ -343,11 +346,13 @@ const text = (v: unknown, d: string, max: number) => (typeof v === 'string' && v
 export const safeRedirect = (v: unknown) => (/^https?:\/\/[^\s"'<>]{3,500}$/i.test(String(v ?? '').trim()) ? String(v).trim() : '');
 
 /** Stored settings (anything a client could have written) → complete, clamped settings. */
-export function cleanConsentSettings(raw: unknown): ConsentSettings {
+export function cleanConsentSettings(raw: unknown, t: STFn = tApp()): ConsentSettings {
   const r: any = raw && typeof raw === 'object' ? raw : {};
   const d: any = r.doi && typeof r.doi === 'object' ? r.doi : {};
   const p: any = d.page && typeof d.page === 'object' ? d.page : {};
-  const D = DEFAULT_CONSENT.doi;
+  // The defaults in the sub-account's language (what a sub-account saved stays as it was written).
+  const G = DEFAULT_CONSENT.doi;
+  const D = { ...G, subject: t(G.subject), body: t(G.body), page: Object.fromEntries(Object.entries(G.page).map(([k, v]) => [k, k === 'redirect_url' ? v : t(v)])) as typeof G.page };
   const sources = { ...D.sources };
   for (const k of DOI_SOURCES) if (d.sources && typeof d.sources[k] === 'boolean') sources[k] = d.sources[k];
   return {
@@ -375,24 +380,24 @@ export function cleanConsentSettings(raw: unknown): ConsentSettings {
 }
 
 /** "dir den Newsletter" / "dir Angebote" … for the sentence in the confirmation mail and page. */
-export function purposeSentence(purposes: string[]): string {
+export function purposeSentence(purposes: string[], t: STFn = tApp()): string {
   const has = (p: string) => purposes.includes(p);
   const parts: string[] = [];
-  if (has('newsletter')) parts.push('unseren Newsletter');
-  if (has('marketing')) parts.push('Angebote und Neuigkeiten');
-  if (has('webinar')) parts.push('Hinweise zum Webinar');
-  if (has('community')) parts.push('Nachrichten aus der Community');
-  if (!parts.length) parts.push('Nachrichten');
-  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} und ${parts[parts.length - 1]}` : parts[0];
+  if (has('newsletter')) parts.push(t('unseren Newsletter'));
+  if (has('marketing')) parts.push(t('Angebote und Neuigkeiten'));
+  if (has('webinar')) parts.push(t('Hinweise zum Webinar'));
+  if (has('community')) parts.push(t('Nachrichten aus der Community'));
+  if (!parts.length) parts.push(t('Nachrichten'));
+  return parts.length > 1 ? t('{list} und {last}', { list: parts.slice(0, -1).join(', '), last: parts[parts.length - 1] }) : parts[0];
 }
 
 /** German date (and time) in a zone, for mails and the proof. */
-export function deStamp(iso: string | number | Date | null | undefined, tz = 'Europe/Berlin', time = false): string {
+export function deStamp(iso: string | number | Date | null | undefined, tz = 'Europe/Berlin', time = false, t: STFn = tApp()): string {
   if (iso === null || iso === undefined || iso === '') return '';
   const d = iso instanceof Date ? iso : new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   try {
-    return new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', ...(time ? { hour: '2-digit', minute: '2-digit' } : {}), timeZone: tz }).format(d);
+    return new Intl.DateTimeFormat(t.locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', ...(time ? { hour: '2-digit', minute: '2-digit' } : {}), timeZone: tz }).format(d);
   } catch {
     return d.toISOString().slice(0, time ? 16 : 10).replace('T', ' ');
   }

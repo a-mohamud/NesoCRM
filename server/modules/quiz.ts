@@ -8,6 +8,7 @@ import { getCourse, portalUrl } from '../services/courses.js';
 import { sendToContact } from '../services/messaging.js';
 import { registerTriggers } from '../services/wfx-kit.js';
 import type { Tool } from './mcp.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Quizzes as a lesson type: single/multiple choice, true/false and short text (auto-graded against accepted answers or sent to
@@ -280,7 +281,7 @@ export const quizModule: Module = {
       const contactId = clip(ctx.body?.contact_id, 40);
       if (!contactId || !getContact(app, ctx.locationId, contactId)) throw notFound('Kontakt nicht gefunden');
       const n = db.run('DELETE FROM quiz_attempts WHERE quiz_id = ? AND contact_id = ?', q.id, contactId).changes;
-      auditLog(app, ctx, ctx.locationId, 'quiz.reset', `Versuche zurückgesetzt (${q.title}, ${n})`, q.id);
+      auditLog(app, ctx, ctx.locationId, 'quiz.reset', tLoc(app, ctx.locationId)('Versuche zurückgesetzt ({quiz}, {n})', { quiz: q.title, n }), q.id);
       return { ok: true, removed: n };
     });
     router.post('/api/quizzes/attempts/:id/review', 'location', async (ctx) => {
@@ -292,7 +293,7 @@ export const quizModule: Module = {
       const reviews: Record<string, { correct: boolean; comment?: string }> = {};
       for (const question of q.questions.filter((x) => x.kind === 'short' && x.review === 'manual')) {
         const g = given[question.id];
-        if (g === undefined || typeof g.correct !== 'boolean') throw bad(`Bitte „${question.text.slice(0, 60)}“ als richtig oder falsch bewerten`);
+        if (g === undefined || typeof g.correct !== 'boolean') throw bad(tCtx(ctx)('Bitte „{question}“ als richtig oder falsch bewerten', { question: question.text.slice(0, 60) }));
         reviews[question.id] = { correct: g.correct, ...(g.comment ? { comment: clip(g.comment, 500) } : {}) };
       }
       return kit.finishReview(a.id, reviews, ctx.user?.name ?? 'API', clip(ctx.body?.comment, 1000), ctx);
@@ -342,10 +343,10 @@ export const quizModule: Module = {
       };
       if (a.passed) {
         completeLesson(app, a.enrollment_id, quiz.lesson_id);
-        logActivity(app, quiz.location_id, contactId, 'quiz.passed', `Quiz „${quiz.title}“ bestanden (${a.percent} %, Versuch ${a.attempt_no})`);
+        logActivity(app, quiz.location_id, contactId, 'quiz.passed', tLoc(app, quiz.location_id)('Quiz „{quiz}“ bestanden ({percent} %, Versuch {attempt})', { quiz: quiz.title, percent: a.percent, attempt: a.attempt_no }));
         app.events.emit(quiz.location_id, 'quiz.passed', data);
       } else {
-        logActivity(app, quiz.location_id, contactId, 'quiz.failed', `Quiz „${quiz.title}“ nicht bestanden (${a.percent} %, Versuch ${a.attempt_no})`);
+        logActivity(app, quiz.location_id, contactId, 'quiz.failed', tLoc(app, quiz.location_id)('Quiz „{quiz}“ nicht bestanden ({percent} %, Versuch {attempt})', { quiz: quiz.title, percent: a.percent, attempt: a.attempt_no }));
         app.events.emit(quiz.location_id, 'quiz.failed', data);
       }
     }
@@ -366,8 +367,9 @@ export const quizModule: Module = {
       const attempt = attemptOut(db.get('SELECT * FROM quiz_attempts WHERE id = ?', row.id));
       if (!result.pending) announce(quiz, attempt, contactId);
       else {
-        logActivity(app, quiz.location_id, contactId, 'quiz.submitted', `Quiz „${quiz.title}“ abgegeben – wartet auf Prüfung`);
-        void Promise.resolve(app.services.pushNotify?.({ locationId: quiz.location_id, kind: 'courses', title: 'Quiz wartet auf Prüfung', body: quiz.title, url: '/app/quizzes/reviews', tag: `quiz-${row.id}` })).catch(() => undefined);
+        const t = tLoc(app, quiz.location_id);
+        logActivity(app, quiz.location_id, contactId, 'quiz.submitted', t('Quiz „{quiz}“ abgegeben – wartet auf Prüfung', { quiz: quiz.title }));
+        void Promise.resolve(app.services.pushNotify?.({ locationId: quiz.location_id, kind: 'courses', title: t('Quiz wartet auf Prüfung'), body: quiz.title, url: '/app/quizzes/reviews', tag: `quiz-${row.id}` })).catch(() => undefined);
       }
       return { attempt, result };
     }
@@ -381,15 +383,16 @@ export const quizModule: Module = {
       db.run(`UPDATE quiz_attempts SET status = 'graded', reviews = ?, score = ?, max_score = ?, percent = ?, passed = ?, comment = ?, reviewed_at = ?, reviewer = ? WHERE id = ?`, JSON.stringify(reviews), result.score, result.max, result.percent, passed ? 1 : 0, comment, now(), by, a.id);
       const done = attemptOut(db.get('SELECT * FROM quiz_attempts WHERE id = ?', a.id));
       announce(quiz, done, a.contact_id);
-      auditLog(app, ctx, a.location_id, 'quiz.review', `Quiz-Versuch bewertet (${quiz.title}: ${result.percent} %, ${passed ? 'bestanden' : 'nicht bestanden'})`, a.id, ctx ? undefined : by);
+      const t = tLoc(app, a.location_id);
+      auditLog(app, ctx, a.location_id, 'quiz.review', t('Quiz-Versuch bewertet ({quiz}: {percent} %, {result})', { quiz: quiz.title, percent: result.percent, result: passed ? t('bestanden') : t('nicht bestanden') }), a.id, ctx ? undefined : by);
       const course = getCourse(app, a.location_id, quiz.course_id);
       const slug = course?.slug ?? '';
       void sendToContact(app, a.location_id, {
         contactId: a.contact_id,
         channel: 'email',
-        subject: `Dein Quiz „${quiz.title}“ wurde ausgewertet`,
-        body: `Hallo ${getContact(app, a.location_id, a.contact_id)?.first_name || ''},\n\ndeine Antworten zu „${quiz.title}“ wurden geprüft: ${result.percent} % – ${passed ? 'bestanden, glückwunsch!' : `leider noch nicht bestanden (nötig: ${quiz.pass_percent} %).`}${comment ? `\n\nAnmerkung der Kursleitung:\n${comment}` : ''}\n\nZur Lektion: ${portalUrl(app, a.location_id)}/c/${encodeURIComponent(slug)}/${encodeURIComponent(quiz.lesson_id)}\n\n${app.location(a.location_id)?.name ?? ''}`,
-        source: 'Kurse',
+        subject: t('Dein Quiz „{quiz}“ wurde ausgewertet', { quiz: quiz.title }),
+        body: `${t('Hallo {name}', { name: getContact(app, a.location_id, a.contact_id)?.first_name || '' }).trim()},\n\n${t('deine Antworten zu „{quiz}“ wurden geprüft: {percent} %', { quiz: quiz.title, percent: result.percent })} – ${passed ? t('bestanden, glückwunsch!') : t('leider noch nicht bestanden (nötig: {percent} %).', { percent: quiz.pass_percent })}${comment ? `\n\n${t('Anmerkung der Kursleitung:')}\n${comment}` : ''}\n\n${t('Zur Lektion:')} ${portalUrl(app, a.location_id)}/c/${encodeURIComponent(slug)}/${encodeURIComponent(quiz.lesson_id)}\n\n${app.location(a.location_id)?.name ?? ''}`,
+        source: t('Kurse'),
         ignoreDnd: true,
       }).catch(() => undefined);
       return { ...done, passed, percent: result.percent };
@@ -406,7 +409,7 @@ export const quizModule: Module = {
         const gated = new Set([...gatedLessons(s.course.id), ...((app.services.assignmentGates?.(s.course.id) as string[] | undefined) ?? [])]);
         for (let i = 0; i < idx; i++) {
           const e = s.lessons[i];
-          if (gated.has(e.id) && !s.done.has(e.id)) return `Schließe zuerst „${e.title}“ ab, dann geht es hier weiter.`;
+          if (gated.has(e.id) && !s.done.has(e.id)) return tLoc(app, s.course?.location_id)('Schließe zuerst „{lesson}“ ab, dann geht es hier weiter.', { lesson: e.title });
         }
         return undefined;
       },

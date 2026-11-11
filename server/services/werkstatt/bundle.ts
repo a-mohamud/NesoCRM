@@ -3,6 +3,7 @@ import { bad } from '../../core/http.js';
 import { parseManifest, type Manifest } from './manifest.js';
 import { checkSignature, type BundleSignature, type PublicKey, type SignatureCheck } from './signing.js';
 import type { VersionRow } from './store.js';
+import { tApp } from '../../i18n/index.js';
 
 /**
  * A plugin as one JSON file, so self-hosters can share plugins (Werkstatt → Exportieren / Importieren).
@@ -58,12 +59,12 @@ export function parseBundle(raw: unknown, trusted: PublicKey[] = []): ParsedBund
     }
   }
   if (!v || typeof v !== 'object' || v.format !== BUNDLE_FORMAT) throw bad('Das ist kein Plugin-Paket (format „gohigh-plugin“ fehlt).');
-  if (Number(v.bundle_version) !== BUNDLE_VERSION) throw bad(`Dieses Paket hat das Format ${v.bundle_version} – unterstützt wird ${BUNDLE_VERSION}.`);
+  if (Number(v.bundle_version) !== BUNDLE_VERSION) throw bad(tApp()('Dieses Paket hat das Format {found} – unterstützt wird {supported}.', { found: v.bundle_version, supported: BUNDLE_VERSION }));
   const ver = v.version;
   if (!ver || typeof ver !== 'object') throw bad('Das Paket enthält keine Version.');
-  const m = parseManifest(ver.manifest);
-  if (!m.ok) throw bad(`Manifest im Paket ungültig: ${m.errors.join(' ')}`);
-  for (const k of ['ui_html', 'server_js'] as const) if (ver[k] !== undefined && typeof ver[k] !== 'string') throw bad(`${k} muss Text sein.`);
+  const m = parseManifest(ver.manifest, tApp());
+  if (!m.ok) throw bad(tApp()('Manifest im Paket ungültig: {list}', { list: m.errors.join(' ') }));
+  for (const k of ['ui_html', 'server_js'] as const) if (ver[k] !== undefined && typeof ver[k] !== 'string') throw bad(tApp()('{k} muss Text sein.', { k }));
   const parsed = { version: m.manifest.version, manifest: m.manifest, ui_html: String(ver.ui_html ?? ''), server_js: String(ver.server_js ?? ''), steps: ver.steps ?? null, changelog: String(ver.changelog ?? '').slice(0, 500) };
   return { manifest: parsed.manifest, ui_html: parsed.ui_html, server_js: parsed.server_js, steps: parsed.steps, changelog: parsed.changelog, intact: typeof v.integrity === 'string' && v.integrity === digest(parsed as Bundle['version']), signature: checkSignature(v, trusted) };
 }

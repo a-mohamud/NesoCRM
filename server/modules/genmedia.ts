@@ -6,6 +6,7 @@ import { id, now, slugify } from '../core/util.js';
 import { bodyLocation, callRoute, checkArea, ownLocation } from '../services/mobile.js';
 import { callRoute as relayRoute } from '../services/route-call.js';
 import { cleanTemplate } from '../services/genmedia/custom-http.js';
+import { tCtx } from '../i18n/index.js';
 import {
   TERMINAL,
   addToLibrary,
@@ -128,12 +129,13 @@ export const genmediaModule: Module = {
     router.get('/api/genmedia/meta', 'location', async (ctx) => {
       const reg = registry(app);
       const connections = reg ? await listConnections(app, ctx.locationId) : [];
+      const t = tCtx(ctx);
       return {
         available: !!reg,
-        message: !reg || !connections.length ? BYOK_MISSING : null,
+        message: !reg || !connections.length ? t(BYOK_MISSING) : null,
         connections,
-        providers: catalogue(),
-        capabilities: CAPABILITIES.map((c) => ({ id: c, label: CAPABILITY_LABEL[c] })),
+        providers: catalogue().map((pr) => ({ ...pr, models: Object.fromEntries(Object.entries(pr.models ?? {}).map(([k, list]) => [k, (list as { id: string; label: string }[]).map((m) => ({ ...m, label: t(m.label) }))])) })),
+        capabilities: CAPABILITIES.map((c) => ({ id: c, label: t(CAPABILITY_LABEL[c]) })),
         aspects: ASPECTS,
         callbacks: publicBase(app.baseUrl()),
         templates: db.all('SELECT id, name, capability, updated_at FROM genmedia_templates WHERE location_id = ? ORDER BY name', ctx.locationId),
@@ -141,9 +143,9 @@ export const genmediaModule: Module = {
     });
     router.get('/api/genmedia/connections', 'location', async (ctx) => {
       const cap = String(ctx.query.get('capability') ?? '') as Capability;
-      if (!registry(app)) return { available: false, message: BYOK_MISSING, connections: [] };
+      if (!registry(app)) return { available: false, message: tCtx(ctx)(BYOK_MISSING), connections: [] };
       const connections = await listConnections(app, ctx.locationId, CAPABILITIES.includes(cap) ? cap : undefined);
-      return { available: true, message: connections.length ? null : BYOK_MISSING, connections };
+      return { available: true, message: connections.length ? null : tCtx(ctx)(BYOK_MISSING), connections };
     });
 
     const voiceCache = new Map<string, { at: number; list: any[] }>();
@@ -277,7 +279,7 @@ export const genmediaModule: Module = {
         name = String(ctx.body.name ?? name);
       }
       if (!buf?.length) throw bad('Datei fehlt');
-      if (buf.length > MAX_INPUT_BYTES) throw bad(`Datei größer als ${MAX_INPUT_BYTES / 1024 / 1024} MB`);
+      if (buf.length > MAX_INPUT_BYTES) throw bad(tCtx(ctx)('Datei größer als {mb} MB', { mb: MAX_INPUT_BYTES / 1024 / 1024 }));
       const mime = sniff(buf, String(ctx.req.headers['content-type'] ?? ''));
       if (!mime) throw bad('Nur Bilder (PNG, JPG, WebP, GIF), Audio (MP3, WAV, M4A, OGG, FLAC) oder Video (MP4, MOV, WebM)');
       const dir = genDir(app);

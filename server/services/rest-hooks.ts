@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import type { AppEvent } from '../core/events.js';
 import { sha256 } from '../core/util.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * REST hooks (Zapier/Make/n8n "instant triggers"): the catalogue of triggers and actions, how an
@@ -151,17 +152,46 @@ export const SAMPLE_CONTACT = {
   updated_at: '2026-10-04T09:00:00.000Z',
 };
 
-/** A made-up payload for setup screens (Zapier "test trigger", Make "sample"). */
-export function staticSample(trigger: HookTrigger, locationId: string) {
+/** Fields of the made-up samples that hold readable text (translated; ids, codes and amounts stay). */
+const SAMPLE_TEXT_KEYS = new Set(['name', 'title', 'subject', 'body', 'comment', 'nachricht']);
+const localiseSample = (v: unknown, t: STFn): any =>
+  Array.isArray(v)
+    ? v.map((x) => localiseSample(x, t))
+    : v && typeof v === 'object'
+      ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, typeof x === 'string' && SAMPLE_TEXT_KEYS.has(k) ? t(x) : localiseSample(x, t)]))
+      : v;
+
+/** The sample contact in the language of `t` (the English one is a Nairobi business). */
+export function sampleContact(t: STFn = tApp()) {
+  const [first, ...last] = t('Anna Beispiel').split(' ');
+  return {
+    ...SAMPLE_CONTACT,
+    first_name: first,
+    last_name: last.join(' '),
+    phone: t('+4915112345678'),
+    company: t('Beispiel GmbH'),
+    city: t('Berlin'),
+    country: t('DE'),
+    source: t('Formular'),
+  };
+}
+
+/** A made-up payload for setup screens (Zapier "test trigger", Make "sample"), in the language of `t`. */
+export function staticSample(trigger: HookTrigger, locationId: string, t: STFn = tApp()) {
+  const contact = sampleContact(t);
+  const data = localiseSample(trigger.sample, t);
+  if (trigger.key === 'form.submitted') data.answers = { ...data.answers, nachricht: t('Bitte um Rückruf'), email: t('anna@example.com') };
+  if (trigger.key === 'call.missed') Object.assign(data, { from: t('+4915112345678'), to: t('+4930123456') });
+  contact.email = t('anna@example.com');
   return {
     id: `sample_${trigger.key.replace(/\W/g, '_')}`,
     event: trigger.key,
     type: trigger.events[0] === '*' ? 'contact.created' : trigger.events[0],
     location_id: locationId,
     occurred_at: '2026-10-04T09:00:00.000Z',
-    contact_id: SAMPLE_CONTACT.id,
-    contact: SAMPLE_CONTACT,
-    data: { contactId: SAMPLE_CONTACT.id, ...trigger.sample },
+    contact_id: contact.id,
+    contact,
+    data: { contactId: contact.id, ...data },
     sample: true,
   };
 }

@@ -42,7 +42,7 @@ export async function verifyTurnstile(app: App, secret: string, token: unknown, 
       body: new URLSearchParams({ secret, response: t, ...(ip ? { remoteip: ip } : {}) }).toString(),
       signal: AbortSignal.timeout(8000),
     });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`) // i18n-ignore;
     json = await r.json();
   } catch (e) {
     console.error('[forms] turnstile', (e as Error).message);

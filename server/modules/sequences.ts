@@ -10,6 +10,7 @@ import { DEFAULT_SETTINGS, MAX_STEPS, SequenceError, STEP_LABEL, STEP_TYPES, STO
 import { registerActions, registerTriggers, type TriggerMeta } from '../services/wfx-kit.js';
 import { peopleOf } from '../services/team-people.js';
 import type { Tool } from './mcp.js';
+import { tCtx, tLoc } from '../i18n/index.js';
 
 /**
  * Sequenzen (docs/sales.md): multi-step outreach from a person's own mailbox – e-mails, tasks, calls, LinkedIn – with delays inside
@@ -167,7 +168,8 @@ export const sequencesModule: Module = {
     router.get('/api/sequences', 'location', (ctx) => loadAll(ctx.locationId).map((s) => brief(ctx.locationId, s)));
     router.get('/api/sequences/:id', 'location', (ctx) => {
       const s = must(ctx);
-      return { ...out(s), stats: sequenceStats(app, ctx.locationId, s), stop_labels: STOP_LABEL, tokens: TOKENS };
+      const t = tCtx(ctx);
+      return { ...out(s), stats: sequenceStats(app, ctx.locationId, s), stop_labels: Object.fromEntries(Object.entries(STOP_LABEL).map(([k, v]) => [k, t(v)])), tokens: TOKENS };
     });
 
     // --- writing -----------------------------------------------------------------------------------------------------------
@@ -261,7 +263,7 @@ export const sequencesModule: Module = {
         for (const c of findContacts(app, ctx.locationId, { tags, excludeTags: exclude, q, limit: 1000, noTotal: true, who: ctx }).contacts) ids.add(c.id);
       }
       if (!ids.size) throw bad('Keine Kontakte angegeben (contact_ids, tag oder smart_list_id)');
-      const r = enroll(app, s, [...ids], { userId: senderOf(ctx), source: ctx.viaApiKey ? 'API' : String(b.source ?? 'manuell').slice(0, 40), dealId: typeof b.deal_id === 'string' ? b.deal_id : null });
+      const r = enroll(app, s, [...ids], { userId: senderOf(ctx), source: ctx.viaApiKey ? 'API' : String(b.source ?? tLoc(app, ctx.locationId)('manuell')).slice(0, 40), dealId: typeof b.deal_id === 'string' ? b.deal_id : null });
       return { enrolled: r.enrolled.length, skipped: r.skipped, contact_ids: r.enrolled };
     });
 
@@ -281,7 +283,7 @@ export const sequencesModule: Module = {
           ...params,
           clampLimit(ctx.query.get('limit'), 200, 1000),
         )
-        .map((r) => ({ ...maskContactFields(access, r), stop_label: r.stop_reason ? (STOP_LABEL as Record<string, string>)[r.stop_reason] ?? r.stop_reason : '', step_total: s.steps.length }));
+        .map((r) => ({ ...maskContactFields(access, r), stop_label: r.stop_reason ? tCtx(ctx)((STOP_LABEL as Record<string, string>)[r.stop_reason] ?? r.stop_reason) : '', step_total: s.steps.length }));
     });
 
     router.post('/api/sequences/:id/preview', 'location', (ctx) => {
@@ -304,13 +306,13 @@ export const sequencesModule: Module = {
           ctx.locationId,
           cid,
         )
-        .map((r) => ({ ...r, stop_label: r.stop_reason ? (STOP_LABEL as Record<string, string>)[r.stop_reason] ?? r.stop_reason : '' }));
+        .map((r) => ({ ...r, stop_label: r.stop_reason ? tCtx(ctx)((STOP_LABEL as Record<string, string>)[r.stop_reason] ?? r.stop_reason) : '' }));
     });
 
     router.post('/api/sequence-enrollments/:id/stop', 'location', (ctx) => {
       const row = db.get('SELECT * FROM sequence_enrollments WHERE id = ? AND location_id = ?', ctx.params.id, ctx.locationId) as EnrollRow | undefined;
       if (!row) throw notFound('Aufnahme nicht gefunden');
-      const stopped = stopEnrollment(app, { ...row, variants: {} } as EnrollRow, 'manual', ctx.user ? `von ${ctx.user.name}` : '');
+      const stopped = stopEnrollment(app, { ...row, variants: {} } as EnrollRow, 'manual', ctx.user ? tLoc(app, ctx.locationId)('von {name}', { name: ctx.user.name }) : '');
       if (!stopped) throw new HttpError(409, 'Diese Aufnahme ist schon beendet');
       return { ok: true };
     });
@@ -334,7 +336,7 @@ export const sequencesModule: Module = {
       mustConfigure(app, ctx);
       const cur = db.get<{ daily_limit: number; user_limits: string }>('SELECT daily_limit, user_limits FROM sequence_settings WHERE location_id = ?', ctx.locationId);
       const limit = ctx.body?.daily_limit === undefined ? (cur?.daily_limit ?? DEFAULT_DAILY_LIMIT) : Math.round(num(ctx.body.daily_limit, NaN));
-      if (!Number.isFinite(limit) || limit < 0 || limit > MAX_DAILY_LIMIT) throw bad(`Tageslimit: 0 bis ${MAX_DAILY_LIMIT} E-Mails pro Person`);
+      if (!Number.isFinite(limit) || limit < 0 || limit > MAX_DAILY_LIMIT) throw bad(tCtx(ctx)('Tageslimit: 0 bis {max} E-Mails pro Person', { max: MAX_DAILY_LIMIT }));
       const people = new Set(peopleOf(app, ctx.locationId, '').map((p) => p.id));
       const per: Record<string, number> = cur ? JSON.parse(cur.user_limits || '{}') : {};
       if (ctx.body?.user_limits && typeof ctx.body.user_limits === 'object') {
@@ -343,7 +345,7 @@ export const sequencesModule: Module = {
           if (v === null || v === '') delete per[uid];
           else {
             const n = Math.round(Number(v));
-            if (!Number.isFinite(n) || n < 0 || n > MAX_DAILY_LIMIT) throw bad(`Tageslimit: 0 bis ${MAX_DAILY_LIMIT} E-Mails pro Person`);
+            if (!Number.isFinite(n) || n < 0 || n > MAX_DAILY_LIMIT) throw bad(tCtx(ctx)('Tageslimit: 0 bis {max} E-Mails pro Person', { max: MAX_DAILY_LIMIT }));
             per[uid] = n;
           }
         }
@@ -380,11 +382,12 @@ export const sequencesModule: Module = {
           const ref = String(step.sequence ?? '').trim();
           const row = db.get<{ id: string }>('SELECT id FROM sequences WHERE location_id = ? AND (id = ? OR lower(name) = lower(?)) ORDER BY updated_at DESC LIMIT 1', run.location_id, ref, ref);
           const seq = row && getSequence(app, run.location_id, row.id);
-          if (!seq) throw new Error(ref ? `Sequenz „${ref}“ nicht gefunden` : 'Keine Sequenz gewählt');
+          const t = tLoc(app, run.location_id);
+          if (!seq) throw new Error(ref ? t('Sequenz „{name}“ nicht gefunden', { name: ref }) : t('Keine Sequenz gewählt'));
           const contact = getContact(app, run.location_id, run.contact_id);
           const userId = String(step.user_id || contact?.assigned_to || seq.owner_user_id || '') || null;
           const r = enroll(app, seq, [run.contact_id], { userId, source: 'Workflow' });
-          return r.enrolled.length ? `In „${seq.name}“ aufgenommen` : `Nicht aufgenommen: ${r.skipped[0]?.reason ?? 'unbekannt'}`;
+          return r.enrolled.length ? t('In „{name}“ aufgenommen', { name: seq.name }) : t('Nicht aufgenommen: {reason}', { reason: r.skipped[0]?.reason ?? t('unbekannt') });
         },
       },
     ]);
