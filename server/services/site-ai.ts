@@ -57,7 +57,7 @@ export function cleanBrief(b: any): Brief {
     audience: clipText(b?.audience, LIMITS.audience),
     tone: pick(b?.tone, TONES, 'freundlich'),
     address: b?.address === 'sie' ? 'sie' : 'du',
-    language: pick(b?.language, LANGS, defaultLocale()),
+    language: pick(b?.language, LANGS, defaultLocale() === 'de' ? 'de' : 'en'),
     page_type,
     goal: pick(b?.goal, GOALS, page_type === 'website' ? 'info' : 'leads'),
     pages: (Array.isArray(b?.pages) ? b.pages : typeof b?.pages === 'string' ? b.pages.split(/[,\n]/) : []).map((x: unknown) => clipText(x, 60)).filter(Boolean).slice(0, 8),

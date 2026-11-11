@@ -73,8 +73,9 @@ export function QuickMenu({ onClose, anchor }: { onClose: () => void; anchor?: D
       <div className="qm-row">
         <span className="qm-label">{t('Sprache')}</span>
         <div className="qm-segs" role="group">
-          {seg('Deutsch', locale === 'de', () => void setLocale('de'))}
           {seg('English', locale === 'en', () => void setLocale('en'))}
+          {seg('Soomaali', locale === 'so', () => void setLocale('so'))}
+          {seg('Deutsch', locale === 'de', () => void setLocale('de'))}
         </div>
       </div>
       <div className="qm-links">

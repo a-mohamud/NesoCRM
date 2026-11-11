@@ -94,7 +94,7 @@ type Mode = 'idle' | 'tiles' | 'agent' | 'briefing';
 export function FocusPage() {
   const t = useT('focus');
   const locale = useLocale();
-  const lang: 'de' | 'en' = locale === 'en' ? 'en' : 'de';
+  const lang: 'de' | 'en' = locale === 'de' ? 'de' : 'en';
   const session = useSession();
   const loc = session.locationId;
   const c = useCompanion();

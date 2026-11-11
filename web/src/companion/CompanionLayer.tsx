@@ -170,7 +170,7 @@ export function CompanionLayer() {
       setCheckin({ id: top.id, title: first ? t('{name}: {n} Brennpunkte', { name: c.name, n: top.hotspots.length }) : t('{name}: alles ruhig', { name: c.name }), body: first ? `${first.title} – ${first.detail}` : top.say });
       if (c.prefs.checkin.speak) {
         const [{ readAloud }, { companionSpeech }] = await Promise.all([import('../focus/speech'), import('./voice')]);
-        void readAloud(top.say, { ...(await companionSpeech(c.prefs, locale === 'en' ? 'en' : 'de')), lang: locale === 'en' ? 'en' : 'de' });
+        void readAloud(top.say, { ...(await companionSpeech(c.prefs, locale === 'de' ? 'de' : 'en')), lang: locale === 'de' ? 'de' : 'en' });
       }
     };
     void poll();
@@ -188,7 +188,7 @@ export function CompanionLayer() {
   const speakRef = useRef<(text: string) => void>(() => undefined);
   speakRef.current = (text: string) => {
     if (!c.prefs.voice_reply || document.hidden) return;
-    void Promise.all([import('../focus/speech'), import('./voice')]).then(async ([{ readAloud }, { companionSpeech }]) => readAloud(text, { ...(await companionSpeech(c.prefs, locale === 'en' ? 'en' : 'de')), lang: locale === 'en' ? 'en' : 'de' }));
+    void Promise.all([import('../focus/speech'), import('./voice')]).then(async ([{ readAloud }, { companionSpeech }]) => readAloud(text, { ...(await companionSpeech(c.prefs, locale === 'de' ? 'de' : 'en')), lang: locale === 'de' ? 'de' : 'en' }));
   };
   useEffect(() => {
     if (!c.loaded) return;
@@ -210,7 +210,7 @@ export function CompanionLayer() {
     () =>
       taskBus.onSettled((task, watched) => {
         if (watched) return;
-        const lang = locale === 'en' ? 'en' : 'de';
+        const lang = locale === 'de' ? 'de' : 'en';
         const line = taskLine(task.status === 'confirm' ? 'confirm' : task.status === 'done' ? 'done' : task.status === 'stopped' ? 'stopped' : 'failed', task.confirmTitle || task.label, lang);
         if (task.status === 'failed') toastError(line);
         else toast(line);

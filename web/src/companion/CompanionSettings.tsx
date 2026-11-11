@@ -35,7 +35,7 @@ const browserTz = () => {
 export function CompanionSettings({ onClose, initialTab = 'companion' }: { onClose: () => void; initialTab?: 'companion' | 'voice' | 'checkins' | 'proactive' }) {
   const t = useT('companion');
   const locale = useLocale();
-  const lang = locale === 'en' ? 'en' : 'de';
+  const lang = locale === 'de' ? 'de' : 'en';
   const c = useCompanion();
   const bus = useBus();
   const p = c.prefs;

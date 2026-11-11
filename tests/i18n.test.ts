@@ -37,7 +37,7 @@ describe('the repository', () => {
   it('the registry the check reads is the one the app loads (languages, namespaces, catalog chunks)', () => {
     const reg = readRegistry();
     expect(reg.source).toBe('de');
-    expect(reg.locales).toEqual(['en', 'de']);
+    expect(reg.locales).toEqual(['en', 'so', 'de']);
     expect(Object.keys(reg.namespaces).sort()).toEqual(Object.keys(NAMESPACES).sort());
     expect(Object.keys(reg.catalogs.en).sort()).toEqual(Object.keys(CATALOGS.en).sort());
     // phase 1: shell, sign-in and the main areas are declared complete
@@ -122,7 +122,7 @@ describe('the language preference on the server', () => {
     expect(serverPick('en;q=0, de')).toBe('de');
     expect(serverPick(undefined)).toBe('en');
     const r = await (await t.api.raw('/api/language', { headers: { 'accept-language': 'en-GB,en;q=0.9' } })).json();
-    expect(r).toEqual({ lang: 'en', locales: ['en', 'de'] });
+    expect(r).toEqual({ lang: 'en', locales: ['en', 'so', 'de'] });
     const de = await (await t.api.raw('/api/language')).json();
     expect(de.lang).toBe('en'); // Neso fork: no Accept-Language → English
   });

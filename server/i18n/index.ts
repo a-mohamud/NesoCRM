@@ -14,8 +14,9 @@
  */
 import type { IncomingMessage } from 'node:http';
 import en from './en/index.js';
+import so from './so/index.js';
 
-export const SERVER_LOCALES = ['en', 'de'] as const;
+export const SERVER_LOCALES = ['en', 'so', 'de'] as const;
 export type ServerLocale = (typeof SERVER_LOCALES)[number];
 export type Vars = Record<string, string | number>;
 export interface PluralForms { zero?: string; one?: string; two?: string; few?: string; many?: string; other: string }
@@ -26,10 +27,12 @@ export interface STFn {
   readonly locale: ServerLocale;
 }
 
-const CATALOGS: Partial<Record<ServerLocale, Catalog>> = { en };
+const CATALOGS: Partial<Record<ServerLocale, Catalog>> = { en, so };
+/** Where a missing text is looked up next: Somali (Beta) falls back to English, never to the German source. */
+const FALLBACK: Partial<Record<ServerLocale, ServerLocale>> = { so: 'en' };
 const isLocale = (v: unknown): v is ServerLocale => typeof v === 'string' && (SERVER_LOCALES as readonly string[]).includes(v);
 
-/** The instance default: PGHL_LOCALE (en | de); English in this fork. */
+/** The instance default: PGHL_LOCALE (en | so | de); English in this fork. */
 export function defaultLocale(): ServerLocale {
   const v = String(process.env.PGHL_LOCALE ?? '').toLowerCase();
   return isLocale(v) ? v : 'en';
@@ -48,8 +51,8 @@ const pluralOf = (locale: string, n: number) => {
 
 /** A translator for one language. */
 export function translator(locale: ServerLocale = defaultLocale()): STFn {
-  const cat = CATALOGS[locale];
-  const look = (text: string) => (cat && Object.prototype.hasOwnProperty.call(cat, text) ? cat[text] : undefined);
+  const chain = [CATALOGS[locale], FALLBACK[locale] && CATALOGS[FALLBACK[locale]!]].filter((c): c is Catalog => !!c);
+  const look = (text: string) => chain.find((c) => Object.prototype.hasOwnProperty.call(c, text))?.[text];
   const fn = ((text: string, vars?: Vars) => {
     const hit = look(text);
     const s = typeof hit === 'string' ? hit : hit && typeof hit === 'object' ? hit.other : text;

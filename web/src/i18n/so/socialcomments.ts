@@ -1,0 +1,33 @@
+import type { Catalog } from '../registry';
+
+/** Somali (Soomaali, Beta) – socialcomments. Southern spelling, Kenya conventions. */
+export default {
+  Abbrechen: "Jooji",
+  "Antwort veröffentlicht": "Jawaabta waa la faafiyay",
+  Antworten: "Jawaab",
+  Ausblenden: "Qari",
+  Ausgeblendet: "La qariyay",
+  "Beitrag öffnen": "Fur qoraalka",
+  Einblenden: "Muuji",
+  "Erst oben eine Seite verbinden.": "Marka hore xagga sare ku xir bog.",
+  "Facebook und Instagram (Meta-Webhook: Seite „feed“, Instagram „comments“)": "Facebook iyo Instagram (Meta webhook: bogga “feed”, Instagram “comments”)",
+  Gespeichert: "Waa la kaydiyay",
+  "KI-Vorschlag": "Talo AI ah",
+  "Keine aktive LinkedIn-Verbindung unter Apps → Nango.": "Ma jiro isku-xir LinkedIn oo firfircoon oo ku jira Abka → Nango.",
+  "Keine aktive YouTube-Verbindung unter Apps → Nango.": "Ma jiro isku-xir YouTube oo firfircoon oo ku jira Abka → Nango.",
+  "Kommentare im Posteingang": "Faallooyinka ku jira sanduuqa fariimaha",
+  "Kommentare unter euren Beiträgen landen als Kanal „Kommentare“ in Konversationen – mit öffentlicher Antwort, Ausblenden und KI-Vorschlag.": "Faallooyinka lagu qoro qoraalladaada waxay Wada-hadallada ku soo galaan iyagoo ah kanaalka “Faallooyinka” – waxaad ka jawaabi kartaa si fagaare ah, qari kartaa, ama isticmaali kartaa talo AI ah.",
+  "LinkedIn-Organisation": "Ururka LinkedIn",
+  "LinkedIn-Unternehmensseite (über Nango, alle 15 Minuten)": "Bogga shirkadda ee LinkedIn (iyadoo loo marayo Nango, 15-kii daqiiqoba mar)",
+  "Organisations-ID, z. B. 12345678": "Aqoonsiga ururka, tusaale 12345678",
+  "Schreibe…": "Waa la qorayaa…",
+  "Sende…": "Waa la dirayaa…",
+  "Wieder sichtbar": "Mar kale waa la muujiyay",
+  "YouTube (über eine Nango-Verbindung, alle 15 Minuten)": "YouTube (iyadoo loo marayo isku-xir Nango, 15-kii daqiiqoba mar)",
+  "Zuletzt abgerufen {when}": "Markii ugu dambaysay la soo qaaday {when}",
+  ausgeblendet: "la qariyay",
+  "Öffentlich antworten": "Si fagaare ah uga jawaab",
+  "Öffentlich beantwortet {when}": "Si fagaare ah ayaa looga jawaabay {when}",
+  "Öffentliche Antwort unter dem Kommentar …": "Ku qor jawaab fagaare ah faallada hoosteeda …",
+  "Öffentliche Antwort": "Jawaab fagaare ah",
+} satisfies Catalog;

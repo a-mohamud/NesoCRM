@@ -27,6 +27,13 @@ describe('server i18n', () => {
     expect(t.plural(3, { one: '{n} Element', other: '{n} Elemente' })).toBe('3 elements');
   });
 
+  it('Somali (Beta) uses its own texts and falls back to English, never to the German source', () => {
+    const t = translator('so');
+    expect(t('Nicht angemeldet')).toBe('Ma aadan soo gelin');
+    expect(t('Kalender fehlt')).toBe('Calendar is missing');
+    expect(fromAcceptLanguage('so-KE,so;q=0.9,en;q=0.5')).toBe('so');
+  });
+
   it('picks the browser language', () => {
     expect(fromAcceptLanguage('de-DE,de;q=0.9,en;q=0.8')).toBe('de');
     expect(fromAcceptLanguage('fr-FR,en;q=0.5')).toBe('en');
