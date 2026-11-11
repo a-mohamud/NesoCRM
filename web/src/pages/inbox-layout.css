@@ -38,7 +38,7 @@
 
 /* composer: starts small and grows with the text, never takes over the conversation */
 .inbox .thread .composer { max-height: 46%; overflow-y: auto; padding: 8px 10px; gap: 6px; }
-.inbox .thread .composer textarea { min-height: 64px; height: 64px; max-height: 32vh; field-sizing: content; resize: none; }
+.inbox .thread .composer textarea { min-height: 64px; height: 64px; max-height: 32vh; max-height: 32dvh; field-sizing: content; resize: none; }
 .inbox .thread .composer textarea:focus { min-height: 96px; }
 
 /* ---------- phones: the open conversation is a full-height chat screen ---------- */

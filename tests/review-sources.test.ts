@@ -98,7 +98,7 @@ describe('review sources', () => {
     const d = await t.api.post(`/api/review-items/${item.id}/suggest-reply`, { instruction: 'Rückruf anbieten' });
     expect(d.status, JSON.stringify(d.data)).toBe(200);
     expect(d.data.item.reply_draft).toBe('Vielen Dank für die ehrliche Rückmeldung!');
-    expect(aiPrompts.at(-1).system[0].text).toContain('auf eine Trustpilot-Bewertung');
+    expect(aiPrompts.at(-1).system[0].text).toContain('to a Trustpilot review');
     expect(aiPrompts.at(-1).user).toContain('Rückruf anbieten');
     await t.api.patch(`/api/review-sources/${tp}`, { api_secret: 'tp-secret', username: 'chef@malerei.example', password: 'pw-123456' });
     const r = await t.api.post(`/api/review-items/${item.id}/reply`, { text: 'Das tut uns leid – wir rufen Sie an.' });

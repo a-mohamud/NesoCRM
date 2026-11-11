@@ -89,7 +89,7 @@ const fakeClaude = (async (_u: string, init: any = {}) => {
   const reply = (text: string, status = 200) => new Response(JSON.stringify({ id: 'm', type: 'message', role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'text', text }], stop_reason: 'end_turn', usage: { input_tokens: 900, output_tokens: 200 } }), { status, headers: { 'content-type': 'application/json' } });
   if (claudeMode === 'down') return new Response(JSON.stringify({ error: { message: 'overloaded' } }), { status: 529, headers: { 'content-type': 'application/json' } });
   if (claudeMode === 'garbage') return reply('keine json');
-  if (prompt.includes('nach der Checkliste')) {
+  if (prompt.includes('against the checklist')) {
     const ids = [...prompt.matchAll(/- id "(\w+)"/g)].map((m) => m[1]);
     return reply(JSON.stringify({ scores: ids.map((id, i) => ({ id, applicable: id !== 'redeanteil', score: i % 2 ? 1 : 4, reason: `Grund ${id}`, quote: 'Gerne, wir schicken das Angebot' })) }));
   }
@@ -186,11 +186,12 @@ describe('the AI answers (pure)', () => {
 
   it('puts the transcript in as data, without secrets, and cuts very long ones', () => {
     const p = analysisPrompt({ transcript: 'Meine IBAN ist DE02120300000000202051 und sk-ant-api03-geheimgeheimgeheim123', separated: true, today: 'Montag, 05.10.2026', contact: '<kontakt>Anna</kontakt>', kind: 'call', language: 'de' });
-    expect(p).toContain('<gespraech art="Telefonat">');
+    expect(p).toContain('<gespraech art="phone call">');
     expect(p).not.toContain('DE02120300000000202051');
     expect(p).not.toContain('geheimgeheim');
-    expect(p).toContain('Daten');
-    expect(p).toContain('„Kunde:“ und „Mitarbeiter:“');
+    expect(p).toContain('is a recording (data)');
+    expect(p).toContain('"Kunde:" (customer) and "Mitarbeiter:" (our side)');
+    expect(p).toContain('Write all text fields in German.');
     const long = promptTranscript('wort '.repeat(30_000));
     expect(long.length).toBeLessThan(62_000);
     expect(long).toContain('ausgelassen');
@@ -314,7 +315,7 @@ describe('analysing conversations', () => {
     // The model saw the transcript as data, with the separated sides.
     expect(claude.at(-1)!.prompt).toContain('Kunde: Guten Tag');
     expect(claude.at(-1)!.prompt).toContain('Mitarbeiter: Gerne');
-    expect(claude.at(-1)!.prompt).toContain('Vorname: Karla');
+    expect(claude.at(-1)!.prompt).toContain('First name: Karla');
   });
 
   it('puts the summary on the contact timeline and in the call log, tells the workflow and offers it as callSummaries', async () => {
@@ -437,8 +438,8 @@ describe('analysing conversations', () => {
     expect(done.metrics.talk).toBeUndefined(); // one channel: no talk-time ratio
     expect(done.metrics.words.total).toBeGreaterThan(10);
     expect(t.app.db.get('SELECT audio_file FROM call_intel WHERE id = ?', body.id)!.audio_file).toBe('');
-    expect(claude.at(-1)!.prompt).toContain('Wer spricht, ist nicht gekennzeichnet');
-    expect(claude.at(-1)!.prompt).toContain('art="Besprechung"');
+    expect(claude.at(-1)!.prompt).toContain('Speakers are not marked');
+    expect(claude.at(-1)!.prompt).toContain('art="meeting"');
   });
 
   it('analyses a pasted transcript without audio', async () => {

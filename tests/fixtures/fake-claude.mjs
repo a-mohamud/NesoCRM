@@ -14,7 +14,7 @@ const rpc = async (id, method, params) => {
 out({ type: 'system', subtype: 'init', tools: [], allowed: args[args.indexOf('--allowedTools') + 1], disallowed: args[args.indexOf('--disallowedTools') + 1] });
 await rpc(1, 'initialize', { protocolVersion: '2025-06-18' });
 const tools = (await rpc(2, 'tools/list', {})).result.tools.map((t) => t.name);
-out({ type: 'assistant', message: { content: [{ type: 'text', text: `Prompt erhalten (${prompt.includes('Aktueller Auftrag') ? 'mit Auftrag' : 'leer'}), ${tools.length} Werkzeuge.` }] } });
+out({ type: 'assistant', message: { content: [{ type: 'text', text: `Prompt erhalten (${prompt.includes('Current task:') ? 'mit Auftrag' : 'leer'}), ${tools.length} Werkzeuge.` }] } });
 const name = process.env.FAKE_TOOL || 'search_everything';
 const callArgs = name === 'search_everything' ? { query: 'Lena' } : { title: 'Von der Bridge' };
 out({ type: 'assistant', message: { content: [{ type: 'tool_use', name: `mcp__gohigh__${name}`, input: callArgs }] } });

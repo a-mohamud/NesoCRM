@@ -150,7 +150,7 @@ describe('website chat bot (KI-Assistent)', () => {
     const day = berlinDay(2);
     respond = (prompt) => {
       if (!prompt.includes('<werkzeug_ergebnis>')) return answer('Ich schaue nach.', { booking: { action: 'check_slots', calendar_id: calId, date: day, time: '' } });
-      expect(prompt).toContain(`Freie Zeiten in Kalender „Erstbefund“`);
+      expect(prompt).toContain(`Free times in Calendar "Erstbefund"`);
       return answer('Gebucht!', {
         lead: { first_name: 'Berta', last_name: 'Bucher', email: 'berta@example.com', phone: '' },
         booking: { action: 'book', calendar_id: calId, date: day, time: '15:00' },
@@ -178,7 +178,7 @@ describe('website chat bot (KI-Assistent)', () => {
     respond = (prompt) => {
       n++;
       if (n === 1) return answer('Moment.', { booking: { action: 'book', calendar_id: calId, date: berlinDay(3), time: '10:00' } });
-      expect(prompt).toContain('Vorname und E-Mail-Adresse');
+      expect(prompt).toContain('first name and email address');
       return answer('Wie heißt du und wie lautet deine E-Mail?', { booking: none });
     };
     await chat({ body: 'Bitte Termin übermorgen 10 Uhr' });
@@ -208,7 +208,7 @@ describe('website chat bot (KI-Assistent)', () => {
     };
     await chat({ body: 'Dann bitte die erste Zeit', name: 'Paula Platz', email: 'paula@example.com' });
     await t.app.events.flush();
-    expect(seen).toMatch(/Buchung nicht möglich: Diese Zeit ist leider nicht \(mehr\) frei\.|Buchung nicht möglich/);
+    expect(seen).toContain('Booking not possible: Sorry, this time is no longer free.');
   });
 
   it('never books more than the daily limit per contact', async () => {
@@ -226,7 +226,7 @@ describe('website chat bot (KI-Assistent)', () => {
     await t.app.events.flush();
     const lia = t.app.db.get<any>(`SELECT id FROM contacts WHERE email = 'lia@example.com'`);
     expect(t.app.db.get<any>(`SELECT COUNT(*) n FROM appointments WHERE contact_id = ? AND source = 'KI-Assistent'`, lia.id).n).toBe(2);
-    expect(calls.some((c) => c.prompt.includes('schon 2 Termine von der KI gebucht'))).toBe(true);
+    expect(calls.some((c) => c.prompt.includes('already booked 2 appointments for this contact today'))).toBe(true);
   });
 });
 
@@ -289,7 +289,7 @@ describe('agent auto-reply at the level "Termin buchen" (every inbox channel)', 
     await t.api.patch(`/api/agents/${agent.id}`, { responder: { enabled: false, channels: [] } });
   });
 
-  it('MCP: the booking tool books only on released calendars and answers in German', async () => {
+  it('MCP: the booking tool books only on released calendars and names the allowed ones', async () => {
     const key = (await t.api.post('/api/api-keys', { name: 'Claude' })).data.key;
     const rpc = async (name: string, args: Record<string, unknown>) =>
       (await (
@@ -301,7 +301,7 @@ describe('agent auto-reply at the level "Termin buchen" (every inbox channel)', 
       ).json()) as any;
     const c = (await t.api.post('/api/contacts', { first_name: 'Mia', last_name: 'Mcp', email: 'mia@example.com' })).data;
     const paid = await rpc('ghl_book_appointment', { location_id: t.api.location, calendar_id: paidCal, contact_id: c.id, date: berlinDay(6), time: '10:00' });
-    expect(JSON.stringify(paid)).toContain('Kalender unbekannt');
+    expect(JSON.stringify(paid)).toContain('Unknown calendar. Allowed: Erstbefund');
     const ok = await rpc('ghl_book_appointment', { location_id: t.api.location, calendar_id: calId, contact_id: c.id, date: berlinDay(6), time: '10:00' });
     const out = JSON.parse(ok.result.content[0].text);
     expect(out).toMatchObject({ status: 'confirmed', calendar: { id: calId }, confirmed_via: 'email' });

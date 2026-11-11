@@ -78,7 +78,7 @@ export function checkAgent(raw: any, catalog: Map<string, CatalogTool>): { draft
   const k = raw.knowledge && typeof raw.knowledge === 'object' ? raw.knowledge : {};
   const sources = (Array.isArray(k.sources) ? k.sources.map(String) : []) as string[];
   const badSources = sources.filter((s) => !(KNOWLEDGE as readonly string[]).includes(s));
-  if (badSources.length) errors.push(`Unbekannte Wissensquellen: ${badSources.join(', ')} – erlaubt: ${KNOWLEDGE.join(', ')}`);
+  if (badSources.length) errors.push(`Unknown knowledge sources: ${badSources.join(', ')} – allowed: ${KNOWLEDGE.join(', ')}`);
   let schedule: AgentDraft['schedule'] = null;
   if (raw.schedule) {
     const s = raw.schedule;

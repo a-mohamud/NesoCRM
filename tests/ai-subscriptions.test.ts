@@ -98,7 +98,7 @@ describe('sign-in state machine', () => {
     expect(start.status).toBe(200);
     const u = new URL(start.data.authorize_url);
     expect(u.searchParams.get('client_id')).toBe('dynamic_agent_client');
-    expect(u.searchParams.get('agent_name_hint')).toBe('HyperLevel');
+    expect(u.searchParams.get('agent_name_hint')).toBe('Neso CRM');
     expect(u.searchParams.get('ext_agent_host_id')).toMatch(/^urn:uuid:/);
     expect(start.data.redirect_uri).toBe('http://127.0.0.1:1455/auth/callback');
     const pending = t.app.db.get<any>('SELECT * FROM ai_subscription_pending WHERE user_id = ?', annaId);

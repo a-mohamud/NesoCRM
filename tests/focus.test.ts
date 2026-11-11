@@ -274,7 +274,7 @@ describe('with AI (faked model)', () => {
     expect(calls[0].user).not.toContain('• embed');
     expect(calls[0].user).toContain('Termine heute');
     expect(calls[0].user).toContain('Zeig mir die Deals über 5000 €');
-    expect(calls[0].system).toContain('NIEMALS Zahlen');
+    expect(calls[0].system).toContain('NEVER name numbers');
   });
 
   it('never repeats a number the model made up', async () => {

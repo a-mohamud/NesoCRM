@@ -44,8 +44,8 @@ const fakeClaude = (async (_url: string, init: any = {}) => {
   claude.push({ prompt });
   if (claudeDelay) await sleep(claudeDelay);
   let out: unknown;
-  if (prompt.includes('Aufgabe: Fasse dieses Telefonat')) out = { summary: 'Max Muster hat angerufen.', next_step: 'Zurückrufen.' };
-  else if (prompt.includes('Aufgabe: Fasse diese Voicemail')) out = { summary: 'Frau Beispiel bittet um Rückruf wegen eines Termins.', next_step: 'Heute zurückrufen.' };
+  if (prompt.includes('Task: summarise this phone call')) out = { summary: 'Max Muster hat angerufen.', next_step: 'Zurückrufen.' };
+  else if (prompt.includes('Task: summarise this voicemail')) out = { summary: 'Frau Beispiel bittet um Rückruf wegen eines Termins.', next_step: 'Heute zurückrufen.' };
   else out = respond(prompt);
   return new Response(JSON.stringify(reply(typeof out === 'string' ? out : JSON.stringify(out))), { status: 200, headers: { 'content-type': 'application/json' } });
 }) as unknown as typeof fetch;
@@ -286,7 +286,7 @@ describe('Media Stream over a real WebSocket', () => {
     // turn 1
     sttSockets[0].say('Ich möchte einen Termin');
     await until(() => s.of('mark').length === 2);
-    expect(claude.at(-1)!.prompt).toContain('Anrufer: Ich möchte einen Termin');
+    expect(claude.at(-1)!.prompt).toContain('Caller: Ich möchte einen Termin');
     expect(streamCalls.at(-1)!.body.text).toBe('Gern. Wie ist Ihr Name?');
     s.echo();
     await until(() => turnRows(sid).length === 1);
@@ -440,7 +440,7 @@ describe('recorded turns (record → speech to text → agent → text to speech
     expect(r.status).toBe(200);
     expect(playUrl(r.text)).toBeTruthy();
     expect(r.text).toContain('<Record ');
-    expect(claude.at(-1)!.prompt).toContain('Anrufer: Ich möchte einen Termin am Montag');
+    expect(claude.at(-1)!.prompt).toContain('Caller: Ich möchte einen Termin am Montag');
     expect(twilioCalls.map((c) => `${c.method} ${c.url}`)).toEqual(expect.arrayContaining([`GET ${recUrl('a')}.wav`, `DELETE https://api.twilio.com/2010-04-01/Accounts/${SID}/Recordings/RE${'a'.repeat(32)}.json`]));
     const listen = providerCalls.find((c) => c.url.includes('deepgram.com/v1/listen'))!;
     expect(new URL(listen.url).searchParams.get('language')).toBe('de');

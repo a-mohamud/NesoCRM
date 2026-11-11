@@ -1008,6 +1008,7 @@ export default {
   'Aufgelegt ohne Anliegen': 'Hung up without a request',
   'Technischer Fehler': 'Technical error',
   'Anrufende Person': 'Caller',
+  'Anrufer:': 'Caller:',
   'Termin-Erinnerung': 'Appointment reminder',
   'Mailbox': 'Voicemail',
   'Tageslimit erreicht ({n} KI-Anrufe)': 'Daily limit reached ({n} AI calls)',

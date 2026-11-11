@@ -209,7 +209,7 @@ describe('mails and public pages', () => {
     expect(html).toContain('<button aria-label="Senden">');
     expect(html).toContain('role="log"');
     const js = await (await t.api.raw(`/chat/${t.api.location}/widget.js`)).text();
-    expect(js).toContain("'Chat schließen'");
+    expect(js).toContain('"Chat schließen"');
     expect(js).toContain('aria-expanded');
   });
 

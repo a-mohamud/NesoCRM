@@ -131,11 +131,11 @@ describe('reply suggestions and summaries', () => {
     expect((await t.api.get('/api/ai/settings')).data.sources).toEqual({ profile: true, faq_count: 1 });
     // The volatile part (time, conversation) stays out of the cached system prompt.
     expect(system).not.toContain('Frage Nummer');
-    expect(system).not.toMatch(/Jetzt: /);
+    expect(system).not.toMatch(/Now: /);
     const user = req.body.messages[0].content as string;
-    expect(user).toContain('Vorname: Anna');
+    expect(user).toContain('First name: Anna');
     expect(user).toContain('Tags: lead');
-    expect(user).toContain('Feld budget: 5000');
+    expect(user).toContain('Field budget: 5000');
     expect(user).not.toContain('streng-geheim');
     expect(user).not.toContain('Frage Nummer 4\n');
     expect(user).toContain('Frage Nummer 5');
@@ -143,7 +143,7 @@ describe('reply suggestions and summaries', () => {
     expect(user).not.toContain('hunter2');
     expect(user).not.toContain('sk-ant-api03-leaked');
     expect(user).toContain('Termin am Dienstag anbieten');
-    expect(user).toContain('Kanal E-Mail');
+    expect(user).toContain('Channel email');
   });
 
   it('logs every call with tokens and cost', async () => {
@@ -333,7 +333,7 @@ describe('live-chat bot', () => {
     respond = () => botJson({ reply: 'Wie heißt du, und wie erreichen wir dich?' });
     const v = await chat({ body: 'Ich hätte gern ein Angebot für eine Website.' });
     await flush();
-    expect(calls[0].body.messages[0].content).toContain('Fehlende Kontaktdaten: Name, E-Mail');
+    expect(calls[0].body.messages[0].content).toContain('Missing contact details: name, email');
     respond = () => botJson({ reply: 'Danke Mia! Wir schicken dir das Angebot.', lead: { first_name: 'Mia', last_name: 'Muster', email: 'Mia@Example.com', phone: '' }, buying_intent: true, intent_summary: 'Angebot Website' });
     await chat({ body: 'Mia Muster, mia@example.com', visitor: v.visitor });
     await flush();

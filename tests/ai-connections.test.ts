@@ -241,7 +241,7 @@ describe('registry API', () => {
     const sum = await t.api.post('/api/ai/summarize', { conversation_id: conv.id });
     expect(sum.data).toMatchObject({ summary: 'Ute fragt nach Öffnungszeiten.', next_step: 'Zeiten schicken' });
     expect(net.calls[0].body.response_format).toEqual({ type: 'json_object' });
-    expect(net.calls[0].body.messages[0].content).toContain('JSON-Schema');
+    expect(net.calls[0].body.messages[0].content).toContain('JSON schema');
     // without routing the KI-Assistent keeps its own provider
     await t.api.put('/api/ai-connections/routing', { usage: 'text', connection_id: '' });
     expect((await t.api.get('/api/ai/provider')).data.routed).toBeNull();

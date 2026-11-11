@@ -156,7 +156,7 @@ describe('Nango: connect, sync, proxy', () => {
     expect(r.status).toBe(200);
     expect(r.data.mode).toBe('oauth');
     expect(r.data.url).toBe('https://api.nango.dev/oauth/connect/github?connect_session_token=nango_connect_session_abc');
-    expect(nango.last('/connect/sessions')!.body).toEqual({ end_user: { id: `gohigh:${locA}`, display_name: 'Testfirma' }, organization: { id: 'gohigh', display_name: 'HyperLevel' }, allowed_integrations: ['github'] });
+    expect(nango.last('/connect/sessions')!.body).toEqual({ end_user: { id: `gohigh:${locA}`, display_name: 'Testfirma' }, organization: { id: 'gohigh', display_name: 'Neso CRM' }, allowed_integrations: ['github'] });
     const z = await t.api.post('/api/nango/connect', { integration: 'zendesk' });
     expect(z.data).toMatchObject({ mode: 'connect_ui', url: 'https://connect.nango.dev/?session_token=nango_connect_session_abc' });
     expect((await t.api.post('/api/nango/connect', { integration: 'slack' })).status).toBe(400);

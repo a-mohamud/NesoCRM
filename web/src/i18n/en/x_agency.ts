@@ -52,7 +52,7 @@ export default {
   ', die {length} zuletzt aktiven': ', the {length} most recently active',
   ', keine Personen, IP-Adressen oder Browser-Daten. Server-weit abschalten:': ', no people, IP addresses or browser data. Turn off server-wide:',
   ', {clients} Kunden-Accounts': ', {clients} client accounts',
-  '-----BEGIN PRIVATE KEY-----': '-----BEGIN PRIVATE KEY-----',
+  '-----BEGIN PRIVATE KEY-----': '-----BEGIN PRIVATE KEY-----', // oss-check: allow (a placeholder, no key)
   '. Bis dahin kannst du die Löschung zurücknehmen und alles exportieren.': '. Until then you can undo the deletion and export everything.',
   '. Die Login-Seite dort zeigt das Branding des Kunden.': '. The login page there shows the client\'s branding.',
   '. Für dich und deine Kunden ändert sich dadurch nichts.': '. Nothing changes for you or your clients.',

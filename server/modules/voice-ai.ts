@@ -673,7 +673,8 @@ export const voiceAiModule: Module = {
     };
     const transcriptText = (ses: Session) => {
       const t = tLoc(app, ses.location_id);
-      return ses.transcript.map((x) => `${x.role === 'caller' ? t('Anrufende Person') : x.role === 'agent' ? t('Assistent') : '·'}: ${x.text}`).join('\n');
+      // 'Anrufer:' with the colon: the bare 'Anrufer' is already the catalog key for the plural ("Callers").
+      return ses.transcript.map((x) => `${x.role === 'caller' ? t('Anrufer:') : x.role === 'agent' ? `${t('Assistent')}:` : '·:'} ${x.text}`).join('\n');
     };
 
     /** Summary, note, timeline, trigger and notifications – exactly once per call. */

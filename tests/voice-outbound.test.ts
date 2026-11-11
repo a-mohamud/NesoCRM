@@ -108,7 +108,7 @@ describe('outbound AI calls', () => {
     const ses = t.app.db.get('SELECT * FROM voice_ai_sessions WHERE call_id = ?', o.call_id);
     expect(ses).toMatchObject({ stage: 'outbound', from_number: '+4915111111111', contact_id: contacts.anna });
     const block = t.app.services.voicePromptExtras.map((fn: any) => fn(ses)).join('\n');
-    expect(block).toContain('Vereinbare einen Termin');
+    expect(block).toContain('Arrange an appointment');
     expect(block).toContain('Biete eine Beratung vor Ort an.');
     // the agent booked during the call
     t.app.db.run(`UPDATE voice_ai_sessions SET turns = 1, outcomes = '["booked"]', transcript = ? WHERE id = ?`, JSON.stringify([{ role: 'agent', text: 'Hallo Anna', at: new Date().toISOString() }, { role: 'caller', text: 'Dienstag passt', at: new Date().toISOString() }]), ses.id);

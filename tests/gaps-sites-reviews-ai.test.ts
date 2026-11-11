@@ -95,8 +95,8 @@ describe('prompt optimizer', () => {
     expect(suite.cases).toHaveLength(2);
     answer = (body) => {
       const sys = JSON.stringify(body.system ?? '');
-      if (sys.includes('prüfst streng')) return JSON.stringify(body.messages[0].content.includes('kostenlos') ? { pass: false, score: 2, reason: 'Nennt einen Preis' } : { pass: true, score: 9, reason: 'ok' });
-      if (sys.includes('verbesserst')) return JSON.stringify({ instructions: 'Du beantwortest Fragen von Kunden. Das Erstgespräch ist kostenlos.', changes: ['Regel zum Erstgespräch ergänzt'] });
+      if (sys.includes('You strictly assess')) return JSON.stringify(body.messages[0].content.includes('kostenlos') ? { pass: false, score: 2, reason: 'Nennt einen Preis' } : { pass: true, score: 9, reason: 'ok' });
+      if (sys.includes('You improve the instructions')) return JSON.stringify({ instructions: 'Du beantwortest Fragen von Kunden. Das Erstgespräch ist kostenlos.', changes: ['Regel zum Erstgespräch ergänzt'] });
       return 'Das kostet 99 €.';
     };
     calls.length = 0;
@@ -117,7 +117,7 @@ describe('prompt optimizer', () => {
   });
   it('a custom prompt can be tested as a draft without saving', async () => {
     const suite = (await t.api.post('/api/prompt-lab', { kind: 'custom', name: 'Eigener', prompt: 'Sei freundlich.', cases: [{ input: 'Hallo', expect: 'Grüßt freundlich' }] })).data;
-    answer = (body) => (JSON.stringify(body.system ?? '').includes('prüfst streng') ? '{"pass":true,"score":10,"reason":"gut"}' : 'Hallo! Wie kann ich helfen?');
+    answer = (body) => (JSON.stringify(body.system ?? '').includes('You strictly assess') ? '{"pass":true,"score":10,"reason":"gut"}' : 'Hallo! Wie kann ich helfen?');
     const r = (await t.api.post(`/api/prompt-lab/${suite.id}/run`, { prompt: 'Sei sehr freundlich.' })).data;
     expect(r).toMatchObject({ draft: true, passed: 1 });
     expect((await t.api.get('/api/prompt-lab')).data.suites.find((s: any) => s.id === suite.id).last_run).toBeNull();
@@ -229,7 +229,7 @@ describe('course with AI', () => {
     const o = await t.api.post('/api/course-ai/outline', { topic: 'Social Media für Handwerker', modules: 2, lessons_per_module: 2 });
     expect(o.status).toBe(200);
     expect(o.data.modules).toHaveLength(2);
-    expect(JSON.stringify(calls.at(-1).system)).toContain('Kurs-Designer');
+    expect(JSON.stringify(calls.at(-1).system)).toContain('course designer');
     const c = (await t.api.post('/api/course-ai/create', { outline: o.data })).data;
     expect(c).toMatchObject({ title: 'Social Media für Handwerker', modules: 2, lessons: 3 });
     const course = (await t.api.get(`/api/courses/${c.id}`)).data;

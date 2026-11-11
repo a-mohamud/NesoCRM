@@ -62,7 +62,7 @@ describe('helpers', () => {
 
 describe('white-label branding', () => {
   it('is public to read and admin-only to change', async () => {
-    expect((await t.api.get('/api/branding')).data.name).toBe('HyperLevel');
+    expect((await t.api.get('/api/branding')).data.name).toBe('Neso CRM');
     const r = await t.api.patch('/api/agency/branding', { name: 'Nordlicht Digital', color: '#ff5500', login_title: 'Kundenportal', app_domain: 'https://App.Nordlicht-Digital.example/' });
     expect(r.data).toMatchObject({ name: 'Nordlicht Digital', app_domain: 'app.nordlicht-digital.example' });
     const pub = (await t.api.get('/api/branding')).data;
@@ -73,11 +73,13 @@ describe('white-label branding', () => {
     expect(t.app.baseUrl()).toBe('http://localhost');
   });
 
-  it('shows the new product name where a saved branding still has the old default "GoHigh"', async () => {
+  it('shows the new product name where a saved branding still has an old default ("GoHigh", "HyperLevel")', async () => {
     const row = t.app.db.get('SELECT value FROM agency_settings WHERE key = ?', 'branding');
     const saved = JSON.parse(row.value);
-    t.app.db.run('UPDATE agency_settings SET value = ? WHERE key = ?', JSON.stringify({ ...saved, name: 'GoHigh' }), 'branding');
-    expect((await t.api.get('/api/branding')).data).toMatchObject({ name: 'HyperLevel', color: '#ff5500' });
+    for (const old of ['GoHigh', 'HyperLevel']) {
+      t.app.db.run('UPDATE agency_settings SET value = ? WHERE key = ?', JSON.stringify({ ...saved, name: old }), 'branding');
+      expect((await t.api.get('/api/branding')).data).toMatchObject({ name: 'Neso CRM', color: '#ff5500' });
+    }
     t.app.db.run('UPDATE agency_settings SET value = ? WHERE key = ?', row.value, 'branding');
   });
 });

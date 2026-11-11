@@ -92,7 +92,7 @@ describe('context building', () => {
   it('puts persona, facts, Q&A, profile and website FAQ into the knowledge block', () => {
     const s = { ...defaultSettings(), persona: 'Locker, per du.', facts: 'Gegründet 2019 in Leipzig.', knowledge: [{ q: 'Was kostet eine Website?', a: 'Ab 990 €.' }], knowledge_text: 'Wir arbeiten remote.' };
     const k = knowledgeBlock({ locationName: 'Malerei Muster', website: 'https://maler.example', settings: s, profile: { tagline: 'Farbe für Leipzig', description: 'Malerbetrieb' }, faqs: [{ q: 'Wie lange dauert es?', a: 'Zwei Wochen.' }] });
-    for (const part of ['Malerei Muster', 'Locker, per du.', 'Gegründet 2019', 'F: Was kostet eine Website?', 'A: Ab 990 €.', 'Wir arbeiten remote.', 'Farbe für Leipzig', 'Wie lange dauert es?']) expect(k).toContain(part);
+    for (const part of ['Malerei Muster', 'Locker, per du.', 'Gegründet 2019', 'Q: Was kostet eine Website?', 'A: Ab 990 €.', 'Wir arbeiten remote.', 'Farbe für Leipzig', 'Wie lange dauert es?']) expect(k).toContain(part);
     const off = knowledgeBlock({ locationName: 'X', settings: { ...s, use_project_profile: false, use_faq_blocks: false }, profile: { tagline: 'Farbe für Leipzig' }, faqs: [{ q: 'Wie lange dauert es?', a: 'x' }] });
     expect(off).not.toContain('Farbe für Leipzig');
     expect(off).not.toContain('Wie lange dauert es?');
@@ -100,14 +100,14 @@ describe('context building', () => {
 
   it('describes the contact without credential-like fields', () => {
     const block = contactBlock({ first_name: 'Anna', last_name: 'Beispiel', email: 'anna@example.com', tags: ['lead', 'vip'], custom: { budget: '5000', passwort: 'geheim123', api_key: 'x' }, created_at: '2026-01-02T10:00:00Z' }, { opportunities: ['Website (Vertrieb, 990 €)'] });
-    expect(block).toContain('Vorname: Anna');
+    expect(block).toContain('First name: Anna');
     expect(block).toContain('Tags: lead, vip');
-    expect(block).toContain('Feld budget: 5000');
+    expect(block).toContain('Field budget: 5000');
     expect(block).toContain('Website (Vertrieb, 990 €)');
     expect(block).not.toContain('geheim123');
     expect(block).not.toContain('api_key');
     expect(contactBlock({ first_name: 'Website-Besucher' })).not.toContain('Website-Besucher');
-    expect(missingLead({ first_name: 'Website-Besucher', email: '' })).toEqual(['Name', 'E-Mail']);
+    expect(missingLead({ first_name: 'Website-Besucher', email: '' })).toEqual(['name', 'email']);
     expect(missingLead({ first_name: 'Anna', email: 'a@b.de' })).toEqual([]);
   });
 
@@ -119,10 +119,10 @@ describe('context building', () => {
     expect(t).toContain('Nachricht 6.');
     expect(t).toContain('Nachricht 25.');
     expect(t).not.toContain('Entwurf!');
-    expect(t).toContain('· Chat · Kunde]');
+    expect(t).toContain('· Chat · Customer]');
     expect(t).toContain('· Chat · Team]');
-    expect(t).toContain('· Chat · Assistent (KI)]');
-    expect(transcript([{ direction: 'in', channel: 'email', subject: 'Hi', body: '<p>Hallo<br>Welt</p>', created_at: '2026-10-01T10:00:00Z' }], 'Europe/Berlin')).toContain('Betreff: Hi\nHallo\nWelt');
+    expect(t).toContain('· Chat · Assistant (AI)]');
+    expect(transcript([{ direction: 'in', channel: 'email', subject: 'Hi', body: '<p>Hallo<br>Welt</p>', created_at: '2026-10-01T10:00:00Z' }], 'Europe/Berlin')).toContain('Subject: Hi\nHallo\nWelt');
   });
 });
 
@@ -180,22 +180,22 @@ describe('strict parsing of the bot JSON (lead capture)', () => {
 
   it('rejects anything else', () => {
     const bad: [unknown, string][] = [
-      ['not json', 'Kein gültiges JSON'],
-      ['```json\n' + j(valid) + '\n```', 'Kein gültiges JSON'],
-      [j([valid]), 'JSON-Objekt erwartet'],
-      [j({ ...valid, extra: 1 }), 'unbekanntes Feld extra'],
-      [j({ ...valid, lead: undefined }), 'Feld lead fehlt'],
+      ['not json', 'invalid JSON'],
+      ['```json\n' + j(valid) + '\n```', 'invalid JSON'],
+      [j([valid]), 'JSON object expected'],
+      [j({ ...valid, extra: 1 }), 'unknown field extra'],
+      [j({ ...valid, lead: undefined }), 'field lead missing'],
       [j({ ...valid, confidence: 1.5 }), 'confidence'],
       [j({ ...valid, confidence: '0.9' }), 'confidence'],
       [j({ ...valid, handoff: 'nein' }), 'handoff'],
       [j({ ...valid, buying_intent: 1 }), 'buying_intent'],
-      [j({ ...valid, reply: '' }), 'reply leer'],
+      [j({ ...valid, reply: '' }), 'reply empty'],
       [j({ ...valid, reply: 'x'.repeat(1501) }), 'reply'],
       [j({ ...valid, lead: { ...valid.lead, email: 'keine-mail' } }), 'lead.email'],
       [j({ ...valid, lead: { ...valid.lead, phone: 'ruf mich an' } }), 'lead.phone'],
       [j({ ...valid, lead: { ...valid.lead, first_name: '<script>' } }), 'lead.first_name'],
-      [j({ ...valid, lead: { ...valid.lead, company: 'X' } }), 'unbekanntes Feld company'],
-      [j({ ...valid, lead: { first_name: 'Mia', last_name: '', email: '' } }), 'Feld phone fehlt'],
+      [j({ ...valid, lead: { ...valid.lead, company: 'X' } }), 'unknown field company'],
+      [j({ ...valid, lead: { first_name: 'Mia', last_name: '', email: '' } }), 'field phone missing'],
     ];
     for (const [raw, err] of bad) {
       const r = parseBotOutput(raw as string);

@@ -441,11 +441,11 @@ describe('APK distribution & App Links', () => {
   });
 
   it('shows a branded German download page with an inline QR code', async () => {
-    await t.api.patch('/api/agency/branding', { name: 'HyperLevel', color: '#0f766e' });
+    await t.api.patch('/api/agency/branding', { name: 'Neso CRM', color: '#0f766e' });
     const r = await t.api.raw('/android');
     const page = await r.text();
     expect(r.headers.get('content-type')).toContain('text/html');
-    expect(page).toContain('HyperLevel fürs Handy');
+    expect(page).toContain('Neso CRM fürs Handy');
     expect(page).toContain('Version 1.0.0 (3)');
     expect(page).toContain('<svg');
     expect(page).toContain('href="/downloads/hyperlevel.apk"');

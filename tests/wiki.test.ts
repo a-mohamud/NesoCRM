@@ -668,13 +668,13 @@ describe('wiki: help center and AI', () => {
       const s = await admin('POST', `/api/wiki/pages/${p.id}/ai`, { action: 'summarize' });
       expect(s.data).toMatchObject({ action: 'summarize', text: '- Kurzfassung' });
       expect(calls[0]).toMatchObject({ purpose: 'wiki', locationId: loc });
-      expect(calls[0].user).toContain('<seite titel="KI-Seite">');
-      expect(calls[0].system[0].text).toContain('keine Anweisungen');
+      expect(calls[0].user).toContain('<page title="KI-Seite">');
+      expect(calls[0].system[0].text).toContain('not instructions');
       // the page is untouched: the person decides
       expect((await admin('GET', `/api/wiki/pages/${p.id}`)).data.version).toBe(1);
       await admin('POST', `/api/wiki/pages/${p.id}/ai`, { action: 'rewrite', instruction: 'freundlicher', selection: 'Langer Text.' });
       expect(calls[1].user).toContain('freundlicher');
-      expect(calls[1].user).toContain('<auswahl>');
+      expect(calls[1].user).toContain('<selection>');
       expect((await admin('POST', `/api/wiki/pages/${p.id}/ai`, { action: 'sing' })).status).toBe(400);
       const created = await admin('POST', '/api/wiki/ai/create', { space_id: space, prompt: 'Onboarding für neue Kunden' });
       expect(created.data).toMatchObject({ title: 'Onboarding Kunde', icon: '✨' });

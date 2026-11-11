@@ -39,7 +39,7 @@ const fakeClaude = (async (_url: string, init: any = {}) => {
   if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
   const prompt: string = body?.messages?.[0]?.content ?? '';
   let r: Reply;
-  if (prompt.includes('Aufgabe: Fasse dieses Telefonat')) r = reply(JSON.stringify({ summary: 'Max Muster hat angerufen und einen Termin gebucht.', next_step: 'Termin vorbereiten.' }));
+  if (prompt.includes('Task: summarise this phone call')) r = reply(JSON.stringify({ summary: 'Max Muster hat angerufen und einen Termin gebucht.', next_step: 'Termin vorbereiten.' }));
   else {
     const out = respond(prompt, body);
     r = out && typeof out === 'object' && 'status' in (out as any) ? (out as Reply) : reply(typeof out === 'string' ? out : JSON.stringify(out));
@@ -105,19 +105,19 @@ describe('voice agent building blocks', () => {
     const ok = (o: unknown, allowed?: any) => parseVoiceOutput(JSON.stringify(o), allowed);
     expect(ok({ say: 'Gern.', action: 'none', args: EMPTY_ARGS })).toMatchObject({ ok: true });
     expect(ok({ say: '', action: 'book_appointment', args: { ...EMPTY_ARGS, date: '2026-10-06', time: '10:30', first_name: 'Max' } })).toMatchObject({ ok: true, value: { action: 'book_appointment' } });
-    expect(parseVoiceOutput('kein json')).toMatchObject({ ok: false, error: 'Kein gültiges JSON' });
-    expect(ok({ say: 'x', action: 'hack', args: EMPTY_ARGS })).toMatchObject({ ok: false, error: 'action unbekannt' });
-    expect(ok({ say: 'x', action: 'transfer', args: EMPTY_ARGS }, ['none', 'end_call'])).toMatchObject({ ok: false, error: 'Werkzeug transfer ist hier nicht erlaubt' });
+    expect(parseVoiceOutput('kein json')).toMatchObject({ ok: false, error: 'no valid JSON' });
+    expect(ok({ say: 'x', action: 'hack', args: EMPTY_ARGS })).toMatchObject({ ok: false, error: 'action unknown' });
+    expect(ok({ say: 'x', action: 'transfer', args: EMPTY_ARGS }, ['none', 'end_call'])).toMatchObject({ ok: false, error: 'tool transfer is not allowed here' });
     expect(ok({ say: 'x', action: 'none', args: EMPTY_ARGS, extra: 1 })).toMatchObject({ ok: false });
-    expect(ok({ say: 'x', action: 'none', args: { ...EMPTY_ARGS, sql: 'drop' } })).toMatchObject({ ok: false, error: 'args: unbekanntes Feld sql' });
-    expect(ok({ say: '', action: 'book_appointment', args: { ...EMPTY_ARGS, date: '2026-02-30', time: '10:00' } })).toMatchObject({ ok: false, error: 'args.date ungültig' });
-    expect(ok({ say: '', action: 'book_appointment', args: { ...EMPTY_ARGS, date: '2026-10-06', time: '25:00' } })).toMatchObject({ ok: false, error: 'args.time ungültig' });
-    expect(ok({ say: '', action: 'book_appointment', args: { ...EMPTY_ARGS, date: '2026-10-06' } })).toMatchObject({ ok: false, error: 'book_appointment: args.time fehlt' });
-    expect(ok({ say: 'Notiert.', action: 'take_message', args: EMPTY_ARGS })).toMatchObject({ ok: false, error: 'take_message: args.message fehlt' });
-    expect(ok({ say: 'ok', action: 'none', args: { ...EMPTY_ARGS, email: 'kaputt@' } })).toMatchObject({ ok: false, error: 'args.email ungültig' });
-    expect(ok({ say: 'ok', action: 'none', args: { ...EMPTY_ARGS, first_name: '<script>' } })).toMatchObject({ ok: false, error: 'args.first_name ungültig' });
-    expect(ok({ say: '', action: 'none', args: EMPTY_ARGS })).toMatchObject({ ok: false, error: 'say leer' });
-    expect(ok({ say: 'x'.repeat(801), action: 'none', args: EMPTY_ARGS })).toMatchObject({ ok: false, error: 'say ungültig' });
+    expect(ok({ say: 'x', action: 'none', args: { ...EMPTY_ARGS, sql: 'drop' } })).toMatchObject({ ok: false, error: 'args: unknown field sql' });
+    expect(ok({ say: '', action: 'book_appointment', args: { ...EMPTY_ARGS, date: '2026-02-30', time: '10:00' } })).toMatchObject({ ok: false, error: 'args.date invalid' });
+    expect(ok({ say: '', action: 'book_appointment', args: { ...EMPTY_ARGS, date: '2026-10-06', time: '25:00' } })).toMatchObject({ ok: false, error: 'args.time invalid' });
+    expect(ok({ say: '', action: 'book_appointment', args: { ...EMPTY_ARGS, date: '2026-10-06' } })).toMatchObject({ ok: false, error: 'book_appointment: args.time missing' });
+    expect(ok({ say: 'Notiert.', action: 'take_message', args: EMPTY_ARGS })).toMatchObject({ ok: false, error: 'take_message: args.message missing' });
+    expect(ok({ say: 'ok', action: 'none', args: { ...EMPTY_ARGS, email: 'kaputt@' } })).toMatchObject({ ok: false, error: 'args.email invalid' });
+    expect(ok({ say: 'ok', action: 'none', args: { ...EMPTY_ARGS, first_name: '<script>' } })).toMatchObject({ ok: false, error: 'args.first_name invalid' });
+    expect(ok({ say: '', action: 'none', args: EMPTY_ARGS })).toMatchObject({ ok: false, error: 'say empty' });
+    expect(ok({ say: 'x'.repeat(801), action: 'none', args: EMPTY_ARGS })).toMatchObject({ ok: false, error: 'say invalid' });
     expect(VOICE_SCHEMA.properties.action.enum).toContain('book_appointment');
     expect(VOICE_SCHEMA.properties.args.required).toHaveLength(9);
   });
@@ -211,10 +211,10 @@ describe('KI-Telefonagent', () => {
     expect(req.output_config.format.schema).toEqual(VOICE_SCHEMA);
     expect(JSON.stringify(req.system)).toContain('Zahnarztpraxis Dr. Sonne');
     const prompt: string = req.messages[0].content;
-    expect(prompt).toContain('<freie_termine>');
+    expect(prompt).toContain('<free_slots>');
     expect(prompt).toContain(`calendar_id: ${calendarId}`);
-    expect(prompt).toContain('Anrufer: Ich hätte gern einen Termin für ein Erstgespräch.');
-    expect(prompt).toContain('Anrufer-Nummer: +4917011111');
+    expect(prompt).toContain('Caller: Ich hätte gern einen Termin für ein Erstgespräch.');
+    expect(prompt).toContain('Caller number: +4917011111');
     expect(prompt).toContain('Termine für Erstgespräche vergeben.');
     expect(prompt).toContain('"book_appointment"');
     expect(prompt).toContain('"transfer"');
@@ -268,11 +268,11 @@ describe('KI-Telefonagent', () => {
     await hook('voice', { CallSid: sid, From: '+4917012345', To: TWILIO_NUMBER });
     let day = '';
     respond = (p) => {
-      if (!p.includes('<werkzeug_ergebnis>')) {
+      if (!p.includes('<tool_result>')) {
         day = lastSlotOfFirstDay(p).date;
         return { say: 'Einen Moment, ich schaue nach.', action: 'check_slots', args: { ...EMPTY_ARGS, date: day, calendar_id: calendarId } };
       }
-      expect(p).toContain(`Freie Zeiten in Kalender „Erstgespräch“`);
+      expect(p).toContain(`Free times in Calendar "Erstgespräch"`);
       expect(p).not.toContain('"check_slots":');
       return { say: 'An dem Tag ist ab 8 Uhr frei. Welche Uhrzeit passt Ihnen?', action: 'none', args: EMPTY_ARGS };
     };
@@ -283,8 +283,8 @@ describe('KI-Telefonagent', () => {
 
     claude.length = 0;
     respond = (p) =>
-      p.includes('<werkzeug_ergebnis>')
-        ? (expect(p).toContain('Buchung fehlgeschlagen: Dieser Termin ist leider nicht (mehr) frei.'), { say: 'Um 3 Uhr nachts ist leider zu. Wie wäre 9 Uhr?', action: 'none', args: EMPTY_ARGS })
+      p.includes('<tool_result>')
+        ? (expect(p).toContain('Booking failed: This slot is no longer free.'), { say: 'Um 3 Uhr nachts ist leider zu. Wie wäre 9 Uhr?', action: 'none', args: EMPTY_ARGS })
         : { say: '', action: 'book_appointment', args: { ...EMPTY_ARGS, calendar_id: calendarId, date: day, time: '03:00', first_name: 'Nora', last_name: 'Nacht' } };
     const r2 = await speak(sid, 1, 'Dann um 3 Uhr nachts.');
     expect(claude).toHaveLength(2);
@@ -312,7 +312,7 @@ describe('KI-Telefonagent', () => {
 
     respond = (p) => {
       expect(p).not.toContain('"transfer":');
-      expect(p).toContain('Weiterverbinden: nicht möglich');
+      expect(p).toContain('Transfer: not possible');
       return { say: 'Ich habe es notiert, Dr. Sonne ruft Sie zurück. Kann ich sonst noch helfen?', action: 'take_message', args: { ...EMPTY_ARGS, message: 'Rückruf wegen Kostenvoranschlag, heute bis 18 Uhr erreichbar', first_name: 'Erika', last_name: 'Gabler' } };
     };
     const m = await speak(sid, 1, 'Dann soll er mich zurückrufen wegen dem Kostenvoranschlag. Erika Gabler hier.');
@@ -349,7 +349,7 @@ describe('KI-Telefonagent', () => {
     const capped = await speak(sid2, 2, 'Frage drei');
     expect(capped.text).toContain('Unser Team meldet sich bei Ihnen.');
     expect(capped.text).toContain('<Hangup/>');
-    expect(claude.filter((c) => !c.body.messages[0].content.includes('Fasse dieses Telefonat'))).toHaveLength(2);
+    expect(claude.filter((c) => !c.body.messages[0].content.includes('summarise this phone call'))).toHaveLength(2);
     await flush();
     expect(sessionBySid(sid2)).toMatchObject({ outcome: 'limit', end_reason: 'limit', turns: 3 });
     await t.api.put('/api/voice-ai/settings', { max_turns: 16 });

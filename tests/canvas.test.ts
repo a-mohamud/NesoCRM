@@ -77,9 +77,10 @@ describe('canvas scene model', () => {
     const s = mk({ id: 's1', type: 'sticky', text: 'Idee', frameId: 'f1' });
     const c = mk({ id: 'c1', type: 'ellipse', text: 'Kunde' });
     const out = sceneOutline([f, s, c, mk({ type: 'arrow', start: { id: 's1' }, end: { id: 'c1' }, points: [[0, 0], [1, 1]] })], 'Plan');
-    expect(out).toContain('## Rahmen "Startseite" [f1]');
-    expect(out).toContain('Notiz "Idee" [s1]');
-    expect(out).toMatch(/Pfeil .*Notiz "Idee" \[s1\] → Ellipse "Kunde" \[c1\]/);
+    expect(out).toContain('# Plan – 4 elements');
+    expect(out).toContain('## Frame "Startseite" [f1]');
+    expect(out).toContain('sticky "Idee" [s1]');
+    expect(out).toMatch(/arrow .*sticky "Idee" \[s1\] → ellipse "Kunde" \[c1\]/);
   });
 });
 
@@ -383,7 +384,7 @@ describe('canvas API', () => {
     expect(ch.data.seq).toBeGreaterThan(seq1);
     expect(ch.data.elements.find((e: any) => e.id === 'n1')).toMatchObject({ text: 'zurück', locked: true });
     const full = await admin('GET', `/api/canvas/${id}?outline=1&svg=1`);
-    expect(full.data.outline).toContain('Notiz "zurück" [n1]');
+    expect(full.data.outline).toContain('sticky "zurück" [n1]');
     expect(full.data.svg).toMatch(/^<svg /);
     expect(full.data.access).toBe('owner');
   });

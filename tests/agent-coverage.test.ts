@@ -227,7 +227,7 @@ describe('(c) confirmations exactly per the rules', () => {
     const second = await chat({ conversation_id: conv, message: 'Ja', source: 'focus' });
     expect(second.some((e) => e.type === 'tool_result' && e.status === 'ok')).toBe(false);
     expect(task(taskA).title).toBe('Angebot nachfassen');
-    expect(JSON.stringify(model.calls.at(-1)!.body.messages)).toContain('Nicht ausgeführt');
+    expect(JSON.stringify(model.calls.at(-1)!.body.messages)).toContain('Not executed');
     // the old card is dead
     expect((await t.api.post('/api/agent/confirm', { pending_id: card.pending_id, token: card.token, approve: true, args_hash: card.args_hash })).status).toBe(409);
     expect(task(taskA).title).toBe('Angebot nachfassen');
@@ -400,8 +400,8 @@ describe('"Erledige das hier" from any record page, noise-free results', () => {
     model.reply(sse(anthropicSse([say('Erledigt.')])));
     await chat({ message: 'Pausiere das hier', ui: { route: 'focus', label: 'Fokus-Modus', from: `workflows/${wf.id}` } });
     const first = JSON.stringify(model.calls[0].body.messages[0]);
-    expect(first).toContain(`ausgewählt: workflow „Willkommen“ (ID ${wf.id})`);
-    expect(first).toContain(`geöffnet von: workflows/${wf.id}`);
+    expect(first).toContain(`selected: workflow “Willkommen” (ID ${wf.id})`);
+    expect(first).toContain(`opened from: workflows/${wf.id}`);
   });
 
   it('tool results lose empty fields, secrets and endless lists', () => {

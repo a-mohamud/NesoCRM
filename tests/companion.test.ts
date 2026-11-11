@@ -203,11 +203,11 @@ describe('settings per person and sub-account', () => {
 
   it('teaches the agent its companion role only in focus-mode runs', () => {
     const extras = (t.app.services.agentPromptExtras as ((i: any) => string)[]).map((f) => f({ user: { id: me, name: 'Chef', role: 'admin', locations: [] }, locationId: A, automatic: false, source: 'focus' })).join('\n');
-    expect(extras).toContain('Fokus-Modus mit Companion');
-    expect(extras).toContain('„Jarvis“');
-    expect(extras).toContain('keine Bestätigung');
+    expect(extras).toContain('Focus mode with Companion');
+    expect(extras).toContain('“Jarvis”');
+    expect(extras).toContain('A spoken agreement is not a confirmation');
     const chat = (t.app.services.agentPromptExtras as ((i: any) => string)[]).map((f) => f({ user: { id: me, name: 'Chef', role: 'admin', locations: [] }, locationId: A, automatic: false, source: 'chat' })).join('\n');
-    expect(chat).not.toContain('Fokus-Modus mit Companion');
+    expect(chat).not.toContain('Focus mode with Companion');
   });
 });
 
@@ -264,7 +264,7 @@ describe('GET /api/companion/briefing ("Was brennt?")', () => {
     const ok = await t.api.get('/api/companion/briefing');
     expect(ok.data).toMatchObject({ source: 'ai', tip: 'Ein fester Nachfass-Tag pro Woche hält die Pipeline warm.' });
     expect(aiCalls.at(-1)).toMatchObject({ purpose: 'companion', userId: me });
-    expect(aiCalls.at(-1).system[0].text).toContain('NIEMALS Zahlen');
+    expect(aiCalls.at(-1).system[0].text).toContain('NEVER mention numbers');
     // rules only on request, and over the daily cap
     await t.api.get('/api/companion/briefing?rules=1');
     expect(aiCalls).toHaveLength(2);
@@ -396,7 +396,7 @@ describe('the agent in focus mode', () => {
     expect(sent()).toBe(0);
     const conv = t.app.db.get<any>('SELECT * FROM agent_conversations WHERE id = ?', card.conversation_id ?? ev.find((e) => e.type === 'start').conversation_id);
     expect(conv.source).toBe('focus');
-    expect(JSON.stringify(model.calls[0].body.system)).toContain('Fokus-Modus mit Companion');
+    expect(JSON.stringify(model.calls[0].body.system)).toContain('Focus mode with Companion');
     // whatever the person says next is a new message – it rejects the waiting action, it never runs it
     model.reply(sse(anthropicSse([{ type: 'text', text: 'Okay, ich schicke nichts.' }])));
     await t.api.post('/api/agent/chat', { conversation_id: conv.id, message: 'ja', source: 'focus' });
@@ -406,6 +406,6 @@ describe('the agent in focus mode', () => {
     model.reply(sse(anthropicSse([{ type: 'text', text: 'Hallo.' }])));
     const other = events((await t.api.post('/api/agent/chat', { message: 'Hallo', source: 'hacker' })).data);
     expect(t.app.db.get<any>('SELECT source FROM agent_conversations WHERE id = ?', other.find((e) => e.type === 'start').conversation_id).source).toBe('chat');
-    expect(JSON.stringify(model.calls.at(-1)!.body.system)).not.toContain('Fokus-Modus mit Companion');
+    expect(JSON.stringify(model.calls.at(-1)!.body.system)).not.toContain('Focus mode with Companion');
   });
 });

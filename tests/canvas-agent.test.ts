@@ -55,7 +55,7 @@ describe('HyperLevel Agent on the canvas', () => {
     expect(r.status).toBe(200);
     expect(r.events.filter((e) => e.type === 'tool_result').map((e) => e.status)).toEqual(['ok', 'ok']);
     // the page the user looks at is passed along
-    expect(JSON.stringify(model.calls[0].body.messages[0])).toContain('Seite: Board: Agenten-Board');
+    expect(JSON.stringify(model.calls[0].body.messages[0])).toContain('page: Board: Agenten-Board');
     // the result goes back to the model as data and carries a link to the board
     expect(JSON.stringify(model.calls[1].body)).toContain('/app/canvas/');
     const els = (await t.api.get(`/api/canvas/${board}`)).data;

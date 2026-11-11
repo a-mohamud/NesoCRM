@@ -53,7 +53,7 @@ describe('the check', () => {
   it('accepts a valid config and names every problem of a broken one', () => {
     expect(checkAgent({ ...AGENT, tools: ['ghl_list_tasks'] }, catalog).errors).toEqual([]);
     const bad = checkAgent({ ...AGENT, name: '', tools: ['ghl_erfunden'], mode: 'yolo', max_steps: 99, knowledge: { sources: ['internet'] }, schedule: { cadence: 'hourly', time: '25:00', prompt: '' } }, catalog).errors.join('\n');
-    for (const s of ['„name“ fehlt', 'Unbekannte Werkzeuge: ghl_erfunden', '„mode“', '„max_steps“', 'Wissensquellen: internet', 'schedule.cadence', 'schedule.time', 'schedule.prompt']) expect(bad).toContain(s);
+    for (const s of ['“name” is missing', 'Unknown tools: ghl_erfunden', '“mode”', '“max_steps”', 'knowledge sources: internet', 'schedule.cadence', 'schedule.time', 'schedule.prompt']) expect(bad).toContain(s);
     expect(checkAgent({ ...AGENT, tools: ['ghl_create_task'] }, catalog).warnings[0]).toContain('nur lesen');
   });
 });
@@ -69,7 +69,7 @@ describe('generate → review → draft agent', () => {
     expect(r.data).toMatchObject({ attempts: 2, config: { name: 'Montags-Bericht', mode: 'read', max_steps: 8, schedule: { cadence: 'weekly', time: '08:00' } } });
     expect(r.data.tools.map((x: any) => x.name)).toEqual(AGENT.tools);
     expect(calls[0].system[0].text).toContain('ghl_list_opportunities · ');
-    expect(calls[1].messages[0].content).toContain('Unbekannte Werkzeuge: ghl_zauberstab');
+    expect(calls[1].messages[0].content).toContain('Unknown tools: ghl_zauberstab');
     expect((await t.api.get('/api/agents')).data).toHaveLength(0);
     const saved = await t.api.post(`/api/agent-ai/runs/${r.data.run_id}/apply`, {});
     expect(saved.status, JSON.stringify(saved.data)).toBe(200);

@@ -488,8 +488,8 @@ describe('Jarvis live in the app', () => {
     expect(eventsOf(me).map((e) => e.kind)).toContain('message_unanswered');
     expect(aiCalls).toHaveLength(1);
     expect(aiCalls[0].purpose).toBe('companion_initiative');
-    expect(aiCalls[0].user).toContain('Daten:'); // the message is data …
-    expect(aiCalls[0].system[0].text).toMatch(/keine Anweisung/); // … and the model is told so
+    expect(aiCalls[0].user).toContain('Data:'); // the message is data …
+    expect(aiCalls[0].system[0].text).toMatch(/not an instruction/); // … and the model is told so
     const poll = (await t.api.get('/api/companion/live')).data;
     const ev = poll.events.find((x: any) => x.kind === 'message_unanswered');
     expect(ev.say).toMatch(/Ich habe eine Antwort vorbereitet/);
@@ -573,7 +573,7 @@ describe('Jarvis live in the app', () => {
     ws.binaryType = 'arraybuffer';
     ws.onmessage = (ev) => (typeof ev.data === 'string' ? got.push(JSON.parse(ev.data)) : bins.push(new Uint8Array(ev.data as ArrayBuffer)));
     await waitFor(() => got.some((m) => m.type === 'ready'));
-    expect(live.setups.at(-1).systemInstruction.parts[0].text).toMatch(/Ein gesprochenes „ja“ ist keine Bestätigung/);
+    expect(live.setups.at(-1).systemInstruction.parts[0].text).toMatch(/A spoken “yes” is not a confirmation/);
     expect(live.setups.at(-1).tools[0].functionDeclarations.map((f: any) => f.name)).toEqual(['hyperlevel_agent', 'end_conversation']);
     ws.send(new Uint8Array([0, 1, 0, 1]));
     await waitFor(() => got.some((m) => m.type === 'tool'));

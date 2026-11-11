@@ -161,7 +161,7 @@ describe('reporting a bug', () => {
     expect(r.data.status).toMatchObject({ key: 'neu', label: 'Neu' });
     const s = (await t.api.get('/api/feedback/settings')).data;
     supportLoc = s.support_location_id;
-    expect(s.support_location_name).toBe('HyperLevel Support');
+    expect(s.support_location_name).toBe('Neso CRM Support');
     expect(s.pipeline_id).toBeTruthy();
     expect(s.view_id).toBeTruthy();
     // The ticket lives in the support sub-account, pipeline „Fehler & Wünsche“, with SLA and contact.

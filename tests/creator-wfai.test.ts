@@ -69,22 +69,22 @@ describe('catalogue for the AI', () => {
   it('lists settings compactly with required marks, options and the ids it must not invent', () => {
     const text = catalogText(env.actions, env.triggers);
     expect(text).toContain('- send_email · E-Mail senden');
-    expect(text).toMatch(/- wait · Warten.*amount\*:zahl\{wenn mode=delay\}/);
+    expect(text).toMatch(/- wait · Warten.*amount\*:number\{if mode=delay\}/);
     expect(text).toMatch(/- create_opportunity · .*pipeline_id\*:<pipeline-id>, stage_id\*:<stage-id>/);
     expect(text).toMatch(/- form\.submitted · .*form_id:<form-id>/);
-    expect(text).toContain('filters:[Bedingung]');
+    expect(text).toContain('filters:[condition]');
     // compact enough to send with every request
     expect(text.length).toBeLessThan(90_000);
   });
 
   it('describes the sub-account without secrets', () => {
     const c = contextText({ pipeline: env.refs.pipeline, workflow: env.refs.workflow, calendar: [], tags: ['lead', 'kunde'], custom_fields: [{ key: 'budget', label: 'Budget' }] }, { name: 'Testfirma', timezone: 'Europe/Berlin' });
-    expect(c).toContain(`${pipelineId} = „`);
-    expect(c).toContain('Kalender: keine vorhanden');
-    expect(c).toContain('w_other = „Anderer“ (active)');
-    expect(c).toContain('Vorhandene Tags: lead, kunde');
+    expect(c).toContain(`${pipelineId} = "`);
+    expect(c).toContain('Calendars: none');
+    expect(c).toContain('w_other = "Anderer" (active)');
+    expect(c).toContain('Existing tags: lead, kunde');
     expect(c).toContain('budget = Budget');
-    expect(c).not.toContain('Formulare');
+    expect(c).not.toContain('Forms');
   });
 });
 
@@ -314,7 +314,7 @@ describe('generating through the API', () => {
     expect(sys).toContain('- send_email · E-Mail senden');
     expect(sys).toContain(pipelineId);
     expect(asked[0].system[0].cache).toBe(true);
-    expect(asked[0].user).toContain('AUFTRAG:\nWenn jemand das Formular');
+    expect(asked[0].user).toContain('REQUEST:\nWenn jemand das Formular');
     const ap = await t.api.post(`/api/workflow-ai/runs/${r.data.run_id}/apply`, {});
     expect(ap.status, JSON.stringify(ap.data)).toBe(200);
     expect(ap.data).toMatchObject({ ok: true, mode: 'create', status: 'draft' });
@@ -339,7 +339,7 @@ describe('generating through the API', () => {
     expect(r.data).toMatchObject({ attempts: 2 });
     expect(r.data.workflow.name).toBe('Zweiter Versuch');
     expect(asked).toHaveLength(2);
-    expect(asked[1].user).toContain('DEIN LETZTER ENTWURF WAR NICHT GÜLTIG');
+    expect(asked[1].user).toContain('YOUR LAST DRAFT WAS NOT VALID');
     expect(asked[1].user).toContain('Schritt-Typ „send_whatsapp_nachricht“ gibt es im Katalog nicht');
     expect(asked[1].user).toContain('send_whatsapp_nachricht');
     // the same static block is sent again (cached by the provider)
@@ -417,9 +417,9 @@ describe('changing a workflow', () => {
     const r = await t.api.post('/api/workflow-ai/generate', { prompt: 'Ändere die Betreffzeile und schicke nach einem Tag eine SMS.', workflow_id: wid });
     expect(r.status, JSON.stringify(r.data)).toBe(200);
     expect(r.data).toMatchObject({ mode: 'edit', base: { id: wid, status: 'active', has_draft: false } });
-    expect(asked[0].user).toContain('BISHERIGER WORKFLOW (JSON)');
+    expect(asked[0].user).toContain('CURRENT WORKFLOW (JSON)');
     expect(asked[0].user).toContain(ids[1]);
-    expect(asked[0].system[0].text).toContain('ÄNDERN:');
+    expect(asked[0].system[0].text).toContain('EDITING:');
     expect(r.data.diff.counts).toEqual({ added: 2, removed: 0, changed: 1, moved: 0, same: 1 });
     expect(r.data.diff.steps.find((s: any) => s.id === ids[1]).changes).toEqual([{ key: 'subject', before: 'Hallo', after: 'Schön, dass du da bist' }]);
     const ap = await t.api.post(`/api/workflow-ai/runs/${r.data.run_id}/apply`, {});
@@ -561,7 +561,7 @@ describe('BYOK routing under the use "Workflows"', () => {
     expect(r.status, JSON.stringify(r.data)).toBe(200);
     expect(net.calls[0].url).toBe('https://api.together.xyz/v1/chat/completions');
     expect(net.calls[0].headers.authorization).toBe('Bearer together-quick-key');
-    expect(net.calls[0].body.messages[0].content).toContain('KATALOG');
+    expect(net.calls[0].body.messages[0].content).toContain('CATALOGUE');
     expect((await t.api.get('/api/workflow-ai/status')).data.provider).toMatchObject({ label: 'Schnell', byok: true });
     net.reset();
 
@@ -585,7 +585,7 @@ describe('BYOK routing under the use "Workflows"', () => {
     r = await t.api.post('/api/workflow-ai/generate', { prompt: 'Noch ein Workflow über die Builder-Verbindung.' });
     expect(r.data).toMatchObject({ attempts: 2 });
     expect(net.calls).toHaveLength(2);
-    expect(net.calls[1].body.messages.at(-1).content).toContain('DEIN LETZTER ENTWURF');
+    expect(net.calls[1].body.messages.at(-1).content).toContain('YOUR LAST DRAFT');
     // removing the routing falls back again
     await t.api.put('/api/ai-connections/routing', { usage: 'workflows', connection_id: '' });
     expect((await t.api.get('/api/workflow-ai/status')).data.provider).toMatchObject({ label: 'Schnell' });

@@ -134,14 +134,14 @@ describe('demo mode (PGHL_DEMO_MODE=1)', () => {
 
   it('seeds fictional data and shows the demo login', async () => {
     const v = (await t.api.get('/api/version')).data;
-    expect(v).toMatchObject({ name: 'HyperLevel', demo: { enabled: true, login: { email: 'demo@example.com', password: 'demo1234' }, reset_hour: 3 } });
+    expect(v).toMatchObject({ name: 'Neso CRM', demo: { enabled: true, login: { email: 'demo@example.com', password: 'demo1234' }, reset_hour: 3 } });
     expect(v.version).toMatch(/^\d+\.\d+\.\d+/);
     const n = (sql: string) => Number(t.app.db.get(sql)?.n ?? 0);
     // The agency „Nordlicht Digital“ (white-label) and its five clients, each with a believable amount of data.
     expect(t.app.db.all('SELECT name FROM locations ORDER BY name').map((r: any) => r.name)).toEqual(['Elektro Meyer', 'FitWerk Coaching', 'Nordlicht Digital', 'Praxis Sonnenweg', 'Rösterei Hafenbohne', 'Taktwerk Software']);
     expect(n(`SELECT COUNT(*) n FROM locations WHERE json_extract(settings, '$.branding.name') = 'Nordlicht Digital'`)).toBe(5);
-    // The agency is the HyperLevel demo without a logo of its own: sidebar and login page show PRODUCT_ICON (web/src/theme/brand-icon.ts).
-    expect((await t.api.get('/api/branding')).data).toMatchObject({ name: 'HyperLevel Demo', logo_url: '', mark_url: '', logo_dark_url: '', mark_dark_url: '' });
+    // The agency is the Neso CRM demo without a logo of its own: sidebar and login page show PRODUCT_ICON (web/src/theme/brand-icon.ts).
+    expect((await t.api.get('/api/branding')).data).toMatchObject({ name: 'Neso CRM Demo', logo_url: '', mark_url: '', logo_dark_url: '', mark_dark_url: '' });
     expect(PRODUCT_ICON).toBe('/icon.svg');
     expect(n('SELECT COUNT(*) n FROM contacts')).toBeGreaterThan(150);
     expect(n('SELECT COUNT(*) n FROM opportunities')).toBeGreaterThan(40);

@@ -90,34 +90,34 @@ describe('block schema', () => {
     const less = new Set([...registry].filter((x) => x !== 'pricing'));
     expect(blockCatalogText(less)).not.toContain('- pricing');
     expect(blockCatalogText(registry)).toMatch(/- hero · Hero – .*heading\*:text≤110/);
-    expect(checkBlock({ type: 'pricing', items: [{ name: 'A', price: '1 €' }] }, env({ registry: less }), 'X').errors[0]).toContain('unbekannter Block-Typ „pricing“');
+    expect(checkBlock({ type: 'pricing', items: [{ name: 'A', price: '1 €' }] }, env({ registry: less }), 'X').errors[0]).toContain('unknown block type "pricing"');
   });
 
   it('checks fields, lengths, links and account ids – and names every problem', () => {
     const ok = checkBlock({ type: 'hero', heading: 'Hallo', button_text: 'Los', button_url: 'page:danke', foo: 1 }, env(), 'B1');
     expect(ok.errors).toEqual([]);
-    expect(ok.warnings[0]).toContain('unbekannte Felder entfernt: foo');
+    expect(ok.warnings[0]).toContain('unknown fields removed: foo');
     expect(ok.block).toMatchObject({ type: 'hero', heading: 'Hallo', button_url: 'page:danke' });
     expect(ok.block).not.toHaveProperty('foo');
     const bad = checkBlock({ type: 'hero', subheading: 'x'.repeat(400), button_url: 'javascript:alert(1)' }, env(), 'B2').errors;
-    expect(bad.join('\n')).toMatch(/„heading“ fehlt/);
-    expect(bad.join('\n')).toMatch(/400 Zeichen lang, höchstens 320/);
-    expect(bad.join('\n')).toMatch(/kein erlaubter Link/);
-    expect(checkBlock({ type: 'button', text: 'x', url: 'page:preise' }, env(), 'B3').errors[0]).toContain('die es im Plan nicht gibt');
-    expect(checkBlock({ type: 'form', form_id: 'erfunden' }, env(), 'B4').errors[0]).toContain('gibt es in diesem Sub-Account nicht');
+    expect(bad.join('\n')).toMatch(/"heading" is missing/);
+    expect(bad.join('\n')).toMatch(/400 characters long, at most 320/);
+    expect(bad.join('\n')).toMatch(/is not an allowed link/);
+    expect(checkBlock({ type: 'button', text: 'x', url: 'page:preise' }, env(), 'B3').errors[0]).toContain('which is not in the plan');
+    expect(checkBlock({ type: 'form', form_id: 'erfunden' }, env(), 'B4').errors[0]).toContain('does not exist in this sub-account');
     expect(checkBlock({ type: 'form', form_id: 'form1' }, env(), 'B5').errors).toEqual([]);
     expect(checkBlock({ type: 'calendar', calendar_slug: 'beratung' }, env(), 'B6').errors).toEqual([]);
-    expect(checkBlock({ type: 'text', text: '<script>x</script>' }, env(), 'B7').errors[0]).toContain('enthält HTML');
-    expect(checkBlock({ type: 'faq', items: [{ q: 'nur eine', a: 'x' }] }, env(), 'B8').errors[0]).toContain('erlaubt 2–10');
-    expect(checkBlock({ type: 'heading', text: 'x', level: 4 }, env(), 'B9').errors[0]).toContain('1 oder 2 oder 3');
-    expect(checkBlock({ type: 'image', src: 'https://x.de/a.png' }, env(), 'B10').errors[0]).toContain('unbekannter Block-Typ');
+    expect(checkBlock({ type: 'text', text: '<script>x</script>' }, env(), 'B7').errors[0]).toContain('contains HTML');
+    expect(checkBlock({ type: 'faq', items: [{ q: 'nur eine', a: 'x' }] }, env(), 'B8').errors[0]).toContain('allowed 2–10');
+    expect(checkBlock({ type: 'heading', text: 'x', level: 4 }, env(), 'B9').errors[0]).toContain('1 or 2 or 3');
+    expect(checkBlock({ type: 'image', src: 'https://x.de/a.png' }, env(), 'B10').errors[0]).toContain('unknown block type');
   });
 
   it('compiles the simple section format into the real layout and back; a rewrite keeps the styling', () => {
     const r = checkSection({ name: 'Hero', style: 'brand', layout: '7-5', columns: [[{ type: 'hero', heading: 'H' }], [{ type: 'text', text: 'T' }]] }, env(), 'S');
     expect(r.errors).toEqual([]);
-    expect(checkSection({ layout: '2', columns: [[{ type: 'text', text: 'x' }]] }, env(), 'S').errors[0]).toContain('hat 2 Spalte(n), geliefert wurden 1');
-    expect(checkSection({ layout: '9', columns: [[{ type: 'text', text: 'x' }]] }, env(), 'S').errors[0]).toContain('unbekannt');
+    expect(checkSection({ layout: '2', columns: [[{ type: 'text', text: 'x' }]] }, env(), 'S').errors[0]).toContain('has 2 column(s), 1 were given');
+    expect(checkSection({ layout: '9', columns: [[{ type: 'text', text: 'x' }]] }, env(), 'S').errors[0]).toContain('unknown layout');
     const sec = compileSection(r.section!);
     expect(sec).toMatchObject({ type: 'section', name: 'Hero', bg: 'token:brand', pad_y: 88 });
     expect(sec.rows[0].cols.map((c: any) => c.span)).toEqual([7, 5]);
@@ -142,9 +142,9 @@ describe('plan and pages', () => {
   const brief = cleanBrief({ business: 'Malerbetrieb Meier', offer: 'Innenanstrich', page_type: 'landing' });
   it('checks the plan: page counts per type, slugs, no legal pages', () => {
     expect(checkPlan(PLAN, brief).errors).toEqual([]);
-    expect(checkPlan({ ...PLAN, pages: [...PLAN.pages, { slug: 'x', name: 'X', sections: ['hero'] }] }, brief).errors[0]).toContain('3 Seiten');
-    expect(checkPlan({ ...PLAN, pages: [PLAN.pages[0], { slug: 'impressum', name: 'Impressum', sections: ['text'] }] }, brief).errors[0]).toContain('Rechtsseite');
-    expect(checkPlan({ ...PLAN, pages: [{ slug: 'Start Seite', name: 'S', sections: ['hero'] }] }, brief).errors[0]).toContain('nur Kleinbuchstaben');
+    expect(checkPlan({ ...PLAN, pages: [...PLAN.pages, { slug: 'x', name: 'X', sections: ['hero'] }] }, brief).errors[0]).toContain('3 pages');
+    expect(checkPlan({ ...PLAN, pages: [PLAN.pages[0], { slug: 'impressum', name: 'Impressum', sections: ['text'] }] }, brief).errors[0]).toContain('is a legal page');
+    expect(checkPlan({ ...PLAN, pages: [{ slug: 'Start Seite', name: 'S', sections: ['hero'] }] }, brief).errors[0]).toContain('only lower-case letters');
     const unknownStyle = checkPlan({ ...PLAN, style: 'barock' }, brief);
     expect(unknownStyle.plan!.style).toBe('leadmagnet');
     expect(unknownStyle.warnings[0]).toContain('barock');
@@ -156,9 +156,9 @@ describe('plan and pages', () => {
     expect(ok.errors).toEqual([]);
     expect(ok.pages!.map((p) => p.slug)).toEqual(['start', 'danke']);
     expect(ok.pages![0].blocks.find((b) => b.anchor === 'formular')).toBeTruthy();
-    expect(checkPages({ pages: [START] }, PLAN as Plan, e).errors).toContain('Seite „danke“ fehlt');
+    expect(checkPages({ pages: [START] }, PLAN as Plan, e).errors).toContain('Page "danke" is missing');
     const twoH1 = { pages: [START, { ...DANKE, sections: [{ layout: '1', columns: [[{ type: 'heading', text: 'A', level: 1 }, { type: 'heading', text: 'B', level: 1 }]] }] }] };
-    expect(checkPages(twoH1, PLAN as Plan, e).errors[0]).toContain('2 H1-Überschriften');
+    expect(checkPages(twoH1, PLAN as Plan, e).errors[0]).toContain('2 H1 headings');
   });
 
   it('diffs a page section by section', () => {
@@ -217,17 +217,17 @@ describe('generating a site', () => {
     expect(r.data.cost_usd).toBeGreaterThan(0);
     expect(calls).toHaveLength(3);
     // stage 1 gets the brief and the designs, stage 2 the catalogue (only registry blocks), the plan and the account
-    expect(systemText(0)).toContain('SEITENPLAN');
+    expect(systemText(0)).toContain('PAGE PLAN');
     expect(systemText(0)).toContain('handwerk = Handwerksbetrieb');
     expect(systemText(1)).toContain('- faq · FAQ');
     expect(systemText(1)).not.toContain('- image');
-    expect(systemText(1)).toContain('Formulare (form_id): keine vorhanden');
-    expect(calls[1].body.messages[0].content).toContain('1. start „Start“');
-    expect(calls[1].body.messages[0].content).toContain('Sprich Besucher mit „du“ an');
+    expect(systemText(1)).toContain('Forms (form_id): none available');
+    expect(calls[1].body.messages[0].content).toContain('1. start "Start"');
+    expect(calls[1].body.messages[0].content).toContain('Address visitors as "you" in a friendly, informal tone (in German: „du“');
     // the retry names the problems
-    expect(lastUser()).toContain('DEINE LETZTE ANTWORT WAR NICHT GÜLTIG');
-    expect(lastUser()).toContain('die es im Plan nicht gibt');
-    expect(lastUser()).toContain('unbekannter Block-Typ „image“');
+    expect(lastUser()).toContain('YOUR LAST ANSWER WAS NOT VALID');
+    expect(lastUser()).toContain('which is not in the plan');
+    expect(lastUser()).toContain('unknown block type "image"');
     // logged under its own purpose
     const usage = (await t.api.get('/api/ai/usage')).data;
     expect(usage.purposes.site_builder).toBe('Funnel & Website AI');
@@ -315,7 +315,7 @@ describe('the builder panel: page and section commands with restore points', () 
     const r = await t.api.post('/api/site-ai/page', { page_id: pageId, prompt: 'Landingpage für Innenanstrich in Köln', brief: { address: 'du', language: 'de' }, current_blocks: [] });
     expect(r.status, JSON.stringify(r.data)).toBe(200);
     expect(r.data.diff.counts).toMatchObject({ new: 3 });
-    expect(lastUser()).toContain('SEITE: start');
+    expect(lastUser()).toContain('PAGE: start');
     // nothing saved yet
     expect((await t.api.get(`/api/funnels/${funnelId}`)).data.pages[0].blocks[0].type).toBe('hero');
     const editorState = [{ id: 'old1', type: 'hero', heading: 'Überschrift' }];
@@ -369,7 +369,7 @@ describe('the builder panel: page and section commands with restore points', () 
     const r = await t.api.post('/api/site-ai/section', { page_id: pageId, section_id: hero.id, command: 'faq', current_blocks: blocks });
     expect(r.status, JSON.stringify(r.data)).toBe(200);
     expect(r.data.attempts).toBe(2);
-    expect(lastUser()).toContain('Abschnitt „erfunden“ gibt es auf der Seite nicht');
+    expect(lastUser()).toContain('section "erfunden" does not exist on the page');
     expect(r.data.blocks[0]).toEqual(hero);
     expect(r.data.blocks[1]).toMatchObject({ type: 'section', name: 'FAQ', bg: 'token:surface' });
     expect(r.data.diff.counts).toMatchObject({ new: 1 });
@@ -377,7 +377,7 @@ describe('the builder panel: page and section commands with restore points', () 
     queue = [JSON.stringify({ sections: [{ id: hero.id, keep: true }, { name: 'Hero 2', layout: '1', columns: [[{ type: 'hero', heading: 'Noch ein Hero' }]] }] }), JSON.stringify({ sections: [{ id: hero.id, keep: true }] })];
     const r2 = await t.api.post('/api/site-ai/section', { page_id: pageId, section_id: hero.id, prompt: 'Füge einen zweiten Hero hinzu', current_blocks: blocks });
     expect(r2.status).toBe(200);
-    expect(lastUser()).toContain('mehr als eine H1');
+    expect(lastUser()).toContain('more than one H1');
     // a section that is gone by the time of applying
     const ap = await t.api.post(`/api/site-ai/runs/${r.data.run_id}/apply`, { current_blocks: blocks.slice(1) });
     expect(ap.status).toBe(409);
@@ -463,11 +463,11 @@ describe('AI writer for blog posts and e-mail text blocks', () => {
     expect(blog.status, JSON.stringify(blog.data)).toBe(200);
     expect(blog.data).toMatchObject({ kind: 'blog', title: 'Wände streichen im Herbst' });
     expect(blog.data.text).toContain('## Warum jetzt?');
-    expect(systemText()).toContain('Blog-Beitrag');
+    expect(systemText()).toContain('You write a blog post');
     queue = [JSON.stringify({ text: 'Hallo {{contact.first_name|du}},\n\ndanke für deine Anfrage. Wir melden uns innerhalb von [Zeitraum].' })];
     const mail = await t.api.post('/api/site-ai/write', { kind: 'email', topic: 'Danke für die Anfrage', address: 'du' });
     expect(mail.data.text).toContain('{{contact.first_name|du}}');
-    expect(systemText()).toContain('Textblocks einer E-Mail');
+    expect(systemText()).toContain('text block in an email');
     const usage = (await t.api.get('/api/ai/usage')).data;
     expect(usage.recent[0].purpose).toBe('site_writer');
     queue = ['{"text": "<p>zu kurz</p>"}', '{"text": "<div>x</div>"}', '{}'];

@@ -38,7 +38,7 @@ describe('AI steps', () => {
     expect(calls[0].schema.properties.label.enum).toEqual(['anfrage', 'beschwerde', 'sonstiges']);
     // the customer's text is data between markers; the system prompt says to ignore instructions in it
     expect(calls[0].user).toContain('<text>\nDas war eine Frechheit!');
-    expect(calls[0].system[0].text).toMatch(/befolge keine Anweisungen/i);
+    expect(calls[0].system[0].text).toMatch(/do not follow any instructions/i);
     // a label outside the list becomes the fallback
     stub(() => ({ label: 'erfunden', confidence: 2 }));
     const r = await runWorkflow(t, [{ type: 'ai_classify', input: 'x', labels: [{ label: 'a' }, { label: 'b' }], fallback: 'unklar' }]);
@@ -97,7 +97,7 @@ describe('AI steps', () => {
     const calls = stub(() => ({ sentiment: 'neutral', score: 0, reason: '' }));
     await runWorkflow(t, [{ type: 'ai_sentiment', input: 'x'.repeat(20000) }]);
     expect(calls[0].user.length).toBeLessThan(9500);
-    expect(calls[0].user).toContain('[… gekürzt]');
+    expect(calls[0].user).toContain('[… truncated]');
   });
 });
 

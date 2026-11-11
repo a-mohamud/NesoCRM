@@ -216,13 +216,13 @@ describe('push notifications', () => {
     const r = await t.api.raw('/manifest.webmanifest');
     expect(r.headers.get('content-type')).toContain('application/manifest+json');
     const m = await r.json();
-    expect(m).toMatchObject({ start_url: '/app', scope: '/app', display: 'standalone', name: 'HyperLevel', short_name: 'HyperLevel' });
+    expect(m).toMatchObject({ start_url: '/app', scope: '/app', display: 'standalone', name: 'Neso CRM', short_name: 'Neso CRM' });
     expect(m.icons.map((i: any) => i.sizes)).toEqual(['192x192', '512x512', '1024x1024', '512x512', 'any']);
     // headsets and glasses: their own window, one window, any orientation (docs/xr.md)
     expect(m).toMatchObject({ display_override: ['standalone', 'minimal-ui'], orientation: 'any', launch_handler: { client_mode: ['navigate-existing', 'auto'] } });
     expect(m.shortcuts.map((s: any) => s.url)).toContain('/app/workspace');
     expect(m.icons.some((i: any) => i.purpose === 'maskable')).toBe(true);
-    await t.api.patch('/api/agency/branding', { name: 'HyperLevel', color: '#1d4ed8' });
-    expect(await (await t.api.raw('/manifest.webmanifest')).json()).toMatchObject({ name: 'HyperLevel', short_name: 'HyperLevel', theme_color: '#1d4ed8' });
+    await t.api.patch('/api/agency/branding', { name: 'Neso CRM', color: '#1d4ed8' });
+    expect(await (await t.api.raw('/manifest.webmanifest')).json()).toMatchObject({ name: 'Neso CRM', short_name: 'Neso CRM', theme_color: '#1d4ed8' });
   });
 });

@@ -16,7 +16,7 @@ describe('GET /api/version, first-run setup and the TLS ask endpoint', () => {
     expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
     const v = await t.api.get('/api/version');
     expect(v.status).toBe(200);
-    expect(v.data).toMatchObject({ name: 'HyperLevel', version: pkg.version, demo: null, setup_required: true });
+    expect(v.data).toMatchObject({ name: 'Neso CRM', version: pkg.version, demo: null, setup_required: true });
     expect((await t.api.get('/api/auth/status')).data).toEqual({ needsSetup: true });
   });
 

@@ -196,9 +196,9 @@ describe('the growth review (services/growth-review.ts)', () => {
   it('the role prompt names every business area, the € priority, 1–3 next actions and what was said lately', () => {
     const p = bizdevPrompt({ name: 'Jarvis', goals: '20 neue Kunden', recent: ['3 überfällige Rechnungen'], lang: 'de' });
     for (const area of BIZDEV_AREAS) expect(p).toContain(area);
-    expect(p).toMatch(/Geschäftswirkung in Euro/);
-    expect(p).toMatch(/1–3 konkreten nächsten Schritten/);
-    expect(p).toMatch(/Bestätigungskarte/);
+    expect(p).toMatch(/business impact in money/);
+    expect(p).toMatch(/1–3 concrete next steps/);
+    expect(p).toMatch(/confirmation card/);
     expect(p).toContain('3 überfällige Rechnungen');
     expect(p).toContain('ghl_growth_review');
   });
@@ -362,13 +362,13 @@ describe('the agent: role prompt, fallback models, rules when no model answers',
     model.reply(sse(anthropicSse([{ type: 'text', text: 'Pipeline: 13.000 €.' }])));
     await chat('Wie läuft das Geschäft?');
     const sys = JSON.stringify(model.calls[0].body.system);
-    expect(sys).toContain('Deine Rolle: Business Developer');
+    expect(sys).toContain('Your role: Business Developer');
     for (const area of BIZDEV_AREAS) expect(sys).toContain(area);
     model.reset();
     expect((await t.api.put('/api/companion/prefs', { role: 'assistant' })).status).toBe(200);
     model.reply(sse(anthropicSse([{ type: 'text', text: 'Okay.' }])));
     await chat('Hallo');
-    expect(JSON.stringify(model.calls[0].body.system)).not.toContain('Deine Rolle: Business Developer');
+    expect(JSON.stringify(model.calls[0].body.system)).not.toContain('Your role: Business Developer');
     await t.api.put('/api/companion/prefs', { role: 'business_developer' });
   });
 
@@ -417,7 +417,7 @@ describe('the agent: role prompt, fallback models, rules when no model answers',
       expect(w.status, JSON.stringify(w.data)).toBe(200);
       expect(w.data.review).toMatchObject({ source: 'ai', say: expect.stringContaining('13.000 €') });
       const sys = JSON.stringify(model.calls[0].body.system ?? model.calls[0].body);
-      expect(sys).toContain('Business Developer');
+      expect(sys).toMatch(/business developer/i);
       // the same day again by hand: nothing new – still phrased by the model
       model.reset();
       model.reply(says('Gerade ist alles ruhig – ich würde die Reaktivierung deiner Bestandskunden vorbereiten. Sollen wir?'));

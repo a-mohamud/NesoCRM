@@ -109,10 +109,10 @@ describe('manifest and white label', () => {
   });
 
   it('treats the stock name and colours as "not customised" and ignores broken input', () => {
-    expect(pwaBrand({ name: 'HyperLevel', color: '#2563eb' }).custom).toBe(false);
-    expect(pwaBrand({ name: 'HyperLevel', color: '#1d4ed8' }).custom).toBe(false);
-    expect(pwaBrand({ name: 'HyperLevel', color: '#ff0000' }).custom).toBe(true);
-    expect(pwaBrand({ name: '  ', color: 'javascript:alert(1)' })).toMatchObject({ name: 'HyperLevel', color: '#2563eb', custom: false });
+    expect(pwaBrand({ name: 'Neso CRM', color: '#2563eb' }).custom).toBe(false);
+    expect(pwaBrand({ name: 'Neso CRM', color: '#1d4ed8' }).custom).toBe(false);
+    expect(pwaBrand({ name: 'Neso CRM', color: '#ff0000' }).custom).toBe(true);
+    expect(pwaBrand({ name: '  ', color: 'javascript:alert(1)' })).toMatchObject({ name: 'Neso CRM', color: '#2563eb', custom: false });
     expect(pwaBrand({ name: 'x'.repeat(100) }).name).toHaveLength(45);
   });
 });

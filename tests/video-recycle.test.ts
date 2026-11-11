@@ -259,8 +259,8 @@ describe('content recycling', () => {
     expect(first).toMatchObject({ locationId: loc, purpose: 'video_recycle', timeoutMs: 180_000 });
     expect(first.system[1].cache).toBe(true);
     expect(first.system[1].text).toContain('[00:31] Heute geht es um Wandfarbe');
-    expect(first.system[1].text).toContain('Clip 2 (Viralität 91/100)');
-    expect(first.system[0].text).toContain('auf Deutsch');
+    expect(first.system[1].text).toContain('Clip 2 (virality 91/100)');
+    expect(first.system[0].text).toContain('Write in German.');
     // The transcript is fetched once (EDL of the first clip) and kept.
     expect(osCalls.filter((c) => c.endsWith('/edl'))).toHaveLength(1);
     expect(t.app.db.get('SELECT text FROM video_transcripts WHERE job_id = ?', job.id)!.text).toMatch(/^\[00:00\] Hallo/);

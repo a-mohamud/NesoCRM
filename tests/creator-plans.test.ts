@@ -105,7 +105,7 @@ describe('buy page and Checkout', () => {
     p = await product({ name: 'Online-Kurs', description: 'Alle Lektionen', price_cents: 24958, tax_rate: 19 }); // gross 297,00
     plan = (await t.api.post('/api/payment-plans', { product_id: p.id, installments: 3, amount_cents: 9900, name: 'In 3 Raten' })).data;
     const page = await (await t.api.raw(`/buy/${p.id}`)).text();
-    expect(page).toContain('Zahlungsweise');
+    expect(page).toContain('Zahlungsart');
     expect(page).toMatch(/297,00\s€ einmalig/);
     expect(page).toMatch(/In 3 Raten/);
     expect(page).toMatch(/3 × 99,00\s€ monatlich/);

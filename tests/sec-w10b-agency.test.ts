@@ -15,7 +15,7 @@ const fake = (async (_url: string, init: any = {}) => {
   const body = JSON.parse(init.body);
   calls.push(body);
   const sys = JSON.stringify(body.system ?? '');
-  const text = sys.includes('prüfst streng') ? '{"pass":true,"score":10,"reason":"gut"}' : sys.includes('verbesserst') ? '{"instructions":"neu","changes":[]}' : 'Hallo!';
+  const text = sys.includes('You strictly assess') ? '{"pass":true,"score":10,"reason":"gut"}' : sys.includes('You improve the instructions') ? '{"instructions":"neu","changes":[]}' : 'Hallo!';
   return new Response(JSON.stringify({ id: 'm', type: 'message', role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'text', text }], stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 5 } }), { status: 200, headers: { 'content-type': 'application/json' } });
 }) as unknown as typeof fetch;
 
