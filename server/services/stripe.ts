@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { centsToMoney } from '../core/util.js';
 import { openCents } from './invoice-model.js';
-import { tApp } from '../i18n/index.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /**
  * Minimal Stripe client on fetch (no SDK): form-encoded requests, webhook signatures and the
@@ -127,12 +127,15 @@ export interface CheckoutLine {
   quantity: number;
 }
 
-const fmtQty = (q: number) => String(Math.round(q * 1000) / 1000).replace('.', ',');
+const decimal = (x: number, t: STFn) => (t.locale === 'de' ? String(x).replace('.', ',') : String(x));
+const fmtQty = (q: number, t: STFn) => decimal(Math.round(q * 1000) / 1000, t);
+/** "19 %" in German, "16%" in English. */
+const fmtRate = (r: number, t: STFn) => (t.locale === 'de' ? `${decimal(r, t)} %` : `${decimal(r, t)}%`);
 
 /** "inkl. 19 % USt." for the rates of the invoice's lines ("inkl. 19 % / 7 % USt." when mixed; nothing without tax). */
-function vatText(items: InvoiceLike['items']): string {
+function vatText(items: InvoiceLike['items'], t: STFn): string {
   const rates = [...new Set((items ?? []).map((it) => Number(it.tax_rate) || 0).filter((r) => r > 0))].sort((a, b) => b - a);
-  return rates.length ? `inkl. ${rates.map((r) => `${String(r).replace('.', ',')} %`).join(' / ')} USt.` : '';
+  return rates.length ? t('inkl. {rates} USt.', { rates: rates.map((r) => fmtRate(r, t)).join(' / ') }) : '';
 }
 
 /**
@@ -144,17 +147,18 @@ function vatText(items: InvoiceLike['items']): string {
  * taken off. Nothing open: no lines.
  */
 export function invoiceLineItems(inv: InvoiceLike): CheckoutLine[] {
+  const t = tApp();
   const open = openCents(inv);
   if (open <= 0) return [];
   if (open < inv.total_cents) {
     const money = (c: number) => centsToMoney(c, inv.currency.toUpperCase());
     const less = [
-      inv.deducted_cents ? `Abschlagsrechnungen ${money(inv.deducted_cents)}` : '',
-      inv.paid_cents ? `bereits bezahlt ${money(inv.paid_cents)}` : '',
-      inv.credited_cents ? `Gutschriften ${money(inv.credited_cents)}` : '',
+      inv.deducted_cents ? t('Abschlagsrechnungen {amount}', { amount: money(inv.deducted_cents) }) : '',
+      inv.paid_cents ? t('bereits bezahlt {amount}', { amount: money(inv.paid_cents) }) : '',
+      inv.credited_cents ? t('Gutschriften {amount}', { amount: money(inv.credited_cents) }) : '',
     ].filter(Boolean);
-    const description = [`Rechnungsbetrag ${money(inv.total_cents)}${less.length ? ` abzgl. ${less.join(', ')}` : ''}`, vatText(inv.items)].filter(Boolean).join(' · ').slice(0, 500);
-    return [{ name: `Restbetrag Rechnung ${inv.number}`.slice(0, 250), description, unit_amount: open, quantity: 1 }];
+    const description = [less.length ? t('Rechnungsbetrag {total} abzgl. {less}', { total: money(inv.total_cents), less: less.join(', ') }) : t('Rechnungsbetrag {total}', { total: money(inv.total_cents) }), vatText(inv.items, t)].filter(Boolean).join(' · ').slice(0, 500);
+    return [{ name: t('Restbetrag Rechnung {number}', { number: inv.number }).slice(0, 250), description, unit_amount: open, quantity: 1 }];
   }
   const lines: CheckoutLine[] = [];
   let sum = 0;
@@ -165,13 +169,13 @@ export function invoiceLineItems(inv: InvoiceLike): CheckoutLine[] {
     sum += gross;
     if (gross < 0) simple = false;
     if (gross === 0) continue;
-    const tax = it.tax_rate ? `inkl. ${String(it.tax_rate).replace('.', ',')} % USt.` : '';
+    const tax = it.tax_rate ? t('inkl. {rates} USt.', { rates: fmtRate(it.tax_rate, t) }) : '';
     const description = [it.description, tax].filter(Boolean).join(' · ').slice(0, 500) || undefined;
     if (Number.isInteger(it.qty) && it.qty > 0 && gross % it.qty === 0) lines.push({ name: it.name.slice(0, 250), description, unit_amount: gross / it.qty, quantity: it.qty });
-    else lines.push({ name: `${fmtQty(it.qty)} × ${it.name}`.slice(0, 250), description, unit_amount: gross, quantity: 1 });
+    else lines.push({ name: `${fmtQty(it.qty, t)} × ${it.name}`.slice(0, 250), description, unit_amount: gross, quantity: 1 });
   }
   if (!simple || sum !== inv.total_cents || !lines.length || lines.length > 100) {
-    return [{ name: `Rechnung ${inv.number}`, description: inv.title || undefined, unit_amount: inv.total_cents, quantity: 1 }];
+    return [{ name: t('Rechnung {number}', { number: inv.number }), description: inv.title || undefined, unit_amount: inv.total_cents, quantity: 1 }];
   }
   return lines;
 }

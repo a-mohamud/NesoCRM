@@ -499,7 +499,7 @@ export const affiliatesModule: Module = {
       if (!c) throw notFound();
       if (c.status === 'paid') throw bad('Schon ausgezahlt – bitte eine manuelle Gegenbuchung anlegen');
       if (c.payout_id) throw bad('Steckt in einer offenen Auszahlung – erst die Auszahlung löschen');
-      db.run(`UPDATE affiliate_commissions SET status = 'reversed', reversed_at = ?, note = ? WHERE id = ?`, now(), `${c.note} · storniert${ctx.body?.note ? `: ${str(ctx.body.note, 'Grund', { max: 200 })}` : ''}`.slice(0, 300), c.id);
+      db.run(`UPDATE affiliate_commissions SET status = 'reversed', reversed_at = ?, note = ? WHERE id = ?`, now(), `${tLoc(app, ctx.locationId)('{note} · storniert', { note: c.note ?? '' })}${ctx.body?.note ? `: ${str(ctx.body.note, 'Grund', { max: 200 })}` : ''}`.slice(0, 300), c.id);
       return { ok: true };
     });
 

@@ -92,7 +92,7 @@ export function registerVersionedEntities(app: App, undo: Journal) {
       const row = db.get<Row>('SELECT id, location_id, space_id, parent_id, position, title, icon, body, trashed_at FROM wiki_pages WHERE id = ?' + (ctx?.locationId ? ' AND location_id = ?' : ''), id, ...(ctx?.locationId ? [ctx.locationId] : []));
       return row ? { v: 1, entity: 'wiki_pages', id, row: encodeRow(row) } : null;
     },
-    label: (s) => `Wiki-Seite „${clip(s.row.title, 60)}“`,
+    label: (s) => tLoc(app, typeof s.row.location_id === 'string' ? s.row.location_id : undefined)('Wiki-Seite „{title}“', { title: clip(s.row.title, 60) }),
     verb: (b, a) => (!a ? 'gelöscht' : b && !b.row.trashed_at && a.row.trashed_at ? 'in den Papierkorb gelegt' : b?.row.trashed_at && !a.row.trashed_at ? 'wiederhergestellt' : undefined),
     restore(target, ctx, current) {
       if (!target || !current) return;

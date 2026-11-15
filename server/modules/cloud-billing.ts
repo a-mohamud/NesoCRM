@@ -218,7 +218,7 @@ export const cloudBillingModule: Module = {
             t = bySub(subOfInvoice(o));
             if (t) {
               cacheInvoice(t, o);
-              logCloudEvent(app, t.id, 'payment_failed', `Rechnung ${o.number ?? o.id}`);
+              logCloudEvent(app, t.id, 'payment_failed', tApp()('Rechnung {number}', { number: o.number ?? o.id }));
               const sub = tenantSub(app, t);
               void sendCloudMail(app, 'payment_failed', t.email, { company: t.name, grace_until: fmtDay(sub?.grace_until), link: billingLink(app) }, { tenantId: t.id, dedupe: `failed:${sub?.past_due_since ?? o.id}` });
             }
@@ -229,7 +229,7 @@ export const cloudBillingModule: Module = {
             t = bySub(subOfInvoice(o));
             if (t) {
               cacheInvoice(t, o);
-              if (event.type !== 'invoice.finalized' && t.read_only_since) logCloudEvent(app, t.id, 'payment_recovered', `Rechnung ${o.number ?? o.id} bezahlt`);
+              if (event.type !== 'invoice.finalized' && t.read_only_since) logCloudEvent(app, t.id, 'payment_recovered', tApp()('Rechnung {number} bezahlt', { number: o.number ?? o.id }));
             }
             break;
           case 'customer.subscription.trial_will_end':

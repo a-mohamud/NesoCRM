@@ -133,7 +133,7 @@ export async function startHold(
         // Stripe wants 30 minutes to 24 hours: the page outlives the hold by a minute.
         expires_at: Math.floor(Date.now() / 1000) + (cfg.payment.hold_minutes + 1) * 60,
         metadata: { location_id: cal.location_id, teamcal_hold: hold.id, calendar_id: cal.id },
-        payment_intent_data: { metadata: { location_id: cal.location_id, teamcal_hold: hold.id }, description: `Termin: ${cal.name} · ${when}` },
+        payment_intent_data: { metadata: { location_id: cal.location_id, teamcal_hold: hold.id }, description: tLoc(app, cal.location_id)('Termin: {name} · {when}', { name: cal.name, when }) },
       },
       { idempotencyKey: `teamcal-hold-${hold.id}` },
     );

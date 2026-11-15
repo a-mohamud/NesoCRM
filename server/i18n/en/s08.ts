@@ -1764,4 +1764,12 @@ export default {
   'Funnels & Websites': 'Funnels & websites',
   'Bot-Token': 'Bot token',
   'Name fehlt': 'Name is missing',
+  '{n} Dateien': { one: '{n} file', other: '{n} files' },
+  'inkl. {rates} USt.': 'incl. {rates} VAT',
+  'Abschlagsrechnungen {amount}': 'partial invoices {amount}',
+  'bereits bezahlt {amount}': 'already paid {amount}',
+  'Gutschriften {amount}': 'credit notes {amount}',
+  'Rechnungsbetrag {total}': 'Invoice total {total}',
+  'Rechnungsbetrag {total} abzgl. {less}': 'Invoice total {total} less {less}',
+  'Termin: {name} · {when}': 'Appointment: {name} · {when}',
 } satisfies Catalog;

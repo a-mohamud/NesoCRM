@@ -63,7 +63,7 @@ export function isYmd(s: unknown): s is string {
 export const dayNumber = (ymd: string): number => {
   const m = YMD.exec(ymd);
   // i18n-ignore (internal invariant: callers pass checked dates)
-  if (!m) throw new Error(`Ungültiges Datum: ${ymd}`);
+  if (!m) throw new Error(`Invalid date: ${ymd}`);
   return Math.round(Date.UTC(+m[1], +m[2] - 1, +m[3]) / DAY_MS);
 };
 export const ymdOf = (n: number): string => new Date(n * DAY_MS).toISOString().slice(0, 10);

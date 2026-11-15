@@ -1,6 +1,7 @@
 import type { App } from '../core/app.js';
 import { id, now } from '../core/util.js';
 import { logActivity } from './contacts.js';
+import { tLoc } from '../i18n/index.js';
 import { dealAmount, lineAmounts, salesTotals, type SalesLine } from './sales-lines.js';
 
 /**
@@ -54,7 +55,7 @@ export function setDealLines(app: App, loc: string, deal: { id: string; contact_
       db.run('UPDATE opportunities SET value = ?, updated_at = ? WHERE id = ? AND location_id = ?', amount, now(), deal.id, loc);
     }
   });
-  logActivity(app, loc, deal.contact_id, 'opportunity.lines', lines.length ? `„${deal.name}“: ${lines.length} Position${lines.length === 1 ? '' : 'en'}, Wert ${amount} (netto)` : `„${deal.name}“: Positionen entfernt`);
+  logActivity(app, loc, deal.contact_id, 'opportunity.lines', lines.length ? tLoc(app, loc).plural(lines.length, { one: '„{name}“: {n} Position, Wert {amount} (netto)', other: '„{name}“: {n} Positionen, Wert {amount} (netto)' }, { name: deal.name, amount: String(amount) }) : tLoc(app, loc)('„{name}“: Positionen entfernt', { name: deal.name }));
   return { amount };
 }
 

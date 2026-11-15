@@ -294,4 +294,35 @@ describe('academy API', () => {
     expect((await t.api.get('/api/locations')).data.some((l: any) => l.id === id)).toBe(false);
     expect((await t.api.del('/api/academy/sandbox')).status).toBe(404);
   });
+
+  it('resets the practice company (Neso fork) – in English it is a Kenyan business priced in KES', async () => {
+    const saved = process.env.PGHL_LOCALE;
+    process.env.PGHL_LOCALE = 'en';
+    try {
+      const first = await t.api.post('/api/academy/sandbox/reset', {});
+      expect(first.status).toBe(200);
+      expect(first.data).toMatchObject({ name: 'Practice company (Academy)', created: true });
+      const own = t.api.location;
+      t.api.setLocation(first.data.id);
+      await t.api.post('/api/contacts', { first_name: 'Extra', email: 'extra@example.com' });
+      const before = (await t.api.get('/api/contacts')).data.total;
+      t.api.setLocation(own);
+
+      const again = await t.api.post('/api/academy/sandbox/reset', {});
+      expect(again.status).toBe(200);
+      expect(again.data.id).not.toBe(first.data.id);
+      expect((await t.api.get('/api/locations')).data.some((l: any) => l.id === first.data.id)).toBe(false);
+      t.api.setLocation(again.data.id);
+      const contacts = (await t.api.get('/api/contacts')).data;
+      expect(contacts.total).toBe(before - 1);
+      expect(contacts.contacts.every((c: any) => c.phone.startsWith('+254'))).toBe(true);
+      const deals = (await t.api.get('/api/opportunities')).data;
+      expect(deals.length).toBeGreaterThanOrEqual(3);
+      expect(deals.every((d: any) => d.currency === 'KES')).toBe(true);
+      t.api.setLocation(own);
+      expect((await t.api.del('/api/academy/sandbox')).status).toBe(200);
+    } finally {
+      process.env.PGHL_LOCALE = saved;
+    }
+  });
 });

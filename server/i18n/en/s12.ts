@@ -1690,4 +1690,6 @@ export default {
   'CallSid fehlt': 'CallSid is missing',
   'Dateiname fehlt': 'File name is missing',
   'input: Objekt erwartet': 'input: object expected',
+  'Bitte JavaScript einschalten, um {what}.': 'Please turn on JavaScript to {what}.',
+  'Nachricht in {channel}': 'Message in {channel}',
 } satisfies Catalog;

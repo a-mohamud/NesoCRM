@@ -1237,4 +1237,5 @@ export default {
   'Video: Objekt erwartet': 'Video: object expected',
   'Video: Upload fehlt': 'Video: upload is missing',
   'name fehlt': 'name is missing',
+  'Antwort: {error}': 'Reply: {error}',
 } satisfies Catalog;

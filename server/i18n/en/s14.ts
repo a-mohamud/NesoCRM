@@ -1215,4 +1215,6 @@ export default {
   'Panel {n}: ungültige Seite': 'Panel {n}: invalid page',
   'Tags: Liste erwartet': 'Tags: list expected',
   'docs: Liste erwartet': 'docs: list expected',
+  '{channel}-Kommentar': '{channel} comment',
+  '{platform}-kommentar': '{platform}-comment',
 } satisfies Catalog;

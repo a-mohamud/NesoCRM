@@ -92,7 +92,7 @@ async function request(label: string, fetcher: typeof fetch, token: TokenFn, url
     if (r.status === 401 && attempt === 0) continue;
     const json: Json = r.status === 204 ? {} : await r.json().catch(() => ({}));
     if (r.ok || allow.includes(r.status)) return { status: r.status, json };
-    const msg = String(json?.error?.message ?? json?.error_description ?? `Fehler ${r.status}`).slice(0, 300);
+    const msg = String(json?.error?.message ?? json?.error_description ?? tApp()('Fehler {status}', { status: r.status })).slice(0, 300);
     if (r.status === 412) throw new PreconditionFailed(tApp()('{service}: Termin wurde dort inzwischen geändert', { service: label }), 412);
     throw new ProviderError(`${label}: ${msg}`, r.status);
   }

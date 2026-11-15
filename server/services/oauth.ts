@@ -176,7 +176,7 @@ async function tokenCall(fetcher: typeof fetch, provider: Provider, cfg: ClientC
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j.access_token) {
     const code = String(j.error ?? '');
-    throw new OAuthError(`${PROVIDER_LABEL[provider]}: ${j.error_description || code || `Fehler ${r.status}`}`.slice(0, 400), code, r.status);
+    throw new OAuthError(`${PROVIDER_LABEL[provider]}: ${j.error_description || code || tApp()('Fehler {status}', { status: r.status })}`.slice(0, 400), code, r.status);
   }
   return {
     access_token: String(j.access_token),

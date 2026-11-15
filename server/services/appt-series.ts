@@ -505,7 +505,7 @@ export async function cancelSeries(app: App, locationId: string, seriesId: strin
       else {
         app.db.run(`UPDATE appointments SET status = 'cancelled' WHERE id = ?`, a.id);
         const next = app.db.get<any>('SELECT * FROM appointments WHERE id = ?', a.id)!;
-        if (a.contact_id) logActivity(app, locationId, a.contact_id, 'appointment.status_changed', `Termin abgesagt${reason ? `: ${reason}` : ''}`);
+        if (a.contact_id) logActivity(app, locationId, a.contact_id, 'appointment.status_changed', reason ? tLoc(app, locationId)('Termin abgesagt: {reason}', { reason }) : tLoc(app, locationId)('Termin abgesagt'));
         app.events.emit(locationId, 'appointment.status_changed', { contactId: a.contact_id, appointment: next, status: 'cancelled', calendarId: a.calendar_id, series: { id: s.id, scope } });
       }
     }

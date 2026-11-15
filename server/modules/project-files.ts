@@ -171,7 +171,7 @@ export function saveProjectFiles(app: App, locationId: string, list: unknown, so
     }
   });
   const count = (s: string) => out.filter((f) => f.status === s).length;
-  return { name: `${out.length} Datei(en)`, created: count('created'), updated: count('updated'), unchanged: count('unchanged'), files: out };
+  return { name: tApp().plural(out.length, { one: '{n} Datei', other: '{n} Dateien' }), created: count('created'), updated: count('updated'), unchanged: count('unchanged'), files: out };
 }
 
 const LOC = { location_id: { type: 'string', description: 'Sub-Account/Projekt-ID (aus ghl_list_projects); mit einem Sub-Account-Zugang weglassen' } };

@@ -49,7 +49,7 @@ async function ok(res: Response, what: string, provider: string): Promise<Respon
   }
   const t = tApp();
   const hint = res.status === 401 || res.status === 403 ? ` – ${t('Schlüssel prüfen')}` : res.status === 402 ? ` – ${t('Guthaben aufladen')}` : res.status === 429 ? ` – ${t('Limit erreicht')}` : '';
-  throw new VoiceError(`${what}: ${msg.replace(/\s+/g, ' ').slice(0, 200) || `Fehler ${res.status}`} (HTTP ${res.status})${hint}`, retryable(res.status), res.status, provider);
+  throw new VoiceError(`${what}: ${msg.replace(/\s+/g, ' ').slice(0, 200) || t('Fehler {status}', { status: res.status })} (HTTP ${res.status})${hint}`, retryable(res.status), res.status, provider);
 }
 
 const post = (ctx: StreamCtx, url: string, headers: Record<string, string>, body: string, signal?: AbortSignal) => ctx.fetch(url, { method: 'POST', headers, body, signal });

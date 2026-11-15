@@ -7,7 +7,7 @@ import { GROUPS, JOURNEY, MODULE_TOURS, badges, journeyStatus, searchTours, useT
 import { DocViewer, Handbook } from '../tour/docs';
 import { accessOf, startTour } from '../tour/engine';
 import { Handover } from '../tour/handover';
-import { createSandbox, deleteSandbox, resetTour, useAcademy } from '../tour/progress';
+import { createSandbox, deleteSandbox, resetSandbox, resetTour, useAcademy } from '../tour/progress';
 import type { Tour, TourProgress } from '../tour/types';
 import { useT } from '../i18n';
 
@@ -85,6 +85,23 @@ function SandboxCard() {
               {tt('In die Übungs-Firma wechseln')}
             </button>
           )}
+          <button
+            className="btn small secondary"
+            disabled={busy}
+            onClick={async () => {
+              if (!confirmAsk(tt('„{name}“ zurücksetzen? Alle Übungsdaten werden gelöscht und frische Demo-Daten angelegt.', { name: sb.name }))) return;
+              setBusy(true);
+              const inside = session.locationId === sb.id;
+              const r = await act(() => resetSandbox(), tt('Übungs-Firma zurückgesetzt'));
+              if (r) {
+                await session.reload();
+                if (inside) session.switchLocation(r.id, 'academy');
+              }
+              setBusy(false);
+            }}
+          >
+            {busy ? tt('Wird zurückgesetzt …') : tt('Zurücksetzen')}
+          </button>
           <button
             className="btn small ghost"
             disabled={busy}

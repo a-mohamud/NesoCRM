@@ -45,7 +45,7 @@ async function google(app: App, url: string, key: string, init: { method?: strin
     throw new HttpError(502, tApp()('Google nicht erreichbar: {error}', { error: (e as Error).message }));
   }
   const j: any = await r.json().catch(() => ({}));
-  if (!r.ok) throw new HttpError(502, `Google: ${j?.error?.message || `Fehler ${r.status}`}`);
+  if (!r.ok) throw new HttpError(502, `Google: ${j?.error?.message || tApp()('Fehler {status}', { status: r.status })}`);
   return j;
 }
 

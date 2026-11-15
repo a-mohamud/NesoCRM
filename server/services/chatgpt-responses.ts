@@ -21,7 +21,7 @@ import { tApp } from '../i18n/index.js';
 export const NAMESPACE = 'gohigh';
 export const RESPONSES_URL = `${RESOURCE}/responses`;
 
-const textOfFile = (p: Extract<Part, { type: 'file' }>) => `[Datei „${p.name}“ (${p.mime}), file_id: ${p.fileId}]\n${p.preview}`;
+const textOfFile = (p: Extract<Part, { type: 'file' }>) => `[File "${p.name}" (${p.mime}), file_id: ${p.fileId}]\n${p.preview}`;
 
 /** Messages as Responses `input` items: text and images as messages, tool calls and their results as function_call items. */
 export function toResponsesInput(messages: Msg[], vision: boolean): any[] {

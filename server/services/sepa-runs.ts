@@ -251,7 +251,7 @@ export async function createRun(app: App, loc: string, body: Record<string, any>
       app.db.insert('sepa_items', {
         id: id(), run_id: run.id, location_id: loc, invoice_id: r.invoice_id, mandate_id: m.id, contact_id: r.contact_id,
         name: m.holder, iban: m.iban, bic: m.bic, street: m.street, postal_code: m.postal_code, city: m.city, country: m.country,
-        end_to_end: sepaId(r.number), remittance: sepaText(`Rechnung ${r.number}${r.title ? ` ${r.title}` : ''}`, 140), amount_cents: r.open_cents,
+        end_to_end: sepaId(r.number), remittance: sepaText(`${tLoc(app, loc)('Rechnung {number}', { number: r.number })}${r.title ? ` ${r.title}` : ''}`, 140), amount_cents: r.open_cents,
         seq: r.seq, scheme: m.scheme, mandate_ref: m.reference, mandate_date: m.signed_at, status: 'draft', created_at: t, updated_at: t,
       });
     }
@@ -591,7 +591,7 @@ export function createTransfer(app: App, loc: string, body: { execution_date?: u
       if (!p) throw bad('Ein gewählter Beleg ist nicht (mehr) offen');
       if (!p.ok) throw bad(`${p.supplier} ${p.invoice_no}: ${p.problems.join(', ')}`);
       const r = app.db.get<any>('SELECT * FROM acc_receipts WHERE id = ? AND location_id = ?', rid, loc);
-      rows.push({ ...base, receipt_id: rid, name: clip(r.supplier, 70) || tl('Lieferant'), iban: ibanInfo(r.iban).iban, bic: '', end_to_end: sepaId(r.invoice_no || `BELEG-${rid.slice(0, 8)}`), remittance: sepaText(`Rechnung ${r.invoice_no}`.trim(), 140), amount_cents: p.amount_cents });
+      rows.push({ ...base, receipt_id: rid, name: clip(r.supplier, 70) || tl('Lieferant'), iban: ibanInfo(r.iban).iban, bic: '', end_to_end: sepaId(r.invoice_no || `BELEG-${rid.slice(0, 8)}`), remittance: sepaText(tLoc(app, loc)('Rechnung {number}', { number: r.invoice_no ?? '' }).trim(), 140), amount_cents: p.amount_cents });
     }
   }
   const lines = Array.isArray(body.lines) ? (body.lines as TransferLineIn[]) : [];

@@ -243,7 +243,7 @@ export const igCommentsModule: Module = {
           publicStatus = 'sent';
         } catch (e) {
           publicStatus = 'failed';
-          errors.push(`Antwort: ${(e as Error).message}`);
+          errors.push(tLoc(app, loc)('Antwort: {error}', { error: (e as Error).message }));
         }
       }
       // the person becomes a contact whatever happened to the messages

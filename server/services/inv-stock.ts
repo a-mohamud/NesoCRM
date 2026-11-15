@@ -306,7 +306,7 @@ export function issueForInvoice(app: App, locationId: string, inv: { id: string;
   for (const [articleId, qty] of sums) {
     if (app.db.get('SELECT 1 FROM inv_movements WHERE location_id = ? AND ref_type = ? AND ref_id = ? AND article_id = ?', locationId, 'invoice', inv.id, articleId)) continue;
     const a = arts.find((x) => x.id === articleId)!;
-    applyMovement(app, locationId, { article_id: articleId, place_id: a.default_place_id, type: 'issue', qty, ref_type: 'invoice', ref_id: inv.id, note: `Rechnung ${inv.number}`, allowNegative: true });
+    applyMovement(app, locationId, { article_id: articleId, place_id: a.default_place_id, type: 'issue', qty, ref_type: 'invoice', ref_id: inv.id, note: tLoc(app, locationId)('Rechnung {number}', { number: inv.number }), allowNegative: true });
     issued.push({ article_id: articleId, sku: a.sku, qty });
   }
   return { issued, unmatched };

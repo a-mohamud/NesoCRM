@@ -101,6 +101,12 @@ export async function seedSandbox(app: App, locationId: string): Promise<number>
   // Every visible text goes through the sub-account's language (the German text is the key; the English catalog turns
   // the practice company into a small business in Kenya, a Somali catalog can do the same).
   const t = tLoc(app, locationId);
+  // Neso fork: outside German the practice company is a Kenyan business – prices in Kenyan shillings at local levels
+  // (the German euro amounts × 40, rounded to KES 1,000; `cur` = the currency the records get after the seed).
+  const kes = t.locale !== 'de';
+  const cur = kes ? 'KES' : 'EUR';
+  const cents = (eurCents: number) => (kes ? Math.max(100000, Math.round((eurCents * 40) / 100000) * 100000) : eurCents);
+  const amount = (eur: number) => cents(eur * 100) / 100;
   /** 'Anna Beispiel' → ['Wanjiku', 'Kamau'] in the sub-account's language (first word = first name). */
   const person = (full: string): [string, string] => {
     const s = t(full).trim();
@@ -154,9 +160,9 @@ export async function seedSandbox(app: App, locationId: string): Promise<number>
         [eva, 'Social-Media-Betreuung (12 Monate)', 360000, 3],
         [anna, 'Online-Shop', 650000, 0],
       ] as const;
-      for (const [c, name, cents, stage] of deals) {
+      for (const [c, name, eurCents, stage] of deals) {
         if (!c) continue;
-        await call('POST', '/api/opportunities', { contact_id: c.id, pipeline_id: pipe.id, stage_id: pipe.stages[Math.min(stage, pipe.stages.length - 1)]?.id, name: t(name), value: cents / 100 });
+        await call('POST', '/api/opportunities', { contact_id: c.id, pipeline_id: pipe.id, stage_id: pipe.stages[Math.min(stage, pipe.stages.length - 1)]?.id, name: t(name), value: cents(eurCents) / 100, currency: cur });
       }
     }
     await call('POST', '/api/tasks', { title: t('Angebot an Ben Muster schicken'), contact_id: ben?.id, due_at: day(-1) });
@@ -171,9 +177,9 @@ export async function seedSandbox(app: App, locationId: string): Promise<number>
 
     // VAT of the practice company's country: 19 % in Germany, 16 % in Kenya (every other language plays in East Africa).
     const vat = t.locale === 'de' ? 19 : 16;
-    const product = await call('POST', '/api/products', { name: t('Beratungspaket'), description: t('3 Stunden Beratung inkl. Protokoll'), price_cents: 49000, tax_rate: vat });
-    await call('POST', '/api/products', { name: t('Website-Check'), description: t('Kurzer Check von Technik, Texten und SEO'), price_cents: 9900, tax_rate: vat });
-    if (ben) await call('POST', '/api/invoices', { contact_id: ben.id, title: t('Beratung (Übung)'), items: [{ name: product?.name ?? t('Beratungspaket'), qty: 1, price_cents: 49000, tax_rate: vat }] });
+    const product = await call('POST', '/api/products', { name: t('Beratungspaket'), description: t('3 Stunden Beratung inkl. Protokoll'), price_cents: cents(49000), tax_rate: vat, currency: cur });
+    await call('POST', '/api/products', { name: t('Website-Check'), description: t('Kurzer Check von Technik, Texten und SEO'), price_cents: cents(9900), tax_rate: vat, currency: cur });
+    if (ben) await call('POST', '/api/invoices', { contact_id: ben.id, title: t('Beratung (Übung)'), items: [{ name: product?.name ?? t('Beratungspaket'), qty: 1, price_cents: cents(49000), tax_rate: vat }], currency: cur });
 
     await call('POST', '/api/courses', { title: t('Kundenschulung (Übung)') });
     await call('POST', '/api/community/groups', { name: t('Übungs-Community'), description: t('Zum Ausprobieren – hier schreibt niemand Echtes.') });
@@ -210,8 +216,8 @@ export async function seedSandbox(app: App, locationId: string): Promise<number>
       ],
     });
     if (projects?.key) {
-      if (ben) await call('POST', `/api/objects/${projects.key}/records`, { properties: { name: t('Website-Relaunch Muster'), status: running, budget: 4800 }, associations: [{ type: 'contact', id: ben.id }] });
-      if (eva) await call('POST', `/api/objects/${projects.key}/records`, { properties: { name: t('Social Media Demo Immobilien'), status: offer, budget: 3600 }, associations: [{ type: 'contact', id: eva.id }] });
+      if (ben) await call('POST', `/api/objects/${projects.key}/records`, { properties: { name: t('Website-Relaunch Muster'), status: running, budget: amount(4800) }, associations: [{ type: 'contact', id: ben.id }] });
+      if (eva) await call('POST', `/api/objects/${projects.key}/records`, { properties: { name: t('Social Media Demo Immobilien'), status: offer, budget: amount(3600) }, associations: [{ type: 'contact', id: eva.id }] });
     }
     await call('POST', '/api/lead-scoring/models', {
       name: t('Lead-Score (Übung)'),
@@ -230,7 +236,29 @@ export async function seedSandbox(app: App, locationId: string): Promise<number>
   } finally {
     app.db.run('DELETE FROM api_keys WHERE id = ?', keyId);
   }
+  // The APIs that take no currency fall back to EUR: the practice company's money records all get its own currency.
+  for (const table of ['opportunities', 'products', 'invoices']) {
+    try {
+      app.db.run(`UPDATE ${table} SET currency = ? WHERE location_id = ? AND currency <> ?`, cur, locationId, cur);
+    } catch {
+      /* table without a currency column in this build */
+    }
+  }
   return ok;
+}
+
+/** Creates the practice sub-account with demo data in the instance language (one at a time). */
+async function createSandbox(app: App, demo = true) {
+  const t = tLoc(app);
+  const loc = createLocation(app.db, t(SANDBOX_NAME), t.locale === 'de' ? 'Europe/Berlin' : 'Africa/Nairobi', { email: t('uebung@example.com'), website: '' });
+  app.db.run('INSERT INTO academy_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'sandbox', loc.id);
+  const seeded = demo ? await seedSandbox(app, loc.id) : 0;
+  return { id: loc.id, name: loc.name, created: true, seeded };
+}
+
+function deleteSandbox(app: App, sb: { id: string }) {
+  app.db.run('DELETE FROM locations WHERE id = ?', sb.id);
+  app.db.run(`DELETE FROM academy_meta WHERE key = 'sandbox'`);
 }
 
 export const academyModule: Module = {
@@ -358,18 +386,20 @@ export const academyModule: Module = {
       const have = sandboxOf(app);
       if (have) return { ...have, created: false };
       // Name, time zone and address in the instance language: English makes it a small business in Kenya.
-      const t = tLoc(app);
-      const loc = createLocation(db, t(SANDBOX_NAME), t.locale === 'de' ? 'Europe/Berlin' : 'Africa/Nairobi', { email: t('uebung@example.com'), website: '' });
-      db.run('INSERT INTO academy_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'sandbox', loc.id);
-      const seeded = ctx.body?.demo === false ? 0 : await seedSandbox(app, loc.id);
-      return { id: loc.id, name: loc.name, created: true, seeded };
+      return createSandbox(app, ctx.body?.demo !== false);
+    });
+
+    /** Neso fork: start the practice company over – delete it with all practice data and create it fresh with demo data. */
+    router.post('/api/academy/sandbox/reset', 'admin', async () => {
+      const have = sandboxOf(app);
+      if (have) deleteSandbox(app, have);
+      return createSandbox(app, true);
     });
 
     router.delete('/api/academy/sandbox', 'admin', () => {
       const sb = sandboxOf(app);
       if (!sb) throw notFound('Keine Übungs-Firma vorhanden');
-      db.run('DELETE FROM locations WHERE id = ?', sb.id);
-      db.run(`DELETE FROM academy_meta WHERE key = 'sandbox'`);
+      deleteSandbox(app, sb);
       return { ok: true };
     });
   },

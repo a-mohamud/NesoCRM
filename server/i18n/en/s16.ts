@@ -1331,4 +1331,6 @@ export default {
   'Wert fehlt': 'Value is missing',
   'Zielkalender: ID zu lang': 'Target calendar: ID too long',
   'body fehlt': 'body is missing',
+  '{label} angelegt': '{label} created',
+  'Formular-Bestellung bezahlt: {product}': 'Form order paid: {product}',
 } satisfies Catalog;

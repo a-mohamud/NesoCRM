@@ -354,7 +354,7 @@ export async function runDue(app: App, at = new Date(), limit = BATCH): Promise<
         out[r === 'sent' ? 'sent' : r === 'task' ? 'tasks' : r === 'deferred' ? 'deferred' : r === 'stopped' ? 'stopped' : 'resumed']++;
       } catch (err) {
         console.error('[sequences]', e.id, (err as Error).message);
-        app.db.run(`UPDATE sequence_enrollments SET next_at = ?, note = ?, updated_at = ? WHERE id = ? AND status = 'active'`, delay(at, 30 * 60_000).toISOString(), `Fehler: ${(err as Error).message}`.slice(0, 300), iso, e.id);
+        app.db.run(`UPDATE sequence_enrollments SET next_at = ?, note = ?, updated_at = ? WHERE id = ? AND status = 'active'`, delay(at, 30 * 60_000).toISOString(), tLoc(app, e.location_id)('Fehler: {message}', { message: (err as Error).message }).slice(0, 300), iso, e.id);
       }
     }
   } finally {

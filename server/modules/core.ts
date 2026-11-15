@@ -403,7 +403,7 @@ export const coreModule: Module = {
           });
           db.run('UPDATE webhooks SET last_status = ? WHERE id = ?', `${r.status} ${e.type}`, h.id);
         } catch (err) {
-          db.run('UPDATE webhooks SET last_status = ? WHERE id = ?', `Fehler: ${(err as Error).message}`, h.id);
+          db.run('UPDATE webhooks SET last_status = ? WHERE id = ?', tLoc(app, e.locationId)('Fehler: {message}', { message: (err as Error).message }), h.id);
         }
       }
     });

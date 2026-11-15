@@ -160,7 +160,7 @@ export const associationsModule: Module = {
 
     const service: AssociationsService = {
       registerType(def) {
-        if (!TYPE_RE.test(def.type) || def.type.startsWith('p_')) throw new Error(`associations: Typ „${def.type}“ ungültig (p_ ist eigenen Objekten vorbehalten)`);
+        if (!TYPE_RE.test(def.type) || def.type.startsWith('p_')) throw new Error(`associations: type "${def.type}" is invalid (p_ is reserved for custom objects)`); // i18n-ignore (internal)
         fixed.set(def.type, def);
         if (def.table) cascade(def.table, def.type);
       },

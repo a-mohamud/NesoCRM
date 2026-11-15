@@ -52,7 +52,7 @@ export async function mailRequest(label: string, fetcher: typeof fetch, token: T
     if (r.status === 401 && attempt === 0) continue;
     const json: Json = r.status === 204 || r.status === 202 ? {} : await r.json().catch(() => ({}));
     if (r.ok || init.allow?.includes(r.status)) return { status: r.status, json, headers: r.headers };
-    const msg = String(json?.error?.message ?? json?.error_description ?? (typeof json?.error === 'string' ? json.error : '') ?? '').slice(0, 300) || `Fehler ${r.status}`;
+    const msg = String(json?.error?.message ?? json?.error_description ?? (typeof json?.error === 'string' ? json.error : '') ?? '').slice(0, 300) || tApp()('Fehler {status}', { status: r.status });
     throw new MailError(`${label}: ${msg}`, r.status, Number(r.headers.get('retry-after')) || 0);
   }
   throw new MailError(`${label}: Anmeldung abgelehnt`, 401);

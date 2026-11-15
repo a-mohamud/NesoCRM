@@ -145,7 +145,7 @@ export const teamchatModule: Module = {
       if (Date.now() - (lastAudit.get(key) ?? 0) < 10 * 60_000) return;
       lastAudit.set(key, Date.now());
       if (lastAudit.size > 5000) lastAudit.clear();
-      app.services.audit?.({ ctx, action: 'chat.post', route: 'POST /api/team-chat/channels/:id/messages', entityId: ch.id, summary: `Nachricht in ${channelLabel(app, ch, ctx.user?.id ?? null)}` });
+      app.services.audit?.({ ctx, action: 'chat.post', route: 'POST /api/team-chat/channels/:id/messages', entityId: ch.id, summary: tLoc(app, ctx.locationId)('Nachricht in {channel}', { channel: channelLabel(app, ch, ctx.user?.id ?? null) }) });
     };
     const log = (ctx: Ctx, action: string, route: string, ch: ChannelRow, entityId: string, summary: string) => {
       quiet(ctx);

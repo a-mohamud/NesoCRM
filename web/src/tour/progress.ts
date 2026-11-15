@@ -105,6 +105,14 @@ export async function createSandbox(): Promise<{ id: string; name: string }> {
   return r;
 }
 
+/** Neso fork: deletes the practice company with all practice data and creates it fresh with demo data. */
+export async function resetSandbox(): Promise<{ id: string; name: string }> {
+  const r = await api.post<{ id: string; name: string }>('/api/academy/sandbox/reset', {});
+  if (state) state = { ...state, sandbox: { id: r.id, name: r.name } };
+  emit();
+  return r;
+}
+
 export async function deleteSandbox() {
   await api.del('/api/academy/sandbox');
   if (state) state = { ...state, sandbox: null };

@@ -181,7 +181,7 @@ export function bookingPage(app: App, cal: CalendarRow, cfg: TeamCalConfig, o: {
     <section id="step1" aria-labelledby="h-pick">
       <h2 id="h-pick">${e(t('Termin wählen'))}</h2>
       ${durs.length > 1 ? `<fieldset class="durs" id="durs" style="border:0;padding:0;margin:0 0 12px"><legend>${e(t('Dauer'))}</legend>${durs.map((d, i) => `<label class="opt" style="display:inline-flex;margin-right:12px"><input type="radio" name="duration" value="${d}"${i === 0 ? ' checked' : ''}> <span>${e(t('{minutes} Minuten', { minutes: d }))}</span></label>`).join('')}</fieldset>` : ''}
-      ${noscriptNotice(t('einen Termin zu buchen'))}
+      ${noscriptNotice(t('einen Termin zu buchen'), t)}
       <div class="days" id="days" role="group" aria-label="${e(t('Tage'))}"></div>
       <div class="slots" id="slots" role="group" aria-label="${e(t('Freie Zeiten'))}" tabindex="-1"></div>
       <div class="nav"><button class="secondary" id="prev" type="button">← ${e(t('Früher'))}</button><button class="secondary" id="next" type="button">${e(t('Später'))} →</button></div>
@@ -368,7 +368,7 @@ export function managePage(app: App, appt: any, cal: CalendarRow, cfg: TeamCalCo
          ${!canMove && !cancelled && !started ? `<p class="muted">${e(cfg.allow_reschedule ? t('Online verschieben geht bis {n} Stunden vor dem Termin.', { n: cfg.reschedule_cutoff_hours }) : t('Dieser Termin kann online nicht verschoben werden.'))} ${e(t('Bitte melde dich direkt, wenn etwas dazwischenkommt.'))}</p>` : ''}
          ${!canCancel && !cancelled && !started ? `<p class="muted">${e(cfg.allow_cancel ? t('Online absagen geht bis {n} Stunden vor dem Termin.', { n: cfg.cancel_cutoff_hours }) : t('Dieser Termin kann online nicht abgesagt werden.'))}</p>` : ''}`
   }
-  ${canMove || canCancel ? noscriptNotice(t('den Termin zu verschieben oder abzusagen')) : ''}
+  ${canMove || canCancel ? noscriptNotice(t('den Termin zu verschieben oder abzusagen'), t) : ''}
   <div id="confirm" hidden role="alertdialog" aria-labelledby="cq"><p id="cq"><strong>${e(t('Termin wirklich absagen?'))}</strong>${pay?.status === 'paid' ? ` ${e(cfg.payment.refund === 'auto' ? t('Deine Zahlung wird erstattet.') : t('Über eine Erstattung entscheiden wir nach den oben genannten Regeln.'))}` : ''}</p>
     <label for="reason">${e(t('Grund (optional)'))}</label><input id="reason" maxlength="300">
     <div class="nav"><button type="button" class="danger" id="yes">${e(t('Ja, absagen'))}</button><button type="button" class="secondary" id="no">${e(t('Doch nicht'))}</button></div></div>
@@ -445,7 +445,7 @@ export function routingPage(r: { slug: string; name: string; question: string; i
 <main class="wrap tc" id="main"><div class="card">
   <h1 id="title" tabindex="-1">${escapeHtml(r.name)}</h1>
   ${r.intro ? `<p>${nl(r.intro)}</p>` : ''}
-  ${noscriptNotice(t('weiterzugehen'))}
+  ${noscriptNotice(t('weiterzugehen'), t)}
   <form id="f" novalidate><fieldset><legend>${escapeHtml(t(r.question))}</legend>
     ${r.options.map((o, i) => `<label class="opt" for="o${i}"><input type="radio" name="o" id="o${i}" value="${escapeHtml(o.id)}" data-cal="${escapeHtml(slugs[o.calendar_id] ?? '')}"><span>${escapeHtml(o.label)}</span></label>`).join('')}
   </fieldset>
@@ -473,7 +473,7 @@ export function waitlistPage(app: App, w: { token: string; start_at: string; sta
 <main class="wrap tc" id="main"><div class="card">
   <h1 id="title" tabindex="-1">${escapeHtml(cal.name)}</h1>
   <p><strong>${escapeHtml(formatInTz(w.start_at, cal.timezone))}</strong> <span class="muted">(${escapeHtml(cal.timezone)})</span></p>
-  ${state === 'offer' ? `<p>${e(t('Ein Platz ist frei geworden. Wer zuerst bucht, bekommt ihn.'))}</p>${noscriptNotice(t('den Platz zu buchen'))}<div class="nav"><button type="button" id="book">${e(t('Platz jetzt buchen'))}</button></div>` : state === 'booked' ? `<p class="ok">${e(t('Du hast den Platz gebucht – die Bestätigung kommt per E-Mail.'))}</p>` : `<p>${e(t('Das Angebot ist abgelaufen oder wurde schon benutzt.'))}</p>`}
+  ${state === 'offer' ? `<p>${e(t('Ein Platz ist frei geworden. Wer zuerst bucht, bekommt ihn.'))}</p>${noscriptNotice(t('den Platz zu buchen'), t)}<div class="nav"><button type="button" id="book">${e(t('Platz jetzt buchen'))}</button></div>` : state === 'booked' ? `<p class="ok">${e(t('Du hast den Platz gebucht – die Bestätigung kommt per E-Mail.'))}</p>` : `<p>${e(t('Das Angebot ist abgelaufen oder wurde schon benutzt.'))}</p>`}
   <p class="live" id="msg" role="status" aria-live="polite"></p>
 </div></main>${CSS}
 <script>

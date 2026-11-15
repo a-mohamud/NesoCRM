@@ -3,7 +3,7 @@ import { bad, notFound, str } from '../core/http.js';
 import { id as newId, now } from '../core/util.js';
 import { SYSTEM, dayOf, getProject, json, notifyUser, statusesOf, team, todayIn, tzOf, type Actor } from './pm-core.js';
 import { createTask, decorate, getTask, updateTask, resolveStatus, type TaskOut, type TaskRow } from './pm-tasks.js';
-import { tApp, tUser } from '../i18n/index.js';
+import { tApp, tLoc, tUser } from '../i18n/index.js';
 
 /** Validation messages in the instance language (static ids, so the central error translation is not needed). */
 const tm = tApp();
@@ -293,7 +293,7 @@ export function runAutomations(app: App, locationId: string, trigger: string, da
     }
     fired++;
     app.db.run('UPDATE pm_automations SET runs = runs + 1, last_run_at = ?, last_error = ? WHERE id = ?', now(), error, rule.id);
-    app.services.audit?.({ action: 'pm.automation.run', actor: `Automation: ${rule.name}`, locationId, entityId: taskId, summary: `${TRIGGERS[trigger]} → ${task.title}${error ? ` (Fehler: ${error})` : ''}`, userId: null });
+    app.services.audit?.({ action: 'pm.automation.run', actor: `Automation: ${rule.name}`, locationId, entityId: taskId, summary: tLoc(app, locationId)(error ? '{trigger} → {task} (Fehler: {error})' : '{trigger} → {task}', { trigger: tLoc(app, locationId)(TRIGGERS[trigger] ?? trigger), task: task.title, error: error ?? '' }), userId: null });
   }
   return fired;
 }

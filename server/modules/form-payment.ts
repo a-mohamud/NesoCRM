@@ -3,6 +3,7 @@ import { parseJson } from '../core/db.js';
 import { logActivity } from '../services/contacts.js';
 import { openToken } from '../services/creator-kit.js';
 import { registerTriggers } from '../services/wfx-kit.js';
+import { tLoc } from '../i18n/index.js';
 
 /**
  * The payment field of a form (docs/forms.md): the form stores its answers, then sends the visitor to the existing buy page of the product
@@ -87,7 +88,7 @@ export const formPaymentModule: Module = {
       for (const [k, v] of Object.entries(answers)) if (typeof v === 'string' && v.endsWith('(Zahlung offen)')) answers[k] = v.replace('(Zahlung offen)', '(bezahlt)');
       db.run('UPDATE form_submissions SET data = ? WHERE id = ?', JSON.stringify(answers), sub.id);
       const cid = sub.contact_id ?? contactId;
-      if (cid) logActivity(app, e.locationId, cid, 'form.paid', `Formular-Bestellung bezahlt: ${pay.product}`);
+      if (cid) logActivity(app, e.locationId, cid, 'form.paid', tLoc(app, e.locationId)('Formular-Bestellung bezahlt: {product}', { product: pay.product }));
       app.events.emit(e.locationId, 'form.paid', { contactId: cid ?? null, formId: sub.form_id, submissionId: sub.id, productId, invoiceId: invoiceId ?? null, amount_cents: pay.amount_cents });
     });
   },

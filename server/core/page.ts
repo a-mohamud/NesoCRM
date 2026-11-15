@@ -1,4 +1,5 @@
 import { escapeHtml } from './template.js';
+import { tApp, type STFn } from '../i18n/index.js';
 
 /** Shell for the public, server-rendered pages (booking, forms, funnels, invoices, reviews). */
 export function publicPage(opts: { title: string; body: string; head?: string; color?: string; embed?: boolean; description?: string }): string {
@@ -46,8 +47,8 @@ export function messagePage(title: string, message: string): string {
 }
 
 /** For public pages that only work with JavaScript (booking, webinar, review): a short hint for visitors without it, like the forms have. */
-export function noscriptNotice(what: string): string {
-  return `<noscript><p class="error">Bitte JavaScript einschalten, um ${escapeHtml(what)}.</p></noscript>`;
+export function noscriptNotice(what: string, t: STFn = tApp()): string {
+  return `<noscript><p class="error">${escapeHtml(t('Bitte JavaScript einschalten, um {what}.', { what }))}</p></noscript>`;
 }
 
 /** Serializes data for a <script> block without letting it close the tag. */

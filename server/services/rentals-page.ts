@@ -54,7 +54,7 @@ export function rentalBookingPage(app: App, cal: CalendarRow, r: RentalRow, embe
   <h1>${escapeHtml(cal.name)}</h1>
   <p class="muted">${r.price_cents ? `${escapeHtml(centsToMoney(r.price_cents, r.currency))} ${escapeHtml(per)}` : escapeHtml(t('kostenlos'))}${r.deposit_cents ? ` · ${escapeHtml(r.quantity > 1 ? t('Kaution {amount} je Stück', { amount: centsToMoney(r.deposit_cents, r.currency) }) : t('Kaution {amount}', { amount: centsToMoney(r.deposit_cents, r.currency) }))}` : ''}${r.min_units > 1 ? ` · ${escapeHtml(nights ? t('mindestens {n} Nächte', { n: r.min_units }) : t('mindestens {n} Tage', { n: r.min_units }))}` : ''}</p>
   ${cal.description ? `<p>${escapeHtml(cal.description).replace(/\n/g, '<br>')}</p>` : ''}
-  ${noscriptNotice(t('zu buchen'))}
+  ${noscriptNotice(t('zu buchen'), t)}
   <div class="row">
     <div><label for="rg-from">${escapeHtml(nights ? t('Anreise') : t('Erster Tag'))}</label><input id="rg-from" type="date"></div>
     <div><label for="rg-to">${escapeHtml(nights ? t('Abreise') : t('Letzter Tag'))}</label><input id="rg-to" type="date"></div>
@@ -152,7 +152,7 @@ export function rentalManagePage(app: App, a: any, cal: CalendarRow, r: RentalRo
   <p>${what}</p>
   ${b?.total_cents ? `<p class="muted">${b.paid_at ? e('Bezahlt') : e('Betrag')}: ${escapeHtml(centsToMoney(b.total_cents, b.currency))}${b.deposit_cents ? ` ${escapeHtml(t('(davon Kaution {amount})', { amount: centsToMoney(b.deposit_cents, b.currency) }))}` : ''}</p>` : ''}
   <p>${e('Status')}: <strong>${cancelled ? e('abgesagt') : e('bestätigt')}</strong></p>
-  ${cancelled ? `<a class="btn" href="/book/rent/${escapeHtml(cal.slug)}">${e('Neu buchen')}</a>` : `${noscriptNotice(t('die Buchung abzusagen'))}<div class="row"><a class="btn secondary" href="/book/ics/${escapeHtml(a.manage_token)}">${e('In den Kalender')}</a>${started ? '' : `<button id="cancel" class="btn" type="button">${e('Buchung absagen')}</button>`}</div>${b?.paid_at && !started ? `<p class="muted" style="font-size:13px">${e('Bei einer Absage meldet sich das Team wegen der Erstattung.')}</p>` : ''}`}
+  ${cancelled ? `<a class="btn" href="/book/rent/${escapeHtml(cal.slug)}">${e('Neu buchen')}</a>` : `${noscriptNotice(t('die Buchung abzusagen'), t)}<div class="row"><a class="btn secondary" href="/book/ics/${escapeHtml(a.manage_token)}">${e('In den Kalender')}</a>${started ? '' : `<button id="cancel" class="btn" type="button">${e('Buchung absagen')}</button>`}</div>${b?.paid_at && !started ? `<p class="muted" style="font-size:13px">${e('Bei einer Absage meldet sich das Team wegen der Erstattung.')}</p>` : ''}`}
   <p id="msg" class="muted" role="status"></p></div></div>
   <script>var M=${jsonForScript(M)},b=document.getElementById('cancel');if(b)b.onclick=function(){if(!confirm(M.confirm))return;fetch('/api/public/appointments/${escapeHtml(a.manage_token)}/cancel',{method:'POST'}).then(function(r){if(r.ok)location.reload();else r.json().then(function(j){document.getElementById('msg').textContent=j.error||M.failed})})};</script>`;
   return publicPage({ title: t('Buchung verwalten'), body, color: cal.color });

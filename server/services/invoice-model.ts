@@ -268,7 +268,9 @@ export function formatNumber(cfg: RangeCfg, seq: number, year: string): string {
 
 /** What a draft carries in the `number` column (unique per row, never shown as a number). */
 export const DRAFT_PREFIX = 'Entwurf-';
-export const isDraftNumber = (n: unknown): boolean => typeof n === 'string' && n.startsWith(DRAFT_PREFIX);
+/** Neso fork: drafts get an English placeholder number outside German ('Draft-…'); both prefixes mark a draft. */
+export const DRAFT_PREFIX_EN = 'Draft-';
+export const isDraftNumber = (n: unknown): boolean => typeof n === 'string' && (n.startsWith(DRAFT_PREFIX) || n.startsWith(DRAFT_PREFIX_EN));
 
 /** How other screens name a document that has no number yet. */
 export const invoiceLabel = (n: unknown): string => (isDraftNumber(n) ? 'Entwurf' : String(n ?? ''));

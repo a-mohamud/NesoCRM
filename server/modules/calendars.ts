@@ -292,7 +292,7 @@ function bookingPage(app: App, cal: CalendarRow, embed: boolean) {
     <h1>${escapeHtml(cal.name)}</h1>
     <p class="muted">⏱ ${escapeHtml(t('{n} Minuten', { n: cal.duration }))}${s.meeting_location ? ` · 📍 ${escapeHtml(s.meeting_location)}` : ''}</p>
     ${cal.description ? `<p>${escapeHtml(cal.description).replace(/\n/g, '<br>')}</p>` : ''}
-    ${noscriptNotice(t('einen Termin zu buchen'))}
+    ${noscriptNotice(t('einen Termin zu buchen'), t)}
     <div id="step1">
       <div class="days" id="days"></div>
       <div class="slots" id="slots" aria-live="polite"><p class="muted">${escapeHtml(L.loading)}</p></div>
@@ -547,7 +547,7 @@ export const calendarsModule: Module = {
       db.update('appointments', a.id, patch);
       const next = db.get('SELECT * FROM appointments WHERE id = ?', a.id)!;
       if (patch.status && patch.status !== a.status) {
-        if (a.contact_id) logActivity(app, ctx.locationId, a.contact_id, 'appointment.status_changed', `Termin: ${patch.status}`);
+        if (a.contact_id) logActivity(app, ctx.locationId, a.contact_id, 'appointment.status_changed', tLoc(app, ctx.locationId)('Termin: {status}', { status: patch.status }));
         app.events.emit(ctx.locationId, 'appointment.status_changed', { contactId: a.contact_id, appointment: next, status: patch.status, calendarId: a.calendar_id });
       }
       if (patch.start_at && patch.start_at !== a.start_at && a.contact_id) {
@@ -622,7 +622,7 @@ export const calendarsModule: Module = {
         <h1>${escapeHtml(cal.name)}</h1>
         <p>${escapeHtml(whenText(t, a.start_at, cal.timezone))} (${escapeHtml(cal.timezone)})</p>
         <p>${escapeHtml(t('Status:'))} <strong>${escapeHtml(cancelled ? t('abgesagt') : t('bestätigt'))}</strong></p>
-        ${cancelled ? `<a class="btn" href="/book/${escapeHtml(cal.slug)}">${escapeHtml(t('Neuen Termin buchen'))}</a>` : `${noscriptNotice(t('den Termin abzusagen'))}<div class="row"><a class="btn secondary" href="/book/ics/${escapeHtml(a.manage_token)}">${escapeHtml(t('In Kalender eintragen'))}</a><button id="cancel" class="btn">${escapeHtml(t('Termin absagen'))}</button></div>`}
+        ${cancelled ? `<a class="btn" href="/book/${escapeHtml(cal.slug)}">${escapeHtml(t('Neuen Termin buchen'))}</a>` : `${noscriptNotice(t('den Termin abzusagen'), t)}<div class="row"><a class="btn secondary" href="/book/ics/${escapeHtml(a.manage_token)}">${escapeHtml(t('In Kalender eintragen'))}</a><button id="cancel" class="btn">${escapeHtml(t('Termin absagen'))}</button></div>`}
         <p id="msg" class="muted"></p></div></div>
         <script>const L=${jsonForScript(L)}; const b=document.getElementById('cancel'); if (b) b.onclick=async()=>{ if(!confirm(L.sure))return; const r=await fetch('/api/public/appointments/${escapeHtml(a.manage_token)}/cancel',{method:'POST'}); if(r.ok) location.reload(); else document.getElementById('msg').textContent=L.failed; };</script>`;
       return html(publicPage({ title: t('Termin verwalten'), body, color: cal.color }));

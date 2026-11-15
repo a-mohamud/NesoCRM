@@ -229,7 +229,7 @@ export async function sendToContact(app: App, locationId: string, input: SendInp
       res = await deliverSms(loc, contact.phone, body);
     }
     app.db.run('UPDATE messages SET status = ?, provider_id = ? WHERE id = ?', res.status, res.providerId ?? null, msg.id);
-    logActivity(app, locationId, contact.id, `${input.channel}.sent`, `${input.channel === 'email' ? 'E-Mail' : input.channel === 'chat' ? 'Chat-Antwort' : 'SMS'} gesendet${input.subject ? `: ${input.subject}` : ''}`);
+    logActivity(app, locationId, contact.id, `${input.channel}.sent`, `${tLoc(app, locationId)(input.channel === 'email' ? 'E-Mail gesendet' : input.channel === 'chat' ? 'Chat-Antwort gesendet' : 'SMS gesendet')}${input.subject ? `: ${input.subject}` : ''}`);
     return { ...msg, status: res.status };
   } catch (e) {
     return fail((e as Error).message);

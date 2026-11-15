@@ -540,7 +540,7 @@ ${plans.map((x) => radio(x.id, x.name || planLabel(x, p.currency, t), `${x.name 
       const done = setPurchaseAccess(app, s.location_id, s.contact_id, s.product_id, tag, on, why);
       const state = on ? 'active' : s.on_default === 'revoke' ? 'revoked' : 'paused';
       db.run('UPDATE plan_subscriptions SET access = ?, updated_at = ? WHERE id = ?', state, now(), s.id);
-      logActivity(app, s.location_id, s.contact_id, on ? 'payment_plan.access_on' : 'payment_plan.access_off', `Zugang ${on ? 'fortgesetzt' : state === 'revoked' ? 'entzogen' : 'pausiert'} (${why})${done.length ? `: ${done.join(', ')}` : ''}`);
+      logActivity(app, s.location_id, s.contact_id, on ? 'payment_plan.access_on' : 'payment_plan.access_off', `${tLoc(app, s.location_id)(on ? 'Zugang fortgesetzt ({why})' : state === 'revoked' ? 'Zugang entzogen ({why})' : 'Zugang pausiert ({why})', { why })}${done.length ? `: ${done.join(', ')}` : ''}`);
     }
 
     /** A plan that Stripe gave up on (or the buyer ended): the setting decides what happens to the access. */
@@ -549,10 +549,10 @@ ${plans.map((x) => radio(x.id, x.name || planLabel(x, p.currency, t), `${x.name 
       const status = reason === 'canceled' ? 'canceled' : 'defaulted';
       db.run('UPDATE plan_subscriptions SET status = ?, defaulted_at = ?, default_reason = ?, updated_at = ? WHERE id = ?', status, now(), reason, now(), s.id);
       const cur = db.get<PlanSub>('SELECT * FROM plan_subscriptions WHERE id = ?', s.id)!;
-      if (cur.on_default !== 'keep' && cur.contact_id) setAccess(cur, false, `Ratenplan ${reason === 'canceled' ? 'beendet' : 'ausgefallen'}`);
+      if (cur.on_default !== 'keep' && cur.contact_id) setAccess(cur, false, tLoc(app, s.location_id)(reason === 'canceled' ? 'Ratenplan beendet' : 'Ratenplan ausgefallen'));
       const after = db.get<PlanSub>('SELECT * FROM plan_subscriptions WHERE id = ?', s.id)!;
-      if (after.contact_id) logActivity(app, s.location_id, after.contact_id, 'payment_plan.defaulted', `Ratenzahlung ${reason === 'canceled' ? 'beendet' : 'ausgefallen'}: ${after.paid_count}/${after.installments} Raten bezahlt, ${money(Math.max(0, totalCents(after) - after.paid_cents), after.currency)} offen`);
-      auditLog(app, undefined, s.location_id, 'payment_plan.defaulted', `Ratenplan ${status} (${reason}, ${after.paid_count}/${after.installments}, Zugang ${after.access})`, s.id);
+      if (after.contact_id) logActivity(app, s.location_id, after.contact_id, 'payment_plan.defaulted', tLoc(app, s.location_id)(reason === 'canceled' ? 'Ratenzahlung beendet: {paid}/{total} Raten bezahlt, {open} offen' : 'Ratenzahlung ausgefallen: {paid}/{total} Raten bezahlt, {open} offen', { paid: after.paid_count, total: after.installments, open: money(Math.max(0, totalCents(after) - after.paid_cents), after.currency) }));
+      auditLog(app, undefined, s.location_id, 'payment_plan.defaulted', tLoc(app, s.location_id)('Ratenplan {status} ({reason}, {paid}/{total}, Zugang {access})', { status, reason, paid: after.paid_count, total: after.installments, access: after.access }), s.id);
       app.events.emit(s.location_id, 'payment_plan.defaulted', eventData(after, { reason }));
       return true;
     }

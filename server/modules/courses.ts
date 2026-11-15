@@ -489,7 +489,7 @@ export const coursesModule: Module = {
         if (!en || en.source !== 'tag' || c.access?.revoke_on_tag_removal === false) continue;
         // Still holding another access tag of this course? Then access stays.
         if ((c.access?.tags ?? []).some((t: string) => contact.tags.includes(t))) continue;
-        revokeAccess(app, e.locationId, c.id, contactId, `Tag „${tag}“ entfernt`);
+        revokeAccess(app, e.locationId, c.id, contactId, tLoc(app, e.locationId)('Tag „{tag}“ entfernt', { tag }));
       }
     });
     // Product purchases (payments) grant the courses linked to that product.

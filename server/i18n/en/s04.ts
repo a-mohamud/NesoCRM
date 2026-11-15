@@ -1753,4 +1753,5 @@ export default {
   'Unbekannter Operator {op}': 'Unknown operator {op}',
   'Jetzt einloggen': 'Log in now',
   'Abstimmungen': 'Polls',
+  '{note} · storniert': '{note} · reversed',
 } satisfies Catalog;

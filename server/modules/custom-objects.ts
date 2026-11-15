@@ -66,7 +66,7 @@ export function createRecord(app: App, locationId: string, t: any, input: { prop
   const row = { id: id(), location_id: locationId, type_id: t.id, properties: props, display: displayOf(t, props), owner_id: checkOwner(app, locationId, input.owner_id) ?? null, created_at: now(), updated_at: now() };
   app.db.insert('object_records', row);
   const record = { ...getRecord(app, locationId, t.id, row.id)!, object: t.key };
-  schema(app).log(locationId, t.key, row.id, 'record.created', `${t.singular} angelegt`, {}, opts.userId);
+  schema(app).log(locationId, t.key, row.id, 'record.created', tLoc(app, locationId)('{label} angelegt', { label: t.singular }), {}, opts.userId);
   if (!opts.quiet) app.events.emit(locationId, 'record.created', { recordId: row.id, objectKey: t.key, objectLabel: t.singular, record });
   return record;
 }
@@ -214,7 +214,7 @@ export const customObjectsModule: Module = {
         if (!CUSTOM_OBJECT_RE.test(me.type)) continue;
         const o = A.type(c.locationId, other.type);
         const name = o?.get(c.locationId, other.id)?.name;
-        if (name) S.log(c.locationId, me.type, me.id, c.kind === 'linked' ? 'association.added' : 'association.removed', tLoc(app, c.locationId)(c.kind === 'linked' ? '{type} „{name}“ verknüpft' : '{type} „{name}“ entfernt', { type: o!.label, name }));
+        if (name) S.log(c.locationId, me.type, me.id, c.kind === 'linked' ? 'association.added' : 'association.removed', ((tl) => tl(c.kind === 'linked' ? '{type} „{name}“ verknüpft' : '{type} „{name}“ entfernt', { type: tl(o!.label), name }))(tLoc(app, c.locationId)));
       }
     });
 

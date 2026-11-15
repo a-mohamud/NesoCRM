@@ -315,7 +315,7 @@ export function syncContact(app: App, locationId: string, contactId: string) {
     if (!prim || prim.name.toLowerCase() !== textValue.toLowerCase()) {
       // The typed name wins over the e-mail domain (a consultant may write the client's name).
       let target = findCompanyByName(app, locationId, textValue);
-      if (!target && set.create_from_text) target = createCompany(app, locationId, { name: textValue }, { source: 'Kontakt' });
+      if (!target && set.create_from_text) target = createCompany(app, locationId, { name: textValue }, { source: tLoc(app, locationId)('Kontakt') });
       if (target) A.link(locationId, ref, { type: 'company', id: target.id }, { primary: true });
     }
   } else if (prim) {
@@ -474,7 +474,7 @@ export const companiesModule: Module = {
         const other = c.a === company ? c.b : c.a;
         if (c.kind !== 'updated' && other.type !== 'task') {
           const info = A.type(c.locationId, other.type)?.get(c.locationId, other.id);
-          if (info) S.log(c.locationId, 'company', company.id, c.kind === 'linked' ? 'association.added' : 'association.removed', tLoc(app, c.locationId)(c.kind === 'linked' ? '{type} „{name}“ verknüpft' : '{type} „{name}“ entfernt', { type: A.type(c.locationId, other.type)?.label ?? other.type, name: info.name }));
+          if (info) S.log(c.locationId, 'company', company.id, c.kind === 'linked' ? 'association.added' : 'association.removed', ((tl) => tl(c.kind === 'linked' ? '{type} „{name}“ verknüpft' : '{type} „{name}“ entfernt', { type: tl(A.type(c.locationId, other.type)?.label ?? other.type), name: info.name }))(tLoc(app, c.locationId)));
         }
       }
       if (!contact || !company) return;

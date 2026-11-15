@@ -215,8 +215,8 @@ export const socialCommentsModule: Module = {
         : db.get<{ contact_id: string }>('SELECT contact_id FROM social_comment_authors WHERE location_id = ? AND platform = ? AND author_id = ?', loc, c.platform, c.authorId);
       if (known && getContact(app, loc, known.contact_id)) return known.contact_id;
       const username = c.platform === 'instagram' ? c.authorName.replace(/^@/, '') : '';
-      const name = username ? `@${username}` : c.authorName || `${PLATFORM_LABEL[c.platform]}-Kontakt`;
-      const contact = upsertContact(app, loc, { name, ...(username ? { custom: { instagram: `@${username}` } } : {}) }, { source: `${PLATFORM_LABEL[c.platform]}-Kommentar`, tags: [`${c.platform}-kommentar`] }).contact;
+      const name = username ? `@${username}` : c.authorName || tLoc(app, loc)('{channel}-Kontakt', { channel: PLATFORM_LABEL[c.platform] });
+      const contact = upsertContact(app, loc, { name, ...(username ? { custom: { instagram: `@${username}` } } : {}) }, { source: tLoc(app, loc)('{channel}-Kommentar', { channel: PLATFORM_LABEL[c.platform] }), tags: [tLoc(app, loc)('{platform}-kommentar', { platform: c.platform })] }).contact;
       if (!c.authorId) return contact.id;
       if (meta) db.run('INSERT OR IGNORE INTO meta_identities (location_id, channel, external_id, contact_id, name, created_at, account_id) VALUES (?, ?, ?, ?, ?, ?, ?)', loc, ch, c.authorId, contact.id, name.slice(0, 120), now(), c.accountId);
       else db.run('INSERT OR IGNORE INTO social_comment_authors (location_id, platform, author_id, contact_id, created_at) VALUES (?, ?, ?, ?, ?)', loc, c.platform, c.authorId, contact.id, now());
@@ -232,7 +232,7 @@ export const socialCommentsModule: Module = {
       const conversationId = getOrCreateConversation(app, loc, contactId);
       // Live comments keep our clock (sorting next to replies); late ones (polling) keep the platform's time.
       const at = c.at && Date.now() - Date.parse(c.at) > 120_000 ? c.at : now();
-      const label = `${PLATFORM_LABEL[c.platform]}-Kommentar`;
+      const label = tLoc(app, loc)('{channel}-Kommentar', { channel: PLATFORM_LABEL[c.platform] });
       const row = { id: id(), location_id: loc, platform: c.platform, account_id: c.accountId, post_id: c.postId, comment_id: c.commentId, thread_id: c.threadId ?? '', author_id: c.authorId, author_name: c.authorName.slice(0, 120), text: c.text, permalink: c.permalink, contact_id: contactId, created_at: at, updated_at: now() };
       try {
         db.insert('social_comments', row);

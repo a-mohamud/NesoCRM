@@ -1312,4 +1312,11 @@ export default {
   'Stundensatz fehlt': 'Hourly rate is missing',
   'Vorlage: Unteraufgaben zu tief verschachtelt': 'Template: subtasks nested too deeply',
   'hub.challenge fehlt': 'hub.challenge is missing',
+  '{channel}-Nachricht empfangen': '{channel} message received',
+  '{channel}-Nachricht gesendet': '{channel} message sent',
+  'Text gesendet': 'Text sent',
+  'Vorlage {name} gesendet': 'Template {name} sent',
+  '{trigger} → {task}': '{trigger} → {task}',
+  '{trigger} → {task} (Fehler: {error})': '{trigger} → {task} (error: {error})',
+  'Momentaufnahme {snapshot}, Rechnung {number}': 'Snapshot {snapshot}, invoice {number}',
 } satisfies Catalog;

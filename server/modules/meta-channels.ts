@@ -291,7 +291,7 @@ export const metaChannelsModule: Module = {
       const c2 = again ? getContact(app, loc, again.contact_id) : undefined;
       if (c2) return c2;
       const label = CHANNEL_LABEL[e.channel];
-      const name = profile.name || (profile.username ? `@${profile.username}` : `${label}-Kontakt`);
+      const name = profile.name || (profile.username ? `@${profile.username}` : tLoc(app, loc)('{channel}-Kontakt', { channel: label }));
       const c = upsertContact(app, loc, { name, ...(profile.username ? { custom: { instagram: `@${profile.username}` } } : {}) }, { source: label, tags: [e.channel] }).contact;
       link(loc, e.channel, e.from, c.id, profile.username ? `@${profile.username}` : name, e.account);
       return c;
@@ -339,7 +339,7 @@ export const metaChannelsModule: Module = {
       // Receive hook (services/inbound-gate.ts): a blocked sender's message is archived silently – no event, no workflow.
       const claim = inboundGate(app, { locationId: loc, contactId: contact.id, channel: e.channel });
       if (claim) return (claim.archive(conversationId, msg.id), true);
-      logActivity(app, loc, contact.id, `${e.channel}.received`, `${CHANNEL_LABEL[e.channel]}-Nachricht empfangen`);
+      logActivity(app, loc, contact.id, `${e.channel}.received`, tLoc(app, loc)('{channel}-Nachricht empfangen', { channel: CHANNEL_LABEL[e.channel] }));
       app.events.emit(loc, 'message.inbound', { contactId: contact.id, contact: getContact(app, loc, contact.id), message: msg });
       return true;
     };
@@ -557,7 +557,7 @@ export const metaChannelsModule: Module = {
         const providerId = String((ch === 'whatsapp' ? r?.messages?.[0]?.id : r?.message_id) ?? '') || null;
         // A status webhook may already have moved it on; only a queued message becomes "sent".
         db.run(`UPDATE messages SET status = CASE WHEN status = 'queued' THEN 'sent' ELSE status END, provider_id = ?, external_id = ? WHERE id = ?`, providerId, providerId ? externalId(ch, providerId) : null, msg.id);
-        logActivity(app, loc, c.id, `${ch}.sent`, `${label}-Nachricht gesendet${subject ? ` (${subject})` : ''}`);
+        logActivity(app, loc, c.id, `${ch}.sent`, `${tLoc(app, loc)('{channel}-Nachricht gesendet', { channel: label })}${subject ? ` (${subject})` : ''}`);
         return { ...msg, status: 'sent', provider_id: providerId };
       } catch (e) {
         return fail((e as Error).message);
@@ -903,7 +903,8 @@ export const metaChannelsModule: Module = {
           source: 'Workflow',
         });
         if (r.status === 'failed') throw new Error(r.error);
-        return useText ? 'Text gesendet' : `Vorlage ${step.template} gesendet`;
+        const tl = tLoc(app, run.location_id);
+        return useText ? tl('Text gesendet') : tl('Vorlage {name} gesendet', { name: String(step.template) });
       },
     };
     app.services.mcpTools = [...(app.services.mcpTools ?? []), ...TOOLS];

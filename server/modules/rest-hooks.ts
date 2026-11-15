@@ -177,12 +177,12 @@ export const restHooksModule: Module = {
           at,
           hook.id,
         );
-        if (off) db.run(`UPDATE rest_hook_deliveries SET status = 'cancelled', next_attempt_at = NULL, error = 'Abo deaktiviert', updated_at = ? WHERE hook_id = ? AND status = 'retrying'`, at, hook.id);
+        if (off) db.run(`UPDATE rest_hook_deliveries SET status = 'cancelled', next_attempt_at = NULL, error = ?, updated_at = ? WHERE hook_id = ? AND status = 'retrying'`, tApp()('Abo deaktiviert'), at, hook.id);
       } else {
         const delay = shouldRetry(status) ? retryDelayMs(attempts) : null;
         state = delay === null ? 'failed' : 'retrying';
         if (delay !== null) next = new Date(Date.now() + delay).toISOString();
-        db.run(`UPDATE rest_hooks SET fail_streak = fail_streak + 1, last_delivery_at = ?, last_status = ?, updated_at = ? WHERE id = ?`, at, error ? `Fehler: ${error}` : `${status} ${d.event}`, at, hook.id);
+        db.run(`UPDATE rest_hooks SET fail_streak = fail_streak + 1, last_delivery_at = ?, last_status = ?, updated_at = ? WHERE id = ?`, at, error ? tApp()('Fehler: {error}', { error }) : `${status} ${d.event}`, at, hook.id);
       }
       db.run(
         `UPDATE rest_hook_deliveries SET status = ?, attempts = ?, next_attempt_at = ?, response_status = ?, response_body = ?, error = ?, duration_ms = ?, updated_at = ? WHERE id = ?`,

@@ -2,7 +2,7 @@ import type { App, Module } from '../core/app.js';
 import { SESSION_COOKIE } from '../core/app.js';
 import { HttpError, notFound, type Ctx, clampLimit } from '../core/http.js';
 import { id, now, sha256 } from '../core/util.js';
-import { tApp } from '../i18n/index.js';
+import { tApp, tLoc } from '../i18n/index.js';
 
 /**
  * Security: an audit log of every write (who, how – session, API key, agency key, MCP – from where,
@@ -26,7 +26,7 @@ export function writeAudit(app: App, a: AuditInput) {
     id: id(),
     at: now(),
     user_id: a.userId ?? ctx?.user?.id ?? null,
-    actor: (a.actor ?? ctx?.user?.name ?? (ctx?.viaApiKey ? 'API-Schlüssel' : '')).slice(0, 200),
+    actor: (a.actor ?? ctx?.user?.name ?? (ctx?.viaApiKey ? tLoc(app, a.locationId ?? (ctx?.locationId || null))('API-Schlüssel') : '')).slice(0, 200),
     via: ctx?.via ?? (ctx ? 'public' : 'system'),
     ip: ctx?.ip ?? '',
     action: a.action.slice(0, 120),

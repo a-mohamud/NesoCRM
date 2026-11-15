@@ -367,7 +367,7 @@ export async function twilioRequest(app: App, cfg: Pick<Config, 'accountSid' | '
   });
   const j: any = r.status === 204 ? {} : await r.json().catch(() => ({}));
   // Twilio's own error code travels along (21631 = address needed …), so callers can explain it.
-  if (!r.ok) throw new HttpError(502, `Twilio: ${j.message || `Fehler ${r.status}`}`, { twilio_code: j.code ?? null });
+  if (!r.ok) throw new HttpError(502, `Twilio: ${j.message || tApp()('Fehler {status}', { status: r.status })}`, { twilio_code: j.code ?? null });
   return j;
 }
 

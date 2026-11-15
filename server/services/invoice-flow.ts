@@ -6,7 +6,7 @@ import { centsToMoney, id, now, token } from '../core/util.js';
 import { contactName, getContact, logActivity } from './contacts.js';
 import type { BankInfo, BuyerParty, DocSnapshot, SellerParty } from './einvoice-model.js';
 import { composeSnapshot, snapshotHash } from './invoice-doc.js';
-import { tLoc } from '../i18n/index.js';
+import { defaultLocale, tLoc } from '../i18n/index.js';
 import {
   calcTotals,
   checkCompliance,
@@ -25,6 +25,7 @@ import {
   skontoDeadline,
   unitCode,
   DRAFT_PREFIX,
+  DRAFT_PREFIX_EN,
   type CreditType,
   type Deduction,
   type InvType,
@@ -249,7 +250,7 @@ export function cleanItems(input: unknown, defaultTax: number, mode: TaxMode = '
 
 // --- numbers -------------------------------------------------------------------------------------------------------------------
 
-export const draftNumber = () => `${DRAFT_PREFIX}${token(6).replace(/[^A-Za-z0-9]/g, 'x').slice(0, 8)}`;
+export const draftNumber = () => `${defaultLocale() === 'de' ? DRAFT_PREFIX : DRAFT_PREFIX_EN}${token(6).replace(/[^A-Za-z0-9]/g, 'x').slice(0, 8)}`;
 
 /**
  * The next number of a range, gap-free: one atomic counter row per (sub-account, range, year). Call inside the transaction that
@@ -825,7 +826,7 @@ export function verifyInvoice(app: App, loc: string, invoiceId: string): VerifyR
   }
   const hash = snapshotHash(s);
   add('SHA-256 der Momentaufnahme', hash === inv.doc_hash, hash === inv.doc_hash ? hash : 'Die Prüfsumme stimmt nicht mit der gespeicherten überein');
-  add('Nummer', s.number === inv.number, s.number === inv.number ? inv.number : `Momentaufnahme ${s.number}, Rechnung ${inv.number}`);
+  add('Nummer', s.number === inv.number, s.number === inv.number ? inv.number : tLoc(app, loc)('Momentaufnahme {snapshot}, Rechnung {number}', { snapshot: s.number, number: inv.number }));
   add('Positionen', JSON.stringify(s.items) === JSON.stringify(inv.items));
   add('Beträge', s.totals.total_cents === inv.total_cents && s.totals.tax_cents === inv.tax_cents && s.totals.subtotal_cents === inv.subtotal_cents, `${centsToMoney(inv.total_cents, inv.currency)}`);
   add('Rechnungsdatum', s.issued_at === inv.issued_at);

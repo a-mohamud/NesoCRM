@@ -1251,4 +1251,6 @@ export default {
   'postings fehlt': 'postings is missing',
   'x-version fehlt (z. B. 1.2.0)': 'x-version is missing (e.g. 1.2.0)',
   'Terminserie gebucht: {rule}, ab {start}': 'Appointment series booked: {rule}, from {start}',
+  'Wiki-Seite „{title}“': 'Wiki page “{title}”',
+  'Termin abgesagt: {reason}': 'Appointment cancelled: {reason}',
 } satisfies Catalog;
