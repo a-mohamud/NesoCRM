@@ -331,7 +331,9 @@ export const hrModule: Module = {
 
     // --- access info -----------------------------------------------------------------------------------------------
     /** The federal states (holiday calendars) with their names in the viewer's language. */
-    const statesFor = (t: STFn) => Object.fromEntries(Object.entries(STATES).map(([k, v]) => [k, t(v)]));
+    // Berlin and Hamburg keep their names: the catalog's 'Berlin'/'Hamburg' are the sample cities of the seeds (→ Nairobi/Mombasa).
+    const SAME_NAME = new Set(['BE', 'HH']);
+    const statesFor = (t: STFn) => Object.fromEntries(Object.entries(STATES).map(([k, v]) => [k, SAME_NAME.has(k) ? v : t(v)]));
     router.get('/api/hr/access', 'location', (ctx) => ({ hr: isHr(ctx), sensitive: canSeeSensitive(app, ctx), states: statesFor(tCtx(ctx)) }));
 
     // --- settings ---------------------------------------------------------------------------------------------------

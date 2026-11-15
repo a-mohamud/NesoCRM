@@ -135,16 +135,16 @@ export const storeModule: Module = {
     const event = (o: any) => ({ id: o.id, number: o.number, total_cents: o.total_cents, currency: o.currency, items: o.items, status: o.status, fulfilment: o.fulfilment, carrier_label: CARRIERS.find(([k]) => k === o.carrier)?.[1] ?? o.carrier, tracking_number: o.tracking_number, tracking_url: o.tracking_url, status_url: orderUrl(app, o) });
 
     // --- settings ---------------------------------------------------------------------------------------------------------------
-    const settingsOut = (loc: string) => {
+    const settingsOut = (loc: string, t: STFn = tLoc(app, loc)) => {
       const s = settingsOf(app, loc);
       const key = storeKey(app, loc);
       const stats = db.get<{ open: number; paid: number; revenue: number }>(
         `SELECT SUM(status = 'paid' AND fulfilment IN ('unfulfilled', 'processing')) AS open, SUM(status = 'paid') AS paid, COALESCE(SUM(CASE WHEN status = 'paid' THEN total_cents - refunded_cents ELSE 0 END), 0) AS revenue FROM store_orders WHERE location_id = ?`,
         loc,
       );
-      return { ...s, key, checkout_url: `${app.baseUrl()}/store/${encodeURIComponent(key)}/checkout`, providers: app.services.payRegistry?.ready(loc) ?? [], stats: { to_ship: stats?.open ?? 0, paid: stats?.paid ?? 0, revenue_cents: stats?.revenue ?? 0 }, carriers: CARRIERS, countries: COUNTRY_NAMES };
+      return { ...s, key, checkout_url: `${app.baseUrl()}/store/${encodeURIComponent(key)}/checkout`, providers: app.services.payRegistry?.ready(loc) ?? [], stats: { to_ship: stats?.open ?? 0, paid: stats?.paid ?? 0, revenue_cents: stats?.revenue ?? 0 }, carriers: CARRIERS, country_names: Object.fromEntries(Object.entries(COUNTRY_NAMES).map(([c, n]) => [c, t(n)])) };
     };
-    router.get('/api/store/settings', 'location', (ctx) => settingsOut(ctx.locationId));
+    router.get('/api/store/settings', 'location', (ctx) => settingsOut(ctx.locationId, tCtx(ctx)));
     router.put('/api/store/settings', 'location', (ctx) => {
       const next = cleanSettings(ctx.body ?? {}, settingsOf(app, ctx.locationId));
       if (ctx.body?.slug !== undefined && ctx.body.slug !== '' && !next.slug) throw bad('Kurzname: 3–60 Zeichen, Kleinbuchstaben, Ziffern und Bindestriche');
@@ -154,7 +154,7 @@ export const storeModule: Module = {
         `INSERT INTO store_settings (location_id, data, slug, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(location_id) DO UPDATE SET data = excluded.data, slug = excluded.slug, updated_at = excluded.updated_at`,
         ctx.locationId, JSON.stringify(next), next.slug || null, now(),
       );
-      return settingsOut(ctx.locationId);
+      return settingsOut(ctx.locationId, tCtx(ctx));
     });
 
     // --- products (the store fields of the CRM products) --------------------------------------------------------------------------

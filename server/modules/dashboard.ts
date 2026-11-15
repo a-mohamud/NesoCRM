@@ -75,6 +75,8 @@ export const dashboardModule: Module = {
       const main = cur(db.get(`SELECT currency FROM invoices WHERE location_id = ? AND kind = 'invoice' GROUP BY currency ORDER BY COUNT(*) DESC, currency = 'EUR' DESC, currency LIMIT 1`, loc)?.currency);
       const revenueByCurrency = [...byCurrency.values()].filter((r) => r.paid || r.outstanding).sort((a, b) => (a.currency === main ? -1 : b.currency === main ? 1 : a.currency < b.currency ? -1 : 1));
       const mainRow = byCurrency.get(main);
+      // Deal sums are shown in the currency most of the sub-account's deals are in (a practice company in Kenya: KES, not EUR).
+      const dealCurrency = cur(db.get(`SELECT currency FROM opportunities WHERE location_id = ? GROUP BY currency ORDER BY COUNT(*) DESC, currency = 'EUR' DESC, currency LIMIT 1`, loc)?.currency);
       const sources = db.all(`SELECT COALESCE(NULLIF(source,''),'unbekannt') AS source, COUNT(*) n FROM contacts WHERE location_id = ? AND created_at >= ?${cs.sql} GROUP BY 1 ORDER BY n DESC LIMIT 10`, loc, since, ...cs.params);
 
       return {
@@ -83,6 +85,7 @@ export const dashboardModule: Module = {
         contacts: contactCounts(loc, since, cs.sql, cs.params),
         // won/lost count when the deal was closed (`closed_at`, kept by modules/reports.ts) – a later edit of an old deal must not count again
         opportunities: {
+          currency: dealCurrency,
           open: one(`SELECT COUNT(*) FROM opportunities WHERE location_id = ? AND status = 'open'${os.sql}`, loc, ...os.params),
           openValue: access?.hidden.deals.has('value') ? 0 : one(`SELECT COALESCE(SUM(value),0) FROM opportunities WHERE location_id = ? AND status = 'open'${os.sql}`, loc, ...os.params),
           won: one(`SELECT COUNT(*) FROM opportunities WHERE location_id = ? AND status = 'won' AND COALESCE(closed_at, updated_at) >= ?${os.sql}`, loc, since, ...os.params),

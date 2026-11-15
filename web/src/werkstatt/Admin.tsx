@@ -311,7 +311,7 @@ export function PolicyTab() {
             <Select value={p.core.agent} onChange={(v) => set({ core: { ...p.core, agent: v as 'codex' | 'claude' } })} options={[['codex', '@codex'], ['claude', '@claude']]} />
           </Field>
           <Field label={tt('Sub-Account mit GitHub-Zugang')} hint={tt('Einstellungen → KI-Werkzeuge → GitHub')}>
-            <Select value={p.core.location_id} onChange={(v) => set({ core: { ...p.core, location_id: v } })} options={l.data.locations.map((x) => [x.id, x.name] as [string, string])} placeholder="automatisch" />
+            <Select value={p.core.location_id} onChange={(v) => set({ core: { ...p.core, location_id: v } })} options={l.data.locations.map((x) => [x.id, x.name] as [string, string])} placeholder={tt('automatisch')} />
           </Field>
         </div>
       </div>

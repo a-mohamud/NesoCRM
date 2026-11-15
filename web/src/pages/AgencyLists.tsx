@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
-import { ago, api, euro, name } from '../api';
+import { ago, api, name } from '../api';
 import { StatusDot, useOpenProject, useProjects } from '../nav';
 import { useSession } from '../session';
 import { Empty, Input, navigate, pressable, Select, Spinner, Tabs, useLoad } from '../ui';
-import { useT } from '../i18n';
+import { fmtMoney, useT } from '../i18n';
+
+/** The deals' values summed per currency ("KES 632,000" or "€1,200 + KES 40,000") – deals carry their own currency. */
+const sumByCurrency = (list: { value: number; currency?: string }[]) => {
+  const by = new Map<string, number>();
+  for (const o of list) by.set(o.currency || 'EUR', (by.get(o.currency || 'EUR') ?? 0) + (o.value || 0));
+  return [...by.entries()].map(([c, v]) => fmtMoney(v * 100, c, { maximumFractionDigits: 0 })).join(' + ');
+};
 
 /** Agency-wide views: every contact and every deal of every project, one click into the project. */
 
@@ -122,7 +129,7 @@ export function AllDeals() {
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <h3 className="linkish" onClick={() => open(locId, 'opportunities')}>
                   <StatusDot status={pStatus[locId] ?? ''} />
-                  {list[0].project} <span className="muted small">{tt('· {length} Deals · {euro}', { length: list.length, euro: euro(list.reduce((s, o) => s + o.value, 0)) })}</span>
+                  {list[0].project} <span className="muted small">{tt('· {length} Deals · {euro}', { length: list.length, euro: sumByCurrency(list) })}</span>
                 </h3>
                 <span className="muted small">{[...stages.entries()].map(([k, n]) => `${k}: ${n}`).join(' · ')}</span>
               </div>

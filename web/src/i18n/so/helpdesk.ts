@@ -10,6 +10,8 @@ export default {
   SMS: "SMS",
   "Live-Chat": "Wada-sheekeysi toos ah",
   WhatsApp: "WhatsApp",
+  Telefon: "Telefoon",
+  Tickets: "Tigidhada",
   "{n} Min.": "{n} daqiiqo",
   "{n} Std.": "{n} saacadood",
   "{n} Tg.": "{n} maalmood",
@@ -374,4 +376,5 @@ export default {
   "Tipp: unter Einstellungen „Kontakt darf mehrmals hinein“ anhaken, damit jedes Ticket den Workflow startet.": "Talo: Dejinta ku calaamadee “Xiriirku wuu geli karaa in ka badan hal mar” si tigidh kasta uu u bilaabo socod-shaqada.",
   "Jede Einsendung als Ticket anlegen (Service)": "Samee tigidh mar kasta oo foom la soo gudbiyo (adeeg)",
   "Ein Feld „Betreff“ (oder „Anliegen“) wird zum Ticket-Betreff, alle Antworten zur Beschreibung. Das Formular braucht ein E-Mail- oder Telefon-Feld.": "Goob la yiraahdo “Mawduuc” (ama “Codsi”) waxay noqotaa mawduuca tigidhka, jawaabaha oo dhanna sharraxaadda. Foomku wuxuu u baahan yahay goob iimayl ama telefoon.",
+  "{{csat_link}} ist Pflicht – per E-Mail erscheinen dort fünf Smiley-Knöpfe. Der Link ist signiert und gilt nur für dieses Ticket.": "{{csat_link}} waa qasab – iimaylka waxaa ku jira shan badhan oo wejiyo dhoola-cadeyn ah. Linkigu waa saxeexan yahay wuxuuna u shaqeeyaa oo keliya tigidhkan.",
 } satisfies Catalog;

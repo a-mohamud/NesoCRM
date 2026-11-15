@@ -92,7 +92,7 @@ export default {
   'Was macht example.com?': 'What does example.com do?',
   'Zeitplan': 'Schedule',
   'Workflow': 'Workflow',
-  'HyperLevel Agent': 'HyperLevel Agent',
+  'HyperLevel Agent': 'Neso Agent',
   'Allround-Assistent für das ganze CRM: findet, fasst zusammen, legt an und erledigt Aufgaben im Auftrag des Nutzers.': 'All-round assistant for the whole CRM: finds, summarises, creates and completes tasks on the user\'s behalf.',
   'Was ist heute wichtig?': 'What matters today?',
   'Fasse die ungelesenen Nachrichten zusammen': 'Summarise the unread messages',

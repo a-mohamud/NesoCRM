@@ -113,8 +113,10 @@ export async function resetSandbox(): Promise<{ id: string; name: string }> {
   return r;
 }
 
-export async function deleteSandbox() {
+/** Resolves to true once deleted (callers test the result of act(), which is undefined on an error). */
+export async function deleteSandbox(): Promise<true> {
   await api.del('/api/academy/sandbox');
   if (state) state = { ...state, sandbox: null };
   emit();
+  return true;
 }

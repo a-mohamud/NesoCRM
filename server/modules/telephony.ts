@@ -647,7 +647,8 @@ export const telephonyModule: Module = {
 
     router.get('/api/calls/status', 'location', (ctx) => {
       const cfg = telephonyConfig(app, ctx.locationId);
-      return { ready: cfg.ready, missing: cfg.missing, numbers: cfg.numbers, record_outbound: cfg.s.record_outbound };
+      const t = tCtx(ctx);
+      return { ready: cfg.ready, missing: cfg.missing.map((m) => t(m)), numbers: cfg.numbers, record_outbound: cfg.s.record_outbound };
     });
     router.get('/api/calls', 'location', (ctx) => {
       const where = ['c.location_id = ?'];

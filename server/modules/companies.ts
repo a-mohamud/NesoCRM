@@ -173,7 +173,7 @@ export function createCompany(app: App, locationId: string, input: Record<string
     description: '',
     ...fields,
     custom: mergeProps({}, custom),
-    source: String(opts.source ?? input.source ?? 'manuell').slice(0, 80),
+    source: String(opts.source ?? input.source ?? tLoc(app, locationId)('manuell')).slice(0, 80),
     created_at: now(),
     updated_at: now(),
   };
@@ -351,7 +351,8 @@ const OTHER_ID = `CASE WHEN a.a_type = 'company' THEN a.b_id ELSE a.a_id END`;
 const COUNTS = `
   (SELECT COUNT(*) FROM associations a WHERE a.location_id = c.location_id AND ${LINK('contact')}) AS contacts_count,
   (SELECT COUNT(*) FROM associations a WHERE a.location_id = c.location_id AND ${LINK('opportunity')}) AS deals_count,
-  (SELECT COALESCE(SUM(o.value), 0) FROM associations a JOIN opportunities o ON o.id = ${OTHER_ID} WHERE a.location_id = c.location_id AND ${LINK('opportunity')} AND o.status != 'lost') AS deals_value`;
+  (SELECT COALESCE(SUM(o.value), 0) FROM associations a JOIN opportunities o ON o.id = ${OTHER_ID} WHERE a.location_id = c.location_id AND ${LINK('opportunity')} AND o.status != 'lost') AS deals_value,
+  (SELECT o.currency FROM associations a JOIN opportunities o ON o.id = ${OTHER_ID} WHERE a.location_id = c.location_id AND ${LINK('opportunity')} AND o.status != 'lost' GROUP BY o.currency ORDER BY COUNT(*) DESC, o.currency = 'EUR' DESC, o.currency LIMIT 1) AS deals_currency`;
 
 export function listCompanies(app: App, locationId: string, q: { q?: string; filters?: unknown; sort?: string; limit?: number; offset?: number; owner_id?: string; lifecycle_stage?: string; industry?: string; /** The person asking (record-access rules narrow the list and hide fields). */ who?: Who }) {
   const expr = companyExpr(app, locationId);
@@ -644,7 +645,7 @@ export const companiesModule: Module = {
 
     router.post('/api/companies', 'location', (ctx) => {
       const b = ctx.body ?? {};
-      const r = upsertCompany(app, ctx.locationId, b, { userId: uid(ctx), source: ctx.viaApiKey ? 'API' : 'manuell' });
+      const r = upsertCompany(app, ctx.locationId, b, { userId: uid(ctx), source: ctx.viaApiKey ? 'API' : tLoc(app, ctx.locationId)('manuell') });
       if (Array.isArray(b.contact_ids)) for (const cid of b.contact_ids.map(String).slice(0, 500)) A.link(ctx.locationId, { type: 'contact', id: cid }, { type: 'company', id: r.company.id });
       return { ...r.company, created: r.created };
     });
@@ -655,7 +656,7 @@ export const companiesModule: Module = {
       const loc = ctx.locationId;
       const ref: Ref = { type: 'company', id: c.id };
       const contacts = A.list(loc, ref, { type: 'contact' });
-      const deals = A.list(loc, ref, { type: 'opportunity' }).map((d) => ({ ...d, ...(db.get('SELECT value, status, stage_id, pipeline_id FROM opportunities WHERE id = ?', d.record_id) ?? {}) }));
+      const deals = A.list(loc, ref, { type: 'opportunity' }).map((d) => ({ ...d, ...(db.get('SELECT value, currency, status, stage_id, pipeline_id FROM opportunities WHERE id = ?', d.record_id) ?? {}) }));
       const contactIds = contacts.map((x) => x.record_id);
       const inList = contactIds.map(() => '?').join(',');
       const contactActs = contactIds.length

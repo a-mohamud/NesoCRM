@@ -1201,4 +1201,5 @@ export default {
   "Alle {n} ansehen": "Eeg dhammaan {n}",
   "Tastaturkürzel": "Furayaasha gaaban ee kiiboodhka",
   "Klar, blau, dunkle Seitenleiste – der Standard-Look.": "Muuqaal nadiif ah oo buluug ah, barta dhinacana madow – muuqaalka caadiga ah.",
+  "automatisch": "si toos ah",
 } satisfies Catalog;

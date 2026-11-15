@@ -26,7 +26,7 @@ function Overview({ rep }: { rep: any }) {
   return (
     <div className="card mk-card" data-tour="mk-reputation">
       <div className="mk-actions" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>{t('Reputation')}</h2>
+        <h2 style={{ margin: 0 }}>{t('Absender-Reputation')}</h2>
         <LevelBadge level={tot.level} />
       </div>
       <p className="muted small mk-lead">

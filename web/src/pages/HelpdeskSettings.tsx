@@ -515,7 +515,7 @@ export function HelpdeskSettings() {
             <Field label={t('Betreff')}>
               <Input value={s.csat.subject} onChange={(v) => set('csat', { subject: v })} />
             </Field>
-            <Field label={t('Text')} hint="{{csat_link}} ist Pflicht – per E-Mail erscheinen dort fünf Smiley-Knöpfe. Der Link ist signiert und gilt nur für dieses Ticket.">
+            <Field label={t('Text')} hint={t('{{csat_link}} ist Pflicht – per E-Mail erscheinen dort fünf Smiley-Knöpfe. Der Link ist signiert und gilt nur für dieses Ticket.')}>
               <Textarea value={s.csat.body} onChange={(v) => set('csat', { body: v })} rows={7} />
             </Field>
             {saveBtn}

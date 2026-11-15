@@ -339,8 +339,13 @@ export const canvasModule: Module = {
 
     router.get('/api/canvas/templates', 'location', (ctx) => {
       const t = tCtx(ctx);
-      // name/description in the user's language; category stays the key the editor groups by
-      return TEMPLATES.map((x) => ({ ...x, name: t(x.name), description: t(x.description) }));
+      // name/description in the user's language; category stays the key the editor groups by (category_label shows it);
+      // texts: every text of the template in the user's language, for the browser's previews and inserts (buildTemplate's tr)
+      return TEMPLATES.map((x) => {
+        const texts: Record<string, string> = {};
+        buildTemplate(x.key, () => 'x', { x: 0, y: 0 }, (s) => (texts[s] = t(s)));
+        return { ...x, name: t(x.name), description: t(x.description), category_label: t(x.category), texts };
+      });
     });
 
     router.post('/api/canvas', 'location', (ctx) => {

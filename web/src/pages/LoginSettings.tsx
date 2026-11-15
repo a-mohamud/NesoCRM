@@ -217,7 +217,15 @@ export function LoginSettings() {
       ))}
     </div>
   );
-  const status = (k: string) => (data.data.ready[k] ? <Badge tone="green">{tt('bereit')}</Badge> : p.social[k].enabled ? <Badge tone="yellow">{tt('Angaben fehlen')}</Badge> : <Badge>{tt('aus')}</Badge>);
+  // Same rule as socialReady (server/services/login-policy.ts), on the unsaved form – the badge follows the checkbox at once.
+  const ready = (k: string) => {
+    const c = p.social[k];
+    if (!c.enabled) return false;
+    if (k === 'google' || k === 'microsoft') return !!c.oauth_configured;
+    // Stored secrets come back empty ("keep"): what the server already counts as ready stays ready.
+    return !!data.data.ready[k] || (k === 'github' ? !!(c.client_id && c.client_secret) : !!(c.client_id && c.team_id && c.key_id && c.private_key));
+  };
+  const status = (k: string) => (ready(k) ? <Badge tone="green">{tt('bereit')}</Badge> : p.social[k].enabled ? <Badge tone="yellow">{tt('Angaben fehlen')}</Badge> : <Badge>{tt('aus')}</Badge>);
 
   return (
     <div className="login-settings">

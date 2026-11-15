@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Icon, channelIcon } from '../icons';
-import { api, d, dt, euro, msgStatus, name } from '../api';
+import { amount, api, d, dt, msgStatus, name } from '../api';
 import { ElsewhereHint } from './AgencyLists';
 import { AiComposerAddon } from './AiAssistant';
 import { MessageMedia, useMetaComposer, type ExtraChannel } from './MetaInbox';
@@ -732,7 +732,7 @@ export function ContactDetail({ id }: { id: string }) {
                 <div key={o.id} style={{ marginBottom: 10 }}>
                   <Link to={`/app/opportunities?pipeline=${o.pipeline_id}`}>{o.name}</Link> <Badge tone={o.status === 'won' ? 'green' : o.status === 'lost' ? 'red' : 'blue'}>{OPP_STATUS[o.status] ? t(OPP_STATUS[o.status]) : o.status}</Badge>
                   <div className="muted small">
-                    {p?.name} · {p?.stages.find((s: any) => s.id === o.stage_id)?.name} · {euro(o.value)}
+                    {p?.name} · {p?.stages.find((s: any) => s.id === o.stage_id)?.name} · {amount(o.value, o.currency)}
                   </div>
                 </div>
               );

@@ -95,28 +95,30 @@ export function AnalyticsTab({ funnel }: { funnel: any }) {
                           {t('A/B-Test „{name}“', { name: s.ab.name })} · {s.ab.status === 'running' ? t('läuft') : s.ab.status === 'ended' ? t('beendet') : s.ab.status}
                           {s.ab.leader ? ` · ${t('vorn: {name}', { name: s.ab.variants.find((v: any) => v.key === s.ab.leader)?.name ?? s.ab.leader })}` : ''}
                         </summary>
-                        <table className="an-table small">
-                          <thead>
-                            <tr>
-                              <th>{t('Variante')}</th>
-                              <th>{t('Besucher')}</th>
-                              <th>{t('Conversions')}</th>
-                              <th>{t('Rate')}</th>
-                              <th>{t('Uplift')}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {s.ab.variants.map((v: any) => (
-                              <tr key={v.key}>
-                                <td>{v.name}</td>
-                                <td>{num(v.visitors)}</td>
-                                <td>{num(v.conversions)}</td>
-                                <td>{typeof v.rate === 'number' ? pct(v.rate) : '–'}</td>
-                                <td>{typeof v.uplift === 'number' ? `${v.uplift > 0 ? '+' : ''}${pct(v.uplift, 0)}` : '–'}</td>
+                        <div className="an-scroll">
+                          <table className="an-table small">
+                            <thead>
+                              <tr>
+                                <th>{t('Variante')}</th>
+                                <th>{t('Besucher')}</th>
+                                <th>{t('Conversions')}</th>
+                                <th>{t('Rate')}</th>
+                                <th>{t('Uplift')}</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody>
+                              {s.ab.variants.map((v: any) => (
+                                <tr key={v.key}>
+                                  <td>{v.name}</td>
+                                  <td>{num(v.visitors)}</td>
+                                  <td>{num(v.conversions)}</td>
+                                  <td>{typeof v.rate === 'number' ? pct(v.rate) : '–'}</td>
+                                  <td>{typeof v.uplift === 'number' ? `${v.uplift > 0 ? '+' : ''}${pct(v.uplift, 0)}` : '–'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                         {s.ab.small_sample && <p className="muted small">{t('Noch wenige Besucher – das Ergebnis ist nicht belastbar.')}</p>}
                       </details>
                     )}
@@ -175,28 +177,30 @@ export function AnalyticsTab({ funnel }: { funnel: any }) {
         <div className="card" style={{ marginTop: 14 }}>
           <h3>{t('Umsatz laut Attribution')}</h3>
           <p className="muted small">{t('Bezahlte Rechnungen (inkl. Stripe), deren Kontakte über diesen Funnel ins CRM kamen – je nach Modell dem ersten oder dem letzten Kontakt zugerechnet (Werbung → Attribution).')}</p>
-          <table className="an-table small">
-            <thead>
-              <tr>
-                <th>{t('Modell')}</th>
-                <th>{t('Leads')}</th>
-                <th>{t('Kunden')}</th>
-                <th>{t('Gewonnene Deals')}</th>
-                <th>{t('Umsatz')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(['first', 'last'] as const).map((m) => (
-                <tr key={m}>
-                  <td>{m === 'first' ? t('Erster Kontakt') : t('Letzter Kontakt')}</td>
-                  <td>{d.attribution[m].leads}</td>
-                  <td>{d.attribution[m].customers}</td>
-                  <td>{d.attribution[m].deals_won}</td>
-                  <td>{eur(d.attribution[m].revenue_cents)}</td>
+          <div className="an-scroll">
+            <table className="an-table small">
+              <thead>
+                <tr>
+                  <th>{t('Modell')}</th>
+                  <th>{t('Leads')}</th>
+                  <th>{t('Kunden')}</th>
+                  <th>{t('Gewonnene Deals')}</th>
+                  <th>{t('Umsatz')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(['first', 'last'] as const).map((m) => (
+                  <tr key={m}>
+                    <td>{m === 'first' ? t('Erster Kontakt') : t('Letzter Kontakt')}</td>
+                    <td>{d.attribution[m].leads}</td>
+                    <td>{d.attribution[m].customers}</td>
+                    <td>{d.attribution[m].deals_won}</td>
+                    <td>{eur(d.attribution[m].revenue_cents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
       <p className="muted small">{t('Gezählt wird ohne Cookies: ein täglich wechselnder Hash aus Adresse und Browser, nie die Adresse selbst; Aufbewahrung {n} Tage. Nenne die Reichweitenmessung in deiner Datenschutzerklärung.', { n: d.funnel.retention_days })}</p>

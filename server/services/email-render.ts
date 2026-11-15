@@ -501,6 +501,8 @@ interface Ctx {
   /** Dark-mode classes only make sense on a light canvas. */
   dark: boolean;
   placeholders: boolean;
+  /** The editor's placeholder labels in the UI language (they are German message ids of the web's email catalog). */
+  label: (text: string) => string;
 }
 
 function youtubeId(url: string): string {
@@ -548,7 +550,7 @@ function renderBlock(b: Block, ctx: Ctx, inner: number): string {
       return td(richTextHtml(p.text, s.linkColor), `${font}font-size:${fontSize}px;line-height:1.6;color:${color};`);
     case 'image': {
       const src = safeUrl(p.src, 'image');
-      if (!src) return ctx.placeholders ? td(placeholderBox('Bild wählen'), '', '') : '';
+      if (!src) return ctx.placeholders ? td(placeholderBox(ctx.label('Bild wählen')), '', '') : '';
       const w = p.width ? Math.min(p.width, width) : width;
       const img = imgTag(src, p.alt, w, align);
       const href = safeUrl(p.href);
@@ -577,7 +579,7 @@ function renderBlock(b: Block, ctx: Ctx, inner: number): string {
       return `<tr><td style="height:${p.height}px;line-height:${p.height}px;font-size:0;${bg}">&nbsp;</td></tr>`;
     case 'social': {
       const items = (p.items as { network: string; url: string }[]).map((i) => ({ ...i, href: safeUrl(i.url), n: SOCIAL_NETWORKS[i.network] })).filter((i) => i.href && i.n);
-      if (!items.length) return ctx.placeholders ? td(placeholderBox('Social-Links eintragen', 40), '', '') : '';
+      if (!items.length) return ctx.placeholders ? td(placeholderBox(ctx.label('Social-Links eintragen'), 40), '', '') : '';
       const html =
         p.variant === 'text'
           ? items.map((i) => `<a href="${escapeHtml(i.href)}" target="_blank" style="color:${s.linkColor};text-decoration:underline;${font}font-size:${fontSize}px;">${i.n.label}</a>`).join(' &nbsp;·&nbsp; ')
@@ -592,7 +594,7 @@ function renderBlock(b: Block, ctx: Ctx, inner: number): string {
     case 'video': {
       const href = safeUrl(p.url);
       const thumb = videoThumbnail(p.url, p.thumbnail);
-      if (!thumb) return ctx.placeholders ? td(placeholderBox('▶ Video-Link eintragen'), '', '') : href ? td(`<a href="${escapeHtml(href)}" target="_blank" style="color:${s.linkColor};${font}">${escapeHtml(p.caption || p.alt || href)}</a>`) : '';
+      if (!thumb) return ctx.placeholders ? td(placeholderBox(ctx.label('▶ Video-Link eintragen')), '', '') : href ? td(`<a href="${escapeHtml(href)}" target="_blank" style="color:${s.linkColor};${font}">${escapeHtml(p.caption || p.alt || href)}</a>`) : '';
       const img = imgTag(thumb, p.alt || 'Video ansehen', width, align, 'border-radius:6px;');
       const caption = p.caption ? `<p style="margin:8px 0 0;${font}font-size:14px;font-weight:700;"><a href="${escapeHtml(href)}" target="_blank" style="color:${s.linkColor};text-decoration:none;">${escapeHtml(p.caption)}</a></p>` : '';
       return td(href ? `<a href="${escapeHtml(href)}" target="_blank" style="text-decoration:none;">${img}</a>${caption}` : img, '', '');
@@ -634,8 +636,8 @@ function renderSection(sec: Section, ctx: Ctx): string {
   return `<tr><td style="padding:${st.paddingY ?? 0}px ${st.paddingX ?? 0}px;${bg}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${cols}</tr></table></td></tr>`;
 }
 
-function contextFor(design: EmailDesign, placeholders = false): Ctx {
-  return { s: design.settings, dark: luminance(design.settings.contentBackground) > 0.6, placeholders };
+function contextFor(design: EmailDesign, placeholders = false, label: (text: string) => string = (text) => text): Ctx {
+  return { s: design.settings, dark: luminance(design.settings.contentBackground) > 0.6, placeholders, label };
 }
 
 /** Px width available to the blocks of column `i` (the editor canvas sizes blocks with it). */
@@ -644,9 +646,9 @@ export function columnWidth(design: EmailDesign, sec: Section, i: number): numbe
   return Math.round(((design.settings.width - (sec.style.paddingX ?? 0) * 2) * w) / 100);
 }
 
-/** One block as a standalone table, for the editor canvas (empty images/buttons show a placeholder). */
-export function renderBlockHtml(design: EmailDesign, sec: Section, colIndex: number, b: Block): string {
-  const ctx = contextFor(design, true);
+/** One block as a standalone table, for the editor canvas (empty images/buttons show a placeholder, labelled through `label`). */
+export function renderBlockHtml(design: EmailDesign, sec: Section, colIndex: number, b: Block, label?: (text: string) => string): string {
+  const ctx = contextFor(design, true, label);
   const row = renderBlock(b, sec.style.background ? { ...ctx, dark: false } : ctx, columnWidth(design, sec, colIndex));
   const s = design.settings;
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-family:${s.fontFamily};color:${s.textColor};">${row || '<tr><td></td></tr>'}</table>`.replace(

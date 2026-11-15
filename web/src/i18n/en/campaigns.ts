@@ -255,6 +255,7 @@ export default {
   'Bounces, Beschwerden oder Abmeldungen sind erhöht.': 'Bounces, complaints or unsubscribes are up.',
   'Prüfe vor dem Versand die': 'Before sending, check the',
   Reputation: 'reputation',
+  'Absender-Reputation': 'Sender reputation',
   Werbung: 'Marketing',
   Service: 'Service',
   Einmalcode: 'One-time code',
@@ -451,8 +452,8 @@ export default {
   Kategorie: 'Category',
   Vorschautext: 'Preview text',
   Anrede: 'Form of address',
-  'Sie (förmlich)': 'Sie (formal)',
-  'Du (persönlich)': 'Du (personal)',
+  'Sie (förmlich)': 'Formal',
+  'Du (persönlich)': 'Informal',
   'Service-Mail für bestehende Kundenbeziehungen (Rechnung, Bestellung) – keine Werbung. Werbliche Zusätze brauchen eine Einwilligung.':
     'Service email for existing customer relationships (invoice, order) – no advertising. Marketing additions need consent.',
   'Die Vorschau zeigt Beispieldaten. Platzhalter wie': 'The preview shows sample data. Placeholders like',
@@ -470,7 +471,7 @@ export default {
   'Vorlagen suchen': 'Search templates',
   Kategorien: 'Categories',
   '{name} ansehen': 'View {name}',
-  Sie: 'Sie',
+  Sie: 'Formal',
   'Keine Vorlage gefunden. Versuche einen anderen Suchbegriff oder wähle „Alle“.': 'No template found. Try another search word or choose “All”.',
   'Vorlage aus der Galerie': 'Template from the gallery',
 

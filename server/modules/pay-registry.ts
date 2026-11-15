@@ -38,7 +38,7 @@ import {
 } from '../services/pay-registry.js';
 import { sessionState, stripeProvider } from '../services/pay-stripe.js';
 import { lineItemParams } from '../services/stripe.js';
-import { tLoc, type STFn } from '../i18n/index.js';
+import { tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * Payment provider registry (docs/payment-providers.md): Stripe, PayPal (Orders v2 incl. Pay Later) and Mollie (iDEAL, SEPA, cards,
@@ -146,7 +146,10 @@ export const payRegistryModule: Module = {
           checked_at: acc?.checked_at ?? null,
         };
       });
-    router.get('/api/pay/providers', 'location', (ctx) => ({ providers: status(ctx.locationId), mollie_methods: MOLLIE_METHODS.map(([id, label]) => ({ id, label })) }));
+    router.get('/api/pay/providers', 'location', (ctx) => {
+      const t = tCtx(ctx);
+      return { providers: status(ctx.locationId), mollie_methods: MOLLIE_METHODS.map(([id, label]) => ({ id, label: t(label) })) };
+    });
 
     /** The credentials of a PUT/test body merged over the stored ones ("••••••" or empty keeps a secret). */
     const merged = (loc: string, provider: string, b: any): Account => {

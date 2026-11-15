@@ -72,6 +72,8 @@ export interface SocialIdentity {
   email: string;
   emailVerified: boolean;
   name: string;
+  /** Google only: the Workspace domain the account belongs to (ID token claim `hd`); absent for personal accounts. */
+  hostedDomain?: string;
 }
 
 const cleanEmail = (e: unknown) => {
@@ -97,7 +99,8 @@ export function identityFromClaims(id: SocialId, c: Record<string, any>, appleUs
       /* no name */
     }
   }
-  return { subject: String(c.sub), email, emailVerified: !!email && isTrue(c.email_verified), name };
+  const hostedDomain = id === 'google' && typeof c.hd === 'string' ? c.hd.toLowerCase() : undefined;
+  return { subject: String(c.sub), email, emailVerified: !!email && isTrue(c.email_verified), name, ...(hostedDomain ? { hostedDomain } : {}) };
 }
 
 /** GitHub: account id and the verified primary e-mail from the API. */

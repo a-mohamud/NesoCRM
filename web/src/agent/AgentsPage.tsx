@@ -392,7 +392,7 @@ function ConnectInfo() {
                 <div key={g} className="agent-tool-group">
                   <div className="agent-tool-group-head">{g}</div>
                   {(list as any[]).map((t) => (
-                    <Check key={t.name} checked={chosen.includes(t.name)} onChange={(v) => setSel(v ? [...chosen, t.name].slice(0, i.gpt_actions.max_operations) : chosen.filter((x) => x !== t.name))} label={<span>{t.title}{t.klass !== 'read' && <span className={`agent-klass k-${t.klass}`}>{t.klass === 'sensitive' ? 'versendet' : tt('ändert')}</span>}</span>} />
+                    <Check key={t.name} checked={chosen.includes(t.name)} onChange={(v) => setSel(v ? [...chosen, t.name].slice(0, i.gpt_actions.max_operations) : chosen.filter((x) => x !== t.name))} label={<span>{t.title}{t.klass !== 'read' && <span className={`agent-klass k-${t.klass}`}>{t.klass === 'sensitive' ? tt('versendet') : tt('ändert')}</span>}</span>} />
                   ))}
                 </div>
               ))}

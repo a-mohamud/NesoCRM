@@ -118,13 +118,13 @@ export function IntegrationsCatalog({ agency, after }: { agency: boolean; after?
     <div className="integ">
       <div className="integ-summary" data-tour="integ-summary">
         <span>
-          <b>{n('ok')}</b> eingerichtet
+          <b>{n('ok')}</b> {tt('eingerichtet')}
         </span>
         <span>
           <b>{n('partial')}</b> {tt('unvollständig')}
         </span>
         <span>
-          <b>{n('missing')}</b> offen
+          <b>{n('missing')}</b> {tt('offen')}
         </span>
         <span>
           <b>{n('info')}</b> {tt('sofort nutzbar')}

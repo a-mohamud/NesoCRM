@@ -7,6 +7,8 @@
 .mk-fs { border: 0; margin: 0; padding: 0; min-width: 0; }
 .mk-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .mk-actions .btn, .mk-card .btn, .mk-modal .btn { min-height: 44px; justify-content: center; }
+/* a long label (some languages) wraps inside the button instead of running out of the card on a phone */
+.mk-actions .btn { white-space: normal; max-width: 100%; }
 .mk-card select, .mk-card input:not([type='checkbox']):not([type='radio']), .mk-card textarea, .mk-modal select, .mk-modal input:not([type='checkbox']):not([type='radio']) { min-height: 44px; }
 .mk-card .check, .mk-modal .check { min-height: 44px; }
 .mk-card .check input, .mk-modal .check input { width: 20px; height: 20px; flex: none; }

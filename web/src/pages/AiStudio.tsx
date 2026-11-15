@@ -3,7 +3,7 @@ import { ConnectKey, Examples, PublishDialog } from './AiStudioPublish';
 import { api } from '../api';
 import { useT } from '../i18n';
 import './aistudio.css';
-import { Empty, Field, Input, Modal, PageHead, Select, Spinner, act, navigate, useLoad } from '../ui';
+import { Empty, Field, Input, Modal, PageHead, Select, Spinner, act, confirmAsk, navigate, useLoad } from '../ui';
 import { SortableGrid } from '../sortable/Sortable';
 
 /**
@@ -111,6 +111,10 @@ function Editor({ id }: { id: string }) {
       setFrame((n) => n + 1);
     }
   };
+  const remove = async () => {
+    if (!confirmAsk(t('Projekt „{name}“ mit allen Versionen löschen? Eine veröffentlichte Fassung geht offline.', { name: project.name }))) return;
+    if (await act(() => api.del(`/api/ai-studio/projects/${id}`), t('Projekt gelöscht'))) navigate('ai-studio');
+  };
   return (
     <div className="studio">
       <PageHead title={project.name} sub={t('{tokens} Tokens · {cost} $ · Monatslimit {used} von {limit} $', { tokens: project.input_tokens + project.output_tokens, cost: project.cost_usd.toFixed(4), used: budget.used_usd.toFixed(2), limit: budget.limit_usd })}>
@@ -121,6 +125,9 @@ function Editor({ id }: { id: string }) {
         </a>
         <button className="primary" data-tour="studio-publish" onClick={() => setPublish(true)}>
           {t('Veröffentlichen')}
+        </button>
+        <button className="btn danger" onClick={() => void remove()}>
+          {t('Projekt löschen')}
         </button>
       </PageHead>
       {publish && <PublishDialog id={id} onClose={() => setPublish(false)} />}

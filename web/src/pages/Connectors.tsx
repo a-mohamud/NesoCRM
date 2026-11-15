@@ -98,7 +98,7 @@ function ConnectorCard({ def, onChange }: { def: Json; onChange: () => void }) {
           {tt('Letzter Test {dt}: {last_result}', { dt: dt(def.last_test_at), last_result: def.last_result })}
         </p>
       )}
-      {def.steps.length > 0 && <p className="muted small">{tt('Im Workflow:')} {def.steps.map((a: string) => `„${a}“`).join(', ')}</p>}
+      {def.steps.length > 0 && <p className="muted small">{tt('Im Workflow:')} {def.steps.map((a: string) => tt('„{step}“', { step: a })).join(', ')}</p>}
     </div>
   );
 }

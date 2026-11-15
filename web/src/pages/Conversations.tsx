@@ -159,7 +159,8 @@ export function Conversations({ initial }: { initial?: string }) {
       <PageHead title={t('Konversationen')} sub={t('Alle Kanäle aller Kontakte an einem Ort')}>
         {tx && (
           <>
-            <button className="tx-btn" data-tour="inbox-availability" onClick={() => setTeam('me')}>
+            {/* `secondary`: PageHead must not take "tx-btn" for the page's primary action – on a phone it stayed next to the title and cut it to "Conversati…" */}
+            <button className="tx-btn secondary" data-tour="inbox-availability" onClick={() => setTeam('me')}>
               <Icon name="vacation" size={16} /> {t('Meine Verfügbarkeit')}
             </button>
             <button className="tx-btn tx-keys-btn" onClick={() => setHelp(true)} aria-label={t('Tastaturkürzel')} title={t('Tastaturkürzel (?)')}>

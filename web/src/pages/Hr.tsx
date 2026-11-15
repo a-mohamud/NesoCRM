@@ -5,7 +5,7 @@ import { Badge, Check, Empty, Field, Input, Modal, PageHead, Select, Spinner, St
 import { dlHref, germanDate, qty, ymdLocal } from './boCommon';
 import { HrAbsences, HrChecklists, HrEmployees, HrWorkingTime } from './HrAdmin';
 import { SortableGrid } from '../sortable/Sortable';
-import { tr, useT } from '../i18n';
+import { fmtDate, intlLocale, tr, useT } from '../i18n';
 
 /**
  * Personal (HR basics): employees, absences with approval, team calendar, vacation accounts, checklists, working-time overview.
@@ -452,7 +452,7 @@ export function TeamCalendar({ compact }: { compact?: boolean }) {
     return x?.items.find((i: any) => i.employee_id === empId && i.start_date <= date && i.end_date >= date);
   };
   const dow = (day: number) => new Date(ym.y, ym.m, day).getDay();
-  const title = new Date(ym.y, ym.m, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+  const title = new Date(ym.y, ym.m, 1).toLocaleDateString(intlLocale(), { month: 'long', year: 'numeric' });
   return (
     <div className="card" data-tour="hr-calendar">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -466,7 +466,7 @@ export function TeamCalendar({ compact }: { compact?: boolean }) {
       {!x ? (
         <Spinner />
       ) : !people.length ? (
-        <Empty>{tt('Keine Abwesenheiten in diesem Monat')}{x.holidays.length ? tt(' (Feiertage: {n})', { n: x.holidays.map((h: any) => `${germanDate(h.date).slice(0, 5)} ${h.name}`).join(', ') }) : ''}.</Empty>
+        <Empty>{tt('Keine Abwesenheiten in diesem Monat')}{x.holidays.length ? tt(' (Feiertage: {n})', { n: x.holidays.map((h: any) => `${fmtDate(`${h.date}T12:00:00`, { day: '2-digit', month: '2-digit' })} ${h.name}`).join(', ') }) : ''}.</Empty>
       ) : (
         <div className="bo-cal-wrap">
           <table className="bo-cal">
@@ -498,7 +498,7 @@ export function TeamCalendar({ compact }: { compact?: boolean }) {
         </div>
       )}
       <p className="muted small">
-        <span className="bo-key vacation" /> {tt('Urlaub')} <span className="bo-key sick" /> krank <span className="bo-key other" /> sonstiges <span className="bo-key away" /> abwesend <span className="bo-key hol" /> {tt('Feiertag · schraffiert = beantragt')}
+        <span className="bo-key vacation" /> {tt('Urlaub')} <span className="bo-key sick" /> {tt('krank')} <span className="bo-key other" /> {tt('sonstiges')} <span className="bo-key away" /> {tt('abwesend')} <span className="bo-key hol" /> {tt('Feiertag · schraffiert = beantragt')}
         {!x?.holidays ? '' : tt(' · Feiertage nach {state}', { state: x.state })}
       </p>
     </div>
@@ -533,7 +533,7 @@ function Holidays({ states, defaultState }: { states: Record<string, string>; de
               {r.data.holidays.map((h: any) => (
                 <tr key={h.date}>
                   <td>{germanDate(h.date)}</td>
-                  <td className="muted">{new Date(`${h.date}T12:00:00`).toLocaleDateString('de-DE', { weekday: 'long' })}</td>
+                  <td className="muted">{new Date(`${h.date}T12:00:00`).toLocaleDateString(intlLocale(), { weekday: 'long' })}</td>
                   <td>{h.name}</td>
                 </tr>
               ))}

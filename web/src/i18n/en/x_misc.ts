@@ -1201,4 +1201,5 @@ export default {
   'Alle {n} ansehen': 'View all {n}',
   'Tastaturkürzel': 'Keyboard shortcuts',
   'Klar, blau, dunkle Seitenleiste – der Standard-Look.': 'Clear, blue, dark sidebar – the standard look.',
+  "automatisch": "automatic",
 } satisfies Catalog;

@@ -392,7 +392,7 @@ export function DashboardView({ id, meta, defaultId, onListChange, switcher }: {
         <div className="rpt-tv-head">
           <h1>{dash.name}</h1>
           <span className="muted">
-            {meta.ranges[typeof filters.range === 'string' ? filters.range : ''] ?? t('Benutzerdefiniert')} {t('· aktualisiert')} {updated?.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+            {meta.ranges[typeof filters.range === 'string' ? filters.range : ''] ?? t('Benutzerdefiniert')} {t('· aktualisiert')} {updated?.toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' })}
           </span>
           <button className="icon-btn" onClick={() => setTv(false)} aria-label={t('TV-Modus beenden')}>
             ✕

@@ -48,4 +48,7 @@ export default {
   "Eigene Domain (optional)": "Domain gaar ah (ikhtiyaari)",
   "DNS der Domain auf diesen Server zeigen lassen; das Zertifikat kommt automatisch, wenn Caddy mit On-Demand-TLS läuft.": "U jihee DNS-ka domain-ka seerfarkan; shahaadada si toos ah ayaa loo bixiyaa marka Caddy uu ku shaqaynayo TLS marka loo baahdo (on-demand).",
   "Veröffentlichen baut das Projekt neu und ersetzt die öffentliche Fassung. Änderungen danach sind erst nach erneutem Veröffentlichen sichtbar.": "Faafintu waxay dib u dhistaa mashruuca waxayna beddeshaa nuqulka dadweynaha. Isbeddellada dambe waxay muuqanayaan oo keliya marka aad mar kale faafiso.",
+  "Projekt „{name}“ mit allen Versionen löschen? Eine veröffentlichte Fassung geht offline.": "Ma tirtirtaa mashruuca “{name}” iyo dhammaan nuqulladiisa? Nuqulka la faafiyay khadka waa laga saari doonaa.",
+  "Projekt gelöscht": "Mashruuca waa la tirtiray",
+  "Projekt löschen": "Tirtir mashruuca",
 } satisfies Catalog;

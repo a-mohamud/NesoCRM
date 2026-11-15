@@ -1336,4 +1336,7 @@ export default {
   'ausgewertet': 'graded',
   'widerrufen': 'revoked',
   'Termin': 'Session',
+  // certificate number prefix (letters, digits, hyphen)
+  ZERT: 'CERT',
+  "{hour}:00 Uhr": "{hour}:00",
 } satisfies Catalog;

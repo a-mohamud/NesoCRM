@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { api, currentLocation, money, name as contactName } from '../api';
 import { Icon } from '../icons';
 import { Input, toastError } from '../ui';
-import { useT, tr } from '../i18n';
+import { fmtDate, fmtNumber, useT, tr } from '../i18n';
 
 /** Small pieces shared by the Back-Office pages (Buchhaltung, Lager, Personal). */
 
@@ -91,10 +91,11 @@ export function FileButton({ label, accept, multiple, onFile, tour, icon = 'uplo
 }
 
 export const ymdLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-export const germanDate = (ymd?: string | null) => (ymd ? `${ymd.slice(8, 10)}.${ymd.slice(5, 7)}.${ymd.slice(0, 4)}` : '–');
+/** A YYYY-MM-DD date in the UI language's format (01.06.2026 / 01/06/2026); the name is from the German-only days. */
+export const germanDate = (ymd?: string | null) => (ymd ? fmtDate(`${ymd.slice(0, 10)}T12:00:00`, { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–');
 
 /** Cents of a stock quantity with up to three decimals ("1,5"). */
-export const qty = (n: number | null | undefined) => (n === null || n === undefined ? '–' : new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 }).format(n));
+export const qty = (n: number | null | undefined) => (n === null || n === undefined ? '–' : fmtNumber(n, { maximumFractionDigits: 3 }));
 
 /** Picks a CRM contact (supplier, linked person): type two letters, choose from the hits. */
 export function ContactPick({ value, onChange, placeholder }: { value: { id: string; name: string } | null; onChange: (v: { id: string; name: string } | null) => void; placeholder?: string }) {

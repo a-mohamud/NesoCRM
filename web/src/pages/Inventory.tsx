@@ -31,7 +31,7 @@ export function Inventory({ tab }: { tab?: string }) {
     <>
       <PageHead title={tt('Lager & Einkauf')} sub={tt('Artikel, Bestände, Bestellungen und Inventur – verknüpft mit Produkten und Rechnungen.')} />
       <SortableGrid id="inv-stats" className="stats" data-tour="inv-stats">
-        <Stat label={tt('Artikel')} value={st?.articles ?? '–'} sub={tt('{v} Lagerorte', { v: st?.places ?? 0 })} />
+        <Stat label={tt('Artikel')} value={st?.articles ?? '–'} sub={tt.plural(st?.places ?? 0, { one: '{v} Lagerort', other: '{v} Lagerorte' }, { v: st?.places ?? 0 })} />
         <Stat label={tt('Unter Mindestbestand')} value={<span className={st?.low ? 'bo-neg' : undefined}>{st?.low ?? '–'}</span>} sub={tt('löst Benachrichtigung und Workflow aus')} />
         <Stat label={tt('Lagerwert')} value={money(st?.value_cents ?? 0)} sub={tt('gleitender Durchschnittspreis')} />
         <Stat label={tt('Offene Bestellungen')} value={st?.open_orders ?? '–'} sub={st?.open_counts ? tt('{open_counts} Inventur läuft', { open_counts: st.open_counts }) : undefined} />
@@ -108,7 +108,7 @@ function Stock({ articles, places, loading, onChange }: { articles: any[]; place
                     </div>
                   </td>
                   <td className="num">
-                    {qty(a.qty)} {a.unit} {a.low && <Badge tone="red">knapp</Badge>}
+                    {qty(a.qty)} {a.unit} {a.low && <Badge tone="red">{tt('knapp')}</Badge>}
                   </td>
                   <td className="num">{a.min_stock ? qty(a.min_stock) : '–'}</td>
                   <td className="small">

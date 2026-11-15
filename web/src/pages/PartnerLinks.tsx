@@ -86,6 +86,7 @@ function Fallback({ r }: { r: Row }) {
 
 export function PartnerLinks() {
   const tt = useT('x_agency');
+  const tc = useT('core');
   const brand = useSession().branding.name;
   const s = useLoad(() => api.get<Overview>('/api/agency/referrals'), []);
   const [links, setLinks] = useState<Record<string, string>>({});
@@ -128,7 +129,7 @@ export function PartnerLinks() {
           {tt('Wo {brand} nach einem Schlüssel oder Konto bei einem Anbieter fragt, steht ein Link', { brand: brand })} <b>{tt('„Konto anlegen ↗“')}</b>{tt('. Ist für den Anbieter ein')} <b>{tt('Partner-Link')}</b> {tt('hinterlegt, führt er über dessen Partnerprogramm und trägt das Kennzeichen')} <span className="partner-chip">{tt('Partner-Link')}</span>{tt('. Für dich und deine Kunden ändert sich dadurch nichts.')}
         </p>
         <p className="muted small">
-          {tt('Voreingestellt sind die Partner-Links des HyperLevel-Maintainers; die Kennzeichnung erklärt: „{PARTNER_HINT}“ Du kannst jeden durch einen eigenen Link ersetzen, einzeln oder ganz abschalten – dann erscheint die normale Anmelde-Seite. Gezählt werden nur Klicks je Anbieter über', { PARTNER_HINT: PARTNER_HINT })} <code>/go/…</code>{tt(', keine Personen, IP-Adressen oder Browser-Daten. Server-weit abschalten:')} <code>{tt('PGHL_REFERRALS_DISABLED=1')}</code>{tt('; eigene Links per Umgebung:')} <code>{tt('PGHL_REFERRALS')}</code> {tt('(JSON). Anleitung:')} <code>docs/referrals.md</code>.
+          {tt('Voreingestellt sind die Partner-Links des HyperLevel-Maintainers; die Kennzeichnung erklärt: „{PARTNER_HINT}“ Du kannst jeden durch einen eigenen Link ersetzen, einzeln oder ganz abschalten – dann erscheint die normale Anmelde-Seite. Gezählt werden nur Klicks je Anbieter über', { PARTNER_HINT: tc(PARTNER_HINT) })} <code>/go/…</code>{tt(', keine Personen, IP-Adressen oder Browser-Daten. Server-weit abschalten:')} <code>{tt('PGHL_REFERRALS_DISABLED=1')}</code>{tt('; eigene Links per Umgebung:')} <code>{tt('PGHL_REFERRALS')}</code> {tt('(JSON). Anleitung:')} <code>docs/referrals.md</code>.
         </p>
         <div className="pl-global" data-tour="partner-links-toggle">
           <Check checked={v.enabled} onChange={(enabled) => put({ enabled }, enabled ? tt('Partner-Links an') : tt('Nur noch normale Anmelde-Links'))} label={<b>{tt('Partner-Links verwenden')}</b>} />

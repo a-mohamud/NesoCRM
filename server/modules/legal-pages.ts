@@ -258,7 +258,7 @@ export const legalPagesModule: Module = {
 
     router.get('/api/legal/profile', 'location', (ctx) => {
       const { profile, prefilled } = profileOf(ctx.locationId);
-      return { profile: { ...profile, external: { ...profile.external, apiKey: profile.external.apiKey ? '••••••' : '' } }, prefilled, forms: FORMS.map((k) => ({ key: k, label: FORM_LABEL[k] })), notice: LEGAL_NOTICE };
+      return { profile: { ...profile, external: { ...profile.external, apiKey: profile.external.apiKey ? '••••••' : '' } }, prefilled, forms: FORMS.map((k) => ({ key: k, label: tCtx(ctx)(FORM_LABEL[k]) })), notice: LEGAL_NOTICE };
     });
     router.put('/api/legal/profile', 'location', (ctx) => {
       writable(ctx);
@@ -269,7 +269,7 @@ export const legalPagesModule: Module = {
       const facts = factsOf(ctx.locationId);
       const { profile } = profileOf(ctx.locationId);
       const active = new Set(activeServices(facts, profile.overrides));
-      return { facts, services: SERVICES.map((s) => ({ id: s.id, label: s.label, detected: s.on(facts), override: s.id in profile.overrides ? profile.overrides[s.id] : null, active: active.has(s.id) })) };
+      return { facts, services: SERVICES.map((s) => ({ id: s.id, label: tCtx(ctx)(s.label), detected: s.on(facts), override: s.id in profile.overrides ? profile.overrides[s.id] : null, active: active.has(s.id) })) };
     });
     router.post('/api/legal/generate', 'location', async (ctx) => {
       const kind = str(ctx.body?.kind, 'Dokument', { required: true });

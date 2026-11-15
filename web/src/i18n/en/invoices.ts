@@ -84,6 +84,7 @@ export default {
   Menge: 'Qty',
   Einheit: 'Unit',
   'Preis (€)': 'Price (€)',
+  'Preis ({currency})': 'Price ({currency})',
   'USt %': 'VAT %',
   Summe: 'Total',
   'Position entfernen': 'Remove item',
@@ -342,4 +343,6 @@ export default {
   'versendet': 'sent',
   'in Rechnung umgewandelt': 'converted to invoice',
   ' und ': ' and ',
+  'eingerichtet': 'set up',
+  'fehlt': 'missing',
 } satisfies Catalog;

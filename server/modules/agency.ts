@@ -106,7 +106,10 @@ export const agencyModule: Module = {
       const need = requiredPermission(ctx.method, ctx.path);
       if (need && !u.permissions.includes(need)) throw new HttpError(403, tCtx(ctx)('Kein Zugriff auf „{area}“', { area: tCtx(ctx)(PERMISSIONS[need]) }));
     });
-    router.get('/api/permissions', 'user', () => PERMISSIONS);
+    router.get('/api/permissions', 'user', (ctx) => {
+      const t = tCtx(ctx);
+      return Object.fromEntries(Object.entries(PERMISSIONS).map(([k, v]) => [k, t(v)]));
+    });
 
     // --- white-label branding --------------------------------------------------
     const domainStatus = (d: string) => (d ? (db.get('SELECT status, message, checked_at FROM domains WHERE domain = ?', d) ?? { status: 'pending', message: '' }) : undefined);
@@ -186,6 +189,9 @@ export const agencyModule: Module = {
         const since = new Date(Date.now() - 30 * 864e5).toISOString();
         const stats = locationStats(app, undefined, since, ['contacts', 'deals', 'inbox', 'activity']);
         const extra = overviewExtras(app, since);
+        // Deals carry their own currency: the open value is shown in it when all open deals of the sub-account share one.
+        const openCurrency = new Map<string, string>();
+        for (const r of db.all<{ location_id: string; a: string; b: string }>(`SELECT location_id, MIN(currency) AS a, MAX(currency) AS b FROM opportunities WHERE status = 'open' GROUP BY location_id`)) if (r.a === r.b) openCurrency.set(r.location_id, r.a);
         const funnels = new Map<string, any[]>();
         for (const f of db.all('SELECT id, name, slug, domain, kind, location_id FROM funnels ORDER BY name')) {
           const { location_id, ...rest } = f;
@@ -200,6 +206,7 @@ export const agencyModule: Module = {
             contacts: s?.contacts ?? 0,
             new_contacts: s?.new_contacts ?? 0,
             open_value: s?.open_value ?? 0,
+            open_currency: openCurrency.get(l.id) ?? null,
             appointments: extra.appointments.get(l.id) ?? 0,
             unread: s?.unread ?? 0,
             submissions: extra.submissions.get(l.id) ?? 0,
@@ -252,7 +259,7 @@ export const agencyModule: Module = {
       const locId = str(ctx.body.location_id, 'Sub-Account', { required: true });
       const loc = app.location(locId);
       if (!loc) throw notFound('Sub-Account nicht gefunden');
-      const row = { id: id(), name: str(ctx.body.name, 'Name') || `${loc.name} (${new Date().toLocaleDateString('de-DE')})`, description: str(ctx.body.description, 'Beschreibung', { max: 2000 }), source_location_id: locId, data: JSON.stringify(ctx.body.include_knowledge ? exportSnapshot(app, locId) : withoutKnowledge(exportSnapshot(app, locId))), created_at: now() };
+      const row = { id: id(), name: str(ctx.body.name, 'Name') || `${loc.name} (${new Date().toLocaleDateString(tCtx(ctx).locale === 'de' ? 'de-DE' : 'en-GB')})`, description: str(ctx.body.description, 'Beschreibung', { max: 2000 }), source_location_id: locId, data: JSON.stringify(ctx.body.include_knowledge ? exportSnapshot(app, locId) : withoutKnowledge(exportSnapshot(app, locId))), created_at: now() };
       db.insert('snapshots', row);
       return out(row);
     });

@@ -6,7 +6,7 @@ import { GenImageModal } from '../pages/GenMediaKit';
 import { type CanvasElement, type ChartData, type ChartKind, createElement } from '../../../server/services/canvas-model';
 import { elementSvg, renderSvg } from '../../../server/services/canvas-render';
 import { CANVAS_ICONS } from '../../../server/services/canvas-icons';
-import { TEMPLATES, buildTemplate } from '../../../server/services/canvas-templates';
+import { type TemplateInfo, buildTemplate } from '../../../server/services/canvas-templates';
 import { MermaidError, mermaidToElements } from '../../../server/services/canvas-mermaid';
 import { newId } from './store';
 import { imageElement, imageSize, uploadImage, IMAGE_TYPES } from './media';
@@ -32,23 +32,37 @@ export function Preview({ els, max = 360, prefix = 'pv' }: { els: CanvasElement[
 
 // --- templates ----------------------------------------------------------------------------------------
 
-/** The elements of every template (for the gallery previews), built once. */
-export function useTemplatePreviews() {
+export type TemplateItem = TemplateInfo & { category_label?: string; texts?: Record<string, string> };
+
+/** The templates in the user's language (names and texts come translated from the server) and their translator. */
+export function useCanvasTemplates() {
+  const r = useLoad(() => api.get<TemplateItem[]>('/api/canvas/templates'), []);
+  return useMemo(() => {
+    const list = r.data ?? [];
+    const texts: Record<string, string> = Object.assign({}, ...list.map((x) => x.texts ?? {}));
+    const tr = (s: string) => texts[s] ?? s;
+    return { list, tr };
+  }, [r.data]);
+}
+
+/** The elements of every template (for the gallery previews), built once per list. */
+export function useTemplatePreviews(list: TemplateInfo[], tr: (s: string) => string) {
   return useMemo(() => {
     let n = 0;
     const out: Record<string, CanvasElement[]> = {};
-    for (const t of TEMPLATES) out[t.key] = buildTemplate(t.key, () => `p${n++}`, { x: 0, y: 0 }) ?? [];
+    for (const t of list) out[t.key] = buildTemplate(t.key, () => `p${n++}`, { x: 0, y: 0 }, tr) ?? [];
     return out;
-  }, []);
+  }, [list, tr]);
 }
 
 export function TemplatesDialog({ api: ed, onClose }: DialogProps) {
   const tt = useT('x_misc');
-  const cats = ['Alle', ...new Set(TEMPLATES.map((t) => t.category))];
+  const { list, tr } = useCanvasTemplates();
+  const cats: [string, string][] = [['Alle', tt('Alle')], ...new Map(list.map((t) => [t.category, t.category_label ?? t.category] as [string, string]))];
   const [cat, setCat] = useState('Alle');
-  const previews = useTemplatePreviews();
+  const previews = useTemplatePreviews(list, tr);
   const use = (key: string) => {
-    const els = buildTemplate(key, newId, { x: 0, y: 0 });
+    const els = buildTemplate(key, newId, { x: 0, y: 0 }, tr);
     if (!els) return;
     const [cx, cy] = ed.center();
     const ids = ed.insert(els, { at: [cx, cy] });
@@ -58,14 +72,14 @@ export function TemplatesDialog({ api: ed, onClose }: DialogProps) {
   return (
     <Modal title={tt('Vorlagen')} onClose={onClose} wide>
       <div className="cv-cats" role="tablist">
-        {cats.map((c) => (
+        {cats.map(([c, label]) => (
           <button key={c} className={`cv-chip${cat === c ? ' on' : ''}`} onClick={() => setCat(c)}>
-            {c}
+            {label}
           </button>
         ))}
       </div>
       <div className="cv-tpl-grid" data-tour="canvas-templates">
-        {TEMPLATES.filter((t) => cat === 'Alle' || t.category === cat).map((t) => (
+        {list.filter((t) => cat === 'Alle' || t.category === cat).map((t) => (
           <button key={t.key} className="cv-tpl" onClick={() => use(t.key)} disabled={ed.readOnly}>
             <Preview els={previews[t.key]} max={340} prefix={`t${t.key}`} />
             <b>{t.name}</b>

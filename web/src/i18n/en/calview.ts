@@ -111,7 +111,7 @@ export default {
   'Oder neuer Kontakt:': 'Or a new contact:',
   Vorname: 'First name',
   Nachname: 'Last name',
-  'E-Mail': 'E-mail',
+  'E-Mail': 'Email',
   Telefon: 'Phone',
   Notiz: 'Note',
   Speichern: 'Save',

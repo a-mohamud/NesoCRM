@@ -164,7 +164,7 @@ function Wizard({ target, targetName }: { target: string; targetName: string }) 
         {STEPS.map(([k, l], i) => (
           <li key={k} className={k === step ? 'on' : reachable[k] && STEPS.findIndex(([s]) => s === step) > i ? 'done' : ''}>
             <button disabled={!reachable[k] || k === step} onClick={() => setStep(k)}>
-              <span className="um-n">{i + 1}</span> {l}
+              <span className="um-n">{i + 1}</span> {tt(l)}
             </button>
           </li>
         ))}

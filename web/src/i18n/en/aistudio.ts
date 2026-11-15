@@ -48,4 +48,7 @@ export default {
   'Eigene Domain (optional)': 'Custom domain (optional)',
   'DNS der Domain auf diesen Server zeigen lassen; das Zertifikat kommt automatisch, wenn Caddy mit On-Demand-TLS läuft.': 'Point the domain’s DNS to this server; the certificate is issued automatically when Caddy runs with on-demand TLS.',
   'Veröffentlichen baut das Projekt neu und ersetzt die öffentliche Fassung. Änderungen danach sind erst nach erneutem Veröffentlichen sichtbar.': 'Publishing rebuilds the project and replaces the public version. Later changes show only after you publish again.',
+  'Projekt „{name}“ mit allen Versionen löschen? Eine veröffentlichte Fassung geht offline.': 'Delete project “{name}” with all its versions? A published version goes offline.',
+  'Projekt gelöscht': 'Project deleted',
+  'Projekt löschen': 'Delete project',
 } satisfies Catalog;

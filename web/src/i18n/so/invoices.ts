@@ -77,6 +77,7 @@ export default {
   Menge: "Tirada",
   Einheit: "Halbeeg",
   "Preis (€)": "Qiimaha (€)",
+  "Preis ({currency})": "Qiimaha ({currency})",
   "USt %": "VAT %",
   Summe: "Wadarta",
   "Position entfernen": "Ka saar shayga",
@@ -331,4 +332,6 @@ export default {
   versendet: "la diray",
   "in Rechnung umgewandelt": "waxaa loo beddelay qaansheeg",
   " und ": " iyo ",
+  eingerichtet: "la diyaariyay",
+  fehlt: "maqan",
 } satisfies Catalog;

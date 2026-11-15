@@ -5,7 +5,7 @@ import { id, now } from '../core/util.js';
 import type { HealthReport } from '../services/ops-alerts.js';
 import { bucketOf, COMPONENTS, currentStatus, dailyUptime, DAYS, IMPACT_LABEL, renderStatusPage, STATUS_LABEL, type Incident, type Sample } from '../services/status-page.js';
 import { getBranding } from './agency.js';
-import { tApp } from '../i18n/index.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * Public status page `/status` (docs/backups.md#status-page): components, 90 days of uptime from the instance's own health samples
@@ -118,11 +118,11 @@ export const statusPageModule: Module = {
       return r;
     };
 
-    router.get('/api/admin/status-page', 'admin', () => ({
-      enabled: enabled(app),
-      url: `${app.config.baseUrl}/status`,
-      ...view(),
-    }));
+    router.get('/api/admin/status-page', 'admin', (ctx) => {
+      const t = tCtx(ctx);
+      const v = view();
+      return { enabled: enabled(app), url: `${app.config.baseUrl}/status`, ...v, components: v.components.map((c) => ({ ...c, name: t(c.name) })) };
+    });
     router.post('/api/admin/status-page/incidents', 'admin', (ctx) => {
       const v = clean(ctx.body);
       if (!v.message) throw bad('Bitte beschreiben, was los ist (wird öffentlich angezeigt)');

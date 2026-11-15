@@ -1932,4 +1932,5 @@ export default {
   'jede': 'any',
   'gespeichert': 'saved',
   'Test fehlgeschlagen': 'Test failed',
+  "„{step}“": "“{step}”",
 } satisfies Catalog;

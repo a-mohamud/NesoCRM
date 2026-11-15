@@ -90,7 +90,7 @@ export function StripeSettings() {
         <Input type="password" value={f.secret_key} onChange={(v) => setF({ ...f, secret_key: v.trim() })} placeholder={s.key_set ? tt('gespeichert ({key_hint}) – leer lassen zum Behalten', { key_hint: s.key_hint }) : tt('sk_live_… oder sk_test_…')} autoComplete="off" />
       </Field>
 
-      <h3 style={{ marginTop: 18 }} data-tour="stripe-webhook">Webhook {s.webhook_set ? <Badge tone="green">eingerichtet</Badge> : <Badge tone="yellow">fehlt</Badge>}</h3>
+      <h3 style={{ marginTop: 18 }} data-tour="stripe-webhook">Webhook {s.webhook_set ? <Badge tone="green">{tt('eingerichtet')}</Badge> : <Badge tone="yellow">{tt('fehlt')}</Badge>}</h3>
       <MoreFields id="stripe-webhook" label={tt('Webhook einrichten')} values={[s.key_set && !s.webhook_set]}>
       <ol className="steps small">
         <li>{tt('Stripe-Dashboard → Entwickler → Webhooks → „Endpunkt hinzufügen“.')}</li>

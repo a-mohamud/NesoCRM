@@ -1757,6 +1757,7 @@ export default {
   'Wie „Vor Änderungen fragen“ – sieht aber freie Termine nach und bucht einen freien Termin selbst (auch in der Auto-Antwort), mit Bestätigung samt Links zum Verschieben und Absagen.': 'Like “Ask before changes” – but also checks for free slots and books one itself (including in auto-reply), with a confirmation including links to reschedule and cancel.',
   'Ändert selbstständig. Versenden, Löschen, Zahlungen und Social-Posts brauchen trotzdem deine Bestätigung.': 'Makes changes on its own. Sending, deleting, payments and social posts still need your confirmation.',
   'Nur lesen': 'Read only',
+  'Lesen & schreiben': 'Read & write',
   'Vor Änderungen fragen': 'Ask before changes',
   'Termin buchen': 'Book appointment',
   'Autonom': 'Autonomous',
@@ -2136,4 +2137,5 @@ export default {
   'Sprache des Videos': 'Video language',
   'Panel auf der Kontakt-Seite: {title}': 'Panel on the contact page: {title}',
   'Panel auf der Deal-Seite: {title}': 'Panel on the deal page: {title}',
+  "automatisch": "automatic",
 } satisfies Catalog;

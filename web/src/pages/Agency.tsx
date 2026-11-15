@@ -34,7 +34,7 @@ import { Slot } from '../slots';
 import { AgencyTabs } from '../areas/SettingsTabs';
 import { MoreFields } from '../areas/fields';
 import { DEFAULT_CLIENT_PERMS, PermissionPicker } from './PermissionPicker';
-import { useT } from '../i18n';
+import { fmtMoney, useT } from '../i18n';
 const { AgencyFeedback } = lazyPages(() => import('./FeedbackAdmin'), 'AgencyFeedback');
 const { SystemHealth } = lazyPages(() => import('./SystemHealth'), 'SystemHealth');
 const { UmzugAssistent } = lazyPages(() => import('./UmzugAssistent'), 'UmzugAssistent');
@@ -188,7 +188,7 @@ function Clients() {
                 <td>
                   {l.new_contacts} <span className="muted small">{tt('· {submissions} Formulare', { submissions: l.submissions })}</span>
                 </td>
-                <td>{euro(l.open_value)}</td>
+                <td>{l.open_currency ? fmtMoney(l.open_value * 100, l.open_currency, { maximumFractionDigits: 0 }) : euro(l.open_value)}</td>
                 <td>{l.appointments}</td>
                 <td className="small">
                   {l.funnels.map((f: any) => (

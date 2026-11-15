@@ -308,13 +308,13 @@ function InvoiceEditorFor({ id }: { id: string }) {
               <Input value={i.title} onChange={(v) => set({ title: v })} disabled={frozen} placeholder={t('z. B. Website-Relaunch')} />
             </Field>
             <div className="table-wrap">
-              <table className="t" data-tour="invoice-items">
+              <table className="t" data-tour="invoice-items" style={{ minWidth: 640 }}>
                 <thead>
                   <tr>
                     <th>{t('Position')}</th>
                     <th style={{ width: 80 }}>{t('Menge')}</th>
                     <th style={{ width: 96 }}>{t('Einheit')}</th>
-                    <th style={{ width: 110 }}>{t('Preis (€)')}</th>
+                    <th style={{ width: 110 }}>{t('Preis ({currency})', { currency: i.currency || 'EUR' })}</th>
                     {mode === 'standard' && <th style={{ width: 84 }}>{t('USt %')}</th>}
                     <th style={{ width: 110, textAlign: 'right' }}>{t('Summe')}</th>
                     <th style={{ width: 30 }}></th>
@@ -364,7 +364,7 @@ function InvoiceEditorFor({ id }: { id: string }) {
                     <Select
                       value=""
                       placeholder={`+ ${t('Produkt einfügen…')}`}
-                      options={products.data!.map((p) => [p.id, `${p.name} (${money(p.price_cents)})`])}
+                      options={products.data!.map((p) => [p.id, `${p.name} (${money(p.price_cents, p.currency)})`])}
                       onChange={(v) => {
                         const p = products.data!.find((x) => x.id === v);
                         if (p) set({ items: [...i.items, { name: p.name, description: p.description, qty: sign, price_cents: p.price_cents, tax_rate: mode === 'standard' ? (p.tax_rate ?? i.items[0]?.tax_rate ?? 19) : 0 }], payment_link: i.payment_link || p.payment_link });

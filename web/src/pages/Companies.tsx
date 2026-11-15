@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../icons';
-import { api, d, dt, euro, name } from '../api';
+import { amount, api, d, dt, name } from '../api';
+import { sums } from './deal-kit';
 import { CanvasPin } from '../canvas/pin';
 import { Badge, Check, Empty, Field, Input, Link, Modal, PageHead, Select, Spinner, Tabs, act, confirmAsk, navigate, toast, useLoad } from '../ui';
 import {
@@ -97,7 +98,7 @@ function NewCompany({ onClose, onSaved }: { onClose: () => void; onSaved: (c: an
           <Select value={c.size} onChange={(v) => setC({ ...c, size: v })} placeholder="–" options={SIZES} />
         </Field>
         <Field label={tt('Phase')}>
-          <Select value={c.lifecycle_stage} onChange={(v) => setC({ ...c, lifecycle_stage: v })} placeholder="–" options={Object.entries(LIFECYCLE)} />
+          <Select value={c.lifecycle_stage} onChange={(v) => setC({ ...c, lifecycle_stage: v })} placeholder="–" options={Object.entries(LIFECYCLE).map(([k, v]) => [k, tt(v)] as [string, string])} />
         </Field>
         <Field label={tt('Zuständig')}>
           <Select value={c.owner_id} onChange={(v) => setC({ ...c, owner_id: v })} placeholder="–" options={users.map((u) => [u.id, u.name] as [string, string])} />
@@ -204,6 +205,8 @@ export function Companies() {
     if (f.key === 'updated_at' || f.key === 'created_at') return <span className="muted">{d(r[f.key])}</span>;
     if (f.key.startsWith('custom.')) return <PropValue def={f} value={r.custom?.[f.key.slice(7)]} users={users} />;
     if (['contacts_count', 'deals_count', 'deals_value'].includes(f.key) && !r[f.key]) return <span className="muted">–</span>;
+    // Deal amounts in the deals' own currency (whole units, like on the deal board), not always in euros.
+    if (f.key === 'deals_value') return <>{amount(r.deals_value, r.deals_currency)}</>;
     return <PropValue def={f} value={r[f.key]} users={users} />;
   };
 
@@ -370,7 +373,7 @@ export function CompanyDetail({ id }: { id: string }) {
         </div>
         <div className="stat card">
           <div className="muted">{tt('Deal-Wert')}</div>
-          <div className="stat-value">{euro(co.deals_value)}</div>
+          <div className="stat-value">{co.deals.some((x: any) => x.status !== 'lost') ? sums(co.deals.filter((x: any) => x.status !== 'lost')) : '–'}</div>
           <div className="muted small">{tt('{length} Deals, ohne verlorene', { length: co.deals.length })}</div>
         </div>
         <div className="stat card">

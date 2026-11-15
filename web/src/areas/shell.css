@@ -32,6 +32,8 @@
 /* --- page heads: one primary, the rest in "⋯" – never wrapping on phones ---------------------------------------------- */
 .page-head .actions { flex-wrap: nowrap; }
 .page-head .actions > * { flex: none; }
+/* a select right in the actions (e.g. the dashboard's period) is as wide as its options, not 100% of the row (it ran off the page) */
+.page-head .actions > select { width: auto; }
 .act-more { position: relative; display: inline-flex; }
 .act-more > .btn { min-width: 40px; justify-content: center; }
 .act-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 220px; max-width: min(320px, 92vw); padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 14px 40px rgba(0, 0, 0, .16); display: flex; flex-direction: column; align-items: stretch; gap: 2px; }

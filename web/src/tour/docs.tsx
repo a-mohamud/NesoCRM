@@ -4,6 +4,7 @@ import { Icon } from '../icons';
 import { useSession } from '../session';
 import { Empty, Link, PageHead, Spinner, useLoad } from '../ui';
 import { handbookMarkdown } from './handbook';
+import { useTourText } from './catalog';
 import { Markdown } from './markdown';
 import { useT } from '../i18n';
 
@@ -38,6 +39,7 @@ export function DocViewer({ name }: { name: string }) {
 /** The whole journey as a printable handbook (Drucken → „Als PDF speichern“). */
 export function Handbook() {
   const tt = useT('x_tours_b');
+  useTourText(); // the chapters are tour texts from both catalogs (x_tours_a + x_tours_b)
   const session = useSession();
   useAnchor(true);
   return (

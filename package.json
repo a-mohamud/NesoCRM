@@ -56,8 +56,8 @@
     "@twilio/voice-sdk": "^2.18.5",
     "esbuild-wasm": "^0.28.2",
     "imapflow": "^1.7.8",
-    "mailparser": "^3.9.33",
-    "nodemailer": "^10.0.13",
+    "mailparser": "^3.14.3",
+    "nodemailer": "^10.6.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

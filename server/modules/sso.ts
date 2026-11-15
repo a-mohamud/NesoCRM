@@ -99,6 +99,7 @@ interface Identity {
   name: string;
   groups: string[];
   mfa: boolean;
+  hostedDomain?: string;
 }
 
 const DEFAULT_CONFIG: OidcConfig = {
@@ -376,6 +377,11 @@ export const ssoModule: Module = {
         if (!m.allowed) throw new LoginError(tApp()('Kein Zugriff: dein {provider}-Konto ist in keiner freigegebenen Gruppe', { provider: p.label }));
         u = lp().createUser({ email: i.email, name: i.name, role: m.role, locations: m.locations, permissions: m.permissions, via: p.label });
       } else {
+        // Neso fork: a NEW account by e-mail domain needs a real Google Workspace account of that domain (claim `hd`) –
+        // a personal Google account whose address merely ends in the domain does not qualify. Existing users (matched
+        // or linked above) and invited people may still use any Google account, personal ones included.
+        if (p.key === 'google' && !lp().inviteOf(i.email) && i.hostedDomain !== emailDomain(i.email))
+          throw new LoginError(tApp()('Für {email} gibt es kein Konto, und neue Konten sind nicht freigegeben', { email: i.email }));
         u = lp().provision(i.email, i.name, p.label);
         if (!u) throw new LoginError(tApp()('Für {email} gibt es kein Konto, und neue Konten sind nicht freigegeben', { email: i.email }));
       }

@@ -480,7 +480,7 @@ function SettingsTab({ onSaved }: { onSaved: () => void }) {
     setRates(s.data.shipping.map((r: any) => ({ id: r.id, name: r.name, type: r.type, price: euro(r.price_cents), tiers: r.tiers.map((x: any) => ({ up_to_g: String(x.up_to_g), price: euro(x.price_cents) })), countries: r.countries.join(', '), free_over: r.free_over_cents ? euro(r.free_over_cents) : '', delivery: r.delivery })));
   }, [s.data]);
   if (!f) return <Spinner />;
-  const countries: Record<string, string> = s.data.countries;
+  const countries: Record<string, string> = s.data.country_names;
   const set = (k: string) => (v: unknown) => setF({ ...f, [k]: v });
   const setRate = (i: number, patch: Partial<Rate>) => setRates(rates.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const toggleCountry = (c: string) => set('countries')(f.countries.includes(c) ? f.countries.filter((x: string) => x !== c) : [...f.countries, c]);

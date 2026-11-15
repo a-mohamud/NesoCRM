@@ -263,7 +263,9 @@ export function useTeamInbox(sel: string, reloadList: () => void, reloadThread: 
 
 export function ViewRail({ value, onChange, counts, meta }: { value: string; onChange: (v: string) => void; counts: Record<string, number>; meta?: InboxMeta }) {
   const t = useT('inbox');
-  const label = (k: string) => t(meta?.views.find(([v]) => v === k)?.[1] ?? FALLBACK_LABEL[k] ?? k);
+  // Known views by their German message id: the server sends its labels already translated (English for a Somali login,
+  // since the server has no Somali texts), so they would stay English here.
+  const label = (k: string) => t(FALLBACK_LABEL[k] ?? meta?.views.find(([v]) => v === k)?.[1] ?? k);
   return (
     <nav className="tx-rail" aria-label={t('Ansichten')} data-tour="inbox-views">
       {VIEW_ORDER.map(([k, icon]) => (
@@ -465,7 +467,7 @@ export function ThreadBar({ convId, st, meta, onChanged, snoozeKey }: { convId: 
       <div className="tx-seg" role="group" aria-label={t('Status')} data-tour="inbox-status">
         {meta.statuses.map(([k, label]) => (
           <button key={k} type="button" className={st.status === k ? 'on' : ''} aria-pressed={st.status === k} onClick={() => st.status !== k && run(() => api.post(`${base}/status`, { status: k }))} title={k === 'closed' ? t('Taste E') : undefined}>
-            {k === 'waiting' ? t('Wartet') : t(label)}
+            {k === 'waiting' ? t('Wartet') : t(STATUS_LABEL[k] ?? label)}
           </button>
         ))}
       </div>
@@ -476,7 +478,7 @@ export function ThreadBar({ convId, st, meta, onChanged, snoozeKey }: { convId: 
         <select aria-label={t('Priorität')} value={st.priority} onChange={(e) => run(() => api.post(`${base}/priority`, { priority: e.target.value }))}>
           {meta.priorities.map(([k, l]) => (
             <option key={k} value={k}>
-              {t('Priorität: {level}', { level: t(l) })}
+              {t('Priorität: {level}', { level: t(PRIORITY_LABEL[k] ?? l) })}
             </option>
           ))}
         </select>

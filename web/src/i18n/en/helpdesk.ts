@@ -16,6 +16,9 @@ export default {
   SMS: 'SMS',
   'Live-Chat': 'Live chat',
   WhatsApp: 'WhatsApp',
+  // ticket sources (services/helpdesk.ts SOURCES) shown in filters, list and detail
+  Telefon: 'Phone',
+  Tickets: 'Tickets',
   '{n} Min.': '{n} min',
   '{n} Std.': '{n} h',
   '{n} Tg.': '{n} d',
@@ -410,4 +413,5 @@ export default {
   'Jede Einsendung als Ticket anlegen (Service)': 'Create a ticket for every submission (service)',
   'Ein Feld „Betreff“ (oder „Anliegen“) wird zum Ticket-Betreff, alle Antworten zur Beschreibung. Das Formular braucht ein E-Mail- oder Telefon-Feld.':
     'A field “Subject” (or “Request”) becomes the ticket subject, all answers the description. The form needs an email or phone field.',
+  "{{csat_link}} ist Pflicht – per E-Mail erscheinen dort fünf Smiley-Knöpfe. Der Link ist signiert und gilt nur für dieses Ticket.": "{{csat_link}} is required – in the email it shows five smiley buttons. The link is signed and only works for this ticket.",
 } satisfies Catalog;

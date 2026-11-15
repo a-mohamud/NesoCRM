@@ -69,8 +69,8 @@ export function BoardList({ tab }: { tab: 'boards' | 'vorlagen' }) {
       </PageHead>
       <Tabs
         tabs={[
-          ['boards', 'Meine Boards'],
-          ['vorlagen', 'Vorlagen'],
+          ['boards', tt('Meine Boards')],
+          ['vorlagen', tt('Vorlagen')],
         ]}
         value={tab}
         onChange={(v) => navigate(v === 'boards' ? 'boards' : `boards/${v}`)}

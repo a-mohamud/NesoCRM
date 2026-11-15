@@ -61,7 +61,7 @@ export const agencyListsModule: Module = {
         stageNames.set(p.id, new Map((JSON.parse(p.stages || '[]') as { id: string; name: string }[]).map((st) => [st.id, st.name])));
       }
       const rows = db.all(
-        `SELECT o.id, o.name, o.value, o.status, o.location_id, l.name AS project, o.pipeline_id,
+        `SELECT o.id, o.name, o.value, o.currency, o.status, o.location_id, l.name AS project, o.pipeline_id,
                 o.stage_id, o.contact_id, c.first_name, c.last_name, c.email, o.updated_at
          FROM opportunities o JOIN locations l ON l.id = o.location_id
          LEFT JOIN contacts c ON c.id = o.contact_id ${where.length ? `WHERE ${where.join(' AND ')}` : ''}

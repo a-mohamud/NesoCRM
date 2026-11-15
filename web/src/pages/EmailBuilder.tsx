@@ -131,10 +131,21 @@ export const designPlainText = (text: string | undefined) =>
  * (server/services/email-render.ts) in German and are message ids of the email catalog.
  */
 function localBlock(type: BlockType): Block {
+  return localTexts(newBlock(type));
+}
+
+const LOCAL_PROPS = ['text', 'label', 'alt', 'caption', 'html', 'unsubscribeLabel'];
+function localTexts(b: Block): Block {
   const t = tr('email');
-  const b = newBlock(type);
-  for (const k of ['text', 'label', 'alt', 'caption', 'html', 'unsubscribeLabel']) if (typeof b.props[k] === 'string' && b.props[k]) b.props[k] = t(b.props[k]);
+  for (const k of LOCAL_PROPS) if (typeof b.props[k] === 'string' && b.props[k]) b.props[k] = t(b.props[k]);
   return b;
+}
+
+/** A starter template in the UI language: its texts and subject (server/services/email-starters.ts, German) are message ids of the email catalog. */
+function localStarter(s: (typeof STARTERS)[number]) {
+  const design = s.build();
+  for (const sec of design.sections) for (const col of sec.columns) col.blocks.forEach(localTexts);
+  return { ...s, design, subject: tr('email')(s.subject) };
 }
 
 /** A finding of the design check (designIssues) in the UI language. */
@@ -445,7 +456,7 @@ function ImagePicker({ onPick, onClose }: { onPick: (url: string) => void; onClo
 
 function StarterPicker({ onPick, onClose, location }: { onPick: (d: EmailDesign, subject: string) => void; onClose: () => void; location?: Record<string, any> }) {
   const t = useT('email');
-  const starters = useMemo(() => STARTERS.map((s) => ({ ...s, design: s.build() })), []);
+  const starters = useMemo(() => STARTERS.map(localStarter), []);
   return (
     <Modal title={t('Vorlage wählen')} onClose={onClose} wide>
       <div className="eb-starters">
@@ -1322,7 +1333,7 @@ export function EmailBuilder({ initial, subject: initialSubject, mode, onSave, o
                                   {...pressable((e) => (e.stopPropagation(), select({ kind: 'block', id: b.id })))}
                                 >
                                   <span className="eb-blk-label">{t(BLOCK_META[b.type][1])}</span>
-                                  {b.type === 'html' ? <HtmlBlockPreview html={renderBlockHtml(design, sec, ci, b)} /> : <div dangerouslySetInnerHTML={{ __html: renderBlockHtml(design, sec, ci, b) }} />}
+                                  {b.type === 'html' ? <HtmlBlockPreview html={renderBlockHtml(design, sec, ci, b, t)} /> : <div dangerouslySetInnerHTML={{ __html: renderBlockHtml(design, sec, ci, b, t) }} />}
                                   {sel?.id === b.id && (
                                     <div className="eb-blk-tools" onClick={(e) => e.stopPropagation()}>
                                       <button type="button" title={t('Nach oben')} aria-label={t('Nach oben')} onClick={() => nudgeBlock(b.id, -1)}>

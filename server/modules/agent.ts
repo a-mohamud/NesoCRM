@@ -868,7 +868,7 @@ export const agentModule: Module = {
       const s = locSettings(ctx.locationId);
       return {
         enabled: s.enabled,
-        default_agent: { id: null, name: DEFAULT_AGENT.name, emoji: DEFAULT_AGENT.emoji, description: tCtx(ctx)(DEFAULT_AGENT.description), mode: s.default_mode, starters: DEFAULT_STARTERS.map((x) => tCtx(ctx)(x)) },
+        default_agent: { id: null, name: tCtx(ctx)(DEFAULT_AGENT.name), emoji: DEFAULT_AGENT.emoji, description: tCtx(ctx)(DEFAULT_AGENT.description), mode: s.default_mode, starters: DEFAULT_STARTERS.map((x) => tCtx(ctx)(x)) },
         agents: app.services.agentDefs?.listFor(u, ctx.locationId) ?? [],
         connection: resolved ? { id: resolved.connectionId, provider: resolved.provider, label: resolved.label, model: resolved.model, vision: resolved.capabilities.includes('vision') } : null,
         // Models the chat can switch to: every text connection plus the user's own bridge (if paired).
@@ -898,9 +898,9 @@ export const agentModule: Module = {
         total: { calls: all.calls, cost_usd: all.cost / 1e6, tokens: all.tokens },
         limit_usd: s.monthly_limit_usd,
         token_limit: s.monthly_token_limit,
-        by_agent: byAgent.map((a) => ({ agent_id: a.agent_id, name: a.agent_id ? (app.services.agentDefs?.name?.(a.agent_id) ?? tCtx(ctx)('Gelöschter Agent')) : DEFAULT_AGENT.name, runs: a.runs, cost_usd: (a.cost ?? 0) / 1e6, tokens: a.tokens ?? 0 })),
+        by_agent: byAgent.map((a) => ({ agent_id: a.agent_id, name: a.agent_id ? (app.services.agentDefs?.name?.(a.agent_id) ?? tCtx(ctx)('Gelöschter Agent')) : tCtx(ctx)(DEFAULT_AGENT.name), runs: a.runs, cost_usd: (a.cost ?? 0) / 1e6, tokens: a.tokens ?? 0 })),
         by_user: byUser.map((a) => ({ user_id: a.user_id, name: a.name ?? '–', runs: a.runs, cost_usd: (a.cost ?? 0) / 1e6 })),
-        recent: recent.map((r) => ({ ...r, cost_usd: r.cost_micros / 1e6, agent: r.agent_id ? (app.services.agentDefs?.name?.(r.agent_id) ?? '–') : DEFAULT_AGENT.name })),
+        recent: recent.map((r) => ({ ...r, cost_usd: r.cost_micros / 1e6, agent: r.agent_id ? (app.services.agentDefs?.name?.(r.agent_id) ?? '–') : tCtx(ctx)(DEFAULT_AGENT.name) })),
       };
     });
 

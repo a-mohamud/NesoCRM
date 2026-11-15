@@ -93,7 +93,7 @@ function DigestSettings() {
         <h2>{tt('Tägliche Zusammenfassung')}</h2>
         <Check checked={v.digest_enabled} onChange={(x) => setV({ ...v, digest_enabled: x })} label={tt('Mitgliedern einmal am Tag ihre ungelesenen Benachrichtigungen mailen')} />
         <Field label={tt('Ab Uhrzeit')} hint={tt('In der Zeitzone des Sub-Accounts. Versand über Einstellungen → E-Mail & SMS (SMTP); Mitglieder können sie im Profil abbestellen.')}>
-          <Select value={String(v.digest_hour)} onChange={(x) => setV({ ...v, digest_hour: Number(x) })} options={Array.from({ length: 24 }, (_, h) => [String(h), `${String(h).padStart(2, '0')}:00 Uhr`] as [string, string])} />
+          <Select value={String(v.digest_hour)} onChange={(x) => setV({ ...v, digest_hour: Number(x) })} options={Array.from({ length: 24 }, (_, h) => [String(h), tt('{hour}:00 Uhr', { hour: String(h).padStart(2, '0') })] as [string, string])} />
         </Field>
         <button className="btn" onClick={() => act(() => api.put('/api/community/settings', { digest_enabled: v.digest_enabled, digest_hour: v.digest_hour }), tt('Gespeichert'))}>
           {tt('Speichern')}
@@ -476,10 +476,10 @@ function Channels({ group, reload }: { group: any; reload: () => void }) {
                   <input type="checkbox" checked={!!c.admin_only} onChange={(e) => set(i, { admin_only: e.target.checked ? 1 : 0 })} aria-label={tt('Nur Team schreibt in Kanal {v}', { v: i + 1 })} />
                 </td>
                 <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                  <button className="icon-btn" disabled={!i} onClick={() => move(i, -1)} aria-label="hoch">
+                  <button className="icon-btn" disabled={!i} onClick={() => move(i, -1)} aria-label={tt('Nach oben')}>
                     ↑
                   </button>
-                  <button className="icon-btn" disabled={i === rows.length - 1} onClick={() => move(i, 1)} aria-label="runter">
+                  <button className="icon-btn" disabled={i === rows.length - 1} onClick={() => move(i, 1)} aria-label={tt('Nach unten')}>
                     ↓
                   </button>
                   <button className="btn small" disabled={!c.dirty} onClick={() => save(c)}>

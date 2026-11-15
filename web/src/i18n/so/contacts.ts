@@ -304,6 +304,7 @@ export default {
   "Punkte für passende Eigenschaften und Aktivität – Schwellen wie MQL und SQL starten Workflows": "Dhibco loogu talagalay astaamaha ku habboon iyo dhaqdhaqaaqa – xadadka sida MQL iyo SQL ayaa bilaaba socodka shaqada",
   "+ Modell": "+ Hab",
   "Erstes Scoring-Modell anlegen": "Samee habkaaga dhibcaynta ugu horreeya",
+  "Lead-Scoring": "Dhibcaynta macaamiisha",
   "Noch kein Lead-Scoring. Wir starten mit einer Vorlage (Formulare, Klicks, Termine), die du anpasst.": "Weli dhibcayn macmiil ma jirto. Waxaan ku bilaabaynaa moodal (foomam, gujin, ballamo) oo aad wax ka beddeli karto.",
   "(pausiert)": "(la hakiyay)",
   "Noch keine Punkte.": "Weli dhibco ma jiraan.",

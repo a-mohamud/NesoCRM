@@ -6,7 +6,7 @@ import { AiError } from '../services/anthropic.js';
 import type { Usage } from '../services/anthropic.js';
 import { DEFAULT_MODEL, KEY_RE, MODELS, MODEL_RE, callOpenAi, checkKey, costMicros, type OpenAiRequest } from '../services/openai.js';
 import { openSecret, sealSecret } from './mail-sync.js';
-import { tApp } from '../i18n/index.js';
+import { tApp, tCtx } from '../i18n/index.js';
 
 /**
  * AI provider for the KI-Assistent: Anthropic (Claude, built into ai-assistant.ts) or OpenAI (Responses API),
@@ -182,7 +182,7 @@ export const aiProvidersModule: Module = {
     };
 
     // --- sub-account --------------------------------------------------------------------
-    const out = (locId: string) => {
+    const out = (locId: string, t: ReturnType<typeof tApp> = tApp()) => {
       const l = local(locId);
       const a = agency();
       const r = resolve(locId);
@@ -195,7 +195,7 @@ export const aiProvidersModule: Module = {
           { id: 'anthropic', label: 'Anthropic (Claude)' },
           { id: 'openai', label: 'OpenAI (GPT)' },
         ],
-        openai: { model: l.openai_model, effective_model: r.model, default_model: a.openai_model || DEFAULT_MODEL, models: MODELS, key_set: !!l.openai_key, key_hint: hint(l.openai_key), key_source: r.keySource },
+        openai: { model: l.openai_model, effective_model: r.model, default_model: a.openai_model || DEFAULT_MODEL, models: MODELS.map((m) => ({ ...m, label: t(m.label) })), key_set: !!l.openai_key, key_hint: hint(l.openai_key), key_source: r.keySource },
         // Quick texts routed to a BYOK connection (KI-Anbieter) – shown as a hint above the choice here.
         routed: (() => {
           const p: AiProvider | null = app.services.aiConnections?.textProvider?.(locId) ?? null;
@@ -203,7 +203,7 @@ export const aiProvidersModule: Module = {
         })(),
       };
     };
-    router.get('/api/ai/provider', 'location', (ctx) => out(ctx.locationId));
+    router.get('/api/ai/provider', 'location', (ctx) => out(ctx.locationId, tCtx(ctx)));
     router.put('/api/ai/provider', 'location', (ctx) => {
       const b = ctx.body ?? {};
       const cur = local(ctx.locationId);
@@ -223,7 +223,7 @@ export const aiProvidersModule: Module = {
         next.openai_key,
         now(),
       );
-      return out(ctx.locationId);
+      return out(ctx.locationId, tCtx(ctx));
     });
     /** Checks the OpenAI key (typed or effective) against the Models API – costs no tokens. */
     router.post('/api/ai/provider/test', 'location', async (ctx) => {
@@ -235,11 +235,11 @@ export const aiProvidersModule: Module = {
     });
 
     // --- agency default -----------------------------------------------------------------
-    const agencyOut = () => {
+    const agencyOut = (t: ReturnType<typeof tApp> = tApp()) => {
       const a = agency();
-      return { provider: a.provider, openai: { model: a.openai_model, effective_model: a.openai_model || DEFAULT_MODEL, models: MODELS, key_set: !!a.openai_key, key_hint: hint(a.openai_key), key_source: a.openai_key ? 'agency' : envKey() ? 'server' : null } };
+      return { provider: a.provider, openai: { model: a.openai_model, effective_model: a.openai_model || DEFAULT_MODEL, models: MODELS.map((m) => ({ ...m, label: t(m.label) })), key_set: !!a.openai_key, key_hint: hint(a.openai_key), key_source: a.openai_key ? 'agency' : envKey() ? 'server' : null } };
     };
-    router.get('/api/agency/ai-provider', 'admin', () => agencyOut());
+    router.get('/api/agency/ai-provider', 'admin', (ctx) => agencyOut(tCtx(ctx)));
     router.put('/api/agency/ai-provider', 'admin', (ctx) => {
       const b = ctx.body ?? {};
       const a = agency();
@@ -250,7 +250,7 @@ export const aiProvidersModule: Module = {
       if (b.openai_model !== undefined) a.openai_model = cleanModel(b.openai_model);
       a.openai_key = keyPatch(b, a.openai_key);
       saveAgency(a);
-      return agencyOut();
+      return agencyOut(tCtx(ctx));
     });
     router.post('/api/agency/ai-provider/test', 'admin', async (ctx) => {
       const typed = ctx.body?.openai_key ? cleanKey(ctx.body.openai_key) : '';

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ICONS, Icon, type IconName } from '../icons';
 import { api, d, dt } from '../api';
 import { act, Badge, Check, confirmAsk, Field, Input, Link, Modal, pressable, Select, Spinner, Textarea, useLoad } from '../ui';
-import { useT } from '../i18n';
+import { intlLocale, useT } from '../i18n';
 import { readCsvFile } from '../csv-file';
 import { MoreFields, useSimple } from '../areas/fields';
 import { anyFilled } from '../areas/fields-model';
@@ -26,6 +26,8 @@ export interface FieldDef {
   description?: string;
   /** Option values → labels (e.g. lifecycle stages). */
   optionLabels?: Record<string, string>;
+  /** Currency of a `currency` value (ISO code); EUR when not given. */
+  currency?: string;
 }
 export interface User {
   id: string;
@@ -78,7 +80,8 @@ export function useUsers(): User[] {
   return list;
 }
 
-const eur = (v: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
+// Numbers and amounts in the UI language's format (not always German: "1,234.50" in English).
+const eur = (v: number, currency?: string) => new Intl.NumberFormat(intlLocale(), { style: 'currency', currency: currency && /^[A-Z]{3}$/.test(currency) ? currency : 'EUR' }).format(v || 0);
 
 /** A property value for reading (lists, record pages). */
 export function PropValue({ def, value, users }: { def: FieldDef; value: any; users?: User[] }): ReactNode {
@@ -110,9 +113,9 @@ export function PropValue({ def, value, users }: { def: FieldDef; value: any; us
     case 'select':
       return <>{def.optionLabels?.[value] ?? value}</>;
     case 'currency':
-      return <>{eur(Number(value))}</>;
+      return <>{eur(Number(value), def.currency)}</>;
     case 'number':
-      return <>{Number(value).toLocaleString('de-DE')}</>;
+      return <>{Number(value).toLocaleString(intlLocale())}</>;
     case 'date':
       return <>{d(value)}</>;
     case 'datetime':

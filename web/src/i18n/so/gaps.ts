@@ -45,6 +45,8 @@ export default {
   "Text aus dem Link (URL-Parameter)": "Qoraal ka yimid linkiga (halbeegyada URL)",
   "Schreib in einen Text": "Ku qor qoraal kasta dhexdiisa",
   "wer …/seite?name=Anna öffnet, liest „Anna“, alle anderen „Freund“.": "qofkii fura …/page?name=Anna wuxuu akhriyaa “Anna”, dadka kalena “Saaxiib”.",
+  "{{url.name|Freund}}": "{{url.name|Saaxiib}}",
+  '{{#if url.quelle == "facebook"}}…{{else}}…{{/if}}': '{{#if url.source == "facebook"}}…{{else}}…{{/if}}',
   "Text je nach Link zeigen:": "Muuji qoraal ku xiran linkiga:",
   "Beliebige Website prüfen": "Hubi mareeg kasta",
   "Website eines Interessenten oder die alte Seite prüfen": "Hubi mareegta macmiil suurtagal ah ama mareegtaadii hore",
@@ -266,4 +268,5 @@ export default {
   "Lektionen je Modul": "Casharrada qayb kasta",
   "Die KI schreibt Gliederung und Lektionstexte. Angelegt wird erst nach deinem Klick – als Entwurf mit unveröffentlichten Lektionen.": "AI-ga ayaa qoraya qaab-dhismeedka iyo qoraallada casharrada. Waxba lama samaynayo ilaa aad riixdo – waxaana loo samaynayaa qabyo leh casharro aan la faafin.",
   "Min.": "daqiiqo",
+  Kundenstimmen: "Markhaatiyada macaamiisha",
 } satisfies Catalog;

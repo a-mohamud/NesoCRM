@@ -330,10 +330,10 @@ function DynTextCard() {
     <div className="card" data-tour="site-dyntext">
       <h2 style={{ marginTop: 0 }}>{t('Text aus dem Link (URL-Parameter)')}</h2>
       <p className="small">
-        {t('Schreib in einen Text')} <code>{'{{url.name|Freund}}'}</code> – {t('wer …/seite?name=Anna öffnet, liest „Anna“, alle anderen „Freund“.')}
+        {t('Schreib in einen Text')} <code>{t('{{url.name|Freund}}')}</code> – {t('wer …/seite?name=Anna öffnet, liest „Anna“, alle anderen „Freund“.')}
       </p>
       <p className="small muted">
-        {t('Text je nach Link zeigen:')} <code>{'{{#if url.quelle == "facebook"}}…{{else}}…{{/if}}'}</code>
+        {t('Text je nach Link zeigen:')} <code>{t('{{#if url.quelle == "facebook"}}…{{else}}…{{/if}}')}</code>
       </p>
     </div>
   );

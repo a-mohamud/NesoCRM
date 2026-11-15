@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useLocale, setLocale, useT } from '../i18n';
+import { useLocale, useT } from '../i18n';
+import { chooseLocale } from '../i18n/session';
 import { Icon } from '../icons';
 import { navigate, useFocusLayer } from '../ui';
 import { update, useLook } from '../theme/store';
@@ -72,10 +73,11 @@ export function QuickMenu({ onClose, anchor }: { onClose: () => void; anchor?: D
       </div>
       <div className="qm-row">
         <span className="qm-label">{t('Sprache')}</span>
+        {/* saved to the profile too (like Mein Konto) – the profile's language wins at the next start, so a device-only switch fell back */}
         <div className="qm-segs" role="group">
-          {seg('English', locale === 'en', () => void setLocale('en'))}
-          {seg('Soomaali', locale === 'so', () => void setLocale('so'))}
-          {seg('Deutsch', locale === 'de', () => void setLocale('de'))}
+          {seg('English', locale === 'en', () => void chooseLocale('en', true))}
+          {seg('Soomaali', locale === 'so', () => void chooseLocale('so', true))}
+          {seg('Deutsch', locale === 'de', () => void chooseLocale('de', true))}
         </div>
       </div>
       <div className="qm-links">

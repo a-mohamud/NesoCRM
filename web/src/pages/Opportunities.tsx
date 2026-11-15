@@ -20,7 +20,7 @@ import { DealForecastPanel } from './DealForecast';
 
 // Positions, quotes and call notes of a deal (Vertrieb): a chunk of its own, loaded when a deal is opened.
 const { DealSales } = lazyPages(() => import('./SalesDeal'), 'DealSales');
-const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP'];
+const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP', 'KES'];
 const OTHER_REASON = '__other';
 
 function PipelineEditor({ pipeline, onClose, onSaved }: { pipeline?: any; onClose: () => void; onSaved: () => void }) {
@@ -96,11 +96,11 @@ function PipelineEditor({ pipeline, onClose, onSaved }: { pipeline?: any; onClos
   );
 }
 
-function OppModal({ opp, pipeline, onClose, onSaved }: { opp?: any; pipeline: any; onClose: () => void; onSaved: () => void }) {
+function OppModal({ opp, pipeline, currency = 'EUR', onClose, onSaved }: { opp?: any; pipeline: any; /** Preset of a new deal: the currency the deals on the board are in. */ currency?: string; onClose: () => void; onSaved: () => void }) {
   const t = useT('deals');
   // A deal with positions gets its amount from them: the field is locked and the old amount is never sent back.
   const [locked, setLocked] = useState(false);
-  const [o, setO] = useState<any>(opp ?? { stage_id: pipeline.stages[0].id, value: 0, currency: 'EUR', expected_close_date: '', contact: { first_name: '', email: '' } });
+  const [o, setO] = useState<any>(opp ?? { stage_id: pipeline.stages[0].id, value: 0, currency, expected_close_date: '', contact: { first_name: '', email: '' } });
   // Reason of a lost deal: one of the pipeline's list, or free text behind "Anderer Grund".
   const reasonList: string[] = pipeline.lost_reason_options ?? [];
   const [reasonPick, setReasonPick] = useState<string>(opp?.lost_reason ? (reasonList.includes(opp.lost_reason) ? opp.lost_reason : OTHER_REASON) : '');
@@ -197,7 +197,7 @@ function OppModal({ opp, pipeline, onClose, onSaved }: { opp?: any; pipeline: an
           <div className="grid2">
             {value}
             {stage}
-            <MoreFields id="opp-edit" values={[o.currency && o.currency !== 'EUR' ? o.currency : '', o.expected_close_date]} count={2}>
+            <MoreFields id="opp-edit" values={[o.currency && o.currency !== currency ? o.currency : '', o.expected_close_date]} count={2}>
               {currency}
               {close}
             </MoreFields>
@@ -256,6 +256,13 @@ function lastPipeline() {
     return '';
   }
 }
+
+/** The currency most of these deals are in (EUR without deals) – the preset of a new deal. */
+const mainCurrency = (deals: { currency?: string }[]) => {
+  const n = new Map<string, number>();
+  for (const d of deals) if (d.currency) n.set(d.currency, (n.get(d.currency) ?? 0) + 1);
+  return [...n].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
+};
 
 export function Opportunities() {
   const t = useT('deals');
@@ -338,7 +345,7 @@ export function Opportunities() {
       {mode === 'board' ? <DealBoard pipeline={pipeline} list={list} onOpen={(o) => setModal({ kind: 'opp', opp: o })} onMove={drop} /> : <DealList pipelines={pipelines.data} version={version} onOpen={(o) => setModal({ kind: 'opp', opp: o })} />}
       {modal?.kind === 'pipeline' && <PipelineEditor pipeline={modal.pipeline} onClose={() => setModal(null)} onSaved={() => (setModal(null), pipelines.reload(), opps.reload())} />}
       {modal?.kind === 'order' && <PipelineOrder pipelines={pipelines.data} onClose={() => setModal(null)} onSaved={() => (setModal(null), pipelines.reload())} />}
-      {modal?.kind === 'opp' && <OppModal opp={modal.opp} pipeline={pipelines.data.find((p) => p.id === modal.opp?.pipeline_id) ?? pipeline} onClose={() => (setModal(null), opps.reload(), setVersion(version + 1))} onSaved={() => (setModal(null), opps.reload(), setVersion(version + 1))} />}
+      {modal?.kind === 'opp' && <OppModal opp={modal.opp} currency={mainCurrency(list)} pipeline={pipelines.data.find((p) => p.id === modal.opp?.pipeline_id) ?? pipeline} onClose={() => (setModal(null), opps.reload(), setVersion(version + 1))} onSaved={() => (setModal(null), opps.reload(), setVersion(version + 1))} />}
     </>
   );
 }

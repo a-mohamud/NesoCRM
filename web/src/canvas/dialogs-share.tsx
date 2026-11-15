@@ -469,7 +469,7 @@ export function HistoryDialog({ api: ed, onClose }: DialogProps) {
             <img src={withLocation(`/api/canvas/${ed.board.id}/snapshots/${s.id}/svg`)} alt="" loading="lazy" />
             <b>{s.name || tt('Version')}</b>
             <span className="muted small">
-              {tt('{dt} · {element_count} Elemente', { dt: dt(s.created_at), element_count: s.element_count })} {s.auto ? <Badge>automatisch</Badge> : null}
+              {tt('{dt} · {element_count} Elemente', { dt: dt(s.created_at), element_count: s.element_count })} {s.auto ? <Badge>{tt('automatisch')}</Badge> : null}
             </span>
             {canEdit && (
               <div className="cv-actions">

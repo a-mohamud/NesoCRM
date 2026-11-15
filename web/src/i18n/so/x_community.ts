@@ -1336,4 +1336,6 @@ export default {
   ausgewertet: "la qiimeeyay",
   widerrufen: "la buriyay",
   Termin: "Kalfadhi",
+  ZERT: "SHAH",
+  "{hour}:00 Uhr": "{hour}:00",
 } satisfies Catalog;

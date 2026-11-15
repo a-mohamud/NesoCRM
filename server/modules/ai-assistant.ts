@@ -391,7 +391,7 @@ export const aiAssistantModule: Module = {
     };
 
     // --- routes: settings ---------------------------------------------------------------------
-    const settingsOut = (locId: string) => {
+    const settingsOut = (locId: string, t: ReturnType<typeof tApp> = tApp()) => {
       const { settings, sealed } = load(locId);
       let hint = '';
       if (sealed) {
@@ -407,7 +407,7 @@ export const aiAssistantModule: Module = {
         key_set: !!sealed,
         key_hint: hint,
         key_source: sealed ? 'account' : envKey() ? 'server' : null,
-        models: MODELS,
+        models: MODELS.map((m) => ({ ...m, label: t(m.label) })),
         timezone: tz,
         open_now: isOpenAt(settings.business_hours, tz),
         bot_active_now: botActive(settings, tz) && hasKey(locId),
@@ -427,7 +427,7 @@ export const aiAssistantModule: Module = {
       const { settings } = load(ctx.locationId);
       return { enabled: settings.enabled && hasKey(ctx.locationId), bot_mode: settings.bot_mode, assistant_name: settings.assistant_name };
     });
-    router.get('/api/ai/settings', 'location', (ctx) => settingsOut(ctx.locationId));
+    router.get('/api/ai/settings', 'location', (ctx) => settingsOut(ctx.locationId, tCtx(ctx)));
     router.put('/api/ai/settings', 'location', (ctx) => {
       const cur = load(ctx.locationId);
       const b = ctx.body ?? {};
@@ -454,7 +454,7 @@ export const aiAssistantModule: Module = {
         sealed,
         now(),
       );
-      return settingsOut(ctx.locationId);
+      return settingsOut(ctx.locationId, tCtx(ctx));
     });
     /** Checks the key (typed or stored) against the Models API – costs no tokens. */
     router.post('/api/ai/test', 'location', async (ctx) => {

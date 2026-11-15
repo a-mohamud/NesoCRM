@@ -1932,4 +1932,5 @@ export default {
   jede: "mid kasta",
   gespeichert: "la kaydiyay",
   "Test fehlgeschlagen": "Tijaabadu way guuldarraysatay",
+  "„{step}“": "“{step}”",
 } satisfies Catalog;

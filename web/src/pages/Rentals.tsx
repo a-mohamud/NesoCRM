@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
 import { MoreFields } from '../areas/fields';
-import { useT } from '../i18n';
+import { intlLocale, useT } from '../i18n';
 import { Badge, Check, Empty, Field, Input, Modal, Select, Spinner, Textarea, act, confirmAsk, useLoad } from '../ui';
 
 import { parseDecimal } from '../numparse';
@@ -34,7 +34,7 @@ type Rental = {
 const EMPTY: Rental = { name: '', description: '', quantity: 1, unit: 'day', price_cents: 0, deposit_cents: 0, min_units: 1, max_units: 0, checkin_time: '', checkout_time: '', max_days: 365, active: true };
 const toCents = (s: string) => Math.max(0, Math.round(parseDecimal(s) * 100) || 0);
 const centsText = (c: number) => (c ? (c / 100).toFixed(2).replace('.', ',') : '');
-const money = (c: number, cur = 'EUR') => (c / 100).toLocaleString('de-DE', { style: 'currency', currency: cur });
+const money = (c: number, cur = 'EUR') => (c / 100).toLocaleString(intlLocale(), { style: 'currency', currency: cur });
 
 export function Rentals() {
   const t = useT('rentals');

@@ -97,7 +97,7 @@ export const contactsModule: Module = {
     router.post('/api/contacts', 'location', (ctx) => {
       const b = ctx.body;
       if (!b.email && !b.phone && !b.first_name && !b.last_name && !b.name) throw bad('Name, E-Mail oder Telefon angeben');
-      const { contact, created } = upsertContact(app, ctx.locationId, b, { source: ctx.viaApiKey ? 'API' : 'manuell' });
+      const { contact, created } = upsertContact(app, ctx.locationId, b, { source: ctx.viaApiKey ? 'API' : tLoc(app, ctx.locationId)('manuell') });
       // `consent` in the body (true or { channels, purposes, doi, text, proof_url, note }): the yes goes into the consent ledger (modules/consent.ts).
       if (b.consent) app.services.consent?.captureApi?.(ctx, ctx.locationId, contact.id, b.consent);
       return { ...contact, created };

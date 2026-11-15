@@ -152,6 +152,8 @@
 .an-drop.high { color: var(--yellow); }
 .an-ab { margin-top: 8px; }
 .an-table { width: 100%; border-collapse: collapse; }
+/* wide tables (long column names in some languages) scroll inside their card instead of spilling out */
+.an-scroll { overflow-x: auto; }
 .an-table th, .an-table td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: left; }
 .an-table td.r { text-align: right; }
 .an-days { display: flex; align-items: flex-end; gap: 2px; height: 110px; }

@@ -4,7 +4,7 @@ import { Icon } from '../icons';
 import { act, Badge, Check, CodeBox, confirmAsk, Empty, Field, Input, Modal, pressable, Select, Spinner, Tabs, Textarea, toast, useLoad } from '../ui';
 import { FileButton, dlHref, germanDate, signedMoney, ymdLocal } from './boCommon';
 import { SortableGrid } from '../sortable/Sortable';
-import { useT } from '../i18n';
+import { intlLocale, useT } from '../i18n';
 
 /** Buchhaltung, second half: bank, reports, export & period lock, chart of accounts, settings. */
 
@@ -356,7 +356,7 @@ function Ustva() {
         {kind === 'month' && (
           <div style={{ width: 150 }}>
             <Field label={tt('Monat')}>
-              <Select value={month} onChange={setMonth} options={Array.from({ length: 12 }, (_, i) => [String(i + 1).padStart(2, '0'), new Date(2000, i, 1).toLocaleDateString('de-DE', { month: 'long' })] as [string, string])} />
+              <Select value={month} onChange={setMonth} options={Array.from({ length: 12 }, (_, i) => [String(i + 1).padStart(2, '0'), new Date(2000, i, 1).toLocaleDateString(intlLocale(), { month: 'long' })] as [string, string])} />
             </Field>
           </div>
         )}
@@ -632,7 +632,7 @@ export function ExportTab({ st, onChange }: { st: any; onChange: () => void }) {
           <div className="bo-months">
             {periods.data.periods.map((m: any) => (
               <button key={m.period} type="button" className={`bo-month${m.locked ? ' locked' : ''}${through === m.period ? ' picked' : ''}`} disabled={m.locked} onClick={() => setThrough(through === m.period ? '' : m.period)} title={m.locked ? tt('Festgeschrieben von {v} am {d}', { v: m.locked_by ?? '', d: d(m.locked_at) }) : tt('{entries} Buchungen', { entries: m.entries })}>
-                {new Date(year, Number(m.period.slice(5)) - 1, 1).toLocaleDateString('de-DE', { month: 'short' })}
+                {new Date(year, Number(m.period.slice(5)) - 1, 1).toLocaleDateString(intlLocale(), { month: 'short' })}
                 <small>{m.locked ? <Icon name="lock" size={12} /> : `${m.entries}`}</small>
               </button>
             ))}
@@ -791,7 +791,7 @@ export function SettingsTab({ onChange }: { onChange: () => void }) {
             <Select value={f.vat_method} onChange={(v) => set('vat_method', v)} options={[['soll', tt('Soll-Versteuerung')], ['ist', tt('Ist-Versteuerung')]]} />
           </Field>
           <Field label={tt('Wirtschaftsjahr beginnt im')}>
-            <Select value={f.fy_start_month} onChange={(v) => set('fy_start_month', v)} options={Array.from({ length: 12 }, (_, i) => [String(i + 1), new Date(2000, i, 1).toLocaleDateString('de-DE', { month: 'long' })] as [string, string])} />
+            <Select value={f.fy_start_month} onChange={(v) => set('fy_start_month', v)} options={Array.from({ length: 12 }, (_, i) => [String(i + 1), new Date(2000, i, 1).toLocaleDateString(intlLocale(), { month: 'long' })] as [string, string])} />
           </Field>
         </div>
       </div>

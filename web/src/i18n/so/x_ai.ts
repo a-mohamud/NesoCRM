@@ -1757,6 +1757,7 @@ export default {
   "Wie „Vor Änderungen fragen“ – sieht aber freie Termine nach und bucht einen freien Termin selbst (auch in der Auto-Antwort), mit Bestätigung samt Links zum Verschieben und Absagen.": "Sida “Weydii ka hor isbeddellada” – laakiin sidoo kale wuxuu hubiyaa waqtiyada bannaan wuuna iskiis u qabsadaa (xitaa jawaabta tooska ah), isagoo diraya xaqiijin leh linkiyada dib-u-qorshaynta iyo joojinta.",
   "Ändert selbstständig. Versenden, Löschen, Zahlungen und Social-Posts brauchen trotzdem deine Bestätigung.": "Isbeddellada iskiis ayuu u sameeyaa. Dirista, tirtirka, lacag-bixinnada iyo qoraallada baraha bulshada weli waxay u baahan yihiin xaqiijintaada.",
   "Nur lesen": "Akhrin oo keliya",
+  "Lesen & schreiben": "Akhri & qor",
   "Vor Änderungen fragen": "Weydii ka hor isbeddellada",
   "Termin buchen": "Qabso ballan",
   Autonom: "Iskiis u shaqee",
@@ -2136,4 +2137,5 @@ export default {
   "Sprache des Videos": "Luqadda fiidiyowga",
   "Panel auf der Kontakt-Seite: {title}": "Guddi ku jira bogga xiriirka: {title}",
   "Panel auf der Deal-Seite: {title}": "Guddi ku jira bogga heshiiska: {title}",
+  "automatisch": "si toos ah",
 } satisfies Catalog;

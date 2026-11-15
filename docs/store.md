@@ -181,7 +181,7 @@ buy links, paid bookings and normal invoices alike (`invoice.paid`, once per inv
 
 | Endpoint | |
 | --- | --- |
-| `GET/PUT /api/store/settings` | Settings (`enabled`, `name`, `slug`, `countries`, `shipping`, `order_prefix`, `terms_required`, `abandon_minutes`, `gift_valid_months`, `notify_email`, `checkout_note`) with checkout URL and figures |
+| `GET/PUT /api/store/settings` | Settings (`enabled`, `name`, `slug`, `countries`, `shipping`, `order_prefix`, `terms_required`, `abandon_minutes`, `gift_valid_months`, `notify_email`, `checkout_note`) with checkout URL, figures and the delivery-country names (`country_names`) |
 | `GET /api/store/products` · `PUT /api/store/products/:id` | The catalogue (products with store fields, variants and stock) · store fields of a product (`published`, `slug`, `kind`, `images`, `weight_g`, `collection_ids`, `variant_prices`, `position`, `allow_backorder`) |
 | `GET/POST /api/store/collections` · `PATCH/DELETE /api/store/collections/:id` | Collections |
 | `GET /api/store/orders?status=&fulfilment=&q=` · `GET/PATCH /api/store/orders/:id` | Orders · one order with payment, invoice and gift cards · fulfilment (`fulfilment`, `carrier`, `tracking_number`, `tracking_url`, `note`, `notify`) |

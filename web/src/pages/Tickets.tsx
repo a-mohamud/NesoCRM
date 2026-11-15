@@ -157,7 +157,7 @@ export function NewTicket({ onClose, onSaved, initial = {} }: { onClose: () => v
             </Field>
             {!f.conversation_id && !f.call_id && (
               <Field label={t('Quelle')}>
-                <Select value={f.source} onChange={(v) => setF({ ...f, source: v })} options={m.sources} />
+                <Select value={f.source} onChange={(v) => setF({ ...f, source: v })} options={m.sources.map((s: string) => [s, t(s)] as [string, string])} />
               </Field>
             )}
             <Field label={t('Fällig am (optional)')}>
@@ -348,7 +348,7 @@ function TicketList() {
           <Select value={f.sla} onChange={(v) => set({ sla: v })} placeholder={t('SLA: alle')} options={[['at_risk', t('Gefährdet')], ['warning', t('Läuft bald ab')], ['breached', t('Überschritten')]]} />
         </div>
         <div style={{ width: 140 }}>
-          <Select value={f.source} onChange={(v) => set({ source: v })} placeholder={t('Jede Quelle')} options={m.sources} />
+          <Select value={f.source} onChange={(v) => set({ source: v })} placeholder={t('Jede Quelle')} options={m.sources.map((s: string) => [s, t(s)] as [string, string])} />
         </div>
         {(layout === 'kanban' || m.pipelines.length > 1) && m.pipelines.length > 1 && (
           <div style={{ width: 150 }}>
@@ -434,7 +434,7 @@ function TicketList() {
                     <div className="muted small">
                       {tk.contact_name || t('ohne Kontakt')}
                       {tk.category ? ` · ${tk.category}` : ''}
-                      {tk.source ? ` · ${tk.source}` : ''}
+                      {tk.source ? ` · ${t(tk.source)}` : ''}
                       {tk.tags.slice(0, 3).map((x: string) => (
                         <span key={x} className="tag" style={{ marginLeft: 6 }}>
                           {x}
@@ -683,7 +683,7 @@ export function Tickets({ tab }: { tab?: string }) {
           {t('+ Ticket')}
         </button>
       </PageHead>
-      <Tabs tabs={[['liste', 'Tickets'], ['uebersicht', t('Übersicht')], ['auslastung', t('Auslastung')]]} value={cur} onChange={(v) => navigate(v === 'liste' ? 'tickets' : `tickets/${v}`)} />
+      <Tabs tabs={[['liste', t('Tickets')], ['uebersicht', t('Übersicht')], ['auslastung', t('Auslastung')]]} value={cur} onChange={(v) => navigate(v === 'liste' ? 'tickets' : `tickets/${v}`)} />
       <div style={{ marginTop: 14 }}>
         {cur === 'liste' && <TicketList />}
         {cur === 'uebersicht' && <HelpdeskDashboard />}
@@ -733,7 +733,7 @@ function Timeline({ data, meta }: { data: any; meta: any }) {
           return (
             <div key={e.id}>
               <div className="tl-sys">
-                <Icon name="ticket" size={13} /> {t('Ticket angelegt ·')} {tk.source}
+                <Icon name="ticket" size={13} /> {t('Ticket angelegt ·')} {tk.source ? t(tk.source) : ''}
                 {d.via && d.via !== 'user' ? ` (${d.via === 'email' ? t('E-Mail') : d.via === 'portal' ? t('Kundenportal') : d.via === 'form' ? t('Formular') : d.via === 'workflow' ? t('Workflow') : d.via.toUpperCase()})` : ''}
                 {e.user_name ? ` · ${e.user_name}` : ''} · {dt(e.created_at)}
               </div>
@@ -932,7 +932,7 @@ export function TicketDetail({ id }: { id: string }) {
         title={`#${tk.number} ${tk.subject}`}
         sub={
           <span className="row" style={{ gap: 8, alignItems: 'center' }}>
-            <StatusBadge t={tk} /> <PriorityBadge p={tk.priority} /> <SlaChip t={tk} /> <span className="muted small">{t('angelegt')} {dt(tk.created_at)} · {tk.source}</span>
+            <StatusBadge t={tk} /> <PriorityBadge p={tk.priority} /> <SlaChip t={tk} /> <span className="muted small">{t('angelegt')} {dt(tk.created_at)} · {tk.source ? t(tk.source) : ''}</span>
           </span>
         }
       >

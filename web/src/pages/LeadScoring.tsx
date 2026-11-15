@@ -262,7 +262,7 @@ export function LeadScoring() {
   };
   return (
     <>
-      <PageHead title="Lead-Scoring" sub={tt('Punkte für passende Eigenschaften und Aktivität – Schwellen wie MQL und SQL starten Workflows')}>
+      <PageHead title={tt('Lead-Scoring')} sub={tt('Punkte für passende Eigenschaften und Aktivität – Schwellen wie MQL und SQL starten Workflows')}>
         <button className="btn" data-tour="ls-new" onClick={create}>
           {tt('+ Modell')}
         </button>

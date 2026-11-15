@@ -19,7 +19,7 @@ export function VideoTestimonialsPanel() {
   const status = async (id: string, s: string) => (await act(() => api.patch(`/api/video-testimonials/${id}`, { status: s }))) && data.reload();
   const label: Record<string, string> = { pending: t('neu'), approved: t('freigegeben'), rejected: t('abgelehnt') };
   const copy = (s: string) => navigator.clipboard?.writeText(s).then(() => toast(t('Kopiert')));
-  const embed = `<iframe src="${p.wall_url}" style="width:100%;min-height:480px;border:0" title="Kundenstimmen" loading="lazy"></iframe>`; // i18n-ignore
+  const embed = `<iframe src="${p.wall_url}" style="width:100%;min-height:480px;border:0" title="${t('Kundenstimmen')}" loading="lazy"></iframe>`; // i18n-ignore
   return (
     <div className="card" data-tour="video-testimonials">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>

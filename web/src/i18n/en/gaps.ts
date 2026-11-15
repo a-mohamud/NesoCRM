@@ -53,7 +53,9 @@ export default {
   // URL parameters
   'Text aus dem Link (URL-Parameter)': 'Text from the link (URL parameters)',
   'Schreib in einen Text': 'Write in any text',
-  'wer …/seite?name=Anna öffnet, liest „Anna“, alle anderen „Freund“.': 'whoever opens …/page?name=Anna reads “Anna”, everyone else “Freund”.',
+  'wer …/seite?name=Anna öffnet, liest „Anna“, alle anderen „Freund“.': 'whoever opens …/page?name=Anna reads “Anna”, everyone else “friend”.',
+  '{{url.name|Freund}}': '{{url.name|friend}}',
+  '{{#if url.quelle == "facebook"}}…{{else}}…{{/if}}': '{{#if url.source == "facebook"}}…{{else}}…{{/if}}',
   'Text je nach Link zeigen:': 'Show text depending on the link:',
   'Beliebige Website prüfen': 'Check any website',
   'Website eines Interessenten oder die alte Seite prüfen': 'Check a prospect’s website or your old site',
@@ -297,4 +299,5 @@ export default {
   'Lektionen je Modul': 'Lessons per module',
   'Die KI schreibt Gliederung und Lektionstexte. Angelegt wird erst nach deinem Klick – als Entwurf mit unveröffentlichten Lektionen.': 'The AI writes the outline and lesson texts. Nothing is created until you click – as a draft with unpublished lessons.',
   'Min.': 'min',
+  Kundenstimmen: 'Testimonials',
 } satisfies Catalog;

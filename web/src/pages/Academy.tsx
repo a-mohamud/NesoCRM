@@ -31,6 +31,7 @@ function Progress({ value, label }: { value: number; label?: string }) {
 function TourCard({ t, p }: { t: Tour; p?: TourProgress }) {
   const tt = useT('x_tours_b');
   useTourText();
+  const brand = useSession().branding.name || 'Neso CRM';
   const at = resumeAt(p);
   return (
     <div className={`card ac-card${p?.done ? ' done' : ''}`}>
@@ -45,7 +46,7 @@ function TourCard({ t, p }: { t: Tour; p?: TourProgress }) {
           </div>
         </div>
       </div>
-      <p className="muted small ac-sum">{t.summary}</p>
+      <p className="muted small ac-sum">{t.summary.replace(/\{brand\}/g, brand)}</p>
       {p && !p.done && <Progress value={share(p)} label={tt('Fortschritt {title}', { title: t.title })} />}
       <div className="actions">
         {p?.done && <Badge tone="green">{tt('✓ erledigt')}</Badge>}
@@ -208,7 +209,7 @@ function Overview() {
               const cur = nextChapter?.id === c.id;
               return (
                 <li key={c.id} className={`${p?.done ? 'done' : ''}${cur ? ' cur' : ''}`}>
-                  <button onClick={() => startTour(c.id, resumeAt(p))} title={c.summary}>
+                  <button onClick={() => startTour(c.id, resumeAt(p))} title={c.summary.replace(/\{brand\}/g, session.branding.name || 'Neso CRM')}>
                     <span className="ac-num">{p?.done ? '✓' : c.chapter}</span>
                     <span className="grow">
                       {c.title}

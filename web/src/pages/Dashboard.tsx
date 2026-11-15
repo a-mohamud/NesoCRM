@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, dt, euro, moneyList, name } from '../api';
+import { amount, api, dt, moneyList, name } from '../api';
 import { Link, PageHead, Select, Spinner, Stat, tileLink, useLoad } from '../ui';
 import { PluginWidgets } from '../werkstatt/PluginFrame';
 import { useModules } from '../theme/store';
@@ -52,6 +52,8 @@ export function Dashboard() {
   if (loading && !data) return <Spinner />;
   if (!data) return null;
   const layout = dashboardLayout(simple, visible);
+  // Deal values in the sub-account's deal currency (the server's `opportunities.currency`; older servers: EUR).
+  const dealValue = (v: number) => amount(v, data.opportunities.currency);
   const conv = data.appointments.showed + data.appointments.noshow ? Math.round((data.appointments.showed / (data.appointments.showed + data.appointments.noshow)) * 100) : null;
   const range = <Select value={days} onChange={setDays} aria={t('Zeitraum')} options={[['7', t('Letzte 7 Tage')], ['30', t('Letzte 30 Tage')], ['90', t('Letzte 90 Tage')], ['365', t('Letztes Jahr')]]} />;
   const stat = (k: DashStat) => {
@@ -59,9 +61,9 @@ export function Dashboard() {
       case 'contacts':
         return <Stat key={k} to="contacts" label={t('Neue Kontakte')} value={data.contacts.new} sub={t('{n} gesamt', { n: data.contacts.total })} />;
       case 'pipeline':
-        return <Stat key={k} to="opportunities" label={t('Offene Pipeline')} value={euro(data.opportunities.openValue)} sub={t('{n} Opportunities', { n: data.opportunities.open })} />;
+        return <Stat key={k} to="opportunities" label={t('Offene Pipeline')} value={dealValue(data.opportunities.openValue)} sub={t('{n} Opportunities', { n: data.opportunities.open })} />;
       case 'won':
-        return <Stat key={k} to="opportunities?view=list" label={t('Gewonnen')} value={euro(data.opportunities.wonValue)} sub={t('{won} gewonnen · {lost} verloren', { won: data.opportunities.won, lost: data.opportunities.lost })} />;
+        return <Stat key={k} to="opportunities?view=list" label={t('Gewonnen')} value={dealValue(data.opportunities.wonValue)} sub={t('{won} gewonnen · {lost} verloren', { won: data.opportunities.won, lost: data.opportunities.lost })} />;
       case 'booked':
         return <Stat key={k} to="calendars" label={t('Termine gebucht')} value={data.appointments.booked} sub={`${t('{n} anstehend', { n: data.appointments.upcoming })}${conv !== null ? ` · ${t('{n}% Show-Rate', { n: conv })}` : ''}`} />;
       case 'forms':
@@ -143,7 +145,7 @@ export function Dashboard() {
                   <div className="row" style={{ justifyContent: 'space-between' }}>
                     <span>{s.name}</span>
                     <span className="muted">
-                      {s.count} · {euro(s.value)}
+                      {s.count} · {dealValue(s.value)}
                     </span>
                   </div>
                   <div className="bar">

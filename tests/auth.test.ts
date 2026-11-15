@@ -296,7 +296,10 @@ describe('social login, linking and the Android app', () => {
     expect((await sso(w.browser(), 'google', w.google, { sub: 'g-x', email: 'nina@gmail.com', email_verified: false })).poll.data.error).toMatch(/nicht bestätigt/);
     expect((await sso(w.browser(), 'google', w.google, { sub: 'g-y', email: 'olga@firma.test', email_verified: true })).poll.data.error).toMatch(/nicht freigegeben/);
     await w.t.api.put('/api/agency/login', { signup: { mode: 'domains', domains: ['firma.test'], locations: [w.locId], permissions: ['contacts', 'calendars'] } });
-    const r = await sso(w.browser(), 'google', w.google, { sub: 'g-y', email: 'olga@firma.test', email_verified: true, name: 'Olga' });
+    // Neso fork: a new account by domain needs the Google Workspace of that domain (hd claim), not just the address
+    expect((await sso(w.browser(), 'google', w.google, { sub: 'g-y', email: 'olga@firma.test', email_verified: true, name: 'Olga' })).poll.data.error).toMatch(/nicht freigegeben/);
+    expect((await sso(w.browser(), 'google', w.google, { sub: 'g-y', email: 'olga@firma.test', email_verified: true, name: 'Olga', hd: 'other.test' })).poll.data.error).toMatch(/nicht freigegeben/);
+    const r = await sso(w.browser(), 'google', w.google, { sub: 'g-y', email: 'olga@firma.test', email_verified: true, name: 'Olga', hd: 'firma.test' });
     expect(r.poll.data.user).toMatchObject({ email: 'olga@firma.test', role: 'member' });
     expect(w.t.app.db.get('SELECT locations, permissions, password_set FROM users WHERE email = ?', 'olga@firma.test')).toMatchObject({ locations: JSON.stringify([w.locId]), permissions: JSON.stringify(['contacts', 'calendars']), password_set: 0 });
     await w.t.api.put('/api/agency/login', { signup: { mode: 'closed' } });

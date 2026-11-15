@@ -246,7 +246,7 @@ export function AiTools({ agency = false }: { agency?: boolean }) {
           </div>
           {agency && (
             <Field label={tt('Rechte')} hint={tt('Agentur-Schlüssel gelten für alle Sub-Accounts.')}>
-              <Select value={scope} onChange={setScope} options={[['write', 'Lesen & schreiben'], ['read', 'Nur lesen']]} />
+              <Select value={scope} onChange={setScope} options={[['write', tt('Lesen & schreiben')], ['read', tt('Nur lesen')]]} />
             </Field>
           )}
           <button

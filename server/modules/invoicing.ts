@@ -40,7 +40,7 @@ import { viesCheck } from '../services/vies.js';
 import { mergeSettings } from './core.js';
 import { finaliseChecked, invoiceOut, sendInvoice } from './payments.js';
 import { ymdInTz } from '../core/time.js';
-import { tApp, tCtx, tLoc } from '../i18n/index.js';
+import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
 
 /**
  * GoBD-style invoicing on top of the invoices of modules/payments.ts: finalising (gap-free number, frozen content, snapshot
@@ -369,13 +369,14 @@ export const invoicingModule: Module = {
     });
 
     // --- settings: seller data, tax defaults and the number ranges ------------------------------------------------------------------------
-    const settingsOut = (loc: string) => ({
+    // Labels in the screen's language; the note goes onto the invoice, so in the sub-account's language (like the default note).
+    const settingsOut = (loc: string, t: STFn = tLoc(app, loc), tDoc: STFn = tLoc(app, loc)) => ({
       settings: billingSettings(app, loc),
-      ranges: Object.fromEntries(RANGE_KEYS.map((k) => [k, { label: RANGE_LABELS[k], ...rangeStatus(app, loc, k) }])),
-      tax_modes: Object.entries(TAX_MODES).map(([key, m]) => ({ key, label: m.label, note: m.note, needs_buyer_vat: !!m.needsBuyerVat, needs_seller_vat: !!m.needsSellerVat })),
+      ranges: Object.fromEntries(RANGE_KEYS.map((k) => [k, { label: t(RANGE_LABELS[k]), ...rangeStatus(app, loc, k) }])),
+      tax_modes: Object.entries(TAX_MODES).map(([key, m]) => ({ key, label: t(m.label), note: m.note ? tDoc(m.note) : '', needs_buyer_vat: !!m.needsBuyerVat, needs_seller_vat: !!m.needsSellerVat })),
       units: Object.entries(UNITS).map(([code, label]) => ({ code, label })),
     });
-    router.get('/api/invoice-settings', 'location', (ctx) => settingsOut(ctx.locationId));
+    router.get('/api/invoice-settings', 'location', (ctx) => settingsOut(ctx.locationId, tCtx(ctx)));
     router.put('/api/invoice-settings', 'location', (ctx) => {
       const b = ctx.body ?? {};
       const patch = cleanInvoiceSettings(app, ctx.locationId, b);
@@ -387,7 +388,7 @@ export const invoicingModule: Module = {
           db.update('locations', ctx.locationId, { settings: sealSettings(app, mergeSettings(cur.settings, { invoices: patch })).value });
         }
       });
-      return settingsOut(ctx.locationId);
+      return settingsOut(ctx.locationId, tCtx(ctx));
     });
   },
 };

@@ -63,7 +63,7 @@ function TemplateDialog({ template, onClose, onSaved }: { template?: any; onClos
     enabled: template ? !!template.enabled : true,
   });
   const [c, setC] = useState<any>(
-    template?.config ?? { title: tt('Zertifikat'), subtitle: tt('Hiermit wird bestätigt, dass'), body: tt('den Kurs „{{course}}“ am {{date}} erfolgreich abgeschlossen hat.'), color: '#1e3a8a', accent: '#b45309', bg: '#ffffff', logo_upload_id: '', signature_upload_id: '', signer_name: '', signer_title: '', issuer: '', footer: '', orientation: 'landscape', show_score: false, number_prefix: 'ZERT', send_email: true },
+    template?.config ?? { title: tt('Zertifikat'), subtitle: tt('Hiermit wird bestätigt, dass'), body: tt('den Kurs „{{course}}“ am {{date}} erfolgreich abgeschlossen hat.'), color: '#1e3a8a', accent: '#b45309', bg: '#ffffff', logo_upload_id: '', signature_upload_id: '', signer_name: '', signer_title: '', issuer: '', footer: '', orientation: 'landscape', show_score: false, number_prefix: tt('ZERT'), send_email: true },
   );
   const set = (p: any) => setT({ ...t, ...p });
   const cfg = (p: any) => setC({ ...c, ...p });

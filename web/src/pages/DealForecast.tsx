@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { amount, api } from '../api';
+import { amount as money, api } from '../api';
 import { fmtDate, useT } from '../i18n';
 import { Spinner, useLoad } from '../ui';
 import './crm-gaps.css';
@@ -15,6 +15,8 @@ interface Card {
   deals: { id: string; name: string; value: number; expected_close_date: string | null }[];
 }
 interface Forecast {
+  /** The currency most of the deals are in (the sums are shown in it). */
+  currency?: string;
   open: { count: number; value: number; weighted: number };
   months: { month: string; count: number; value: number; weighted: number }[];
   later: { count: number; value: number; weighted: number };
@@ -35,6 +37,7 @@ export function DealForecastPanel({ pipelineId }: { pipelineId: string }) {
   const [open, setOpen] = useState(readOpen);
   const data = useLoad(() => (open ? api.get<Forecast>(`/api/deal-forecast?months=6${pipelineId ? `&pipeline_id=${encodeURIComponent(pipelineId)}` : ''}`) : Promise.resolve(null)), [open, pipelineId]);
   const f = data.data;
+  const amount = (v: number) => money(v, f?.currency);
   const max = Math.max(1, ...(f?.months ?? []).map((m) => m.value));
   const month = (ym: string) => fmtDate(`${ym}-15`, { month: 'short', year: '2-digit' });
   const CARDS: [keyof Forecast['risks'], string][] = [

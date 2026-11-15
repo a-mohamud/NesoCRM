@@ -3,10 +3,9 @@ import './canvas.css';
 import { api, ago } from '../api';
 import { Badge, Empty, Field, Input, Modal, PageHead, Select, Spinner, act, confirmAsk, navigate, toast, useLoad } from '../ui';
 import { Icon } from '../icons';
-import { TEMPLATES } from '../../../server/services/canvas-templates';
 import { BoardStore } from './store';
 import { Editor, type BoardMeta } from './Editor';
-import { Preview, useTemplatePreviews } from './dialogs-insert';
+import { Preview, useCanvasTemplates, useTemplatePreviews } from './dialogs-insert';
 import { withLocation } from './media';
 import { useT } from '../i18n';
 
@@ -30,11 +29,13 @@ function NewBoard({ onClose }: { onClose: () => void }) {
   const [template, setTemplate] = useState('');
   const [team, setTeam] = useState<'edit' | 'view' | 'none'>('edit');
   const [busy, setBusy] = useState(false);
-  const previews = useTemplatePreviews();
+  const { list, tr } = useCanvasTemplates();
+  const previews = useTemplatePreviews(list, tr);
   const create = async () => {
     setBusy(true);
-    const t = TEMPLATES.find((x) => x.key === template);
-    const r = await act(() => api.post('/api/canvas', { name: name.trim() || t?.name || 'Neues Board', template: template || undefined, team_access: team }));
+    const t = list.find((x) => x.key === template);
+    // no name: the template's (translated) name, else the server's default in the sub-account's language
+    const r = await act(() => api.post('/api/canvas', { name: name.trim() || t?.name || undefined, template: template || undefined, team_access: team }));
     setBusy(false);
     if (r) {
       onClose();
@@ -79,7 +80,7 @@ function NewBoard({ onClose }: { onClose: () => void }) {
           <b>{tt('Leeres Board')}</b>
           <span className="muted small">{tt('Unendliche Fläche zum Zeichnen.')}</span>
         </button>
-        {TEMPLATES.map((t) => (
+        {list.map((t) => (
           <button key={t.key} className={`cv-tpl${template === t.key ? ' on' : ''}`} onClick={() => setTemplate(t.key)}>
             <Preview els={previews[t.key]} max={260} prefix={`n${t.key}`} />
             <b>{t.name}</b>
