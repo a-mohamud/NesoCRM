@@ -394,4 +394,5 @@ export default {
   "{label} verbunden": "{label} waa ku xiran yahay",
   "Verbinden fehlgeschlagen": "Isku-xirku wuu guuldarraystay",
   eingerichtet: "la dejiyay",
+  'Währung (neue Rechnungen, Produkte und Deals)': "Lacagta (qaansheegyada, alaabta iyo heshiisyada cusub)",
 } satisfies Catalog;

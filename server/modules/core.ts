@@ -241,8 +241,8 @@ export const coreModule: Module = {
       const u = ctx.user!;
       const locs =
         u.role === 'admin'
-          ? db.all('SELECT id, name, timezone FROM locations ORDER BY name')
-          : db.all(`SELECT id, name, timezone FROM locations WHERE id IN (SELECT value FROM json_each(?)) ORDER BY name`, JSON.stringify(u.locations));
+          ? db.all(`SELECT id, name, timezone, json_extract(settings, '$.currency') AS currency FROM locations ORDER BY name`)
+          : db.all(`SELECT id, name, timezone, json_extract(settings, '$.currency') AS currency FROM locations WHERE id IN (SELECT value FROM json_each(?)) ORDER BY name`, JSON.stringify(u.locations));
       // Modules add fields of their own to the user (app.services.meFields, e.g. the UI language of modules/language.ts).
       const extra = ((app.services.meFields ?? []) as ((user: typeof u) => Record<string, unknown>)[]).reduce((o, fn) => ({ ...o, ...fn(u) }), {});
       return { user: { ...extra, ...u }, locations: visibleLocations(app, u, locs) };
@@ -346,6 +346,8 @@ export const coreModule: Module = {
       if (ctx.body.settings) {
         // The client's branding (incl. its login domain) is set by the agency only.
         const { branding: _b, ...rest } = ctx.body.settings;
+        // Neso fork: the sub-account's currency (new invoices, products, deals) – an ISO 4217 code or '' for the default.
+        if (rest.currency !== undefined && rest.currency !== '' && !/^[A-Z]{3}$/.test(String(rest.currency))) throw bad('Unbekannte Währung');
         patch.settings = sealSettings(app, mergeSettings(cur.settings, rest)).value;
       }
       db.update('locations', ctx.locationId, patch);

@@ -1263,4 +1263,5 @@ export default {
   'Terminserie gebucht: {rule}, ab {start}': 'Appointment series booked: {rule}, from {start}',
   'Wiki-Seite „{title}“': 'Wiki page “{title}”',
   'Termin abgesagt: {reason}': 'Appointment cancelled: {reason}',
+  'Unbekannte Währung': 'Unknown currency',
 } satisfies Catalog;

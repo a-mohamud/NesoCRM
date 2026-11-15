@@ -61,6 +61,9 @@ function useLocationSettings() {
   return { loc, save };
 }
 
+/** Neso fork: the currencies Settings → Company offers (server/services/location-currency.ts COMPANY_CURRENCIES). */
+const COMPANY_CURRENCIES = ['KES', 'UGX', 'TZS', 'RWF', 'ETB', 'SOS', 'USD', 'EUR', 'GBP', 'AED', 'CHF'];
+
 function Company() {
   const t = useT('settings');
   const { loc, save } = useLocationSettings();
@@ -83,6 +86,9 @@ function Company() {
         <Field label={t('Telefon')}>
           <Input value={l.phone} onChange={(v) => setL({ ...l, phone: v })} />
         </Field>
+        <Field label={t('Währung (neue Rechnungen, Produkte und Deals)')}>
+          <Select value={l.settings?.currency || 'EUR'} onChange={(v) => setL({ ...l, settings: { ...l.settings, currency: v } })} options={[...new Set([...COMPANY_CURRENCIES, l.settings?.currency || 'EUR'])]} />
+        </Field>
       </div>
       <Field label={t('Adresse (Impressum, Rechnungen, E-Mail-Fuß)')}>
         <Textarea value={l.address} onChange={(v) => setL({ ...l, address: v })} rows={3} />
@@ -97,7 +103,7 @@ function Company() {
           </Field>
         </div>
       </MoreFields>
-      <button className="btn" onClick={() => save({ name: l.name, timezone: l.timezone, email: l.email, phone: l.phone, website: l.website, logo_url: l.logo_url, address: l.address }).then(session.reload)}>
+      <button className="btn" onClick={() => save({ name: l.name, timezone: l.timezone, email: l.email, phone: l.phone, website: l.website, logo_url: l.logo_url, address: l.address, settings: { currency: l.settings?.currency || 'EUR' } }).then(session.reload)}>
         {t('Speichern')}
       </button>
     </div>

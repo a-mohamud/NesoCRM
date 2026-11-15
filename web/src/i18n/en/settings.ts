@@ -425,4 +425,5 @@ export default {
   '{label} verbunden': '{label} connected',
   'Verbinden fehlgeschlagen': 'Connection failed',
   'eingerichtet': 'set up',
+  'Währung (neue Rechnungen, Produkte und Deals)': 'Currency (new invoices, products and deals)',
 } satisfies Catalog;

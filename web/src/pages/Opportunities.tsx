@@ -17,6 +17,7 @@ import { MoreFields, useSimple } from '../areas/fields';
 import '../areas/easy-core.css';
 import { SmartTagsButton } from './DealSmartTags';
 import { DealForecastPanel } from './DealForecast';
+import { useSession } from '../session';
 
 // Positions, quotes and call notes of a deal (Vertrieb): a chunk of its own, loaded when a deal is opened.
 const { DealSales } = lazyPages(() => import('./SalesDeal'), 'DealSales');
@@ -257,15 +258,16 @@ function lastPipeline() {
   }
 }
 
-/** The currency most of these deals are in (EUR without deals) – the preset of a new deal. */
-const mainCurrency = (deals: { currency?: string }[]) => {
+/** The currency most of these deals are in (the sub-account's currency, else EUR, without deals) – the preset of a new deal. */
+const mainCurrency = (deals: { currency?: string }[], fallback = 'EUR') => {
   const n = new Map<string, number>();
   for (const d of deals) if (d.currency) n.set(d.currency, (n.get(d.currency) ?? 0) + 1);
-  return [...n].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
+  return [...n].sort((a, b) => b[1] - a[1])[0]?.[0] ?? fallback;
 };
 
 export function Opportunities() {
   const t = useT('deals');
+  const session = useSession();
   const pipelines = useLoad(() => api.get<any[]>('/api/pipelines'), []);
   const [pid, setPidState] = useState(new URLSearchParams(location.search).get('pipeline') ?? lastPipeline());
   const setPid = (v: string) => {
@@ -345,7 +347,7 @@ export function Opportunities() {
       {mode === 'board' ? <DealBoard pipeline={pipeline} list={list} onOpen={(o) => setModal({ kind: 'opp', opp: o })} onMove={drop} /> : <DealList pipelines={pipelines.data} version={version} onOpen={(o) => setModal({ kind: 'opp', opp: o })} />}
       {modal?.kind === 'pipeline' && <PipelineEditor pipeline={modal.pipeline} onClose={() => setModal(null)} onSaved={() => (setModal(null), pipelines.reload(), opps.reload())} />}
       {modal?.kind === 'order' && <PipelineOrder pipelines={pipelines.data} onClose={() => setModal(null)} onSaved={() => (setModal(null), pipelines.reload())} />}
-      {modal?.kind === 'opp' && <OppModal opp={modal.opp} currency={mainCurrency(list)} pipeline={pipelines.data.find((p) => p.id === modal.opp?.pipeline_id) ?? pipeline} onClose={() => (setModal(null), opps.reload(), setVersion(version + 1))} onSaved={() => (setModal(null), opps.reload(), setVersion(version + 1))} />}
+      {modal?.kind === 'opp' && <OppModal opp={modal.opp} currency={mainCurrency(list, session.locations.find((l) => l.id === session.locationId)?.currency || 'EUR')} pipeline={pipelines.data.find((p) => p.id === modal.opp?.pipeline_id) ?? pipeline} onClose={() => (setModal(null), opps.reload(), setVersion(version + 1))} onSaved={() => (setModal(null), opps.reload(), setVersion(version + 1))} />}
     </>
   );
 }

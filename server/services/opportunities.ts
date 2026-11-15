@@ -3,6 +3,7 @@ import { parseJson } from '../core/db.js';
 import { id, now } from '../core/util.js';
 import { getContact, logActivity } from './contacts.js';
 import { tApp, tLoc, type STFn } from '../i18n/index.js';
+import { locationCurrency } from './location-currency.js';
 
 export const OPP_STATUSES = ['open', 'won', 'lost', 'abandoned'] as const;
 
@@ -98,7 +99,7 @@ export function createOpportunity(
     assigned_to: input.assigned_to ?? null,
     source: input.source ?? '',
     expected_close_date: cleanCloseDate(input.expected_close_date),
-    currency: cleanCurrency(input.currency),
+    currency: input.currency ? cleanCurrency(input.currency) : locationCurrency(app, locationId),
     lost_reason: status === 'lost' ? lostReason : '',
     created_at: now(),
     updated_at: now(),

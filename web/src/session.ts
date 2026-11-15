@@ -18,7 +18,8 @@ export interface Branding {
 
 export interface Session {
   user: { id: string; email: string; name: string; role: 'admin' | 'member'; permissions: string[] | null };
-  locations: { id: string; name: string; timezone: string }[];
+  /** currency: the sub-account's own currency (Settings → Company), null = EUR. */
+  locations: { id: string; name: string; timezone: string; currency?: string | null }[];
   locationId: string;
   branding: Branding;
   /** SaaS mode: the sub-account's plan state (areas the plan hides, billing banner); null = no plan. */

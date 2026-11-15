@@ -59,6 +59,7 @@ import {
 import { archiveEinvoice, archiveFile, einvoiceOf, invoicePdfOf } from '../services/invoice-render.js';
 import { viesCheck } from '../services/vies.js';
 import { tApp, tCtx, tLoc, type STFn } from '../i18n/index.js';
+import { locationCurrency } from '../services/location-currency.js';
 
 export type { LineItem };
 
@@ -315,7 +316,7 @@ export function createInvoice(app: App, locationId: string, input: Record<string
     contact_id: input.contact_id || null,
     title: str(input.title, 'Titel', { max: 300 }),
     items,
-    currency: /^[A-Z]{3}$/.test(input.currency ?? '') ? input.currency : 'EUR',
+    currency: /^[A-Z]{3}$/.test(input.currency ?? '') ? input.currency : locationCurrency(app, locationId),
     ...t,
     status: 'draft',
     notes: str(input.notes, 'Hinweise', { max: 5000 }),
@@ -609,7 +610,7 @@ export const paymentsModule: Module = {
         name: str(ctx.body.name, 'Name', { required: true, max: 200 }),
         description: str(ctx.body.description, 'Beschreibung', { max: 5000 }),
         price_cents: Math.round(num(ctx.body.price_cents)),
-        currency: /^[A-Z]{3}$/.test(ctx.body.currency ?? '') ? ctx.body.currency : 'EUR',
+        currency: /^[A-Z]{3}$/.test(ctx.body.currency ?? '') ? ctx.body.currency : locationCurrency(app, ctx.locationId),
         tax_rate: ctx.body.tax_rate === undefined || ctx.body.tax_rate === '' ? null : num(ctx.body.tax_rate),
         recurring: ['month', 'year'].includes(ctx.body.recurring) ? ctx.body.recurring : null,
         payment_link: str(ctx.body.payment_link, 'Zahlungslink', { max: 1000 }) || null,

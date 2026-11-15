@@ -250,7 +250,8 @@ export async function seedSandbox(app: App, locationId: string): Promise<number>
 /** Creates the practice sub-account with demo data in the instance language (one at a time). */
 async function createSandbox(app: App, demo = true) {
   const t = tLoc(app);
-  const loc = createLocation(app.db, t(SANDBOX_NAME), t.locale === 'de' ? 'Europe/Berlin' : 'Africa/Nairobi', { email: t('uebung@example.com'), website: '' });
+  // Outside German the practice company is Kenyan: Nairobi time and Kenyan shillings for everything created in it.
+  const loc = createLocation(app.db, t(SANDBOX_NAME), t.locale === 'de' ? 'Europe/Berlin' : 'Africa/Nairobi', { email: t('uebung@example.com'), website: '', ...(t.locale === 'de' ? {} : { settings: { email: { provider: 'log' }, sms: { provider: 'log' }, currency: 'KES' } }) });
   app.db.run('INSERT INTO academy_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'sandbox', loc.id);
   const seeded = demo ? await seedSandbox(app, loc.id) : 0;
   // Everything up to here is the fresh state; a write after it means someone practised (see resetSandboxOnLogout).
