@@ -440,6 +440,7 @@ export default {
   'Übungs-Firma zurückgesetzt': 'Practice company reset',
   'Wird zurückgesetzt …': 'Resetting …',
   Zurücksetzen: 'Reset',
+  'Beim Abmelden startet sie automatisch neu, wenn darin etwas geändert wurde – außer jemand anderes übt gerade darin.': 'It starts over automatically when you sign out, if anything in it was changed – unless someone else is practising in it right now.',
   'Übungs-Firma mit Demo-Daten anlegen': 'Create practice company with demo data',
   'Geführte Touren direkt in der echten Oberfläche – Schritt für Schritt, mit Pausen, jederzeit fortsetzbar.': 'Guided tours right in the real interface – step by step, with breaks, and you can pick up where you left off at any time.',
   'Tour suchen, z. B. Rechnung, WhatsApp …': 'Search tours, e.g. invoice, WhatsApp …',

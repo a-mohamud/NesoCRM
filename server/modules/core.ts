@@ -232,6 +232,8 @@ export const coreModule: Module = {
       const sid = ctx.cookies[SESSION_COOKIE];
       if (sid) db.run('DELETE FROM sessions WHERE token_hash = ?', sha256(sid));
       ctx.setCookie(SESSION_COOKIE, '', { maxAge: 0 });
+      // Neso fork: modules that tidy up after a sign-out (the practice company starts over) – in the background.
+      for (const fn of (app.services.onLogout ?? []) as ((userId: string) => Promise<unknown>)[]) void fn(ctx.user!.id).catch(() => undefined);
       return { ok: true };
     });
 

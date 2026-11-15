@@ -253,7 +253,36 @@ async function createSandbox(app: App, demo = true) {
   const loc = createLocation(app.db, t(SANDBOX_NAME), t.locale === 'de' ? 'Europe/Berlin' : 'Africa/Nairobi', { email: t('uebung@example.com'), website: '' });
   app.db.run('INSERT INTO academy_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'sandbox', loc.id);
   const seeded = demo ? await seedSandbox(app, loc.id) : 0;
+  // Everything up to here is the fresh state; a write after it means someone practised (see resetSandboxOnLogout).
+  app.db.run(`INSERT INTO academy_meta (key, value) VALUES ('sandbox_fresh_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, now());
   return { id: loc.id, name: loc.name, created: true, seeded };
+}
+
+/** How long a colleague counts as still practising: their write in the practice company keeps it from being reset. */
+const PRACTICE_IDLE_MS = 30 * 60_000;
+let resetting: Promise<unknown> | null = null;
+
+/**
+ * Neso fork: signing out starts the practice company over – but only when something was changed since it was last
+ * filled, and never while someone else is still practising in it (a write of another person in the last 30 minutes).
+ * Runs in the background; signing out never waits for it.
+ */
+export function resetSandboxOnLogout(app: App, userId: string): Promise<'reset' | 'skipped'> {
+  const sb = sandboxOf(app);
+  if (!sb || resetting) return Promise.resolve('skipped');
+  const fresh = app.db.get<{ value: string }>(`SELECT value FROM academy_meta WHERE key = 'sandbox_fresh_at'`)?.value ?? '';
+  const changed = app.db.get('SELECT 1 AS x FROM audit_log WHERE location_id = ? AND at > ? LIMIT 1', sb.id, fresh);
+  if (!changed) return Promise.resolve('skipped');
+  const since = new Date(Date.now() - PRACTICE_IDLE_MS).toISOString();
+  const othersBusy = app.db.get('SELECT 1 AS x FROM audit_log WHERE location_id = ? AND at > ? AND user_id IS NOT NULL AND user_id <> ? LIMIT 1', sb.id, since, userId);
+  if (othersBusy) return Promise.resolve('skipped');
+  const run = (async () => {
+    deleteSandbox(app, sb);
+    await createSandbox(app, true);
+    return 'reset' as const;
+  })();
+  resetting = run.finally(() => (resetting = null));
+  return run.catch(() => 'skipped' as const);
 }
 
 function deleteSandbox(app: App, sb: { id: string }) {
@@ -305,6 +334,7 @@ export const academyModule: Module = {
   ],
   register(app) {
     const { db, router } = app;
+    app.services.onLogout = [...(app.services.onLogout ?? []), (userId: string) => resetSandboxOnLogout(app, userId)];
     const user = (ctx: Ctx) => {
       if (!ctx.user) throw new HttpError(401, 'Nicht angemeldet');
       return ctx.user;

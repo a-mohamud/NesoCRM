@@ -76,6 +76,7 @@ function SandboxCard() {
       <p className="muted small">
         {tt('Ein eigener Sub-Account mit erfundenen Kunden, Deals, Terminen und Rechnungen (…@example.com). E-Mails und SMS werden dort nur gespeichert, nie verschickt – ideal, um alles gefahrlos auszuprobieren.')}
       </p>
+      <p className="muted small">{tt('Beim Abmelden startet sie automatisch neu, wenn darin etwas geändert wurde – außer jemand anderes übt gerade darin.')}</p>
       {sb ? (
         <div className="actions">
           {session.locationId === sb.id ? (

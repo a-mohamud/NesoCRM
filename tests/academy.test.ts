@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startTestApp } from './helpers';
+import { resetSandboxOnLogout } from '../server/modules/academy';
 import { GROUPS, JOURNEY, MODULE_TOURS, TOURS, badges, composeSteps, journeyStatus, resumeIndex, searchTours, stepVisible, tourById, toursForPath, tourTargets, visibleTours, type Access } from '../web/src/tour/catalog';
 import { handbookMarkdown } from '../web/src/tour/handbook';
 import { slug } from '../web/src/tour/slug';
@@ -324,5 +325,27 @@ describe('academy API', () => {
     } finally {
       process.env.PGHL_LOCALE = saved;
     }
+  });
+  it('starts the practice company over on sign-out once something was changed, not while a colleague practises (Neso fork)', async () => {
+    const me = t.app.db.get<{ id: string }>(`SELECT id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1`)!.id;
+    const first = (await t.api.post('/api/academy/sandbox', {})).data;
+    // untouched: nothing to reset
+    expect(await resetSandboxOnLogout(t.app, me)).toBe('skipped');
+    const own = t.api.location;
+    t.api.setLocation(first.id);
+    expect((await t.api.post('/api/contacts', { first_name: 'Practice', email: 'p@example.com' })).status).toBe(200);
+    t.api.setLocation(own);
+    // a colleague wrote in it a moment ago: keep it
+    t.app.db.run(`UPDATE audit_log SET user_id = 'someone-else' WHERE location_id = ? AND action LIKE 'contacts.%' AND at > (SELECT value FROM academy_meta WHERE key = 'sandbox_fresh_at')`, first.id);
+    expect(await resetSandboxOnLogout(t.app, me)).toBe('skipped');
+    // the change was the person who signs out: fresh practice company
+    t.app.db.run(`UPDATE audit_log SET user_id = ? WHERE user_id = 'someone-else'`, me);
+    expect(await resetSandboxOnLogout(t.app, me)).toBe('reset');
+    const now = (await t.api.get('/api/academy')).data.sandbox;
+    expect(now.id).not.toBe(first.id);
+    t.api.setLocation(now.id);
+    expect((await t.api.get('/api/contacts')).data.contacts.some((c: any) => c.first_name === 'Practice')).toBe(false);
+    t.api.setLocation(own);
+    expect((await t.api.del('/api/academy/sandbox')).status).toBe(200);
   });
 });
