@@ -21,7 +21,7 @@ export const TONES = ['freundlich', 'professionell', 'locker', 'premium', 'mutig
 export const LANGS = ['de', 'en'] as const;
 export type Lang = (typeof LANGS)[number];
 export const LIMITS = { business: 300, offer: 600, audience: 300, extra: 2000, command: 600, pages: { landing: [1, 2], funnel: [2, 6], website: [2, 8] } as Record<PageType, [number, number]> };
-const LEGAL = ['impressum', 'datenschutz', 'widerruf', 'agb', 'barrierefreiheit'];
+const LEGAL = ['impressum', 'datenschutz', 'widerruf', 'agb', 'barrierefreiheit', 'company', 'privacy', 'terms']; // the last three: the Kenyan legal pages
 /** Building blocks of a plan (what each page should have), for the plan stage. */
 export const PLAN_SECTIONS = ['hero', 'benefits', 'steps', 'stats', 'testimonials', 'pricing', 'faq', 'cta', 'form', 'calendar', 'product', 'text', 'about', 'contact', 'thanks'] as const;
 

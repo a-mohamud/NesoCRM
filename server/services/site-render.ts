@@ -134,6 +134,10 @@ const SLUG_LEGAL: [string, string][] = [
   ['widerruf', 'Widerruf'],
   ['agb', 'AGB'],
   ['barrierefreiheit', 'Barrierefreiheit'],
+  // Neso fork: the Kenyan legal pages (legal-texts-ke.ts).
+  ['company', 'Firmenangaben'],
+  ['privacy', 'Datenschutzerklärung'],
+  ['terms', 'Allgemeine Geschäftsbedingungen'],
 ];
 
 function header(env: BlockEnv, here: string): string {

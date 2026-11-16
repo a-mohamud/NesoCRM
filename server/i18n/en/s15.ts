@@ -1360,4 +1360,7 @@ export default {
   'Vimeo-Videos': 'Vimeo videos',
   'Google Fonts (von Google geladen)': 'Google Fonts (loaded from Google)',
   'Calendly / Typeform / weitere Einbettungen': 'Calendly / Typeform / other embeds',
+  // Neso fork: Kenyan legal texts (legal-texts-ke.ts) – service label and the German document labels shown in the wizard list
+  'M-Pesa-Zahlungen (Safaricom)': 'M-Pesa payments (Safaricom)',
+  'Verzeichnis von Verarbeitungstätigkeiten (VVT)': 'Record of processing activities (RoPA)',
 } satisfies Catalog;

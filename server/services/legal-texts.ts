@@ -13,6 +13,17 @@ export const FORM_LABEL: Record<LegalForm, string> = { einzel: 'Einzelunternehme
 /** Forms that are entered in the Handelsregister / have representatives to name. */
 const REGISTERED: LegalForm[] = ['ek', 'ug', 'gmbh', 'ag', 'verein'];
 
+/**
+ * Neso fork: the law the documents follow. 'de' – the German set above (Impressum, Datenschutzerklärung …); 'ke' – the Kenyan
+ * set in legal-texts-ke.ts (English). Kenya is the default for new profiles; the country decides when nothing is stored.
+ */
+export const JURISDICTIONS = ['de', 'ke'] as const;
+export type Jurisdiction = (typeof JURISDICTIONS)[number];
+/** Kenyan legal forms (Companies Act 2015, Partnerships Act, LLP Act 2011, Registration of Business Names Act). */
+export const KE_FORMS = ['sole', 'partnership', 'ltd', 'plc', 'llp', 'ngo', 'other'] as const;
+export type KeForm = (typeof KE_FORMS)[number];
+const GERMAN_COUNTRY = /^(de|deutschland|germany|österreich|oesterreich|austria|schweiz|switzerland)$/i;
+
 export interface LegalProfile {
   form: LegalForm;
   company: string;
@@ -40,6 +51,29 @@ export interface LegalProfile {
   overrides: Record<string, boolean>;
   /** Optional external text source (eRecht24): only a configurable placeholder, nothing is called without a provider module. */
   external: { enabled: boolean; provider: string; apiKey: string; project: string };
+  /** Neso fork: which law the documents follow (see JURISDICTIONS). */
+  jurisdiction: Jurisdiction;
+  // --- Kenya ('ke'); company, owner, street, city, email, phone, website, dpo_*, hosting and overrides are shared ---
+  ke_form: KeForm;
+  /** Brand or business name the company trades under, if it differs from the registered name. */
+  trading_name: string;
+  /** BRS registration number: company number (e.g. PVT-…) or business-name registration number. */
+  brs_no: string;
+  kra_pin: string;
+  vat_registered: boolean;
+  /** Building and floor (the street goes in `street`, the town in `city`). */
+  building: string;
+  county: string;
+  /** "P.O. Box 12345-00100, Nairobi". */
+  po_box: string;
+  /** ODPC registration certificate number (optional – shown when present). */
+  odpc_no: string;
+  /** County single business permit (optional). */
+  business_permit: string;
+  /** M-Pesa Paybill or Till number for the terms (optional; when set, M-Pesa counts as in use). */
+  mpesa_number: string;
+  /** Offer arbitration under the Arbitration Act 1995 to business customers in the terms. */
+  arbitration: boolean;
 }
 
 export const BLANK_PROFILE: LegalProfile = {
@@ -49,7 +83,8 @@ export const BLANK_PROFILE: LegalProfile = {
   street: '',
   zip: '',
   city: '',
-  country: 'Deutschland',
+  /** Empty: cleanProfile fills in the country of the jurisdiction (Kenya / Deutschland). */
+  country: '',
   email: '',
   phone: '',
   website: '',
@@ -67,14 +102,43 @@ export const BLANK_PROFILE: LegalProfile = {
   supervisory: '',
   overrides: {},
   external: { enabled: false, provider: 'erecht24', apiKey: '', project: '' },
+  jurisdiction: 'ke',
+  ke_form: 'ltd',
+  trading_name: '',
+  brs_no: '',
+  kra_pin: '',
+  vat_registered: false,
+  building: '',
+  county: '',
+  po_box: '',
+  odpc_no: '',
+  business_permit: '',
+  mpesa_number: '',
+  arbitration: false,
 };
+
+/**
+ * The jurisdiction of a raw profile: an explicit choice wins; then the country (a profile stored before the Kenyan option
+ * always carried one, "Deutschland" by default); without a country a German VAT id, a +49 phone number or a German street
+ * ("Hauptstraße 1", "Musterweg 1") in the sub-account's own data hints at Germany; otherwise Kenya – the default of this fork.
+ */
+export function inferJurisdiction(r: { jurisdiction?: unknown; country?: unknown; vat_id?: unknown; phone?: unknown; street?: unknown }): Jurisdiction {
+  if ((JURISDICTIONS as readonly unknown[]).includes(r.jurisdiction)) return r.jurisdiction as Jurisdiction;
+  const country = String(r.country ?? '').trim();
+  if (country) return GERMAN_COUNTRY.test(country) ? 'de' : 'ke';
+  if (/^DE\s?\d/i.test(String(r.vat_id ?? '').trim()) || /^(\+|00)49/.test(String(r.phone ?? '').replace(/[\s()-]/g, ''))) return 'de';
+  if (/(straße|strasse|str\.|weg|platz|allee|gasse)\s*\d/i.test(String(r.street ?? ''))) return 'de';
+  return 'ke';
+}
 
 const s = (v: unknown, max: number) => String(v ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, max);
 const urlOrEmpty = (v: unknown) => (/^https?:\/\/[^\s"'<>]{3,300}$/i.test(String(v ?? '').trim()) ? String(v).trim() : '');
 
 /** Stored profile (anything a client could have written) → complete, clamped profile. */
 export function cleanProfile(raw: unknown, base: Partial<LegalProfile> = {}): LegalProfile {
-  const r: any = { ...BLANK_PROFILE, ...base, ...(raw && typeof raw === 'object' ? raw : {}) };
+  const given: any = { ...base, ...(raw && typeof raw === 'object' ? raw : {}) };
+  const jurisdiction = inferJurisdiction(given);
+  const r: any = { ...BLANK_PROFILE, ...given };
   const overrides: Record<string, boolean> = {};
   if (r.overrides && typeof r.overrides === 'object') for (const [k, v] of Object.entries(r.overrides)) if (/^[a-z0-9_]{1,40}$/.test(k) && typeof v === 'boolean') overrides[k] = v;
   return {
@@ -84,7 +148,7 @@ export function cleanProfile(raw: unknown, base: Partial<LegalProfile> = {}): Le
     street: s(r.street, 200),
     zip: s(r.zip, 20),
     city: s(r.city, 120),
-    country: s(r.country, 80) || 'Deutschland',
+    country: s(r.country, 80) || (jurisdiction === 'ke' ? 'Kenya' : 'Deutschland'),
     email: s(r.email, 200),
     phone: s(r.phone, 60),
     website: urlOrEmpty(r.website),
@@ -102,6 +166,19 @@ export function cleanProfile(raw: unknown, base: Partial<LegalProfile> = {}): Le
     supervisory: s(r.supervisory, 400),
     overrides,
     external: { enabled: r.external?.enabled === true, provider: /^[a-z0-9_-]{1,30}$/.test(String(r.external?.provider ?? '')) ? String(r.external.provider) : 'erecht24', apiKey: s(r.external?.apiKey, 200), project: s(r.external?.project, 100) },
+    jurisdiction,
+    ke_form: (KE_FORMS as readonly string[]).includes(r.ke_form) ? r.ke_form : 'ltd',
+    trading_name: s(r.trading_name, 200),
+    brs_no: s(r.brs_no, 60),
+    kra_pin: s(r.kra_pin, 40).replace(/\s+/g, '').toUpperCase().slice(0, 20),
+    vat_registered: r.vat_registered === true,
+    building: s(r.building, 200),
+    county: s(r.county, 80),
+    po_box: s(r.po_box, 120),
+    odpc_no: s(r.odpc_no, 80),
+    business_permit: s(r.business_permit, 80),
+    mpesa_number: s(r.mpesa_number, 80),
+    arbitration: r.arbitration === true,
   };
 }
 
@@ -197,6 +274,8 @@ export interface Facts {
   email_provider: string;
   sms_provider: string;
   stripe: boolean;
+  /** Neso fork: M-Pesa payments (Safaricom) – set when the owner entered a Paybill/Till number, or switched on by hand. */
+  mpesa: boolean;
   invoices: boolean;
   calendars: boolean;
   calendar_sync: string[];
@@ -222,7 +301,7 @@ export interface Facts {
 }
 
 export const EMPTY_FACTS: Facts = {
-  forms: false, newsletter: false, doi: false, email_provider: '', sms_provider: '', stripe: false, invoices: false, calendars: false, calendar_sync: [], webinars: false,
+  forms: false, newsletter: false, doi: false, email_provider: '', sms_provider: '', stripe: false, mpesa: false, invoices: false, calendars: false, calendar_sync: [], webinars: false,
   video_hosts: [], chat: false, community: false, courses: false, telephony: false, voice_ai: false, ai_provider: '', attribution: false, cmp: false, trackers: [], embeds: [],
   whatsapp: false, tickets: false, affiliates: false, google_reviews: false, mailbox: false, email_tracking: false, employees: false,
 };
@@ -235,6 +314,7 @@ export const SERVICES: { id: string; label: string; on: (f: Facts) => boolean }[
   { id: 'sms', label: 'SMS-Versand', on: (f) => !!f.sms_provider && f.sms_provider !== 'log' },
   { id: 'whatsapp', label: 'WhatsApp / Facebook Messenger / Instagram (Meta)', on: (f) => f.whatsapp },
   { id: 'stripe', label: 'Zahlungen über Stripe', on: (f) => f.stripe },
+  { id: 'mpesa', label: 'M-Pesa-Zahlungen (Safaricom)', on: (f) => f.mpesa },
   { id: 'invoices', label: 'Rechnungen & Buchhaltung', on: (f) => f.invoices },
   { id: 'calendars', label: 'Online-Terminbuchung', on: (f) => f.calendars },
   { id: 'calendar_sync', label: 'Kalender-Abgleich (Google / Microsoft)', on: (f) => f.calendar_sync.length > 0 },
@@ -591,6 +671,20 @@ export function docToBlocks(doc: LegalDoc): { type: string; [k: string]: unknown
   return out;
 }
 
-export const DOC_KINDS = ['impressum', 'datenschutz', 'widerruf', 'avv', 'vvt'] as const;
+/** The German set; Kenya has its own (KE_DOC_KINDS) – kindsFor() in legal-texts-ke.ts gives the set of a jurisdiction. */
+export const DE_DOC_KINDS = ['impressum', 'datenschutz', 'widerruf', 'avv', 'vvt'] as const;
+/** Neso fork: the Kenyan documents (English source texts – they are legal documents for Kenya, not UI). */
+export const KE_DOC_KINDS = ['company', 'privacy', 'terms', 'dpa'] as const;
+export const DOC_KINDS = [...DE_DOC_KINDS, ...KE_DOC_KINDS] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
-export const DOC_LABEL: Record<DocKind, string> = { impressum: 'Impressum', datenschutz: 'Datenschutzerklärung', widerruf: 'Widerrufsbelehrung', avv: 'Auftragsverarbeitungsvertrag (AVV)', vvt: 'Verzeichnis von Verarbeitungstätigkeiten (VVT)' };
+export const DOC_LABEL: Record<DocKind, string> = {
+  impressum: 'Impressum',
+  datenschutz: 'Datenschutzerklärung',
+  widerruf: 'Widerrufsbelehrung',
+  avv: 'Auftragsverarbeitungsvertrag (AVV)',
+  vvt: 'Verzeichnis von Verarbeitungstätigkeiten (VVT)',
+  company: 'Company information', // i18n-ignore – English document title (Kenya)
+  privacy: 'Privacy policy', // i18n-ignore
+  terms: 'Terms and conditions', // i18n-ignore
+  dpa: 'Data processing agreement', // i18n-ignore
+};

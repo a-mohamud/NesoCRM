@@ -11,6 +11,8 @@ import {
   EMPTY_FACTS,
   FORM_LABEL,
   FORMS,
+  KE_DOC_KINDS,
+  KE_FORMS,
   LEGAL_NOTICE,
   SERVICES,
   activeServices,
@@ -32,6 +34,8 @@ import {
   type LegalDoc,
   type LegalProfile,
 } from '../services/legal-texts.js';
+import { KE_FORM_LABEL, KE_LEGAL_NOTICE, kenyaCompany, kenyaDpa, kenyaPrivacy, kenyaTerms, kindsFor, publicKind } from '../services/legal-texts-ke.js';
+import { SERVER_LOCALES, translator } from '../i18n/index.js';
 import { docPdf } from '../services/legal-pdf.js';
 import { settingsOf as consentSettings } from '../services/consent.js';
 import { cleanCmp } from '../services/cmp.js';
@@ -45,6 +49,9 @@ import { tCtx, tLoc } from '../i18n/index.js';
  * `app.services.legalTexts` is the small API other modules (the cloud sign-up) can reuse: `profile`, `facts`, `generate`,
  * `render`, and `register` for further document kinds. An external text provider (eRecht24) is only a configurable
  * placeholder: nothing is called unless a module registers a provider function (`legalTexts.providers`).
+ * Neso fork: a profile's `jurisdiction` ('ke' by default, see legal-texts-ke.ts) picks the Kenyan set – company information,
+ * privacy policy, terms and conditions, data processing agreement. The public slugs of both sets work in both
+ * (/legal/<sub-account>/datenschutz shows the Kenyan privacy policy for a Kenyan profile), so existing links keep working.
  */
 
 const TRACKERS: [string, RegExp][] = [
@@ -103,7 +110,15 @@ export const legalPagesModule: Module = {
       const cur = profileOf(locationId).profile;
       // The stored key never goes to the browser; the masked value coming back keeps it.
       const ext = patch.external && typeof patch.external === 'object' ? { ...cur.external, ...patch.external, apiKey: patch.external.apiKey === '••••••' ? cur.external.apiKey : patch.external.apiKey ?? cur.external.apiKey } : cur.external;
-      const next = cleanProfile({ ...cur, ...patch, external: ext, overrides: patch.overrides !== undefined ? patch.overrides : cur.overrides });
+      const merged: Record<string, any> = { ...cur, ...patch, external: ext, overrides: patch.overrides !== undefined ? patch.overrides : cur.overrides };
+      // Until a jurisdiction is stored it follows the data (country, German VAT id / phone / street) – the defaults filled in
+      // for display are not a choice. A new country without a jurisdiction decides it again ("Kenya" → ke); a new jurisdiction
+      // without a country brings its own.
+      const stored = loc.settings.legal && typeof loc.settings.legal === 'object' ? loc.settings.legal : {};
+      if (patch.jurisdiction === undefined && (patch.country !== undefined || !stored.jurisdiction)) delete merged.jurisdiction;
+      if (patch.jurisdiction === undefined && patch.country === undefined && !stored.jurisdiction && !stored.country) delete merged.country;
+      if (patch.jurisdiction !== undefined && patch.jurisdiction !== cur.jurisdiction && patch.country === undefined) merged.country = '';
+      const next = cleanProfile(merged);
       db.run('UPDATE locations SET settings = ? WHERE id = ?', JSON.stringify(sealSettings(app, { ...loc.settings, legal: next }).value), locationId);
       return next;
     };
@@ -120,6 +135,8 @@ export const legalPagesModule: Module = {
       f.email_provider = String(loc.settings.email?.provider ?? '').toLowerCase();
       f.sms_provider = String(loc.settings.sms?.provider ?? '').toLowerCase();
       f.stripe = has(`SELECT 1 FROM stripe_accounts WHERE location_id = ? AND secret_key IS NOT NULL AND secret_key != ''`, locationId);
+      // No M-Pesa integration in the system: a Paybill/Till number in the company data means it is used (or the owner switches it on).
+      f.mpesa = !!profileOf(locationId).profile.mpesa_number;
       f.invoices = some('invoices');
       f.calendars = some('calendars');
       f.calendar_sync = safe(
@@ -170,7 +187,18 @@ export const legalPagesModule: Module = {
         if (o.processor_name || o.processor?.name) input.processor = party('processor');
         return avv(profileOf(loc).profile, input, factsOf(loc));
       },
+      // Kenya (English documents).
+      company: (loc) => kenyaCompany(profileOf(loc).profile),
+      privacy: (loc) => kenyaPrivacy(profileOf(loc).profile, factsOf(loc)),
+      terms: (loc) => kenyaTerms(profileOf(loc).profile, factsOf(loc)),
+      dpa: (loc, o) => {
+        const party = (n: string) => ({ name: str(o[`${n}_name`] ?? o[n]?.name, 'Name', { max: 200 }), address: str(o[`${n}_address`] ?? o[n]?.address, 'Anschrift', { max: 400 }), representative: str(o[`${n}_representative`] ?? o[n]?.representative, 'Vertretung', { max: 200 }) });
+        const input: Partial<AvvInput> = { controller: party('controller'), service: str(o.service, 'Leistung', { max: 600 }) || undefined };
+        if (o.processor_name || o.processor?.name) input.processor = party('processor');
+        return kenyaDpa(profileOf(loc).profile, input, factsOf(loc));
+      },
     };
+    const isKenyan = (kind: string) => (KE_DOC_KINDS as readonly string[]).includes(kind);
 
     /** Provider hook for external text sources (eRecht24 …): nothing is registered by default, so nothing is ever called. */
     const providers: Record<string, (kind: string, profile: LegalProfile) => Promise<{ sections: { heading: string; body: string }[] } | undefined>> = {};
@@ -183,7 +211,7 @@ export const legalPagesModule: Module = {
     const render = (doc: LegalDoc, format: string, o: { notice?: boolean } = {}): { body: string | Buffer; type: string; ext: string } => {
       switch (format) {
         case 'html':
-          return { body: `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${doc.title}</title><style>body{font-family:system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 16px;line-height:1.55;color:#111827}h2{margin-top:28px}</style></head><body>${docToHtml(doc, { notice: o.notice !== false })}</body></html>`, type: 'text/html; charset=utf-8', ext: 'html' };
+          return { body: `<!doctype html><html lang="${isKenyan(doc.kind) ? 'en' : 'de'}"><head><meta charset="utf-8"><title>${doc.title}</title><style>body{font-family:system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 16px;line-height:1.55;color:#111827}h2{margin-top:28px}</style></head><body>${docToHtml(doc, { notice: o.notice !== false })}</body></html>`, type: 'text/html; charset=utf-8', ext: 'html' };
         case 'md':
           return { body: docToMarkdown(doc, { notice: o.notice !== false }), type: 'text/markdown; charset=utf-8', ext: 'md' };
         case 'txt':
@@ -208,12 +236,22 @@ export const legalPagesModule: Module = {
       kinds: () => Object.keys(generators),
       /** After a website funnel was created: its placeholder legal pages become the generated texts (only while they still hold the placeholder). */
       prefill: (locationId: string, funnelId: string) => safe(() => void applyToFunnel(locationId, funnelId, ['impressum', 'datenschutz'], false), undefined),
+      /** The documents of the sub-account's jurisdiction (de: the German five; ke: company, privacy, terms, dpa). */
+      kindsFor: (locationId: string) => kindsFor(profileOf(locationId).profile.jurisdiction),
     };
 
     // --- funnel pages ---------------------------------------------------------------------------------------------------
     /** Name and one way to reach the company: the least a legal page can start from. */
     const ready = (p: LegalProfile) => !!p.company.trim() && (!!p.email || !!p.street);
     const PLACEHOLDER = /Hier deine Datenschutzerklärung einfügen|Angaben gemäß § 5 DDG\s*\n+\s*Name\s*\n\s*Straße/;
+    // The template pages are created in the sub-account's language: their translated placeholders count as well.
+    const PLACEHOLDER_TEXTS = [...new Set(SERVER_LOCALES.flatMap((l) => ['Hier deine Datenschutzerklärung einfügen.', 'Hier deine Widerrufsbelehrung einfügen.', 'Angaben gemäß § 5 DDG\n\nName\nStraße\nPLZ Ort'].map((x) => translator(l)(x))))];
+    const isPlaceholder = (page: any) => {
+      const t = (page.blocks as any[]).map((b) => String(b?.text ?? '')).join('\n');
+      return PLACEHOLDER.test(t) || PLACEHOLDER_TEXTS.some((x) => t.includes(x));
+    };
+    /** Where a Kenyan page may already exist under its German slug (the website templates create impressum / datenschutz). */
+    const LEGACY: Record<string, string> = { company: 'impressum', privacy: 'datenschutz', terms: 'widerruf' };
     const urlOf = (f: any, slug: string) => (f.domain ? `https://${f.domain}/${slug}` : `${app.baseUrl()}/p/${f.slug}/${slug}`);
 
     function applyToFunnel(locationId: string, funnelId: string, kinds: string[], overwrite: boolean) {
@@ -223,17 +261,26 @@ export const legalPagesModule: Module = {
       // Without any company data the placeholder stays – a generated text full of gaps on a live page would be worse.
       if (!ready(profile)) return [];
       const out: { kind: string; page_id: string; url: string; created: boolean; updated: boolean }[] = [];
-      for (const kind of kinds.filter((k) => k === 'impressum' || k === 'datenschutz' || k === 'widerruf')) {
+      const ke = profile.jurisdiction === 'ke';
+      // Either set's kinds are accepted ("impressum" means the company information for a Kenyan profile and the other way round).
+      const wanted = [...new Set(kinds.filter((k) => ['impressum', 'datenschutz', 'widerruf', 'company', 'privacy', 'terms'].includes(k)).map((k) => publicKind(profile.jurisdiction, k)!))];
+      const pageAt = (slug: string) => parseJson(db.get('SELECT * FROM funnel_pages WHERE funnel_id = ? AND slug = ?', f.id, slug), ['blocks', 'seo']);
+      for (const kind of wanted) {
         const slug = kind;
         const doc = generate(locationId, kind);
         const blocks = docToBlocks(doc).map((b) => ({ ...b, id: id(8) }));
-        const page = parseJson(db.get('SELECT * FROM funnel_pages WHERE funnel_id = ? AND slug = ?', f.id, slug), ['blocks', 'seo']);
-        if (!page) {
+        const page = pageAt(slug);
+        const legacy = !page && ke && LEGACY[kind] ? pageAt(LEGACY[kind]) : undefined;
+        if (legacy && (overwrite || isPlaceholder(legacy))) {
+          // The template's German-slug placeholder page becomes the Kenyan page (new slug and name, so the footer links match).
+          db.update('funnel_pages', legacy.id, { slug, name: DOC_LABEL[kind], blocks, seo: { ...(legacy.seo ?? {}), title: doc.title }, updated_at: now() });
+          out.push({ kind, page_id: legacy.id, url: urlOf(f, slug), created: false, updated: true });
+        } else if (!page) {
           const pos = db.get<{ n: number }>('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM funnel_pages WHERE funnel_id = ?', f.id)!.n;
           const pid = id();
-          db.insert('funnel_pages', { id: pid, location_id: locationId, funnel_id: f.id, name: DOC_LABEL[kind as DocKind].replace(/ \(.*/, ''), slug, position: pos, blocks, seo: { title: doc.title }, created_at: now(), updated_at: now() });
+          db.insert('funnel_pages', { id: pid, location_id: locationId, funnel_id: f.id, name: DOC_LABEL[kind].replace(/ \(.*/, ''), slug, position: pos, blocks, seo: { title: doc.title }, created_at: now(), updated_at: now() });
           out.push({ kind, page_id: pid, url: urlOf(f, slug), created: true, updated: false });
-        } else if (overwrite || PLACEHOLDER.test((page.blocks as any[]).map((b) => String(b?.text ?? '')).join('\n'))) {
+        } else if (overwrite || isPlaceholder(page)) {
           db.update('funnel_pages', page.id, { blocks, updated_at: now() });
           out.push({ kind, page_id: page.id, url: urlOf(f, slug), created: false, updated: true });
         }
@@ -243,7 +290,12 @@ export const legalPagesModule: Module = {
         const s = f.settings ?? {};
         if (!String(s.footer_text ?? '').trim()) {
           const base = f.domain ? '' : `/p/${f.slug}`;
-          const footer = [`[Impressum](${base}/impressum)`, `[Datenschutz](${base}/datenschutz)`, ...(factsOf(locationId).cmp ? ['[Cookie-Einstellungen](#cookie-settings)'] : [])].join(' · ');
+          const cmp = factsOf(locationId).cmp;
+          const footer = (
+            ke
+              ? [`[Company information](${base}/company)`, `[Privacy policy](${base}/privacy)`, ...(pageAt('terms') ? [`[Terms and conditions](${base}/terms)`] : []), ...(cmp ? ['[Cookie settings](#cookie-settings)'] : [])] // i18n-ignore – English page names of the Kenyan set
+              : [`[Impressum](${base}/impressum)`, `[Datenschutz](${base}/datenschutz)`, ...(cmp ? ['[Cookie-Einstellungen](#cookie-settings)'] : [])]
+          ).join(' · ');
           db.update('funnels', f.id, { settings: { ...s, footer_text: footer }, updated_at: now() });
         }
         db.run('UPDATE funnels SET updated_at = ? WHERE id = ?', now(), f.id);
@@ -258,7 +310,16 @@ export const legalPagesModule: Module = {
 
     router.get('/api/legal/profile', 'location', (ctx) => {
       const { profile, prefilled } = profileOf(ctx.locationId);
-      return { profile: { ...profile, external: { ...profile.external, apiKey: profile.external.apiKey ? '••••••' : '' } }, prefilled, forms: FORMS.map((k) => ({ key: k, label: tCtx(ctx)(FORM_LABEL[k]) })), notice: LEGAL_NOTICE };
+      const t = tCtx(ctx);
+      return {
+        profile: { ...profile, external: { ...profile.external, apiKey: profile.external.apiKey ? '••••••' : '' } },
+        prefilled,
+        forms: FORMS.map((k) => ({ key: k, label: t(FORM_LABEL[k]) })),
+        ke_forms: KE_FORMS.map((k) => ({ key: k, label: KE_FORM_LABEL[k] })),
+        /** The documents of this profile's jurisdiction, in order. */
+        docs: kindsFor(profile.jurisdiction).map((k) => ({ kind: k, label: isKenyan(k) ? DOC_LABEL[k] : t(DOC_LABEL[k]) })),
+        notice: profile.jurisdiction === 'ke' ? KE_LEGAL_NOTICE : LEGAL_NOTICE,
+      };
     });
     router.put('/api/legal/profile', 'location', (ctx) => {
       writable(ctx);
@@ -291,7 +352,7 @@ export const legalPagesModule: Module = {
           }
         }
       }
-      return { kind, label: DOC_LABEL[kind as DocKind] ?? kind, doc, html: docToHtml(doc, { notice: true }), markdown: docToMarkdown(doc, { notice: true }), missing: doc.missing, notice: LEGAL_NOTICE, external };
+      return { kind, label: DOC_LABEL[kind as DocKind] ?? kind, doc, html: docToHtml(doc, { notice: true }), markdown: docToMarkdown(doc, { notice: true }), missing: doc.missing, notice: doc.notice || LEGAL_NOTICE, external };
     });
     router.get('/api/legal/export', 'location', (ctx) => {
       const kind = str(ctx.query.get('kind'), 'Dokument', { required: true });
@@ -309,29 +370,31 @@ export const legalPagesModule: Module = {
       return { pages: applyToFunnel(ctx.locationId, ctx.params.id, kinds, ctx.body?.overwrite === true) };
     });
 
-    // Hosted copies for sub-accounts without a website (forms, buy pages and the checkout link to them): /legal/<sub-account>/<impressum|datenschutz|widerruf>.
+    // Hosted copies for sub-accounts without a website (forms, buy pages and the checkout link to them):
+    // /legal/<sub-account>/<impressum|datenschutz|widerruf|company|privacy|terms> – the slug shows the matching document of the jurisdiction.
     router.get('/legal/:loc/:kind', 'public', (ctx) => {
-      const kind = ctx.params.kind;
       const loc = app.location(ctx.params.loc);
-      if (!loc || !['impressum', 'datenschutz', 'widerruf'].includes(kind)) {
+      const profile = loc ? profileOf(loc.id).profile : undefined;
+      const kind = profile ? publicKind(profile.jurisdiction, ctx.params.kind) : undefined;
+      if (!loc || !profile || !kind) {
         const tn = tCtx(ctx);
         return html(publicPage({ title: tn('Nicht gefunden'), body: `<div class="wrap"><div class="card"><h1>${escapeHtml(tn('Nicht gefunden'))}</h1></div></div>` }), 404);
       }
-      const profile = profileOf(loc.id).profile;
       // Nothing is published before the owner entered at least the name and one way to reach them.
       const tl = tLoc(app, loc.id);
       if (!ready(profile)) return html(publicPage({ title: tl('Noch nicht eingerichtet'), body: `<div class="wrap"><div class="card"><h1>${escapeHtml(tl('Noch nicht eingerichtet'))}</h1><p class="muted">${escapeHtml(tl('Diese Seite wird vom Betreiber noch vorbereitet.'))}</p></div></div>` }), 404);
       // Anybody can ask for this page, and generating it looks at the sub-account's data: keep the result for half a minute.
       const doc = db.memo(`legal-page:${loc.id}:${kind}`, 30_000, () => {
         const d = generate(loc.id, kind, {});
-        return { title: d.title, html: docToHtml(d) };
+        return { title: d.title, html: docToHtml(d), lang: isKenyan(d.kind) ? 'en' : 'de' };
       });
-      const r = html(publicPage({ title: doc.title, color: String(loc.settings?.branding?.color ?? '') || undefined, body: `<div class="wrap"><div class="card legal">${doc.html}</div></div>` }));
+      const r = html(publicPage({ title: doc.title, lang: doc.lang, color: String(loc.settings?.branding?.color ?? '') || undefined, body: `<div class="wrap"><div class="card legal">${doc.html}</div></div>` }));
       r.headers['cache-control'] = 'public, max-age=300';
       r.headers['content-security-policy'] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; frame-ancestors 'none'";
       return r;
     });
-    app.services.legalTexts.hostedUrl = (locationId: string, kind: string) => `${app.baseUrl()}/legal/${encodeURIComponent(locationId)}/${kind}`;
+    // "datenschutz" / "impressum" / "widerruf" asked for by the checkout and forms become privacy / company / terms in Kenya.
+    app.services.legalTexts.hostedUrl = (locationId: string, kind: string) => `${app.baseUrl()}/legal/${encodeURIComponent(locationId)}/${safe(() => publicKind(profileOf(locationId).profile.jurisdiction, kind), undefined) ?? kind}`;
 
     void BLANK_PROFILE;
     void DOC_KINDS;

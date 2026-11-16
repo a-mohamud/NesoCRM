@@ -1745,4 +1745,7 @@ export default {
   'Passkey (synchronisiert)': 'Passkey (synced)',
   'page_id fehlt': 'page_id is missing',
   'Personal Training': 'Personal training',
+  // site-render.ts footer links of the Kenyan legal pages
+  'Firmenangaben': 'Company information',
+  'Allgemeine Geschäftsbedingungen': 'Terms and conditions',
 } satisfies Catalog;

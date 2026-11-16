@@ -2,10 +2,11 @@ import { escapeHtml } from './template.js';
 import { tApp, type STFn } from '../i18n/index.js';
 
 /** Shell for the public, server-rendered pages (booking, forms, funnels, invoices, reviews). */
-export function publicPage(opts: { title: string; body: string; head?: string; color?: string; embed?: boolean; description?: string }): string {
+export function publicPage(opts: { title: string; body: string; head?: string; color?: string; embed?: boolean; description?: string; /** Language of the page content (default "de"). */ lang?: string }): string {
   const color = /^#[0-9a-f]{3,8}$/i.test(opts.color ?? '') ? opts.color : '#2563eb';
+  const lang = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(opts.lang ?? '') ? opts.lang : 'de';
   return `<!doctype html>
-<html lang="de">
+<html lang="${lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
