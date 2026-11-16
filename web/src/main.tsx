@@ -2,7 +2,7 @@ import { Suspense, useEffect, useMemo, useState, type ComponentType, type ReactN
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './theme/theme.css';
-import { api, currentLocation, name, setLocation } from './api';
+import { api, currentLocation, name, setLocation, setLocationCurrencies } from './api';
 import { BASE, ConfirmHost, Toasts, navigate, useFocusLayer, useRoute } from './ui';
 // UI language (docs/translating.md): German texts are the message ids; the English catalogs are chunks of their own.
 import { useLocale, useT, type TFn } from './i18n';
@@ -539,6 +539,7 @@ function App() {
       let loc = takeLocParam(me.locations) ?? currentLocation();
       if (!me.locations.some((l: any) => l.id === loc)) loc = me.locations[0]?.id ?? '';
       setLocation(loc);
+      setLocationCurrencies(me.locations);
       void loadBranding(true);
       void loadAppearance();
       // Signed in: fetch the landing page's chunk while the next requests run.

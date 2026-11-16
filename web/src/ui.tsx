@@ -343,6 +343,18 @@ export function ActionMenu({ children, label, tour }: { children: ReactNode; lab
   const t = useT('core');
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
+  // Neso fork: items that render nothing (e.g. a Claude/Codex button without sessions) must not leave an empty "⋯" menu.
+  const pop = useRef<HTMLSpanElement>(null);
+  const [empty, setEmpty] = useState(false);
+  useLayoutEffect(() => {
+    const el = pop.current;
+    if (!el) return;
+    const check = () => setEmpty(el.childElementCount === 0);
+    check();
+    const mo = new MutationObserver(check);
+    mo.observe(el, { childList: true });
+    return () => mo.disconnect();
+  }, []);
   useEffect(() => {
     if (!open) return;
     const off = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
@@ -352,11 +364,11 @@ export function ActionMenu({ children, label, tour }: { children: ReactNode; lab
     return () => (document.removeEventListener('mousedown', off), window.removeEventListener('keydown', esc));
   }, [open]);
   return (
-    <span className="act-more" ref={ref} data-tour={tour ?? 'page-more'}>
+    <span className="act-more" ref={ref} data-tour={tour ?? 'page-more'} style={empty ? { display: 'none' } : undefined}>
       <button type="button" className="btn secondary" aria-haspopup="menu" aria-expanded={open} aria-label={label ?? t('Weitere Aktionen')} title={label ?? t('Weitere Aktionen')} onClick={() => setOpen(!open)}>
         ⋯
       </button>
-      <span className={`act-pop${open ? '' : ' closed'}`} role="menu" aria-hidden={!open || undefined} onClickCapture={(e) => (e.target as HTMLElement).closest('button, a') && setTimeout(() => setOpen(false), 0)}>
+      <span ref={pop} className={`act-pop${open ? '' : ' closed'}`} role="menu" aria-hidden={!open || undefined} onClickCapture={(e) => (e.target as HTMLElement).closest('button, a') && setTimeout(() => setOpen(false), 0)}>
         {children}
       </span>
     </span>

@@ -3,6 +3,7 @@ import { clampLimit } from '../core/http.js';
 import { resolve, scopeClause } from '../services/record-access.js';
 import { defaultStageProbability } from '../services/report-sources.js';
 import type { Tool } from './mcp.js';
+import { locationCurrency } from '../services/location-currency.js';
 
 /**
  * Forecast tab of Opportunities (docs/sales.md#forecast): open deals by expected close month with the weighted value (value × the
@@ -113,7 +114,7 @@ export const dealForecastModule: Module = {
       // The currency most of these deals are in – the sums are shown in it (no exchange rates; EUR when there are no deals).
       const byCur = new Map<string, number>();
       for (const d of deals) if (/^[A-Z]{3}$/.test(d.currency ?? '')) byCur.set(d.currency, (byCur.get(d.currency) ?? 0) + 1);
-      const currency = [...byCur].sort((a, b) => b[1] - a[1] || Number(b[0] === 'EUR') - Number(a[0] === 'EUR') || (a[0] < b[0] ? -1 : 1))[0]?.[0] ?? 'EUR';
+      const currency = [...byCur].sort((a, b) => b[1] - a[1] || Number(b[0] === 'EUR') - Number(a[0] === 'EUR') || (a[0] < b[0] ? -1 : 1))[0]?.[0] ?? locationCurrency(app, ctx.locationId);
       for (const c of Object.values(risks)) (c.deals.sort((a, b) => b.value - a.value), (c.deals = c.deals.slice(0, 10)), (c.value = round(c.value)));
       return {
         today,

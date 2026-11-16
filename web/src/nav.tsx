@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronsUpDown, ExternalLink, Search as SearchIcon } from 'lucide-react';
 import { api } from './api';
+import { SandboxResetButton } from './tour/SandboxReset';
 import { Icon, type IconName } from './icons';
 import { can, useSession, type Session } from './session';
 import { useT } from './i18n';
@@ -235,6 +236,7 @@ export function ProjectSwitcher() {
                     </small>
                   )}
                 </span>
+                <SandboxResetButton locationId={p.id} className="btn small ghost" />
                 <ClaudeButton sessions={p.claude_sessions} compact />
                 <CodexButton sessions={p.codex_sessions} compact />
               </div>

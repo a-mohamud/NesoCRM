@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ago, api, d, dt, euro } from '../api';
+import { ago, api, currentCurrency, d, dt } from '../api';
 import { useSession, type Branding } from '../session';
 import { useAppInfo } from '../demo';
 import { LearnLink } from '../tour/learn';
 import { AcademyWelcome } from '../tour/welcome';
+import { SandboxResetButton } from '../tour/SandboxReset';
 // The default tab is in this chunk; every other tab loads when opened (web/src/lazy.tsx).
 import { PageSuspense, lazyPages } from '../lazy';
 const { AllTasks, ApiAndMcp, AuditLog, MailAccounts } = lazyPages(() => import('./AgencyPlatform'), 'AllTasks', 'ApiAndMcp', 'AuditLog', 'MailAccounts');
@@ -183,12 +184,13 @@ function Clients() {
                     </>
                   )}
                   <div className="muted small">{tt('seit {d}', { d: d(l.created_at) })}</div>
+                  <SandboxResetButton locationId={l.id} />
                 </td>
                 <td>{l.contacts}</td>
                 <td>
                   {l.new_contacts} <span className="muted small">{tt('· {submissions} Formulare', { submissions: l.submissions })}</span>
                 </td>
-                <td>{l.open_currency ? fmtMoney(l.open_value * 100, l.open_currency, { maximumFractionDigits: 0 }) : euro(l.open_value)}</td>
+                <td>{fmtMoney(l.open_value * 100, l.open_currency || currentCurrency(l.id), { maximumFractionDigits: 0 })}</td>
                 <td>{l.appointments}</td>
                 <td className="small">
                   {l.funnels.map((f: any) => (

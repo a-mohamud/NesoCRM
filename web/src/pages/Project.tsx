@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ago, api, euro } from '../api';
 import { can, useSession } from '../session';
 import { displayHost } from '../format';
+import { SandboxResetButton } from '../tour/SandboxReset';
 import { act, Badge, Empty, Field, Input, PageHead, pressable, Select, Spinner, Stat, Textarea, useLoad } from '../ui';
 import { ClaudeButton, CodexButton, refreshProjects } from '../nav';
 import { ProjectDocs } from './Docs';
@@ -67,6 +68,7 @@ export function Project() {
     <>
       <PageHead title={loc?.name ?? tt('Projekt')} sub={v.tagline || tt('Projekt-Steckbrief')}>
         <Badge tone={STATUS[v.status]?.[1]}>{STATUS[v.status] ? tt(STATUS[v.status][0]) : v.status}</Badge>
+        {session.locationId && <SandboxResetButton locationId={session.locationId} className="btn secondary" />}
         <ClaudeButton sessions={p.data.claude_sessions} />
         <CodexButton sessions={p.data.codex_sessions} />
         {v.website && (
@@ -183,6 +185,7 @@ export function ProjectsOverview() {
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <h3>{l.name}</h3>
               <span className="actions">
+                <SandboxResetButton locationId={l.id} />
                 <ClaudeButton sessions={l.profile.claude_sessions} compact />
                 <CodexButton sessions={l.profile.codex_sessions} compact />
                 <Badge tone={STATUS[l.profile.status]?.[1]}>{STATUS[l.profile.status] ? tt(STATUS[l.profile.status][0]) : l.profile.status}</Badge>

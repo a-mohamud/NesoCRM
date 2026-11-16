@@ -426,4 +426,6 @@ export default {
   'Verbinden fehlgeschlagen': 'Connection failed',
   'eingerichtet': 'set up',
   'Währung (neue Rechnungen, Produkte und Deals)': 'Currency (new invoices, products and deals)',
+  'Auch bestehende Deals, Produkte und Rechnungsentwürfe in EUR auf diese Währung umstellen (Beträge bleiben gleich)': 'Also switch existing deals, products and draft invoices from EUR to this currency (amounts stay the same)',
+  '{n} Einträge auf {currency} umgestellt': { one: '{n} record switched to {currency}', other: '{n} records switched to {currency}' },
 } satisfies Catalog;

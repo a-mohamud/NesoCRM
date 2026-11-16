@@ -440,6 +440,7 @@ export default {
   "Übungs-Firma zurückgesetzt": "Shirkadda Tababarka dib ayaa loo dejiyay",
   "Wird zurückgesetzt …": "Dib ayaa loo dejinayaa …",
   Zurücksetzen: "Dib u deji",
+  "Alle Übungsdaten löschen und frisch anlegen": "Tirtir dhammaan xogta tababarka oo mid cusub samee",
   "Beim Abmelden startet sie automatisch neu, wenn darin etwas geändert wurde – außer jemand anderes übt gerade darin.": "Marka aad ka baxdo si toos ah ayay dib ugu bilaabataa, haddii wax laga beddelay – inta qof kale aanu hadda ku tababaranayn.",
   "Übungs-Firma mit Demo-Daten anlegen": "Samee Shirkadda Tababarka oo leh xog tusaale ah",
   "Geführte Touren direkt in der echten Oberfläche – Schritt für Schritt, mit Pausen, jederzeit fortsetzbar.": "Hagayaal ka dhex socda interface-ka dhabta ah – tallaabo tallaabo, nasasho leh, waqti kastana waad ka sii wadi kartaa meeshii aad ka joogsatay.",

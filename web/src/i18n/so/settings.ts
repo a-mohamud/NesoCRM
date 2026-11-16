@@ -395,4 +395,6 @@ export default {
   "Verbinden fehlgeschlagen": "Isku-xirku wuu guuldarraystay",
   eingerichtet: "la dejiyay",
   'Währung (neue Rechnungen, Produkte und Deals)': "Lacagta (qaansheegyada, alaabta iyo heshiisyada cusub)",
+  "Auch bestehende Deals, Produkte und Rechnungsentwürfe in EUR auf diese Währung umstellen (Beträge bleiben gleich)": "Sidoo kale u beddel lacagtan heshiisyada, alaabta iyo qabyo-qaansheegyada hadda ku jira EUR (qadarradu isma beddelayaan)",
+  "{n} Einträge auf {currency} umgestellt": { one: "{n} diiwaan ayaa loo beddelay {currency}", other: "{n} diiwaan ayaa loo beddelay {currency}" },
 } satisfies Catalog;

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { api, d, name } from '../api';
 import { Check, Empty, Input, Link, PageHead, Spinner, Tabs, act, useLoad } from '../ui';
 import { MasterDetail } from '../ios/MasterDetail';
+import './smart-lists.css';
+import './tasks.css';
 import { useSession } from '../session';
 import { TaskDetail } from './TaskDetail';
 import { dayOf, todayIn } from './pm-format';
@@ -46,7 +48,7 @@ export function Tasks() {
       ) : list.data?.length ? (
         <div className="card" data-tour="tasks-list">
           {list.data.map((tk) => (
-            <div key={tk.id} className={`row task-row${tk.id === cur?.id ? ' on' : ''}`} style={{ alignItems: 'center', borderBottom: '1px solid var(--line)', padding: '4px 0' }}>
+            <div key={tk.id} className={`row task-row${tk.id === cur?.id ? ' on' : ''}`}>
               <div className="grow">
                 <Check
                   checked={!!tk.done}
@@ -75,6 +77,7 @@ export function Tasks() {
   );
   return (
     <MasterDetail
+      className={cur ? 'tasks-md' : 'tasks-md md-full-list'}
       open={!!cur}
       list={listPane}
       detail={cur && <TaskDetail task={cur} tz={tz} onChanged={(tk) => (setSel(tk), list.reload())} onGone={() => (setSel(null), list.reload())} onBack={() => setSel(null)} />}

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../icons';
-import { api, dt } from '../api';
+import { allCurrencies, api, currencyLabel, currentCurrency, dt } from '../api';
 import { useSession } from '../session';
 import { PermissionPicker } from './PermissionPicker';
+import { SandboxResetButton } from '../tour/SandboxReset';
 import { AiSettings } from './AiAssistant';
 import { MetaSettings } from './MetaChannels';
 import { MoreChannelSettings } from './ChannelSettings';
@@ -57,18 +58,17 @@ function useLocationSettings() {
   const save = async (patch: any) => {
     const r = await act(() => api.patch('/api/location', patch), tr('settings')('Gespeichert'));
     if (r) loc.setData(r);
+    return r;
   };
   return { loc, save };
 }
-
-/** Neso fork: the currencies Settings → Company offers (server/services/location-currency.ts COMPANY_CURRENCIES). */
-const COMPANY_CURRENCIES = ['KES', 'UGX', 'TZS', 'RWF', 'ETB', 'SOS', 'USD', 'EUR', 'GBP', 'AED', 'CHF'];
 
 function Company() {
   const t = useT('settings');
   const { loc, save } = useLocationSettings();
   const session = useSession();
   const [l, setL] = useState<any>();
+  const [convert, setConvert] = useState(false);
   useEffect(() => setL(loc.data), [loc.data]);
   if (!l) return <Spinner />;
   return (
@@ -87,7 +87,8 @@ function Company() {
           <Input value={l.phone} onChange={(v) => setL({ ...l, phone: v })} />
         </Field>
         <Field label={t('Währung (neue Rechnungen, Produkte und Deals)')}>
-          <Select value={l.settings?.currency || 'EUR'} onChange={(v) => setL({ ...l, settings: { ...l.settings, currency: v } })} options={[...new Set([...COMPANY_CURRENCIES, l.settings?.currency || 'EUR'])]} />
+          <Select value={l.settings?.currency || currentCurrency()} onChange={(v) => setL({ ...l, settings: { ...l.settings, currency: v } })} options={[...new Set([l.settings?.currency || currentCurrency(), ...allCurrencies()])].map((c) => [c, currencyLabel(c)])} />
+          <Check checked={convert} onChange={setConvert} label={t('Auch bestehende Deals, Produkte und Rechnungsentwürfe in EUR auf diese Währung umstellen (Beträge bleiben gleich)')} />
         </Field>
       </div>
       <Field label={t('Adresse (Impressum, Rechnungen, E-Mail-Fuß)')}>
@@ -103,7 +104,15 @@ function Company() {
           </Field>
         </div>
       </MoreFields>
-      <button className="btn" onClick={() => save({ name: l.name, timezone: l.timezone, email: l.email, phone: l.phone, website: l.website, logo_url: l.logo_url, address: l.address, settings: { currency: l.settings?.currency || 'EUR' } }).then(session.reload)}>
+      <button
+        className="btn"
+        onClick={async () => {
+          const r = await save({ name: l.name, timezone: l.timezone, email: l.email, phone: l.phone, website: l.website, logo_url: l.logo_url, address: l.address, settings: { currency: l.settings?.currency || currentCurrency() }, convert_existing: convert });
+          if (r?.converted) toast(t('{n} Einträge auf {currency} umgestellt', { n: r.converted, currency: r.settings?.currency }));
+          setConvert(false);
+          await session.reload();
+        }}
+      >
         {t('Speichern')}
       </button>
     </div>
@@ -475,6 +484,7 @@ function Locations() {
             {l.name} {l.id === session.locationId && <Badge tone="blue">{t('aktiv')}</Badge>}
           </span>
           <span className="actions">
+            <SandboxResetButton locationId={l.id} />
             {l.id !== session.locationId && (
               <button className="btn small secondary" onClick={() => session.switchLocation(l.id)}>
                 {t('Wechseln')}

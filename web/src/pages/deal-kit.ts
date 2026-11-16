@@ -1,4 +1,4 @@
-import { amount, d } from '../api';
+import { amount, d, currentCurrency } from '../api';
 
 /** Small pure helpers shared by the deal board, the deal list and the Opportunities page. */
 
@@ -9,7 +9,7 @@ export const today = () => new Date().toISOString().slice(0, 10);
 /** Sum of deal values per currency ("1.200 € + 500 $"): amounts in different currencies are never added up. */
 export const sums = (items: { currency?: string; value?: number }[]) => {
   const m = new Map<string, number>();
-  for (const o of items) m.set(o.currency || 'EUR', (m.get(o.currency || 'EUR') ?? 0) + (o.value || 0));
+  for (const o of items) m.set(o.currency || currentCurrency(), (m.get(o.currency || currentCurrency()) ?? 0) + (o.value || 0));
   return m.size ? [...m].map(([c, v]) => amount(v, c)).join(' + ') : amount(0);
 };
 

@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react';
-import { amount, api, dt, name } from '../api';
+import { amount, api, dt, name, allCurrencies } from '../api';
 import { useT } from '../i18n';
 import { TagChips } from '../tag-chip';
 import { useTags } from '../tags';
@@ -56,7 +56,7 @@ export function DealList({ pipelines, onOpen, version = 0 }: { pipelines: any[];
       { key: 'stage_id', label: t('Stufe'), type: 'select', options: pipelines.flatMap((p) => p.stages.map((s: any) => s.id)), optionLabels: Object.fromEntries(pipelines.flatMap((p) => p.stages.map((s: any) => [s.id, `${p.name} › ${s.name}`]))) },
       { key: 'status', label: t('Status'), type: 'select', options: Object.keys(STATUS_TEXT), optionLabels: Object.fromEntries(Object.entries(STATUS_TEXT).map(([k, v]) => [k, t(v)])) },
       { key: 'value', label: t('Wert'), type: 'number' },
-      { key: 'currency', label: t('Währung'), type: 'select', options: ['EUR', 'USD', 'CHF', 'GBP', 'KES'] },
+      { key: 'currency', label: t('Währung'), type: 'select', options: allCurrencies() },
       { key: 'assigned_to', label: t('Zuständig'), type: 'user' },
       { key: 'tags', label: t('Tags'), type: 'multiselect', options: tags },
       { key: 'expected_close_date', label: t('Erwarteter Abschluss'), type: 'date' },

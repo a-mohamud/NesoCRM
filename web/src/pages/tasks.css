@@ -1,0 +1,14 @@
+/* Neso fork – Tasks: one line per task (title left; date, open and delete right), so a laptop screen shows many tasks.
+   With no task open the list takes the full width (md-full-list, pages/smart-lists.css). The generic .row rules (wrap,
+   .grow at 100 % on narrow boxes) would put the date and buttons on a second line – hence the stronger selectors here. */
+:root .row.task-row { flex-wrap: nowrap; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); padding: 4px 6px; min-height: 44px; }
+:root .row.task-row > .grow { flex: 1 1 auto; min-width: 0; }
+:root .row.task-row > .grow .check { margin: 0; }
+:root .row.task-row > span { flex: none; white-space: nowrap; font-size: 13px; }
+:root .row.task-row > .icon-btn { flex: none; }
+:root .row.task-row:last-child { border-bottom: 0; }
+@media (max-width: 480px) {
+  :root .row.task-row { flex-wrap: wrap; row-gap: 2px; }
+  :root .row.task-row > .grow { flex-basis: 100%; }
+  :root .row.task-row > span { margin-left: 34px; margin-right: auto; }
+}

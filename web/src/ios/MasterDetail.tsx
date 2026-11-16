@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { RouteScope } from '../ui';
 import { useT } from '../i18n';
 
@@ -28,11 +28,31 @@ export function MasterDetail({ list, detail, open, empty, className }: { list: R
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
   }, [open]);
+  // Neso fork: the sticky list scrolls on its own and must end at the bottom of the window – its fixed max-height did not count
+  // banners above it (practice company, notices), so its last rows sat below the fold.
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || scoped) return;
+    let frame = 0;
+    const fit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (getComputedStyle(el).position !== 'sticky') return void (el.style.maxHeight = '');
+        const top = Math.max(8, el.getBoundingClientRect().top);
+        el.style.maxHeight = `${Math.max(240, window.innerHeight - top - 12)}px`;
+      });
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    document.addEventListener('scroll', fit, true);
+    return () => (cancelAnimationFrame(frame), window.removeEventListener('resize', fit), document.removeEventListener('scroll', fit, true));
+  }, [scoped, open]);
   if (scoped) return <>{open ? detail : list}</>;
   return (
     <div className={`md-wrap${className ? ` ${className}` : ''}`}>
       <div className="md" data-open={open ? '1' : '0'}>
-        <div className="md-list">{listReady && list}</div>
+        <div className="md-list" ref={listRef}>{listReady && list}</div>
         <div className="md-detail">{open ? detail : <p className="muted md-empty">{empty ?? t('Wähle links einen Eintrag.')}</p>}</div>
       </div>
     </div>

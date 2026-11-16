@@ -4,6 +4,7 @@ import { ymdInTz } from '../core/time.js';
 import { paidRevenueSql } from '../services/invoice-model.js';
 import { overdue } from '../services/mobile.js';
 import { maskRow, resolve, scopeClause, type Resolved } from '../services/record-access.js';
+import { locationCurrency } from '../services/location-currency.js';
 
 export const dashboardModule: Module = {
   name: 'dashboard',
@@ -62,7 +63,7 @@ export const dashboardModule: Module = {
 
       // Money in different currencies is never added up (there are no exchange rates): per currency, the sub-account's main
       // currency (the one most of its invoices are in) first. `paid`/`outstanding` keep the main currency's amounts for older clients.
-      const cur = (c: unknown) => (typeof c === 'string' && /^[A-Z]{3}$/.test(c) ? c : 'EUR');
+      const cur = (c: unknown) => (typeof c === 'string' && /^[A-Z]{3}$/.test(c) ? c : locationCurrency(app, loc));
       const byCurrency = new Map<string, { currency: string; paid: number; outstanding: number }>();
       const add = (c: unknown, k: 'paid' | 'outstanding', v: unknown) => {
         const key = cur(c);

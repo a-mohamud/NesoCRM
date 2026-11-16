@@ -14,6 +14,35 @@ export function setLocation(id: string) {
 }
 export const currentLocation = () => locationId;
 
+/** Neso fork: each sub-account's currency (Settings → Company, KES unless changed; /api/me sends it). Amounts that carry
+ *  no currency of their own are shown in the one of the sub-account in use. */
+const currencies = new Map<string, string>();
+export function setLocationCurrencies(list: { id: string; currency?: string | null }[]) {
+  currencies.clear();
+  for (const l of list) if (l.currency) currencies.set(l.id, l.currency);
+}
+export const currentCurrency = (id: string = locationId) => currencies.get(id) ?? 'KES';
+/** Every ISO 4217 currency the browser knows, most used in East Africa first – for currency pickers. */
+export function allCurrencies(): string[] {
+  const first = ['KES', 'UGX', 'TZS', 'RWF', 'ETB', 'SOS', 'USD', 'EUR', 'GBP', 'AED'];
+  let all: string[] = [];
+  try {
+    all = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('currency') ?? [];
+  } catch {
+    /* older browsers: the short list */
+  }
+  return [...new Set([...first, ...all])];
+}
+/** "KES – Kenyan Shilling" in the UI language. */
+export function currencyLabel(code: string, locale?: string): string {
+  try {
+    const name = new Intl.DisplayNames(locale ? [locale] : undefined, { type: 'currency' }).of(code);
+    return name && name !== code ? `${code} – ${name}` : code;
+  } catch {
+    return code;
+  }
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -85,12 +114,13 @@ export const api = {
 };
 
 // Numbers, money and dates follow the UI language (i18n/index.ts: de-DE for German, the browser's variant for English).
-export const money = (cents: number, currency = 'EUR') => fmtMoney(cents, currency);
+export const money = (cents: number, currency = currentCurrency()) => fmtMoney(cents, currency || currentCurrency());
 /** Sums per currency (`sumByCurrency` in format.ts) as "1.200,00 € · 300,00 $" – never added up; no sum at all is 0 in `fallback`. */
-export const moneyList = (sums: [string, number][], fallback = 'EUR') => (sums.length ? sums.map(([c, v]) => money(v, c)).join(' · ') : money(0, fallback));
+export const moneyList = (sums: [string, number][], fallback = currentCurrency()) => (sums.length ? sums.map(([c, v]) => money(v, c)).join(' · ') : money(0, fallback));
 /** Whole-unit amount (deal values) in any currency, no decimals. */
-export const amount = (v: number, currency = 'EUR') => fmtMoney((v || 0) * 100, currency || 'EUR', { maximumFractionDigits: 0 });
-export const euro = (v: number) => fmtMoney((v || 0) * 100, 'EUR', { maximumFractionDigits: 0 });
+export const amount = (v: number, currency = currentCurrency()) => fmtMoney((v || 0) * 100, currency || currentCurrency(), { maximumFractionDigits: 0 });
+/** Whole-unit amount in the sub-account's currency (the name is upstream's – it was always euros there). */
+export const euro = (v: number) => fmtMoney((v || 0) * 100, currentCurrency(), { maximumFractionDigits: 0 });
 export const dt = (s?: string | null) => (s ? fmtDateTime(s, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–');
 export const d = (s?: string | null) => (s ? fmtDate(s) : '–');
 export const name = (c: any) => [c?.first_name, c?.last_name].filter(Boolean).join(' ') || c?.email || c?.phone || t('Unbekannt');

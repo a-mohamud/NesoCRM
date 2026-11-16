@@ -6,6 +6,7 @@ import { journeyStatus, toursForPath, tourById, useTourText, type Access } from 
 import { accessOf, startTour } from './engine';
 import { FIRST_TOUR } from './learn';
 import { useAcademy } from './progress';
+import { SandboxResetButton } from './SandboxReset';
 import type { AcademyState, Tour } from './types';
 import { useT } from '../i18n';
 
@@ -146,6 +147,7 @@ export function SandboxBanner() {
       <span className="grow">
         <strong>{tt('Übungs-Firma:')}</strong> {tt('Hier ist alles erfunden – probier ruhig alles aus.')}<span className="sb-more"> {tt('E-Mails und SMS werden nur gespeichert, nie verschickt.')}</span>
       </span>
+      <SandboxResetButton className="btn small secondary sb-reset" />
       <a
         href="/app/academy"
         onClick={(e) => {

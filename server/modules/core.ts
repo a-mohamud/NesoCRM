@@ -14,6 +14,7 @@ import { snapshotInto } from './backups.js';
 import { eraseLocations } from '../services/cloud-export.js';
 import { forgetUser } from '../services/user-erase.js';
 import { tLoc } from '../i18n/index.js';
+import { defaultCurrency } from '../services/location-currency.js';
 
 const SESSION_DAYS = 30;
 const loginAttempts = new Map<string, { n: number; until: number }>();
@@ -241,8 +242,8 @@ export const coreModule: Module = {
       const u = ctx.user!;
       const locs =
         u.role === 'admin'
-          ? db.all(`SELECT id, name, timezone, json_extract(settings, '$.currency') AS currency FROM locations ORDER BY name`)
-          : db.all(`SELECT id, name, timezone, json_extract(settings, '$.currency') AS currency FROM locations WHERE id IN (SELECT value FROM json_each(?)) ORDER BY name`, JSON.stringify(u.locations));
+          ? db.all(`SELECT id, name, timezone, COALESCE(json_extract(settings, '$.currency'), ?) AS currency FROM locations ORDER BY name`, defaultCurrency())
+          : db.all(`SELECT id, name, timezone, COALESCE(json_extract(settings, '$.currency'), ?) AS currency FROM locations WHERE id IN (SELECT value FROM json_each(?)) ORDER BY name`, defaultCurrency(), JSON.stringify(u.locations));
       // Modules add fields of their own to the user (app.services.meFields, e.g. the UI language of modules/language.ts).
       const extra = ((app.services.meFields ?? []) as ((user: typeof u) => Record<string, unknown>)[]).reduce((o, fn) => ({ ...o, ...fn(u) }), {});
       return { user: { ...extra, ...u }, locations: visibleLocations(app, u, locs) };
@@ -352,7 +353,18 @@ export const coreModule: Module = {
       }
       db.update('locations', ctx.locationId, patch);
       const l = app.location(ctx.locationId)!;
-      return { ...l, settings: maskSettings(l.settings) };
+      // Neso fork: on request, records still in EUR (the old default) move to the new currency – amounts stay as they are.
+      let converted = 0;
+      const to = l.settings?.currency;
+      if (ctx.body.convert_existing === true && typeof to === 'string' && /^[A-Z]{3}$/.test(to) && to !== 'EUR') {
+        for (const sql of [
+          `UPDATE opportunities SET currency = ? WHERE location_id = ? AND currency = 'EUR'`,
+          `UPDATE products SET currency = ? WHERE location_id = ? AND currency = 'EUR'`,
+          `UPDATE invoices SET currency = ? WHERE location_id = ? AND currency = 'EUR' AND status = 'draft'`,
+        ])
+          converted += Number(db.run(sql, to, ctx.locationId)?.changes ?? 0);
+      }
+      return { ...l, settings: maskSettings(l.settings), converted };
     });
 
     // --- API keys -----------------------------------------------------------
