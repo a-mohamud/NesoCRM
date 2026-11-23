@@ -363,6 +363,12 @@ function errorMessage(data: any, raw: string): string {
 /** Wire formats that live in their own file and register themselves here (e.g. "responses", services/chatgpt-responses.ts). */
 export const extraWires: Record<string, (req: ChatRequest, fetchImpl: FetchLike) => Promise<ChatResult>> = {};
 
+/** Anthropic's answer when a replayed thinking block's prefix changed since it was produced (Claude 5.5+ preserved thinking). */
+export const isThinkingBindingError = (status: number, message: string) => status === 400 && /bound to a different conversation/i.test(message);
+const hasThinking = (messages: Msg[]) => messages.some((m) => m.content.some((p) => p.type === 'thinking'));
+/** The same request without any thinking blocks (the API's own remedy for a binding mismatch). */
+export const withoutThinking = (req: ChatRequest): ChatRequest => ({ ...req, messages: req.messages.map((m) => ({ ...m, content: m.content.filter((p) => p.type !== 'thinking') })) });
+
 /** One model turn: request, retry once on overload, stream or not, neutral result with usage. */
 export async function chatWithTools(req: ChatRequest, fetchImpl: FetchLike = (u, i) => fetch(u, i)): Promise<ChatResult> {
   const started = Date.now();
@@ -370,7 +376,9 @@ export async function chatWithTools(req: ChatRequest, fetchImpl: FetchLike = (u,
   if (extra) return extra(req, fetchImpl);
   if (req.connection.wire !== 'anthropic' && req.connection.wire !== 'openai') throw new AgentError(tApp()('{label} ist kein Text-Modell (kein Chat möglich).', { label: labelOf(req.connection) }), 400, 'not_text');
   const ep = chatEndpoint(req.connection, req.app);
+  const original = req;
   let skipEffort = false;
+  let droppedThinking = false;
   let body = ep.kind === 'anthropic' ? anthropicBody(req) : openaiBody(req, ep);
   const timeout = AbortSignal.timeout(req.timeoutMs ?? 120_000);
   const signal = req.signal ? AbortSignal.any([req.signal, timeout]) : timeout;
@@ -397,6 +405,14 @@ export async function chatWithTools(req: ChatRequest, fetchImpl: FetchLike = (u,
       continue;
     }
     const detail = errorMessage(data, raw);
+    // A thinking block from earlier in the chat no longer matches its prefix (system prompt, tools or an older message changed):
+    // send the request once more without thinking blocks, as the API suggests. Checked before the effort rule (it says "thinking").
+    if (ep.kind === 'anthropic' && !droppedThinking && isThinkingBindingError(res.status, detail) && hasThinking(req.messages)) {
+      droppedThinking = true;
+      req = withoutThinking(original);
+      body = anthropicBody(req, skipEffort);
+      continue;
+    }
     const plan = effortPlanOf(req, skipEffort);
     if (plan.sent && isEffortRejection(res.status, detail)) {
       // Everyday calls are repeated once without the level; the Werkstatt never thinks less quietly.

@@ -31,6 +31,8 @@ const AGENCY_KEY = 'agent';
 const PENDING_TTL_MS = 30 * 60_000;
 const DEFERRED_TTL_MS = 7 * 864e5;
 const RUN_TIMEOUT_MS = 5 * 60_000;
+/** The agent's reply language from the user's app language (server/i18n locales). */
+const LANGUAGE_NAMES: Record<string, string> = { en: 'English', so: 'Somali', de: 'German' };
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const FILE_TYPES = /^(image\/(png|jpeg|webp|gif)|text\/(csv|plain|markdown)|application\/(json|vnd\.ms-excel|csv))$/;
 
@@ -460,7 +462,7 @@ export const agentModule: Module = {
         conversationId: o.conv.id,
         automatic: o.automatic,
         ui,
-        system: systemPrompt({ brand: brand(), agent: cfg, user, locationName: loc.name, locationId: locId, today: ymdInTz(new Date(), tz), automatic: o.automatic, memory: cfg.memory ? memory.list() : [], knowledge: cfg.knowledge.text, extras: ((app.services.agentPromptExtras ?? []) as ((i: { user: User; locationId: string; automatic: boolean; source: string }) => string)[]).map((f) => f({ user, locationId: locId, automatic: o.automatic, source: o.source })).filter(Boolean) }),
+        system: systemPrompt({ brand: brand(), agent: cfg, user, locationName: loc.name, locationId: locId, today: ymdInTz(new Date(), tz), automatic: o.automatic, memory: cfg.memory ? memory.list() : [], knowledge: cfg.knowledge.text, language: LANGUAGE_NAMES[tUser(app as never, user.id).locale], extras: ((app.services.agentPromptExtras ?? []) as ((i: { user: User; locationId: string; automatic: boolean; source: string }) => string)[]).map((f) => f({ user, locationId: locId, automatic: o.automatic, source: o.source })).filter(Boolean) }),
         contextNote,
         emit: (ev) => {
           if (ev.type === 'tool_result') toolLog.push({ name: String(ev.name ?? ''), status: String(ev.status) });

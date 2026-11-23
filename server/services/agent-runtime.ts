@@ -118,8 +118,13 @@ export function systemPrompt(i: {
   knowledge: string;
   /** Sections other modules add (app.services.agentPromptExtras), e.g. the Werkstatt's plugin offer. */
   extras?: string[];
+  /** The user's app language in English ("English", "Somali", "German"); the agent replies in it unless the user writes in another. */
+  language?: string;
 }): string {
   const a = i.agent;
+  const languageRule = i.language
+    ? `- Reply in ${i.language} (the language this user set for the app) unless the user writes to you in another language – then reply in theirs. Keep that language for the whole chat.${i.language === 'German' ? '' : ' Tool results, route descriptions and stored data are often in German: never switch to German because of them.'} Be brief and concrete. Use Markdown sparingly (lists, **bold**, tables for numbers).`
+    : '- Answer in the language the user writes in, briefly and concretely. Use Markdown sparingly (lists, **bold**, tables for numbers).';
   const parts = [
     `You are “${a.name}”, an AI agent in ${i.brand} – a CRM for contacts, deals, inbox, calendar, automations, marketing, invoices and service. You get tasks done with your tools instead of only explaining how to do them.`,
     safetyRules(a.mode, { automatic: i.automatic }),
@@ -131,7 +136,7 @@ export function systemPrompt(i: {
     ...(i.extras ?? []),
     [
       '# How you work',
-      '- Answer in the language the user writes in, briefly and concretely. Use Markdown sparingly (lists, **bold**, tables for numbers).',
+      languageRule,
       '- Look up data first (contacts, deals …) instead of guessing. For “this one” or “this contact”, call ui_context first.',
       '- Link records as Markdown links with an internal path, e.g. [Wanjiru Kamau](/app/contacts/<id>) or [Ticket #12](/app/tickets/12).',
       '- If an area has no dedicated tool, find the route with ghl_api_routes and call it with ghl_api (if available; GET reads, everything else is confirmed).',
@@ -147,7 +152,14 @@ export function systemPrompt(i: {
 
 const isRealTurn = (m: Msg) => m.role === 'user' && !m.content.some((p) => p.type === 'tool_result');
 
-/** History trimmed for the request: recent turns only, old tool results shortened, images only in the newest turn. */
+/**
+ * History trimmed for the request: recent turns only, old tool results shortened, images only in the newest turn.
+ *
+ * Thinking blocks are sent back only for the current turn (its tool loop needs them). Claude 5.5+ binds each thinking block to
+ * the exact prefix it was produced for, and finished turns are rebuilt here on every new message (the context note moves to
+ * the newest turn, older tool results get shortened, older images become placeholders) – replaying their thinking would be
+ * rejected as "bound to a different conversation". Leaving out the oldest blocks is allowed; leaving out one in between is not.
+ */
 export function requestMessages(history: Msg[], opts: { contextNote: string; file: ToolEnv['file']; maxMessages?: number }): Msg[] {
   const max = opts.maxMessages ?? 40;
   const real = history.map((m, i) => (isRealTurn(m) ? i : -1)).filter((i) => i >= 0);
@@ -155,7 +167,8 @@ export function requestMessages(history: Msg[], opts: { contextNote: string; fil
   const start = real.find((i) => history.length - i <= max) ?? lastReal;
   return history.slice(start).map((m, k) => {
     const i = start + k;
-    const content: Part[] = m.content.map((p) => {
+    const parts = i < lastReal ? m.content.filter((p) => p.type !== 'thinking') : m.content;
+    const content: Part[] = parts.map((p) => {
       if (p.type === 'tool_result' && i < lastReal && p.content.length > 1500) return { ...p, content: `${p.content.slice(0, 1500)}\n… (older result truncated)` };
       if (p.type === 'image') {
         if (i !== lastReal) return { type: 'text', text: `[Image “${p.name ?? 'image'}” from an earlier message]` };
